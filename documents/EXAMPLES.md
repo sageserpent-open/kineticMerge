@@ -16,3 +16,11 @@
 ## File Split with an Orphan
 
 ![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/FileSplitWithAnOrphan.excalidraw.svg)
+
+## File Join with a clean Rename
+
+![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/FileJoinWithACleanRename.excalidraw.svg)
+
+## File Join with a conflicting Rename
+
+![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/FileJoinWithAConflictingRename.excalidraw.svg)
