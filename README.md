@@ -26,4 +26,4 @@ Kinetic Merge's job is to augment the process of merging in Git so that the code
 Well, that's the plan - right now this is vapourware. I don't even know if I can deliver such a thing, to be honest. Let's see...
 
 ## Simple Use Cases
-[Behold the Chamber of Horrors...](./documents/Examples.MD)
+[Behold the Chamber of Horrors...](./documents/EXAMPLES.md)
