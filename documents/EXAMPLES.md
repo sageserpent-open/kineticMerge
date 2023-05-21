@@ -17,6 +17,10 @@
 
 ![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/FileSplitWithAnOrphan.excalidraw.svg)
 
+## File Split with a clean Rename
+
+![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/FileSplitWithACleanRename.excalidraw.svg)
+
 ## File Join with a clean Rename
 
 ![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/FileJoinWithACleanRename.excalidraw.svg)
