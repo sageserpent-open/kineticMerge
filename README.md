@@ -12,7 +12,7 @@ Merge a heavily refactored codebase and stay sane.
 ## Why?
 Meet Noah Shortcut and Seymour Checks, two likely software engineers from [ThreePhantasticTales](http://www.octopull.co.uk/sw-dev/ThreePhantasticTails.html), and their manager, Mr Deadline.
 
-Some time has passed since that those tales were told, and Messrs Shortcut and Checks work with Java in some giant corporate blob these days. Noah likes to work lean and mean with Emacs or vi, or is it Atom or Sublime now? He's pumping out code straight into CI/CD as fast as possible with no tests to slow him down, and management are very happy. Seymour likes TDD, also spends a lot of time adding tests to the existing codebase before working on new functionality, and refactors the old codebase a lot with IntelliJ or Visual Studio Code to keep it tractable.
+Some time has passed since that those tales were told, and Messrs Shortcut and Checks work with Java in some giant corporate blob these days. Noah likes to work lean and mean with Emacs or vi, or is it Atom or Sublime now? He's pumping out code straight into CI/CD as fast as possible with no tests to slow him down, and Mr Deadline is very happy. Seymour likes TDD, also spends a lot of time adding tests to the existing codebase before working on new functionality, and refactors the old codebase a lot with IntelliJ or Visual Studio Code to keep it tractable.
 
 All this would be great, only each time a PR is raised, all hell breaks loose when Seymour's beautifully rearranged code hits Noah's latest tidal wave of new functionality that has been hacked in place.
 
