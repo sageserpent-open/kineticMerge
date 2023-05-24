@@ -13,6 +13,10 @@
 
 ![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/SimpleCodeMotionWithAnOrphan.excalidraw.svg)
 
+## Complex Code Motion with two Orphans
+
+![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/ComplexCodeMotionWithTwoOrphans.excalidraw.svg)
+
 ## File Split with an Orphan
 
 ![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/FileSplitWithAnOrphan.excalidraw.svg)
