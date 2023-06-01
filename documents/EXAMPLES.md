@@ -8,6 +8,9 @@
 
 ![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/SimpleCodeMotionWithAConflictedMerge.excalidraw.svg)
 
+## No Code Motion but differing Splice Points
+
+![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/NoCodeMotionButDifferingSplicePoints.excalidraw.svg)
 
 ## Simple Code Motion with an Orphan
 
