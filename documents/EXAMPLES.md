@@ -28,6 +28,14 @@
 
 ![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/FileSplitWithACleanRename.excalidraw.svg)
 
+## File Split diverging from Code Motion within a File
+
+![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/FileSplitDivergingFromCodeMotionWithinAFile.excalidraw.svg)
+
+## File Split causing Orphaned Code Motion within a File
+
+![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/FileSplitCausingOrphanedCodeMotionWithinAFile.excalidraw.svg)
+
 ## File Join with a clean Rename
 
 ![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/FileJoinWithACleanRename.excalidraw.svg)
