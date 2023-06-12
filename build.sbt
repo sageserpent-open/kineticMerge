@@ -10,6 +10,7 @@ lazy val packageExecutable =
 
 lazy val root = (project in file("."))
   .settings(
+    scalacOptions ++= List("-rewrite", "-indent"),
     name         := "kinetic-merge",
     organization := "com.sageserpent",
     packageExecutable := {
