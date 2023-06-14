@@ -35,9 +35,9 @@ trait Sources:
   type SectionType <: Section
 
   /** @return
-    *   Sections that completely cover each source file - so for every path in
-    *   the [[Sources]], here is just one [[SectionType]] instance that covers
-    *   all of the source text at that path.
+    *   Sections that completely cover each source file - so for every [[Path]]
+    *   in the [[Sources]], here is just one [[SectionType]] instance that
+    *   covers all of the source text at that path.
     */
-  def maximalSections: Set[SectionType]
+  def maximalSectionsByPath: Map[Path, SectionType]
 end Sources

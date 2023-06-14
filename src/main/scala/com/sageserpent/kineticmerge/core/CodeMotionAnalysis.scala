@@ -26,19 +26,19 @@ object CodeMotionAnalysis:
     require(1 >= minimumSizeFractionForMotionDetection)
 
     val baseSections: SectionedSourcesByPath =
-      base.maximalSections.view
-        .map(section => section.path -> Vector(section))
-        .toMap
+      base.maximalSectionsByPath.view.map { case (path, maximalSection) =>
+        path -> Vector(maximalSection)
+      }.toMap
 
     val leftSections: SectionedSourcesByPath =
-      left.maximalSections.view
-        .map(section => section.path -> Vector(section))
-        .toMap
+      left.maximalSectionsByPath.view.map { case (path, maximalSection) =>
+        path -> Vector(maximalSection)
+      }.toMap
 
     val rightSections: SectionedSourcesByPath =
-      right.maximalSections.view
-        .map(section => section.path -> Vector(section))
-        .toMap
+      right.maximalSectionsByPath.view.map { case (path, maximalSection) =>
+        path -> Vector(maximalSection)
+      }.toMap
 
     val sections: Iterable[Sources#SectionType] =
       baseSections.values.flatten ++ leftSections.values.flatten ++ rightSections.values.flatten
