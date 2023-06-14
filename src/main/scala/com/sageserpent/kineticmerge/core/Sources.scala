@@ -7,9 +7,10 @@ package com.sageserpent.kineticmerge.core
   * could be a [[String]] or [[java.nio.file.Path]], it could also be a simple
   * [[Int]] that labels a file.
   *
-  * A source file is implicitly broken down into [[SectionType]] instances that
-  * cover sections of contiguous text in the file. A [[SectionT]] is a flyweight
-  * that knows how to render the covered text given a [[Path]].
+  * A source file at a given path is implicitly broken down into [[SectionType]]
+  * instances that cover sections of contiguous text in the file. A [[SectionT]]
+  * knows how to render its covered text, and can reveal the [[Path]] it belongs
+  * to.
   *
   * At some point, it is likely that the actual contents will be abstracted over
   * too, so a run of whitespace can be condensed into a single placeholder to
@@ -20,16 +21,23 @@ trait Sources:
   type Path
 
   trait Section:
+    def path: Path
+
     def startOffset: Int
 
     def width: Int
 
     def onePastEndOffset: Int = startOffset + width
 
-    def contents(path: Path): String
+    def contents: String
   end Section
 
   type SectionType <: Section
 
-  def maximalSectionsByPath: Map[Path, SectionType]
+  /** @return
+    *   Sections that completely cover each source file - so for every path in
+    *   the [[Sources]], here is just one [[SectionType]] instance that covers
+    *   all of the source text at that path.
+    */
+  def maximalSections: Set[SectionType]
 end Sources
