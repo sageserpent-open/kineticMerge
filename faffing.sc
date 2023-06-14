@@ -8,4 +8,5 @@ val bSources = new Sources:
 val cSources = new Sources:
   override type Path = Boolean
 
-val result: Either[CodeMotionAnalysis.Divergence.type, CodeMotionAnalysis] = CodeMotionAnalysis.analyze(aSources, bSources, cSources)(1.0)
+val result: Either[CodeMotionAnalysis.Divergence.type, CodeMotionAnalysis] =
+  CodeMotionAnalysis.of(aSources, bSources, cSources)(1.0)

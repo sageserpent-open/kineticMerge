@@ -24,5 +24,6 @@ lazy val root = (project in file("."))
       s"cs bootstrap --verbose --scala-version ${scalaBinaryVersion.value} -f $localArtifactCoordinates -o $executablePath" !
 
       name.value
-    }
+    },
+    libraryDependencies += "org.typelevel" %% "cats-collections-core" % "0.9.6"
   )

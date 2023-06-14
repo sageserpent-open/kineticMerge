@@ -1,5 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
+import cats.Order
+import cats.collections.DisjointSets
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.{Section, SectionedSources}
 
 object CodeMotionAnalysis:
@@ -11,6 +13,8 @@ object CodeMotionAnalysis:
     def contents: String
   end Section
 
+  given orderEvidence: Order[Section] = ???
+
   type FileContents = IndexedSeq[Section]
 
   type SectionedSources = Map[Sources#Path, FileContents]
@@ -18,7 +22,7 @@ object CodeMotionAnalysis:
   // TODO: "Something went wrong!" - "What was it?"
   case object Divergence
 
-  def analyze(
+  def of(
       base: Sources,
       left: Sources,
       right: Sources
@@ -45,10 +49,10 @@ object CodeMotionAnalysis:
         baseSections,
         leftSections,
         rightSections,
-        sections.toSet
+        DisjointSets(sections.toSeq*)
       )
     )
-  end analyze
+  end of
 
 end CodeMotionAnalysis
 
@@ -56,5 +60,5 @@ case class CodeMotionAnalysis(
     base: SectionedSources,
     left: SectionedSources,
     right: SectionedSources,
-    globalSectionSet: Set[Section]
+    globalSectionSet: DisjointSets[Section]
 )
