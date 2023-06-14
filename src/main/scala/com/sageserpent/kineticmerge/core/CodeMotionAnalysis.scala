@@ -2,15 +2,15 @@ package com.sageserpent.kineticmerge.core
 
 import cats.Order
 import cats.collections.DisjointSets
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.SectionedSources
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.SectionedSourcesByPath
 
 object CodeMotionAnalysis:
 
   given orderEvidence: Order[Sources#SectionType] = ???
 
-  type FileContents = IndexedSeq[Sources#SectionType]
+  type SectionedSource = IndexedSeq[Sources#SectionType]
 
-  type SectionedSources = Map[Sources#Path, FileContents]
+  type SectionedSourcesByPath = Map[Sources#Path, SectionedSource]
 
   // TODO: "Something went wrong!" - "What was it?"
   case object Divergence
@@ -25,14 +25,20 @@ object CodeMotionAnalysis:
     require(0 < minimumSizeFractionForMotionDetection)
     require(1 >= minimumSizeFractionForMotionDetection)
 
-    val baseSections: SectionedSources =
-      Map.empty
+    val baseSections: SectionedSourcesByPath =
+      base.maximalSections.view
+        .map(section => section.path -> Vector(section))
+        .toMap
 
-    val leftSections: SectionedSources =
-      Map.empty
+    val leftSections: SectionedSourcesByPath =
+      left.maximalSections.view
+        .map(section => section.path -> Vector(section))
+        .toMap
 
-    val rightSections: SectionedSources =
-      Map.empty
+    val rightSections: SectionedSourcesByPath =
+      right.maximalSections.view
+        .map(section => section.path -> Vector(section))
+        .toMap
 
     val sections: Iterable[Sources#SectionType] =
       baseSections.values.flatten ++ leftSections.values.flatten ++ rightSections.values.flatten
@@ -50,8 +56,8 @@ object CodeMotionAnalysis:
 end CodeMotionAnalysis
 
 case class CodeMotionAnalysis(
-    base: SectionedSources,
-    left: SectionedSources,
-    right: SectionedSources,
+    base: SectionedSourcesByPath,
+    left: SectionedSourcesByPath,
+    right: SectionedSourcesByPath,
     globalSectionSet: DisjointSets[Sources#SectionType]
 )
