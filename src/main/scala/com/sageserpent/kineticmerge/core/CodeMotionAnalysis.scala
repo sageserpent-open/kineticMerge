@@ -2,20 +2,13 @@ package com.sageserpent.kineticmerge.core
 
 import cats.Order
 import cats.collections.DisjointSets
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.{Section, SectionedSources}
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.SectionedSources
 
 object CodeMotionAnalysis:
 
-  trait Section:
+  given orderEvidence: Order[Sources#SectionType] = ???
 
-    def onePastEndOffset: Int
-
-    def contents: String
-  end Section
-
-  given orderEvidence: Order[Section] = ???
-
-  type FileContents = IndexedSeq[Section]
+  type FileContents = IndexedSeq[Sources#SectionType]
 
   type SectionedSources = Map[Sources#Path, FileContents]
 
@@ -41,7 +34,7 @@ object CodeMotionAnalysis:
     val rightSections: SectionedSources =
       Map.empty
 
-    val sections: Iterable[Section] =
+    val sections: Iterable[Sources#SectionType] =
       baseSections.values.flatten ++ leftSections.values.flatten ++ rightSections.values.flatten
 
     Right(
@@ -60,5 +53,5 @@ case class CodeMotionAnalysis(
     base: SectionedSources,
     left: SectionedSources,
     right: SectionedSources,
-    globalSectionSet: DisjointSets[Section]
+    globalSectionSet: DisjointSets[Sources#SectionType]
 )
