@@ -47,8 +47,8 @@ object CodeMotionAnalysis:
 end CodeMotionAnalysis
 
 case class CodeMotionAnalysis[Path](
-    base: Map[Path, Sources[Path]#File],
-    left: Map[Path, Sources[Path]#File],
-    right: Map[Path, Sources[Path]#File],
-    globalSectionSet: DisjointSets[Section]
+    base: Map[Path, File],
+    left: Map[Path, File],
+    right: Map[Path, File],
+    globalSectionsOrganizedIntoSetsOfMatches: DisjointSets[Section]
 )
