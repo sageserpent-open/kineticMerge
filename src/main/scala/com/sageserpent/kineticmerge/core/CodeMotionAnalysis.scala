@@ -21,18 +21,18 @@ object CodeMotionAnalysis:
     require(1 >= minimumSizeFractionForMotionDetection)
 
     val baseSections =
-      base.filesByPath
+      base.files
 
     val leftSections =
-      left.filesByPath
+      left.files
 
     val rightSections =
-      right.filesByPath
+      right.files
 
     val sections: Iterable[Section] =
-      baseSections.values.flatMap(_.sections) ++ leftSections.values.flatMap(
+      baseSections.flatMap(_.sections) ++ leftSections.flatMap(
         _.sections
-      ) ++ rightSections.values.flatMap(_.sections)
+      ) ++ rightSections.flatMap(_.sections)
 
     Right(
       CodeMotionAnalysis(
@@ -47,8 +47,8 @@ object CodeMotionAnalysis:
 end CodeMotionAnalysis
 
 case class CodeMotionAnalysis[Path](
-    base: Map[Path, Sources[Path]#File],
-    left: Map[Path, Sources[Path]#File],
-    right: Map[Path, Sources[Path]#File],
+    base: Set[? <: Sources[Path]#File],
+    left: Set[? <: Sources[Path]#File],
+    right: Set[? <: Sources[Path]#File],
     globalSectionSet: DisjointSets[Section]
 )

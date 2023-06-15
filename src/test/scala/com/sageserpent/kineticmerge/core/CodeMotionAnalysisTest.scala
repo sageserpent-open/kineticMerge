@@ -1,5 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
+import cats.collections.HashSet as CatsHashSet
+import cats.derived.*
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.FakeSources
 import org.scalatest.flatspec.AnyFlatSpec
 
@@ -10,21 +12,23 @@ end CodeMotionAnalysisTest
 
 object CodeMotionAnalysisTest:
   case class FakeSources(textsByPath: Map[Int, String]) extends Sources[Int]:
-    override def filesByPath: Map[Path, File] =
-      textsByPath.map { case (path, text) =>
-        path -> File(
-          Vector(
-            new Section:
-              override def startOffset: Int = 0
+    override def files: Set[File] =
+      CatsHashSet
+        .fromIterableOnce(textsByPath.map { case (path, text) =>
+          File(
+            path,
+            Vector(
+              new Section:
+                override def startOffset: Int = 0
 
-              override def width: Int = text.length
+                override def width: Int = text.length
 
-              override def contents: String =
-                textsByPath(path).substring(startOffset, onePastEndOffset)
+                override def contents: String =
+                  textsByPath(path).substring(startOffset, onePastEndOffset)
+            )
           )
-        )
-      }
-
+        })
+        .toSet
   end FakeSources
 
 end CodeMotionAnalysisTest
