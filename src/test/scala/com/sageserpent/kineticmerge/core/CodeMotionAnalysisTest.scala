@@ -13,15 +13,13 @@ object CodeMotionAnalysisTest:
     override type Path = Int
 
     case class SectionImplementation(
-        override val path: Path,
+        path: Path,
         override val startOffset: Int,
         override val width: Int
-    ) extends this.Section:
+    ) extends Section:
       override def contents: String =
         textsByPath(path).substring(startOffset, onePastEndOffset)
     end SectionImplementation
-
-    override type SectionType = SectionImplementation
 
     override def filesByPath: Map[Path, File] =
       textsByPath.map { case (path, text) =>

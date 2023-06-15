@@ -8,8 +8,8 @@ package com.sageserpent.kineticmerge.core
   * could be a [[String]] or [[java.nio.file.Path]], it could also be a simple
   * [[Int]] that labels a file.
   *
-  * A source file at a given path is implicitly broken down into [[SectionType]]
-  * instances that cover sections of contiguous text in the file. A [[SectionT]]
+  * A source file at a given path is implicitly broken down into [[Section]]
+  * instances that cover sections of contiguous text in the file. A [[Section]]
   * knows how to render its covered text, and can reveal the [[Path]] it belongs
   * to.
   *
@@ -21,21 +21,7 @@ package com.sageserpent.kineticmerge.core
 trait Sources:
   type Path
 
-  trait Section:
-    def path: Path
-
-    def startOffset: Int
-
-    def width: Int
-
-    def onePastEndOffset: Int = startOffset + width
-
-    def contents: String
-  end Section
-
-  type SectionType <: Section
-
-  case class File(sections: IndexedSeq[SectionType])
+  case class File(sections: IndexedSeq[Section])
 
   def filesByPath: Map[Path, File]
 end Sources

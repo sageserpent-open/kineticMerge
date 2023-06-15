@@ -6,9 +6,9 @@ import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.SectionedSourcesByPa
 
 object CodeMotionAnalysis:
 
-  given orderEvidence: Order[Sources#SectionType] = ???
+  given orderEvidence: Order[Section] = ???
 
-  type SectionedSource = IndexedSeq[Sources#SectionType]
+  type SectionedSource = IndexedSeq[Section]
 
   type SectionedSourcesByPath = Map[Sources#Path, SectionedSource]
 
@@ -34,7 +34,7 @@ object CodeMotionAnalysis:
     val rightSections: SectionedSourcesByPath =
       right.filesByPath.view.mapValues(_.sections).toMap
 
-    val sections: Iterable[Sources#SectionType] =
+    val sections: Iterable[Section] =
       baseSections.values.flatten ++ leftSections.values.flatten ++ rightSections.values.flatten
 
     Right(
@@ -53,5 +53,5 @@ case class CodeMotionAnalysis(
     base: SectionedSourcesByPath,
     left: SectionedSourcesByPath,
     right: SectionedSourcesByPath,
-    globalSectionSet: DisjointSets[Sources#SectionType]
+    globalSectionSet: DisjointSets[Section]
 )
