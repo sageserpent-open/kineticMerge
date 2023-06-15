@@ -1,7 +1,5 @@
 package com.sageserpent.kineticmerge.core
 
-import cats.collections.HashSet as CatsHashSet
-import cats.derived.*
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.FakeSources
 import org.scalatest.flatspec.AnyFlatSpec
 
@@ -25,21 +23,19 @@ object CodeMotionAnalysisTest:
 
     override type SectionType = SectionImplementation
 
-    override def files: Set[File] =
-      CatsHashSet
-        .fromIterableOnce(textsByPath.map { case (path, text) =>
-          File(
-            path,
-            Vector(
-              SectionImplementation(
-                path = path,
-                startOffset = 0,
-                width = text.length
-              )
+    override def filesByPath: Map[Path, File] =
+      textsByPath.map { case (path, text) =>
+        path -> File(
+          Vector(
+            SectionImplementation(
+              path = path,
+              startOffset = 0,
+              width = text.length
             )
           )
-        })
-        .toSet
+        )
+      }
+
   end FakeSources
 
 end CodeMotionAnalysisTest

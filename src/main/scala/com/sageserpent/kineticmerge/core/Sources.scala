@@ -1,7 +1,5 @@
 package com.sageserpent.kineticmerge.core
 
-import cats.derived.*
-import cats.kernel.Hash as CatsHash
 
 /** Represents a collection of sources broken down by paths - so a working
   * directory tree, or a Git commit, or possibly even some completely unrelated
@@ -37,13 +35,7 @@ trait Sources:
 
   type SectionType <: Section
 
-  case class File(path: Path, sections: IndexedSeq[SectionType])
+  case class File(sections: IndexedSeq[SectionType])
 
-  given fileHash: CatsHash[File] =
-    given pathHash: CatsHash[Path] = CatsHash.fromUniversalHashCode[Path]
-
-    CatsHash.by(_.path)
-  end fileHash
-
-  def files: Set[File]
+  def filesByPath: Map[Path, File]
 end Sources
