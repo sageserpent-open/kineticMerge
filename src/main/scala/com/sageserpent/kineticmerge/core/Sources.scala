@@ -1,6 +1,5 @@
 package com.sageserpent.kineticmerge.core
 
-
 /** Represents a collection of sources broken down by paths - so a working
   * directory tree, or a Git commit, or possibly even some completely unrelated
   * files sparsely scattered around several unrelated directory trees. To
@@ -18,9 +17,8 @@ package com.sageserpent.kineticmerge.core
   * allow whitespace-insensitive comparison of sources. For now though, we just
   * use a plain [[String]].
   */
-trait Sources:
-  type Path
-
+trait Sources[PathType]:
+  type Path = PathType
   case class File(sections: IndexedSeq[Section])
 
   def filesByPath: Map[Path, File]

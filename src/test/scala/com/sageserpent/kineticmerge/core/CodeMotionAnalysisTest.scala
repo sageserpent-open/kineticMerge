@@ -9,27 +9,18 @@ class CodeMotionAnalysisTest extends AnyFlatSpec:
 end CodeMotionAnalysisTest
 
 object CodeMotionAnalysisTest:
-  case class FakeSources(textsByPath: Map[Int, String]) extends Sources:
-    override type Path = Int
-
-    case class SectionImplementation(
-        path: Path,
-        override val startOffset: Int,
-        override val width: Int
-    ) extends Section:
-      override def contents: String =
-        textsByPath(path).substring(startOffset, onePastEndOffset)
-    end SectionImplementation
-
+  case class FakeSources(textsByPath: Map[Int, String]) extends Sources[Int]:
     override def filesByPath: Map[Path, File] =
       textsByPath.map { case (path, text) =>
         path -> File(
           Vector(
-            SectionImplementation(
-              path = path,
-              startOffset = 0,
-              width = text.length
-            )
+            new Section:
+              override def startOffset: Int = 0
+
+              override def width: Int = text.length
+
+              override def contents: String =
+                textsByPath(path).substring(startOffset, onePastEndOffset)
           )
         )
       }

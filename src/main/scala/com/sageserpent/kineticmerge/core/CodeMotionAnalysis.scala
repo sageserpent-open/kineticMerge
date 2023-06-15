@@ -2,40 +2,37 @@ package com.sageserpent.kineticmerge.core
 
 import cats.Order
 import cats.collections.DisjointSets
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.SectionedSourcesByPath
 
 object CodeMotionAnalysis:
 
   given orderEvidence: Order[Section] = ???
 
-  type SectionedSource = IndexedSeq[Section]
-
-  type SectionedSourcesByPath = Map[Sources#Path, SectionedSource]
-
   // TODO: "Something went wrong!" - "What was it?"
   case object Divergence
 
-  def of(
-      base: Sources,
-      left: Sources,
-      right: Sources
+  def of[Path](
+      base: Sources[Path],
+      left: Sources[Path],
+      right: Sources[Path]
   )(
       minimumSizeFractionForMotionDetection: Double
-  ): Either[Divergence.type, CodeMotionAnalysis] =
+  ): Either[Divergence.type, CodeMotionAnalysis[Path]] =
     require(0 < minimumSizeFractionForMotionDetection)
     require(1 >= minimumSizeFractionForMotionDetection)
 
-    val baseSections: SectionedSourcesByPath =
-      base.filesByPath.view.mapValues(_.sections).toMap
+    val baseSections =
+      base.filesByPath
 
-    val leftSections: SectionedSourcesByPath =
-      left.filesByPath.view.mapValues(_.sections).toMap
+    val leftSections =
+      left.filesByPath
 
-    val rightSections: SectionedSourcesByPath =
-      right.filesByPath.view.mapValues(_.sections).toMap
+    val rightSections =
+      right.filesByPath
 
     val sections: Iterable[Section] =
-      baseSections.values.flatten ++ leftSections.values.flatten ++ rightSections.values.flatten
+      baseSections.values.flatMap(_.sections) ++ leftSections.values.flatMap(
+        _.sections
+      ) ++ rightSections.values.flatMap(_.sections)
 
     Right(
       CodeMotionAnalysis(
@@ -49,9 +46,9 @@ object CodeMotionAnalysis:
 
 end CodeMotionAnalysis
 
-case class CodeMotionAnalysis(
-    base: SectionedSourcesByPath,
-    left: SectionedSourcesByPath,
-    right: SectionedSourcesByPath,
+case class CodeMotionAnalysis[Path](
+    base: Map[Path, Sources[Path]#File],
+    left: Map[Path, Sources[Path]#File],
+    right: Map[Path, Sources[Path]#File],
     globalSectionSet: DisjointSets[Section]
 )
