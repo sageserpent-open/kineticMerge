@@ -50,5 +50,7 @@ case class CodeMotionAnalysis[Path](
     base: Map[Path, File],
     left: Map[Path, File],
     right: Map[Path, File],
+    // TODO: given a section, it is easy to find the section that labels the set
+    // of matches - but then what? This needs a more specific abstraction...
     globalSectionsOrganizedIntoSetsOfMatches: DisjointSets[Section]
 )

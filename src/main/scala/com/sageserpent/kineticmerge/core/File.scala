@@ -13,4 +13,6 @@ case class File(
   sections.zip(sections.tail).foreach { case (first, second) =>
     require(first.onePastEndOffset == second.startOffset)
   }
+
+  def contents: String = sections.foldLeft("")(_ ++ _.contents)
 end File
