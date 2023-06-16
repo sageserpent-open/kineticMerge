@@ -27,5 +27,5 @@ lazy val root = (project in file("."))
     },
     libraryDependencies += "org.typelevel" %% "cats-collections-core" % "0.9.6",
     libraryDependencies += "org.scalatest"   %% "scalatest" % "3.2.16" % "test",
-    libraryDependencies += "com.sageserpent" %% "americium" % "1.12.0"
+    libraryDependencies += "com.sageserpent" %% "americium" % "1.13.0"
   )

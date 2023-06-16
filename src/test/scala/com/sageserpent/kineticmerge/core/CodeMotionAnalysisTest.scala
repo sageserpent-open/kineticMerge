@@ -1,34 +1,48 @@
 package com.sageserpent.kineticmerge.core
 
 import com.sageserpent.americium.Trials.api as trialsApi
+import com.sageserpent.americium.java.CasesLimitStrategy
 import com.sageserpent.americium.{Trials, TrialsApi}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.{FakeSources, sourcesTrials}
 import org.scalatest.Inspectors
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
+import scala.collection.immutable.{SortedMap, SortedSet}
+import scala.concurrent.duration.{FiniteDuration, SECONDS}
+
 class CodeMotionAnalysisTest extends AnyFlatSpec with Matchers with Inspectors:
   "sources" should "be reconstructed from the analysis" in:
-    sourcesTrials.withLimit(10).supplyTo { sources =>
-      val files = sources.filesByPath
+    sourcesTrials
+      .withStrategy(_ =>
+        CasesLimitStrategy.timed(FiniteDuration.apply(10, SECONDS))
+      )
+      .supplyTo { sources =>
+        val files = sources.filesByPath
 
-      files.keys should be(sources.filesByPath.keys)
+        files.keys should be(sources.filesByPath.keys)
 
-      forAll(files) { case (path, file) =>
-        file.contents should be(sources.textsByPath(path))
+        forAll(files) { case (path, file) =>
+          file.contents should be(sources.textsByPath(path))
+        }
       }
-    }
 end CodeMotionAnalysisTest
 
 object CodeMotionAnalysisTest:
-  val sourcesTrials: Trials[FakeSources] = trialsApi
-    .integers(lowerBound = 1, upperBound = 20)
-    .maps(trialsApi.characters(lowerBound = 'a', upperBound = 'z').several)
-    .map(m => FakeSources(m.asInstanceOf[Map[Int, String]]))
+  val sourcesTrials: Trials[FakeSources] =
+    for
+      textSize <- trialsApi.integers(0, 10000)
+      textsByPath <- trialsApi
+        .integers(1, 1000)
+        .maps(
+          trialsApi
+            .characters(lowerBound = 'a', upperBound = 'z')
+            .lotsOfSize(textSize)
+        )
+        .filter(_.nonEmpty)
+    yield FakeSources(textsByPath)
 
   case class FakeSources(textsByPath: Map[Int, String]) extends Sources[Int]:
-    override type Path = Int
-
     case class SectionImplementation(
         path: Path,
         override val startOffset: Int,
