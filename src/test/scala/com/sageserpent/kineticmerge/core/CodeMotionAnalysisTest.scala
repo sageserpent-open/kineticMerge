@@ -26,6 +26,13 @@ class CodeMotionAnalysisTest extends AnyFlatSpec with Matchers with Inspectors:
           file.contents should be(sources.textsByPath(path))
         }
       }
+
+    // TODO - test *exact* matching of sections across *three* sources.
+    // TODO - test *exact* matching of sections across *two* sources augmented
+    // with a nominal match to bring in the 'missing' section.
+    // Matches should be maximal in extent across three sources. This is subtle,
+    // as a match may be extensible across just two sources, but the extension
+    // won't work for the third sources.
 end CodeMotionAnalysisTest
 
 object CodeMotionAnalysisTest:
