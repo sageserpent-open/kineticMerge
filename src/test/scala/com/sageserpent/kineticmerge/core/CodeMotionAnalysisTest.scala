@@ -3,7 +3,10 @@ package com.sageserpent.kineticmerge.core
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.java.CasesLimitStrategy
 import com.sageserpent.americium.{Trials, TrialsApi}
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.{FakeSources, sourcesTrials}
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.{
+  FakeSources,
+  sourcesTrials
+}
 import org.scalatest.Inspectors
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers

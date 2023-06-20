@@ -1,7 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
-import cats.Order
 import cats.collections.DisjointSets
+import cats.{Eq, Order}
 
 object CodeMotionAnalysis:
 
@@ -39,7 +39,7 @@ object CodeMotionAnalysis:
         baseSections,
         leftSections,
         rightSections,
-        DisjointSets(sections.toSeq*)
+        (_, _) => false
       )
     )
   end of
@@ -50,7 +50,5 @@ case class CodeMotionAnalysis[Path](
     base: Map[Path, File],
     left: Map[Path, File],
     right: Map[Path, File],
-    // TODO: given a section, it is easy to find the section that labels the set
-    // of matches - but then what? This needs a more specific abstraction...
-    globalSectionsOrganizedIntoSetsOfMatches: DisjointSets[Section]
+    sectionMatchingEquality: Eq[Section]
 )
