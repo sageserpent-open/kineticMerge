@@ -1,7 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
+import cats.Order
 import cats.collections.DisjointSets
-import cats.{Eq, Order}
 
 object CodeMotionAnalysis:
 
@@ -12,7 +12,9 @@ object CodeMotionAnalysis:
 
   def of[Path](
       base: Sources[Path],
+      // 'Our' contribution, from the Git standpoint...
       left: Sources[Path],
+      // 'Their' contribution, from the Git standpoint...
       right: Sources[Path]
   )(
       minimumSizeFractionForMotionDetection: Double
@@ -35,20 +37,25 @@ object CodeMotionAnalysis:
       ) ++ rightSections.values.flatMap(_.sections)
 
     Right(
-      CodeMotionAnalysis(
-        baseSections,
-        leftSections,
-        rightSections,
-        (_, _) => false
-      )
+      ???
     )
   end of
 
 end CodeMotionAnalysis
 
-case class CodeMotionAnalysis[Path](
-    base: Map[Path, File],
-    left: Map[Path, File],
-    right: Map[Path, File],
-    sectionMatchingEquality: Eq[Section]
-)
+trait CodeMotionAnalysis[Path]:
+  def base: Map[Path, File]
+  def left: Map[Path, File]
+  def right: Map[Path, File]
+
+  /** @param section
+    * @return
+    *   The dominant section in the match, provided the section is part of some
+    *   match. This is the *one* that has a significant edit, or outright
+    *   deletion, or if the only difference(s) is/are due to whitespace changes
+    *   then it will be from the left (our) contribution, as per Git merge. A
+    *   post-condition is that it is not possible to have conflicting
+    *   significant edits or deletions.
+    */
+  def dominantMatchingSectionFor(section: Section): Option[Section]
+end CodeMotionAnalysis
