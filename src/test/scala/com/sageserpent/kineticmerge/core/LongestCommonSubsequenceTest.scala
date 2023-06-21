@@ -3,14 +3,14 @@ package com.sageserpent.kineticmerge.core
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.java.TrialsTest
 import com.sageserpent.americium.{Trials, java}
-import com.sageserpent.kineticmerge.core.ThreeWayDifferenceTest.{TestCase, withFilter}
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.{TestCase, withFilter}
 import org.junit.jupiter.api.TestInstance.Lifecycle
 import org.junit.jupiter.api.{Test, TestInstance}
 import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.junit5.AssertionsForJUnit
 
 @TestInstance(Lifecycle.PER_CLASS)
-class ThreeWayDifferenceTest extends AssertionsForJUnit with Matchers:
+class LongestCommonSubsequenceTest extends AssertionsForJUnit with Matchers:
   val coreValues: Trials[Int] = trialsApi.choose(1 to 10)
 
   val additionalValues: Trials[Int] = trialsApi.choose(11 to 20)
@@ -56,9 +56,9 @@ class ThreeWayDifferenceTest extends AssertionsForJUnit with Matchers:
   def justExamineTheTestCases(testCase: TestCase): Unit =
     println(testCase)
 
-end ThreeWayDifferenceTest
+end LongestCommonSubsequenceTest
 
-object ThreeWayDifferenceTest:
+object LongestCommonSubsequenceTest:
   extension [Case](trials: Trials[Case])
     def withFilter(predicate: Case => Boolean): Trials[Case] =
       trials.filter(predicate)
@@ -69,4 +69,4 @@ object ThreeWayDifferenceTest:
       left: Vector[Int],
       right: Vector[Int]
   )
-end ThreeWayDifferenceTest
+end LongestCommonSubsequenceTest
