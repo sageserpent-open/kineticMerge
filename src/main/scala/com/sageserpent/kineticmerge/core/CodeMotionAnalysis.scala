@@ -10,11 +10,49 @@ object CodeMotionAnalysis:
   // TODO: "Something went wrong!" - "What was it?"
   case object Divergence
 
+  /** Analyse code motion from the sources of {@code base} to both {@code left}
+    * and {@code right}, breaking them into [[File]] and thence [[Section]]
+    * instances.
+    *
+    * Where a section moves from {@code base}, it enters into a match with the
+    * corresponding sections in {@code left} and {@code right}; one of those
+    * latter two sections is considered to be dominant and therefore represents
+    * the match.
+    *
+    * @note
+    *   Motion has to be from {@code base}, so if the same piece of text appears
+    *   as newly added or edited in both {@code left} and {@code right}, then
+    *   this is treated as coincidental code duplication, *not* as movement.
+    * @note
+    *   If a section moves from {@code base} to only *one* of {@code left} or
+    *   {@code right}, this is interpreted as being a full match across all
+    *   three sources, only with the 'missing' section being filled in with the
+    *   corresponding edited or deleted section, depending on context.
+    * @todo
+    *   What if a section moves from {@code base} to only *one* of {@code left}
+    *   or {@code right}, but the missing section can't be filled in because the
+    *   entire file it used to belong to in {@code base} has been deleted? Git
+    *   represents this as a conflict, rather than attempting to propagate the
+    *   deletion...
+    * @param base
+    *   The common base sources from which the left and right sources are
+    *   derived.
+    * @param left
+    *   'Our' sources, from the Git standpoint...
+    * @param right
+    *   'Their' sources, from the Git standpoint...
+    * @param minimumSizeFractionForMotionDetection
+    *   A section's size must be at least this fraction of its containing file's
+    *   size to qualify for motion detection.
+    * @tparam Path
+    * @return
+    *   A [[CodeMotionAnalysis]] that contains a breakdown into [[File]]
+    *   instances and thence into [[Section]] instances for each of the three
+    *   sources.
+    */
   def of[Path](
       base: Sources[Path],
-      // 'Our' contribution, from the Git standpoint...
       left: Sources[Path],
-      // 'Their' contribution, from the Git standpoint...
       right: Sources[Path]
   )(
       minimumSizeFractionForMotionDetection: Double
@@ -31,13 +69,15 @@ object CodeMotionAnalysis:
     val rightSections =
       right.filesByPath
 
-    val sections: Iterable[Section] =
-      baseSections.values.flatMap(_.sections) ++ leftSections.values.flatMap(
-        _.sections
-      ) ++ rightSections.values.flatMap(_.sections)
-
     Right(
-      ???
+      new CodeMotionAnalysis[Path]:
+        override def dominantMatchingSectionFor(section: Section): Option[Section] = None
+
+        override def base: Map[Path, File] = baseSections
+
+        override def left: Map[Path, File] = leftSections
+
+        override def right: Map[Path, File] = rightSections
     )
   end of
 

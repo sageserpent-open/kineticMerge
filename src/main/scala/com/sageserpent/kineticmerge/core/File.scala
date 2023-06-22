@@ -14,5 +14,7 @@ case class File(
     require(first.onePastEndOffset == second.startOffset)
   }
 
+  def size: Int = sections.foldLeft(0)(_ + _.size)
+
   def contents: String = sections.foldLeft("")(_ ++ _.contents)
 end File

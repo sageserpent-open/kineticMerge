@@ -3,10 +3,7 @@ package com.sageserpent.kineticmerge.core
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.java.CasesLimitStrategy
 import com.sageserpent.americium.{Trials, TrialsApi}
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.{
-  FakeSources,
-  sourcesTrials
-}
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.{FakeSources, minimumSizeFractionTrials, sourcesTrials}
 import org.scalatest.Inspectors
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -16,29 +13,48 @@ import scala.concurrent.duration.{FiniteDuration, SECONDS}
 
 class CodeMotionAnalysisTest extends AnyFlatSpec with Matchers with Inspectors:
   "sources" should "be reconstructed from the analysis" in:
-    sourcesTrials
-      .withStrategy(_ =>
-        CasesLimitStrategy.timed(FiniteDuration.apply(10, SECONDS))
-      )
-      .supplyTo { sources =>
-        val files = sources.filesByPath
+    class verify(results: Map[Int, File]):
+      def against(sources: FakeSources): Unit =
+        results.keys should be(sources.filesByPath.keys)
 
-        files.keys should be(sources.filesByPath.keys)
-
-        forAll(files) { case (path, file) =>
-          file.contents should be(sources.textsByPath(path))
+        forAll(results) { case (path, result) =>
+          result.contents should be(sources.filesByPath(path).contents)
         }
-      }
+      end against
+    end verify
 
-    // TODO - test *exact* matching of sections across *three* sources.
-    // TODO - test *exact* matching of sections across *two* sources augmented
-    // with a nominal match to bring in the 'missing' section.
-    // Matches should be maximal in extent across three sources. This is subtle,
-    // as a match may be extensible across just two sources, but the extension
-    // won't work for the third sources.
+    (sourcesTrials and sourcesTrials and sourcesTrials and minimumSizeFractionTrials)
+      .withLimit(100)
+      .supplyTo:
+        case tuple @ (
+              base: FakeSources,
+              left: FakeSources,
+              right: FakeSources,
+              minimumSizeFraction: Double
+            ) =>
+          println(tuple)
+
+          val Right(analysis: CodeMotionAnalysis[FakeSources#Path]) =
+            CodeMotionAnalysis.of(base, left, right)(
+              minimumSizeFraction
+            ): @unchecked
+
+          verify(analysis.base).against(base)
+          verify(analysis.left).against(left)
+          verify(analysis.right).against(right)
+
+  // TODO - test *exact* matching of sections across *three* sources.
+  // TODO - test *exact* matching of sections across *two* sources augmented
+  // with a nominal match to bring in the 'missing' section.
+  // Matches should be maximal in extent across three sources. This is subtle,
+  // as a match may be extensible across just two sources, but the extension
+  // won't work for the third sources.
 end CodeMotionAnalysisTest
 
 object CodeMotionAnalysisTest:
+  val minimumSizeFractionTrials: Trials[Double] =
+    trialsApi.doubles(0.1, 1)
+
   val sourcesTrials: Trials[FakeSources] =
     for
       textSize <- trialsApi.integers(0, 10000)
@@ -56,7 +72,7 @@ object CodeMotionAnalysisTest:
     case class SectionImplementation(
         path: Path,
         override val startOffset: Int,
-        override val width: Int
+        override val size: Int
     ) extends Section:
       override def contents: String =
         textsByPath(path).substring(startOffset, onePastEndOffset)
@@ -69,7 +85,7 @@ object CodeMotionAnalysisTest:
             SectionImplementation(
               path = path,
               startOffset = 0,
-              width = text.length
+              size = text.length
             )
           )
         )
