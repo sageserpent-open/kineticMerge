@@ -3,9 +3,11 @@ package com.sageserpent.kineticmerge.core
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.java.TrialsTest
 import com.sageserpent.americium.{Trials, java}
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.{TestCase, withFilter}
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Contribution
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.TestCase
 import org.junit.jupiter.api.TestInstance.Lifecycle
 import org.junit.jupiter.api.{Test, TestInstance}
+import org.scalatest.Assertion
 import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.junit5.AssertionsForJUnit
 
@@ -56,13 +58,32 @@ class LongestCommonSubsequenceTest extends AssertionsForJUnit with Matchers:
   def justExamineTheTestCases(testCase: TestCase): Unit =
     println(testCase)
 
+  @TrialsTest(trials = Array("testCases"), casesLimit = 100)
+  def theLongestCommonSubsequenceUnderpinsAllThreeResults(
+      testCase: TestCase
+  ): Unit =
+    extension (sequence: IndexedSeq[Contribution])
+      private def describesLongestCommonSubsequenceOf(
+          elements: IndexedSeq[Int],
+          expectedLongestCommonSubsequence: IndexedSeq[Int]
+      ): Unit =
+        sequence.collect { case Contribution.Common(index) =>
+          elements(index)
+        } should contain theSameElementsInOrderAs expectedLongestCommonSubsequence
+
+    val LongestCommonSubsequence(base, left, right) =
+      LongestCommonSubsequence.of(testCase.base, testCase.left, testCase.right)(
+        _ == _
+      )
+
+    base describesLongestCommonSubsequenceOf (testCase.base, testCase.core)
+    left describesLongestCommonSubsequenceOf (testCase.left, testCase.core)
+    right describesLongestCommonSubsequenceOf (testCase.right, testCase.core)
+  end theLongestCommonSubsequenceUnderpinsAllThreeResults
+
 end LongestCommonSubsequenceTest
 
 object LongestCommonSubsequenceTest:
-  extension [Case](trials: Trials[Case])
-    def withFilter(predicate: Case => Boolean): Trials[Case] =
-      trials.filter(predicate)
-
   case class TestCase(
       core: Vector[Int],
       base: Vector[Int],
