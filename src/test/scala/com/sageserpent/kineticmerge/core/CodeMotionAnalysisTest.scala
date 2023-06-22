@@ -13,15 +13,15 @@ import scala.concurrent.duration.{FiniteDuration, SECONDS}
 
 class CodeMotionAnalysisTest extends AnyFlatSpec with Matchers with Inspectors:
   "sources" should "be reconstructed from the analysis" in:
-    class verify(results: Map[Int, File]):
-      def against(sources: FakeSources): Unit =
+    extension (results: Map[Int, File])
+      private infix def matches(sources: FakeSources): Unit =
         results.keys should be(sources.filesByPath.keys)
 
         forAll(results) { case (path, result) =>
           result.contents should be(sources.filesByPath(path).contents)
         }
-      end against
-    end verify
+      end matches
+    end extension
 
     (sourcesTrials and sourcesTrials and sourcesTrials and minimumSizeFractionTrials)
       .withLimit(100)
@@ -39,9 +39,9 @@ class CodeMotionAnalysisTest extends AnyFlatSpec with Matchers with Inspectors:
               minimumSizeFraction
             ): @unchecked
 
-          verify(analysis.base).against(base)
-          verify(analysis.left).against(left)
-          verify(analysis.right).against(right)
+          analysis.base matches base
+          analysis.left matches left
+          analysis.right matches right
 
   // TODO - test *exact* matching of sections across *three* sources.
   // TODO - test *exact* matching of sections across *two* sources augmented
