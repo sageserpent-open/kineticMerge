@@ -8,8 +8,11 @@ import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.TestCase
 import org.junit.jupiter.api.TestInstance.Lifecycle
 import org.junit.jupiter.api.{Test, TestInstance}
 import org.scalatest.Assertion
+import org.scalatest.Assertions.*
 import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.junit5.AssertionsForJUnit
+
+import scala.annotation.tailrec
 
 @TestInstance(Lifecycle.PER_CLASS)
 class LongestCommonSubsequenceTest extends AssertionsForJUnit with Matchers:
@@ -59,28 +62,39 @@ class LongestCommonSubsequenceTest extends AssertionsForJUnit with Matchers:
       testCase: TestCase
   ): Unit =
     extension (sequence: IndexedSeq[Contribution])
-      private def describesLongestCommonSubsequenceOf(
-          elements: IndexedSeq[Int],
-          expectedLongestCommonSubsequence: IndexedSeq[Int]
-      ) =
-        sequence.collect { case Contribution.Common(index) =>
-          elements(index)
-        } should contain theSameElementsInOrderAs expectedLongestCommonSubsequence
+      private def commonComponentsFormSubsequenceOf(
+          elements: IndexedSeq[Int]
+      ): Assertion =
+        val commonSubsequence = sequence.collect:
+          case Contribution.Common(index) =>
+            elements(index)
+
+        commonSubsequence isSubsequenceOf elements
 
     val LongestCommonSubsequence(base, left, right, size) =
       LongestCommonSubsequence.of(testCase.base, testCase.left, testCase.right)(
         _ == _
       )
 
+    // NOTE: the common subsequence aspect is checked against the corresponding
+    // sequence it was derived from, *not* against the core. This is because the
+    // interleaves for the base, left and right sequences may add elements that
+    // form an alternative longest common subsequence that contradicts the core
+    // one, but has at least the same size. All the core sequence does is to
+    // guarantee that there will be *some* common subsequence.
     // NASTY HACK: placate IntelliJ with these underscore bindings.
     val _ =
-      base describesLongestCommonSubsequenceOf (testCase.base, testCase.core)
+      base commonComponentsFormSubsequenceOf testCase.base
     val _ =
-      left describesLongestCommonSubsequenceOf (testCase.left, testCase.core)
+      left commonComponentsFormSubsequenceOf testCase.left
     val _ =
-      right describesLongestCommonSubsequenceOf (testCase.right, testCase.core)
+      right commonComponentsFormSubsequenceOf testCase.right
 
-    size should be(testCase.core.size)
+    // NOTE: The reason for the lower bound on size (rather than strict
+    // equality) is because the interleaves for the base, left and right
+    // sequences may either augment the core sequence by coincidence, or form an
+    // alternative one that is longer.
+    size should be >= testCase.core.size
   end theLongestCommonSubsequenceUnderpinsAllThreeResults
 
 end LongestCommonSubsequenceTest
@@ -93,3 +107,41 @@ object LongestCommonSubsequenceTest:
       right: Vector[Int]
   )
 end LongestCommonSubsequenceTest
+
+extension [Element](sequence: Seq[Element])
+  /* Replacement for ```should contain inOrderElementsOf```; as I'm not sure if
+   * that actually detects subsequences correctly in the presence of duplicates. */
+  def isSubsequenceOf(anotherSequence: Seq[Element]): Assertion =
+    @tailrec
+    def verify(
+        sequenceRemainder: Seq[Element],
+        anotherSequenceRemainder: Seq[Element],
+        matchingPrefix: Seq[Element]
+    ): Assertion =
+      if sequenceRemainder.isEmpty then succeed
+      else if anotherSequenceRemainder.isEmpty then
+        if matchingPrefix.isEmpty then
+          fail(
+            s"$sequence is not a subsequence of $anotherSequence - no matches found."
+          )
+        else
+          fail(
+            s"$sequence is not a subsequence of $anotherSequence, matched prefix $matchingPrefix but failed to find the remaining $sequenceRemainder."
+          )
+      else if sequenceRemainder.head == anotherSequenceRemainder.head then
+        verify(
+          sequenceRemainder.tail,
+          anotherSequenceRemainder.tail,
+          matchingPrefix :+ sequenceRemainder.head
+        )
+      else
+        verify(
+          sequenceRemainder,
+          anotherSequenceRemainder.tail,
+          matchingPrefix
+        )
+      end if
+    end verify
+
+    verify(sequence, anotherSequence, Seq.empty)
+end extension
