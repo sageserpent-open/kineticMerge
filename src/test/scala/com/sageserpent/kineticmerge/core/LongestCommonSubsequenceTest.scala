@@ -66,7 +66,7 @@ class LongestCommonSubsequenceTest extends AssertionsForJUnit with Matchers:
       private def describesLongestCommonSubsequenceOf(
           elements: IndexedSeq[Int],
           expectedLongestCommonSubsequence: IndexedSeq[Int]
-      ): Unit =
+      ) =
         sequence.collect { case Contribution.Common(index) =>
           elements(index)
         } should contain theSameElementsInOrderAs expectedLongestCommonSubsequence
@@ -76,9 +76,13 @@ class LongestCommonSubsequenceTest extends AssertionsForJUnit with Matchers:
         _ == _
       )
 
-    base describesLongestCommonSubsequenceOf (testCase.base, testCase.core)
-    left describesLongestCommonSubsequenceOf (testCase.left, testCase.core)
-    right describesLongestCommonSubsequenceOf (testCase.right, testCase.core)
+    // NASTY HACK: placate IntelliJ with these underscore binding.
+    val _ =
+      base describesLongestCommonSubsequenceOf (testCase.base, testCase.core)
+    val _ =
+      left describesLongestCommonSubsequenceOf (testCase.left, testCase.core)
+    val _ =
+      right describesLongestCommonSubsequenceOf (testCase.right, testCase.core)
   end theLongestCommonSubsequenceUnderpinsAllThreeResults
 
 end LongestCommonSubsequenceTest
