@@ -55,10 +55,6 @@ class LongestCommonSubsequenceTest extends AssertionsForJUnit with Matchers:
   yield TestCase(core, base, left, right)).javaTrials
 
   @TrialsTest(trials = Array("testCases"), casesLimit = 100)
-  def justExamineTheTestCases(testCase: TestCase): Unit =
-    println(testCase)
-
-  @TrialsTest(trials = Array("testCases"), casesLimit = 100)
   def theLongestCommonSubsequenceUnderpinsAllThreeResults(
       testCase: TestCase
   ): Unit =
@@ -71,18 +67,20 @@ class LongestCommonSubsequenceTest extends AssertionsForJUnit with Matchers:
           elements(index)
         } should contain theSameElementsInOrderAs expectedLongestCommonSubsequence
 
-    val LongestCommonSubsequence(base, left, right) =
+    val LongestCommonSubsequence(base, left, right, size) =
       LongestCommonSubsequence.of(testCase.base, testCase.left, testCase.right)(
         _ == _
       )
 
-    // NASTY HACK: placate IntelliJ with these underscore binding.
+    // NASTY HACK: placate IntelliJ with these underscore bindings.
     val _ =
       base describesLongestCommonSubsequenceOf (testCase.base, testCase.core)
     val _ =
       left describesLongestCommonSubsequenceOf (testCase.left, testCase.core)
     val _ =
       right describesLongestCommonSubsequenceOf (testCase.right, testCase.core)
+
+    size should be(testCase.core.size)
   end theLongestCommonSubsequenceUnderpinsAllThreeResults
 
 end LongestCommonSubsequenceTest

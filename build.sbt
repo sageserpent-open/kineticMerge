@@ -26,7 +26,12 @@ lazy val root = (project in file("."))
       name.value
     },
     libraryDependencies += "org.typelevel" %% "cats-collections-core" % "0.9.6",
-    libraryDependencies += "org.scalatest"   %% "scalatest" % "3.2.16" % "test",
-    libraryDependencies += "com.sageserpent" %% "americium" % "1.14.1",
-    libraryDependencies += "org.scalatestplus" %% "junit-5-9" % "3.2.16.0-M1" % Test
+    libraryDependencies ++= Seq(
+      "dev.optics" %% "monocle-core"  % "3.2.0",
+      "dev.optics" %% "monocle-macro" % "3.2.0"
+    ),
+    libraryDependencies += "com.sageserpent" %% "americium" % "1.14.1" % Test,
+    libraryDependencies += "org.scalatest"   %% "scalatest" % "3.2.16" % Test,
+    libraryDependencies += "org.scalatestplus" %% "junit-5-9" % "3.2.16.0-M1" % Test,
+    libraryDependencies += "com.lihaoyi" %% "pprint" % "0.8.1" % Test
   )
