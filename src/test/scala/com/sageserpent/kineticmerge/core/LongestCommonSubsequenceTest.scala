@@ -54,7 +54,7 @@ class LongestCommonSubsequenceTest extends AssertionsForJUnit with Matchers:
     if core != base || core != left || core != right
   yield TestCase(core, base, left, right)).javaTrials
 
-  @TrialsTest(trials = Array("testCases"), casesLimit = 100)
+  @TrialsTest(trials = Array("testCases"), casesLimit = 500)
   def theLongestCommonSubsequenceUnderpinsAllThreeResults(
       testCase: TestCase
   ): Unit =
