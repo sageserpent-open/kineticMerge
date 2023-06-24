@@ -66,18 +66,43 @@ class LongestCommonSubsequenceTest extends AssertionsForJUnit with Matchers:
     val coreSize = testCase.core.size
 
     extension (sequence: IndexedSeq[Contribution])
-      private def verifyCommonSubsequence(
+      private def verifyLongestCommonSubsequence(
           elements: IndexedSeq[Int]
       ): Assertion =
-        val commonSubsequence = sequence.collect:
-          case Contribution.Common(index) =>
-            elements(index)
+        val commonIndices = sequence.collect:
+          case Contribution.Common(index) => index
+
+        val commonSubsequence = commonIndices.map(elements.apply)
 
         val _ = commonSubsequence isSubsequenceOf testCase.base
         val _ = commonSubsequence isSubsequenceOf testCase.left
         val _ = commonSubsequence isSubsequenceOf testCase.right
 
         commonSubsequence.size should be >= coreSize
+
+        val numberOfDifferences = sequence.count:
+          case _: Contribution.Difference => true
+          case _: Contribution.Common     => false
+
+        val differenceIndices = sequence.collect:
+          case Contribution.Difference(index) => index
+
+        for differenceIndex <- differenceIndices do
+          val (leadingCommonIndices, trailingCommonIndices) =
+            commonIndices.span(differenceIndex > _)
+
+          val viveLaDifférence =
+            leadingCommonIndices :+ differenceIndex :+ trailingCommonIndices
+
+          val _ = viveLaDifférence isNotSubsequenceOf testCase.base
+          val _ = viveLaDifférence isNotSubsequenceOf testCase.left
+          val _ = viveLaDifférence isNotSubsequenceOf testCase.right
+        end for
+
+        if commonSubsequence != elements then
+          differenceIndices should not be empty
+        else succeed
+        end if
 
     val LongestCommonSubsequence(base, left, right, size) =
       LongestCommonSubsequence.of(testCase.base, testCase.left, testCase.right)(
@@ -92,11 +117,11 @@ class LongestCommonSubsequenceTest extends AssertionsForJUnit with Matchers:
     // guarantee that there will be *some* common subsequence.
     // NASTY HACK: placate IntelliJ with these underscore bindings.
     val _ =
-      base verifyCommonSubsequence testCase.base
+      base verifyLongestCommonSubsequence testCase.base
     val _ =
-      left verifyCommonSubsequence testCase.left
+      left verifyLongestCommonSubsequence testCase.left
     val _ =
-      right verifyCommonSubsequence testCase.right
+      right verifyLongestCommonSubsequence testCase.right
 
     // NOTE: The reason for the lower bound on size (rather than strict
     // equality) is because the interleaves for the base, left and right
@@ -120,15 +145,27 @@ extension [Element](sequence: Seq[Element])
   /* Replacement for ```should contain inOrderElementsOf```; as I'm not sure if
    * that actually detects subsequences correctly in the presence of duplicates. */
   def isSubsequenceOf(anotherSequence: Seq[Element]): Assertion =
+    isSubsequenceOf(anotherSequence, negated = false)
+
+  def isNotSubsequenceOf(anotherSequence: Seq[Element]): Assertion =
+    isSubsequenceOf(anotherSequence, negated = true)
+
+  private def isSubsequenceOf(
+      anotherSequence: Seq[Element],
+      negated: Boolean
+  ): Assertion =
     @tailrec
     def verify(
         sequenceRemainder: Seq[Element],
         anotherSequenceRemainder: Seq[Element],
         matchingPrefix: Seq[Element]
     ): Assertion =
-      if sequenceRemainder.isEmpty then succeed
+      if sequenceRemainder.isEmpty then
+        if negated then fail(s"$sequence is a subsequence of $anotherSequence.")
+        else succeed
       else if anotherSequenceRemainder.isEmpty then
-        if matchingPrefix.isEmpty then
+        if negated then succeed
+        else if matchingPrefix.isEmpty then
           fail(
             s"$sequence is not a subsequence of $anotherSequence - no prefix matches found, either."
           )
@@ -152,4 +189,5 @@ extension [Element](sequence: Seq[Element])
     end verify
 
     verify(sequence, anotherSequence, sequence.empty)
+  end isSubsequenceOf
 end extension
