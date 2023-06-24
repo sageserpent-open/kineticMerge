@@ -82,6 +82,8 @@ object LongestCommonSubsequence:
                 rightIndex
               ).focus(_.base)
                 .modify(_ :+ Contribution.Common(baseIndex))
+                .focus(_.left)
+                .modify(_ :+ Contribution.Common(leftIndex))
                 .focus(_.right)
                 .modify(_ :+ Contribution.Common(rightIndex))
                 .focus(_.commonSubsequenceSize)
