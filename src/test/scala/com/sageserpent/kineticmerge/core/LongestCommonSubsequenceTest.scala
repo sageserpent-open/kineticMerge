@@ -59,6 +59,30 @@ class LongestCommonSubsequenceTest extends AssertionsForJUnit with Matchers:
     if core != base || core != left || core != right
   yield TestCase(core, base, left, right)).javaTrials
 
+  @TrialsTest(trials = Array("testCases"), casesLimit = 100)
+  def theResultsCorrespondToTheOriginalSequences(
+      testCase: TestCase
+  ): Unit =
+    val LongestCommonSubsequence(base, left, right, size) =
+      LongestCommonSubsequence.of(testCase.base, testCase.left, testCase.right)(
+        _ == _
+      )
+
+    extension (sequence: IndexedSeq[Contribution])
+      private def reconstituteAgainst(
+          elements: IndexedSeq[Int]
+      ): IndexedSeq[Int] =
+        sequence.map:
+          case Contribution.Common(index)     => elements(index)
+          case Contribution.Difference(index) => elements(index)
+    end extension
+
+    base reconstituteAgainst testCase.base should be(testCase.base)
+    left reconstituteAgainst testCase.left should be(testCase.left)
+    right reconstituteAgainst testCase.right should be(testCase.right)
+
+  end theResultsCorrespondToTheOriginalSequences
+
   @TrialsTest(trials = Array("testCases"), casesLimit = 500)
   def theLongestCommonSubsequenceUnderpinsAllThreeResults(
       testCase: TestCase
@@ -103,6 +127,7 @@ class LongestCommonSubsequenceTest extends AssertionsForJUnit with Matchers:
           differenceIndices should not be empty
         else succeed
         end if
+    end extension
 
     val LongestCommonSubsequence(base, left, right, size) =
       LongestCommonSubsequence.of(testCase.base, testCase.left, testCase.right)(
