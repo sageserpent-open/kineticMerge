@@ -73,7 +73,7 @@ object LongestCommonSubsequence:
 
         partialResultsCache.getOrElseUpdate(
           (baseIndex, leftIndex, rightIndex), {
-            if equality
+            if equality.eqv(baseElement, leftElement) && equality
                 .eqv(baseElement, rightElement)
             then
               of(
