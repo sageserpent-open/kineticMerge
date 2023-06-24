@@ -63,15 +63,21 @@ class LongestCommonSubsequenceTest extends AssertionsForJUnit with Matchers:
   def theLongestCommonSubsequenceUnderpinsAllThreeResults(
       testCase: TestCase
   ): Unit =
+    val coreSize = testCase.core.size
+
     extension (sequence: IndexedSeq[Contribution])
-      private def commonComponentsFormSubsequenceOf(
+      private def verifyCommonSubsequence(
           elements: IndexedSeq[Int]
       ): Assertion =
         val commonSubsequence = sequence.collect:
           case Contribution.Common(index) =>
             elements(index)
 
-        commonSubsequence isSubsequenceOf elements
+        val _ = commonSubsequence isSubsequenceOf testCase.base
+        val _ = commonSubsequence isSubsequenceOf testCase.left
+        val _ = commonSubsequence isSubsequenceOf testCase.right
+
+        commonSubsequence.size should be >= coreSize
 
     val LongestCommonSubsequence(base, left, right, size) =
       LongestCommonSubsequence.of(testCase.base, testCase.left, testCase.right)(
@@ -86,17 +92,17 @@ class LongestCommonSubsequenceTest extends AssertionsForJUnit with Matchers:
     // guarantee that there will be *some* common subsequence.
     // NASTY HACK: placate IntelliJ with these underscore bindings.
     val _ =
-      base commonComponentsFormSubsequenceOf testCase.base
+      base verifyCommonSubsequence testCase.base
     val _ =
-      left commonComponentsFormSubsequenceOf testCase.left
+      left verifyCommonSubsequence testCase.left
     val _ =
-      right commonComponentsFormSubsequenceOf testCase.right
+      right verifyCommonSubsequence testCase.right
 
     // NOTE: The reason for the lower bound on size (rather than strict
     // equality) is because the interleaves for the base, left and right
     // sequences may either augment the core sequence by coincidence, or form an
     // alternative one that is longer.
-    size should be >= testCase.core.size
+    size should be >= coreSize
   end theLongestCommonSubsequenceUnderpinsAllThreeResults
 
 end LongestCommonSubsequenceTest
@@ -124,7 +130,7 @@ extension [Element](sequence: Seq[Element])
       else if anotherSequenceRemainder.isEmpty then
         if matchingPrefix.isEmpty then
           fail(
-            s"$sequence is not a subsequence of $anotherSequence - no matches found."
+            s"$sequence is not a subsequence of $anotherSequence - no prefix matches found, either."
           )
         else
           fail(
@@ -145,5 +151,5 @@ extension [Element](sequence: Seq[Element])
       end if
     end verify
 
-    verify(sequence, anotherSequence, Seq.empty)
+    verify(sequence, anotherSequence, sequence.empty)
 end extension
