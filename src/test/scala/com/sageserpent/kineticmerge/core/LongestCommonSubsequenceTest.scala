@@ -63,6 +63,8 @@ class LongestCommonSubsequenceTest extends AssertionsForJUnit with Matchers:
   def theLongestCommonSubsequenceUnderpinsAllThreeResults(
       testCase: TestCase
   ): Unit =
+    val coreSize = testCase.core.size
+
     extension (sequence: IndexedSeq[Contribution])
       private def commonComponentsFormSubsequenceOf(
           elements: IndexedSeq[Int]
@@ -71,6 +73,7 @@ class LongestCommonSubsequenceTest extends AssertionsForJUnit with Matchers:
           case Contribution.Common(index) =>
             elements(index)
 
+        commonSubsequence.size should be >= coreSize
         commonSubsequence isSubsequenceOf elements
 
     val LongestCommonSubsequence(base, left, right, size) =
@@ -96,7 +99,7 @@ class LongestCommonSubsequenceTest extends AssertionsForJUnit with Matchers:
     // equality) is because the interleaves for the base, left and right
     // sequences may either augment the core sequence by coincidence, or form an
     // alternative one that is longer.
-    size should be >= testCase.core.size
+    size should be >= coreSize
   end theLongestCommonSubsequenceUnderpinsAllThreeResults
 
 end LongestCommonSubsequenceTest
@@ -145,5 +148,5 @@ extension [Element](sequence: Seq[Element])
       end if
     end verify
 
-    verify(sequence, anotherSequence, Seq.empty)
+    verify(sequence, anotherSequence, sequence.empty)
 end extension
