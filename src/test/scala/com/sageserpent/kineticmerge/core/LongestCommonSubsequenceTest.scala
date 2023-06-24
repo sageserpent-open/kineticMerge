@@ -66,15 +66,18 @@ class LongestCommonSubsequenceTest extends AssertionsForJUnit with Matchers:
     val coreSize = testCase.core.size
 
     extension (sequence: IndexedSeq[Contribution])
-      private def commonComponentsFormSubsequenceOf(
+      private def verifyCommonSubsequence(
           elements: IndexedSeq[Int]
       ): Assertion =
         val commonSubsequence = sequence.collect:
           case Contribution.Common(index) =>
             elements(index)
 
+        val _ = commonSubsequence isSubsequenceOf testCase.base
+        val _ = commonSubsequence isSubsequenceOf testCase.left
+        val _ = commonSubsequence isSubsequenceOf testCase.right
+
         commonSubsequence.size should be >= coreSize
-        commonSubsequence isSubsequenceOf elements
 
     val LongestCommonSubsequence(base, left, right, size) =
       LongestCommonSubsequence.of(testCase.base, testCase.left, testCase.right)(
@@ -89,11 +92,11 @@ class LongestCommonSubsequenceTest extends AssertionsForJUnit with Matchers:
     // guarantee that there will be *some* common subsequence.
     // NASTY HACK: placate IntelliJ with these underscore bindings.
     val _ =
-      base commonComponentsFormSubsequenceOf testCase.base
+      base verifyCommonSubsequence testCase.base
     val _ =
-      left commonComponentsFormSubsequenceOf testCase.left
+      left verifyCommonSubsequence testCase.left
     val _ =
-      right commonComponentsFormSubsequenceOf testCase.right
+      right verifyCommonSubsequence testCase.right
 
     // NOTE: The reason for the lower bound on size (rather than strict
     // equality) is because the interleaves for the base, left and right
@@ -127,7 +130,7 @@ extension [Element](sequence: Seq[Element])
       else if anotherSequenceRemainder.isEmpty then
         if matchingPrefix.isEmpty then
           fail(
-            s"$sequence is not a subsequence of $anotherSequence - no matches found."
+            s"$sequence is not a subsequence of $anotherSequence - no prefix matches found, either."
           )
         else
           fail(
