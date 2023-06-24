@@ -25,12 +25,14 @@ class LongestCommonSubsequenceTest extends AssertionsForJUnit with Matchers:
     10 -> trialsApi.integers(1, maximumSize)
   )
 
+  val maximumSize = 30
+
   val testCases: java.Trials[TestCase] = (for
-    core <- coreValues.several[Vector[Int]].filter(2 < _.size)
+    core <- sizes(maximumSize)
+      .filter(2 < _)
+      .flatMap(coreValues.lotsOfSize[Vector[Int]])
 
-    coreSize = core.size
-
-    interleaveForBase <- sizes(coreSize).flatMap(
+    interleaveForBase <- sizes(maximumSize).flatMap(
       additionalValues.lotsOfSize[Vector[Int]]
     )
     base <- trialsApi.pickAlternatelyFrom(
@@ -38,7 +40,7 @@ class LongestCommonSubsequenceTest extends AssertionsForJUnit with Matchers:
       core,
       interleaveForBase
     )
-    interleaveForLeft <- sizes(coreSize).flatMap(
+    interleaveForLeft <- sizes(maximumSize).flatMap(
       additionalValues.lotsOfSize[Vector[Int]]
     )
     left <- trialsApi.pickAlternatelyFrom(
@@ -46,7 +48,7 @@ class LongestCommonSubsequenceTest extends AssertionsForJUnit with Matchers:
       core,
       interleaveForLeft
     )
-    interleaveForRight <- sizes(coreSize).flatMap(
+    interleaveForRight <- sizes(maximumSize).flatMap(
       additionalValues.lotsOfSize[Vector[Int]]
     )
     right <- trialsApi.pickAlternatelyFrom(
