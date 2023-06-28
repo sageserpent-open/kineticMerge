@@ -6,6 +6,10 @@ import monocle.syntax.all.*
 
 import scala.collection.mutable
 
+// TODO: why use an `IndexedSeq[Contribution]` to model an externally-imposed
+// order of contributions when `Contribution` is already ordered by virtue of
+// its index? Either drop the indices and use the external ordering, or use a
+// sorted set. In fact, why not simply use `IndexedSeq[Element]`?
 case class LongestCommonSubsequence private (
     base: IndexedSeq[Contribution],
     left: IndexedSeq[Contribution],

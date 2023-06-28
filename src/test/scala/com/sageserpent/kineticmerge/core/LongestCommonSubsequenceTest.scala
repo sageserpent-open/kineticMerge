@@ -104,10 +104,6 @@ class LongestCommonSubsequenceTest extends AssertionsForJUnit with Matchers:
 
         commonSubsequence.size should be >= coreSize
 
-        val numberOfDifferences = sequence.count:
-          case _: Contribution.Difference => true
-          case _: Contribution.Common     => false
-
         val differenceIndices = sequence.collect:
           case Contribution.Difference(index) => index
 
