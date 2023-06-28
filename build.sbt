@@ -32,6 +32,8 @@ lazy val root = (project in file("."))
     ),
     libraryDependencies += "com.sageserpent" %% "americium" % "1.14.1" % Test,
     libraryDependencies += "org.scalatest"   %% "scalatest" % "3.2.16" % Test,
-    libraryDependencies += "org.scalatestplus" %% "junit-5-9" % "3.2.16.0-M1" % Test,
-    libraryDependencies += "com.lihaoyi" %% "pprint" % "0.8.1" % Test
+    libraryDependencies += "org.scalatestplus" %% "junit-5-9" % "3.2.16.0-M3" % Test,
+    libraryDependencies += "com.lihaoyi" %% "pprint" % "0.8.1" % Test,
+    Test / fork                          := true,
+    Test / javaOptions ++= Seq("-Xms10G", "-Xmx10G")
   )
