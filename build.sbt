@@ -30,7 +30,7 @@ lazy val root = (project in file("."))
       "dev.optics" %% "monocle-core"  % "3.2.0",
       "dev.optics" %% "monocle-macro" % "3.2.0"
     ),
-    libraryDependencies += "com.sageserpent" %% "americium" % "1.15.2" % Test,
+    libraryDependencies += "com.sageserpent" %% "americium" % "1.15.3" % Test,
     libraryDependencies += "com.lihaoyi"     %% "pprint"    % "0.8.1"  % Test,
     libraryDependencies += "com.lihaoyi"     %% "utest"     % "0.8.1"  % Test,
     Test / fork                              := true,

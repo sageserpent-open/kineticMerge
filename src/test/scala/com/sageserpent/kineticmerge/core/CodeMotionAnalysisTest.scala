@@ -2,7 +2,10 @@ package com.sageserpent.kineticmerge.core
 
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.java.junit5.ConfiguredTrialsTest
-import com.sageserpent.americium.java.{CasesLimitStrategy, TrialsScaffolding as JavaTrialsScaffolding}
+import com.sageserpent.americium.java.{
+  CasesLimitStrategy,
+  TrialsScaffolding as JavaTrialsScaffolding
+}
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.americium.{Trials, TrialsApi, TrialsScaffolding}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.FakeSources
@@ -12,7 +15,6 @@ import org.junit.jupiter.api.TestInstance.Lifecycle
 import org.opentest4j.TestAbortedException
 import utest.*
 
-import java.util.Iterator as JavaIterator
 import scala.collection.immutable.{SortedMap, SortedSet}
 import scala.concurrent.duration.{FiniteDuration, SECONDS}
 import scala.jdk.CollectionConverters.*
@@ -35,7 +37,7 @@ class CodeMotionAnalysisTest:
     yield FakeSources(textsByPath)
 
   @TestFactory
-  def sourcesCanBeReconstructedFromTheAnalysis: JavaIterator[DynamicTest] =
+  def sourcesCanBeReconstructedFromTheAnalysis: DynamicTests =
     extension (results: Map[Int, File])
       private infix def matches(sources: FakeSources): Unit =
         assert(results.keys == sources.filesByPath.keys)

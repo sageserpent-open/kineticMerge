@@ -10,7 +10,6 @@ import org.junit.jupiter.api.TestInstance.Lifecycle
 import org.junit.jupiter.api.{DynamicTest, Test, TestFactory, TestInstance}
 import utest.*
 
-import _root_.java.util.Iterator as JavaIterator
 import scala.annotation.tailrec
 
 class LongestCommonSubsequenceTest:
@@ -58,7 +57,16 @@ class LongestCommonSubsequenceTest:
   yield TestCase(core, base, left, right))
 
   @TestFactory
-  def theResultsCorrespondToTheOriginalSequences(): JavaIterator[DynamicTest] =
+  def theResultsCorrespondToTheOriginalSequences(): DynamicTests =
+    extension (sequence: IndexedSeq[Contribution])
+      private def reconstituteAgainst(
+          elements: IndexedSeq[Int]
+      ): IndexedSeq[Int] =
+        sequence.map:
+          case Contribution.Common(index)     => elements(index)
+          case Contribution.Difference(index) => elements(index)
+    end extension
+
     testCases
       .withLimit(100)
       .dynamicTests(
@@ -71,15 +79,6 @@ class LongestCommonSubsequenceTest:
                 _ == _
               )
 
-          extension (sequence: IndexedSeq[Contribution])
-            private def reconstituteAgainst(
-                elements: IndexedSeq[Int]
-            ): IndexedSeq[Int] =
-              sequence.map:
-                case Contribution.Common(index)     => elements(index)
-                case Contribution.Difference(index) => elements(index)
-          end extension
-
           assert(base.reconstituteAgainst(testCase.base) == testCase.base)
           assert(left.reconstituteAgainst(testCase.left) == testCase.left)
           assert(right.reconstituteAgainst(testCase.right) == testCase.right)
@@ -88,8 +87,7 @@ class LongestCommonSubsequenceTest:
   end theResultsCorrespondToTheOriginalSequences
 
   @TestFactory
-  def theLongestCommonSubsequenceUnderpinsAllThreeResults()
-      : JavaIterator[DynamicTest] =
+  def theLongestCommonSubsequenceUnderpinsAllThreeResults(): DynamicTests =
     testCases
       .withLimit(500)
       .dynamicTests(
