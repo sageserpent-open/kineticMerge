@@ -30,10 +30,9 @@ lazy val root = (project in file("."))
       "dev.optics" %% "monocle-core"  % "3.2.0",
       "dev.optics" %% "monocle-macro" % "3.2.0"
     ),
-    libraryDependencies += "com.sageserpent" %% "americium" % "1.14.1" % Test,
-    libraryDependencies += "org.scalatest"   %% "scalatest" % "3.2.16" % Test,
-    libraryDependencies += "org.scalatestplus" %% "junit-5-9" % "3.2.16.0-M3" % Test,
-    libraryDependencies += "com.lihaoyi" %% "pprint" % "0.8.1" % Test,
-    Test / fork                          := true,
+    libraryDependencies += "com.sageserpent" %% "americium" % "1.15.2" % Test,
+    libraryDependencies += "com.lihaoyi"     %% "pprint"    % "0.8.1"  % Test,
+    libraryDependencies += "com.lihaoyi"     %% "utest"     % "0.8.1"  % Test,
+    Test / fork                              := true,
     Test / javaOptions ++= Seq("-Xms10G", "-Xmx10G")
   )
