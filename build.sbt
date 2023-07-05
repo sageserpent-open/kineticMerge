@@ -32,7 +32,7 @@ lazy val root = (project in file("."))
     ),
     libraryDependencies += "com.sageserpent" %% "americium" % "1.15.3" % Test,
     libraryDependencies += "com.lihaoyi"     %% "pprint"    % "0.8.1"  % Test,
-    libraryDependencies += "com.lihaoyi"     %% "utest"     % "0.8.1"  % Test,
-    Test / fork                              := true,
+    libraryDependencies += "com.eed3si9n.expecty" %% "expecty" % "0.16.0" % Test,
+    Test / fork := true,
     Test / javaOptions ++= Seq("-Xms10G", "-Xmx10G")
   )

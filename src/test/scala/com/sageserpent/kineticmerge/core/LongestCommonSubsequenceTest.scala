@@ -1,14 +1,14 @@
 package com.sageserpent.kineticmerge.core
 
+import com.eed3si9n.expecty.Expecty
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Contribution
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.TestCase
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.{TestCase, assert}
 import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.TestInstance.Lifecycle
 import org.junit.jupiter.api.{DynamicTest, Test, TestFactory, TestInstance}
-import utest.*
 
 import scala.annotation.tailrec
 
@@ -163,6 +163,10 @@ class LongestCommonSubsequenceTest:
 end LongestCommonSubsequenceTest
 
 object LongestCommonSubsequenceTest:
+  val assert: Expecty = new Expecty:
+    override val showLocation: Boolean = true
+    override val showTypes: Boolean    = true
+  end assert
   case class TestCase(
       core: Vector[Int],
       base: Vector[Int],
