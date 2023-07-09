@@ -5,7 +5,7 @@ import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Contribution
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.{TestCase, assert}
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.{Element, TestCase, assert}
 import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.TestInstance.Lifecycle
 import org.junit.jupiter.api.{DynamicTest, Test, TestFactory, TestInstance}
@@ -13,24 +13,17 @@ import org.junit.jupiter.api.{DynamicTest, Test, TestFactory, TestInstance}
 import scala.annotation.tailrec
 
 class LongestCommonSubsequenceTest:
-  val coreValues: Trials[Int] = trialsApi.choose(1 to 10)
+  val coreValues: Trials[Element] = trialsApi.choose('a' to 'z')
 
-  val additionalValues: Trials[Int] = trialsApi.choose(11 to 20)
-
-  def sizes(maximumSize: Int): Trials[Int] = trialsApi.alternateWithWeights(
-    1  -> trialsApi.only(0),
-    10 -> trialsApi.integers(1, maximumSize)
-  )
-
-  val maximumSize = 30
-
+  val additionalValues: Trials[Element] = trialsApi.choose('A' to 'Z')
+  val maximumSize                       = 30
   val testCases: Trials[TestCase] = (for
     core <- sizes(maximumSize)
       .filter(2 < _)
-      .flatMap(coreValues.lotsOfSize[Vector[Int]])
+      .flatMap(coreValues.lotsOfSize[Vector[Element]])
 
     interleaveForBase <- sizes(maximumSize).flatMap(
-      additionalValues.lotsOfSize[Vector[Int]]
+      additionalValues.lotsOfSize[Vector[Element]]
     )
     base <- trialsApi.pickAlternatelyFrom(
       shrinkToRoundRobin = true,
@@ -38,7 +31,7 @@ class LongestCommonSubsequenceTest:
       interleaveForBase
     )
     interleaveForLeft <- sizes(maximumSize).flatMap(
-      additionalValues.lotsOfSize[Vector[Int]]
+      additionalValues.lotsOfSize[Vector[Element]]
     )
     left <- trialsApi.pickAlternatelyFrom(
       shrinkToRoundRobin = true,
@@ -46,7 +39,7 @@ class LongestCommonSubsequenceTest:
       interleaveForLeft
     )
     interleaveForRight <- sizes(maximumSize).flatMap(
-      additionalValues.lotsOfSize[Vector[Int]]
+      additionalValues.lotsOfSize[Vector[Element]]
     )
     right <- trialsApi.pickAlternatelyFrom(
       shrinkToRoundRobin = true,
@@ -56,17 +49,13 @@ class LongestCommonSubsequenceTest:
     if core != base || core != left || core != right
   yield TestCase(core, base, left, right))
 
+  def sizes(maximumSize: Int): Trials[Int] = trialsApi.alternateWithWeights(
+    1  -> trialsApi.only(0),
+    10 -> trialsApi.integers(1, maximumSize)
+  )
+
   @TestFactory
   def theResultsCorrespondToTheOriginalSequences(): DynamicTests =
-    extension (sequence: IndexedSeq[Contribution])
-      private def reconstituteAgainst(
-          elements: IndexedSeq[Int]
-      ): IndexedSeq[Int] =
-        sequence.map:
-          case Contribution.Common(index)     => elements(index)
-          case Contribution.Difference(index) => elements(index)
-    end extension
-
     testCases
       .withLimit(100)
       .dynamicTests(
@@ -98,12 +87,14 @@ class LongestCommonSubsequenceTest:
 
           extension (sequence: IndexedSeq[Contribution])
             private def verifyLongestCommonSubsequence(
-                elements: IndexedSeq[Int]
+                elements: IndexedSeq[Element]
             ): Unit =
-              val commonIndices = sequence.collect:
-                case Contribution.Common(index) => index
+              val commonParts: IndexedSeq[Contribution.Common] =
+                sequence.collect:
+                  case common: Contribution.Common => common
 
-              val commonSubsequence = commonIndices.map(elements.apply)
+              val commonSubsequence: IndexedSeq[Element] =
+                commonParts reconstituteAgainst elements
 
               val _ = commonSubsequence isSubsequenceOf testCase.base
               val _ = commonSubsequence isSubsequenceOf testCase.left
@@ -111,23 +102,31 @@ class LongestCommonSubsequenceTest:
 
               assert(commonSubsequence.size >= coreSize)
 
-              val differenceIndices = sequence.collect:
-                case Contribution.Difference(index) => index
+              val differences: IndexedSeq[Contribution.Difference] =
+                sequence.collect:
+                  case difference: Contribution.Difference => difference
 
-              for differenceIndex <- differenceIndices do
+              for difference <- differences do
                 val (leadingCommonIndices, trailingCommonIndices) =
-                  commonIndices.span(differenceIndex > _)
+                  commonParts.span(
+                    difference.indexInContributor > _.indexInContributor
+                  )
 
-                val viveLaDifférence =
-                  leadingCommonIndices :+ differenceIndex :+ trailingCommonIndices
+                val viveLaDifférence: IndexedSeq[Contribution] =
+                  leadingCommonIndices ++ (difference +: trailingCommonIndices)
 
-                val _ = viveLaDifférence isNotSubsequenceOf testCase.base
-                val _ = viveLaDifférence isNotSubsequenceOf testCase.left
-                val _ = viveLaDifférence isNotSubsequenceOf testCase.right
+                (viveLaDifférence reconstituteAgainst elements isNotSubsequenceOf testCase.base)
+                  .orElse(
+                    viveLaDifférence reconstituteAgainst elements isNotSubsequenceOf testCase.left
+                  )
+                  .orElse(
+                    viveLaDifférence reconstituteAgainst elements isNotSubsequenceOf testCase.right
+                  )
+                  .left
+                  .foreach(fail _)
               end for
 
-              if commonSubsequence != elements then
-                assert(differenceIndices.nonEmpty)
+              if commonSubsequence != elements then assert(differences.nonEmpty)
               end if
           end extension
 
@@ -163,49 +162,65 @@ class LongestCommonSubsequenceTest:
 end LongestCommonSubsequenceTest
 
 object LongestCommonSubsequenceTest:
+  type Element = Char
+
   val assert: Expecty = new Expecty:
     override val showLocation: Boolean = true
     override val showTypes: Boolean    = true
   end assert
   case class TestCase(
-      core: Vector[Int],
-      base: Vector[Int],
-      left: Vector[Int],
-      right: Vector[Int]
+      core: Vector[Element],
+      base: Vector[Element],
+      left: Vector[Element],
+      right: Vector[Element]
   )
 end LongestCommonSubsequenceTest
+
+extension (sequence: IndexedSeq[Contribution])
+  private def reconstituteAgainst(
+      elements: IndexedSeq[Element]
+  ): IndexedSeq[Element] =
+    sequence.map:
+      case Contribution.Common(index)     => elements(index)
+      case Contribution.Difference(index) => elements(index)
+end extension
 
 extension [Element](sequence: Seq[Element])
   /* Replacement for ```should contain inOrderElementsOf```; as I'm not sure if
    * that actually detects subsequences correctly in the presence of duplicates. */
-  def isSubsequenceOf(anotherSequence: Seq[Element]): Unit =
+  def isSubsequenceOf(
+      anotherSequence: Seq[? >: Element]
+  ): Either[String, Unit] =
     isSubsequenceOf(anotherSequence, negated = false)
 
-  def isNotSubsequenceOf(anotherSequence: Seq[Element]): Unit =
+  def isNotSubsequenceOf(
+      anotherSequence: Seq[? >: Element]
+  ): Either[String, Unit] =
     isSubsequenceOf(anotherSequence, negated = true)
 
-  private def isSubsequenceOf(
-      anotherSequence: Seq[Element],
+  private def isSubsequenceOf[ElementSupertype >: Element](
+      anotherSequence: Seq[ElementSupertype],
       negated: Boolean
-  ): Unit =
+  ): Either[String, Unit] =
     @tailrec
     def verify(
         sequenceRemainder: Seq[Element],
-        anotherSequenceRemainder: Seq[Element],
+        anotherSequenceRemainder: Seq[ElementSupertype],
         matchingPrefix: Seq[Element]
-    ): Unit =
+    ): Either[String, Unit] =
       if sequenceRemainder.isEmpty then
-        if negated then fail(s"$sequence is a subsequence of $anotherSequence.")
+        if negated then Left(s"$sequence is a subsequence of $anotherSequence.")
+        else Right(())
       else if anotherSequenceRemainder.isEmpty then
-        if !negated then
-          if matchingPrefix.isEmpty then
-            fail(
-              s"$sequence is not a subsequence of $anotherSequence - no prefix matches found, either."
-            )
-          else
-            fail(
-              s"$sequence is not a subsequence of $anotherSequence, matched prefix $matchingPrefix but failed to find the remaining $sequenceRemainder."
-            )
+        if negated then Right(())
+        else if matchingPrefix.isEmpty then
+          Left(
+            s"$sequence is not a subsequence of $anotherSequence - no prefix matches found, either."
+          )
+        else
+          Left(
+            s"$sequence is not a subsequence of $anotherSequence, matched prefix $matchingPrefix but failed to find the remaining $sequenceRemainder."
+          )
       else if sequenceRemainder.head == anotherSequenceRemainder.head then
         verify(
           sequenceRemainder.tail,
