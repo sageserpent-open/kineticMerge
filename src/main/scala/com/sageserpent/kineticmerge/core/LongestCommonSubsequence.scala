@@ -40,13 +40,13 @@ object LongestCommonSubsequence:
       if 0 == minimumIndex then
         LongestCommonSubsequence(
           base = Vector.tabulate(onePastBaseIndex)(index =>
-            Contribution.Difference(base(index))
+            Contribution.ThreeWayDifference(base(index))
           ),
           left = Vector.tabulate(onePastLeftIndex)(index =>
-            Contribution.Difference(left(index))
+            Contribution.ThreeWayDifference(left(index))
           ),
           right = Vector.tabulate(onePastRightIndex)(index =>
-            Contribution.Difference(right(index))
+            Contribution.ThreeWayDifference(right(index))
           ),
           0
         )
@@ -81,18 +81,18 @@ object LongestCommonSubsequence:
                 baseIndex,
                 onePastLeftIndex,
                 onePastRightIndex
-              ).focus(_.base).modify(_ :+ Contribution.Difference(baseElement))
+              ).focus(_.base).modify(_ :+ Contribution.ThreeWayDifference(baseElement))
               val resultDroppingTheEndOfTheLeft = of(
                 onePastBaseIndex,
                 leftIndex,
                 onePastRightIndex
-              ).focus(_.left).modify(_ :+ Contribution.Difference(leftElement))
+              ).focus(_.left).modify(_ :+ Contribution.ThreeWayDifference(leftElement))
               val resultDroppingTheEndOfTheRight = of(
                 onePastBaseIndex,
                 onePastLeftIndex,
                 rightIndex
               ).focus(_.right)
-                .modify(_ :+ Contribution.Difference(rightElement))
+                .modify(_ :+ Contribution.ThreeWayDifference(rightElement))
 
               Seq(
                 resultDroppingTheEndOfTheBase,
@@ -122,9 +122,18 @@ object LongestCommonSubsequence:
     case Common(
         element: Element
     ) // The element belongs to the longest common subsequence across the base, left and right.
-    case Difference(
+    case ThreeWayDifference(
         element: Element
-    ) // The element has been added with respect to the longest common subsequence across the base, left and right.
+    ) // The element is different across the base, left and right.
+    case BaseDifferenceOnly(
+        element: Element
+    ) // The element is common to the left and right only.
+    case LeftDifferenceOnly(
+        element: Element
+    ) // The element is common to the base and right only.
+    case RightDifferenceOnly(
+        element: Element
+    ) // The element is common to the base and left only.
 
     def element: Element
   end Contribution

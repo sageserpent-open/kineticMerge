@@ -106,7 +106,10 @@ class LongestCommonSubsequenceTest:
 
               val indexedDifferences: IndexedSeq[(Int, Element)] =
                 sequence.zipWithIndex.collect:
-                  case (difference: Contribution.Difference[Element], index) =>
+                  case (
+                        difference: Contribution.ThreeWayDifference[Element],
+                        index
+                      ) =>
                     index -> difference.element
 
               for (differenceIndex, difference) <- indexedDifferences do
@@ -120,23 +123,17 @@ class LongestCommonSubsequenceTest:
                     _._2
                   ) ++ (difference +: trailingCommonIndices.map(_._2))
 
-                def lift(block: => Unit): Either[Unit, Throwable] = Try { block }.toEither.swap
+                if elements != testCase.base then
+                  viveLaDifférence isNotSubsequenceOf testCase.base
+                end if
 
-                for
-                  baseException <- lift {
-                    viveLaDifférence isNotSubsequenceOf testCase.base
-                  }
-                  leftException <- lift {
-                    viveLaDifférence isNotSubsequenceOf testCase.left
-                  }
-                  rightException <- lift {
-                    viveLaDifférence isNotSubsequenceOf testCase.right
-                  }
-                do
-                  fail(
-                    s"All three assertions failed, expected at least one to pass: ${pprint(List(baseException.getMessage, leftException.getMessage, rightException.getMessage))}"
-                  )
-                end for
+                if elements != testCase.left then
+                  viveLaDifférence isNotSubsequenceOf testCase.left
+                end if
+
+                if elements != testCase.right then
+                  viveLaDifférence isNotSubsequenceOf testCase.right
+                end if
 
               end for
 
@@ -215,7 +212,10 @@ extension [Element](sequence: Seq[Element])
         matchingPrefix: Seq[Element]
     ): Unit =
       if sequenceRemainder.isEmpty then
-        if negated then fail(s"Assertion failed because $sequence is a subsequence of $anotherSequence.")
+        if negated then
+          fail(
+            s"Assertion failed because $sequence is a subsequence of $anotherSequence."
+          )
       else if anotherSequenceRemainder.isEmpty then
         if !negated then
           if matchingPrefix.isEmpty then
