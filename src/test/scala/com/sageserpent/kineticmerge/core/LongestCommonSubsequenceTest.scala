@@ -5,12 +5,17 @@ import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Contribution
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.{Element, TestCase, assert}
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.{
+  Element,
+  TestCase,
+  assert
+}
 import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.TestInstance.Lifecycle
 import org.junit.jupiter.api.{DynamicTest, Test, TestFactory, TestInstance}
 
 import scala.annotation.tailrec
+import scala.util.Try
 
 class LongestCommonSubsequenceTest:
   val coreValues: Trials[Element] = trialsApi.choose('a' to 'z')
@@ -112,16 +117,18 @@ class LongestCommonSubsequenceTest:
                     difference.indexInContributor > _.indexInContributor
                   )
 
-                val viveLaDifférence: IndexedSeq[Contribution] =
-                  leadingCommonIndices ++ (difference +: trailingCommonIndices)
+                val viveLaDifférence: IndexedSeq[Element] =
+                  (leadingCommonIndices ++ (difference +: trailingCommonIndices)) reconstituteAgainst elements
 
-                (viveLaDifférence reconstituteAgainst elements isNotSubsequenceOf testCase.base)
-                  .orElse(
-                    viveLaDifférence reconstituteAgainst elements isNotSubsequenceOf testCase.left
-                  )
-                  .orElse(
-                    viveLaDifférence reconstituteAgainst elements isNotSubsequenceOf testCase.right
-                  )
+                Try {
+                  viveLaDifférence isNotSubsequenceOf testCase.base
+                }.toEither
+                  .orElse(Try {
+                    viveLaDifférence isNotSubsequenceOf testCase.left
+                  }.toEither)
+                  .orElse(Try {
+                    viveLaDifférence isNotSubsequenceOf testCase.right
+                  }.toEither)
                   .left
                   .foreach(fail _)
               end for
@@ -190,37 +197,36 @@ extension [Element](sequence: Seq[Element])
    * that actually detects subsequences correctly in the presence of duplicates. */
   def isSubsequenceOf(
       anotherSequence: Seq[? >: Element]
-  ): Either[String, Unit] =
+  ): Unit =
     isSubsequenceOf(anotherSequence, negated = false)
 
   def isNotSubsequenceOf(
       anotherSequence: Seq[? >: Element]
-  ): Either[String, Unit] =
+  ): Unit =
     isSubsequenceOf(anotherSequence, negated = true)
 
   private def isSubsequenceOf[ElementSupertype >: Element](
       anotherSequence: Seq[ElementSupertype],
       negated: Boolean
-  ): Either[String, Unit] =
+  ): Unit =
     @tailrec
     def verify(
         sequenceRemainder: Seq[Element],
         anotherSequenceRemainder: Seq[ElementSupertype],
         matchingPrefix: Seq[Element]
-    ): Either[String, Unit] =
+    ): Unit =
       if sequenceRemainder.isEmpty then
-        if negated then Left(s"$sequence is a subsequence of $anotherSequence.")
-        else Right(())
+        if negated then fail(s"$sequence is a subsequence of $anotherSequence.")
       else if anotherSequenceRemainder.isEmpty then
-        if negated then Right(())
-        else if matchingPrefix.isEmpty then
-          Left(
-            s"$sequence is not a subsequence of $anotherSequence - no prefix matches found, either."
-          )
-        else
-          Left(
-            s"$sequence is not a subsequence of $anotherSequence, matched prefix $matchingPrefix but failed to find the remaining $sequenceRemainder."
-          )
+        if !negated then
+          if matchingPrefix.isEmpty then
+            fail(
+              s"$sequence is not a subsequence of $anotherSequence - no prefix matches found, either."
+            )
+          else
+            fail(
+              s"$sequence is not a subsequence of $anotherSequence, matched prefix $matchingPrefix but failed to find the remaining $sequenceRemainder."
+            )
       else if sequenceRemainder.head == anotherSequenceRemainder.head then
         verify(
           sequenceRemainder.tail,
