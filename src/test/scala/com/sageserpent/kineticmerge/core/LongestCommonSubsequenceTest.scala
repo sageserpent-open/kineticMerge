@@ -215,16 +215,16 @@ extension [Element](sequence: Seq[Element])
         matchingPrefix: Seq[Element]
     ): Unit =
       if sequenceRemainder.isEmpty then
-        if negated then fail(s"$sequence is a subsequence of $anotherSequence.")
+        if negated then fail(s"Assertion failed because $sequence is a subsequence of $anotherSequence.")
       else if anotherSequenceRemainder.isEmpty then
         if !negated then
           if matchingPrefix.isEmpty then
             fail(
-              s"$sequence is not a subsequence of $anotherSequence - no prefix matches found, either."
+              s"Assertion failed because $sequence is not a subsequence of $anotherSequence - no prefix matches found, either."
             )
           else
             fail(
-              s"$sequence is not a subsequence of $anotherSequence, matched prefix $matchingPrefix but failed to find the remaining $sequenceRemainder."
+              s"Assertion failed because $sequence is not a subsequence of $anotherSequence, matched prefix $matchingPrefix but failed to find the remaining $sequenceRemainder."
             )
       else if sequenceRemainder.head == anotherSequenceRemainder.head then
         verify(
