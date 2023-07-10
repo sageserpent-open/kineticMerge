@@ -1,5 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
+import cats.data.{EitherT, OptionT, Writer}
 import com.eed3si9n.expecty.Expecty
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
@@ -120,17 +121,25 @@ class LongestCommonSubsequenceTest:
                 val viveLaDifférence: IndexedSeq[Element] =
                   (leadingCommonIndices ++ (difference +: trailingCommonIndices)) reconstituteAgainst elements
 
-                Try {
-                  viveLaDifférence isNotSubsequenceOf testCase.base
-                }.toEither
-                  .orElse(Try {
+                def lift(block: => Unit): Either[Unit, Throwable] =
+                  Try { block }.toEither.swap
+
+                for
+                  baseException <- lift {
+                    viveLaDifférence isNotSubsequenceOf testCase.base
+                  }
+                  leftException <- lift {
                     viveLaDifférence isNotSubsequenceOf testCase.left
-                  }.toEither)
-                  .orElse(Try {
+                  }
+                  rightException <- lift {
                     viveLaDifférence isNotSubsequenceOf testCase.right
-                  }.toEither)
-                  .left
-                  .foreach(fail _)
+                  }
+                do
+                  fail(
+                    s"All three assertions failed, expected at least one to pass: ${pprint(List(baseException.getMessage, leftException.getMessage, rightException.getMessage))}"
+                  )
+                end for
+
               end for
 
               if commonSubsequence != elements then assert(differences.nonEmpty)
