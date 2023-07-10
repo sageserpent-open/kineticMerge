@@ -68,9 +68,9 @@ class LongestCommonSubsequenceTest:
                 _ == _
               )
 
-          assert(base.reconstituteAgainst(testCase.base) == testCase.base)
-          assert(left.reconstituteAgainst(testCase.left) == testCase.left)
-          assert(right.reconstituteAgainst(testCase.right) == testCase.right)
+          assert(base.map(_.element) == testCase.base)
+          assert(left.map(_.element) == testCase.left)
+          assert(right.map(_.element) == testCase.right)
       )
 
   end theResultsCorrespondToTheOriginalSequences
@@ -85,16 +85,16 @@ class LongestCommonSubsequenceTest:
         ) =>
           val coreSize = testCase.core.size
 
-          extension (sequence: IndexedSeq[Contribution])
+          extension (sequence: IndexedSeq[Contribution[Element]])
             private def verifyLongestCommonSubsequence(
                 elements: IndexedSeq[Element]
             ): Unit =
-              val commonParts: IndexedSeq[Contribution.Common] =
-                sequence.collect:
-                  case common: Contribution.Common => common
+              val indexedCommonParts: IndexedSeq[(Int, Element)] =
+                sequence.zipWithIndex.collect:
+                  case (common: Contribution.Common[Element], index) =>
+                    index -> common.element
 
-              val commonSubsequence: IndexedSeq[Element] =
-                commonParts reconstituteAgainst elements
+              val commonSubsequence = indexedCommonParts.map(_._2)
 
               val _ = commonSubsequence isSubsequenceOf testCase.base
               val _ = commonSubsequence isSubsequenceOf testCase.left
@@ -102,31 +102,35 @@ class LongestCommonSubsequenceTest:
 
               assert(commonSubsequence.size >= coreSize)
 
-              val differences: IndexedSeq[Contribution.Difference] =
-                sequence.collect:
-                  case difference: Contribution.Difference => difference
+              val indexedDifferences: IndexedSeq[(Int, Element)] =
+                sequence.zipWithIndex.collect:
+                  case (difference: Contribution.Difference[Element], index) =>
+                    index -> difference.element
 
-              for difference <- differences do
+              for (differenceIndex, difference) <- indexedDifferences do
                 val (leadingCommonIndices, trailingCommonIndices) =
-                  commonParts.span(
-                    difference.indexInContributor > _.indexInContributor
-                  )
+                  indexedCommonParts.span { case (commonIndex, _) =>
+                    differenceIndex > commonIndex
+                  }
 
-                val viveLaDifférence: IndexedSeq[Contribution] =
-                  leadingCommonIndices ++ (difference +: trailingCommonIndices)
+                val viveLaDifférence: IndexedSeq[Element] =
+                  leadingCommonIndices.map(
+                    _._2
+                  ) ++ (difference +: trailingCommonIndices.map(_._2))
 
-                (viveLaDifférence reconstituteAgainst elements isNotSubsequenceOf testCase.base)
+                (viveLaDifférence isNotSubsequenceOf testCase.base)
                   .orElse(
-                    viveLaDifférence reconstituteAgainst elements isNotSubsequenceOf testCase.left
+                    viveLaDifférence isNotSubsequenceOf testCase.left
                   )
                   .orElse(
-                    viveLaDifférence reconstituteAgainst elements isNotSubsequenceOf testCase.right
+                    viveLaDifférence isNotSubsequenceOf testCase.right
                   )
                   .left
                   .foreach(fail _)
               end for
 
-              if commonSubsequence != elements then assert(differences.nonEmpty)
+              if commonSubsequence != elements then
+                assert(indexedDifferences.nonEmpty)
               end if
           end extension
 
@@ -175,15 +179,6 @@ object LongestCommonSubsequenceTest:
       right: Vector[Element]
   )
 end LongestCommonSubsequenceTest
-
-extension (sequence: IndexedSeq[Contribution])
-  private def reconstituteAgainst(
-      elements: IndexedSeq[Element]
-  ): IndexedSeq[Element] =
-    sequence.map:
-      case Contribution.Common(index)     => elements(index)
-      case Contribution.Difference(index) => elements(index)
-end extension
 
 extension [Element](sequence: Seq[Element])
   /* Replacement for ```should contain inOrderElementsOf```; as I'm not sure if

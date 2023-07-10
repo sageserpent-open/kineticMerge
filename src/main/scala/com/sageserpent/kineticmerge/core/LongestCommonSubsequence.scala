@@ -6,48 +6,32 @@ import monocle.syntax.all.*
 
 import scala.collection.mutable
 
-// TODO: why use an `IndexedSeq[Contribution]` to model an externally-imposed
-// order of contributions when `Contribution` is already ordered by virtue of
-// its index? Either drop the indices and use the external ordering, or use a
-// sorted set. In fact, why not simply use `IndexedSeq[Element]`?
-case class LongestCommonSubsequence private (
-    base: IndexedSeq[Contribution],
-    left: IndexedSeq[Contribution],
-    right: IndexedSeq[Contribution],
+case class LongestCommonSubsequence[Element] private (
+    base: IndexedSeq[Contribution[Element]],
+    left: IndexedSeq[Contribution[Element]],
+    right: IndexedSeq[Contribution[Element]],
     commonSubsequenceSize: Int
 ):
 
 end LongestCommonSubsequence
 
 object LongestCommonSubsequence:
-  /** NOTE: the index is taken in the context of the original base, left and
-    * right elements.
-    */
-  enum Contribution:
-    case Common(
-        indexInContributor: Int
-    ) // The indexed element belongs to the longest common subsequence across the base, left and right.
-    case Difference(
-        indexInContributor: Int
-    ) // The indexed element has been added with respect to the longest common subsequence across the base, left and right.
-  end Contribution
-
   // TODO - there could be more than one solution - could something be done to
   // choose between them? Should we yield a set instead?
   def of[Element](
       base: IndexedSeq[Element],
       left: IndexedSeq[Element],
       right: IndexedSeq[Element]
-  )(equality: Eq[Element]): LongestCommonSubsequence =
+  )(equality: Eq[Element]): LongestCommonSubsequence[Element] =
     val partialResultsCache
-        : mutable.Map[(Int, Int, Int), LongestCommonSubsequence] =
+        : mutable.Map[(Int, Int, Int), LongestCommonSubsequence[Element]] =
       mutable.Map.empty
 
     def of(
         onePastBaseIndex: Int,
         onePastLeftIndex: Int,
         onePastRightIndex: Int
-    ): LongestCommonSubsequence =
+    ): LongestCommonSubsequence[Element] =
       val minimumIndex =
         onePastBaseIndex min onePastLeftIndex min onePastRightIndex
 
@@ -55,14 +39,14 @@ object LongestCommonSubsequence:
 
       if 0 == minimumIndex then
         LongestCommonSubsequence(
-          base = Vector.tabulate(onePastBaseIndex)(
-            Contribution.Difference.apply
+          base = Vector.tabulate(onePastBaseIndex)(index =>
+            Contribution.Difference(base(index))
           ),
-          left = Vector.tabulate(onePastLeftIndex)(
-            Contribution.Difference.apply
+          left = Vector.tabulate(onePastLeftIndex)(index =>
+            Contribution.Difference(left(index))
           ),
-          right = Vector.tabulate(onePastRightIndex)(
-            Contribution.Difference.apply
+          right = Vector.tabulate(onePastRightIndex)(index =>
+            Contribution.Difference(right(index))
           ),
           0
         )
@@ -85,11 +69,11 @@ object LongestCommonSubsequence:
                 leftIndex,
                 rightIndex
               ).focus(_.base)
-                .modify(_ :+ Contribution.Common(baseIndex))
+                .modify(_ :+ Contribution.Common(baseElement))
                 .focus(_.left)
-                .modify(_ :+ Contribution.Common(leftIndex))
+                .modify(_ :+ Contribution.Common(leftElement))
                 .focus(_.right)
-                .modify(_ :+ Contribution.Common(rightIndex))
+                .modify(_ :+ Contribution.Common(rightElement))
                 .focus(_.commonSubsequenceSize)
                 .modify(1 + _)
             else
@@ -97,17 +81,18 @@ object LongestCommonSubsequence:
                 baseIndex,
                 onePastLeftIndex,
                 onePastRightIndex
-              ).focus(_.base).modify(_ :+ Contribution.Difference(baseIndex))
+              ).focus(_.base).modify(_ :+ Contribution.Difference(baseElement))
               val resultDroppingTheEndOfTheLeft = of(
                 onePastBaseIndex,
                 leftIndex,
                 onePastRightIndex
-              ).focus(_.left).modify(_ :+ Contribution.Difference(leftIndex))
+              ).focus(_.left).modify(_ :+ Contribution.Difference(leftElement))
               val resultDroppingTheEndOfTheRight = of(
                 onePastBaseIndex,
                 onePastLeftIndex,
                 rightIndex
-              ).focus(_.right).modify(_ :+ Contribution.Difference(rightIndex))
+              ).focus(_.right)
+                .modify(_ :+ Contribution.Difference(rightElement))
 
               Seq(
                 resultDroppingTheEndOfTheBase,
@@ -129,4 +114,18 @@ object LongestCommonSubsequence:
     )
 
   end of
+
+  /** NOTE: the index is taken in the context of the original base, left and
+    * right elements.
+    */
+  enum Contribution[Element]:
+    case Common(
+        element: Element
+    ) // The element belongs to the longest common subsequence across the base, left and right.
+    case Difference(
+        element: Element
+    ) // The element has been added with respect to the longest common subsequence across the base, left and right.
+
+    def element: Element
+  end Contribution
 end LongestCommonSubsequence
