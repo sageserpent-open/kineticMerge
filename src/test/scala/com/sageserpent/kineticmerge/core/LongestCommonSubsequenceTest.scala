@@ -1,5 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
+import cats.data.{EitherT, OptionT, Writer}
 import com.eed3si9n.expecty.Expecty
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.TestInstance.Lifecycle
 import org.junit.jupiter.api.{DynamicTest, Test, TestFactory, TestInstance}
 
 import scala.annotation.tailrec
+import scala.util.Try
 
 class LongestCommonSubsequenceTest:
   val coreValues: Trials[Element] = trialsApi.choose('a' to 'z')
@@ -118,15 +120,24 @@ class LongestCommonSubsequenceTest:
                     _._2
                   ) ++ (difference +: trailingCommonIndices.map(_._2))
 
-                (viveLaDifférence isNotSubsequenceOf testCase.base)
-                  .orElse(
+                def lift(block: => Unit): Either[Unit, Throwable] = Try { block }.toEither.swap
+
+                for
+                  baseException <- lift {
+                    viveLaDifférence isNotSubsequenceOf testCase.base
+                  }
+                  leftException <- lift {
                     viveLaDifférence isNotSubsequenceOf testCase.left
-                  )
-                  .orElse(
+                  }
+                  rightException <- lift {
                     viveLaDifférence isNotSubsequenceOf testCase.right
+                  }
+                do
+                  fail(
+                    s"All three assertions failed, expected at least one to pass: ${pprint(List(baseException.getMessage, leftException.getMessage, rightException.getMessage))}"
                   )
-                  .left
-                  .foreach(fail _)
+                end for
+
               end for
 
               if commonSubsequence != elements then
@@ -185,37 +196,36 @@ extension [Element](sequence: Seq[Element])
    * that actually detects subsequences correctly in the presence of duplicates. */
   def isSubsequenceOf(
       anotherSequence: Seq[? >: Element]
-  ): Either[String, Unit] =
+  ): Unit =
     isSubsequenceOf(anotherSequence, negated = false)
 
   def isNotSubsequenceOf(
       anotherSequence: Seq[? >: Element]
-  ): Either[String, Unit] =
+  ): Unit =
     isSubsequenceOf(anotherSequence, negated = true)
 
   private def isSubsequenceOf[ElementSupertype >: Element](
       anotherSequence: Seq[ElementSupertype],
       negated: Boolean
-  ): Either[String, Unit] =
+  ): Unit =
     @tailrec
     def verify(
         sequenceRemainder: Seq[Element],
         anotherSequenceRemainder: Seq[ElementSupertype],
         matchingPrefix: Seq[Element]
-    ): Either[String, Unit] =
+    ): Unit =
       if sequenceRemainder.isEmpty then
-        if negated then Left(s"$sequence is a subsequence of $anotherSequence.")
-        else Right(())
+        if negated then fail(s"$sequence is a subsequence of $anotherSequence.")
       else if anotherSequenceRemainder.isEmpty then
-        if negated then Right(())
-        else if matchingPrefix.isEmpty then
-          Left(
-            s"$sequence is not a subsequence of $anotherSequence - no prefix matches found, either."
-          )
-        else
-          Left(
-            s"$sequence is not a subsequence of $anotherSequence, matched prefix $matchingPrefix but failed to find the remaining $sequenceRemainder."
-          )
+        if !negated then
+          if matchingPrefix.isEmpty then
+            fail(
+              s"$sequence is not a subsequence of $anotherSequence - no prefix matches found, either."
+            )
+          else
+            fail(
+              s"$sequence is not a subsequence of $anotherSequence, matched prefix $matchingPrefix but failed to find the remaining $sequenceRemainder."
+            )
       else if sequenceRemainder.head == anotherSequenceRemainder.head then
         verify(
           sequenceRemainder.tail,
