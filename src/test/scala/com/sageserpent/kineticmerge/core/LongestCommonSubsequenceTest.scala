@@ -64,7 +64,7 @@ class LongestCommonSubsequenceTest:
         (
           testCase: TestCase
         ) =>
-          val LongestCommonSubsequence(base, left, right, size) =
+          val LongestCommonSubsequence(base, left, right, _, _, _, _) =
             LongestCommonSubsequence
               .of(testCase.base, testCase.left, testCase.right)(
                 _ == _
@@ -104,45 +104,70 @@ class LongestCommonSubsequenceTest:
 
               assert(commonSubsequence.size >= coreSize)
 
-              val indexedDifferences: IndexedSeq[(Int, Element)] =
-                sequence.zipWithIndex.collect:
-                  case (
-                        difference: Contribution.ThreeWayDifference[Element],
-                        index
-                      ) =>
-                    index -> difference.element
-
-              for (differenceIndex, difference) <- indexedDifferences do
-                val (leadingCommonIndices, trailingCommonIndices) =
-                  indexedCommonParts.span { case (commonIndex, _) =>
-                    differenceIndex > commonIndex
-                  }
-
-                val viveLaDifférence: IndexedSeq[Element] =
-                  leadingCommonIndices.map(
-                    _._2
-                  ) ++ (difference +: trailingCommonIndices.map(_._2))
-
+              def verifyDifference(viveLaDifférence: IndexedSeq[Element]): Unit =
                 if elements != testCase.base then
                   viveLaDifférence isNotSubsequenceOf testCase.base
-                end if
+                end  if
 
                 if elements != testCase.left then
-                  viveLaDifférence isNotSubsequenceOf testCase.left
+                    viveLaDifférence isNotSubsequenceOf testCase.left
                 end if
 
                 if elements != testCase.right then
+                    viveLaDifférence isNotSubsequenceOf testCase.right
+                end if
+              end verifyDifference
+              
+              def verifyCommonBaseAndLeft(viveLaDifférence: IndexedSeq[Element]): Unit =
+                if elements != testCase.right then
                   viveLaDifférence isNotSubsequenceOf testCase.right
                 end if
+              end verifyCommonBaseAndLeft
 
-              end for
+              def verifyCommonBaseAndRight(viveLaDifférence: IndexedSeq[Element]): Unit =
+                if elements != testCase.left then
+                  viveLaDifférence isNotSubsequenceOf testCase.left
+                end if
+              end verifyCommonBaseAndRight
 
-              if commonSubsequence != elements then
-                assert(indexedDifferences.nonEmpty)
-              end if
+              def verifyCommonLeftAndRight(viveLaDifférence: IndexedSeq[Element]): Unit =
+                if elements != testCase.base then
+                  viveLaDifférence isNotSubsequenceOf testCase.base
+                end if
+              end verifyCommonLeftAndRight
+
+              def insert(contribution: Contribution[Element], contributionIndex: Int) =
+                val (leadingCommonIndices, trailingCommonIndices) =
+                  indexedCommonParts.span { case (commonIndex, _) =>
+                    contributionIndex > commonIndex
+                  }
+
+                leadingCommonIndices.map(
+                  _._2
+                ) ++ (contribution.element +: trailingCommonIndices.map(_._2))
+
+              sequence.zipWithIndex.foreach{
+                case (
+                  difference: Contribution.Difference[Element],
+                  index
+                  ) => verifyDifference(insert(difference, index))
+                case (
+                  difference: Contribution.CommonToBaseAndLeftOnly[Element],
+                  index
+                  ) => verifyCommonBaseAndLeft(insert(difference, index))
+                case (
+                  difference: Contribution.CommonToBaseAndRightOnly[Element],
+                  index
+                  ) => verifyCommonBaseAndRight(insert(difference, index))
+                case (
+                  difference: Contribution.CommonToLeftAndRightOnly[Element],
+                  index
+                  ) => verifyCommonLeftAndRight(insert(difference, index))
+                case _ =>
+              }
           end extension
 
-          val LongestCommonSubsequence(base, left, right, size) =
+          val LongestCommonSubsequence(base, left, right, commonSubsequenceSize, _, _, _) =
             LongestCommonSubsequence
               .of(testCase.base, testCase.left, testCase.right)(
                 _ == _
@@ -167,7 +192,7 @@ class LongestCommonSubsequenceTest:
           // equality) is because the interleaves for the base, left and right
           // sequences may either augment the core sequence by coincidence, or
           // form an alternative one that is longer.
-          assert(size >= coreSize)
+          assert(commonSubsequenceSize >= coreSize)
       )
   end theLongestCommonSubsequenceUnderpinsAllThreeResults
 
