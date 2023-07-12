@@ -20,6 +20,8 @@ case class LongestCommonSubsequence[Element] private (
 end LongestCommonSubsequence
 
 object LongestCommonSubsequence:
+  private val sentinelIndexForExhaustion = -1
+
   // TODO - there could be more than one solution - could something be done to
   // choose between them? Should we yield a set instead?
   def of[Element](
@@ -40,11 +42,15 @@ object LongestCommonSubsequence:
       assume(0 <= onePastLeftIndex)
       assume(0 <= onePastRightIndex)
 
-      val numberOfNonZeroIndices =
-        Seq(onePastBaseIndex, onePastLeftIndex, onePastRightIndex).count(0 < _)
+      val baseIsExhausted  = 0 == onePastBaseIndex
+      val leftIsExhausted  = 0 == onePastLeftIndex
+      val rightIsExhausted = 0 == onePastRightIndex
 
-      numberOfNonZeroIndices match
-        case 0 | 1 | 2 => // TODO - remove the `2` case...
+      val numberOfNonEmptySides =
+        Seq(baseIsExhausted, leftIsExhausted, rightIsExhausted).count(!_)
+
+      numberOfNonEmptySides match
+        case 0 | 1 =>
           LongestCommonSubsequence(
             base = Vector.tabulate(onePastBaseIndex)(index =>
               Contribution.Difference(base(index))
@@ -60,77 +66,20 @@ object LongestCommonSubsequence:
             commonToBaseAndLeftOnlySize = 0,
             commonToBaseAndRightOnlySize = 0
           )
-//        case 2 =>
-//          if 0 == onePastRightIndex then
-//            ??? // TODO: recurse to find matches between the base and left...
-//          else if 0 == onePastLeftIndex then
-//            ??? // TODO: recurse to find matches between the base and right...
-//          else
-//            ??? // TODO: recurse to find matches between the left and right...
-        case 3 =>
-          val baseIndex  = onePastBaseIndex - 1
-          val leftIndex  = onePastLeftIndex - 1
-          val rightIndex = onePastRightIndex - 1
+        case 2 | 3 =>
+          if baseIsExhausted then
+            val leftIndex  = onePastLeftIndex - 1
+            val rightIndex = onePastRightIndex - 1
 
-          val baseElement  = base(baseIndex)
-          val leftElement  = left(leftIndex)
-          val rightElement = right(rightIndex)
+            val leftElement  = left(leftIndex)
+            val rightElement = right(rightIndex)
 
-          partialResultsCache.getOrElseUpdate(
-            (baseIndex, leftIndex, rightIndex), {
-              val baseEqualsLeft  = equality.eqv(baseElement, leftElement)
-              val baseEqualsRight = equality.eqv(baseElement, rightElement)
-
-              if baseEqualsLeft && baseEqualsRight
-              then
-                of(baseIndex, leftIndex, rightIndex)
-                  .focus(_.base)
-                  .modify(_ :+ Contribution.Common(baseElement))
-                  .focus(_.left)
-                  .modify(_ :+ Contribution.Common(leftElement))
-                  .focus(_.right)
-                  .modify(_ :+ Contribution.Common(rightElement))
-                  .focus(_.commonSubsequenceSize)
-                  .modify(1 + _)
-              else
-                val resultDroppingTheBaseAndLeft = Option.when(
-                  baseEqualsLeft
-                ) {
-                  of(baseIndex, leftIndex, onePastRightIndex)
-                    .focus(_.base)
-                    .modify(
-                      _ :+ Contribution.CommonToBaseAndLeftOnly(baseElement)
-                    )
-                    .focus(_.left)
-                    .modify(
-                      _ :+ Contribution.CommonToBaseAndLeftOnly(leftElement)
-                    )
-                    .focus(_.commonToBaseAndLeftOnlySize)
-                    .modify(1 + _)
-                }
-
-                val resultDroppingTheBaseAndRight = Option.when(
-                  baseEqualsRight
-                ) {
-                  of(baseIndex, onePastLeftIndex, rightIndex)
-                    .focus(_.base)
-                    .modify(
-                      _ :+ Contribution.CommonToBaseAndRightOnly(baseElement)
-                    )
-                    .focus(_.right)
-                    .modify(
-                      _ :+ Contribution.CommonToBaseAndRightOnly(rightElement)
-                    )
-                    .focus(_.commonToBaseAndRightOnlySize)
-                    .modify(1 + _)
-                }
-
+            partialResultsCache.getOrElseUpdate(
+              (sentinelIndexForExhaustion, leftIndex, rightIndex), {
                 val leftEqualsRight = equality.eqv(leftElement, rightElement)
 
-                val resultDroppingTheLeftAndRight = Option.when(
-                  leftEqualsRight
-                ) {
-                  of(onePastBaseIndex, leftIndex, rightIndex)
+                if leftEqualsRight then
+                  of(onePastBaseIndex = 0, leftIndex, rightIndex)
                     .focus(_.left)
                     .modify(
                       _ :+ Contribution.CommonToLeftAndRightOnly(leftElement)
@@ -141,32 +90,207 @@ object LongestCommonSubsequence:
                     )
                     .focus(_.commonToLeftAndRightOnlySize)
                     .modify(1 + _)
-                }
+                else
+                  val resultDroppingTheEndOfTheLeft =
+                    of(onePastBaseIndex = 0, leftIndex, onePastRightIndex)
+                      .focus(_.left)
+                      .modify(_ :+ Contribution.Difference(leftElement))
 
-                val resultDroppingTheEndOfTheBase =
-                  of(baseIndex, onePastLeftIndex, onePastRightIndex)
+                  val resultDroppingTheEndOfTheRight =
+                    of(onePastBaseIndex = 0, onePastLeftIndex, rightIndex)
+                      .focus(_.right)
+                      .modify(_ :+ Contribution.Difference(rightElement))
+
+                  Seq(
+                    resultDroppingTheEndOfTheLeft,
+                    resultDroppingTheEndOfTheRight
+                  ).maxBy(_.size)
+                end if
+              }
+            )
+          else if leftIsExhausted then
+            val baseIndex  = onePastBaseIndex - 1
+            val rightIndex = onePastRightIndex - 1
+
+            val baseElement  = base(baseIndex)
+            val rightElement = right(rightIndex)
+
+            partialResultsCache.getOrElseUpdate(
+              (baseIndex, sentinelIndexForExhaustion, rightIndex), {
+                val baseEqualsRight = equality.eqv(baseElement, rightElement)
+
+                if baseEqualsRight then
+                  of(baseIndex, onePastLeftIndex = 0, rightIndex)
                     .focus(_.base)
-                    .modify(_ :+ Contribution.Difference(baseElement))
-                val resultDroppingTheEndOfTheLeft =
-                  of(onePastBaseIndex, leftIndex, onePastRightIndex)
-                    .focus(_.left)
-                    .modify(_ :+ Contribution.Difference(leftElement))
-                val resultDroppingTheEndOfTheRight =
-                  of(onePastBaseIndex, onePastLeftIndex, rightIndex)
+                    .modify(
+                      _ :+ Contribution.CommonToBaseAndRightOnly(baseElement)
+                    )
                     .focus(_.right)
-                    .modify(_ :+ Contribution.Difference(rightElement))
+                    .modify(
+                      _ :+ Contribution.CommonToBaseAndRightOnly(rightElement)
+                    )
+                    .focus(_.commonToBaseAndRightOnlySize)
+                    .modify(1 + _)
+                else
+                  val resultDroppingTheEndOfTheBase =
+                    of(baseIndex, onePastLeftIndex = 0, onePastRightIndex)
+                      .focus(_.base)
+                      .modify(_ :+ Contribution.Difference(baseElement))
 
-                Seq(
-                  resultDroppingTheBaseAndLeft,
-                  resultDroppingTheBaseAndRight,
-                  resultDroppingTheLeftAndRight,
-                  Some(resultDroppingTheEndOfTheBase),
-                  Some(resultDroppingTheEndOfTheLeft),
-                  Some(resultDroppingTheEndOfTheRight)
-                ).flatten.maxBy(_.size)
-              end if
-            }
-          )
+                  val resultDroppingTheEndOfTheRight =
+                    of(onePastBaseIndex, onePastLeftIndex = 0, rightIndex)
+                      .focus(_.right)
+                      .modify(_ :+ Contribution.Difference(rightElement))
+
+                  Seq(
+                    resultDroppingTheEndOfTheBase,
+                    resultDroppingTheEndOfTheRight
+                  ).maxBy(_.size)
+                end if
+              }
+            )
+          else if rightIsExhausted then
+            val baseIndex = onePastBaseIndex - 1
+            val leftIndex = onePastLeftIndex - 1
+
+            val baseElement = base(baseIndex)
+            val leftElement = left(leftIndex)
+
+            partialResultsCache.getOrElseUpdate(
+              (baseIndex, leftIndex, sentinelIndexForExhaustion), {
+                val baseEqualsLeft = equality.eqv(baseElement, leftElement)
+
+                if baseEqualsLeft then
+                  of(baseIndex, leftIndex, onePastRightIndex = 0)
+                    .focus(_.base)
+                    .modify(
+                      _ :+ Contribution.CommonToBaseAndLeftOnly(baseElement)
+                    )
+                    .focus(_.left)
+                    .modify(
+                      _ :+ Contribution.CommonToBaseAndLeftOnly(leftElement)
+                    )
+                    .focus(_.commonToBaseAndLeftOnlySize)
+                    .modify(1 + _)
+                else
+                  val resultDroppingTheEndOfTheBase =
+                    of(baseIndex, onePastLeftIndex, onePastRightIndex = 0)
+                      .focus(_.base)
+                      .modify(_ :+ Contribution.Difference(baseElement))
+
+                  val resultDroppingTheEndOfTheLeft =
+                    of(onePastBaseIndex, leftIndex, onePastRightIndex = 0)
+                      .focus(_.left)
+                      .modify(_ :+ Contribution.Difference(leftElement))
+
+                  Seq(
+                    resultDroppingTheEndOfTheBase,
+                    resultDroppingTheEndOfTheLeft
+                  ).maxBy(_.size)
+                end if
+              }
+            )
+          else
+            val baseIndex  = onePastBaseIndex - 1
+            val leftIndex  = onePastLeftIndex - 1
+            val rightIndex = onePastRightIndex - 1
+
+            val baseElement  = base(baseIndex)
+            val leftElement  = left(leftIndex)
+            val rightElement = right(rightIndex)
+
+            partialResultsCache.getOrElseUpdate(
+              (baseIndex, leftIndex, rightIndex), {
+                val baseEqualsLeft  = equality.eqv(baseElement, leftElement)
+                val baseEqualsRight = equality.eqv(baseElement, rightElement)
+
+                if baseEqualsLeft && baseEqualsRight
+                then
+                  of(baseIndex, leftIndex, rightIndex)
+                    .focus(_.base)
+                    .modify(_ :+ Contribution.Common(baseElement))
+                    .focus(_.left)
+                    .modify(_ :+ Contribution.Common(leftElement))
+                    .focus(_.right)
+                    .modify(_ :+ Contribution.Common(rightElement))
+                    .focus(_.commonSubsequenceSize)
+                    .modify(1 + _)
+                else
+                  val resultDroppingTheBaseAndLeft = Option.when(
+                    baseEqualsLeft
+                  ) {
+                    of(baseIndex, leftIndex, onePastRightIndex)
+                      .focus(_.base)
+                      .modify(
+                        _ :+ Contribution.CommonToBaseAndLeftOnly(baseElement)
+                      )
+                      .focus(_.left)
+                      .modify(
+                        _ :+ Contribution.CommonToBaseAndLeftOnly(leftElement)
+                      )
+                      .focus(_.commonToBaseAndLeftOnlySize)
+                      .modify(1 + _)
+                  }
+
+                  val resultDroppingTheBaseAndRight = Option.when(
+                    baseEqualsRight
+                  ) {
+                    of(baseIndex, onePastLeftIndex, rightIndex)
+                      .focus(_.base)
+                      .modify(
+                        _ :+ Contribution.CommonToBaseAndRightOnly(baseElement)
+                      )
+                      .focus(_.right)
+                      .modify(
+                        _ :+ Contribution.CommonToBaseAndRightOnly(rightElement)
+                      )
+                      .focus(_.commonToBaseAndRightOnlySize)
+                      .modify(1 + _)
+                  }
+
+                  val leftEqualsRight = equality.eqv(leftElement, rightElement)
+
+                  val resultDroppingTheLeftAndRight = Option.when(
+                    leftEqualsRight
+                  ) {
+                    of(onePastBaseIndex, leftIndex, rightIndex)
+                      .focus(_.left)
+                      .modify(
+                        _ :+ Contribution.CommonToLeftAndRightOnly(leftElement)
+                      )
+                      .focus(_.right)
+                      .modify(
+                        _ :+ Contribution.CommonToLeftAndRightOnly(rightElement)
+                      )
+                      .focus(_.commonToLeftAndRightOnlySize)
+                      .modify(1 + _)
+                  }
+
+                  val resultDroppingTheEndOfTheBase =
+                    of(baseIndex, onePastLeftIndex, onePastRightIndex)
+                      .focus(_.base)
+                      .modify(_ :+ Contribution.Difference(baseElement))
+                  val resultDroppingTheEndOfTheLeft =
+                    of(onePastBaseIndex, leftIndex, onePastRightIndex)
+                      .focus(_.left)
+                      .modify(_ :+ Contribution.Difference(leftElement))
+                  val resultDroppingTheEndOfTheRight =
+                    of(onePastBaseIndex, onePastLeftIndex, rightIndex)
+                      .focus(_.right)
+                      .modify(_ :+ Contribution.Difference(rightElement))
+
+                  Seq(
+                    resultDroppingTheBaseAndLeft,
+                    resultDroppingTheBaseAndRight,
+                    resultDroppingTheLeftAndRight,
+                    Some(resultDroppingTheEndOfTheBase),
+                    Some(resultDroppingTheEndOfTheLeft),
+                    Some(resultDroppingTheEndOfTheRight)
+                  ).flatten.maxBy(_.size)
+                end if
+              }
+            )
+          end if
       end match
     end of
 
