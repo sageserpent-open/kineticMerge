@@ -148,12 +148,19 @@ class LongestCommonSubsequenceTest:
                   _._2
                 ) ++ (contribution.element +: trailingCommonIndices.map(_._2))
 
+              // NASTY HACK: need to finesse the situation where a valid difference
+              // can match an out-of-place element on another side due to partial matches.
+              val forgetAboutValidatingDifferences = sequence.exists {
+                case _: Contribution.CommonToLeftAndRightOnly[Element] => true
+                case _: Contribution.CommonToBaseAndLeftOnly[Element] => true
+                case _: Contribution.CommonToBaseAndRightOnly[Element] => true
+                case _ => false}
+
               sequence.zipWithIndex.foreach{
                 case (
                   difference: Contribution.Difference[Element],
                   index
-                  ) => /*verifyDifference(insert(difference, index))*/ // TODO - reinstate this assertion when the coincidence problems have been sorted out!
-
+                  ) if !forgetAboutValidatingDifferences => verifyDifference(insert(difference, index))
                 case (
                   difference: Contribution.CommonToBaseAndLeftOnly[Element],
                   index
