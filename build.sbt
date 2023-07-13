@@ -33,6 +33,7 @@ lazy val root = (project in file("."))
     libraryDependencies += "com.sageserpent" %% "americium" % "1.16.0" % Test,
     libraryDependencies += "com.lihaoyi"     %% "pprint"    % "0.8.1"  % Test,
     libraryDependencies += "com.eed3si9n.expecty" %% "expecty" % "0.16.0" % Test,
+    libraryDependencies += "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
     Test / fork := true,
     Test / javaOptions ++= Seq("-Xms10G", "-Xmx10G")
   )
