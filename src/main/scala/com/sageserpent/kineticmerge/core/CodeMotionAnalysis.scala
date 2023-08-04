@@ -7,33 +7,23 @@ object CodeMotionAnalysis:
 
   given orderEvidence: Order[Section] = ???
 
-  // TODO: "Something went wrong!" - "What was it?"
-  case object Divergence
-
   /** Analyse code motion from the sources of {@code base} to both {@code left}
     * and {@code right}, breaking them into [[File]] and thence [[Section]]
     * instances.
     *
-    * Where a section moves from {@code base}, it enters into a match with the
-    * corresponding sections in {@code left} and {@code right}; one of those
-    * latter two sections is considered to be dominant and therefore represents
-    * the match.
+    * Where a section moves from {@code base}, it enters into a match with one
+    * or both corresponding sections in {@code left} and {@code right}; if both,
+    * then one of those latter two sections is considered to be dominant and
+    * therefore represents the match. If there is just one matching section,
+    * that is taken to be the dominant one for the sake of picking up whitespace
+    * changes.
     *
     * @note
-    *   Motion has to be from {@code base}, so if the same piece of text appears
-    *   as newly added or edited in both {@code left} and {@code right}, then
-    *   this is treated as coincidental code duplication, *not* as movement.
-    * @note
-    *   If a section moves from {@code base} to only *one* of {@code left} or
-    *   {@code right}, this is interpreted as being a full match across all
-    *   three sources, only with the 'missing' section being filled in with the
-    *   corresponding edited or deleted section, depending on context.
-    * @todo
-    *   What if a section moves from {@code base} to only *one* of {@code left}
-    *   or {@code right}, but the missing section can't be filled in because the
-    *   entire file it used to belong to in {@code base} has been deleted? Git
-    *   represents this as a conflict, rather than attempting to propagate the
-    *   deletion...
+    *   Although code motion is strictly speaking relative to the base sources,
+    *   if the same section is added into both the left and right sources as a
+    *   coincidental insertion (so not present in the base sources), this is
+    *   treated as a match across the left and right sources anyway, so there
+    *   will be a dominant section.
     * @param base
     *   The common base sources from which the left and right sources are
     *   derived.
@@ -71,7 +61,9 @@ object CodeMotionAnalysis:
 
     Right(
       new CodeMotionAnalysis[Path]:
-        override def dominantMatchingSectionFor(section: Section): Option[Section] = None
+        override def dominantMatchingSectionFor(
+            section: Section
+        ): Option[Section] = None
 
         override def base: Map[Path, File] = baseSections
 
@@ -80,6 +72,9 @@ object CodeMotionAnalysis:
         override def right: Map[Path, File] = rightSections
     )
   end of
+
+  // TODO: "Something went wrong!" - "What was it?"
+  case object Divergence
 
 end CodeMotionAnalysis
 
@@ -91,11 +86,14 @@ trait CodeMotionAnalysis[Path]:
   /** @param section
     * @return
     *   The dominant section in the match, provided the section is part of some
-    *   match. This is the *one* that has a significant edit, or outright
-    *   deletion, or if the only difference(s) is/are due to whitespace changes
-    *   then it will be from the left (our) contribution, as per Git merge. A
-    *   post-condition is that it is not possible to have conflicting
-    *   significant edits or deletions.
+    *   match. If the difference(s) is/are due to whitespace changes then it
+    *   will be from the left (our) contribution, as per Git merge.
+    * @note
+    *   The notion of dominance does *not* concern itself with the merge
+    *   precedence of edits or deletions - that is handled downstream.
+    * @note
+    *   Coincident insertions are also matched across the left and right
+    *   sources, so these will yield the same dominant section.
     */
   def dominantMatchingSectionFor(section: Section): Option[Section]
 end CodeMotionAnalysis
