@@ -2,6 +2,7 @@ package com.sageserpent.kineticmerge.core
 
 import cats.Order
 import cats.collections.DisjointSets
+import com.sageserpent.kineticmerge.core.Match.{BaseAndLeft, BaseAndRight}
 
 object CodeMotionAnalysis:
 
@@ -61,9 +62,9 @@ object CodeMotionAnalysis:
 
     Right(
       new CodeMotionAnalysis[Path]:
-        override def dominantMatchingSectionFor(
+        override def matchFor(
             section: Section
-        ): Option[Section] = None
+        ): Option[Match] = None
 
         override def base: Map[Path, File] = baseSections
 
@@ -83,11 +84,15 @@ trait CodeMotionAnalysis[Path]:
   def left: Map[Path, File]
   def right: Map[Path, File]
 
-  /** @param section
-    * @return
+  def matchFor(section: Section): Option[Match]
+end CodeMotionAnalysis
+
+enum Match:
+  /** @return
     *   The dominant section in the match, provided the section is part of some
     *   match. If the difference(s) is/are due to whitespace changes then it
-    *   will be from the left (our) contribution, as per Git merge.
+    *   will be from the left (our) contribution, as per Git merge. In addition,
+    *   the overall match is also provided.
     * @note
     *   The notion of dominance does *not* concern itself with the merge
     *   precedence of edits or deletions - that is handled downstream.
@@ -95,5 +100,18 @@ trait CodeMotionAnalysis[Path]:
     *   Coincident insertions are also matched across the left and right
     *   sources, so these will yield the same dominant section.
     */
-  def dominantMatchingSectionFor(section: Section): Option[Section]
-end CodeMotionAnalysis
+  def dominantSection: Section = this match
+    case BaseAndLeft(_, leftSection)   => leftSection
+    case BaseAndRight(_, rightSection) => rightSection
+    case LeftAndRight(leftSection, _)  => leftSection
+    case AllThree(_, leftSection, _)   => leftSection
+
+  case BaseAndLeft(baseSection: Section, leftSection: Section)
+  case BaseAndRight(baseSection: Section, rightSection: Section)
+  case LeftAndRight(leftSection: Section, rightSection: Section)
+  case AllThree(
+      baseSection: Section,
+      leftSection: Section,
+      rightSection: Section
+  )
+end Match
