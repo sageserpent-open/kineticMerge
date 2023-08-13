@@ -301,10 +301,7 @@ object LongestCommonSubsequence:
     )
 
   end of
-
-  /** NOTE: the index is taken in the context of the original base, left and
-    * right elements.
-    */
+  
   enum Contribution[Element]:
     case Common(
         element: Element

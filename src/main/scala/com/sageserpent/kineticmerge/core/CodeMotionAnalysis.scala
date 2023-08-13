@@ -1,8 +1,8 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.Order
-import cats.collections.DisjointSets
-import com.sageserpent.kineticmerge.core.Match.{BaseAndLeft, BaseAndRight}
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.Match
+
 
 object CodeMotionAnalysis:
 
@@ -47,7 +47,7 @@ object CodeMotionAnalysis:
       right: Sources[Path]
   )(
       minimumSizeFractionForMotionDetection: Double
-  ): Either[Divergence.type, CodeMotionAnalysis[Path]] =
+  ): Either[AmbiguousMatch.type, CodeMotionAnalysis[Path]] =
     require(0 < minimumSizeFractionForMotionDetection)
     require(1 >= minimumSizeFractionForMotionDetection)
 
@@ -73,9 +73,38 @@ object CodeMotionAnalysis:
         override def right: Map[Path, File] = rightSections
     )
   end of
+  
+  // TODO - what happened?
+  case object AmbiguousMatch
 
-  // TODO: "Something went wrong!" - "What was it?"
-  case object Divergence
+  enum Match:
+    /** @return
+     * The dominant section in the match, provided the section is part of some
+     * match. If the difference(s) is/are due to whitespace changes then it
+     * will be from the left (our) contribution, as per Git merge. In addition,
+     * the overall match is also provided.
+     * @note
+     * The notion of dominance does *not* concern itself with the merge
+     * precedence of edits or deletions - that is handled downstream.
+     * @note
+     * Coincident insertions are also matched across the left and right
+     * sources, so these will yield the same dominant section.
+     */
+    def dominantSection: Section = this match
+      case BaseAndLeft(_, leftSection) => leftSection
+      case BaseAndRight(_, rightSection) => rightSection
+      case LeftAndRight(leftSection, _) => leftSection
+      case AllThree(_, leftSection, _) => leftSection
+
+    case BaseAndLeft(baseSection: Section, leftSection: Section)
+    case BaseAndRight(baseSection: Section, rightSection: Section)
+    case LeftAndRight(leftSection: Section, rightSection: Section)
+    case AllThree(
+                   baseSection: Section,
+                   leftSection: Section,
+                   rightSection: Section
+                 )
+  end Match
 
 end CodeMotionAnalysis
 
@@ -87,31 +116,4 @@ trait CodeMotionAnalysis[Path]:
   def matchFor(section: Section): Option[Match]
 end CodeMotionAnalysis
 
-enum Match:
-  /** @return
-    *   The dominant section in the match, provided the section is part of some
-    *   match. If the difference(s) is/are due to whitespace changes then it
-    *   will be from the left (our) contribution, as per Git merge. In addition,
-    *   the overall match is also provided.
-    * @note
-    *   The notion of dominance does *not* concern itself with the merge
-    *   precedence of edits or deletions - that is handled downstream.
-    * @note
-    *   Coincident insertions are also matched across the left and right
-    *   sources, so these will yield the same dominant section.
-    */
-  def dominantSection: Section = this match
-    case BaseAndLeft(_, leftSection)   => leftSection
-    case BaseAndRight(_, rightSection) => rightSection
-    case LeftAndRight(leftSection, _)  => leftSection
-    case AllThree(_, leftSection, _)   => leftSection
 
-  case BaseAndLeft(baseSection: Section, leftSection: Section)
-  case BaseAndRight(baseSection: Section, rightSection: Section)
-  case LeftAndRight(leftSection: Section, rightSection: Section)
-  case AllThree(
-      baseSection: Section,
-      leftSection: Section,
-      rightSection: Section
-  )
-end Match

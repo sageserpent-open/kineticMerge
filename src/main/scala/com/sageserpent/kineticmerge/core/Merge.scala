@@ -1,34 +1,31 @@
 package com.sageserpent.kineticmerge.core
 
-import com.sageserpent.kineticmerge.core.Merge.Location
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.Match
 
 object Merge:
-  def of[Element](
-      longestCommonSubsequence: LongestCommonSubsequence[Element]
-  ): Merge[Element] = ???
+  def of(
+      longestCommonSubsequence: LongestCommonSubsequence[Section]
+  )(matchFor: Section => Option[Match]): Either[Divergence.type, Result] = ???
 
-  /** Represents the location of an element within the merge.
-    */
-  case class Location(runIndex: Int, locationInRun: LocationInRun):
-  end Location
+  // TODO: "Something went wrong!" - "What was it?"
+  case object Divergence
 
-  enum LocationInRun:
-    case Merged(index: Int)
-    case ConflictLeftSide(index: Int)
-    case ConflictRightSide(index: Int)
-  end LocationInRun
+  enum Result:
+    /** @return
+      *   A map from moved sections in either the left or the right to their
+      *   associated rewrites, which may be edits or outright deletion. If a
+      *   section is from the base, or has not moved, or has no associated
+      *   rewrite then there will be no entry for it in the map.
+      * @note
+      *   Deletion of a section is represented by an associated empty string.
+      */
+    def movedSectionRewrites: Map[Section, String] = ???
 
-end Merge
-
-case class Merge[Element](
-    // An element may be present at more than one location in the merge,
-    // regardless of whether the merge is clean or has conflicts. In the
-    // wider scheme of things, this represents a special case of divergence
-    // where a section moves to different places within the same file -
-    // possibly even to both sides of the same conflict.
-    elementLocations: Map[Element, Set[Location]],
-    // If there are no conflicts, this gives the sequence of merged elements.
-    mergedElements: Option[Seq[Element]]
-):
+    case Merged(sections: IndexedSeq[Section])
+    case Conflicted(
+        leftSections: IndexedSeq[Section],
+        rightSections: IndexedSeq[Section]
+    )
+  end Result
 
 end Merge
