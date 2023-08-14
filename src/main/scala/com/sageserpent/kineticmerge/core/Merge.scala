@@ -4,7 +4,9 @@ import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.Match
 
 object Merge:
   def of(
-      longestCommonSubsequence: LongestCommonSubsequence[Section]
+      base: IndexedSeq[Section],
+      left: IndexedSeq[Section],
+      right: IndexedSeq[Section]
   )(matchFor: Section => Option[Match]): Either[Divergence.type, Result] = ???
 
   // TODO: "Something went wrong!" - "What was it?"
@@ -21,8 +23,8 @@ object Merge:
       */
     def movedSectionRewrites: Map[Section, String] = ???
 
-    case Merged(sections: IndexedSeq[Section])
-    case Conflicted(
+    case FullyMerged(sections: IndexedSeq[Section])
+    case MergedWithConflicts(
         leftSections: IndexedSeq[Section],
         rightSections: IndexedSeq[Section]
     )
