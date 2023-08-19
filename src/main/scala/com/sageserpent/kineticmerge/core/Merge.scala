@@ -15,13 +15,15 @@ object Merge:
   enum Result:
     /** @return
       *   A map from moved sections in either the left or the right to their
-      *   associated rewrites, which may be edits or outright deletion. If a
-      *   section is from the base, or has not moved, or has no associated
+      *   associated rewrites, which may represent edits or outright deletions.
+      *   If a section is from the base, or has not moved, or has no associated
       *   rewrite then there will be no entry for it in the map.
       * @note
-      *   Deletion of a section is represented by an associated empty string.
+      *   A section serving as an edit rewrite is wrapped in a [[Some]]
+      *   instance. A deletion rewrite of a section is represented by an
+      *   associated [[None]] instance.
       */
-    def movedSectionRewrites: Map[Section, String] = ???
+    def movedSectionRewrites: Map[Section, Option[Section]] = ???
 
     case FullyMerged(sections: IndexedSeq[Section])
     case MergedWithConflicts(
