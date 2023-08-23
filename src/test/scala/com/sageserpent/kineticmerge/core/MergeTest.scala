@@ -122,10 +122,12 @@ class MergeTest:
               coincidentDeletionFrequency
             )
       choices flatMap:
-        case MergeOutcome.LeftInsertion =>
+        case Move.LeftInsertion =>
           for
-            leftSection          <- zeroRelativeSections
-            simplerMergeTestCase <- simpleMergeTestCases(mergeContributorBias = MergeContributorBias.Left)
+            leftSection <- zeroRelativeSections
+            simplerMergeTestCase <- simpleMergeTestCases(mergeContributorBias =
+              MergeContributorBias.Left
+            )
           yield simplerMergeTestCase
             .focus(_.left)
             .modify(_ :+ leftSection)
@@ -137,16 +139,21 @@ class MergeTest:
                     leftSections,
                     rightSections
                   ) =>
-                Result.MergedWithConflicts(
-                  leftSections = leftSections :+ leftSection,
-                  rightSections = rightSections
-                )
+                Result
+                  .MergedWithConflicts(
+                    leftSections = leftSections :+ leftSection,
+                    rightSections = rightSections
+                  )
+            .focus(_.moves)
+            .modify(_ :+ Move.LeftInsertion)
           end for
 
-        case MergeOutcome.RightInsertion =>
+        case Move.RightInsertion =>
           for
-            rightSection         <- zeroRelativeSections
-            simplerMergeTestCase <- simpleMergeTestCases(mergeContributorBias = MergeContributorBias.Right)
+            rightSection <- zeroRelativeSections
+            simplerMergeTestCase <- simpleMergeTestCases(mergeContributorBias =
+              MergeContributorBias.Right
+            )
           yield simplerMergeTestCase
             .focus(_.right)
             .modify(_ :+ rightSection)
@@ -158,16 +165,19 @@ class MergeTest:
                     leftSections,
                     rightSections
                   ) =>
-                Result.MergedWithConflicts(
-                  leftSections = leftSections,
-                  rightSections = rightSections :+ rightSection
-                )
+                Result
+                  .MergedWithConflicts(
+                    leftSections = leftSections,
+                    rightSections = rightSections :+ rightSection
+                  )
+            .focus(_.moves)
+            .modify(_ :+ Move.RightInsertion)
           end for
 
-        case MergeOutcome.CoincidentInsertion =>
+        case Move.CoincidentInsertion =>
           for
-            leftSection       <- zeroRelativeSections
-            rightSection      <- zeroRelativeSections
+            leftSection  <- zeroRelativeSections
+            rightSection <- zeroRelativeSections
             simplerMergeTestCase <- simpleMergeTestCases(mergeContributorBias =
               MergeContributorBias.Neutral
             )
@@ -194,14 +204,18 @@ class MergeTest:
                       leftSections,
                       rightSections
                     ) =>
-                  Result.MergedWithConflicts(
-                    leftSections = leftSections :+ sectionMatch.dominantSection,
-                    rightSections =
-                      rightSections :+ sectionMatch.dominantSection
-                  )
+                  Result
+                    .MergedWithConflicts(
+                      leftSections =
+                        leftSections :+ sectionMatch.dominantSection,
+                      rightSections =
+                        rightSections :+ sectionMatch.dominantSection
+                    )
+              .focus(_.moves)
+              .modify(_ :+ Move.CoincidentInsertion)
           end for
 
-        case MergeOutcome.Preservation =>
+        case Move.Preservation =>
           for
             baseSection  <- zeroRelativeSections
             leftSection  <- zeroRelativeSections
@@ -236,14 +250,18 @@ class MergeTest:
                       leftSections,
                       rightSections
                     ) =>
-                  Result.MergedWithConflicts(
-                    leftSections = leftSections :+ sectionMatch.dominantSection,
-                    rightSections =
-                      rightSections :+ sectionMatch.dominantSection
-                  )
+                  Result
+                    .MergedWithConflicts(
+                      leftSections =
+                        leftSections :+ sectionMatch.dominantSection,
+                      rightSections =
+                        rightSections :+ sectionMatch.dominantSection
+                    )
+              .focus(_.moves)
+              .modify(_ :+ Move.Preservation)
           end for
 
-        case MergeOutcome.LeftDeletion =>
+        case Move.LeftDeletion =>
           for
             baseSection  <- zeroRelativeSections
             rightSection <- zeroRelativeSections
@@ -265,9 +283,11 @@ class MergeTest:
               .modify(
                 _ + (baseSection -> sectionMatch) + (rightSection -> sectionMatch)
               )
+              .focus(_.moves)
+              .modify(_ :+ Move.LeftDeletion)
           end for
 
-        case MergeOutcome.RightDeletion =>
+        case Move.RightDeletion =>
           for
             baseSection <- zeroRelativeSections
             leftSection <- zeroRelativeSections
@@ -289,9 +309,11 @@ class MergeTest:
               .modify(
                 _ + (baseSection -> sectionMatch) + (leftSection -> sectionMatch)
               )
+              .focus(_.moves)
+              .modify(_ :+ Move.RightDeletion)
           end for
 
-        case MergeOutcome.CoincidentDeletion =>
+        case Move.CoincidentDeletion =>
           for
             baseSection <- zeroRelativeSections
             simplerMergeTestCase <- simpleMergeTestCases(mergeContributorBias =
@@ -300,6 +322,8 @@ class MergeTest:
           yield simplerMergeTestCase
             .focus(_.base)
             .modify(_ :+ baseSection)
+            .focus(_.moves)
+            .modify(_ :+ Move.CoincidentDeletion)
           end for
 
     end extendedMergeTestCases
@@ -320,8 +344,16 @@ object MergeTest:
     left = IndexedSeq.empty,
     right = IndexedSeq.empty,
     matchesBySection = Map.empty,
-    expectedMerge = Result.FullyMerged(sections = IndexedSeq.empty)
+    expectedMerge = Result.FullyMerged(sections = IndexedSeq.empty),
+    moves = IndexedSeq.empty
   )
+  private val leftInsertionFrequency       = 7  -> Move.LeftInsertion
+  private val rightInsertionFrequency      = 7  -> Move.RightInsertion
+  private val coincidentInsertionFrequency = 4  -> Move.CoincidentInsertion
+  private val preservationFrequency        = 10 -> Move.Preservation
+  private val leftDeletionFrequency        = 7  -> Move.LeftDeletion
+  private val rightDeletionFrequency       = 7  -> Move.RightDeletion
+  private val coincidentDeletionFrequency  = 4  -> Move.CoincidentDeletion
 
   /** A fake section's contents are the textual form of its label; the sections
     * can be thought of covering an overall text that is the concatenation of
@@ -361,14 +393,15 @@ object MergeTest:
       left: IndexedSeq[Section],
       right: IndexedSeq[Section],
       matchesBySection: Map[Section, Match],
-      expectedMerge: Result
+      expectedMerge: Result,
+      moves: IndexedSeq[Move]
   )
 
   object FakeSection:
     private val startOffsetCache: MutableMap[Int, Int] = MutableMap.empty
   end FakeSection
 
-  enum MergeOutcome:
+  enum Move:
     case LeftInsertion
     case RightInsertion
     case CoincidentInsertion
@@ -376,21 +409,7 @@ object MergeTest:
     case LeftDeletion
     case RightDeletion
     case CoincidentDeletion
-  end MergeOutcome
-
-  private val leftInsertionFrequency = 7 -> MergeOutcome.LeftInsertion
-
-  private val rightInsertionFrequency = 7 -> MergeOutcome.RightInsertion
-
-  private val coincidentInsertionFrequency = 4 -> MergeOutcome.CoincidentInsertion
-
-  private val preservationFrequency = 10 -> MergeOutcome.Preservation
-
-  private val leftDeletionFrequency = 7 -> MergeOutcome.LeftDeletion
-
-  private val rightDeletionFrequency = 7 -> MergeOutcome.RightDeletion
-
-  private val coincidentDeletionFrequency = 4 -> MergeOutcome.CoincidentDeletion
+  end Move
 
   enum MergeContributorBias:
     case Left // Can be followed by another left or switch to over to a neutral or fragile.
