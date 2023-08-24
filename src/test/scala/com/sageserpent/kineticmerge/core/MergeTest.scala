@@ -19,7 +19,7 @@ import scala.collection.mutable.Map as MutableMap
 class MergeTest:
   @TestFactory
   def example: DynamicTests =
-    simpleMergeTestCases().withLimit(100).dynamicTests(pprint.pprintln(_))
+    simpleMergeTestCases().withLimit(300).dynamicTests(pprint.pprintln(_))
 
   /* Test ideas:
    * 1. Start with a merged sequence of sections and confabulate base, left and
@@ -64,7 +64,7 @@ class MergeTest:
    * yield a mocked dominant section that goes into the expected output. */
 
   def simpleMergeTestCases(
-      mergeContributorBias: MergeContributorBias = MergeContributorBias.Neutral
+      predecessorBias: MoveBias = MoveBias.Neutral
   ): Trials[MergeTestCase] =
 
     val extendedMergeTestCases =
@@ -80,10 +80,8 @@ class MergeTest:
         end for
       end zeroRelativeSections
 
-      // TODO - decide whether to generate conflict test cases, these are
-      // commented out for now...
-      val choices = mergeContributorBias match
-        case MergeContributorBias.Left =>
+      val choices = predecessorBias match
+        case MoveBias.Left =>
           trialsApi
             .chooseWithWeights(
               leftInsertionFrequency,
@@ -93,7 +91,7 @@ class MergeTest:
               rightDeletionFrequency,
               coincidentDeletionFrequency
             )
-        case MergeContributorBias.Right =>
+        case MoveBias.Right =>
           trialsApi
             .chooseWithWeights(
               rightInsertionFrequency,
@@ -103,7 +101,7 @@ class MergeTest:
               rightDeletionFrequency,
               coincidentDeletionFrequency
             )
-        case MergeContributorBias.Neutral =>
+        case MoveBias.Neutral =>
           trialsApi
             .chooseWithWeights(
               leftInsertionFrequency,
@@ -114,7 +112,7 @@ class MergeTest:
               rightDeletionFrequency,
               coincidentDeletionFrequency
             )
-        case MergeContributorBias.Fragile =>
+        case MoveBias.Fragile =>
           trialsApi
             .chooseWithWeights(
               coincidentInsertionFrequency,
@@ -125,42 +123,42 @@ class MergeTest:
         case Move.LeftInsertion =>
           for
             leftSection <- zeroRelativeSections
-            simplerMergeTestCase <- simpleMergeTestCases(mergeContributorBias =
-              MergeContributorBias.Left
+            simplerMergeTestCase <- simpleMergeTestCases(predecessorBias =
+              MoveBias.Left
             )
           yield simplerMergeTestCase
             .focus(_.left)
-            .modify(_ :+ leftSection)
+            .modify(leftSection +: _)
             .focus(_.expectedMerge)
             .modify:
               case Result.FullyMerged(sections) =>
-                Result.FullyMerged(sections :+ leftSection)
+                Result.FullyMerged(leftSection +: sections)
               case Result.MergedWithConflicts(
                     leftSections,
                     rightSections
                   ) =>
                 Result
                   .MergedWithConflicts(
-                    leftSections = leftSections :+ leftSection,
+                    leftSections = leftSection +: leftSections,
                     rightSections = rightSections
                   )
             .focus(_.moves)
-            .modify(_ :+ Move.LeftInsertion)
+            .modify(Move.LeftInsertion +: _)
           end for
 
         case Move.RightInsertion =>
           for
             rightSection <- zeroRelativeSections
-            simplerMergeTestCase <- simpleMergeTestCases(mergeContributorBias =
-              MergeContributorBias.Right
+            simplerMergeTestCase <- simpleMergeTestCases(predecessorBias =
+              MoveBias.Right
             )
           yield simplerMergeTestCase
             .focus(_.right)
-            .modify(_ :+ rightSection)
+            .modify(rightSection +: _)
             .focus(_.expectedMerge)
             .modify:
               case Result.FullyMerged(sections) =>
-                Result.FullyMerged(sections :+ rightSection)
+                Result.FullyMerged(rightSection +: sections)
               case Result.MergedWithConflicts(
                     leftSections,
                     rightSections
@@ -168,18 +166,18 @@ class MergeTest:
                 Result
                   .MergedWithConflicts(
                     leftSections = leftSections,
-                    rightSections = rightSections :+ rightSection
+                    rightSections = rightSection +: rightSections
                   )
             .focus(_.moves)
-            .modify(_ :+ Move.RightInsertion)
+            .modify(Move.RightInsertion +: _)
           end for
 
         case Move.CoincidentInsertion =>
           for
             leftSection  <- zeroRelativeSections
             rightSection <- zeroRelativeSections
-            simplerMergeTestCase <- simpleMergeTestCases(mergeContributorBias =
-              MergeContributorBias.Neutral
+            simplerMergeTestCase <- simpleMergeTestCases(predecessorBias =
+              MoveBias.Neutral
             )
           yield
             val sectionMatch = Match.LeftAndRight(
@@ -189,9 +187,9 @@ class MergeTest:
 
             simplerMergeTestCase
               .focus(_.left)
-              .modify(_ :+ leftSection)
+              .modify(leftSection +: _)
               .focus(_.right)
-              .modify(_ :+ rightSection)
+              .modify(rightSection +: _)
               .focus(_.matchesBySection)
               .modify(
                 _ + (leftSection -> sectionMatch) + (rightSection -> sectionMatch)
@@ -199,7 +197,7 @@ class MergeTest:
               .focus(_.expectedMerge)
               .modify:
                 case Result.FullyMerged(sections) =>
-                  Result.FullyMerged(sections :+ sectionMatch.dominantSection)
+                  Result.FullyMerged(sectionMatch.dominantSection +: sections)
                 case Result.MergedWithConflicts(
                       leftSections,
                       rightSections
@@ -207,12 +205,12 @@ class MergeTest:
                   Result
                     .MergedWithConflicts(
                       leftSections =
-                        leftSections :+ sectionMatch.dominantSection,
+                        sectionMatch.dominantSection +: leftSections,
                       rightSections =
-                        rightSections :+ sectionMatch.dominantSection
+                        sectionMatch.dominantSection +: rightSections
                     )
               .focus(_.moves)
-              .modify(_ :+ Move.CoincidentInsertion)
+              .modify(Move.CoincidentInsertion +: _)
           end for
 
         case Move.Preservation =>
@@ -220,8 +218,8 @@ class MergeTest:
             baseSection  <- zeroRelativeSections
             leftSection  <- zeroRelativeSections
             rightSection <- zeroRelativeSections
-            simplerMergeTestCase <- simpleMergeTestCases(mergeContributorBias =
-              MergeContributorBias.Neutral
+            simplerMergeTestCase <- simpleMergeTestCases(predecessorBias =
+              MoveBias.Neutral
             )
           yield
             val sectionMatch =
@@ -233,11 +231,11 @@ class MergeTest:
 
             simplerMergeTestCase
               .focus(_.base)
-              .modify(_ :+ baseSection)
+              .modify(baseSection +: _)
               .focus(_.left)
-              .modify(_ :+ leftSection)
+              .modify(leftSection +: _)
               .focus(_.right)
-              .modify(_ :+ rightSection)
+              .modify(rightSection +: _)
               .focus(_.matchesBySection)
               .modify(
                 _ + (baseSection -> sectionMatch) + (leftSection -> sectionMatch) + (rightSection -> sectionMatch)
@@ -245,7 +243,7 @@ class MergeTest:
               .focus(_.expectedMerge)
               .modify:
                 case Result.FullyMerged(sections) =>
-                  Result.FullyMerged(sections :+ sectionMatch.dominantSection)
+                  Result.FullyMerged(sectionMatch.dominantSection +: sections)
                 case Result.MergedWithConflicts(
                       leftSections,
                       rightSections
@@ -253,20 +251,20 @@ class MergeTest:
                   Result
                     .MergedWithConflicts(
                       leftSections =
-                        leftSections :+ sectionMatch.dominantSection,
+                        sectionMatch.dominantSection +: leftSections,
                       rightSections =
-                        rightSections :+ sectionMatch.dominantSection
+                        sectionMatch.dominantSection +: rightSections
                     )
               .focus(_.moves)
-              .modify(_ :+ Move.Preservation)
+              .modify(Move.Preservation +: _)
           end for
 
         case Move.LeftDeletion =>
           for
             baseSection  <- zeroRelativeSections
             rightSection <- zeroRelativeSections
-            simplerMergeTestCase <- simpleMergeTestCases(mergeContributorBias =
-              MergeContributorBias.Neutral
+            simplerMergeTestCase <- simpleMergeTestCases(predecessorBias =
+              MoveBias.Neutral
             )
           yield
             val sectionMatch = Match.BaseAndRight(
@@ -276,23 +274,23 @@ class MergeTest:
 
             simplerMergeTestCase
               .focus(_.base)
-              .modify(_ :+ baseSection)
+              .modify(baseSection +: _)
               .focus(_.right)
-              .modify(_ :+ rightSection)
+              .modify(rightSection +: _)
               .focus(_.matchesBySection)
               .modify(
                 _ + (baseSection -> sectionMatch) + (rightSection -> sectionMatch)
               )
               .focus(_.moves)
-              .modify(_ :+ Move.LeftDeletion)
+              .modify(Move.LeftDeletion +: _)
           end for
 
         case Move.RightDeletion =>
           for
             baseSection <- zeroRelativeSections
             leftSection <- zeroRelativeSections
-            simplerMergeTestCase <- simpleMergeTestCases(mergeContributorBias =
-              MergeContributorBias.Neutral
+            simplerMergeTestCase <- simpleMergeTestCases(predecessorBias =
+              MoveBias.Neutral
             )
           yield
             val sectionMatch = Match.BaseAndLeft(
@@ -302,28 +300,28 @@ class MergeTest:
 
             simplerMergeTestCase
               .focus(_.base)
-              .modify(_ :+ baseSection)
+              .modify(baseSection +: _)
               .focus(_.left)
-              .modify(_ :+ leftSection)
+              .modify(leftSection +: _)
               .focus(_.matchesBySection)
               .modify(
                 _ + (baseSection -> sectionMatch) + (leftSection -> sectionMatch)
               )
               .focus(_.moves)
-              .modify(_ :+ Move.RightDeletion)
+              .modify(Move.RightDeletion +: _)
           end for
 
         case Move.CoincidentDeletion =>
           for
             baseSection <- zeroRelativeSections
-            simplerMergeTestCase <- simpleMergeTestCases(mergeContributorBias =
-              MergeContributorBias.Fragile
+            simplerMergeTestCase <- simpleMergeTestCases(predecessorBias =
+              MoveBias.Fragile
             )
           yield simplerMergeTestCase
             .focus(_.base)
-            .modify(_ :+ baseSection)
+            .modify(baseSection +: _)
             .focus(_.moves)
-            .modify(_ :+ Move.CoincidentDeletion)
+            .modify(Move.CoincidentDeletion +: _)
           end for
 
     end extendedMergeTestCases
@@ -411,11 +409,11 @@ object MergeTest:
     case CoincidentDeletion
   end Move
 
-  enum MergeContributorBias:
+  enum MoveBias:
     case Left // Can be followed by another left or switch to over to a neutral or fragile.
     case Right // Can be followed by another right or switch to over to a neutral or fragile.
     case Neutral // Can be followed by anything.
     case Fragile // Can only be followed by another fragile or a neutral.
-  end MergeContributorBias
+  end MoveBias
 
 end MergeTest
