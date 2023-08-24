@@ -8,6 +8,7 @@ import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.Match
 import com.sageserpent.kineticmerge.core.Merge.Result
+import com.sageserpent.kineticmerge.core.Merge.Result.FullyMerged
 import com.sageserpent.kineticmerge.core.MergeTest.*
 import com.sageserpent.kineticmerge.core.MergeTest.FakeSection.startOffsetCache
 import monocle.syntax.all.*
@@ -18,8 +19,18 @@ import scala.collection.mutable.Map as MutableMap
 
 class MergeTest:
   @TestFactory
-  def example: DynamicTests =
-    simpleMergeTestCases().withLimit(300).dynamicTests(pprint.pprintln(_))
+  def fullMerge: DynamicTests =
+    simpleMergeTestCases().withLimit(300).dynamicTests { testCase =>
+      println("*************")
+      pprint.pprintln(testCase)
+
+      val Right(Merge.Result.FullyMerged(sections)) =
+        Merge.of(testCase.base, testCase.left, testCase.right)(
+          testCase.matchesBySection.get
+        ): @unchecked
+
+      assert(FullyMerged(sections) == testCase.expectedMerge)
+    }
 
   /* Test ideas:
    * 1. Start with a merged sequence of sections and confabulate base, left and
@@ -337,6 +348,10 @@ class MergeTest:
 end MergeTest
 
 object MergeTest:
+  val assert: Expecty = new Expecty:
+    override val showLocation: Boolean = true
+    override val showTypes: Boolean    = true
+  end assert
   private val emptyMergeTestCase: MergeTestCase = MergeTestCase(
     base = IndexedSeq.empty,
     left = IndexedSeq.empty,
