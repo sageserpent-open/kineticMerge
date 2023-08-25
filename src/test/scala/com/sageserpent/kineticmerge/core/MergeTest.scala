@@ -12,12 +12,32 @@ import com.sageserpent.kineticmerge.core.Merge.Result.FullyMerged
 import com.sageserpent.kineticmerge.core.MergeTest.*
 import com.sageserpent.kineticmerge.core.MergeTest.FakeSection.startOffsetCache
 import monocle.syntax.all.*
-import org.junit.jupiter.api.{DynamicTest, TestFactory}
+import org.junit.jupiter.api.{DynamicTest, Test, TestFactory}
 import pprint.*
 
 import scala.collection.mutable.Map as MutableMap
 
 class MergeTest:
+  @Test
+  def bugReproduction(): Unit =
+    val testCase = MergeTestCase(
+      base = Vector(FakeSection(zeroRelativeLabel = 5)),
+      left = Vector(FakeSection(zeroRelativeLabel = 2)),
+      right = Vector(),
+      matchesBySection = Map(),
+      expectedMerge = FullyMerged(sections = Vector(FakeSection(zeroRelativeLabel = 2))),
+      moves = Vector(Move.LeftInsertion, Move.CoincidentDeletion)
+    )
+
+    pprint.pprintln(testCase)
+
+    val Right(Merge.Result.FullyMerged(sections)) =
+      Merge.of(testCase.base, testCase.left, testCase.right)(
+        testCase.matchesBySection.get
+      ): @unchecked
+
+    assert(FullyMerged(sections) == testCase.expectedMerge)
+
   @TestFactory
   def fullMerge: DynamicTests =
     simpleMergeTestCases().withLimit(300).dynamicTests { testCase =>
