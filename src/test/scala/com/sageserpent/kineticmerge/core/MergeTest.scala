@@ -7,6 +7,7 @@ import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.Match
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Contribution
 import com.sageserpent.kineticmerge.core.Merge.Result
 import com.sageserpent.kineticmerge.core.Merge.Result.FullyMerged
 import com.sageserpent.kineticmerge.core.MergeTest.*
@@ -22,22 +23,29 @@ class MergeTest:
   def bugReproduction(): Unit =
     val testCase = MergeTestCase(
       base = Vector(FakeSection(zeroRelativeLabel = 5)),
-      left = Vector(FakeSection(zeroRelativeLabel = 2)),
-      right = Vector(FakeSection(zeroRelativeLabel = 6), FakeSection(zeroRelativeLabel = 9)),
+      left = Vector(
+        FakeSection(zeroRelativeLabel = 2),
+        FakeSection(zeroRelativeLabel = 6)
+      ),
+      right = Vector(FakeSection(zeroRelativeLabel = 9)),
       matchesBySection = Map(
-        FakeSection(zeroRelativeLabel = 5) -> Match.BaseAndRight(
+        FakeSection(zeroRelativeLabel = 5) -> Match.BaseAndLeft(
           baseSection = FakeSection(zeroRelativeLabel = 5),
-          rightSection = FakeSection(zeroRelativeLabel = 6)
+          leftSection = FakeSection(zeroRelativeLabel = 6)
         ),
-        FakeSection(zeroRelativeLabel = 6) -> Match.BaseAndRight(
+        FakeSection(zeroRelativeLabel = 6) -> Match.BaseAndLeft(
           baseSection = FakeSection(zeroRelativeLabel = 5),
-          rightSection = FakeSection(zeroRelativeLabel = 6)
+          leftSection = FakeSection(zeroRelativeLabel = 6)
         )
       ),
       expectedMerge = FullyMerged(
-        sections = Vector(FakeSection(zeroRelativeLabel = 2), FakeSection(zeroRelativeLabel = 9))
+        sections = Vector(
+          FakeSection(zeroRelativeLabel = 2),
+          FakeSection(zeroRelativeLabel = 9)
+        )
       ),
-      moves = Vector(Move.LeftInsertion, Move.LeftDeletion, Move.RightInsertion)
+      moves =
+        Vector(Move.LeftInsertion, Move.RightDeletion, Move.RightInsertion)
     )
 
     pprint.pprintln(testCase)
@@ -48,6 +56,7 @@ class MergeTest:
       ): @unchecked
 
     assert(FullyMerged(sections) == testCase.expectedMerge)
+  end bugReproduction
 
   @TestFactory
   def fullMerge: DynamicTests =
