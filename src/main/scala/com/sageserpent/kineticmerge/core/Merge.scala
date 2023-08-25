@@ -188,7 +188,9 @@ object Merge:
         case (
               Seq(
                 Contribution.Common(_) |
-                Contribution.CommonToBaseAndLeftOnly(_),
+                Contribution.CommonToBaseAndLeftOnly(_) |
+                Contribution.CommonToLeftAndRightOnly(_) |
+                Contribution.CommonToBaseAndRightOnly(_),
                 _*
               ) | Seq(),
               Seq(Contribution.Difference(leftSection), leftTail*),
@@ -210,7 +212,9 @@ object Merge:
         case (
               Seq(
                 Contribution.Common(_) |
-                Contribution.CommonToBaseAndRightOnly(_),
+                Contribution.CommonToBaseAndRightOnly(_) |
+                Contribution.CommonToLeftAndRightOnly(_) |
+                Contribution.CommonToBaseAndLeftOnly(_),
                 _*
               ) | Seq(),
               _,
