@@ -23,10 +23,21 @@ class MergeTest:
     val testCase = MergeTestCase(
       base = Vector(FakeSection(zeroRelativeLabel = 5)),
       left = Vector(FakeSection(zeroRelativeLabel = 2)),
-      right = Vector(),
-      matchesBySection = Map(),
-      expectedMerge = FullyMerged(sections = Vector(FakeSection(zeroRelativeLabel = 2))),
-      moves = Vector(Move.LeftInsertion, Move.CoincidentDeletion)
+      right = Vector(FakeSection(zeroRelativeLabel = 6), FakeSection(zeroRelativeLabel = 9)),
+      matchesBySection = Map(
+        FakeSection(zeroRelativeLabel = 5) -> Match.BaseAndRight(
+          baseSection = FakeSection(zeroRelativeLabel = 5),
+          rightSection = FakeSection(zeroRelativeLabel = 6)
+        ),
+        FakeSection(zeroRelativeLabel = 6) -> Match.BaseAndRight(
+          baseSection = FakeSection(zeroRelativeLabel = 5),
+          rightSection = FakeSection(zeroRelativeLabel = 6)
+        )
+      ),
+      expectedMerge = FullyMerged(
+        sections = Vector(FakeSection(zeroRelativeLabel = 2), FakeSection(zeroRelativeLabel = 9))
+      ),
+      moves = Vector(Move.LeftInsertion, Move.LeftDeletion, Move.RightInsertion)
     )
 
     pprint.pprintln(testCase)
