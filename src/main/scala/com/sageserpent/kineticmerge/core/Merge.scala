@@ -76,25 +76,25 @@ object Merge:
 
         case (
               Seq(
-                Contribution.CommonToBaseAndLeftOnly(baseSection),
+                Contribution.CommonToBaseAndRightOnly(baseSection),
                 baseTail*
               ),
+              Seq(Contribution.Difference(leftSection), leftTail*),
               Seq(
-                Contribution.CommonToBaseAndLeftOnly(leftSection),
-                leftTail*
-              ),
-              _
-            ) => // Right deletion.
+                Contribution.CommonToBaseAndRightOnly(rightSection),
+                rightTail*
+              )
+            ) => // Left edit.
           // Invariant - these must all belong to the same match; progress
           // through common elements is synchronized.
           val Some(matchForBaseSection) = matchFor(baseSection): @unchecked
 
-          assume(matchFor(leftSection).contains(matchForBaseSection))
+          assume(matchFor(rightSection).contains(matchForBaseSection))
 
-          mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
+          mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
             partialResult match
-              case FullyMerged(_) =>
-                partialResult
+              case FullyMerged(sections) =>
+                FullyMerged(sections :+ leftSection)
               case MergedWithConflicts(leftSections, rightSections) =>
                 partialResult
             // TODO: this is just a placeholder.
@@ -118,6 +118,58 @@ object Merge:
           assume(matchFor(rightSection).contains(matchForBaseSection))
 
           mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
+            partialResult match
+              case FullyMerged(_) =>
+                partialResult
+              case MergedWithConflicts(leftSections, rightSections) =>
+                partialResult
+            // TODO: this is just a placeholder.
+          )
+
+        case (
+              Seq(
+                Contribution.CommonToBaseAndLeftOnly(baseSection),
+                baseTail*
+              ),
+              Seq(
+                Contribution.CommonToBaseAndLeftOnly(leftSection),
+                leftTail*
+              ),
+              Seq(Contribution.Difference(rightSection), rightTail*)
+            ) => // Right edit.
+          // Invariant - these must all belong to the same match; progress
+          // through common elements is synchronized.
+          val Some(matchForBaseSection) = matchFor(baseSection): @unchecked
+
+          assume(matchFor(leftSection).contains(matchForBaseSection))
+
+          mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
+            partialResult match
+              case FullyMerged(sections) =>
+                FullyMerged(sections :+ rightSection)
+              case MergedWithConflicts(leftSections, rightSections) =>
+                partialResult
+            // TODO: this is just a placeholder.
+          )
+
+        case (
+              Seq(
+                Contribution.CommonToBaseAndLeftOnly(baseSection),
+                baseTail*
+              ),
+              Seq(
+                Contribution.CommonToBaseAndLeftOnly(leftSection),
+                leftTail*
+              ),
+              _
+            ) => // Right deletion.
+          // Invariant - these must all belong to the same match; progress
+          // through common elements is synchronized.
+          val Some(matchForBaseSection) = matchFor(baseSection): @unchecked
+
+          assume(matchFor(leftSection).contains(matchForBaseSection))
+
+          mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
             partialResult match
               case FullyMerged(_) =>
                 partialResult
