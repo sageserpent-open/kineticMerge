@@ -190,7 +190,7 @@ object Merge:
                 Contribution.Common(_) |
                 Contribution.CommonToBaseAndLeftOnly(_),
                 _*
-              ),
+              ) | Seq(),
               Seq(Contribution.Difference(leftSection), leftTail*),
               _
             ) => // Left insertion.
@@ -212,7 +212,7 @@ object Merge:
                 Contribution.Common(_) |
                 Contribution.CommonToBaseAndRightOnly(_),
                 _*
-              ),
+              ) | Seq(),
               _,
               Seq(Contribution.Difference(rightSection), rightTail*)
             ) => // Right insertion.
