@@ -186,6 +186,42 @@ object Merge:
           mergeBetweenRunsOfCommonElements(baseTail, left, right)(partialResult)
 
         case (
+              Seq(Contribution.CommonToBaseAndLeftOnly(_), _*),
+              Seq(Contribution.Difference(leftSection), leftTail*),
+              Seq(Contribution.Difference(_), _*)
+            ) => // Left insertion with pending right edit.
+          // Invariant - the left section cannot be part of a match when it is
+          // different.
+          assume(matchFor(leftSection).isEmpty)
+
+          mergeBetweenRunsOfCommonElements(base, leftTail, right)(
+            partialResult match
+              case FullyMerged(sections) =>
+                FullyMerged(sections :+ leftSection)
+              case MergedWithConflicts(leftSections, rightSections) =>
+                partialResult
+            // TODO: this is just a placeholder.
+          )
+
+        case (
+              Seq(Contribution.CommonToBaseAndRightOnly(_), _*),
+              Seq(Contribution.Difference(_), _*),
+              Seq(Contribution.Difference(rightSection), rightTail*)
+            ) => // Right insertion with pending left edit.
+          // Invariant - the left section cannot be part of a match when it is
+          // different.
+          assume(matchFor(rightSection).isEmpty)
+
+          mergeBetweenRunsOfCommonElements(base, left, rightTail)(
+            partialResult match
+              case FullyMerged(sections) =>
+                FullyMerged(sections :+ rightSection)
+              case MergedWithConflicts(leftSections, rightSections) =>
+                partialResult
+            // TODO: this is just a placeholder.
+          )
+
+        case (
               Seq(
                 Contribution.Common(_) |
                 Contribution.CommonToBaseAndLeftOnly(_) |
