@@ -60,7 +60,7 @@ class MergeTest:
 
   @TestFactory
   def fullMerge: DynamicTests =
-    simpleMergeTestCases().withLimit(300).dynamicTests { testCase =>
+    simpleMergeTestCases().withLimit(1000).dynamicTests { testCase =>
       println("*************")
       pprint.pprintln(testCase)
 
