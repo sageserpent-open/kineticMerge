@@ -22,14 +22,32 @@ class MergeTest:
   @Test
   def bugReproduction(): Unit =
     val testCase = MergeTestCase(
-      base = Vector(),
-      left = Vector(FakeSection(zeroRelativeLabel = 2)),
-      right = Vector(),
-      matchesBySection = Map(),
-      expectedMerge = FullyMerged(sections = Vector(FakeSection(zeroRelativeLabel = 2))),
-      moves = Vector(Move.LeftInsertion)
+      base = Vector(FakeSection(zeroRelativeLabel = 9), FakeSection(zeroRelativeLabel = 13)),
+      left = Vector(FakeSection(zeroRelativeLabel = 2), FakeSection(zeroRelativeLabel = 5)),
+      right = Vector(FakeSection(zeroRelativeLabel = 6), FakeSection(zeroRelativeLabel = 10)),
+      matchesBySection = Map(
+        FakeSection(zeroRelativeLabel = 9) -> Match.BaseAndRight(
+          baseSection = FakeSection(zeroRelativeLabel = 9),
+          rightSection = FakeSection(zeroRelativeLabel = 10)
+        ),
+        FakeSection(zeroRelativeLabel = 10) -> Match.BaseAndRight(
+          baseSection = FakeSection(zeroRelativeLabel = 9),
+          rightSection = FakeSection(zeroRelativeLabel = 10)
+        ),
+        FakeSection(zeroRelativeLabel = 5) -> Match.LeftAndRight(
+          leftSection = FakeSection(zeroRelativeLabel = 5),
+          rightSection = FakeSection(zeroRelativeLabel = 6)
+        ),
+        FakeSection(zeroRelativeLabel = 6) -> Match.LeftAndRight(
+          leftSection = FakeSection(zeroRelativeLabel = 5),
+          rightSection = FakeSection(zeroRelativeLabel = 6)
+        )
+      ),
+      expectedMerge = FullyMerged(
+        sections = Vector(FakeSection(zeroRelativeLabel = 2), FakeSection(zeroRelativeLabel = 5))
+      ),
+      moves = Vector(Move.LeftInsertion, Move.CoincidentInsertion, Move.LeftDeletion, Move.CoincidentDeletion)
     )
-
     pprint.pprintln(testCase)
 
     val Right(Merge.Result.FullyMerged(sections)) =
