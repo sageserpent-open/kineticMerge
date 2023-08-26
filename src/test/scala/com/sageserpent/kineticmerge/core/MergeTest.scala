@@ -22,11 +22,28 @@ class MergeTest:
   def bugReproduction(): Unit =
     val testCase = MergeTestCase(
       base = Vector(FakeSection(zeroRelativeLabel = 5)),
-      left = Vector(),
-      right = Vector(FakeSection(zeroRelativeLabel = 2)),
-      matchesBySection = Map(),
-      expectedMerge = FullyMerged(sections = Vector(FakeSection(zeroRelativeLabel = 2))),
-      moves = Vector(Move.RightInsertion, Move.CoincidentDeletion)
+      left = Vector(FakeSection(zeroRelativeLabel = 9)),
+      right = Vector(
+        FakeSection(zeroRelativeLabel = 2),
+        FakeSection(zeroRelativeLabel = 6)
+      ),
+      matchesBySection = Map(
+        FakeSection(zeroRelativeLabel = 5) -> Match.BaseAndRight(
+          baseSection = FakeSection(zeroRelativeLabel = 5),
+          rightSection = FakeSection(zeroRelativeLabel = 6)
+        ),
+        FakeSection(zeroRelativeLabel = 6) -> Match.BaseAndRight(
+          baseSection = FakeSection(zeroRelativeLabel = 5),
+          rightSection = FakeSection(zeroRelativeLabel = 6)
+        )
+      ),
+      expectedMerge = FullyMerged(
+        sections = Vector(
+          FakeSection(zeroRelativeLabel = 2),
+          FakeSection(zeroRelativeLabel = 9)
+        )
+      ),
+      moves = Vector(Move.RightInsertion, Move.LeftDeletion, Move.LeftInsertion)
     )
 
     pprint.pprintln(testCase)
@@ -37,6 +54,7 @@ class MergeTest:
       ): @unchecked
 
     assert(FullyMerged(sections) == testCase.expectedMerge)
+  end bugReproduction
 
   @TestFactory
   def fullMerge: DynamicTests =
@@ -95,9 +113,9 @@ class MergeTest:
    * yield a mocked dominant section that goes into the expected output. */
 
   def simpleMergeTestCases(
-                            predecessorBias: MoveBias = MoveBias.Neutral,
-                            precedingLeftDeletions: Boolean = false,
-                            precedingRightDeletions: Boolean = false
+      predecessorBias: MoveBias = MoveBias.Neutral,
+      precedingLeftDeletions: Boolean = false,
+      precedingRightDeletions: Boolean = false
   ): Trials[MergeTestCase] =
 
     val extendedMergeTestCases =
@@ -300,7 +318,7 @@ class MergeTest:
             rightSection <- zeroRelativeSections
             simplerMergeTestCase <- simpleMergeTestCases(
               predecessorBias = MoveBias.Neutral,
-              precedingLeftDeletions =true,
+              precedingLeftDeletions = true,
               precedingRightDeletions = precedingRightDeletions
             )
           yield
@@ -329,7 +347,7 @@ class MergeTest:
             simplerMergeTestCase <- simpleMergeTestCases(
               predecessorBias = MoveBias.Neutral,
               precedingLeftDeletions = precedingLeftDeletions,
-              precedingRightDeletions =true
+              precedingRightDeletions = true
             )
           yield
             val sectionMatch = Match.BaseAndLeft(
