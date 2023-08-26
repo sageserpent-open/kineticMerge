@@ -22,36 +22,37 @@ class MergeTest:
   @Test
   def bugReproduction(): Unit =
     val testCase = MergeTestCase(
-      base = Vector(FakeSection(zeroRelativeLabel = 5), FakeSection(zeroRelativeLabel = 12)),
-      left = Vector(FakeSection(zeroRelativeLabel = 9)),
-      right = Vector(
-        FakeSection(zeroRelativeLabel = 2),
+      base = Vector(FakeSection(zeroRelativeLabel = 2), FakeSection(zeroRelativeLabel = 9)),
+      left = Vector(
+        FakeSection(zeroRelativeLabel = 3),
         FakeSection(zeroRelativeLabel = 6),
-        FakeSection(zeroRelativeLabel = 13)
+        FakeSection(zeroRelativeLabel = 10)
       ),
+      right = Vector(FakeSection(zeroRelativeLabel = 13)),
       matchesBySection = Map(
-        FakeSection(zeroRelativeLabel = 12) -> Match.BaseAndRight(
-          baseSection = FakeSection(zeroRelativeLabel = 12),
-          rightSection = FakeSection(zeroRelativeLabel = 13)
+        FakeSection(zeroRelativeLabel = 9) -> Match.BaseAndLeft(
+          baseSection = FakeSection(zeroRelativeLabel = 9),
+          leftSection = FakeSection(zeroRelativeLabel = 10)
         ),
-        FakeSection(zeroRelativeLabel = 13) -> Match.BaseAndRight(
-          baseSection = FakeSection(zeroRelativeLabel = 12),
-          rightSection = FakeSection(zeroRelativeLabel = 13)
+        FakeSection(zeroRelativeLabel = 10) -> Match.BaseAndLeft(
+          baseSection = FakeSection(zeroRelativeLabel = 9),
+          leftSection = FakeSection(zeroRelativeLabel = 10)
         ),
-        FakeSection(zeroRelativeLabel = 5) -> Match.BaseAndRight(
-          baseSection = FakeSection(zeroRelativeLabel = 5),
-          rightSection = FakeSection(zeroRelativeLabel = 6)
+        FakeSection(zeroRelativeLabel = 2) -> Match.BaseAndLeft(
+          baseSection = FakeSection(zeroRelativeLabel = 2),
+          leftSection = FakeSection(zeroRelativeLabel = 3)
         ),
-        FakeSection(zeroRelativeLabel = 6) -> Match.BaseAndRight(
-          baseSection = FakeSection(zeroRelativeLabel = 5),
-          rightSection = FakeSection(zeroRelativeLabel = 6)
+        FakeSection(zeroRelativeLabel = 3) -> Match.BaseAndLeft(
+          baseSection = FakeSection(zeroRelativeLabel = 2),
+          leftSection = FakeSection(zeroRelativeLabel = 3)
         )
       ),
       expectedMerge = FullyMerged(
-        sections = Vector(FakeSection(zeroRelativeLabel = 2), FakeSection(zeroRelativeLabel = 9))
+        sections = Vector(FakeSection(zeroRelativeLabel = 6), FakeSection(zeroRelativeLabel = 13))
       ),
-      moves = Vector(Move.RightInsertion, Move.LeftDeletion, Move.LeftInsertion, Move.LeftDeletion)
+      moves = Vector(Move.RightDeletion, Move.LeftInsertion, Move.RightDeletion, Move.RightInsertion)
     )
+
     pprint.pprintln(testCase)
 
     val Right(Merge.Result.FullyMerged(sections)) =
