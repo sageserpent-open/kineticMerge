@@ -7,6 +7,7 @@ import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.Match
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Contribution
 import com.sageserpent.kineticmerge.core.Merge.Result
 import com.sageserpent.kineticmerge.core.Merge.Result.FullyMerged
 import com.sageserpent.kineticmerge.core.MergeTest.*
@@ -28,13 +29,13 @@ class MergeTest:
         FakeSection(zeroRelativeLabel = 6)
       ),
       matchesBySection = Map(
-        FakeSection(zeroRelativeLabel = 5) -> Match.BaseAndRight(
+        FakeSection(zeroRelativeLabel = 5) -> Match.BaseAndLeft(
           baseSection = FakeSection(zeroRelativeLabel = 5),
-          rightSection = FakeSection(zeroRelativeLabel = 6)
+          leftSection = FakeSection(zeroRelativeLabel = 6)
         ),
-        FakeSection(zeroRelativeLabel = 6) -> Match.BaseAndRight(
+        FakeSection(zeroRelativeLabel = 6) -> Match.BaseAndLeft(
           baseSection = FakeSection(zeroRelativeLabel = 5),
-          rightSection = FakeSection(zeroRelativeLabel = 6)
+          leftSection = FakeSection(zeroRelativeLabel = 6)
         )
       ),
       expectedMerge = FullyMerged(

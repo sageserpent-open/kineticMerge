@@ -180,27 +180,17 @@ object Merge:
 
         case (
               Seq(Contribution.Difference(baseSection), baseTail*),
-              Seq(Contribution.Difference(leftSection), leftTail*),
-              Seq(Contribution.Difference(rightSection), rightTail*)
-            ) => // Edit conflict.
-          partialResult // TODO: this is just a placeholder.
-
-        case (
-              _,
-              Seq(Contribution.Difference(leftSection), leftTail*),
-              Seq(Contribution.Difference(rightSection), rightTail*)
-            ) => // Insertion conflict.
-          partialResult // TODO: this is just a placeholder.
-
-        case (
-              Seq(Contribution.Difference(baseSection), baseTail*),
               _,
               _
             ) => // Coincident deletion.
           mergeBetweenRunsOfCommonElements(baseTail, left, right)(partialResult)
 
         case (
-              _,
+              Seq(
+                Contribution.Common(_) |
+                Contribution.CommonToBaseAndLeftOnly(_),
+                _*
+              ),
               Seq(Contribution.Difference(leftSection), leftTail*),
               _
             ) => // Left insertion.
@@ -218,7 +208,11 @@ object Merge:
           )
 
         case (
-              _,
+              Seq(
+                Contribution.Common(_) |
+                Contribution.CommonToBaseAndRightOnly(_),
+                _*
+              ),
               _,
               Seq(Contribution.Difference(rightSection), rightTail*)
             ) => // Right insertion.
@@ -234,6 +228,13 @@ object Merge:
                 partialResult
             // TODO: this is just a placeholder.
           )
+
+        case (
+              _,
+              Seq(Contribution.Difference(leftSection), leftTail*),
+              Seq(Contribution.Difference(rightSection), rightTail*)
+            ) => // Insertion conflict.
+          partialResult // TODO: this is just a placeholder.
 
         case (Seq(), Seq(), Seq()) => // Terminating case!
           partialResult
