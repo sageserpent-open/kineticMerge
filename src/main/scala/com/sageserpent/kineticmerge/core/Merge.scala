@@ -145,7 +145,7 @@ object Merge:
               _,
               _
             ) => // Coincident deletion.
-          partialResult
+          mergeBetweenRunsOfCommonElements(baseTail, left, right)(partialResult)
 
         case (
               _,
@@ -193,7 +193,7 @@ object Merge:
 
     val emptyResult: Result = FullyMerged(IndexedSeq.empty)
 
-    // TODO: for now, failure is not tolerated, but obviously that wil have to
+    // TODO: for now, failure is not tolerated, but obviously that will have to
     // be accommodated - both merge conflicts and later divergences.
     Right(
       mergeBetweenRunsOfCommonElements(
