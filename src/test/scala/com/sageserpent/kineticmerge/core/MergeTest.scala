@@ -75,7 +75,9 @@ class MergeTest:
    * yield a mocked dominant section that goes into the expected output. */
 
   def simpleMergeTestCases(
-      predecessorBias: MoveBias = MoveBias.Neutral
+                            predecessorBias: MoveBias = MoveBias.Neutral,
+                            precedingLeftDeletions: Boolean = false,
+                            precedingRightDeletions: Boolean = false
   ): Trials[MergeTestCase] =
 
     val extendedMergeTestCases =
@@ -95,7 +97,7 @@ class MergeTest:
         case MoveBias.Left =>
           trialsApi
             .chooseWithWeights(
-              leftInsertionFrequency,
+              leftInsertionFrequency(precedingRightDeletions),
               coincidentInsertionFrequency,
               preservationFrequency,
               leftDeletionFrequency,
@@ -105,7 +107,7 @@ class MergeTest:
         case MoveBias.Right =>
           trialsApi
             .chooseWithWeights(
-              rightInsertionFrequency,
+              rightInsertionFrequency(precedingLeftDeletions),
               coincidentInsertionFrequency,
               preservationFrequency,
               leftDeletionFrequency,
@@ -115,8 +117,8 @@ class MergeTest:
         case MoveBias.Neutral =>
           trialsApi
             .chooseWithWeights(
-              leftInsertionFrequency,
-              rightInsertionFrequency,
+              leftInsertionFrequency(precedingRightDeletions),
+              rightInsertionFrequency(precedingLeftDeletions),
               coincidentInsertionFrequency,
               preservationFrequency,
               leftDeletionFrequency,
@@ -134,8 +136,9 @@ class MergeTest:
         case Move.LeftInsertion =>
           for
             leftSection <- zeroRelativeSections
-            simplerMergeTestCase <- simpleMergeTestCases(predecessorBias =
-              MoveBias.Left
+            simplerMergeTestCase <- simpleMergeTestCases(
+              predecessorBias = MoveBias.Left,
+              precedingLeftDeletions = precedingLeftDeletions
             )
           yield simplerMergeTestCase
             .focus(_.left)
@@ -160,8 +163,9 @@ class MergeTest:
         case Move.RightInsertion =>
           for
             rightSection <- zeroRelativeSections
-            simplerMergeTestCase <- simpleMergeTestCases(predecessorBias =
-              MoveBias.Right
+            simplerMergeTestCase <- simpleMergeTestCases(
+              predecessorBias = MoveBias.Right,
+              precedingRightDeletions = precedingRightDeletions
             )
           yield simplerMergeTestCase
             .focus(_.right)
@@ -274,8 +278,10 @@ class MergeTest:
           for
             baseSection  <- zeroRelativeSections
             rightSection <- zeroRelativeSections
-            simplerMergeTestCase <- simpleMergeTestCases(predecessorBias =
-              MoveBias.Neutral
+            simplerMergeTestCase <- simpleMergeTestCases(
+              predecessorBias = MoveBias.Neutral,
+              precedingLeftDeletions =true,
+              precedingRightDeletions = precedingRightDeletions
             )
           yield
             val sectionMatch = Match.BaseAndRight(
@@ -300,8 +306,10 @@ class MergeTest:
           for
             baseSection <- zeroRelativeSections
             leftSection <- zeroRelativeSections
-            simplerMergeTestCase <- simpleMergeTestCases(predecessorBias =
-              MoveBias.Neutral
+            simplerMergeTestCase <- simpleMergeTestCases(
+              predecessorBias = MoveBias.Neutral,
+              precedingLeftDeletions = precedingLeftDeletions,
+              precedingRightDeletions =true
             )
           yield
             val sectionMatch = Match.BaseAndLeft(
@@ -367,6 +375,12 @@ object MergeTest:
   private val leftDeletionFrequency        = 7  -> Move.LeftDeletion
   private val rightDeletionFrequency       = 7  -> Move.RightDeletion
   private val coincidentDeletionFrequency  = 4  -> Move.CoincidentDeletion
+
+  private def leftInsertionFrequency(precedingRightDeletions: Boolean) =
+    (if precedingRightDeletions then 0 else 7) -> Move.LeftInsertion
+
+  private def rightInsertionFrequency(precedingLeftDeletions: Boolean) =
+    (if precedingLeftDeletions then 0 else 7) -> Move.RightInsertion
 
   /** A fake section's contents are the textual form of its label; the sections
     * can be thought of covering an overall text that is the concatenation of
