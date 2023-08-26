@@ -22,37 +22,32 @@ class MergeTest:
   @Test
   def bugReproduction(): Unit =
     val testCase = MergeTestCase(
-      base = Vector(FakeSection(zeroRelativeLabel = 2), FakeSection(zeroRelativeLabel = 9)),
-      left = Vector(
-        FakeSection(zeroRelativeLabel = 3),
-        FakeSection(zeroRelativeLabel = 6),
-        FakeSection(zeroRelativeLabel = 10)
-      ),
-      right = Vector(FakeSection(zeroRelativeLabel = 13)),
+      base = Vector(FakeSection(zeroRelativeLabel = 9), FakeSection(zeroRelativeLabel = 13)),
+      left = Vector(FakeSection(zeroRelativeLabel = 2), FakeSection(zeroRelativeLabel = 5)),
+      right = Vector(FakeSection(zeroRelativeLabel = 6), FakeSection(zeroRelativeLabel = 10)),
       matchesBySection = Map(
-        FakeSection(zeroRelativeLabel = 9) -> Match.BaseAndLeft(
+        FakeSection(zeroRelativeLabel = 9) -> Match.BaseAndRight(
           baseSection = FakeSection(zeroRelativeLabel = 9),
-          leftSection = FakeSection(zeroRelativeLabel = 10)
+          rightSection = FakeSection(zeroRelativeLabel = 10)
         ),
-        FakeSection(zeroRelativeLabel = 10) -> Match.BaseAndLeft(
+        FakeSection(zeroRelativeLabel = 10) -> Match.BaseAndRight(
           baseSection = FakeSection(zeroRelativeLabel = 9),
-          leftSection = FakeSection(zeroRelativeLabel = 10)
+          rightSection = FakeSection(zeroRelativeLabel = 10)
         ),
-        FakeSection(zeroRelativeLabel = 2) -> Match.BaseAndLeft(
-          baseSection = FakeSection(zeroRelativeLabel = 2),
-          leftSection = FakeSection(zeroRelativeLabel = 3)
+        FakeSection(zeroRelativeLabel = 5) -> Match.LeftAndRight(
+          leftSection = FakeSection(zeroRelativeLabel = 5),
+          rightSection = FakeSection(zeroRelativeLabel = 6)
         ),
-        FakeSection(zeroRelativeLabel = 3) -> Match.BaseAndLeft(
-          baseSection = FakeSection(zeroRelativeLabel = 2),
-          leftSection = FakeSection(zeroRelativeLabel = 3)
+        FakeSection(zeroRelativeLabel = 6) -> Match.LeftAndRight(
+          leftSection = FakeSection(zeroRelativeLabel = 5),
+          rightSection = FakeSection(zeroRelativeLabel = 6)
         )
       ),
       expectedMerge = FullyMerged(
-        sections = Vector(FakeSection(zeroRelativeLabel = 6), FakeSection(zeroRelativeLabel = 13))
+        sections = Vector(FakeSection(zeroRelativeLabel = 2), FakeSection(zeroRelativeLabel = 5))
       ),
-      moves = Vector(Move.RightDeletion, Move.LeftInsertion, Move.RightDeletion, Move.RightInsertion)
+      moves = Vector(Move.LeftInsertion, Move.CoincidentInsertion, Move.LeftDeletion, Move.CoincidentDeletion)
     )
-
     pprint.pprintln(testCase)
 
     val Right(Merge.Result.FullyMerged(sections)) =
@@ -65,7 +60,7 @@ class MergeTest:
 
   @TestFactory
   def fullMerge: DynamicTests =
-    simpleMergeTestCases().withLimit(300).dynamicTests { testCase =>
+    simpleMergeTestCases().withLimit(1000).dynamicTests { testCase =>
       println("*************")
       pprint.pprintln(testCase)
 
@@ -120,7 +115,9 @@ class MergeTest:
    * yield a mocked dominant section that goes into the expected output. */
 
   def simpleMergeTestCases(
-      predecessorBias: MoveBias = MoveBias.Neutral
+      predecessorBias: MoveBias = MoveBias.Neutral,
+      precedingLeftDeletions: Boolean = false,
+      precedingRightDeletions: Boolean = false
   ): Trials[MergeTestCase] =
 
     val extendedMergeTestCases =
@@ -140,7 +137,7 @@ class MergeTest:
         case MoveBias.Left =>
           trialsApi
             .chooseWithWeights(
-              leftInsertionFrequency,
+              leftInsertionFrequency(precedingRightDeletions),
               coincidentInsertionFrequency,
               preservationFrequency,
               leftDeletionFrequency,
@@ -150,7 +147,7 @@ class MergeTest:
         case MoveBias.Right =>
           trialsApi
             .chooseWithWeights(
-              rightInsertionFrequency,
+              rightInsertionFrequency(precedingLeftDeletions),
               coincidentInsertionFrequency,
               preservationFrequency,
               leftDeletionFrequency,
@@ -160,8 +157,8 @@ class MergeTest:
         case MoveBias.Neutral =>
           trialsApi
             .chooseWithWeights(
-              leftInsertionFrequency,
-              rightInsertionFrequency,
+              leftInsertionFrequency(precedingRightDeletions),
+              rightInsertionFrequency(precedingLeftDeletions),
               coincidentInsertionFrequency,
               preservationFrequency,
               leftDeletionFrequency,
@@ -179,8 +176,9 @@ class MergeTest:
         case Move.LeftInsertion =>
           for
             leftSection <- zeroRelativeSections
-            simplerMergeTestCase <- simpleMergeTestCases(predecessorBias =
-              MoveBias.Left
+            simplerMergeTestCase <- simpleMergeTestCases(
+              predecessorBias = MoveBias.Left,
+              precedingLeftDeletions = precedingLeftDeletions
             )
           yield simplerMergeTestCase
             .focus(_.left)
@@ -205,8 +203,9 @@ class MergeTest:
         case Move.RightInsertion =>
           for
             rightSection <- zeroRelativeSections
-            simplerMergeTestCase <- simpleMergeTestCases(predecessorBias =
-              MoveBias.Right
+            simplerMergeTestCase <- simpleMergeTestCases(
+              predecessorBias = MoveBias.Right,
+              precedingRightDeletions = precedingRightDeletions
             )
           yield simplerMergeTestCase
             .focus(_.right)
@@ -319,8 +318,10 @@ class MergeTest:
           for
             baseSection  <- zeroRelativeSections
             rightSection <- zeroRelativeSections
-            simplerMergeTestCase <- simpleMergeTestCases(predecessorBias =
-              MoveBias.Neutral
+            simplerMergeTestCase <- simpleMergeTestCases(
+              predecessorBias = MoveBias.Neutral,
+              precedingLeftDeletions = true,
+              precedingRightDeletions = precedingRightDeletions
             )
           yield
             val sectionMatch = Match.BaseAndRight(
@@ -345,8 +346,10 @@ class MergeTest:
           for
             baseSection <- zeroRelativeSections
             leftSection <- zeroRelativeSections
-            simplerMergeTestCase <- simpleMergeTestCases(predecessorBias =
-              MoveBias.Neutral
+            simplerMergeTestCase <- simpleMergeTestCases(
+              predecessorBias = MoveBias.Neutral,
+              precedingLeftDeletions = precedingLeftDeletions,
+              precedingRightDeletions = true
             )
           yield
             val sectionMatch = Match.BaseAndLeft(
@@ -412,6 +415,12 @@ object MergeTest:
   private val leftDeletionFrequency        = 7  -> Move.LeftDeletion
   private val rightDeletionFrequency       = 7  -> Move.RightDeletion
   private val coincidentDeletionFrequency  = 4  -> Move.CoincidentDeletion
+
+  private def leftInsertionFrequency(precedingRightDeletions: Boolean) =
+    (if precedingRightDeletions then 0 else 7) -> Move.LeftInsertion
+
+  private def rightInsertionFrequency(precedingLeftDeletions: Boolean) =
+    (if precedingLeftDeletions then 0 else 7) -> Move.RightInsertion
 
   /** A fake section's contents are the textual form of its label; the sections
     * can be thought of covering an overall text that is the concatenation of
