@@ -9,7 +9,7 @@ import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.Match
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Contribution
 import com.sageserpent.kineticmerge.core.Merge.Result
-import com.sageserpent.kineticmerge.core.Merge.Result.FullyMerged
+import com.sageserpent.kineticmerge.core.Merge.Result.*
 import com.sageserpent.kineticmerge.core.MergeTest.*
 import com.sageserpent.kineticmerge.core.MergeTest.FakeSection.startOffsetCache
 import monocle.syntax.all.*
@@ -77,17 +77,40 @@ class MergeTest:
 
   @TestFactory
   def fullMerge: DynamicTests =
-    simpleMergeTestCases().withLimit(1000).dynamicTests { testCase =>
-      println("*************")
-      pprint.pprintln(testCase)
+    simpleMergeTestCases(provokeConflict = false)
+      .withLimit(1000)
+      .dynamicTests: testCase =>
+        println("*************")
+        pprint.pprintln(testCase)
 
-      val Right(Merge.Result.FullyMerged(sections)) =
-        Merge.of(testCase.base, testCase.left, testCase.right)(
-          testCase.matchesBySection.get
-        ): @unchecked
+        val Right(Merge.Result.FullyMerged(sections)) =
+          Merge.of(testCase.base, testCase.left, testCase.right)(
+            testCase.matchesBySection.get
+          ): @unchecked
 
-      assert(FullyMerged(sections) == testCase.expectedMerge)
-    }
+        assert(FullyMerged(sections) == testCase.expectedMerge)
+
+  @TestFactory
+  def conflictedMerge: DynamicTests =
+    simpleMergeTestCases(provokeConflict = true)
+      .withLimit(1000)
+      .dynamicTests: testCase =>
+        println("*************")
+        pprint.pprintln(testCase)
+
+        val Right(
+          Merge.Result.MergedWithConflicts(leftSections, rightSections)
+        ) =
+          Merge.of(testCase.base, testCase.left, testCase.right)(
+            testCase.matchesBySection.get
+          ): @unchecked
+
+        assert(
+          MergedWithConflicts(
+            leftSections,
+            rightSections
+          ) == testCase.expectedMerge
+        )
 
   /* Test ideas:
    * 1. Start with a merged sequence of sections and confabulate base, left and
@@ -131,15 +154,18 @@ class MergeTest:
    * in a triple can be put into a match if desired, and that match be made to
    * yield a mocked dominant section that goes into the expected output. */
 
+  def simpleMergeTestCases(provokeConflict: Boolean): Trials[MergeTestCase] =
+    simpleMergeTestCases(provokeConflict = provokeConflict)(partialResult =
+      emptyMergeTestCase
+    )
+
   def simpleMergeTestCases(
       predecessorBias: MoveBias = MoveBias.Neutral,
       precedingLeftDeletions: Boolean = false,
       precedingRightDeletions: Boolean = false,
-      provokeConflict: Boolean = false
-  ): Trials[MergeTestCase] =
-
+      provokeConflict: Boolean
+  )(partialResult: MergeTestCase): Trials[MergeTestCase] =
     val extendedMergeTestCases =
-
       def zeroRelativeSections: Trials[Section] =
         // Using the complexity provides unique section labels.
         for
@@ -194,111 +220,115 @@ class MergeTest:
         case Move.LeftInsertion =>
           for
             leftSection <- zeroRelativeSections
-            simplerMergeTestCase <- simpleMergeTestCases(
+            result <- simpleMergeTestCases(
               predecessorBias = MoveBias.Left,
               precedingLeftDeletions = precedingLeftDeletions,
               provokeConflict = provokeConflict
+            )(
+              partialResult
+                .focus(_.left)
+                .modify(_ :+ leftSection)
+                .focus(_.expectedMerge)
+                .modify:
+                  case Result.FullyMerged(sections) =>
+                    predecessorBias match
+                      case MoveBias.CoincidentDeletion =>
+                        Result.MergedWithConflicts(
+                          leftSections = sections :+ leftSection,
+                          rightSections = sections
+                        )
+                      case _ => Result.FullyMerged(sections :+ leftSection)
+                  case Result.MergedWithConflicts(
+                        leftSections,
+                        rightSections
+                      ) =>
+                    Result
+                      .MergedWithConflicts(
+                        leftSections = leftSections :+ leftSection,
+                        rightSections = rightSections
+                      )
+                .focus(_.moves)
+                .modify(_ :+ Move.LeftInsertion)
             )
-          yield simplerMergeTestCase
-            .focus(_.left)
-            .modify(leftSection +: _)
-            .focus(_.expectedMerge)
-            .modify:
-              case Result.FullyMerged(sections) =>
-                predecessorBias match
-                  case MoveBias.CoincidentDeletion =>
-                    Result.MergedWithConflicts(
-                      leftSections = leftSection +: sections,
-                      rightSections = sections
-                    )
-                  case _ => Result.FullyMerged(leftSection +: sections)
-              case Result.MergedWithConflicts(
-                    leftSections,
-                    rightSections
-                  ) =>
-                Result
-                  .MergedWithConflicts(
-                    leftSections = leftSection +: leftSections,
-                    rightSections = rightSections
-                  )
-            .focus(_.moves)
-            .modify(Move.LeftInsertion +: _)
+          yield result
           end for
 
         case Move.RightInsertion =>
           for
             rightSection <- zeroRelativeSections
-            simplerMergeTestCase <- simpleMergeTestCases(
+            result <- simpleMergeTestCases(
               predecessorBias = MoveBias.Right,
               precedingRightDeletions = precedingRightDeletions,
               provokeConflict = provokeConflict
+            )(
+              partialResult
+                .focus(_.right)
+                .modify(_ :+ rightSection)
+                .focus(_.expectedMerge)
+                .modify:
+                  case Result.FullyMerged(sections) =>
+                    predecessorBias match
+                      case MoveBias.CoincidentDeletion =>
+                        Result.MergedWithConflicts(
+                          leftSections = sections,
+                          rightSections = sections :+ rightSection
+                        )
+                      case _ => Result.FullyMerged(sections :+ rightSection)
+                  case Result.MergedWithConflicts(
+                        leftSections,
+                        rightSections
+                      ) =>
+                    Result
+                      .MergedWithConflicts(
+                        leftSections = leftSections,
+                        rightSections = rightSections :+ rightSection
+                      )
+                .focus(_.moves)
+                .modify(_ :+ Move.RightInsertion)
             )
-          yield simplerMergeTestCase
-            .focus(_.right)
-            .modify(rightSection +: _)
-            .focus(_.expectedMerge)
-            .modify:
-              case Result.FullyMerged(sections) =>
-                predecessorBias match
-                  case MoveBias.CoincidentDeletion =>
-                    Result.MergedWithConflicts(
-                      leftSections = sections,
-                      rightSections = rightSection +: sections
-                    )
-                  case _ => Result.FullyMerged(rightSection +: sections)
-              case Result.MergedWithConflicts(
-                    leftSections,
-                    rightSections
-                  ) =>
-                Result
-                  .MergedWithConflicts(
-                    leftSections = leftSections,
-                    rightSections = rightSection +: rightSections
-                  )
-            .focus(_.moves)
-            .modify(Move.RightInsertion +: _)
+          yield result
           end for
 
         case Move.CoincidentInsertion =>
           for
             leftSection  <- zeroRelativeSections
             rightSection <- zeroRelativeSections
-            simplerMergeTestCase <- simpleMergeTestCases(
+            result <- simpleMergeTestCases(
               predecessorBias = MoveBias.Neutral,
               provokeConflict = provokeConflict
-            )
-          yield
-            val sectionMatch = Match.LeftAndRight(
-              leftSection = leftSection,
-              rightSection = rightSection
-            )
-
-            simplerMergeTestCase
-              .focus(_.left)
-              .modify(leftSection +: _)
-              .focus(_.right)
-              .modify(rightSection +: _)
-              .focus(_.matchesBySection)
-              .modify(
-                _ + (leftSection -> sectionMatch) + (rightSection -> sectionMatch)
+            ):
+              val sectionMatch = Match.LeftAndRight(
+                leftSection = leftSection,
+                rightSection = rightSection
               )
-              .focus(_.expectedMerge)
-              .modify:
-                case Result.FullyMerged(sections) =>
-                  Result.FullyMerged(sectionMatch.dominantSection +: sections)
-                case Result.MergedWithConflicts(
-                      leftSections,
-                      rightSections
-                    ) =>
-                  Result
-                    .MergedWithConflicts(
-                      leftSections =
-                        sectionMatch.dominantSection +: leftSections,
-                      rightSections =
-                        sectionMatch.dominantSection +: rightSections
-                    )
-              .focus(_.moves)
-              .modify(Move.CoincidentInsertion +: _)
+
+              partialResult
+                .focus(_.left)
+                .modify(_ :+ leftSection)
+                .focus(_.right)
+                .modify(_ :+ rightSection)
+                .focus(_.matchesBySection)
+                .modify(
+                  _ + (leftSection -> sectionMatch) + (rightSection -> sectionMatch)
+                )
+                .focus(_.expectedMerge)
+                .modify:
+                  case Result.FullyMerged(sections) =>
+                    Result.FullyMerged(sections :+ sectionMatch.dominantSection)
+                  case Result.MergedWithConflicts(
+                        leftSections,
+                        rightSections
+                      ) =>
+                    Result
+                      .MergedWithConflicts(
+                        leftSections =
+                          leftSections :+ sectionMatch.dominantSection,
+                        rightSections =
+                          rightSections :+ sectionMatch.dominantSection
+                      )
+                .focus(_.moves)
+                .modify(_ :+ Move.CoincidentInsertion)
+          yield result
           end for
 
         case Move.Preservation =>
@@ -306,128 +336,137 @@ class MergeTest:
             baseSection  <- zeroRelativeSections
             leftSection  <- zeroRelativeSections
             rightSection <- zeroRelativeSections
-            simplerMergeTestCase <- simpleMergeTestCases(
+            result <- simpleMergeTestCases(
               predecessorBias = MoveBias.Neutral,
               provokeConflict = provokeConflict
-            )
-          yield
-            val sectionMatch =
-              Match.AllThree(
-                baseSection = baseSection,
-                leftSection = leftSection,
-                rightSection = rightSection
-              )
+            ):
+              val sectionMatch =
+                Match.AllThree(
+                  baseSection = baseSection,
+                  leftSection = leftSection,
+                  rightSection = rightSection
+                )
 
-            simplerMergeTestCase
-              .focus(_.base)
-              .modify(baseSection +: _)
-              .focus(_.left)
-              .modify(leftSection +: _)
-              .focus(_.right)
-              .modify(rightSection +: _)
-              .focus(_.matchesBySection)
-              .modify(
-                _ + (baseSection -> sectionMatch) + (leftSection -> sectionMatch) + (rightSection -> sectionMatch)
-              )
-              .focus(_.expectedMerge)
-              .modify:
-                case Result.FullyMerged(sections) =>
-                  Result.FullyMerged(sectionMatch.dominantSection +: sections)
-                case Result.MergedWithConflicts(
-                      leftSections,
-                      rightSections
-                    ) =>
-                  Result
-                    .MergedWithConflicts(
-                      leftSections =
-                        sectionMatch.dominantSection +: leftSections,
-                      rightSections =
-                        sectionMatch.dominantSection +: rightSections
+              partialResult
+                .focus(_.base)
+                .modify(_ :+ baseSection)
+                .focus(_.left)
+                .modify(_ :+ leftSection)
+                .focus(_.right)
+                .modify(_ :+ rightSection)
+                .focus(_.matchesBySection)
+                .modify(
+                  _ + (baseSection -> sectionMatch) + (leftSection -> sectionMatch) + (rightSection -> sectionMatch)
+                )
+                .focus(_.expectedMerge)
+                .modify:
+                  case Result.FullyMerged(sections) =>
+                    Result.FullyMerged(
+                      sections :+ sectionMatch.dominantSection
                     )
-              .focus(_.moves)
-              .modify(Move.Preservation +: _)
+                  case Result.MergedWithConflicts(
+                        leftSections,
+                        rightSections
+                      ) =>
+                    Result
+                      .MergedWithConflicts(
+                        leftSections =
+                          leftSections :+ sectionMatch.dominantSection,
+                        rightSections =
+                          rightSections :+ sectionMatch.dominantSection
+                      )
+                .focus(_.moves)
+                .modify(_ :+ Move.Preservation)
+          yield result
           end for
 
         case Move.LeftDeletion =>
           for
             baseSection  <- zeroRelativeSections
             rightSection <- zeroRelativeSections
-            simplerMergeTestCase <- simpleMergeTestCases(
+            result <- simpleMergeTestCases(
               predecessorBias = MoveBias.Neutral,
               precedingLeftDeletions = true,
               precedingRightDeletions = precedingRightDeletions,
               provokeConflict = provokeConflict
-            )
-          yield
-            val sectionMatch = Match.BaseAndRight(
-              baseSection = baseSection,
-              rightSection = rightSection
-            )
-
-            simplerMergeTestCase
-              .focus(_.base)
-              .modify(baseSection +: _)
-              .focus(_.right)
-              .modify(rightSection +: _)
-              .focus(_.matchesBySection)
-              .modify(
-                _ + (baseSection -> sectionMatch) + (rightSection -> sectionMatch)
+            ):
+              val sectionMatch = Match.BaseAndRight(
+                baseSection = baseSection,
+                rightSection = rightSection
               )
-              .focus(_.moves)
-              .modify(Move.LeftDeletion +: _)
+
+              partialResult
+                .focus(_.base)
+                .modify(_ :+ baseSection)
+                .focus(_.right)
+                .modify(_ :+ rightSection)
+                .focus(_.matchesBySection)
+                .modify(
+                  _ + (baseSection -> sectionMatch) + (rightSection -> sectionMatch)
+                )
+                .focus(_.moves)
+                .modify(_ :+ Move.LeftDeletion)
+          yield result
           end for
 
         case Move.RightDeletion =>
           for
             baseSection <- zeroRelativeSections
             leftSection <- zeroRelativeSections
-            simplerMergeTestCase <- simpleMergeTestCases(
+            result <- simpleMergeTestCases(
               predecessorBias = MoveBias.Neutral,
               precedingLeftDeletions = precedingLeftDeletions,
               precedingRightDeletions = true,
               provokeConflict = provokeConflict
-            )
-          yield
-            val sectionMatch = Match.BaseAndLeft(
-              baseSection = baseSection,
-              leftSection = leftSection
-            )
-
-            simplerMergeTestCase
-              .focus(_.base)
-              .modify(baseSection +: _)
-              .focus(_.left)
-              .modify(leftSection +: _)
-              .focus(_.matchesBySection)
-              .modify(
-                _ + (baseSection -> sectionMatch) + (leftSection -> sectionMatch)
+            ):
+              val sectionMatch = Match.BaseAndLeft(
+                baseSection = baseSection,
+                leftSection = leftSection
               )
-              .focus(_.moves)
-              .modify(Move.RightDeletion +: _)
+
+              partialResult
+                .focus(_.base)
+                .modify(_ :+ baseSection)
+                .focus(_.left)
+                .modify(_ :+ leftSection)
+                .focus(_.matchesBySection)
+                .modify(
+                  _ + (baseSection -> sectionMatch) + (leftSection -> sectionMatch)
+                )
+                .focus(_.moves)
+                .modify(_ :+ Move.RightDeletion)
+          yield result
           end for
 
         case Move.CoincidentDeletion =>
           for
             baseSection <- zeroRelativeSections
-            simplerMergeTestCase <- simpleMergeTestCases(
+            result <- simpleMergeTestCases(
               predecessorBias = MoveBias.CoincidentDeletion,
               provokeConflict = provokeConflict
-            )
-          yield simplerMergeTestCase
-            .focus(_.base)
-            .modify(baseSection +: _)
-            .focus(_.moves)
-            .modify(Move.CoincidentDeletion +: _)
+            ):
+              partialResult
+                .focus(_.base)
+                .modify(_ :+ baseSection)
+                .focus(_.moves)
+                .modify(_ :+ Move.CoincidentDeletion)
+          yield result
           end for
 
     end extendedMergeTestCases
 
-    trialsApi.complexities.flatMap(complexity =>
-      trialsApi.alternateWithWeights(
-        complexity -> trialsApi.only(emptyMergeTestCase),
-        50         -> extendedMergeTestCases
-      )
-    )
+    partialResult.expectedMerge match
+      case FullyMerged(_) if provokeConflict => extendedMergeTestCases
+
+      case _ =>
+        trialsApi.complexities.flatMap(complexity =>
+          trialsApi.alternateWithWeights(
+            complexity -> trialsApi.only(partialResult),
+            50         -> extendedMergeTestCases
+          )
+        )
+    end match
+
   end simpleMergeTestCases
 
 end MergeTest
