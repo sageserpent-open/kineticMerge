@@ -22,31 +22,35 @@ class MergeTest:
   @Test
   def bugReproduction(): Unit =
     val testCase = MergeTestCase(
-      base = Vector(FakeSection(zeroRelativeLabel = 1)),
-      left = Vector(),
-      right = Vector(FakeSection(zeroRelativeLabel = 3)),
-      matchesBySection = Map(),
-      expectedMerge = MergedWithConflicts(
-        leftSections = Vector(),
-        rightSections = Vector(FakeSection(zeroRelativeLabel = 3))
+      base = Vector(FakeSection(zeroRelativeLabel = 2)),
+      left = Vector(FakeSection(zeroRelativeLabel = 5)),
+      right = Vector(FakeSection(zeroRelativeLabel = 6), FakeSection(zeroRelativeLabel = 9)),
+      matchesBySection = Map(
+        FakeSection(zeroRelativeLabel = 5) -> Match.LeftAndRight(
+          leftSection = FakeSection(zeroRelativeLabel = 5),
+          rightSection = FakeSection(zeroRelativeLabel = 6)
+        ),
+        FakeSection(zeroRelativeLabel = 6) -> Match.LeftAndRight(
+          leftSection = FakeSection(zeroRelativeLabel = 5),
+          rightSection = FakeSection(zeroRelativeLabel = 6)
+        )
       ),
-      moves = Vector(Move.CoincidentDeletion, Move.RightInsertion)
+      expectedMerge = FullyMerged(
+        sections = Vector(FakeSection(zeroRelativeLabel = 5), FakeSection(zeroRelativeLabel = 9))
+      ),
+      moves = Vector(Move.CoincidentDeletion, Move.CoincidentInsertion, Move.RightInsertion)
     )
-
     pprint.pprintln(testCase)
 
     val Right(
-      Merge.Result.MergedWithConflicts(leftSections, rightSections)
+      FullyMerged(sections)
     ) =
       Merge.of(testCase.base, testCase.left, testCase.right)(
         testCase.matchesBySection.get
       ): @unchecked
 
     assert(
-      MergedWithConflicts(
-        leftSections,
-        rightSections
-      ) == testCase.expectedMerge
+      FullyMerged(sections) == testCase.expectedMerge
     )
   end bugReproduction
 
