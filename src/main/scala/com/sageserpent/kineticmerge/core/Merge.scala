@@ -209,6 +209,24 @@ object Merge:
           )
 
         case (
+              Seq(Contribution.Difference(_), _*),
+              Seq(Contribution.Difference(leftSection), leftTail*),
+              Seq(Contribution.CommonToLeftAndRightOnly(_), _*)
+            ) => // Left insertion with pending coincident edit.
+          // Invariant - the left section cannot be part of a match when it is
+          // different.
+          assume(matchFor(leftSection).isEmpty)
+
+          mergeBetweenRunsOfCommonElements(base, leftTail, right)(
+            partialResult match
+              case FullyMerged(sections) =>
+                FullyMerged(sections :+ leftSection)
+              case MergedWithConflicts(leftSections, rightSections) =>
+                partialResult
+            // TODO: this is just a placeholder.
+          )
+
+        case (
               Seq(Contribution.Difference(_), baseTail*),
               Seq(Contribution.Difference(leftSection), leftTail*),
               _
@@ -222,6 +240,24 @@ object Merge:
                 )
               case MergedWithConflicts(leftSections, rightSections) =>
                 partialResult
+          )
+
+        case (
+              Seq(Contribution.Difference(_), _*),
+              Seq(Contribution.CommonToLeftAndRightOnly(_), _*),
+              Seq(Contribution.Difference(rightSection), rightTail*)
+            ) => // Right insertion with pending left coincident edit.
+          // Invariant - the left section cannot be part of a match when it is
+          // different.
+          assume(matchFor(rightSection).isEmpty)
+
+          mergeBetweenRunsOfCommonElements(base, left, rightTail)(
+            partialResult match
+              case FullyMerged(sections) =>
+                FullyMerged(sections :+ rightSection)
+              case MergedWithConflicts(leftSections, rightSections) =>
+                partialResult
+            // TODO: this is just a placeholder.
           )
 
         case (
