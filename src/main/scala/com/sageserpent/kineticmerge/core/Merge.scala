@@ -49,6 +49,36 @@ object Merge:
           )
 
         case (
+              Seq(Contribution.Difference(baseSection), baseTail*),
+              Seq(
+                Contribution.CommonToLeftAndRightOnly(leftSection),
+                leftTail*
+              ),
+              Seq(
+                Contribution.CommonToLeftAndRightOnly(rightSection),
+                rightTail*
+              )
+            ) => // Coincident edit.
+          // Invariant - these must both belong to the same match; progress
+          // through common elements is synchronized.
+          val Some(matchForLeftSection) = matchFor(leftSection): @unchecked
+
+          assume(matchFor(rightSection).contains(matchForLeftSection))
+
+          // Invariant - the base section cannot be part of a match when it is
+          // different.
+          assume(matchFor(baseSection).isEmpty)
+
+          mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
+            partialResult match
+              case FullyMerged(sections) =>
+                FullyMerged(sections :+ matchForLeftSection.dominantSection)
+              case MergedWithConflicts(leftSections, rightSections) =>
+                partialResult
+            // TODO: this is just a placeholder.
+          )
+
+        case (
               _,
               Seq(
                 Contribution.CommonToLeftAndRightOnly(leftSection),
@@ -59,7 +89,7 @@ object Merge:
                 rightTail*
               )
             ) => // Coincident insertion.
-          // Invariant - these must all belong to the same match; progress
+          // Invariant - these must both belong to the same match; progress
           // through common elements is synchronized.
           val Some(matchForLeftSection) = matchFor(leftSection): @unchecked
 
