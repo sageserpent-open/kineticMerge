@@ -207,7 +207,7 @@ class MergeTest:
                 .modify:
                   case Result.FullyMerged(sections) =>
                     predecessorBias match
-                      case MoveBias.CoincidentDeletion =>
+                      case MoveBias.CoincidentDeletion if !precedingLeftDeletions =>
                         Result.MergedWithConflicts(
                           leftSections = sections :+ leftSection,
                           rightSections = sections
@@ -243,7 +243,7 @@ class MergeTest:
                 .modify:
                   case Result.FullyMerged(sections) =>
                     predecessorBias match
-                      case MoveBias.CoincidentDeletion =>
+                      case MoveBias.CoincidentDeletion if !precedingRightDeletions =>
                         Result.MergedWithConflicts(
                           leftSections = sections,
                           rightSections = sections :+ rightSection
@@ -418,6 +418,8 @@ class MergeTest:
             baseSection <- zeroRelativeSections
             result <- simpleMergeTestCases(
               predecessorBias = MoveBias.CoincidentDeletion,
+              precedingLeftDeletions = precedingLeftDeletions,
+              precedingRightDeletions = precedingRightDeletions,
               provokeConflict = provokeConflict
             ):
               partialResult
