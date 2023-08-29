@@ -132,14 +132,29 @@ object Merge:
 
           assume(matchFor(rightSection).contains(matchForBaseSection))
 
-          mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-            partialResult match
-              case FullyMerged(sections) =>
-                FullyMerged(sections :+ leftSection)
-              case MergedWithConflicts(leftSections, rightSections) =>
-                partialResult
-            // TODO: this is just a placeholder.
-          )
+          leftTail match
+            case Seq(Contribution.Difference(_), _*) =>
+              // If the following element on the left would also be inserted,
+              // coalesce into a single edit.
+              mergeBetweenRunsOfCommonElements(base, leftTail, right)(
+                partialResult match
+                  case FullyMerged(sections) =>
+                    FullyMerged(sections :+ leftSection)
+                  case MergedWithConflicts(leftSections, rightSections) =>
+                    partialResult
+                // TODO: this is just a placeholder.
+              )
+
+            case _ =>
+              mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
+                partialResult match
+                  case FullyMerged(sections) =>
+                    FullyMerged(sections :+ leftSection)
+                  case MergedWithConflicts(leftSections, rightSections) =>
+                    partialResult
+                // TODO: this is just a placeholder.
+              )
+          end match
 
         case (
               Seq(
@@ -184,14 +199,29 @@ object Merge:
 
           assume(matchFor(leftSection).contains(matchForBaseSection))
 
-          mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-            partialResult match
-              case FullyMerged(sections) =>
-                FullyMerged(sections :+ rightSection)
-              case MergedWithConflicts(leftSections, rightSections) =>
-                partialResult
-            // TODO: this is just a placeholder.
-          )
+          rightTail match
+            case Seq(Contribution.Difference(_), _*) =>
+              // If the following element on the right would also be inserted,
+              // coalesce into a single edit.
+              mergeBetweenRunsOfCommonElements(base, left, rightTail)(
+                partialResult match
+                  case FullyMerged(sections) =>
+                    FullyMerged(sections :+ rightSection)
+                  case MergedWithConflicts(leftSections, rightSections) =>
+                    partialResult
+                // TODO: this is just a placeholder.
+              )
+
+            case _ =>
+              mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
+                partialResult match
+                  case FullyMerged(sections) =>
+                    FullyMerged(sections :+ rightSection)
+                  case MergedWithConflicts(leftSections, rightSections) =>
+                    partialResult
+                // TODO: this is just a placeholder.
+              )
+          end match
 
         case (
               Seq(
