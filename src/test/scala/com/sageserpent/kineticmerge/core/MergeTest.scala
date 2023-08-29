@@ -78,16 +78,12 @@ class MergeTest:
 
     pprint.pprintln(testCase)
 
-    val Right(
-      FullyMerged(sections)
-    ) =
+    val Right(result) =
       Merge.of(testCase.base, testCase.left, testCase.right)(
         testCase.matchesBySection.get
       ): @unchecked
 
-    assert(
-      FullyMerged(sections) == testCase.expectedMerge
-    )
+    testCase.validate(result)
   end bugReproduction
 
   /* Test ideas:
@@ -146,7 +142,6 @@ class MergeTest:
           ): @unchecked
 
         testCase.validate(result)
-
 
   def simpleMergeTestCases(
       predecessorBias: MoveBias = MoveBias.Neutral,
@@ -468,7 +463,10 @@ object MergeTest:
   ):
     def validate(result: Result): Unit =
       expectedMerge match
-        case Some(merge) => assert(result == merge) // TODO: perform an initial self-validation of the expected merge.
+        case Some(merge) =>
+          assert(
+            result == merge
+          ) // TODO: perform an initial self-validation of the expected merge.
         case None => // TODO: find all the pieces and check they're present and correct.
     end validate
 
