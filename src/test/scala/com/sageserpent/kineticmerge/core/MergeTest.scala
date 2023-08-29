@@ -57,11 +57,13 @@ class MergeTest:
           rightSection = FakeSection(zeroRelativeLabel = 16)
         )
       ),
-      expectedMerge = FullyMerged(
-        sections = Vector(
-          FakeSection(zeroRelativeLabel = 2),
-          FakeSection(zeroRelativeLabel = 15),
-          FakeSection(zeroRelativeLabel = 19)
+      expectedMerge = Some(
+        FullyMerged(
+          sections = Vector(
+            FakeSection(zeroRelativeLabel = 2),
+            FakeSection(zeroRelativeLabel = 15),
+            FakeSection(zeroRelativeLabel = 19)
+          )
         )
       ),
       moves = Vector(
@@ -138,12 +140,13 @@ class MergeTest:
         println("*************")
         pprint.pprintln(testCase)
 
-        val Right(Merge.Result.FullyMerged(sections)) =
+        val Right(result) =
           Merge.of(testCase.base, testCase.left, testCase.right)(
             testCase.matchesBySection.get
           ): @unchecked
 
-        assert(FullyMerged(sections) == testCase.expectedMerge)
+        testCase.validate(result)
+
 
   def simpleMergeTestCases(
       predecessorBias: MoveBias = MoveBias.Neutral,
@@ -210,26 +213,10 @@ class MergeTest:
               partialResult
                 .focus(_.left)
                 .modify(_ :+ leftSection)
-                .focus(_.expectedMerge)
+                .focus(_.expectedMerge.some)
                 .modify:
                   case Result.FullyMerged(sections) =>
-                    predecessorBias match
-                      case MoveBias.CoincidentDeletion
-                          if !precedingLeftDeletions =>
-                        Result.MergedWithConflicts(
-                          leftSections = sections :+ leftSection,
-                          rightSections = sections
-                        )
-                      case _ => Result.FullyMerged(sections :+ leftSection)
-                  case Result.MergedWithConflicts(
-                        leftSections,
-                        rightSections
-                      ) =>
-                    Result
-                      .MergedWithConflicts(
-                        leftSections = leftSections :+ leftSection,
-                        rightSections = rightSections
-                      )
+                    Result.FullyMerged(sections :+ leftSection)
                 .focus(_.moves)
                 .modify(_ :+ Move.LeftInsertion)
             )
@@ -246,26 +233,10 @@ class MergeTest:
               partialResult
                 .focus(_.right)
                 .modify(_ :+ rightSection)
-                .focus(_.expectedMerge)
+                .focus(_.expectedMerge.some)
                 .modify:
                   case Result.FullyMerged(sections) =>
-                    predecessorBias match
-                      case MoveBias.CoincidentDeletion
-                          if !precedingRightDeletions =>
-                        Result.MergedWithConflicts(
-                          leftSections = sections,
-                          rightSections = sections :+ rightSection
-                        )
-                      case _ => Result.FullyMerged(sections :+ rightSection)
-                  case Result.MergedWithConflicts(
-                        leftSections,
-                        rightSections
-                      ) =>
-                    Result
-                      .MergedWithConflicts(
-                        leftSections = leftSections,
-                        rightSections = rightSections :+ rightSection
-                      )
+                    Result.FullyMerged(sections :+ rightSection)
                 .focus(_.moves)
                 .modify(_ :+ Move.RightInsertion)
             )
@@ -293,21 +264,10 @@ class MergeTest:
                 .modify(
                   _ + (leftSection -> sectionMatch) + (rightSection -> sectionMatch)
                 )
-                .focus(_.expectedMerge)
+                .focus(_.expectedMerge.some)
                 .modify:
                   case Result.FullyMerged(sections) =>
                     Result.FullyMerged(sections :+ sectionMatch.dominantSection)
-                  case Result.MergedWithConflicts(
-                        leftSections,
-                        rightSections
-                      ) =>
-                    Result
-                      .MergedWithConflicts(
-                        leftSections =
-                          leftSections :+ sectionMatch.dominantSection,
-                        rightSections =
-                          rightSections :+ sectionMatch.dominantSection
-                      )
                 .focus(_.moves)
                 .modify(_ :+ Move.CoincidentInsertion)
           yield result
@@ -339,23 +299,12 @@ class MergeTest:
                 .modify(
                   _ + (baseSection -> sectionMatch) + (leftSection -> sectionMatch) + (rightSection -> sectionMatch)
                 )
-                .focus(_.expectedMerge)
+                .focus(_.expectedMerge.some)
                 .modify:
                   case Result.FullyMerged(sections) =>
                     Result.FullyMerged(
                       sections :+ sectionMatch.dominantSection
                     )
-                  case Result.MergedWithConflicts(
-                        leftSections,
-                        rightSections
-                      ) =>
-                    Result
-                      .MergedWithConflicts(
-                        leftSections =
-                          leftSections :+ sectionMatch.dominantSection,
-                        rightSections =
-                          rightSections :+ sectionMatch.dominantSection
-                      )
                 .focus(_.moves)
                 .modify(_ :+ Move.Preservation)
           yield result
@@ -459,7 +408,7 @@ object MergeTest:
     left = IndexedSeq.empty,
     right = IndexedSeq.empty,
     matchesBySection = Map.empty,
-    expectedMerge = Result.FullyMerged(sections = IndexedSeq.empty),
+    expectedMerge = Some(Result.FullyMerged(sections = IndexedSeq.empty)),
     moves = IndexedSeq.empty
   )
   private val leftInsertionFrequency       = 7  -> Move.LeftInsertion
@@ -514,9 +463,16 @@ object MergeTest:
       left: IndexedSeq[Section],
       right: IndexedSeq[Section],
       matchesBySection: Map[Section, Match],
-      expectedMerge: Result,
+      expectedMerge: Option[FullyMerged],
       moves: IndexedSeq[Move]
-  )
+  ):
+    def validate(result: Result): Unit =
+      expectedMerge match
+        case Some(merge) => assert(result == merge) // TODO: perform an initial self-validation of the expected merge.
+        case None => // TODO: find all the pieces and check they're present and correct.
+    end validate
+
+  end MergeTestCase
 
   object FakeSection:
     private val startOffsetCache: MutableMap[Int, Int] = MutableMap.empty
