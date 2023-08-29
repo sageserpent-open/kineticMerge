@@ -44,8 +44,10 @@ object Merge:
               case FullyMerged(sections) =>
                 FullyMerged(sections :+ matchForBaseSection.dominantSection)
               case MergedWithConflicts(leftSections, rightSections) =>
-                partialResult
-            // TODO: this is just a placeholder.
+                MergedWithConflicts(
+                  leftSections :+ matchForBaseSection.dominantSection,
+                  rightSections :+ matchForBaseSection.dominantSection
+                )
           )
 
         case (
@@ -84,8 +86,10 @@ object Merge:
                   case FullyMerged(sections) =>
                     FullyMerged(sections :+ matchForLeftSection.dominantSection)
                   case MergedWithConflicts(leftSections, rightSections) =>
-                    partialResult
-                // TODO: this is just a placeholder.
+                    MergedWithConflicts(
+                      leftSections :+ matchForLeftSection.dominantSection,
+                      rightSections :+ matchForLeftSection.dominantSection
+                    )
               )
           end match
 
@@ -111,8 +115,10 @@ object Merge:
               case FullyMerged(sections) =>
                 FullyMerged(sections :+ matchForLeftSection.dominantSection)
               case MergedWithConflicts(leftSections, rightSections) =>
-                partialResult
-            // TODO: this is just a placeholder.
+                MergedWithConflicts(
+                  leftSections :+ matchForLeftSection.dominantSection,
+                  rightSections :+ matchForLeftSection.dominantSection
+                )
           )
 
         case (
@@ -141,8 +147,10 @@ object Merge:
                   case FullyMerged(sections) =>
                     FullyMerged(sections :+ leftSection)
                   case MergedWithConflicts(leftSections, rightSections) =>
-                    partialResult
-                // TODO: this is just a placeholder.
+                    MergedWithConflicts(
+                      leftSections :+ leftSection,
+                      rightSections
+                    )
               )
 
             case _ =>
@@ -151,8 +159,10 @@ object Merge:
                   case FullyMerged(sections) =>
                     FullyMerged(sections :+ leftSection)
                   case MergedWithConflicts(leftSections, rightSections) =>
-                    partialResult
-                // TODO: this is just a placeholder.
+                    MergedWithConflicts(
+                      leftSections :+ leftSection,
+                      rightSections
+                    )
               )
           end match
 
@@ -179,7 +189,6 @@ object Merge:
                 partialResult
               case MergedWithConflicts(leftSections, rightSections) =>
                 partialResult
-            // TODO: this is just a placeholder.
           )
 
         case (
@@ -208,8 +217,10 @@ object Merge:
                   case FullyMerged(sections) =>
                     FullyMerged(sections :+ rightSection)
                   case MergedWithConflicts(leftSections, rightSections) =>
-                    partialResult
-                // TODO: this is just a placeholder.
+                    MergedWithConflicts(
+                      leftSections,
+                      rightSections :+ rightSection
+                    )
               )
 
             case _ =>
@@ -218,8 +229,10 @@ object Merge:
                   case FullyMerged(sections) =>
                     FullyMerged(sections :+ rightSection)
                   case MergedWithConflicts(leftSections, rightSections) =>
-                    partialResult
-                // TODO: this is just a placeholder.
+                    MergedWithConflicts(
+                      leftSections,
+                      rightSections :+ rightSection
+                    )
               )
           end match
 
@@ -246,7 +259,6 @@ object Merge:
                 partialResult
               case MergedWithConflicts(leftSections, rightSections) =>
                 partialResult
-            // TODO: this is just a placeholder.
           )
 
         case (
@@ -263,8 +275,7 @@ object Merge:
               case FullyMerged(sections) =>
                 FullyMerged(sections :+ leftSection)
               case MergedWithConflicts(leftSections, rightSections) =>
-                partialResult
-            // TODO: this is just a placeholder.
+                MergedWithConflicts(leftSections :+ leftSection, rightSections)
           )
 
         case (
@@ -272,7 +283,7 @@ object Merge:
               Seq(Contribution.Difference(leftSection), leftTail*),
               _
             ) => // Left edit / delete conflict.
-          mergeBetweenRunsOfCommonElements(baseTail, left, right)(
+          mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
             partialResult match
               case FullyMerged(sections) =>
                 MergedWithConflicts(
@@ -280,7 +291,7 @@ object Merge:
                   rightSections = sections
                 )
               case MergedWithConflicts(leftSections, rightSections) =>
-                partialResult
+                MergedWithConflicts(leftSections :+ leftSection, rightSections)
           )
 
         case (
@@ -297,8 +308,7 @@ object Merge:
               case FullyMerged(sections) =>
                 FullyMerged(sections :+ rightSection)
               case MergedWithConflicts(leftSections, rightSections) =>
-                partialResult
-            // TODO: this is just a placeholder.
+                MergedWithConflicts(leftSections, rightSections :+ rightSection)
           )
 
         case (
@@ -306,7 +316,7 @@ object Merge:
               _,
               Seq(Contribution.Difference(rightSection), rightTail*)
             ) => // Right edit / delete conflict.
-          mergeBetweenRunsOfCommonElements(baseTail, left, right)(
+          mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
             partialResult match
               case FullyMerged(sections) =>
                 MergedWithConflicts(
@@ -314,7 +324,7 @@ object Merge:
                   rightSections = sections :+ rightSection
                 )
               case MergedWithConflicts(leftSections, rightSections) =>
-                partialResult
+                MergedWithConflicts(leftSections, rightSections :+ rightSection)
           )
 
         case (
@@ -338,8 +348,7 @@ object Merge:
               case FullyMerged(sections) =>
                 FullyMerged(sections :+ leftSection)
               case MergedWithConflicts(leftSections, rightSections) =>
-                partialResult
-            // TODO: this is just a placeholder.
+                MergedWithConflicts(leftSections :+ leftSection, rightSections)
           )
 
         case (
@@ -356,8 +365,7 @@ object Merge:
               case FullyMerged(sections) =>
                 FullyMerged(sections :+ rightSection)
               case MergedWithConflicts(leftSections, rightSections) =>
-                partialResult
-            // TODO: this is just a placeholder.
+                MergedWithConflicts(leftSections, rightSections :+ rightSection)
           )
 
         case (
@@ -380,8 +388,7 @@ object Merge:
               case FullyMerged(sections) =>
                 FullyMerged(sections :+ leftSection)
               case MergedWithConflicts(leftSections, rightSections) =>
-                partialResult
-            // TODO: this is just a placeholder.
+                MergedWithConflicts(leftSections :+ leftSection, rightSections)
           )
 
         case (
@@ -404,8 +411,7 @@ object Merge:
               case FullyMerged(sections) =>
                 FullyMerged(sections :+ rightSection)
               case MergedWithConflicts(leftSections, rightSections) =>
-                partialResult
-            // TODO: this is just a placeholder.
+                MergedWithConflicts(leftSections, rightSections :+ rightSection)
           )
 
         case (
@@ -413,7 +419,17 @@ object Merge:
               Seq(Contribution.Difference(leftSection), leftTail*),
               Seq(Contribution.Difference(rightSection), rightTail*)
             ) => // Insertion conflict.
-          partialResult // TODO: this is just a placeholder.
+          partialResult match
+            case FullyMerged(sections) =>
+              MergedWithConflicts(
+                sections :+ leftSection,
+                sections :+ rightSection
+              )
+            case MergedWithConflicts(leftSections, rightSections) =>
+              MergedWithConflicts(
+                leftSections :+ leftSection,
+                rightSections :+ rightSection
+              )
 
         case (Seq(), Seq(), Seq()) => // Terminating case!
           partialResult
