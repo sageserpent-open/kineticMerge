@@ -19,6 +19,9 @@ import pprint.*
 import scala.collection.mutable.Map as MutableMap
 
 class MergeTest:
+  val simpleMergeTestCases: Trials[MergeTestCase] =
+    simpleMergeTestCases()(partialResult = emptyMergeTestCase)
+
   @Test
   def bugReproduction(): Unit =
     val testCase = MergeTestCase(
@@ -85,43 +88,6 @@ class MergeTest:
     )
   end bugReproduction
 
-  @TestFactory
-  def fullMerge: DynamicTests =
-    simpleMergeTestCases(provokeConflict = false)
-      .withLimit(1000)
-      .dynamicTests: testCase =>
-        println("*************")
-        pprint.pprintln(testCase)
-
-        val Right(Merge.Result.FullyMerged(sections)) =
-          Merge.of(testCase.base, testCase.left, testCase.right)(
-            testCase.matchesBySection.get
-          ): @unchecked
-
-        assert(FullyMerged(sections) == testCase.expectedMerge)
-
-  @TestFactory
-  def conflictedMerge: DynamicTests =
-    simpleMergeTestCases(provokeConflict = true)
-      .withLimit(1000)
-      .dynamicTests: testCase =>
-        println("*************")
-        pprint.pprintln(testCase)
-
-        val Right(
-          Merge.Result.MergedWithConflicts(leftSections, rightSections)
-        ) =
-          Merge.of(testCase.base, testCase.left, testCase.right)(
-            testCase.matchesBySection.get
-          ): @unchecked
-
-        assert(
-          MergedWithConflicts(
-            leftSections,
-            rightSections
-          ) == testCase.expectedMerge
-        )
-
   /* Test ideas:
    * 1. Start with a merged sequence of sections and confabulate base, left and
    * right sequences by diverting each section into just the left (a left
@@ -164,16 +130,25 @@ class MergeTest:
    * in a triple can be put into a match if desired, and that match be made to
    * yield a mocked dominant section that goes into the expected output. */
 
-  def simpleMergeTestCases(provokeConflict: Boolean): Trials[MergeTestCase] =
-    simpleMergeTestCases(provokeConflict = provokeConflict)(partialResult =
-      emptyMergeTestCase
-    )
+  @TestFactory
+  def fullMerge: DynamicTests =
+    simpleMergeTestCases
+      .withLimit(1000)
+      .dynamicTests: testCase =>
+        println("*************")
+        pprint.pprintln(testCase)
+
+        val Right(Merge.Result.FullyMerged(sections)) =
+          Merge.of(testCase.base, testCase.left, testCase.right)(
+            testCase.matchesBySection.get
+          ): @unchecked
+
+        assert(FullyMerged(sections) == testCase.expectedMerge)
 
   def simpleMergeTestCases(
       predecessorBias: MoveBias = MoveBias.Neutral,
       precedingLeftDeletions: Boolean = false,
-      precedingRightDeletions: Boolean = false,
-      provokeConflict: Boolean
+      precedingRightDeletions: Boolean = false
   )(partialResult: MergeTestCase): Trials[MergeTestCase] =
     val extendedMergeTestCases =
       def zeroRelativeSections: Trials[Section] =
@@ -220,8 +195,6 @@ class MergeTest:
         case MoveBias.CoincidentDeletion =>
           trialsApi
             .chooseWithWeights(
-              leftInsertionFrequency(allow = provokeConflict),
-              rightInsertionFrequency(allow = provokeConflict),
               coincidentInsertionFrequency,
               preservationFrequency,
               coincidentDeletionFrequency
@@ -232,8 +205,7 @@ class MergeTest:
             leftSection <- zeroRelativeSections
             result <- simpleMergeTestCases(
               predecessorBias = MoveBias.Left,
-              precedingLeftDeletions = precedingLeftDeletions,
-              provokeConflict = provokeConflict
+              precedingLeftDeletions = precedingLeftDeletions
             )(
               partialResult
                 .focus(_.left)
@@ -269,8 +241,7 @@ class MergeTest:
             rightSection <- zeroRelativeSections
             result <- simpleMergeTestCases(
               predecessorBias = MoveBias.Right,
-              precedingRightDeletions = precedingRightDeletions,
-              provokeConflict = provokeConflict
+              precedingRightDeletions = precedingRightDeletions
             )(
               partialResult
                 .focus(_.right)
@@ -306,8 +277,7 @@ class MergeTest:
             leftSection  <- zeroRelativeSections
             rightSection <- zeroRelativeSections
             result <- simpleMergeTestCases(
-              predecessorBias = MoveBias.Neutral,
-              provokeConflict = provokeConflict
+              predecessorBias = MoveBias.Neutral
             ):
               val sectionMatch = Match.LeftAndRight(
                 leftSection = leftSection,
@@ -349,8 +319,7 @@ class MergeTest:
             leftSection  <- zeroRelativeSections
             rightSection <- zeroRelativeSections
             result <- simpleMergeTestCases(
-              predecessorBias = MoveBias.Neutral,
-              provokeConflict = provokeConflict
+              predecessorBias = MoveBias.Neutral
             ):
               val sectionMatch =
                 Match.AllThree(
@@ -399,8 +368,7 @@ class MergeTest:
             result <- simpleMergeTestCases(
               predecessorBias = MoveBias.Neutral,
               precedingLeftDeletions = true,
-              precedingRightDeletions = precedingRightDeletions,
-              provokeConflict = provokeConflict
+              precedingRightDeletions = precedingRightDeletions
             ):
               val sectionMatch = Match.BaseAndRight(
                 baseSection = baseSection,
@@ -428,8 +396,7 @@ class MergeTest:
             result <- simpleMergeTestCases(
               predecessorBias = MoveBias.Neutral,
               precedingLeftDeletions = precedingLeftDeletions,
-              precedingRightDeletions = true,
-              provokeConflict = provokeConflict
+              precedingRightDeletions = true
             ):
               val sectionMatch = Match.BaseAndLeft(
                 baseSection = baseSection,
@@ -456,8 +423,7 @@ class MergeTest:
             result <- simpleMergeTestCases(
               predecessorBias = MoveBias.CoincidentDeletion,
               precedingLeftDeletions = precedingLeftDeletions,
-              precedingRightDeletions = precedingRightDeletions,
-              provokeConflict = provokeConflict
+              precedingRightDeletions = precedingRightDeletions
             ):
               partialResult
                 .focus(_.base)
@@ -470,8 +436,6 @@ class MergeTest:
     end extendedMergeTestCases
 
     partialResult.expectedMerge match
-      case FullyMerged(_) if provokeConflict => extendedMergeTestCases
-
       case _ =>
         trialsApi.complexities.flatMap(complexity =>
           trialsApi.alternateWithWeights(
