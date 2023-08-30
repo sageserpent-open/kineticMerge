@@ -379,15 +379,12 @@ class MergeTest:
 
     end extendedMergeTestCases
 
-    partialResult.expectedMerge match
-      case _ =>
-        trialsApi.complexities.flatMap(complexity =>
-          trialsApi.alternateWithWeights(
-            complexity -> trialsApi.only(partialResult),
-            50         -> extendedMergeTestCases
-          )
-        )
-    end match
+    trialsApi.complexities.flatMap(complexity =>
+      trialsApi.alternateWithWeights(
+        complexity -> trialsApi.only(partialResult),
+        50         -> extendedMergeTestCases
+      )
+    )
 
   end simpleMergeTestCases
 
