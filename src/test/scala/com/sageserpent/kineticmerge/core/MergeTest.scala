@@ -19,8 +19,15 @@ import pprint.*
 import scala.collection.mutable.Map as MutableMap
 
 class MergeTest:
-  val simpleMergeTestCases: Trials[MergeTestCase] =
-    simpleMergeTestCases()(partialResult = emptyMergeTestCase)
+  private val fullyMergedTestCases: Trials[MergeTestCase] =
+    simpleMergeTestCases(allowConflicts = false)(partialResult =
+      emptyMergeTestCase(allowConflicts = false)
+    )
+
+  private val possiblyConflictedMergeTestCases: Trials[MergeTestCase] =
+    simpleMergeTestCases(allowConflicts = true)(partialResult =
+      emptyMergeTestCase(allowConflicts = true)
+    )
 
   @Test
   def bugReproduction(): Unit =
@@ -130,7 +137,7 @@ class MergeTest:
 
   @TestFactory
   def fullMerge: DynamicTests =
-    simpleMergeTestCases
+    fullyMergedTestCases
       .withLimit(2000)
       .dynamicTests: testCase =>
         println("*************")
@@ -143,7 +150,27 @@ class MergeTest:
 
         testCase.validate(result)
 
+  @TestFactory
+  def conflictedMerge: DynamicTests =
+    possiblyConflictedMergeTestCases
+      .withLimit(2000)
+      .dynamicTests: testCase =>
+        val Right(result) =
+          Merge.of(testCase.base, testCase.left, testCase.right)(
+            testCase.matchesBySection.get
+          ): @unchecked
+
+        result match
+          case Result.MergedWithConflicts(_, _) =>
+            println("*************")
+            pprint.pprintln(testCase)
+
+            testCase.validate(result)
+          case Result.FullyMerged(_) => Trials.reject()
+        end match
+
   def simpleMergeTestCases(
+      allowConflicts: Boolean,
       predecessorBias: MoveBias = MoveBias.Neutral,
       precedingLeftDeletions: Boolean = false,
       precedingRightDeletions: Boolean = false
@@ -161,6 +188,18 @@ class MergeTest:
       end zeroRelativeSections
 
       val choices = predecessorBias match
+        case _ if allowConflicts =>
+          trialsApi
+            .chooseWithWeights(
+              leftInsertionFrequency(allow = true),
+              rightInsertionFrequency(allow = true),
+              coincidentInsertionFrequency,
+              preservationFrequency,
+              leftDeletionFrequency,
+              rightDeletionFrequency,
+              coincidentDeletionFrequency
+            )
+
         case MoveBias.Left =>
           trialsApi
             .chooseWithWeights(
@@ -202,6 +241,7 @@ class MergeTest:
           for
             leftSection <- zeroRelativeSections
             result <- simpleMergeTestCases(
+              allowConflicts = allowConflicts,
               predecessorBias = MoveBias.Left,
               precedingLeftDeletions = precedingLeftDeletions
             )(
@@ -222,6 +262,7 @@ class MergeTest:
           for
             rightSection <- zeroRelativeSections
             result <- simpleMergeTestCases(
+              allowConflicts = allowConflicts,
               predecessorBias = MoveBias.Right,
               precedingRightDeletions = precedingRightDeletions
             )(
@@ -243,6 +284,7 @@ class MergeTest:
             leftSection  <- zeroRelativeSections
             rightSection <- zeroRelativeSections
             result <- simpleMergeTestCases(
+              allowConflicts = allowConflicts,
               predecessorBias = MoveBias.Neutral
             ):
               val sectionMatch = Match.LeftAndRight(
@@ -274,6 +316,7 @@ class MergeTest:
             leftSection  <- zeroRelativeSections
             rightSection <- zeroRelativeSections
             result <- simpleMergeTestCases(
+              allowConflicts = allowConflicts,
               predecessorBias = MoveBias.Neutral
             ):
               val sectionMatch =
@@ -310,6 +353,7 @@ class MergeTest:
             baseSection  <- zeroRelativeSections
             rightSection <- zeroRelativeSections
             result <- simpleMergeTestCases(
+              allowConflicts = allowConflicts,
               predecessorBias = MoveBias.Neutral,
               precedingLeftDeletions = true,
               precedingRightDeletions = precedingRightDeletions
@@ -338,6 +382,7 @@ class MergeTest:
             baseSection <- zeroRelativeSections
             leftSection <- zeroRelativeSections
             result <- simpleMergeTestCases(
+              allowConflicts = allowConflicts,
               predecessorBias = MoveBias.Neutral,
               precedingLeftDeletions = precedingLeftDeletions,
               precedingRightDeletions = true
@@ -365,6 +410,7 @@ class MergeTest:
           for
             baseSection <- zeroRelativeSections
             result <- simpleMergeTestCases(
+              allowConflicts = allowConflicts,
               predecessorBias = MoveBias.CoincidentDeletion,
               precedingLeftDeletions = precedingLeftDeletions,
               precedingRightDeletions = precedingRightDeletions
@@ -395,14 +441,6 @@ object MergeTest:
     override val showLocation: Boolean = true
     override val showTypes: Boolean    = true
   end assert
-  private val emptyMergeTestCase: MergeTestCase = MergeTestCase(
-    base = IndexedSeq.empty,
-    left = IndexedSeq.empty,
-    right = IndexedSeq.empty,
-    matchesBySection = Map.empty,
-    expectedMerge = Some(Result.FullyMerged(sections = IndexedSeq.empty)),
-    moves = IndexedSeq.empty
-  )
   private val leftInsertionFrequency       = 7  -> Move.LeftInsertion
   private val rightInsertionFrequency      = 7  -> Move.RightInsertion
   private val coincidentInsertionFrequency = 4  -> Move.CoincidentInsertion
@@ -410,6 +448,18 @@ object MergeTest:
   private val leftDeletionFrequency        = 7  -> Move.LeftDeletion
   private val rightDeletionFrequency       = 7  -> Move.RightDeletion
   private val coincidentDeletionFrequency  = 4  -> Move.CoincidentDeletion
+
+  private def emptyMergeTestCase(allowConflicts: Boolean): MergeTestCase =
+    MergeTestCase(
+      base = IndexedSeq.empty,
+      left = IndexedSeq.empty,
+      right = IndexedSeq.empty,
+      matchesBySection = Map.empty,
+      expectedMerge = Option.unless(allowConflicts) {
+        Result.FullyMerged(sections = IndexedSeq.empty)
+      },
+      moves = IndexedSeq.empty
+    )
 
   private def leftInsertionFrequency(allow: Boolean) =
     (if allow then 7 else 0) -> Move.LeftInsertion
@@ -525,11 +575,18 @@ object MergeTest:
             assert(
               basePreservationsOnLeft == basePreservationsOnRight
             )
+
+            // NOTE: use a subset rather than an equality check, as it is
+            // possible for right sections that cleanly merged to appear in
+            // `leftSections`.
             assert(
-              (basePreservationsOnLeft union leftAppearances) == leftSections.toSet
+              (basePreservationsOnLeft union leftAppearances) subsetOf leftSections.toSet
             )
+            // NOTE: use a subset rather than an equality check, as it is
+            // possible for left sections that cleanly merged to appear in
+            // `rightSections`.
             assert(
-              (basePreservationsOnRight union rightAppearances) == rightSections.toSet
+              (basePreservationsOnRight union rightAppearances) subsetOf rightSections.toSet
             )
 
       allPresentAndCorrectIn(result)
