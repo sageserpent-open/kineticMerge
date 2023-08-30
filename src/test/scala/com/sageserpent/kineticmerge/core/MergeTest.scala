@@ -459,12 +459,92 @@ object MergeTest:
       moves: IndexedSeq[Move]
   ):
     def validate(result: Result): Unit =
-      expectedMerge match
-        case Some(merge) =>
-          assert(
-            result == merge
-          ) // TODO: perform an initial self-validation of the expected merge.
-        case None => // TODO: find all the pieces and check they're present and correct.
+      def baseIsPreservedCorrectlyIn(
+          sections: IndexedSeq[Section]
+      ): Set[Section] =
+        val preserved = base.collect(baseSection =>
+          matchesBySection.get(baseSection) match
+            case Some(allThree: Match.AllThree) => allThree.dominantSection
+        )
+
+        val _ = preserved.isSubsequenceOf(sections)
+
+        preserved.toSet
+
+      end baseIsPreservedCorrectlyIn
+
+      def leftAppearsCorrectlyIn(sections: IndexedSeq[Section]): Set[Section] =
+        val appears = left.collect(leftSection =>
+          matchesBySection.get(leftSection) match
+            case Some(allThree: (Match.AllThree | Match.LeftAndRight)) =>
+              allThree.dominantSection
+            case None => leftSection
+        )
+
+        val _ = appears.isSubsequenceOf(sections)
+
+        appears.toSet
+      end leftAppearsCorrectlyIn
+
+      def rightAppearsCorrectlyIn(sections: IndexedSeq[Section]): Set[Section] =
+        val appears = right.collect(rightSection =>
+          matchesBySection.get(rightSection) match
+            case Some(allThree: (Match.AllThree | Match.LeftAndRight)) =>
+              allThree.dominantSection
+            case None => rightSection
+        )
+
+        val _ = appears.isSubsequenceOf(sections)
+
+        appears.toSet
+      end rightAppearsCorrectlyIn
+
+      def allPresentAndCorrectIn(result: Result): Unit =
+        result match
+          case FullyMerged(sections) =>
+            val basePreservations = baseIsPreservedCorrectlyIn(sections)
+            val leftAppearances   = leftAppearsCorrectlyIn(sections)
+            val rightAppearances  = rightAppearsCorrectlyIn(sections)
+
+            assert(
+              (basePreservations union leftAppearances union rightAppearances) == sections.toSet
+            )
+
+          case MergedWithConflicts(leftSections, rightSections) =>
+            val basePreservationsOnLeft = baseIsPreservedCorrectlyIn(
+              leftSections
+            )
+            val basePreservationsOnRight = baseIsPreservedCorrectlyIn(
+              rightSections
+            )
+            val leftAppearances = leftAppearsCorrectlyIn(leftSections)
+            val rightAppearances = rightAppearsCorrectlyIn(
+              rightSections
+            )
+
+            assert(
+              basePreservationsOnLeft == basePreservationsOnRight
+            )
+            assert(
+              (basePreservationsOnLeft union leftAppearances) == leftSections.toSet
+            )
+            assert(
+              (basePreservationsOnRight union rightAppearances) == rightSections.toSet
+            )
+
+      allPresentAndCorrectIn(result)
+
+      expectedMerge.foreach(merge =>
+        // Perform a self-check on the expected merge.
+        allPresentAndCorrectIn(result)
+
+        // This assertion is stronger than `allPresentAndCorrectIn` because it
+        // includes the precise merge resolution.
+        assert(
+          result == merge
+        )
+      )
+
     end validate
 
   end MergeTestCase
