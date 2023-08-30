@@ -30,68 +30,127 @@ class MergeTest:
     )
 
   @Test
-  def bugReproduction(): Unit =
-    val testCase = MergeTestCase(
-      base = Vector(
-        FakeSection(zeroRelativeLabel = 5),
-        FakeSection(zeroRelativeLabel = 9),
-        FakeSection(zeroRelativeLabel = 12)
-      ),
-      left = Vector(
-        FakeSection(zeroRelativeLabel = 2),
-        FakeSection(zeroRelativeLabel = 6),
-        FakeSection(zeroRelativeLabel = 15)
-      ),
-      right = Vector(
-        FakeSection(zeroRelativeLabel = 16),
-        FakeSection(zeroRelativeLabel = 19)
-      ),
-      matchesBySection = Map(
-        FakeSection(zeroRelativeLabel = 5) -> Match.BaseAndLeft(
-          baseSection = FakeSection(zeroRelativeLabel = 5),
-          leftSection = FakeSection(zeroRelativeLabel = 6)
-        ),
-        FakeSection(zeroRelativeLabel = 6) -> Match.BaseAndLeft(
-          baseSection = FakeSection(zeroRelativeLabel = 5),
-          leftSection = FakeSection(zeroRelativeLabel = 6)
-        ),
-        FakeSection(zeroRelativeLabel = 15) -> Match.LeftAndRight(
-          leftSection = FakeSection(zeroRelativeLabel = 15),
-          rightSection = FakeSection(zeroRelativeLabel = 16)
-        ),
-        FakeSection(zeroRelativeLabel = 16) -> Match.LeftAndRight(
-          leftSection = FakeSection(zeroRelativeLabel = 15),
-          rightSection = FakeSection(zeroRelativeLabel = 16)
-        )
-      ),
-      expectedMerge = Some(
-        FullyMerged(
-          sections = Vector(
-            FakeSection(zeroRelativeLabel = 2),
-            FakeSection(zeroRelativeLabel = 15),
-            FakeSection(zeroRelativeLabel = 19)
-          )
-        )
-      ),
-      moves = Vector(
-        Move.LeftInsertion,
-        Move.RightDeletion,
-        Move.CoincidentDeletion,
-        Move.CoincidentDeletion,
-        Move.CoincidentInsertion,
-        Move.RightInsertion
-      )
+  def conflictedMergeExampleOne(): Unit =
+    val a    = FakeSection(zeroRelativeLabel = 1)
+    val b    = FakeSection(zeroRelativeLabel = 2)
+    val base = Vector(a, b)
+
+    val c    = FakeSection(zeroRelativeLabel = 3)
+    val d    = FakeSection(zeroRelativeLabel = 4)
+    val left = Vector(c, d)
+
+    val e     = FakeSection(zeroRelativeLabel = 5)
+    val f     = FakeSection(zeroRelativeLabel = 6)
+    val right = Vector(e, f)
+
+    val bdf =
+      Match.AllThree(baseSection = b, leftSection = d, rightSection = f)
+    val matchesBySection: Map[Section, Match] = Map(
+      b -> bdf,
+      d -> bdf,
+      f -> bdf
     )
 
-    pprint.pprintln(testCase)
+    // NOTE: we expect a clean merge of `d` after the initial conflict.
+    val expectedMerge =
+      MergedWithConflicts(
+        leftSections = Vector(c, d),
+        rightSections = Vector(e, d)
+      )
 
     val Right(result) =
-      Merge.of(testCase.base, testCase.left, testCase.right)(
-        testCase.matchesBySection.get
+      Merge.of(base, left, right)(
+        matchesBySection.get
       ): @unchecked
 
-    testCase.validate(result)
-  end bugReproduction
+    assert(result == expectedMerge)
+  end conflictedMergeExampleOne
+
+  @Test
+  def conflictedMergeExampleTwo(): Unit =
+    val a    = FakeSection(zeroRelativeLabel = 1)
+    val b    = FakeSection(zeroRelativeLabel = 2)
+    val c    = FakeSection(zeroRelativeLabel = 3)
+    val base = Vector(a, b, c)
+
+    val d    = FakeSection(zeroRelativeLabel = 4)
+    val e    = FakeSection(zeroRelativeLabel = 5)
+    val f    = FakeSection(zeroRelativeLabel = 6)
+    val left = Vector(d, e, f)
+
+    val g     = FakeSection(zeroRelativeLabel = 7)
+    val h     = FakeSection(zeroRelativeLabel = 8)
+    val i     = FakeSection(zeroRelativeLabel = 9)
+    val right = Vector(g, h, i)
+
+    val be  = Match.BaseAndLeft(baseSection = b, leftSection = e)
+    val cfi = Match.AllThree(baseSection = c, leftSection = f, rightSection = i)
+    val matchesBySection: Map[Section, Match] = Map(
+      b -> be,
+      e -> be,
+      c -> cfi,
+      f -> cfi,
+      i -> cfi
+    )
+
+    // NOTE: we expect a clean merge of `g`, `h` and `f` after the initial
+    // conflict.
+    val expectedMerge =
+      MergedWithConflicts(
+        leftSections = Vector(d, g, h, f),
+        rightSections = Vector(g, h, f)
+      )
+
+    val Right(result) =
+      Merge.of(base, left, right)(
+        matchesBySection.get
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end conflictedMergeExampleTwo
+
+  @Test
+  def conflictedMergeExampleThree(): Unit =
+    val a    = FakeSection(zeroRelativeLabel = 1)
+    val b    = FakeSection(zeroRelativeLabel = 2)
+    val c    = FakeSection(zeroRelativeLabel = 3)
+    val base = Vector(a, b, c)
+
+    val d    = FakeSection(zeroRelativeLabel = 4)
+    val e    = FakeSection(zeroRelativeLabel = 5)
+    val f    = FakeSection(zeroRelativeLabel = 6)
+    val left = Vector(d, e, f)
+
+    val g     = FakeSection(zeroRelativeLabel = 7)
+    val h     = FakeSection(zeroRelativeLabel = 8)
+    val i     = FakeSection(zeroRelativeLabel = 9)
+    val right = Vector(g, h, i)
+
+    val bh  = Match.BaseAndRight(baseSection = b, rightSection = h)
+    val cfi = Match.AllThree(baseSection = c, leftSection = f, rightSection = i)
+    val matchesBySection: Map[Section, Match] = Map(
+      b -> bh,
+      h -> bh,
+      c -> cfi,
+      f -> cfi,
+      i -> cfi
+    )
+
+    // NOTE: we expect a clean merge of `d`, `e` and `f` after the initial
+    // conflict.
+    val expectedMerge =
+      MergedWithConflicts(
+        leftSections = Vector(d, e, f),
+        rightSections = Vector(g, d, e, f)
+      )
+
+    val Right(result) =
+      Merge.of(base, left, right)(
+        matchesBySection.get
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end conflictedMergeExampleThree
 
   /* Test ideas:
    * 1. Start with a merged sequence of sections and confabulate base, left and
