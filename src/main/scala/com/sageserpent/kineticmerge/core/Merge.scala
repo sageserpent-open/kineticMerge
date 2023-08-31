@@ -379,6 +379,15 @@ object Merge:
           )
 
         case (
+              _,
+              Seq(Contribution.Difference(leftSection), leftTail*),
+              Seq(Contribution.Difference(rightSection), rightTail*)
+            ) => // Insertion conflict.
+          mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
+            addConflicting(partialResult, leftSection, rightSection)
+          )
+
+        case (
               Seq(
                 Contribution.Common(_) |
                 Contribution.CommonToBaseAndLeftOnly(_) |
@@ -414,15 +423,6 @@ object Merge:
 
           mergeBetweenRunsOfCommonElements(base, left, rightTail)(
             addCommon(partialResult, rightSection)
-          )
-
-        case (
-              _,
-              Seq(Contribution.Difference(leftSection), leftTail*),
-              Seq(Contribution.Difference(rightSection), rightTail*)
-            ) => // Insertion conflict.
-          mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
-            addConflicting(partialResult, leftSection, rightSection)
           )
 
         case (Seq(), Seq(), Seq()) => // Terminating case!
