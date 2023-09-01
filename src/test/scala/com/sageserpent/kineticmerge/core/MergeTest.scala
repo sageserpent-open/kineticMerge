@@ -30,7 +30,7 @@ class MergeTest:
     )
 
   @Test
-  def conflictedMergeExampleOne(): Unit =
+  def editConflict(): Unit =
     val a    = FakeSection(zeroRelativeLabel = 1)
     val b    = FakeSection(zeroRelativeLabel = 2)
     val base = Vector(a, b)
@@ -51,7 +51,7 @@ class MergeTest:
       f -> bdf
     )
 
-    // NOTE: we expect a clean merge of `d` after the initial conflict.
+    // NOTE: we expect a clean merge of `d` after the initial edit conflict.
     val expectedMerge =
       MergedWithConflicts(
         leftSections = Vector(c, d),
@@ -64,10 +64,10 @@ class MergeTest:
       ): @unchecked
 
     assert(result == expectedMerge)
-  end conflictedMergeExampleOne
+  end editConflict
 
   @Test
-  def conflictedMergeExampleTwo(): Unit =
+  def leftEditVersusRightDeletionConflictDueToFollowingRightEdit(): Unit =
     val a    = FakeSection(zeroRelativeLabel = 1)
     val b    = FakeSection(zeroRelativeLabel = 2)
     val c    = FakeSection(zeroRelativeLabel = 3)
@@ -94,7 +94,7 @@ class MergeTest:
     )
 
     // NOTE: we expect a clean merge of `g`, `h` and `f` after the initial
-    // conflict.
+    // left edit versus right deletion conflict.
     val expectedMerge =
       MergedWithConflicts(
         leftSections = Vector(d, g, h, f),
@@ -107,10 +107,10 @@ class MergeTest:
       ): @unchecked
 
     assert(result == expectedMerge)
-  end conflictedMergeExampleTwo
+  end leftEditVersusRightDeletionConflictDueToFollowingRightEdit
 
   @Test
-  def conflictedMergeExampleThree(): Unit =
+  def rightEditVersusLeftDeletionConflictDueToFollowingLeftEdit(): Unit =
     val a    = FakeSection(zeroRelativeLabel = 1)
     val b    = FakeSection(zeroRelativeLabel = 2)
     val c    = FakeSection(zeroRelativeLabel = 3)
@@ -137,7 +137,7 @@ class MergeTest:
     )
 
     // NOTE: we expect a clean merge of `d`, `e` and `f` after the initial
-    // conflict.
+    // right edit versus left deletion conflict.
     val expectedMerge =
       MergedWithConflicts(
         leftSections = Vector(d, e, f),
@@ -150,10 +150,10 @@ class MergeTest:
       ): @unchecked
 
     assert(result == expectedMerge)
-  end conflictedMergeExampleThree
+  end rightEditVersusLeftDeletionConflictDueToFollowingLeftEdit
 
   @Test
-  def conflictedMergeExampleFour(): Unit =
+  def insertionConflict(): Unit =
     val a    = FakeSection(zeroRelativeLabel = 1)
     val base = Vector(a)
 
@@ -186,7 +186,51 @@ class MergeTest:
       ): @unchecked
 
     assert(result == expectedMerge)
-  end conflictedMergeExampleFour
+  end insertionConflict
+
+  @Test
+  def editConflictFollowedByCoincidentInsertion(): Unit =
+    val a    = FakeSection(zeroRelativeLabel = 1)
+    val b    = FakeSection(zeroRelativeLabel = 2)
+    val base = Vector(a, b)
+
+    val c    = FakeSection(zeroRelativeLabel = 3)
+    val d    = FakeSection(zeroRelativeLabel = 4)
+    val e    = FakeSection(zeroRelativeLabel = 5)
+    val left = Vector(c, d, e)
+
+    val f     = FakeSection(zeroRelativeLabel = 6)
+    val g     = FakeSection(zeroRelativeLabel = 7)
+    val h     = FakeSection(zeroRelativeLabel = 8)
+    val right = Vector(f, g, h)
+
+    val dg = Match.LeftAndRight(leftSection = d, rightSection = g)
+
+    val beh =
+      Match.AllThree(baseSection = b, leftSection = e, rightSection = h)
+    val matchesBySection: Map[Section, Match] = Map(
+      d -> dg,
+      g -> dg,
+      b -> beh,
+      e -> beh,
+      h -> beh
+    )
+
+    // NOTE: we expect a clean merge of `d` and `g` after the initial edit
+    // conflict.
+    val expectedMerge =
+      MergedWithConflicts(
+        leftSections = Vector(c, d, e),
+        rightSections = Vector(f, d, e)
+      )
+
+    val Right(result) =
+      Merge.of(base, left, right)(
+        matchesBySection.get
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end editConflictFollowedByCoincidentInsertion
 
   /* Test ideas:
    * 1. Start with a merged sequence of sections and confabulate base, left and
