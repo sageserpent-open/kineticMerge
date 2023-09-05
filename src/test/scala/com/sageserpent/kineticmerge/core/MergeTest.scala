@@ -278,7 +278,7 @@ class MergeTest:
       .withLimit(2000)
       .dynamicTests: testCase =>
         println("*************")
-        pprint.pprintln(testCase)
+        pprintln(testCase)
 
         val Right(result) =
           Merge.of(testCase.base, testCase.left, testCase.right)(
@@ -300,7 +300,7 @@ class MergeTest:
         result match
           case Result.MergedWithConflicts(_, _) =>
             println("*************")
-            pprint.pprintln(testCase)
+            pprintln(testCase)
 
             testCase.validate(result)
           case Result.FullyMerged(_) => Trials.reject()
