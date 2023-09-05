@@ -348,18 +348,6 @@ object Merge:
   case object Divergence
 
   enum Result[Element]:
-    /** @return
-      *   A map from moved sections in either the left or the right to their
-      *   associated rewrites, which may represent edits or outright deletions.
-      *   If a section is from the base, or has not moved, or has no associated
-      *   rewrite then there will be no entry for it in the map.
-      * @note
-      *   A section serving as an edit rewrite is wrapped in a [[Some]]
-      *   instance. A deletion rewrite of a section is represented by an
-      *   associated [[None]] instance.
-      */
-    def movedElementRewrites: Map[Element, Option[Element]] = ???
-
     case FullyMerged(elements: IndexedSeq[Element])
     case MergedWithConflicts(
         leftElements: IndexedSeq[Element],
