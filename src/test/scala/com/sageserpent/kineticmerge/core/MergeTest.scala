@@ -58,7 +58,7 @@ class MergeTest:
 
     val Right(result) =
       Merge.of(base, left, right)(
-        matchesByElement.get
+        equivalent(matchesByElement)
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -101,7 +101,7 @@ class MergeTest:
 
     val Right(result) =
       Merge.of(base, left, right)(
-        matchesByElement.get
+        equivalent(matchesByElement)
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -144,7 +144,7 @@ class MergeTest:
 
     val Right(result) =
       Merge.of(base, left, right)(
-        matchesByElement.get
+        equivalent(matchesByElement)
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -180,7 +180,7 @@ class MergeTest:
 
     val Right(result) =
       Merge.of(base, left, right)(
-        matchesByElement.get
+        equivalent(matchesByElement)
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -224,7 +224,7 @@ class MergeTest:
 
     val Right(result) =
       Merge.of(base, left, right)(
-        matchesByElement.get
+        equivalent(matchesByElement)
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -282,7 +282,7 @@ class MergeTest:
 
         val Right(result) =
           Merge.of(testCase.base, testCase.left, testCase.right)(
-            testCase.matchesByElement.get
+            equivalent(testCase.matchesByElement)
           ): @unchecked
 
         testCase.validate(result)
@@ -294,7 +294,7 @@ class MergeTest:
       .dynamicTests: testCase =>
         val Right(result) =
           Merge.of(testCase.base, testCase.left, testCase.right)(
-            testCase.matchesByElement.get
+            equivalent(testCase.matchesByElement)
           ): @unchecked
 
         result match
@@ -587,6 +587,16 @@ object MergeTest:
   private val leftDeletionFrequency        = 7  -> Move.LeftDeletion
   private val rightDeletionFrequency       = 7  -> Move.RightDeletion
   private val coincidentDeletionFrequency  = 4  -> Move.CoincidentDeletion
+
+  def equivalent(
+      matchesByElement: Map[Element, Match[Element]]
+  )(lhs: Element, rhs: Element): Boolean =
+    matchesByElement.get(lhs) -> matchesByElement.get(rhs) match
+      case (None, None)    => false
+      case (None, Some(_)) => false
+      case (Some(_), None) => false
+      case (Some(lhsMatch), Some(rhsMatch)) =>
+        lhsMatch.dominantElement == rhsMatch.dominantElement
 
   private def emptyMergeTestCase(allowConflicts: Boolean): MergeTestCase =
     MergeTestCase(

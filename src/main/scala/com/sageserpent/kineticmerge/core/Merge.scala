@@ -1,5 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
+import cats.Eq
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Contribution
 import com.sageserpent.kineticmerge.core.Merge.Result.*
 
@@ -11,16 +12,8 @@ object Merge:
       left: IndexedSeq[Element],
       right: IndexedSeq[Element]
   )(
-      matchFor: Element => Option[Match[Element]]
+      equality: Eq[Element]
   ): Either[Divergence.type, Result[Element]] =
-    def equivalent(lhs: Element, rhs: Element) =
-      matchFor(lhs) -> matchFor(rhs) match
-        case (None, None)    => false
-        case (None, Some(_)) => false
-        case (Some(_), None) => false
-        case (Some(lhsMatch), Some(rhsMatch)) =>
-          lhsMatch.dominantElement == rhsMatch.dominantElement
-
     def addCommon(
         partialResult: Result[Element],
         commonElement: Element
@@ -89,15 +82,8 @@ object Merge:
               Seq(Contribution.Common(leftElement), leftTail*),
               Seq(Contribution.Common(rightElement), rightTail*)
             ) => // Preservation.
-          // Invariant - these must all belong to the same match; progress
-          // through common elements is synchronized.
-          val Some(matchForBaseElement) = matchFor(baseElement): @unchecked
-
-          assume(matchFor(leftElement).contains(matchForBaseElement))
-          assume(matchFor(rightElement).contains(matchForBaseElement))
-
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-            addCommon(partialResult, matchForBaseElement.dominantElement)
+            addCommon(partialResult, leftElement)
           )
 
         case (
@@ -111,16 +97,6 @@ object Merge:
                 rightTail*
               )
             ) => // Coincident edit.
-          // Invariant - these must both belong to the same match; progress
-          // through common elements is synchronized.
-          val Some(matchForLeftElement) = matchFor(leftElement): @unchecked
-
-          assume(matchFor(rightElement).contains(matchForLeftElement))
-
-          // Invariant - the base section cannot be part of a match when it is
-          // different.
-          assume(matchFor(baseElement).isEmpty)
-
           baseTail match
             case Seq(Contribution.Difference(_), _*) =>
               // If the following element in the base would also be
@@ -132,7 +108,7 @@ object Merge:
 
             case _ =>
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                addCommon(partialResult, matchForLeftElement.dominantElement)
+                addCommon(partialResult, leftElement)
               )
           end match
 
@@ -147,16 +123,8 @@ object Merge:
                 rightTail*
               )
             ) => // Coincident insertion.
-          // Invariant - these must both belong to the same match; progress
-          // through common elements is synchronized.
-          val Some(matchForLeftElement) = matchFor(leftElement): @unchecked
-
-          assume(matchFor(rightElement).contains(matchForLeftElement))
-
-          val dominantElement = matchForLeftElement.dominantElement
-
           mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
-            addCommon(partialResult, dominantElement)
+            addCommon(partialResult, leftElement)
           )
 
         case (
@@ -170,12 +138,6 @@ object Merge:
                 rightTail*
               )
             ) => // Left deletion.
-          // Invariant - these must all belong to the same match; progress
-          // through common elements is synchronized.
-          val Some(matchForBaseElement) = matchFor(baseElement): @unchecked
-
-          assume(matchFor(rightElement).contains(matchForBaseElement))
-
           mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
             partialResult
           )
@@ -191,12 +153,6 @@ object Merge:
               ),
               _
             ) => // Right deletion.
-          // Invariant - these must all belong to the same match; progress
-          // through common elements is synchronized.
-          val Some(matchForBaseElement) = matchFor(baseElement): @unchecked
-
-          assume(matchFor(leftElement).contains(matchForBaseElement))
-
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
             partialResult
           )
@@ -255,10 +211,6 @@ object Merge:
               Seq(Contribution.Difference(leftElement), leftTail*),
               Seq(Contribution.Difference(_), _*)
             ) => // Left insertion with pending right edit.
-          // Invariant - the left section cannot be part of a match when it is
-          // different.
-          assume(matchFor(leftElement).isEmpty)
-
           mergeBetweenRunsOfCommonElements(base, leftTail, right)(
             addCommon(partialResult, leftElement)
           )
@@ -268,10 +220,6 @@ object Merge:
               Seq(Contribution.Difference(_), _*),
               Seq(Contribution.Difference(rightElement), rightTail*)
             ) => // Right insertion with pending left edit.
-          // Invariant - the left section cannot be part of a match when it is
-          // different.
-          assume(matchFor(rightElement).isEmpty)
-
           mergeBetweenRunsOfCommonElements(base, left, rightTail)(
             addCommon(partialResult, rightElement)
           )
@@ -296,10 +244,6 @@ object Merge:
               Seq(Contribution.Difference(leftElement), leftTail*),
               _
             ) => // Left insertion.
-          // Invariant - the left section cannot be part of a match when it is
-          // different.
-          assume(matchFor(leftElement).isEmpty)
-
           mergeBetweenRunsOfCommonElements(base, leftTail, right)(
             addCommon(partialResult, leftElement)
           )
@@ -315,10 +259,6 @@ object Merge:
               _,
               Seq(Contribution.Difference(rightElement), rightTail*)
             ) => // Right insertion.
-          // Invariant - the left section cannot be part of a match when it is
-          // different.
-          assume(matchFor(rightElement).isEmpty)
-
           mergeBetweenRunsOfCommonElements(base, left, rightTail)(
             addCommon(partialResult, rightElement)
           )
@@ -329,7 +269,7 @@ object Merge:
     end mergeBetweenRunsOfCommonElements
 
     val longestCommonSubsequence =
-      LongestCommonSubsequence.of(base, left, right)(equivalent _)
+      LongestCommonSubsequence.of(base, left, right)(equality)
 
     val emptyResult: Result[Element] = FullyMerged(IndexedSeq.empty)
 
