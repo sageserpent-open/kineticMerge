@@ -29,6 +29,7 @@ class MergingTextTest:
       ): @unchecked
 
     pprintln(leftElements.map(_.text).mkString)
+    println("*********************************")
     pprintln(rightElements.map(_.text).mkString)
   end proseCanBeMerged
 end MergingTextTest
