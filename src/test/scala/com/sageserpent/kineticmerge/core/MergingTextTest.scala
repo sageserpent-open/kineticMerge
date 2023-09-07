@@ -1,8 +1,8 @@
 package com.sageserpent.kineticmerge.core
 
 import com.sageserpent.kineticmerge.core.Merge.Result.MergedWithConflicts
+import com.sageserpent.kineticmerge.core.MergingTextTest.*
 import com.sageserpent.kineticmerge.core.MergingTextTest.Token.{Punctuation, Whitespace}
-import com.sageserpent.kineticmerge.core.MergingTextTest.{emsworth, jobsworth, tokenizer, wordsworth}
 import org.junit.jupiter.api.Test
 import pprint.*
 
@@ -28,8 +28,8 @@ class MergingTextTest:
         _ == _
       ): @unchecked
 
-    pprintln(leftElements.mkString)
-    pprintln(rightElements.mkString)
+    pprintln(leftElements.map(_.text).mkString)
+    pprintln(rightElements.map(_.text).mkString)
   end proseCanBeMerged
 end MergingTextTest
 
