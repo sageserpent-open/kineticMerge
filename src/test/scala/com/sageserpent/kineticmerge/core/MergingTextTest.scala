@@ -28,8 +28,8 @@ class MergingTextTest:
         _ == _
       ): @unchecked
 
-    pprintln(leftElements)
-    pprintln(rightElements)
+    pprintln(leftElements.mkString)
+    pprintln(rightElements.mkString)
   end proseCanBeMerged
 end MergingTextTest
 
