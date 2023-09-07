@@ -40,7 +40,9 @@ object PartitionedThreeWayTransform:
   )(partitionSizeFraction: Double, equality: Eq[Element])(
       threeWayTransform: Input[Element] => Result,
       reduction: (Result, Result) => Result
-  ): Result = ???
+  ): Result = threeWayTransform(
+    Input(base = base, left = left, right = right, isCommonPartition = false)
+  )
 
   /** @param isCommonPartition
     *   True if the three sides refer to a common partition.

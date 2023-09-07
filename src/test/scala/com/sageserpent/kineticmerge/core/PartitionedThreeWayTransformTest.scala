@@ -26,7 +26,21 @@ class PartitionedThreeWayTransformTest:
 
           assert(reconstitutedBase == base)
 
-          pprintln((base, left, right))
+          val reconstitutedLeft =
+            PartitionedThreeWayTransform(base, left, right)(
+              partitionSizeFraction,
+              _ == _
+            )(_.left, _ ++ _)
+
+          assert(reconstitutedLeft == left)
+
+          val reconstitutedRight =
+            PartitionedThreeWayTransform(base, left, right)(
+              partitionSizeFraction,
+              _ == _
+            )(_.right, _ ++ _)
+
+          assert(reconstitutedRight == right)
   end inputsContentContributesToTheResult
 
   @TestFactory
