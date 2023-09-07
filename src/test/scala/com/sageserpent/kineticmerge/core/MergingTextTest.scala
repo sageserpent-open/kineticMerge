@@ -1,15 +1,30 @@
 package com.sageserpent.kineticmerge.core
 
 import com.sageserpent.kineticmerge.core.Merge.Result.MergedWithConflicts
-import com.sageserpent.kineticmerge.core.MergingTextTest.{emsworth, jobsworth, wordsworth}
+import com.sageserpent.kineticmerge.core.MergingTextTest.Token.{Punctuation, Whitespace}
+import com.sageserpent.kineticmerge.core.MergingTextTest.{emsworth, jobsworth, tokenizer, wordsworth}
 import org.junit.jupiter.api.Test
 import pprint.*
 
+import scala.util.parsing.combinator.RegexParsers
+
 class MergingTextTest:
+  @Test
+  def tokenization(): Unit =
+    pprintln(tokenizer(wordsworth))
+    pprintln(tokenizer(jobsworth))
+    pprintln(tokenizer(emsworth))
+
+  end tokenization
+
   @Test
   def proseCanBeMerged(): Unit =
     val Right(MergedWithConflicts(leftElements, rightElements)) =
-      Merge.of(base = wordsworth, left = jobsworth, right = emsworth)(
+      Merge.of(
+        base = tokenizer(wordsworth).get,
+        left = tokenizer(jobsworth).get,
+        right = tokenizer(emsworth).get
+      )(
         _ == _
       ): @unchecked
 
@@ -106,5 +121,37 @@ object MergingTextTest:
       |And then my heart with pleasure fills,
       |And sashays with the fishing boats.
       |""".stripMargin
+
+  object tokenizer extends RegexParsers:
+    override def skipWhitespace: Boolean = false
+
+    def apply(input: String): ParseResult[Vector[Token]] =
+      parse(tokens, input).map(_.toVector)
+
+    def tokens: Parser[List[Token]] = phrase(
+      rep(whitespaceRun | word | punctutation)
+    )
+
+    def whitespaceRun: Parser[Token.Whitespace] =
+      whiteSpace ^^ Token.Whitespace.apply
+
+    def word: Parser[Token.Word] = "('|\\w)+".r ^^ Token.Word.apply
+
+    def punctutation: Parser[Token.Punctuation] =
+      "[.,-—;:??!()]".r ^^ (singleCharacter =>
+        Token.Punctuation(singleCharacter.charAt(0))
+      )
+  end tokenizer
+
+  enum Token:
+    def text: String = this match
+      case Whitespace(blanks)     => blanks
+      case Word(letters)          => letters
+      case Punctuation(character) => character.toString
+
+    case Whitespace(blanks: String)
+    case Word(letters: String)
+    case Punctuation(character: Char)
+  end Token
 
 end MergingTextTest
