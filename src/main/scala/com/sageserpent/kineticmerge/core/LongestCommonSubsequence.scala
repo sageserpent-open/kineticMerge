@@ -29,6 +29,9 @@ object LongestCommonSubsequence:
       left: IndexedSeq[Element],
       right: IndexedSeq[Element]
   )(equality: Eq[Element]): LongestCommonSubsequence[Element] =
+    val orderBySize =
+      Ordering[(Int, Int)].on[LongestCommonSubsequence[Element]](_.size)
+
     val partialResultsCache
         : mutable.Map[(Int, Int, Int), LongestCommonSubsequence[Element]] =
       mutable.Map.empty
@@ -101,10 +104,10 @@ object LongestCommonSubsequence:
                       .focus(_.right)
                       .modify(_ :+ Contribution.Difference(rightElement))
 
-                  Seq(
+                  orderBySize.max(
                     resultDroppingTheEndOfTheLeft,
                     resultDroppingTheEndOfTheRight
-                  ).maxBy(_.size)
+                  )
                 end if
               }
             )
@@ -142,10 +145,10 @@ object LongestCommonSubsequence:
                       .focus(_.right)
                       .modify(_ :+ Contribution.Difference(rightElement))
 
-                  Seq(
+                  orderBySize.max(
                     resultDroppingTheEndOfTheBase,
                     resultDroppingTheEndOfTheRight
-                  ).maxBy(_.size)
+                  )
                 end if
               }
             )
@@ -183,10 +186,10 @@ object LongestCommonSubsequence:
                       .focus(_.left)
                       .modify(_ :+ Contribution.Difference(leftElement))
 
-                  Seq(
+                  orderBySize.max(
                     resultDroppingTheEndOfTheBase,
                     resultDroppingTheEndOfTheLeft
-                  ).maxBy(_.size)
+                  )
                 end if
               }
             )
@@ -301,7 +304,7 @@ object LongestCommonSubsequence:
     )
 
   end of
-  
+
   enum Contribution[Element]:
     case Common(
         element: Element
