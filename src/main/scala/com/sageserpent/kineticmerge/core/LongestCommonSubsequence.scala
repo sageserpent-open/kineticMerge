@@ -38,6 +38,9 @@ object LongestCommonSubsequence:
       right: IndexedSeq[Element]
   )(equality: Eq[Element]): LongestCommonSubsequence[Element] =
 
+    val orderBySize =
+      Ordering[(Int, Int)].on[LongestCommonSubsequence[Element]](_.size)
+
     val partialResultsCache: PartialResultsCache[Element] = mutable.Map.empty
 
     def getOrElseUpdate(
@@ -130,7 +133,7 @@ object LongestCommonSubsequence:
                   (
                     resultDroppingTheEndOfTheLeft,
                     resultDroppingTheEndOfTheRight
-                  ).mapN(Seq(_, _).maxBy(_.size))
+                  ).mapN(orderBySize.max)
                 end if
               }
             )
@@ -174,7 +177,7 @@ object LongestCommonSubsequence:
                   (
                     resultDroppingTheEndOfTheBase,
                     resultDroppingTheEndOfTheRight
-                  ).mapN(Seq(_, _).maxBy(_.size))
+                  ).mapN(orderBySize.max)
                 end if
               }
             )
@@ -216,7 +219,7 @@ object LongestCommonSubsequence:
                     )
 
                   (resultDroppingTheEndOfTheBase, resultDroppingTheEndOfTheLeft)
-                    .mapN(Seq(_, _).maxBy(_.size))
+                    .mapN(orderBySize.max)
                 end if
               }
             )
