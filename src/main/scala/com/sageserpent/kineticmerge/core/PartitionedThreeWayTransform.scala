@@ -1,8 +1,15 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.Eq
+import org.rabinfingerprint.fingerprint.{
+  RabinFingerprintLong,
+  RabinFingerprintLongWindowed
+}
+import org.rabinfingerprint.polynomial.Polynomial
 
 object PartitionedThreeWayTransform:
+  private val polynomial = Polynomial.createIrreducible(10)
+
   /** Partition the sequences {@code base}, {@code left} and {@code right} by a
     * common partition; each of the sequences is split into two (possibly empty)
     * parts before and after the partition.
@@ -40,9 +47,14 @@ object PartitionedThreeWayTransform:
   )(partitionSizeFraction: Double, equality: Eq[Element])(
       threeWayTransform: Input[Element] => Result,
       reduction: (Result, Result) => Result
-  ): Result = threeWayTransform(
-    Input(base = base, left = left, right = right, isCommonPartition = false)
-  )
+  ): Result =
+
+    val fingerprinting = new RabinFingerprintLongWindowed(polynomial, 100)
+
+    threeWayTransform(
+      Input(base = base, left = left, right = right, isCommonPartition = false)
+    )
+  end apply
 
   /** @param isCommonPartition
     *   True if the three sides refer to a common partition.
