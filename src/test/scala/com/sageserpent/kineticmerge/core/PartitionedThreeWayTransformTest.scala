@@ -49,7 +49,60 @@ class PartitionedThreeWayTransformTest:
       .withLimit(100)
       .dynamicTests:
         case LongestCommonSubsequenceTest.TestCase(core, base, left, right) =>
-          ???
+          val commonSubsequenceViaBase =
+            PartitionedThreeWayTransform(base, left, right)(
+              partitionSizeFraction,
+              _ == _
+            )(
+              {
+                case Input(base, _, _, true) => base
+                case Input(_, _, _, false)   => Vector.empty
+              },
+              _ ++ _
+            )
+
+          commonSubsequenceViaBase isSubsequenceOf base
+          commonSubsequenceViaBase isSubsequenceOf left
+          commonSubsequenceViaBase isSubsequenceOf right
+
+          val commonSubsequenceViaLeft =
+            PartitionedThreeWayTransform(base, left, right)(
+              partitionSizeFraction,
+              _ == _
+            )(
+              {
+                case Input(_, left, _, true) => left
+                case Input(_, _, _, false)   => Vector.empty
+              },
+              _ ++ _
+            )
+
+          commonSubsequenceViaLeft isSubsequenceOf base
+          commonSubsequenceViaLeft isSubsequenceOf left
+          commonSubsequenceViaLeft isSubsequenceOf right
+
+          val commonSubsequenceViaRight =
+            PartitionedThreeWayTransform(base, left, right)(
+              partitionSizeFraction,
+              _ == _
+            )(
+              {
+                case Input(_, _, right, true) => right
+                case Input(_, _, _, false)    => Vector.empty
+              },
+              _ ++ _
+            )
+
+          commonSubsequenceViaRight isSubsequenceOf base
+          commonSubsequenceViaRight isSubsequenceOf left
+          commonSubsequenceViaRight isSubsequenceOf right
+
+          assert(commonSubsequenceViaBase == commonSubsequenceViaLeft)
+          assert(commonSubsequenceViaBase == commonSubsequenceViaRight)
+
+          if commonSubsequenceViaBase.isEmpty then Trials.reject()
+          end if
+
   end selectingOnlyTheCommonPartitionsYieldsACommonSubsequence
 
 end PartitionedThreeWayTransformTest
