@@ -56,7 +56,7 @@ class PartitionedThreeWayTransformTest:
   @TestFactory
   def selectingOnlyTheCommonPartitionsYieldsACommonSubsequence(): DynamicTests =
     (testCases and partitionSizeFractions)
-      .withLimit(100)
+      .withLimit(200)
       .dynamicTests:
         case (
               LongestCommonSubsequenceTest.TestCase(_, base, left, right),

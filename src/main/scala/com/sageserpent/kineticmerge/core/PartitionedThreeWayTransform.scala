@@ -129,7 +129,11 @@ object PartitionedThreeWayTransform:
             base: Partitions,
             left: Partitions,
             right: Partitions
-        )
+        ):
+          assume(base.common == left.common)
+          assume(base.common == right.common)
+        end PartitionedSides
+
 
         def matchingFingerprintAcrossSides(
             baseFingerprintStartIndices: SortedMap[Long, Int],
