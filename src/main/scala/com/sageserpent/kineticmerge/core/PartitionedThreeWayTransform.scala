@@ -58,6 +58,10 @@ object PartitionedThreeWayTransform:
     require(0 <= partitionSizeFraction)
     require(1 >= partitionSizeFraction)
 
+    given witness: Eq[Element] = equality
+
+    val sequenceEquality: Eq[Seq[Element]] = Eq[Seq[Element]]
+
     def transformThroughPartitions(
         base: IndexedSeq[Element],
         left: IndexedSeq[Element],
@@ -130,9 +134,8 @@ object PartitionedThreeWayTransform:
             left: Partitions,
             right: Partitions
         ):
-          given witness: Eq[Element] = equality
-          assume(Eq[Seq[Element]].eqv(base.common, left.common))
-          assume(Eq[Seq[Element]].eqv(base.common, right.common))
+          assume(sequenceEquality.eqv(base.common, left.common))
+          assume(sequenceEquality.eqv(base.common, right.common))
         end PartitionedSides
 
         def matchingFingerprintAcrossSides(
@@ -278,7 +281,10 @@ object PartitionedThreeWayTransform:
                 base = base,
                 left = left,
                 right = right,
-                isCommonPartition = false
+                isCommonPartition = sequenceEquality.eqv(
+                  base,
+                  left
+                ) && sequenceEquality.eqv(base, right)
               )
             )
         end match
