@@ -1,7 +1,10 @@
 package com.sageserpent.kineticmerge.core
 
+import cats.Eq
+import com.google.common.hash.Hashing
 import com.sageserpent.kineticmerge.core.Merge.Result.MergedWithConflicts
-import com.sageserpent.kineticmerge.core.MergingTextTest.{emsworth, jobsworth, wordsworth}
+import com.sageserpent.kineticmerge.core.MergingTextTest.{emsworth, jobsworth, merge, wordsworth}
+import com.sageserpent.kineticmerge.core.PartitionedThreeWayTransform.Input
 import org.junit.jupiter.api.Test
 import pprint.*
 
@@ -9,7 +12,7 @@ class MergingTextTest:
   @Test
   def proseCanBeMerged(): Unit =
     val Right(MergedWithConflicts(leftElements, rightElements)) =
-      Merge.of(base = wordsworth, left = jobsworth, right = emsworth)(
+      merge(base = wordsworth, left = jobsworth, right = emsworth)(
         _ == _
       ): @unchecked
 
@@ -106,5 +109,71 @@ object MergingTextTest:
       |And then my heart with pleasure fills,
       |And sashays with the fishing boats.
       |""".stripMargin
+
+  def merge(
+      base: String,
+      left: String,
+      right: String
+  )(
+      equality: Eq[Char]
+  ): Either[Merge.Divergence.type, Merge.Result[Char]] =
+    def threeWayTransform(
+        input: Input[Char]
+    ): Either[Merge.Divergence.type, Merge.Result[Char]] =
+      if input.isCommonPartition then
+        Right(Merge.Result.FullyMerged(input.left))
+      else Merge.of(input.base, input.left, input.right)(equality)
+
+    PartitionedThreeWayTransform(base, left, right)(0.1, equality, elementHash)(
+      threeWayTransform,
+      reduction
+    )
+  end merge
+
+  private def elementHash(element: Char): Array[Byte] =
+    val hasher = Hashing.murmur3_32_fixed().newHasher()
+
+    hasher.putChar(element)
+
+    hasher.hash().asBytes()
+  end elementHash
+
+  private def reduction(
+      lhs: Either[Merge.Divergence.type, Merge.Result[Char]],
+      rhs: Either[Merge.Divergence.type, Merge.Result[Char]]
+  ): Either[Merge.Divergence.type, Merge.Result[Char]] =
+    for
+      lhsMerge <- lhs
+      rhsMerge <- rhs
+    yield lhsMerge -> rhsMerge match
+      case (
+            Merge.Result.FullyMerged(lhsElements),
+            Merge.Result.FullyMerged(rhsElements)
+          ) =>
+        Merge.Result.FullyMerged(lhsElements ++ rhsElements)
+      case (
+            Merge.Result.FullyMerged(lhsElements),
+            Merge.Result.MergedWithConflicts(rhsLeftElements, rhsRightElements)
+          ) =>
+        Merge.Result.MergedWithConflicts(
+          lhsElements ++ rhsLeftElements,
+          lhsElements ++ rhsRightElements
+        )
+      case (
+            Merge.Result.MergedWithConflicts(lhsLeftElements, lhsRightElements),
+            Merge.Result.FullyMerged(rhsElements)
+          ) =>
+        Merge.Result.MergedWithConflicts(
+          lhsLeftElements ++ rhsElements,
+          lhsRightElements ++ rhsElements
+        )
+      case (
+            Merge.Result.MergedWithConflicts(lhsLeftElements, lhsRightElements),
+            Merge.Result.MergedWithConflicts(rhsLeftElements, rhsRightElements)
+          ) =>
+        Merge.Result.MergedWithConflicts(
+          lhsLeftElements ++ rhsLeftElements,
+          lhsRightElements ++ rhsRightElements
+        )
 
 end MergingTextTest
