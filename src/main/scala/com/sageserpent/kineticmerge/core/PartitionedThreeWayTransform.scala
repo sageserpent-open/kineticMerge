@@ -11,7 +11,7 @@ import scala.annotation.tailrec
 import scala.collection.{SortedMap, mutable}
 
 object PartitionedThreeWayTransform:
-  private val polynomial = Polynomial.createIrreducible(31)
+  private val polynomial = Polynomial.createIrreducible(15)
 
   /** Partition the sequences {@code base}, {@code left} and {@code right} by a
     * common partition; each of the sequences is split into two (possibly empty)
