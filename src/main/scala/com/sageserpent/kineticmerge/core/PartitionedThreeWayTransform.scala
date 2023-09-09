@@ -130,8 +130,9 @@ object PartitionedThreeWayTransform:
             left: Partitions,
             right: Partitions
         ):
-          assume(base.common == left.common)
-          assume(base.common == right.common)
+          given witness: Eq[Element] = equality
+          assume(Eq[Seq[Element]].eqv(base.common, left.common))
+          assume(Eq[Seq[Element]].eqv(base.common, right.common))
         end PartitionedSides
 
         def matchingFingerprintAcrossSides(
