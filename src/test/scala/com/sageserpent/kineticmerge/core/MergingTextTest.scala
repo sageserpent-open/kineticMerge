@@ -124,7 +124,11 @@ object MergingTextTest:
         Right(Merge.Result.FullyMerged(input.left))
       else Merge.of(input.base, input.left, input.right)(equality)
 
-    PartitionedThreeWayTransform(base, left, right)(0.1, equality, elementHash)(
+    PartitionedThreeWayTransform(base, left, right)(
+      partitionSizeFraction = 0.025,
+      equality = equality,
+      hash = elementHash
+    )(
       threeWayTransform,
       reduction
     )
