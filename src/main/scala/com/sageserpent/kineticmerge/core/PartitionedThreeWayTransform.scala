@@ -7,8 +7,11 @@ import org.rabinfingerprint.fingerprint.{
 }
 import org.rabinfingerprint.polynomial.Polynomial
 
+import scala.annotation.tailrec
+import scala.collection.{SortedMap, mutable}
+
 object PartitionedThreeWayTransform:
-  private val polynomial = Polynomial.createIrreducible(10)
+  private val polynomial = Polynomial.createIrreducible(31)
 
   /** Partition the sequences {@code base}, {@code left} and {@code right} by a
     * common partition; each of the sequences is split into two (possibly empty)
@@ -44,16 +47,207 @@ object PartitionedThreeWayTransform:
       base: IndexedSeq[Element],
       left: IndexedSeq[Element],
       right: IndexedSeq[Element]
-  )(partitionSizeFraction: Double, equality: Eq[Element])(
+  )(
+      partitionSizeFraction: Double,
+      equality: Eq[Element],
+      hash: Element => Array[Byte]
+  )(
       threeWayTransform: Input[Element] => Result,
       reduction: (Result, Result) => Result
   ): Result =
+    require(0 <= partitionSizeFraction)
+    require(1 >= partitionSizeFraction)
 
-    val fingerprinting = new RabinFingerprintLongWindowed(polynomial, 100)
+    def transformThroughPartitions(
+        base: IndexedSeq[Element],
+        left: IndexedSeq[Element],
+        right: IndexedSeq[Element]
+    ): Result =
+      val fingerprintSize = Math
+        .round(
+          partitionSizeFraction * (base.length min left.length min right.length)
+        )
+        .toInt
 
-    threeWayTransform(
-      Input(base = base, left = left, right = right, isCommonPartition = false)
-    )
+      if 0 == fingerprintSize then
+        threeWayTransform(
+          Input(
+            base = base,
+            left = left,
+            right = right,
+            isCommonPartition = false
+          )
+        )
+      else
+        val fingerprinting =
+          // NOTE: the window size is really an underestimate, as each element yields a byte array.
+          new RabinFingerprintLongWindowed(polynomial, /*NASTY HACK ...*/ 4 * /*... END OF NASTY HACK*/fingerprintSize)
+
+        def fingerprintStartIndices(
+            elements: IndexedSeq[Element]
+        ): SortedMap[Long, Int] =
+          // Fingerprinting is imperative, so go with that style local to this
+          // helper function...
+          val accumulatingResults = mutable.TreeMap.empty[Long, Int]
+
+          def updateFingerprint(elementIndex: Int): Unit =
+            val elementBytes = hash(elements(elementIndex))
+
+            elementBytes.foreach(fingerprinting.pushByte)
+          end updateFingerprint
+
+          // Prime to get ready for the first fingerprint...
+          0 until fingerprintSize foreach updateFingerprint
+
+          // ... henceforth, each pass records a new fingerprint, starting with
+          // the first.
+          0 until (elements.size - fingerprintSize) foreach:
+            fingerprintStartIndex =>
+              accumulatingResults.addOne(
+                fingerprinting.getFingerprintLong -> fingerprintStartIndex
+              )
+
+              updateFingerprint(fingerprintSize + fingerprintStartIndex)
+
+          accumulatingResults
+        end fingerprintStartIndices
+
+        val baseFingerprintStartIndices  = fingerprintStartIndices(base)
+        val leftFingerprintStartIndices  = fingerprintStartIndices(left)
+        val rightFingerprintStartIndices = fingerprintStartIndices(right)
+
+        def matchingFingerprintAcrossSides(
+            baseFingerprintStartIndices: SortedMap[Long, Int],
+            leftFingerprintStartIndices: SortedMap[Long, Int],
+            rightFingerprintStartIndices: SortedMap[Long, Int]
+        ): Option[(Int, Int, Int)] =
+          @tailrec
+          def matchingFingerprintAcrossSides(
+              baseFingerprints: Iterable[Long],
+              leftFingerprints: Iterable[Long],
+              rightFingerprints: Iterable[Long]
+          ): Option[Long] =
+            if baseFingerprints.isEmpty || leftFingerprints.isEmpty || rightFingerprints.isEmpty
+            then None
+            else
+              val baseHead  = baseFingerprints.head
+              val leftHead  = leftFingerprints.head
+              val rightHead = rightFingerprints.head
+
+              val maximum = baseHead max leftHead max rightHead
+
+              val minimum = baseHead min leftHead min rightHead
+
+              if maximum == minimum then Some(maximum)
+              else
+                matchingFingerprintAcrossSides(
+                  if maximum == baseHead then baseFingerprints
+                  else baseFingerprints.tail,
+                  if maximum == leftHead then leftFingerprints
+                  else leftFingerprints.tail,
+                  if maximum == rightHead then rightFingerprints
+                  else rightFingerprints.tail
+                )
+              end if
+            end if
+          end matchingFingerprintAcrossSides
+
+          matchingFingerprintAcrossSides(
+            baseFingerprintStartIndices.keys,
+            leftFingerprintStartIndices.keys,
+            rightFingerprintStartIndices.keys
+          ).map(fingerprint =>
+            (
+              baseFingerprintStartIndices(fingerprint),
+              leftFingerprintStartIndices(fingerprint),
+              rightFingerprintStartIndices(fingerprint)
+            )
+          )
+        end matchingFingerprintAcrossSides
+
+        matchingFingerprintAcrossSides(
+          baseFingerprintStartIndices,
+          leftFingerprintStartIndices,
+          rightFingerprintStartIndices
+        ) match
+          case Some(
+                (
+                  baseFingerprintStartIndex,
+                  leftFingerprintStartIndex,
+                  rightFingerprintStartIndex
+                )
+              ) =>
+            def partitionElements(
+                elements: IndexedSeq[Element],
+                fingerprintStartIndex: Int
+            ) =
+              val (precedingPartition, tail) =
+                elements.splitAt(fingerprintStartIndex)
+              val (commonPartition, succeedingPartition) =
+                tail.splitAt(fingerprintSize)
+
+              (precedingPartition, commonPartition, succeedingPartition)
+            end partitionElements
+
+            val (
+              basePrecedingPartition,
+              baseCommonPartition,
+              baseSucceedingPartition
+            ) = partitionElements(base, baseFingerprintStartIndex)
+            val (
+              leftPrecedingPartition,
+              leftCommonPartition,
+              leftSucceedingPartition
+            ) = partitionElements(left, leftFingerprintStartIndex)
+            val (
+              rightPrecedingPartition,
+              rightCommonPartition,
+              rightSucceedingPartition
+            ) = partitionElements(right, rightFingerprintStartIndex)
+
+            val resultFromCommonPartition = threeWayTransform(
+              Input(
+                baseCommonPartition,
+                leftCommonPartition,
+                rightCommonPartition,
+                isCommonPartition = true
+              )
+            )
+
+            val resultFromPrecedingPartition = transformThroughPartitions(
+              basePrecedingPartition,
+              leftPrecedingPartition,
+              rightPrecedingPartition
+            )
+
+            val resultFromSucceedingPartition = transformThroughPartitions(
+              baseSucceedingPartition,
+              leftSucceedingPartition,
+              rightSucceedingPartition
+            )
+
+            reduction(
+              reduction(
+                resultFromPrecedingPartition,
+                resultFromCommonPartition
+              ),
+              resultFromSucceedingPartition
+            )
+
+          case None =>
+            threeWayTransform(
+              Input(
+                base = base,
+                left = left,
+                right = right,
+                isCommonPartition = false
+              )
+            )
+        end match
+      end if
+    end transformThroughPartitions
+
+    transformThroughPartitions(base, left, right)
   end apply
 
   /** @param isCommonPartition
