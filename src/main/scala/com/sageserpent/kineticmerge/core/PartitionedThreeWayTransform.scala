@@ -134,7 +134,6 @@ object PartitionedThreeWayTransform:
           assume(base.common == right.common)
         end PartitionedSides
 
-
         def matchingFingerprintAcrossSides(
             baseFingerprintStartIndices: SortedMap[Long, Int],
             leftFingerprintStartIndices: SortedMap[Long, Int],
@@ -174,20 +173,29 @@ object PartitionedThreeWayTransform:
                   )
                 end partitionElements
 
-                Some(
+                val basePartitions = partitionElements(
+                  base,
+                  baseFingerprintStartIndices(maximumFingerprint)
+                )
+                val leftPartitions = partitionElements(
+                  left,
+                  leftFingerprintStartIndices(maximumFingerprint)
+                )
+                val rightPartitions = partitionElements(
+                  right,
+                  rightFingerprintStartIndices(maximumFingerprint)
+                )
+
+                // Have to perform a check of the common partitions, because we
+                // might have fingerprint collisions either within the same side
+                // or across sides...
+                Option.when(
+                  basePartitions.common == leftPartitions.common && basePartitions.common == rightPartitions.common
+                )(
                   PartitionedSides(
-                    base = partitionElements(
-                      base,
-                      baseFingerprintStartIndices(maximumFingerprint)
-                    ),
-                    left = partitionElements(
-                      left,
-                      leftFingerprintStartIndices(maximumFingerprint)
-                    ),
-                    right = partitionElements(
-                      right,
-                      rightFingerprintStartIndices(maximumFingerprint)
-                    )
+                    base = basePartitions,
+                    left = leftPartitions,
+                    right = rightPartitions
                   )
                 )
               else
