@@ -125,7 +125,7 @@ object MergingTextTest:
       else Merge.of(input.base, input.left, input.right)(equality)
 
     PartitionedThreeWayTransform(base, left, right)(
-      partitionSizeFraction = 0.025,
+      targetCommonPartitionSize = 20,
       equality = equality,
       hash = elementHash
     )(

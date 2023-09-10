@@ -35,7 +35,7 @@ object PartitionedThreeWayTransform:
     * @param base
     * @param left
     * @param right
-    * @param partitionSizeFraction
+    * @param targetCommonPartitionSize
     * @param equality
     * @param threeWayTransform
     * @param reduction
@@ -48,250 +48,251 @@ object PartitionedThreeWayTransform:
       left: IndexedSeq[Element],
       right: IndexedSeq[Element]
   )(
-      partitionSizeFraction: Double,
+      targetCommonPartitionSize: Int,
       equality: Eq[Element],
       hash: Element => Array[Byte]
   )(
       threeWayTransform: Input[Element] => Result,
       reduction: (Result, Result) => Result
   ): Result =
-    require(0 <= partitionSizeFraction)
-    require(1 >= partitionSizeFraction)
+    require(0 <= targetCommonPartitionSize)
 
     given witness: Eq[Element] = equality
 
     val sequenceEquality: Eq[Seq[Element]] = Eq[Seq[Element]]
 
-    def transformThroughPartitions(
+    def terminatingResult(
         base: IndexedSeq[Element],
         left: IndexedSeq[Element],
         right: IndexedSeq[Element]
-    ): Result =
-      val fingerprintSize = Math
-        .round(
-          partitionSizeFraction * (base.length min left.length min right.length)
+    ) =
+      threeWayTransform(
+        Input(
+          base = base,
+          left = left,
+          right = right,
+          isCommonPartition = sequenceEquality.eqv(
+            base,
+            left
+          ) && sequenceEquality.eqv(base, right)
         )
-        .toInt
+      )
 
-      if 0 == fingerprintSize then
-        threeWayTransform(
-          Input(
-            base = base,
-            left = left,
-            right = right,
-            isCommonPartition = false
+    if 0 == targetCommonPartitionSize then terminatingResult(base, left, right)
+    else
+      def transformThroughPartitions(
+          base: IndexedSeq[Element],
+          left: IndexedSeq[Element],
+          right: IndexedSeq[Element]
+      ): Result =
+        if targetCommonPartitionSize > (base.size min left.size min right.size)
+        then terminatingResult(base, left, right)
+        else
+          val fingerprinting =
+            // NOTE: the window size is really an overestimate to compensate for
+            // each element yielding a byte array.
+            new RabinFingerprintLongWindowed(
+              polynomial,
+              /*NASTY HACK ...*/ 4 * /*... END OF NASTY HACK*/ targetCommonPartitionSize
+            )
+
+          def fingerprintStartIndices(
+              elements: IndexedSeq[Element]
+          ): SortedMap[Long, Int] =
+            // Fingerprinting is imperative, so go with that style local to this
+            // helper function...
+            val accumulatingResults = mutable.TreeMap.empty[Long, Int]
+
+            def updateFingerprint(elementIndex: Int): Unit =
+              val elementBytes = hash(elements(elementIndex))
+
+              elementBytes.foreach(fingerprinting.pushByte)
+            end updateFingerprint
+
+            // Prime to get ready for the first fingerprint...
+            0 until targetCommonPartitionSize foreach updateFingerprint
+
+            // ... henceforth, each pass records a new fingerprint, starting
+            // with
+            // the first.
+            0 until (elements.size - targetCommonPartitionSize) foreach:
+              fingerprintStartIndex =>
+                accumulatingResults.addOne(
+                  fingerprinting.getFingerprintLong -> fingerprintStartIndex
+                )
+
+                updateFingerprint(
+                  targetCommonPartitionSize + fingerprintStartIndex
+                )
+
+            accumulatingResults
+          end fingerprintStartIndices
+
+          val baseFingerprintStartIndices  = fingerprintStartIndices(base)
+          val leftFingerprintStartIndices  = fingerprintStartIndices(left)
+          val rightFingerprintStartIndices = fingerprintStartIndices(right)
+
+          case class Partitions(
+              preceding: IndexedSeq[Element],
+              common: IndexedSeq[Element],
+              succeeding: IndexedSeq[Element]
           )
-        )
-      else
-        val fingerprinting =
-          // NOTE: the window size is really an underestimate, as each element
-          // yields a byte array.
-          new RabinFingerprintLongWindowed(
-            polynomial,
-            /*NASTY HACK ...*/ 4 * /*... END OF NASTY HACK*/ fingerprintSize
-          )
+          case class PartitionedSides(
+              base: Partitions,
+              left: Partitions,
+              right: Partitions
+          ):
+            assume(sequenceEquality.eqv(base.common, left.common))
+            assume(sequenceEquality.eqv(base.common, right.common))
+          end PartitionedSides
 
-        def fingerprintStartIndices(
-            elements: IndexedSeq[Element]
-        ): SortedMap[Long, Int] =
-          // Fingerprinting is imperative, so go with that style local to this
-          // helper function...
-          val accumulatingResults = mutable.TreeMap.empty[Long, Int]
-
-          def updateFingerprint(elementIndex: Int): Unit =
-            val elementBytes = hash(elements(elementIndex))
-
-            elementBytes.foreach(fingerprinting.pushByte)
-          end updateFingerprint
-
-          // Prime to get ready for the first fingerprint...
-          0 until fingerprintSize foreach updateFingerprint
-
-          // ... henceforth, each pass records a new fingerprint, starting with
-          // the first.
-          0 until (elements.size - fingerprintSize) foreach:
-            fingerprintStartIndex =>
-              accumulatingResults.addOne(
-                fingerprinting.getFingerprintLong -> fingerprintStartIndex
-              )
-
-              updateFingerprint(fingerprintSize + fingerprintStartIndex)
-
-          accumulatingResults
-        end fingerprintStartIndices
-
-        val baseFingerprintStartIndices  = fingerprintStartIndices(base)
-        val leftFingerprintStartIndices  = fingerprintStartIndices(left)
-        val rightFingerprintStartIndices = fingerprintStartIndices(right)
-
-        case class Partitions(
-            preceding: IndexedSeq[Element],
-            common: IndexedSeq[Element],
-            succeeding: IndexedSeq[Element]
-        )
-        case class PartitionedSides(
-            base: Partitions,
-            left: Partitions,
-            right: Partitions
-        ):
-          assume(sequenceEquality.eqv(base.common, left.common))
-          assume(sequenceEquality.eqv(base.common, right.common))
-        end PartitionedSides
-
-        def matchingFingerprintAcrossSides(
-            baseFingerprintStartIndices: SortedMap[Long, Int],
-            leftFingerprintStartIndices: SortedMap[Long, Int],
-            rightFingerprintStartIndices: SortedMap[Long, Int]
-        ): Option[PartitionedSides] =
-          @tailrec
           def matchingFingerprintAcrossSides(
-              baseFingerprints: Iterable[Long],
-              leftFingerprints: Iterable[Long],
-              rightFingerprints: Iterable[Long]
+              baseFingerprintStartIndices: SortedMap[Long, Int],
+              leftFingerprintStartIndices: SortedMap[Long, Int],
+              rightFingerprintStartIndices: SortedMap[Long, Int]
           ): Option[PartitionedSides] =
-            if baseFingerprints.isEmpty || leftFingerprints.isEmpty || rightFingerprints.isEmpty
-            then None
-            else
-              val baseHead  = baseFingerprints.head
-              val leftHead  = leftFingerprints.head
-              val rightHead = rightFingerprints.head
-
-              val maximumFingerprint = baseHead max leftHead max rightHead
-
-              val minimumFingerprint = baseHead min leftHead min rightHead
-
-              if maximumFingerprint == minimumFingerprint then
-                def partitionElements(
-                    elements: IndexedSeq[Element],
-                    fingerprintStartIndex: Int
-                ): Partitions =
-                  val (precedingPartition, tail) =
-                    elements.splitAt(fingerprintStartIndex)
-                  val (commonPartition, succeedingPartition) =
-                    tail.splitAt(fingerprintSize)
-
-                  Partitions(
-                    precedingPartition,
-                    commonPartition,
-                    succeedingPartition
-                  )
-                end partitionElements
-
-                val basePartitions = partitionElements(
-                  base,
-                  baseFingerprintStartIndices(maximumFingerprint)
-                )
-                val leftPartitions = partitionElements(
-                  left,
-                  leftFingerprintStartIndices(maximumFingerprint)
-                )
-                val rightPartitions = partitionElements(
-                  right,
-                  rightFingerprintStartIndices(maximumFingerprint)
-                )
-
-                // Have to perform a check of the common partitions, because we
-                // might have fingerprint collisions either within the same side
-                // or across sides...
-                Option.when(
-                  basePartitions.common == leftPartitions.common && basePartitions.common == rightPartitions.common
-                )(
-                  PartitionedSides(
-                    base = basePartitions,
-                    left = leftPartitions,
-                    right = rightPartitions
-                  )
-                )
+            @tailrec
+            def matchingFingerprintAcrossSides(
+                baseFingerprints: Iterable[Long],
+                leftFingerprints: Iterable[Long],
+                rightFingerprints: Iterable[Long]
+            ): Option[PartitionedSides] =
+              if baseFingerprints.isEmpty || leftFingerprints.isEmpty || rightFingerprints.isEmpty
+              then None
               else
-                matchingFingerprintAcrossSides(
-                  if maximumFingerprint == baseHead then baseFingerprints
-                  else baseFingerprints.tail,
-                  if maximumFingerprint == leftHead then leftFingerprints
-                  else leftFingerprints.tail,
-                  if maximumFingerprint == rightHead then rightFingerprints
-                  else rightFingerprints.tail
-                )
+                val baseHead  = baseFingerprints.head
+                val leftHead  = leftFingerprints.head
+                val rightHead = rightFingerprints.head
+
+                val maximumFingerprint = baseHead max leftHead max rightHead
+
+                val minimumFingerprint = baseHead min leftHead min rightHead
+
+                if maximumFingerprint == minimumFingerprint then
+                  def partitionElements(
+                      elements: IndexedSeq[Element],
+                      fingerprintStartIndex: Int
+                  ): Partitions =
+                    val (precedingPartition, tail) =
+                      elements.splitAt(fingerprintStartIndex)
+                    val (commonPartition, succeedingPartition) =
+                      tail.splitAt(targetCommonPartitionSize)
+
+                    Partitions(
+                      precedingPartition,
+                      commonPartition,
+                      succeedingPartition
+                    )
+                  end partitionElements
+
+                  val basePartitions = partitionElements(
+                    base,
+                    baseFingerprintStartIndices(maximumFingerprint)
+                  )
+                  val leftPartitions = partitionElements(
+                    left,
+                    leftFingerprintStartIndices(maximumFingerprint)
+                  )
+                  val rightPartitions = partitionElements(
+                    right,
+                    rightFingerprintStartIndices(maximumFingerprint)
+                  )
+
+                  // Have to perform a check of the common partitions, because
+                  // we
+                  // might have fingerprint collisions either within the same
+                  // side
+                  // or across sides...
+                  Option.when(
+                    basePartitions.common == leftPartitions.common && basePartitions.common == rightPartitions.common
+                  )(
+                    PartitionedSides(
+                      base = basePartitions,
+                      left = leftPartitions,
+                      right = rightPartitions
+                    )
+                  )
+                else
+                  matchingFingerprintAcrossSides(
+                    if maximumFingerprint == baseHead then baseFingerprints
+                    else baseFingerprints.tail,
+                    if maximumFingerprint == leftHead then leftFingerprints
+                    else leftFingerprints.tail,
+                    if maximumFingerprint == rightHead then rightFingerprints
+                    else rightFingerprints.tail
+                  )
+                end if
               end if
-            end if
+            end matchingFingerprintAcrossSides
+
+            matchingFingerprintAcrossSides(
+              baseFingerprintStartIndices.keys,
+              leftFingerprintStartIndices.keys,
+              rightFingerprintStartIndices.keys
+            )
           end matchingFingerprintAcrossSides
 
           matchingFingerprintAcrossSides(
-            baseFingerprintStartIndices.keys,
-            leftFingerprintStartIndices.keys,
-            rightFingerprintStartIndices.keys
-          )
-        end matchingFingerprintAcrossSides
-
-        matchingFingerprintAcrossSides(
-          baseFingerprintStartIndices,
-          leftFingerprintStartIndices,
-          rightFingerprintStartIndices
-        ) match
-          case Some(
-                PartitionedSides(
-                  Partitions(
-                    basePrecedingPartition,
-                    baseCommonPartition,
-                    baseSucceedingPartition
-                  ),
-                  Partitions(
-                    leftPrecedingPartition,
-                    leftCommonPartition,
-                    leftSucceedingPartition
-                  ),
-                  Partitions(
-                    rightPrecedingPartition,
-                    rightCommonPartition,
-                    rightSucceedingPartition
+            baseFingerprintStartIndices,
+            leftFingerprintStartIndices,
+            rightFingerprintStartIndices
+          ) match
+            case Some(
+                  PartitionedSides(
+                    Partitions(
+                      basePrecedingPartition,
+                      baseCommonPartition,
+                      baseSucceedingPartition
+                    ),
+                    Partitions(
+                      leftPrecedingPartition,
+                      leftCommonPartition,
+                      leftSucceedingPartition
+                    ),
+                    Partitions(
+                      rightPrecedingPartition,
+                      rightCommonPartition,
+                      rightSucceedingPartition
+                    )
                   )
+                ) =>
+              val resultFromPrecedingPartition = transformThroughPartitions(
+                basePrecedingPartition,
+                leftPrecedingPartition,
+                rightPrecedingPartition
+              )
+
+              val resultFromCommonPartition = threeWayTransform(
+                Input(
+                  baseCommonPartition,
+                  leftCommonPartition,
+                  rightCommonPartition,
+                  isCommonPartition = true
                 )
-              ) =>
-            val resultFromPrecedingPartition = transformThroughPartitions(
-              basePrecedingPartition,
-              leftPrecedingPartition,
-              rightPrecedingPartition
-            )
-
-            val resultFromCommonPartition = threeWayTransform(
-              Input(
-                baseCommonPartition,
-                leftCommonPartition,
-                rightCommonPartition,
-                isCommonPartition = true
               )
-            )
 
-            val resultFromSucceedingPartition = transformThroughPartitions(
-              baseSucceedingPartition,
-              leftSucceedingPartition,
-              rightSucceedingPartition
-            )
+              val resultFromSucceedingPartition = transformThroughPartitions(
+                baseSucceedingPartition,
+                leftSucceedingPartition,
+                rightSucceedingPartition
+              )
 
-            reduction(
               reduction(
-                resultFromPrecedingPartition,
-                resultFromCommonPartition
-              ),
-              resultFromSucceedingPartition
-            )
-
-          case None =>
-            threeWayTransform(
-              Input(
-                base = base,
-                left = left,
-                right = right,
-                isCommonPartition = sequenceEquality.eqv(
-                  base,
-                  left
-                ) && sequenceEquality.eqv(base, right)
+                reduction(
+                  resultFromPrecedingPartition,
+                  resultFromCommonPartition
+                ),
+                resultFromSucceedingPartition
               )
-            )
-        end match
-      end if
-    end transformThroughPartitions
 
-    transformThroughPartitions(base, left, right)
+            case None =>
+              terminatingResult(base, left, right)
+          end match
+        end if
+      end transformThroughPartitions
+
+      transformThroughPartitions(base, left, right)
+    end if
   end apply
 
   /** @param isCommonPartition

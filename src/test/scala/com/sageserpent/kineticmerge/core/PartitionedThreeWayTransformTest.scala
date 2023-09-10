@@ -1,33 +1,33 @@
 package com.sageserpent.kineticmerge.core
 
+import com.google.common.hash.Hashing
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.testCases
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest
 import com.sageserpent.kineticmerge.core.PartitionedThreeWayTransform.Input
 import com.sageserpent.kineticmerge.core.PartitionedThreeWayTransformTest.{
   elementHash,
-  partitionSizeFractions
+  testCases
 }
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.TestFactory
 import pprint.pprintln
-import com.google.common.hash.Hashing
 
 class PartitionedThreeWayTransformTest:
   @TestFactory
   def inputsContentContributesToTheResult(): DynamicTests =
-    (testCases and partitionSizeFractions)
+    testCases
       .withLimit(200)
       .dynamicTests:
         case (
               LongestCommonSubsequenceTest.TestCase(_, base, left, right),
-              partitionSizeFraction
+              targetCommonPartitionSize
             ) =>
           val reconstitutedBase =
             PartitionedThreeWayTransform(base, left, right)(
-              partitionSizeFraction,
+              targetCommonPartitionSize,
               _ == _,
               elementHash
             )(_.base, _ ++ _)
@@ -36,7 +36,7 @@ class PartitionedThreeWayTransformTest:
 
           val reconstitutedLeft =
             PartitionedThreeWayTransform(base, left, right)(
-              partitionSizeFraction,
+              targetCommonPartitionSize,
               _ == _,
               elementHash
             )(_.left, _ ++ _)
@@ -45,7 +45,7 @@ class PartitionedThreeWayTransformTest:
 
           val reconstitutedRight =
             PartitionedThreeWayTransform(base, left, right)(
-              partitionSizeFraction,
+              targetCommonPartitionSize,
               _ == _,
               elementHash
             )(_.right, _ ++ _)
@@ -55,18 +55,18 @@ class PartitionedThreeWayTransformTest:
 
   @TestFactory
   def selectingOnlyTheCommonPartitionsYieldsACommonSubsequence(): DynamicTests =
-    (testCases and partitionSizeFractions)
+    testCases
       .withLimit(200)
       .dynamicTests:
         case (
               LongestCommonSubsequenceTest.TestCase(_, base, left, right),
-              partitionSizeFraction
+              targetCommonPartitionSize
             ) =>
           println("*******************")
 
           val commonSubsequenceViaBase =
             PartitionedThreeWayTransform(base, left, right)(
-              partitionSizeFraction,
+              targetCommonPartitionSize,
               _ == _,
               elementHash
             )(
@@ -85,7 +85,7 @@ class PartitionedThreeWayTransformTest:
 
           val commonSubsequenceViaLeft =
             PartitionedThreeWayTransform(base, left, right)(
-              partitionSizeFraction,
+              targetCommonPartitionSize,
               _ == _,
               elementHash
             )(
@@ -104,7 +104,7 @@ class PartitionedThreeWayTransformTest:
 
           val commonSubsequenceViaRight =
             PartitionedThreeWayTransform(base, left, right)(
-              partitionSizeFraction,
+              targetCommonPartitionSize,
               _ == _,
               elementHash
             )(
@@ -132,7 +132,14 @@ class PartitionedThreeWayTransformTest:
 end PartitionedThreeWayTransformTest
 
 object PartitionedThreeWayTransformTest:
-  private val partitionSizeFractions = trialsApi.doubles(0.0, 1.0)
+  private val testCases =
+    for
+      sequences <- LongestCommonSubsequenceTest.testCases
+      targetCommonPartitionSize <- trialsApi.integers(
+        0,
+        sequences.base.size min sequences.left.size min sequences.right.size
+      )
+    yield sequences -> targetCommonPartitionSize
 
   private def elementHash(element: Char): Array[Byte] =
     val hasher = Hashing.murmur3_32_fixed().newHasher()
