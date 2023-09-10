@@ -200,15 +200,22 @@ object PartitionedThreeWayTransform:
                   // Have to perform a check of the common partitions, because
                   // we might have fingerprint collisions either within the same
                   // side or across sides...
-                  Option.when(
-                    basePartitions.common == leftPartitions.common && basePartitions.common == rightPartitions.common
-                  )(
-                    PartitionedSides(
-                      base = basePartitions,
-                      left = leftPartitions,
-                      right = rightPartitions
+                  if basePartitions.common == leftPartitions.common && basePartitions.common == rightPartitions.common
+                  then
+                    Some(
+                      PartitionedSides(
+                        base = basePartitions,
+                        left = leftPartitions,
+                        right = rightPartitions
+                      )
                     )
-                  )
+                  else
+                    matchingFingerprintAcrossSides(
+                      baseFingerprints.tail,
+                      leftFingerprints.tail,
+                      rightFingerprints.tail
+                    )
+                  end if
                 else
                   matchingFingerprintAcrossSides(
                     if maximumFingerprint == baseHead then baseFingerprints
