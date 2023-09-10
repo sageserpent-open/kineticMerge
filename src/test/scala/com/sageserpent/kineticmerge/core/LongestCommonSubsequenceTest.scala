@@ -1,59 +1,18 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.data.{EitherT, OptionT, Writer}
-import com.eed3si9n.expecty.Expecty
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
+import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Contribution
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.{Element, TestCase, assert}
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.{Element, TestCase, testCases}
 import org.junit.jupiter.api.TestInstance.Lifecycle
 import org.junit.jupiter.api.{DynamicTest, Test, TestFactory, TestInstance}
 
 import scala.util.Try
 
 class LongestCommonSubsequenceTest:
-  val coreValues: Trials[Element] = trialsApi.choose('a' to 'z')
-
-  val additionalValues: Trials[Element] = trialsApi.choose('A' to 'Z')
-  val maximumSize                       = 30
-  val testCases: Trials[TestCase] = for
-    core <- sizes(maximumSize)
-      .filter(2 < _)
-      .flatMap(coreValues.lotsOfSize[Vector[Element]])
-
-    interleaveForBase <- sizes(maximumSize).flatMap(
-      additionalValues.lotsOfSize[Vector[Element]]
-    )
-    base <- trialsApi.pickAlternatelyFrom(
-      shrinkToRoundRobin = true,
-      core,
-      interleaveForBase
-    )
-    interleaveForLeft <- sizes(maximumSize).flatMap(
-      additionalValues.lotsOfSize[Vector[Element]]
-    )
-    left <- trialsApi.pickAlternatelyFrom(
-      shrinkToRoundRobin = true,
-      core,
-      interleaveForLeft
-    )
-    interleaveForRight <- sizes(maximumSize).flatMap(
-      additionalValues.lotsOfSize[Vector[Element]]
-    )
-    right <- trialsApi.pickAlternatelyFrom(
-      shrinkToRoundRobin = true,
-      core,
-      interleaveForRight
-    )
-    if core != base || core != left || core != right
-  yield TestCase(core, base, left, right)
-
-  def sizes(maximumSize: Int): Trials[Int] = trialsApi.alternateWithWeights(
-    1  -> trialsApi.only(0),
-    10 -> trialsApi.integers(1, maximumSize)
-  )
-
   @TestFactory
   def theResultsCorrespondToTheOriginalSequences(): DynamicTests =
     testCases
@@ -233,10 +192,46 @@ end LongestCommonSubsequenceTest
 object LongestCommonSubsequenceTest:
   type Element = Char
 
-  val assert: Expecty = new Expecty:
-    override val showLocation: Boolean = true
-    override val showTypes: Boolean    = true
-  end assert
+  val coreValues: Trials[Element] = trialsApi.choose('a' to 'z')
+  val additionalValues: Trials[Element] = trialsApi.choose('A' to 'Z')
+  val maximumSize = 30
+  val testCases: Trials[TestCase] = for
+    core <- sizes(maximumSize)
+      .filter(2 < _)
+      .flatMap(coreValues.lotsOfSize[Vector[Element]])
+
+    interleaveForBase <- sizes(maximumSize).flatMap(
+      additionalValues.lotsOfSize[Vector[Element]]
+    )
+    base <- trialsApi.pickAlternatelyFrom(
+      shrinkToRoundRobin = true,
+      core,
+      interleaveForBase
+    )
+    interleaveForLeft <- sizes(maximumSize).flatMap(
+      additionalValues.lotsOfSize[Vector[Element]]
+    )
+    left <- trialsApi.pickAlternatelyFrom(
+      shrinkToRoundRobin = true,
+      core,
+      interleaveForLeft
+    )
+    interleaveForRight <- sizes(maximumSize).flatMap(
+      additionalValues.lotsOfSize[Vector[Element]]
+    )
+    right <- trialsApi.pickAlternatelyFrom(
+      shrinkToRoundRobin = true,
+      core,
+      interleaveForRight
+    )
+    if core != base || core != left || core != right
+  yield TestCase(core, base, left, right)
+
+  def sizes(maximumSize: Int): Trials[Int] = trialsApi.alternateWithWeights(
+    1 -> trialsApi.only(0),
+    10 -> trialsApi.integers(1, maximumSize)
+  )
+
   case class TestCase(
       core: Vector[Element],
       base: Vector[Element],

@@ -39,3 +39,9 @@ lazy val root = (project in file("."))
     Test / testForkedParallel := true,
     Test / javaOptions ++= Seq("-Xms10G", "-Xmx10G")
   )
+  .dependsOn(rabinFingerprint)
+
+lazy val rabinFingerprint = (project in file("rabinfingerprint")).settings(
+  libraryDependencies += "com.google.guava" % "guava" % "32.1.2-jre",
+  libraryDependencies += "junit"            % "junit" % "4.13.2" % Test
+)
