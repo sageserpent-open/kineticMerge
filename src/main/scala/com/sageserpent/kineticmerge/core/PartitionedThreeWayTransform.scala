@@ -113,8 +113,7 @@ object PartitionedThreeWayTransform:
             0 until targetCommonPartitionSize foreach updateFingerprint
 
             // ... henceforth, each pass records a new fingerprint, starting
-            // with
-            // the first.
+            // with the first.
             0 until (elements.size - targetCommonPartitionSize) foreach:
               fingerprintStartIndex =>
                 accumulatingResults.addOne(
@@ -199,10 +198,8 @@ object PartitionedThreeWayTransform:
                   )
 
                   // Have to perform a check of the common partitions, because
-                  // we
-                  // might have fingerprint collisions either within the same
-                  // side
-                  // or across sides...
+                  // we might have fingerprint collisions either within the same
+                  // side or across sides...
                   Option.when(
                     basePartitions.common == leftPartitions.common && basePartitions.common == rightPartitions.common
                   )(
