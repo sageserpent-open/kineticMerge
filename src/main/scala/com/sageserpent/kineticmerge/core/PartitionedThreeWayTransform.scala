@@ -116,20 +116,23 @@ object PartitionedThreeWayTransform:
               elementBytes.foreach(fingerprinting.pushByte)
             end updateFingerprint
 
+            // NOTE: fingerprints are incrementally calculated walking *down*
+            // the elements.
+            val descendingIndices = elements.indices.reverse
+
+            val (primingIndices, fingerprintingIndices) =
+              descendingIndices.splitAt(targetCommonPartitionSize - 1)
+
             // Prime to get ready for the first fingerprint...
-            0 until targetCommonPartitionSize foreach updateFingerprint
+            primingIndices.foreach(updateFingerprint)
 
             // ... henceforth, each pass records a new fingerprint, starting
             // with the first.
-            0 until (elements.size - targetCommonPartitionSize) foreach:
-              fingerprintStartIndex =>
-                accumulatingResults.addOne(
-                  fingerprinting.getFingerprintLong -> fingerprintStartIndex
-                )
-
-                updateFingerprint(
-                  targetCommonPartitionSize + fingerprintStartIndex
-                )
+            fingerprintingIndices.foreach: fingerprintStartIndex =>
+              updateFingerprint(fingerprintStartIndex)
+              accumulatingResults.addOne(
+                fingerprinting.getFingerprintLong -> fingerprintStartIndex
+              )
 
             accumulatingResults
           end fingerprintStartIndices
