@@ -85,6 +85,14 @@ object PartitionedThreeWayTransform:
 
     if 0 == targetCommonPartitionSize then terminatingResult(base, left, right)
     else
+      val fingerprinting =
+        // NOTE: the window size is really an overestimate to compensate for
+        // each element yielding a byte array.
+        new RabinFingerprintLongWindowed(
+          polynomial,
+          /*NASTY HACK ...*/ 4 * /*... END OF NASTY HACK*/ targetCommonPartitionSize
+        )
+
       def transformThroughPartitions(
           base: IndexedSeq[Element],
           left: IndexedSeq[Element],
@@ -93,19 +101,13 @@ object PartitionedThreeWayTransform:
         if targetCommonPartitionSize > (base.size min left.size min right.size)
         then terminatingResult(base, left, right)
         else
-          val fingerprinting =
-            // NOTE: the window size is really an overestimate to compensate for
-            // each element yielding a byte array.
-            new RabinFingerprintLongWindowed(
-              polynomial,
-              /*NASTY HACK ...*/ 4 * /*... END OF NASTY HACK*/ targetCommonPartitionSize
-            )
-
           def fingerprintStartIndices(
               elements: IndexedSeq[Element]
           ): SortedMap[Long, Int] =
             // Fingerprinting is imperative, so go with that style local to this
             // helper function...
+            fingerprinting.reset()
+
             val accumulatingResults = mutable.TreeMap.empty[Long, Int]
 
             def updateFingerprint(elementIndex: Int): Unit =
