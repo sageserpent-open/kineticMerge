@@ -282,7 +282,7 @@ object LongestCommonSubsequence:
                       .focus(_.right)
                       .modify(_ :+ Contribution.Difference(rightElement))
 
-                  Seq(
+                  Iterator(
                     resultDroppingTheBaseAndLeft,
                     resultDroppingTheBaseAndRight,
                     resultDroppingTheLeftAndRight,
