@@ -1,6 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.Eq
+import com.google.common.hash.{Funnel, HashFunction}
 import org.rabinfingerprint.fingerprint.{
   RabinFingerprintLong,
   RabinFingerprintLongWindowed
@@ -11,6 +12,7 @@ import org.rabinfingerprint.polynomial.Polynomial.{
   createFromBytes
 }
 
+import java.lang.Byte as JavaByte
 import scala.annotation.tailrec
 import scala.collection.{SortedMap, mutable}
 import scala.util.Random
@@ -55,7 +57,8 @@ object PartitionedThreeWayTransform:
   )(
       targetCommonPartitionSize: Int,
       equality: Eq[Element],
-      hash: Element => Array[Byte]
+      hashFunction: HashFunction,
+      funnel: Funnel[Element]
   )(
       threeWayTransform: Input[Element] => Result,
       reduction: (Result, Result) => Result
@@ -85,12 +88,12 @@ object PartitionedThreeWayTransform:
 
     if 0 == targetCommonPartitionSize then terminatingResult(base, left, right)
     else
+      val fixedNumberOfBytesInElementHash = hashFunction.bits / JavaByte.SIZE
+
       val fingerprinting =
-        // NOTE: the window size is really an overestimate to compensate for
-        // each element yielding a byte array.
         new RabinFingerprintLongWindowed(
           polynomial,
-          /*NASTY HACK ...*/ 4 * /*... END OF NASTY HACK*/ targetCommonPartitionSize
+          fixedNumberOfBytesInElementHash * targetCommonPartitionSize
         )
 
       def transformThroughPartitions(
@@ -111,7 +114,12 @@ object PartitionedThreeWayTransform:
             val accumulatingResults = mutable.TreeMap.empty[Long, Int]
 
             def updateFingerprint(elementIndex: Int): Unit =
-              val elementBytes = hash(elements(elementIndex))
+              val elementBytes =
+                hashFunction
+                  .newHasher()
+                  .putObject(elements(elementIndex), funnel)
+                  .hash()
+                  .asBytes()
 
               elementBytes.foreach(fingerprinting.pushByte)
             end updateFingerprint

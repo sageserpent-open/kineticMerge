@@ -1,6 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
-import com.google.common.hash.Hashing
+import com.google.common.hash.{Hashing, PrimitiveSink}
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
@@ -8,7 +8,7 @@ import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest
 import com.sageserpent.kineticmerge.core.PartitionedThreeWayTransform.Input
 import com.sageserpent.kineticmerge.core.PartitionedThreeWayTransformTest.{
-  elementHash,
+  funnel,
   testCases
 }
 import org.junit.jupiter.api.Assertions.*
@@ -28,8 +28,9 @@ class PartitionedThreeWayTransformTest:
           val reconstitutedBase =
             PartitionedThreeWayTransform(base, left, right)(
               targetCommonPartitionSize,
-              _ == _,
-              elementHash
+              equality = _ == _,
+              hashFunction = Hashing.murmur3_32_fixed(),
+              funnel = funnel _
             )(_.base, _ ++ _)
 
           assert(reconstitutedBase == base)
@@ -37,8 +38,9 @@ class PartitionedThreeWayTransformTest:
           val reconstitutedLeft =
             PartitionedThreeWayTransform(base, left, right)(
               targetCommonPartitionSize,
-              _ == _,
-              elementHash
+              equality = _ == _,
+              hashFunction = Hashing.murmur3_32_fixed(),
+              funnel = funnel _
             )(_.left, _ ++ _)
 
           assert(reconstitutedLeft == left)
@@ -46,8 +48,9 @@ class PartitionedThreeWayTransformTest:
           val reconstitutedRight =
             PartitionedThreeWayTransform(base, left, right)(
               targetCommonPartitionSize,
-              _ == _,
-              elementHash
+              equality = _ == _,
+              hashFunction = Hashing.murmur3_32_fixed(),
+              funnel = funnel _
             )(_.right, _ ++ _)
 
           assert(reconstitutedRight == right)
@@ -67,8 +70,9 @@ class PartitionedThreeWayTransformTest:
           val commonSubsequenceViaBase =
             PartitionedThreeWayTransform(base, left, right)(
               targetCommonPartitionSize,
-              _ == _,
-              elementHash
+              equality = _ == _,
+              hashFunction = Hashing.murmur3_32_fixed(),
+              funnel = funnel _
             )(
               {
                 case Input(base, _, _, true) => base
@@ -86,8 +90,9 @@ class PartitionedThreeWayTransformTest:
           val commonSubsequenceViaLeft =
             PartitionedThreeWayTransform(base, left, right)(
               targetCommonPartitionSize,
-              _ == _,
-              elementHash
+              equality = _ == _,
+              hashFunction = Hashing.murmur3_32_fixed(),
+              funnel = funnel _
             )(
               {
                 case Input(_, left, _, true) => left
@@ -105,8 +110,9 @@ class PartitionedThreeWayTransformTest:
           val commonSubsequenceViaRight =
             PartitionedThreeWayTransform(base, left, right)(
               targetCommonPartitionSize,
-              _ == _,
-              elementHash
+              equality = _ == _,
+              hashFunction = Hashing.murmur3_32_fixed(),
+              funnel = funnel _
             )(
               {
                 case Input(_, _, right, true) => right
@@ -141,12 +147,8 @@ object PartitionedThreeWayTransformTest:
       )
     yield sequences -> targetCommonPartitionSize
 
-  private def elementHash(element: Char): Array[Byte] =
-    val hasher = Hashing.murmur3_32_fixed().newHasher()
-
-    hasher.putChar(element)
-
-    hasher.hash().asBytes()
-  end elementHash
+  private def funnel(element: Char, primitiveSink: PrimitiveSink): Unit =
+    primitiveSink.putChar(element)
+  end funnel
 
 end PartitionedThreeWayTransformTest

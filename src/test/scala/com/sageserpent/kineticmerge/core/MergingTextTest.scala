@@ -1,7 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.Eq
-import com.google.common.hash.Hashing
+import com.google.common.hash.{Hashing, PrimitiveSink}
 import com.sageserpent.kineticmerge.core.Merge.Result.MergedWithConflicts
 import com.sageserpent.kineticmerge.core.MergingTextTest.*
 import com.sageserpent.kineticmerge.core.MergingTextTest.Token.{Punctuation, Whitespace, Word}
@@ -143,24 +143,21 @@ object MergingTextTest:
     PartitionedThreeWayTransform(base, left, right)(
       targetCommonPartitionSize = 20,
       equality = equality,
-      hash = elementHash
+      hashFunction = Hashing.murmur3_32_fixed(),
+      funnel = funnel _
     )(
       threeWayTransform,
       reduction
     )
   end merge
 
-  private def elementHash(element: Token): Array[Byte] =
-    val hasher = Hashing.murmur3_32_fixed().newHasher()
-
+  private def funnel(element: Token, primitiveSink: PrimitiveSink): Unit =
     element match
-      case Whitespace(blanks)     => blanks.foreach(hasher.putChar)
-      case Word(letters)          => letters.foreach(hasher.putChar)
-      case Punctuation(character) => hasher.putChar(character)
+      case Whitespace(blanks)     => blanks.foreach(primitiveSink.putChar)
+      case Word(letters)          => letters.foreach(primitiveSink.putChar)
+      case Punctuation(character) => primitiveSink.putChar(character)
     end match
-
-    hasher.hash().asBytes()
-  end elementHash
+  end funnel
 
   private def reduction(
       lhs: Either[Merge.Divergence.type, Merge.Result[Token]],
