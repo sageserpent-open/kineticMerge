@@ -204,7 +204,7 @@ object MergingTextTest:
       parse(tokens, input).map(_.toVector)
 
     def tokens: Parser[List[Token]] = phrase(
-      rep(whitespaceRun | word | punctutation)
+      rep(whitespaceRun | word | punctuation)
     )
 
     def whitespaceRun: Parser[Token.Whitespace] =
@@ -212,7 +212,7 @@ object MergingTextTest:
 
     def word: Parser[Token.Word] = "('|\\w)+".r ^^ Token.Word.apply
 
-    def punctutation: Parser[Token.Punctuation] =
+    def punctuation: Parser[Token.Punctuation] =
       "[.,-—;:??!()]".r ^^ (singleCharacter =>
         Token.Punctuation(singleCharacter.charAt(0))
       )
