@@ -4,18 +4,11 @@ import cats.Eq
 import com.google.common.hash.{Hashing, PrimitiveSink}
 import com.sageserpent.kineticmerge.core.Merge.Result.MergedWithConflicts
 import com.sageserpent.kineticmerge.core.MergingTextTest.*
-import com.sageserpent.kineticmerge.core.MergingTextTest.Token.{
-  Punctuation,
-  Whitespace,
-  Word
-}
+import com.sageserpent.kineticmerge.core.MergingTextTest.Token.{Punctuation, Whitespace, WithTrailingWhitespace, Word}
 import com.sageserpent.kineticmerge.core.PartitionedThreeWayTransform.Input
 import org.junit.jupiter.api.Test
 import org.rabinfingerprint.polynomial.Polynomial
-import org.rabinfingerprint.polynomial.Polynomial.{
-  Reducibility,
-  createFromBytes
-}
+import org.rabinfingerprint.polynomial.Polynomial.{Reducibility, createFromBytes}
 import pprint.*
 
 import scala.annotation.tailrec
@@ -38,9 +31,7 @@ class MergingTextTest:
         base = tokenizer(wordsworth).get,
         left = tokenizer(jobsworth).get,
         right = tokenizer(emsworth).get
-      )(
-        _ == _
-      ): @unchecked
+      )(equality): @unchecked
 
     pprintln(leftElements.map(_.text).mkString)
     println("*********************************")
@@ -166,11 +157,24 @@ object MergingTextTest:
     )
   end merge
 
+  @tailrec
+  private def equality(lhs: Token, rhs: Token): Boolean =
+    lhs -> rhs match
+      case (
+            WithTrailingWhitespace(lhsCoreToken, _),
+            WithTrailingWhitespace(rhsCoreToken, _)
+          ) =>
+        equality(lhsCoreToken, rhsCoreToken)
+      case _ => lhs == rhs
+  end equality
+
   private def funnel(element: Token, primitiveSink: PrimitiveSink): Unit =
     element match
-      case Whitespace(blanks)     => blanks.foreach(primitiveSink.putChar)
+      case Whitespace(blanks)     =>
       case Word(letters)          => letters.foreach(primitiveSink.putChar)
       case Punctuation(character) => primitiveSink.putChar(character)
+      case WithTrailingWhitespace(coreToken, _) =>
+        funnel(coreToken, primitiveSink)
     end match
   end funnel
 
@@ -237,11 +241,21 @@ object MergingTextTest:
       parse(tokens, input).map(_.toVector)
 
     def tokens: Parser[List[Token]] = phrase(
-      rep(whitespaceRun | word | punctuation)
+      (opt(whitespaceRun) ~ rep(tokenWithPossibleFollowingWhitespace)) ^^ {
+        case Some(whitespace) ~ tokens =>
+          whitespace +: tokens
+        case None ~ tokens =>
+          tokens
+      }
     )
 
-    def whitespaceRun: Parser[Token.Whitespace] =
-      whiteSpace ^^ Token.Whitespace.apply
+    def tokenWithPossibleFollowingWhitespace: Parser[Token] =
+      ((word | punctuation) ~ opt(whitespaceRun)) ^^ {
+        case (coreToken: (Word | Punctuation)) ~ Some(whitespace) =>
+          WithTrailingWhitespace(coreToken, whitespace)
+        case coreToken ~ None =>
+          coreToken
+      }
 
     def word: Parser[Token.Word] = "('|\\w)+".r ^^ Token.Word.apply
 
@@ -249,6 +263,9 @@ object MergingTextTest:
       "[.,-—;:??!()]".r ^^ (singleCharacter =>
         Token.Punctuation(singleCharacter.charAt(0))
       )
+
+    def whitespaceRun: Parser[Token.Whitespace] =
+      whiteSpace ^^ Token.Whitespace.apply
   end tokenizer
 
   enum Token:
@@ -256,10 +273,16 @@ object MergingTextTest:
       case Whitespace(blanks)     => blanks
       case Word(letters)          => letters
       case Punctuation(character) => character.toString
+      case WithTrailingWhitespace(coreToken, whitespace) =>
+        coreToken.text ++ whitespace.text
 
     case Whitespace(blanks: String)
     case Word(letters: String)
     case Punctuation(character: Char)
+    case WithTrailingWhitespace(
+        coreToken: Word | Punctuation,
+        whitespace: Whitespace
+    )
   end Token
 
 end MergingTextTest
