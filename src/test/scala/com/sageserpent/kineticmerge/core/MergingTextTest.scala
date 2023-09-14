@@ -4,11 +4,22 @@ import cats.Eq
 import com.google.common.hash.{Hashing, PrimitiveSink}
 import com.sageserpent.kineticmerge.core.Merge.Result.MergedWithConflicts
 import com.sageserpent.kineticmerge.core.MergingTextTest.*
-import com.sageserpent.kineticmerge.core.MergingTextTest.Token.{Punctuation, Whitespace, Word}
+import com.sageserpent.kineticmerge.core.MergingTextTest.Token.{
+  Punctuation,
+  Whitespace,
+  Word
+}
 import com.sageserpent.kineticmerge.core.PartitionedThreeWayTransform.Input
 import org.junit.jupiter.api.Test
+import org.rabinfingerprint.polynomial.Polynomial
+import org.rabinfingerprint.polynomial.Polynomial.{
+  Reducibility,
+  createFromBytes
+}
 import pprint.*
 
+import scala.annotation.tailrec
+import scala.util.Random
 import scala.util.parsing.combinator.RegexParsers
 
 class MergingTextTest:
@@ -126,7 +137,11 @@ object MergingTextTest:
       |And sashays with the fishing boats.
       |""".stripMargin
 
-  def merge(
+  private val partitionedThreeWayTransform = new PartitionedThreeWayTransform(
+    createIrreducible()
+  )
+
+  private def merge(
       base: Vector[Token],
       left: Vector[Token],
       right: Vector[Token]
@@ -140,7 +155,7 @@ object MergingTextTest:
         Right(Merge.Result.FullyMerged(input.left))
       else Merge.of(input.base, input.left, input.right)(equality)
 
-    PartitionedThreeWayTransform(base, left, right)(
+    partitionedThreeWayTransform(base, left, right)(
       targetCommonPartitionSize = 20,
       equality = equality,
       hashFunction = Hashing.murmur3_32_fixed(),
@@ -196,6 +211,24 @@ object MergingTextTest:
           lhsLeftElements ++ rhsLeftElements,
           lhsRightElements ++ rhsRightElements
         )
+
+  private def createIrreducible(): Polynomial =
+    val random = new Random(45877L)
+
+    val degree = 51
+
+    @tailrec
+    def tryPolynomial: Polynomial =
+      val result =
+        createFromBytes(random.nextBytes((degree / 8) + 1), degree)
+      end result
+      if result.getReducibility == Reducibility.IRREDUCIBLE then result
+      else tryPolynomial
+      end if
+    end tryPolynomial
+
+    tryPolynomial
+  end createIrreducible
 
   object tokenizer extends RegexParsers:
     override def skipWhitespace: Boolean = false

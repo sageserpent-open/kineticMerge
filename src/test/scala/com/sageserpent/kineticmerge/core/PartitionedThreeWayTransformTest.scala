@@ -9,11 +9,15 @@ import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest
 import com.sageserpent.kineticmerge.core.PartitionedThreeWayTransform.Input
 import com.sageserpent.kineticmerge.core.PartitionedThreeWayTransformTest.{
   funnel,
+  partitionedThreeWayTransform,
   testCases
 }
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.TestFactory
+import org.rabinfingerprint.polynomial.Polynomial
 import pprint.pprintln
+
+import scala.util.Random
 
 class PartitionedThreeWayTransformTest:
   @TestFactory
@@ -26,7 +30,7 @@ class PartitionedThreeWayTransformTest:
               targetCommonPartitionSize
             ) =>
           val reconstitutedBase =
-            PartitionedThreeWayTransform(base, left, right)(
+            partitionedThreeWayTransform(base, left, right)(
               targetCommonPartitionSize,
               equality = _ == _,
               hashFunction = Hashing.murmur3_32_fixed(),
@@ -36,7 +40,7 @@ class PartitionedThreeWayTransformTest:
           assert(reconstitutedBase == base)
 
           val reconstitutedLeft =
-            PartitionedThreeWayTransform(base, left, right)(
+            partitionedThreeWayTransform(base, left, right)(
               targetCommonPartitionSize,
               equality = _ == _,
               hashFunction = Hashing.murmur3_32_fixed(),
@@ -46,7 +50,7 @@ class PartitionedThreeWayTransformTest:
           assert(reconstitutedLeft == left)
 
           val reconstitutedRight =
-            PartitionedThreeWayTransform(base, left, right)(
+            partitionedThreeWayTransform(base, left, right)(
               targetCommonPartitionSize,
               equality = _ == _,
               hashFunction = Hashing.murmur3_32_fixed(),
@@ -68,7 +72,7 @@ class PartitionedThreeWayTransformTest:
           println("*******************")
 
           val commonSubsequenceViaBase =
-            PartitionedThreeWayTransform(base, left, right)(
+            partitionedThreeWayTransform(base, left, right)(
               targetCommonPartitionSize,
               equality = _ == _,
               hashFunction = Hashing.murmur3_32_fixed(),
@@ -88,7 +92,7 @@ class PartitionedThreeWayTransformTest:
           commonSubsequenceViaBase isSubsequenceOf right
 
           val commonSubsequenceViaLeft =
-            PartitionedThreeWayTransform(base, left, right)(
+            partitionedThreeWayTransform(base, left, right)(
               targetCommonPartitionSize,
               equality = _ == _,
               hashFunction = Hashing.murmur3_32_fixed(),
@@ -108,7 +112,7 @@ class PartitionedThreeWayTransformTest:
           commonSubsequenceViaLeft isSubsequenceOf right
 
           val commonSubsequenceViaRight =
-            PartitionedThreeWayTransform(base, left, right)(
+            partitionedThreeWayTransform(base, left, right)(
               targetCommonPartitionSize,
               equality = _ == _,
               hashFunction = Hashing.murmur3_32_fixed(),
@@ -138,6 +142,10 @@ class PartitionedThreeWayTransformTest:
 end PartitionedThreeWayTransformTest
 
 object PartitionedThreeWayTransformTest:
+  private val partitionedThreeWayTransform = new PartitionedThreeWayTransform(
+    Polynomial.createIrreducible(15)
+  )
+
   private val testCases =
     for
       sequences <- LongestCommonSubsequenceTest.testCases
