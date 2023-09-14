@@ -2,9 +2,7 @@ package com.sageserpent.kineticmerge.core
 
 import cats.Eq
 import com.google.common.hash.{Funnel, HashFunction}
-import com.sageserpent.kineticmerge.core.PartitionedThreeWayTransform.{
-  Input
-}
+import com.sageserpent.kineticmerge.core.PartitionedThreeWayTransform.Input
 import org.rabinfingerprint.fingerprint.{
   RabinFingerprintLong,
   RabinFingerprintLongWindowed
@@ -20,7 +18,12 @@ import scala.annotation.tailrec
 import scala.collection.{SortedMap, mutable}
 import scala.util.Random
 
+/** @param polynomial
+  *   This must be an irreducible polynomial, preferably chosen at random.
+  */
 class PartitionedThreeWayTransform(polynomial: Polynomial):
+  require(!polynomial.isReducible)
+
   /** Partition the sequences {@code base}, {@code left} and {@code right} by a
     * common partition; each of the sequences is split into two (possibly empty)
     * parts before and after the partition.
