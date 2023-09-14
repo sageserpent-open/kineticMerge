@@ -241,7 +241,7 @@ object MergingTextTest:
       parse(tokens, input).map(_.toVector)
 
     def tokens: Parser[List[Token]] = phrase(
-      (opt(whitespaceRun) ~ rep(tokenWithPossibleFollowingWhitespace)) ^^ {
+      opt(whitespaceRun) ~ rep(tokenWithPossibleFollowingWhitespace) ^^ {
         case Some(whitespace) ~ tokens =>
           whitespace +: tokens
         case None ~ tokens =>
@@ -250,7 +250,7 @@ object MergingTextTest:
     )
 
     def tokenWithPossibleFollowingWhitespace: Parser[Token] =
-      ((word | punctuation) ~ opt(whitespaceRun)) ^^ {
+      (word | punctuation) ~ opt(whitespaceRun) ^^ {
         case coreToken ~ Some(whitespace) =>
           WithTrailingWhitespace(coreToken, whitespace)
         case coreToken ~ None =>
