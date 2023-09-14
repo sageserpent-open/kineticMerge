@@ -44,6 +44,10 @@ object PartitionedThreeWayTransform:
     * @param right
     * @param targetCommonPartitionSize
     * @param equality
+    * @param hashFunction
+    *   Guava hash function producing a byte array of fixed size.
+    * @param funnel
+    *   Guava funnel used to adapt Guava hashing to {@code Element}.
     * @param threeWayTransform
     * @param reduction
     * @tparam Element
