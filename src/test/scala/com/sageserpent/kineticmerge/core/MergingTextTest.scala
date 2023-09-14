@@ -251,7 +251,7 @@ object MergingTextTest:
 
     def tokenWithPossibleFollowingWhitespace: Parser[Token] =
       ((word | punctuation) ~ opt(whitespaceRun)) ^^ {
-        case (coreToken: (Word | Punctuation)) ~ Some(whitespace) =>
+        case coreToken ~ Some(whitespace) =>
           WithTrailingWhitespace(coreToken, whitespace)
         case coreToken ~ None =>
           coreToken
@@ -280,7 +280,7 @@ object MergingTextTest:
     case Word(letters: String)
     case Punctuation(character: Char)
     case WithTrailingWhitespace(
-        coreToken: Word | Punctuation,
+        coreToken: Token,
         whitespace: Whitespace
     )
   end Token
