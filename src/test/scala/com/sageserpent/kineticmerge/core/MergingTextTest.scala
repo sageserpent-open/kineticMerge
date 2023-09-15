@@ -4,7 +4,7 @@ import cats.Eq
 import com.google.common.hash.{Hashing, PrimitiveSink}
 import com.sageserpent.kineticmerge.core.Merge.Result.MergedWithConflicts
 import com.sageserpent.kineticmerge.core.MergingTextTest.*
-import com.sageserpent.kineticmerge.core.MergingTextTest.Token.{Punctuation, Whitespace, WithTrailingWhitespace, Word}
+import com.sageserpent.kineticmerge.core.MergingTextTest.Token.*
 import com.sageserpent.kineticmerge.core.PartitionedThreeWayTransform.Input
 import org.junit.jupiter.api.Test
 import org.rabinfingerprint.polynomial.Polynomial
@@ -13,7 +13,7 @@ import pprint.*
 
 import scala.annotation.tailrec
 import scala.util.Random
-import scala.util.parsing.combinator.RegexParsers
+import scala.util.parsing.combinator.{JavaTokenParsers, RegexParsers}
 
 class MergingTextTest:
   @Test
@@ -170,9 +170,8 @@ object MergingTextTest:
 
   private def funnel(element: Token, primitiveSink: PrimitiveSink): Unit =
     element match
-      case Whitespace(blanks)     =>
-      case Word(letters)          => letters.foreach(primitiveSink.putChar)
-      case Punctuation(character) => primitiveSink.putChar(character)
+      case Whitespace(blanks)   =>
+      case Significant(letters) => letters.foreach(primitiveSink.putChar)
       case WithTrailingWhitespace(coreToken, _) =>
         funnel(coreToken, primitiveSink)
     end match
@@ -234,7 +233,7 @@ object MergingTextTest:
     tryPolynomial
   end createIrreducible
 
-  object tokenizer extends RegexParsers:
+  object tokenizer extends JavaTokenParsers:
     override def skipWhitespace: Boolean = false
 
     def apply(input: String): ParseResult[Vector[Token]] =
@@ -250,35 +249,31 @@ object MergingTextTest:
     )
 
     def tokenWithPossibleFollowingWhitespace: Parser[Token] =
-      (word | punctuation) ~ opt(whitespaceRun) ^^ {
+      ((ident | wholeNumber | decimalNumber | floatingPointNumber | stringLiteral | miscellaneous) ^^ Significant.apply) ~ opt(
+        whitespaceRun
+      ) ^^ {
         case coreToken ~ Some(whitespace) =>
           WithTrailingWhitespace(coreToken, whitespace)
         case coreToken ~ None =>
           coreToken
       }
 
-    def word: Parser[Token.Word] = "('|\\w)+".r ^^ Token.Word.apply
-
-    def punctuation: Parser[Token.Punctuation] =
-      "[.,-—;:??!()]".r ^^ (singleCharacter =>
-        Token.Punctuation(singleCharacter.charAt(0))
-      )
-
     def whitespaceRun: Parser[Token.Whitespace] =
       whiteSpace ^^ Token.Whitespace.apply
+
+    def miscellaneous: Parser[String] =
+      ".".r
   end tokenizer
 
   enum Token:
     def text: String = this match
-      case Whitespace(blanks)     => blanks
-      case Word(letters)          => letters
-      case Punctuation(character) => character.toString
+      case Whitespace(blanks)   => blanks
+      case Significant(letters) => letters
       case WithTrailingWhitespace(coreToken, whitespace) =>
         coreToken.text ++ whitespace.text
 
     case Whitespace(blanks: String)
-    case Word(letters: String)
-    case Punctuation(character: Char)
+    case Significant(letters: String)
     case WithTrailingWhitespace(
         coreToken: Token,
         whitespace: Whitespace
