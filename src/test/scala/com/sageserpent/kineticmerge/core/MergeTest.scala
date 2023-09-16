@@ -5,8 +5,8 @@ import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Contribution
-import com.sageserpent.kineticmerge.core.Merge.Result
-import com.sageserpent.kineticmerge.core.Merge.Result.*
+import com.sageserpent.kineticmerge.core.merge.Result
+import com.sageserpent.kineticmerge.core.merge.Result.*
 import com.sageserpent.kineticmerge.core.MergeTest.*
 import monocle.syntax.all.*
 import org.junit.jupiter.api.{DynamicTest, Test, TestFactory}
@@ -57,7 +57,7 @@ class MergeTest:
       )
 
     val Right(result) =
-      Merge.of(base, left, right)(
+      merge.of(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -100,7 +100,7 @@ class MergeTest:
       )
 
     val Right(result) =
-      Merge.of(base, left, right)(
+      merge.of(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -143,7 +143,7 @@ class MergeTest:
       )
 
     val Right(result) =
-      Merge.of(base, left, right)(
+      merge.of(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -179,7 +179,7 @@ class MergeTest:
       )
 
     val Right(result) =
-      Merge.of(base, left, right)(
+      merge.of(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -223,7 +223,7 @@ class MergeTest:
       )
 
     val Right(result) =
-      Merge.of(base, left, right)(
+      merge.of(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -281,7 +281,7 @@ class MergeTest:
         pprintln(testCase)
 
         val Right(result) =
-          Merge.of(testCase.base, testCase.left, testCase.right)(
+          merge.of(testCase.base, testCase.left, testCase.right)(
             equivalent(testCase.matchesByElement)
           ): @unchecked
 
@@ -293,7 +293,7 @@ class MergeTest:
       .withLimit(2000)
       .dynamicTests: testCase =>
         val Right(result) =
-          Merge.of(testCase.base, testCase.left, testCase.right)(
+          merge.of(testCase.base, testCase.left, testCase.right)(
             equivalent(testCase.matchesByElement)
           ): @unchecked
 
