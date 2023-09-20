@@ -1,5 +1,7 @@
 package com.sageserpent.kineticmerge
 
+import cats.syntax.traverse.toTraverseOps
+
 import java.nio.file.Path
 import scala.language.postfixOps
 import scala.sys.process.*
@@ -29,15 +31,29 @@ object Main:
           }.toEither.left.map(_ =>
             s"$theirBranchHead is not a valid branch or commit."
           )
-        yield bestAncestorCommit
+          ourChanges <- Try {
+            s"git diff --no-renames --name-status $bestAncestorCommit HEAD".lazyLines.toList
+          }.toEither.left
+            .map(_ =>
+              s"Can't determine changes made on our branch since ancestor commit $bestAncestorCommit"
+            )
+            .flatMap(_.traverse(pathChangeFor))
+          theirChanges <- Try {
+            s"git diff --no-renames --name-status $bestAncestorCommit $theirBranchHead".lazyLines.toList
+          }.toEither.left
+            .map(_ =>
+              s"Can't determine changes made on their branch $theirBranchHead since ancestor commit $bestAncestorCommit"
+            )
+            .flatMap(_.traverse(pathChangeFor))
+        yield (ourChanges, theirChanges)
 
         workflow.fold(
           exception =>
             println(exception)
             System.exit(1)
           ,
-          commit =>
-            println(commit)
+          stuff =>
+            println(stuff)
             0
         )
       case Array() =>
@@ -48,4 +64,21 @@ object Main:
           s"Expected a single branch or commit id, but got multiple entries shown below:\n${args.mkString("\n")}"
         )
         System.exit(3)
+
+  private def pathChangeFor(line: String): Either[String, (Path, Changed)] =
+    Try {
+      line.split("\\s+") match
+        case Array("M", path) => Path.of(path) -> Changed.Modified
+        case Array("A", path) => Path.of(path) -> Changed.Added
+        case Array("D", path) => Path.of(path) -> Changed.Deleted
+    }.toEither.left.map(_ =>
+      s"Unexpected error - can't parse changes reported by Git: $line"
+    )
+
+  private enum Changed:
+    case Modified
+    case Added
+    case Deleted
+  end Changed
+
 end Main
