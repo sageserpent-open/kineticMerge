@@ -14,7 +14,7 @@ lazy val root = (project in file("."))
     name         := "kinetic-merge",
     organization := "com.sageserpent",
     packageExecutable := {
-      val _ = publishLocal.value
+      val _ = publishLocal.value; (rabinFingerprint / publishLocal).value
 
       val localArtifactCoordinates =
         s"${organization.value}:${name.value}_${scalaBinaryVersion.value}:${version.value}"
@@ -42,6 +42,7 @@ lazy val root = (project in file("."))
   .dependsOn(rabinFingerprint)
 
 lazy val rabinFingerprint = (project in file("rabinfingerprint")).settings(
+  packageDoc / publishArtifact             := false,
   libraryDependencies += "com.google.guava" % "guava" % "32.1.2-jre",
   libraryDependencies += "junit"            % "junit" % "4.13.2" % Test
 )
