@@ -39,6 +39,12 @@ object Main:
             "The current working directory is not part of a Git working tree."
           )
 
+          _ <- Try {
+            s"git rev-parse $theirBranchHead" !!
+          }.labelExceptionWith(label =
+            s"Can't determine a best ancestor commit between $ourBranchHead and $theirBranchHead."
+          )
+
           _ <- Try { s"git diff-index --exit-code $ourBranchHead" !! }
             .labelExceptionWith(label =
               "There are uncommitted changes prior to commencing the merge."
