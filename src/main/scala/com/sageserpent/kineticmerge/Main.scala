@@ -1,6 +1,7 @@
 package com.sageserpent.kineticmerge
 
 import cats.syntax.traverse.toTraverseOps
+import com.sageserpent.kineticmerge.Main.BlobId
 
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
@@ -100,13 +101,95 @@ object Main:
           }
 
           indexUpdates <- overallChangesInvolvingTheirs.traverse {
+            case (
+                  path,
+                  (
+                    Change.Addition(_, _, _),
+                    Some(Change.Deletion | Change.Modification(_, _, _))
+                  )
+                ) =>
+              Left(
+                s"Unexpected error: file: $path has been added on our branch $ourBranchHead and either deleted or modified on their branch $theirBranchHead."
+              )
+
+            case (
+                  path,
+                  (
+                    Change.Deletion | Change.Modification(_, _, _),
+                    Some(Change.Addition(_, _, _))
+                  )
+                ) =>
+              Left(
+                s"Unexpected error: file: $path has been either deleted or modified on our branch $ourBranchHead and added on their branch $theirBranchHead."
+              )
+
+            case (
+                  path,
+                  (Change.Modification(mode, blobId, _), Some(Change.Deletion))
+                ) =>
+              recordDeletionInIndex(ourBranchHead, path)
+              recordConflictModificationInIndex(stageIndex = 3)(
+                theirBranchHead,
+                path,
+                mode,
+                blobId
+              )
+
+            case (
+                  path,
+                  (Change.Deletion, Some(Change.Modification(mode, blobId, _)))
+                ) =>
+              recordDeletionInIndex(theirBranchHead, path)
+              recordConflictModificationInIndex(stageIndex = 2)(
+                ourBranchHead,
+                path,
+                mode,
+                blobId
+              )
+
+            case (path, (Change.Modification(mode, blobId, _), None)) =>
+              recordModificationInIndex(theirBranchHead, path, mode, blobId)
+
             case (path, (Change.Addition(mode, blobId, _), None)) =>
               recordAdditionInIndex(theirBranchHead, path, mode, blobId)
 
             case (path, (Change.Deletion, None)) =>
               recordDeletionInIndex(theirBranchHead, path)
+
+            case (
+                  path,
+                  (
+                    Change.Addition(theirMode, theirBlobId, theirContent),
+                    Some(Change.Addition(ourMode, ourBlobId, ourContent))
+                  )
+                ) =>
+              // TODO - perform merge and update the index depending on whether
+              // the merge was clean or conflicted.
+              ???
+
+            case (
+                  path,
+                  (
+                    Change.Modification(theirMode, theirBlobId, theirContent),
+                    Some(Change.Modification(ourMode, ourBlobId, ourContent))
+                  )
+                ) =>
+              // TODO - perform merge and update the index depending on whether
+              // the merge was clean or conflicted.
+              ???
+
+            case (_, (Change.Deletion, Some(Change.Deletion))) =>
+              // We already have the deletion in our branch, so no need to
+              // update the index. We do yield a result so that there is still a
+              // merge commit if this is the only change, though - that should
+              // *not* be a fast-forward merge.
+              Right(())
           }
-        yield ???
+
+          _ <- Try {
+            "git checkout-index --all --force" !!
+          } labelExceptionWith ("Unexpected error: could not synchronize the working directory tree to the Git index after merging.")
+        yield indexUpdates
 
         workflow.fold(
           exception =>
@@ -126,6 +209,53 @@ object Main:
         )
         System.exit(3)
 
+  private def recordConflictModificationInIndex(stageIndex: Int)(
+      commitIdOrBranchName: CommitIdOrBranchName,
+      path: Path,
+      mode: Mode,
+      blobId: BlobId
+  ): Either[Label, String] =
+    Try {
+      (s"git update-index --index-info" #< {
+        new ByteArrayInputStream(
+          s"$mode $blobId $stageIndex\t$path"
+            .getBytes(StandardCharsets.UTF_8)
+        )
+      }) !!
+    }.labelExceptionWith(
+      s"Unexpected error: could not update index for file: $path modified on $commitIdOrBranchName."
+    )
+  end recordConflictModificationInIndex
+
+  private def recordModificationInIndex(
+      commitIdOrBranchName: CommitIdOrBranchName,
+      path: Path,
+      mode: Mode,
+      blobId: BlobId
+  ): Either[Label, String] =
+    Try {
+      (s"git update-index --index-info" #< {
+        new ByteArrayInputStream(
+          s"$mode $blobId\t$path"
+            .getBytes(StandardCharsets.UTF_8)
+        )
+      }) !!
+    }.labelExceptionWith(
+      s"Unexpected error: could not update index for file: $path modified on $commitIdOrBranchName."
+    )
+
+  private def recordAdditionInIndex(
+      commitIdOrBranchName: CommitIdOrBranchName,
+      path: Path,
+      mode: Mode,
+      blobId: BlobId
+  ): Either[Label, String] =
+    Try {
+      s"git update-index --add --cacheinfo $mode,$blobId,$path" !!
+    }.labelExceptionWith(
+      s"Unexpected error: could not update index for file: $path added on: $commitIdOrBranchName."
+    )
+
   private def recordDeletionInIndex(
       commitIdOrBranchName: CommitIdOrBranchName,
       path: Path
@@ -139,18 +269,6 @@ object Main:
       }) !!
     }.labelExceptionWith(
       s"Unexpected error: could not update index for file: $path deleted on $commitIdOrBranchName."
-    )
-
-  private def recordAdditionInIndex(
-      commitIdOrBranchName: CommitIdOrBranchName,
-      path: Path,
-      mode: Mode,
-      blobId: BlobId
-  ): Either[Label, String] =
-    Try {
-      s"git update-index --add --cacheinfo $mode,$blobId,$path" !!
-    }.labelExceptionWith(
-      s"Unexpected error: could not update index for file: $path added on: $commitIdOrBranchName."
     )
 
   private def pathChangeFor(
