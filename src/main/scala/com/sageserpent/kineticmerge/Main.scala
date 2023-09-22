@@ -101,22 +101,10 @@ object Main:
 
           indexUpdates <- overallChangesInvolvingTheirs.traverse {
             case (path, (Change.Addition(mode, blobId, _), None)) =>
-              Try {
-                s"git update-index --add --cacheinfo $mode,$blobId,$path" !!
-              }.labelExceptionWith(
-                s"Unexpected error: could not update index for their added file: $path"
-              )
+              recordAdditionInIndex(theirBranchHead, path, mode, blobId)
+
             case (path, (Change.Deletion, None)) =>
-              Try {
-                (s"git update-index --index-info" #< {
-                  new ByteArrayInputStream(
-                    s"$fakeModeForDeletion $fakeBlobIdForDeletion\t$path"
-                      .getBytes(StandardCharsets.UTF_8)
-                  )
-                }) !!
-              }.labelExceptionWith(
-                s"Unexpected error: could not update index for their deleted file: $path"
-              )
+              recordDeletionInIndex(theirBranchHead, path)
           }
         yield ???
 
@@ -137,6 +125,33 @@ object Main:
           s"Expected a single branch or commit id, but got multiple entries shown below:\n${args.mkString("\n")}"
         )
         System.exit(3)
+
+  private def recordDeletionInIndex(
+      commitIdOrBranchName: CommitIdOrBranchName,
+      path: Path
+  ): Either[Label, String] =
+    Try {
+      (s"git update-index --index-info" #< {
+        new ByteArrayInputStream(
+          s"$fakeModeForDeletion $fakeBlobIdForDeletion\t$path"
+            .getBytes(StandardCharsets.UTF_8)
+        )
+      }) !!
+    }.labelExceptionWith(
+      s"Unexpected error: could not update index for file: $path deleted on $commitIdOrBranchName."
+    )
+
+  private def recordAdditionInIndex(
+      commitIdOrBranchName: CommitIdOrBranchName,
+      path: Path,
+      mode: Mode,
+      blobId: BlobId
+  ): Either[Label, String] =
+    Try {
+      s"git update-index --add --cacheinfo $mode,$blobId,$path" !!
+    }.labelExceptionWith(
+      s"Unexpected error: could not update index for file: $path added on: $commitIdOrBranchName."
+    )
 
   private def pathChangeFor(
       commitIdOrBranchName: CommitIdOrBranchName
