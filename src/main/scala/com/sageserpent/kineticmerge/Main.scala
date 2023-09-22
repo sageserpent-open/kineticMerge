@@ -187,7 +187,7 @@ object Main:
           }
 
           _ <- Try {
-            "git checkout-index --all --force" !!
+            "git restore :/" !!
           } labelExceptionWith ("Unexpected error: could not synchronize the working directory tree to the Git index after merging.")
         yield indexUpdates
 
