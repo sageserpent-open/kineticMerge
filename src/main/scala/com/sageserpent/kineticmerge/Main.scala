@@ -8,15 +8,29 @@ import scala.sys.process.*
 import scala.util.Try
 
 object Main:
+  private type Mode = String
+
   private type BlobId = String
 
+  private type Content = String
+
   private type CommitIdOrBranchName = String
+
+  private type Label = String
+
   private val whitespaceRun = "\\s+"
 
-  private val ourBranchHead = "HEAD"
+  private val ourBranchHead: CommitIdOrBranchName = "HEAD"
+
+  private val fakeModeForDeletion: Mode = "0"
+
+  private val fakeBlobIdForDeletion: BlobId =
+    "0000000000000000000000000000000000000000"
+
+  private val hereDocumentEof = "EndOfInput"
 
   extension [Payload](fallible: Try[Payload])
-    private def labelExceptionWith(label: String): Either[String, Payload] =
+    private def labelExceptionWith(label: Label): Either[Label, Payload] =
       fallible.toEither.left.map(_ => label)
   end extension
 
@@ -80,11 +94,26 @@ object Main:
           // because we build the merge commit index from the point of view of
           // our branch.
           overallChangesInvolvingTheirs = theirChanges.foldLeft(
-            Map.empty[Path, (Change, Option[Change])]
+            List.empty[(Path, (Change, Option[Change]))]
           ) { case (partialResult, (path, theirChange)) =>
-            partialResult.updated(path, (theirChange, ourChanges.get(path)))
+            (path, (theirChange, ourChanges.get(path))) :: partialResult
           }
-        yield overallChangesInvolvingTheirs
+
+          indexUpdates <- overallChangesInvolvingTheirs.traverse {
+            case (path, (Change.Addition(mode, blobId, _), None)) =>
+              Try {
+                s"git update-index --add --cacheinfo $mode,$blobId,$path" !!
+              }.labelExceptionWith(
+                s"Unexpected error: could not update index for their added file: $path"
+              )
+            case (path, (Change.Deletion, None)) =>
+              Try {
+                s"git update-index --index-info << $hereDocumentEof\n$fakeModeForDeletion $fakeBlobIdForDeletion\t$path\n$hereDocumentEof" !!
+              }.labelExceptionWith(
+                s"Unexpected error: could not update index for their deleted file: $path"
+              )
+          }
+        yield ???
 
         workflow.fold(
           exception =>
@@ -106,7 +135,7 @@ object Main:
 
   private def pathChangeFor(
       commitIdOrBranchName: CommitIdOrBranchName
-  )(line: String): Either[String, (Path, Change)] =
+  )(line: String): Either[Label, (Path, Change)] =
     Try {
       line.split(whitespaceRun) match
         case Array("M", changedFile) =>
@@ -127,15 +156,15 @@ object Main:
 
   private def blobAndContentFor(commitIdOrBranchName: CommitIdOrBranchName)(
       path: Path
-  ): Either[String, (BlobId, String)] =
+  ): Either[Label, (Mode, BlobId, Content)] =
     Try {
       val line = s"git ls-tree $commitIdOrBranchName $path" !!
 
       line.split(whitespaceRun) match
-        case Array(_, _, blobId, _) =>
+        case Array(mode, _, blobId, _) =>
           val content = s"git cat-file blob $blobId" !!
 
-          blobId -> content
+          (mode, blobId, content)
       end match
     }.labelExceptionWith(label =
       s"Unexpected error - can't determine blob id for path: $path in commit or branch: $commitIdOrBranchName."
@@ -143,8 +172,8 @@ object Main:
   end blobAndContentFor
 
   private enum Change:
-    case Modification(blobId: BlobId, content: String)
-    case Addition(blobId: BlobId, content: String)
+    case Modification(mode: Mode, blobId: BlobId, content: Content)
+    case Addition(mode: Mode, blobId: BlobId, content: Content)
     case Deletion
   end Change
 
