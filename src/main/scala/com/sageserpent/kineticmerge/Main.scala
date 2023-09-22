@@ -2,6 +2,8 @@ package com.sageserpent.kineticmerge
 
 import cats.syntax.traverse.toTraverseOps
 
+import java.io.ByteArrayInputStream
+import java.nio.charset.StandardCharsets
 import java.nio.file.Path
 import scala.language.postfixOps
 import scala.sys.process.*
@@ -26,8 +28,6 @@ object Main:
 
   private val fakeBlobIdForDeletion: BlobId =
     "0000000000000000000000000000000000000000"
-
-  private val hereDocumentEof = "EndOfInput"
 
   extension [Payload](fallible: Try[Payload])
     private def labelExceptionWith(label: Label): Either[Label, Payload] =
@@ -108,7 +108,12 @@ object Main:
               )
             case (path, (Change.Deletion, None)) =>
               Try {
-                s"git update-index --index-info << $hereDocumentEof\n$fakeModeForDeletion $fakeBlobIdForDeletion\t$path\n$hereDocumentEof" !!
+                (s"git update-index --index-info" #< {
+                  new ByteArrayInputStream(
+                    s"$fakeModeForDeletion $fakeBlobIdForDeletion\t$path"
+                      .getBytes(StandardCharsets.UTF_8)
+                  )
+                }) !!
               }.labelExceptionWith(
                 s"Unexpected error: could not update index for their deleted file: $path"
               )
