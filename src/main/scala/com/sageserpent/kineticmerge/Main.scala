@@ -66,13 +66,25 @@ object Main:
           }.labelExceptionWith(label =
             s"Can't determine changes made on our branch since ancestor commit $bestAncestorCommit"
           ).flatMap(_.traverse(pathChangeFor(ourBranchHead)))
+            .map(_.toMap)
 
           theirChanges <- Try {
             s"git diff --no-renames --name-status $bestAncestorCommit $theirBranchHead".lazyLines.toList
           }.labelExceptionWith(label =
             s"Can't determine changes made on their branch $theirBranchHead since ancestor commit $bestAncestorCommit"
           ).flatMap(_.traverse(pathChangeFor(theirBranchHead)))
-        yield (ourChanges, theirChanges)
+            .map(_.toMap)
+
+          // NOTE: changes that belong only to our branch don't need to be
+          // handled explicitly - they are already in the merge by default,
+          // because we build the merge commit index from the point of view of
+          // our branch.
+          overallChangesInvolvingTheirs = theirChanges.foldLeft(
+            Map.empty[Path, (Change, Option[Change])]
+          ) { case (partialResult, (path, theirChange)) =>
+            partialResult.updated(path, (theirChange, ourChanges.get(path)))
+          }
+        yield overallChangesInvolvingTheirs
 
         workflow.fold(
           exception =>
@@ -94,21 +106,21 @@ object Main:
 
   private def pathChangeFor(
       commitIdOrBranchName: CommitIdOrBranchName
-  )(line: String): Either[String, (Path, Changed)] =
+  )(line: String): Either[String, (Path, Change)] =
     Try {
       line.split(whitespaceRun) match
         case Array("M", changedFile) =>
           val path = Path.of(changedFile)
           path -> blobAndContentFor(commitIdOrBranchName)(path).map(
-            Changed.Modified.apply.tupled
+            Change.Modification.apply.tupled
           )
         case Array("A", changedFile) =>
           val path = Path.of(changedFile)
           path -> blobAndContentFor(commitIdOrBranchName)(path).map(
-            Changed.Added.apply.tupled
+            Change.Addition.apply.tupled
           )
         case Array("D", path) =>
-          Path.of(path) -> Right(Changed.Deleted)
+          Path.of(path) -> Right(Change.Deletion)
     }.labelExceptionWith(label =
       s"Unexpected error - can't parse changes reported by Git: $line"
     ).flatMap { case (path, changed) => changed.map(path -> _) }
@@ -130,10 +142,10 @@ object Main:
     )
   end blobAndContentFor
 
-  private enum Changed:
-    case Modified(blobId: BlobId, content: String)
-    case Added(blobId: BlobId, content: String)
-    case Deleted
-  end Changed
+  private enum Change:
+    case Modification(blobId: BlobId, content: String)
+    case Addition(blobId: BlobId, content: String)
+    case Deletion
+  end Change
 
 end Main
