@@ -10,7 +10,7 @@ lazy val packageExecutable =
 
 lazy val root = (project in file("."))
   .settings(
-    scalacOptions ++= List.empty,
+    scalacOptions ++= List("-source:future"),
     name         := "kinetic-merge",
     organization := "com.sageserpent",
     packageExecutable := {

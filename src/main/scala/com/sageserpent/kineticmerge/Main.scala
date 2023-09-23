@@ -125,27 +125,55 @@ object Main:
 
             case (
                   path,
-                  (Change.Modification(mode, blobId, _), Some(Change.Deletion))
+                  (
+                    Change.Modification(mode, ourBlobId, _),
+                    Some(Change.Deletion)
+                  )
                 ) =>
-              recordDeletionInIndex(ourBranchHead, path)
-              recordConflictModificationInIndex(stageIndex = 3)(
-                theirBranchHead,
-                path,
-                mode,
-                blobId
-              )
+              for
+                (_, bestAncestorCommitBlobId, _) <- blobAndContentFor(
+                  bestAncestorCommit
+                )(path)
+                _ <- recordDeletionInIndex(ourBranchHead, path)
+                _ <- recordConflictModificationInIndex(stageIndex = 1)(
+                  bestAncestorCommit,
+                  path,
+                  mode,
+                  bestAncestorCommitBlobId
+                )
+                - <- recordConflictModificationInIndex(stageIndex = 3)(
+                  theirBranchHead,
+                  path,
+                  mode,
+                  ourBlobId
+                )
+              yield ()
 
             case (
                   path,
-                  (Change.Deletion, Some(Change.Modification(mode, blobId, _)))
+                  (
+                    Change.Deletion,
+                    Some(Change.Modification(mode, theirBlobId, _))
+                  )
                 ) =>
-              recordDeletionInIndex(theirBranchHead, path)
-              recordConflictModificationInIndex(stageIndex = 2)(
-                ourBranchHead,
-                path,
-                mode,
-                blobId
-              )
+              for
+                (_, bestAncestorCommitBlobId, _) <- blobAndContentFor(
+                  bestAncestorCommit
+                )(path)
+                - <- recordDeletionInIndex(theirBranchHead, path)
+                - <- recordConflictModificationInIndex(stageIndex = 1)(
+                  bestAncestorCommit,
+                  path,
+                  mode,
+                  bestAncestorCommitBlobId
+                )
+                - <- recordConflictModificationInIndex(stageIndex = 2)(
+                  ourBranchHead,
+                  path,
+                  mode,
+                  theirBlobId
+                )
+              yield ()
 
             case (path, (Change.Modification(mode, blobId, _), None)) =>
               recordModificationInIndex(theirBranchHead, path, mode, blobId)
@@ -181,14 +209,10 @@ object Main:
             case (_, (Change.Deletion, Some(Change.Deletion))) =>
               // We already have the deletion in our branch, so no need to
               // update the index. We do yield a result so that there is still a
-              // merge commit if this is the only change, though - that should
+              // merge commit if this is the only change, though - this should
               // *not* be a fast-forward merge.
               Right(())
           }
-
-          _ <- Try {
-            "git restore :/" !!
-          } labelExceptionWith ("Unexpected error: could not synchronize the working directory tree to the Git index after merging.")
         yield indexUpdates
 
         workflow.fold(
