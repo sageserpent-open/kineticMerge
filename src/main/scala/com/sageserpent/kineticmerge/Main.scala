@@ -3,7 +3,7 @@ package com.sageserpent.kineticmerge
 import cats.syntax.traverse.toTraverseOps
 import com.sageserpent.kineticmerge.Main.BlobId
 
-import java.io.ByteArrayInputStream
+import java.io.{ByteArrayInputStream, File}
 import java.nio.charset.StandardCharsets
 import java.nio.file.Path
 import scala.language.postfixOps
@@ -126,7 +126,7 @@ object Main:
             case (
                   path,
                   (
-                    Change.Modification(mode, ourBlobId, _),
+                    Change.Modification(mode, theirBlobId, _),
                     Some(Change.Deletion)
                   )
                 ) =>
@@ -145,15 +145,19 @@ object Main:
                   theirBranchHead,
                   path,
                   mode,
-                  ourBlobId
+                  theirBlobId
                 )
+                _ <- Try { s"git cat-file blob $theirBlobId" #> path.toFile !! }
+                  .labelExceptionWith(label =
+                    s"Unexpected error: could not update working directory tree with conflicted merge file: $path"
+                  )
               yield ()
 
             case (
                   path,
                   (
                     Change.Deletion,
-                    Some(Change.Modification(mode, theirBlobId, _))
+                    Some(Change.Modification(mode, ourBlobId, _))
                   )
                 ) =>
               for
@@ -171,7 +175,7 @@ object Main:
                   ourBranchHead,
                   path,
                   mode,
-                  theirBlobId
+                  ourBlobId
                 )
               yield ()
 
