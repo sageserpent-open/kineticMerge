@@ -7,7 +7,7 @@ import com.sageserpent.kineticmerge.core.{Token, mergeTokens}
 
 import java.io.{ByteArrayInputStream, File}
 import java.nio.charset.StandardCharsets
-import java.nio.file.Path
+import java.nio.file.{CopyOption, Files, Path, StandardCopyOption}
 import scala.language.postfixOps
 import scala.sys.process.*
 import scala.util.Try
@@ -330,8 +330,87 @@ object Main:
                   )
               yield ()
               end for
-            // case Result.MergedWithConflicts(leftElements, rightElements) =>
-            // ???
+
+            case Result.MergedWithConflicts(leftElements, rightElements) =>
+              val leftContent  = leftElements.map(_.text).mkString
+              val rightContent = rightElements.map(_.text).mkString
+
+              for
+                baseTemporaryFile <- temporaryFile(suffix = ".base")
+                - <- Try {
+                  Files.write(
+                    baseTemporaryFile.toPath,
+                    bestAncestorCommitContent.getBytes(StandardCharsets.UTF_8)
+                  )
+                }
+                  .labelExceptionWith(label =
+                    s"Unexpected error: could not write to temporary file: $baseTemporaryFile."
+                  )
+
+                leftTemporaryFile <- temporaryFile(suffix = ".left")
+                - <- Try {
+                  Files.write(
+                    leftTemporaryFile.toPath,
+                    leftContent.getBytes(StandardCharsets.UTF_8)
+                  )
+                }
+                  .labelExceptionWith(label =
+                    s"Unexpected error: could not write to temporary file: $leftTemporaryFile."
+                  )
+
+                rightTemporaryFile <- temporaryFile(suffix = ".right")
+                - <- Try {
+                  Files.write(
+                    rightTemporaryFile.toPath,
+                    rightContent.getBytes(StandardCharsets.UTF_8)
+                  )
+                }
+                  .labelExceptionWith(label =
+                    s"Unexpected error: could not write to temporary file: $rightTemporaryFile."
+                  )
+
+                _ <-
+                  val exitCode =
+                    s"git merge-file -L $ourBranchHead -L $bestAncestorCommit -L $theirBranchHead $leftTemporaryFile $baseTemporaryFile $rightTemporaryFile" !
+
+                  if 0 <= exitCode then Right(())
+                  else
+                    Left(
+                      s"Unexpected error: could not generate conflicted file contents on behalf of: $path in temporary file: $leftTemporaryFile"
+                    )
+                  end if
+                _ <- Try {
+                  Files.copy(
+                    leftTemporaryFile.toPath,
+                    path,
+                    StandardCopyOption.REPLACE_EXISTING
+                  )
+                }.labelExceptionWith(label =
+                  s"Unexpected error: could not copy results of conflicted merge in: $leftTemporaryFile to working directory tree file: $path."
+                )
+
+                leftBlob  <- storeBlobFor(path, leftContent)
+                rightBlob <- storeBlobFor(path, rightContent)
+                _ <- recordConflictModificationInIndex(stageIndex = 1)(
+                  bestAncestorCommit,
+                  path,
+                  bestAncestorCommitMode,
+                  bestAncestorCommitBlobId
+                )
+                _ <- recordConflictModificationInIndex(stageIndex = 2)(
+                  ourBranchHead,
+                  path,
+                  ourMode,
+                  leftBlob
+                )
+                _ <- recordConflictModificationInIndex(stageIndex = 1)(
+                  theirBranchHead,
+                  path,
+                  theirMode,
+                  rightBlob
+                )
+              yield ()
+              end for
         yield ()
 
       case (_, (Change.Deletion, Some(Change.Deletion))) =>
@@ -341,6 +420,18 @@ object Main:
         // *not* be a fast-forward merge.
         Right(())
     }
+
+  private def temporaryFile(suffix: Content): Either[Label, File] =
+    for
+      baseTemporaryFile <- Try {
+        Files.createTempFile("kinetic-merge-", suffix).toFile
+      }.labelExceptionWith(
+        s"Unexpected error: could not create temporary file."
+      )
+      _ <- Try { baseTemporaryFile.deleteOnExit() }.labelExceptionWith(label =
+        s"Unexpected error: could not register temporary file: $baseTemporaryFile for deletion on exit."
+      )
+    yield baseTemporaryFile
 
   private def recordConflictModificationInIndex(stageIndex: Int)(
       commitIdOrBranchName: CommitIdOrBranchName,
