@@ -147,10 +147,14 @@ object Main:
                   mode,
                   theirBlobId
                 )
-                _ <- Try { s"git cat-file blob $theirBlobId" #> path.toFile !! }
-                  .labelExceptionWith(label =
-                    s"Unexpected error: could not update working directory tree with conflicted merge file: $path"
-                  )
+                _ <-
+                  // Git's merge updates the working directory tree with *their*
+                  // modified file which wouldn't have been present on our
+                  // branch prior to the merge. So that's what we do too.
+                  Try { s"git cat-file blob $theirBlobId" #> path.toFile !! }
+                    .labelExceptionWith(label =
+                      s"Unexpected error: could not update working directory tree with conflicted merge file: $path"
+                    )
               yield ()
 
             case (
@@ -177,16 +181,36 @@ object Main:
                   mode,
                   ourBlobId
                 )
+              // The modified file would have been present on our branch; given
+              // that we started with a clean working directory tree, we just
+              // leave it there to match what Git merge does.
               yield ()
 
             case (path, (Change.Modification(mode, blobId, _), None)) =>
               recordModificationInIndex(theirBranchHead, path, mode, blobId)
 
             case (path, (Change.Addition(mode, blobId, _), None)) =>
-              recordAdditionInIndex(theirBranchHead, path, mode, blobId)
+              for
+                _ <- recordAdditionInIndex(
+                  theirBranchHead,
+                  path,
+                  mode,
+                  blobId
+                )
+                - <- Try { s"git cat-file blob $blobId" #> path.toFile !! }
+                  .labelExceptionWith(label =
+                    s"Unexpected error: could not update working directory tree with added file: $path"
+                  )
+              yield ()
 
             case (path, (Change.Deletion, None)) =>
-              recordDeletionInIndex(theirBranchHead, path)
+              for
+                _ <- recordDeletionInIndex(theirBranchHead, path)
+                _ <- Try { s"rm -rf $path" !! }
+                  .labelExceptionWith(label =
+                    s"Unexpected error: could not update working directory tree by deleting file: $path"
+                  )
+              yield ()
 
             case (
                   path,
