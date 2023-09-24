@@ -3,16 +3,9 @@ package com.sageserpent.kineticmerge.core
 import com.google.common.hash.{Hashing, PrimitiveSink}
 import com.sageserpent.kineticmerge.core.PartitionedThreeWayTransform.Input
 import com.sageserpent.kineticmerge.core.Token
-import com.sageserpent.kineticmerge.core.Token.{
-  Significant,
-  Whitespace,
-  WithTrailingWhitespace
-}
+import com.sageserpent.kineticmerge.core.Token.{Significant, Whitespace, WithTrailingWhitespace}
 import org.rabinfingerprint.polynomial.Polynomial
-import org.rabinfingerprint.polynomial.Polynomial.{
-  Reducibility,
-  createFromBytes
-}
+import org.rabinfingerprint.polynomial.Polynomial.{Reducibility, createFromBytes}
 
 import scala.annotation.tailrec
 import scala.util.Random
@@ -39,7 +32,7 @@ object mergeTokens:
       targetCommonPartitionSize = 20,
       equality = equality,
       hashFunction = Hashing.murmur3_32_fixed(),
-      funnel = funnel _
+      funnel = funnel
     )(
       threeWayTransform,
       reduction

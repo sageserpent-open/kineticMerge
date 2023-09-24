@@ -100,147 +100,11 @@ object Main:
             (path, (theirChange, ourChanges.get(path))) :: partialResult
           }
 
-          indexUpdates <- overallChangesInvolvingTheirs.traverse {
-            case (
-                  path,
-                  (
-                    Change.Addition(_, _, _),
-                    Some(Change.Deletion | Change.Modification(_, _, _))
-                  )
-                ) =>
-              Left(
-                s"Unexpected error: file: $path has been added on our branch $ourBranchHead and either deleted or modified on their branch $theirBranchHead."
-              )
-
-            case (
-                  path,
-                  (
-                    Change.Deletion | Change.Modification(_, _, _),
-                    Some(Change.Addition(_, _, _))
-                  )
-                ) =>
-              Left(
-                s"Unexpected error: file: $path has been either deleted or modified on our branch $ourBranchHead and added on their branch $theirBranchHead."
-              )
-
-            case (
-                  path,
-                  (
-                    Change.Modification(mode, theirBlobId, _),
-                    Some(Change.Deletion)
-                  )
-                ) =>
-              for
-                (_, bestAncestorCommitBlobId, _) <- blobAndContentFor(
-                  bestAncestorCommit
-                )(path)
-                _ <- recordDeletionInIndex(ourBranchHead, path)
-                _ <- recordConflictModificationInIndex(stageIndex = 1)(
-                  bestAncestorCommit,
-                  path,
-                  mode,
-                  bestAncestorCommitBlobId
-                )
-                - <- recordConflictModificationInIndex(stageIndex = 3)(
-                  theirBranchHead,
-                  path,
-                  mode,
-                  theirBlobId
-                )
-                _ <-
-                  // Git's merge updates the working directory tree with *their*
-                  // modified file which wouldn't have been present on our
-                  // branch prior to the merge. So that's what we do too.
-                  Try { s"git cat-file blob $theirBlobId" #> path.toFile !! }
-                    .labelExceptionWith(label =
-                      s"Unexpected error: could not update working directory tree with conflicted merge file: $path"
-                    )
-              yield ()
-
-            case (
-                  path,
-                  (
-                    Change.Deletion,
-                    Some(Change.Modification(mode, ourBlobId, _))
-                  )
-                ) =>
-              for
-                (_, bestAncestorCommitBlobId, _) <- blobAndContentFor(
-                  bestAncestorCommit
-                )(path)
-                - <- recordDeletionInIndex(theirBranchHead, path)
-                - <- recordConflictModificationInIndex(stageIndex = 1)(
-                  bestAncestorCommit,
-                  path,
-                  mode,
-                  bestAncestorCommitBlobId
-                )
-                - <- recordConflictModificationInIndex(stageIndex = 2)(
-                  ourBranchHead,
-                  path,
-                  mode,
-                  ourBlobId
-                )
-              // The modified file would have been present on our branch; given
-              // that we started with a clean working directory tree, we just
-              // leave it there to match what Git merge does.
-              yield ()
-
-            case (path, (Change.Modification(mode, blobId, _), None)) =>
-              recordModificationInIndex(theirBranchHead, path, mode, blobId)
-
-            case (path, (Change.Addition(mode, blobId, _), None)) =>
-              for
-                _ <- recordAdditionInIndex(
-                  theirBranchHead,
-                  path,
-                  mode,
-                  blobId
-                )
-                - <- Try { s"git cat-file blob $blobId" #> path.toFile !! }
-                  .labelExceptionWith(label =
-                    s"Unexpected error: could not update working directory tree with added file: $path"
-                  )
-              yield ()
-
-            case (path, (Change.Deletion, None)) =>
-              for
-                _ <- recordDeletionInIndex(theirBranchHead, path)
-                _ <- Try { s"rm -rf $path" !! }
-                  .labelExceptionWith(label =
-                    s"Unexpected error: could not update working directory tree by deleting file: $path"
-                  )
-              yield ()
-
-            case (
-                  path,
-                  (
-                    Change.Addition(theirMode, theirBlobId, theirContent),
-                    Some(Change.Addition(ourMode, ourBlobId, ourContent))
-                  )
-                ) =>
-              // TODO - perform merge and update the index depending on whether
-              // the merge was clean or conflicted.
-              ???
-
-            case (
-                  path,
-                  (
-                    Change.Modification(theirMode, theirBlobId, theirContent),
-                    Some(Change.Modification(ourMode, ourBlobId, ourContent))
-                  )
-                ) =>
-              // TODO - perform merge and update the index depending on whether
-              // the merge was clean or conflicted.
-              ???
-
-            case (_, (Change.Deletion, Some(Change.Deletion))) =>
-              // We already have the deletion in our branch, so no need to
-              // update the index. We do yield a result so that there is still a
-              // merge commit if this is the only change, though - this should
-              // *not* be a fast-forward merge.
-              Right(())
-          }
+          indexUpdates <- indexUpdates(
+            bestAncestorCommit,
+            ourBranchHead,
+            theirBranchHead
+          )(overallChangesInvolvingTheirs)
         yield indexUpdates
 
         workflow.fold(
@@ -260,6 +124,161 @@ object Main:
           s"Expected a single branch or commit id, but got multiple entries shown below:\n${args.mkString("\n")}"
         )
         System.exit(3)
+
+  private def indexUpdates(
+      bestAncestorCommit: CommitIdOrBranchName,
+      ourBranchHead: CommitIdOrBranchName,
+      theirBranchHead: CommitIdOrBranchName
+  )(
+      overallChangesInvolvingTheirs: List[(Path, (Change, Option[Change]))]
+  ): Either[Label, List[Any]] =
+    overallChangesInvolvingTheirs.traverse {
+      case (
+            path,
+            (
+              Change.Addition(_, _, _),
+              Some(Change.Deletion | Change.Modification(_, _, _))
+            )
+          ) =>
+        Left(
+          s"Unexpected error: file: $path has been added on our branch $ourBranchHead and either deleted or modified on their branch $theirBranchHead."
+        )
+
+      case (
+            path,
+            (
+              Change.Deletion | Change.Modification(_, _, _),
+              Some(Change.Addition(_, _, _))
+            )
+          ) =>
+        Left(
+          s"Unexpected error: file: $path has been either deleted or modified on our branch $ourBranchHead and added on their branch $theirBranchHead."
+        )
+
+      case (
+            path,
+            (
+              Change.Modification(mode, theirBlobId, _),
+              Some(Change.Deletion)
+            )
+          ) =>
+        for
+          (_, bestAncestorCommitBlobId, _) <- blobAndContentFor(
+            bestAncestorCommit
+          )(path)
+          _ <- recordDeletionInIndex(ourBranchHead, path)
+          _ <- recordConflictModificationInIndex(stageIndex = 1)(
+            bestAncestorCommit,
+            path,
+            mode,
+            bestAncestorCommitBlobId
+          )
+          - <- recordConflictModificationInIndex(stageIndex = 3)(
+            theirBranchHead,
+            path,
+            mode,
+            theirBlobId
+          )
+          _ <-
+            // Git's merge updates the working directory tree with *their*
+            // modified file which wouldn't have been present on our
+            // branch prior to the merge. So that's what we do too.
+            Try {
+              s"git cat-file blob $theirBlobId" #> path.toFile !!
+            }
+              .labelExceptionWith(label =
+                s"Unexpected error: could not update working directory tree with conflicted merge file: $path"
+              )
+        yield ()
+
+      case (
+            path,
+            (
+              Change.Deletion,
+              Some(Change.Modification(mode, ourBlobId, _))
+            )
+          ) =>
+        for
+          (_, bestAncestorCommitBlobId, _) <- blobAndContentFor(
+            bestAncestorCommit
+          )(path)
+          - <- recordDeletionInIndex(theirBranchHead, path)
+          - <- recordConflictModificationInIndex(stageIndex = 1)(
+            bestAncestorCommit,
+            path,
+            mode,
+            bestAncestorCommitBlobId
+          )
+          - <- recordConflictModificationInIndex(stageIndex = 2)(
+            ourBranchHead,
+            path,
+            mode,
+            ourBlobId
+          )
+        // The modified file would have been present on our branch; given
+        // that we started with a clean working directory tree, we just
+        // leave it there to match what Git merge does.
+        yield ()
+
+      case (path, (Change.Modification(mode, blobId, _), None)) =>
+        recordModificationInIndex(theirBranchHead, path, mode, blobId)
+
+      case (path, (Change.Addition(mode, blobId, _), None)) =>
+        for
+          _ <- recordAdditionInIndex(
+            theirBranchHead,
+            path,
+            mode,
+            blobId
+          )
+          - <- Try {
+            s"git cat-file blob $blobId" #> path.toFile !!
+          }
+            .labelExceptionWith(label =
+              s"Unexpected error: could not update working directory tree with added file: $path"
+            )
+        yield ()
+
+      case (path, (Change.Deletion, None)) =>
+        for
+          _ <- recordDeletionInIndex(theirBranchHead, path)
+          _ <- Try {
+            s"rm -rf $path" !!
+          }
+            .labelExceptionWith(label =
+              s"Unexpected error: could not update working directory tree by deleting file: $path"
+            )
+        yield ()
+
+      case (
+            path,
+            (
+              Change.Addition(theirMode, theirBlobId, theirContent),
+              Some(Change.Addition(ourMode, ourBlobId, ourContent))
+            )
+          ) =>
+        // TODO - perform merge and update the index depending on whether
+        // the merge was clean or conflicted.
+        ???
+
+      case (
+            path,
+            (
+              Change.Modification(theirMode, theirBlobId, theirContent),
+              Some(Change.Modification(ourMode, ourBlobId, ourContent))
+            )
+          ) =>
+        // TODO - perform merge and update the index depending on whether
+        // the merge was clean or conflicted.
+        ???
+
+      case (_, (Change.Deletion, Some(Change.Deletion))) =>
+        // We already have the deletion in our branch, so no need to
+        // update the index. We do yield a result so that there is still a
+        // merge commit if this is the only change, though - this should
+        // *not* be a fast-forward merge.
+        Right(())
+    }
 
   private def recordConflictModificationInIndex(stageIndex: Int)(
       commitIdOrBranchName: CommitIdOrBranchName,

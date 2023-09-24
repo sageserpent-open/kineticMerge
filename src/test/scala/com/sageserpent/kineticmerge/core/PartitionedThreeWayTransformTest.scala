@@ -34,7 +34,7 @@ class PartitionedThreeWayTransformTest:
               targetCommonPartitionSize,
               equality = _ == _,
               hashFunction = Hashing.murmur3_32_fixed(),
-              funnel = funnel _
+              funnel = funnel
             )(_.base, _ ++ _)
 
           assert(reconstitutedBase == base)
@@ -44,7 +44,7 @@ class PartitionedThreeWayTransformTest:
               targetCommonPartitionSize,
               equality = _ == _,
               hashFunction = Hashing.murmur3_32_fixed(),
-              funnel = funnel _
+              funnel = funnel
             )(_.left, _ ++ _)
 
           assert(reconstitutedLeft == left)
@@ -54,7 +54,7 @@ class PartitionedThreeWayTransformTest:
               targetCommonPartitionSize,
               equality = _ == _,
               hashFunction = Hashing.murmur3_32_fixed(),
-              funnel = funnel _
+              funnel = funnel
             )(_.right, _ ++ _)
 
           assert(reconstitutedRight == right)
@@ -76,7 +76,7 @@ class PartitionedThreeWayTransformTest:
               targetCommonPartitionSize,
               equality = _ == _,
               hashFunction = Hashing.murmur3_32_fixed(),
-              funnel = funnel _
+              funnel = funnel
             )(
               {
                 case Input(base, _, _, true) => base
@@ -96,7 +96,7 @@ class PartitionedThreeWayTransformTest:
               targetCommonPartitionSize,
               equality = _ == _,
               hashFunction = Hashing.murmur3_32_fixed(),
-              funnel = funnel _
+              funnel = funnel
             )(
               {
                 case Input(_, left, _, true) => left
@@ -116,7 +116,7 @@ class PartitionedThreeWayTransformTest:
               targetCommonPartitionSize,
               equality = _ == _,
               hashFunction = Hashing.murmur3_32_fixed(),
-              funnel = funnel _
+              funnel = funnel
             )(
               {
                 case Input(_, _, right, true) => right
