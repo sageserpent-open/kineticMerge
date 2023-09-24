@@ -2,6 +2,8 @@ package com.sageserpent.kineticmerge
 
 import cats.syntax.traverse.toTraverseOps
 import com.sageserpent.kineticmerge.Main.BlobId
+import com.sageserpent.kineticmerge.core.merge.Result
+import com.sageserpent.kineticmerge.core.{Token, mergeTokens}
 
 import java.io.{ByteArrayInputStream, File}
 import java.nio.charset.StandardCharsets
@@ -166,7 +168,7 @@ object Main:
           (_, bestAncestorCommitBlobId, _) <- blobAndContentFor(
             bestAncestorCommit
           )(path)
-          _ <- recordDeletionInIndex(ourBranchHead, path)
+          _ <- recordDeletionInIndex(path)
           _ <- recordConflictModificationInIndex(stageIndex = 1)(
             bestAncestorCommit,
             path,
@@ -202,7 +204,7 @@ object Main:
           (_, bestAncestorCommitBlobId, _) <- blobAndContentFor(
             bestAncestorCommit
           )(path)
-          - <- recordDeletionInIndex(theirBranchHead, path)
+          - <- recordDeletionInIndex(path)
           - <- recordConflictModificationInIndex(stageIndex = 1)(
             bestAncestorCommit,
             path,
@@ -221,32 +223,35 @@ object Main:
         yield ()
 
       case (path, (Change.Modification(mode, blobId, _), None)) =>
-        recordModificationInIndex(theirBranchHead, path, mode, blobId)
-
-      case (path, (Change.Addition(mode, blobId, _), None)) =>
         for
-          _ <- recordAdditionInIndex(
-            theirBranchHead,
-            path,
-            mode,
-            blobId
-          )
+          _ <- recordModificationInIndex(path, mode, blobId)
           - <- Try {
             s"git cat-file blob $blobId" #> path.toFile !!
           }
             .labelExceptionWith(label =
-              s"Unexpected error: could not update working directory tree with added file: $path"
+              s"Unexpected error: could not update working directory tree with modified file: $path."
+            )
+        yield ()
+
+      case (path, (Change.Addition(mode, blobId, _), None)) =>
+        for
+          _ <- recordAdditionInIndex(path, mode, blobId)
+          - <- Try {
+            s"git cat-file blob $blobId" #> path.toFile !!
+          }
+            .labelExceptionWith(label =
+              s"Unexpected error: could not update working directory tree with added file: $path."
             )
         yield ()
 
       case (path, (Change.Deletion, None)) =>
         for
-          _ <- recordDeletionInIndex(theirBranchHead, path)
+          _ <- recordDeletionInIndex(path)
           _ <- Try {
             s"rm -rf $path" !!
           }
             .labelExceptionWith(label =
-              s"Unexpected error: could not update working directory tree by deleting file: $path"
+              s"Unexpected error: could not update working directory tree by deleting file: $path."
             )
         yield ()
 
@@ -268,9 +273,66 @@ object Main:
               Some(Change.Modification(ourMode, ourBlobId, ourContent))
             )
           ) =>
-        // TODO - perform merge and update the index depending on whether
-        // the merge was clean or conflicted.
-        ???
+        for
+          (
+            bestAncestorCommitMode,
+            bestAncestorCommitBlobId,
+            bestAncestorCommitContent
+          ) <-
+            blobAndContentFor(bestAncestorCommit)(path)
+
+          mergedFileMode <-
+            if bestAncestorCommitMode == ourMode then Right(theirMode)
+            else if bestAncestorCommitMode == theirMode then Right(ourMode)
+            else if ourMode == theirMode then Right(ourMode)
+            else
+              Left(
+                s"Conflicting file modes for file: $path; on base ancestor commit: $bestAncestorCommitMode, on our branch head: $ourMode and on their branch head: $theirMode."
+              )
+
+          bestAncestorTokens <- Try {
+            Token.tokens(bestAncestorCommitContent).get
+          }.labelExceptionWith(label =
+            s"Failed to tokenize file: $path on best ancestor commit: $bestAncestorCommit."
+          )
+
+          ourAncestorTokens <- Try { Token.tokens(ourContent).get }
+            .labelExceptionWith(label =
+              s"Failed to tokenize file: $path on our branch head: $ourBranchHead."
+            )
+
+          theirAncestorTokens <- Try { Token.tokens(theirContent).get }
+            .labelExceptionWith(label =
+              s"Failed to tokenize file: $path on their branch head: $theirBranchHead."
+            )
+
+          mergeResult <- mergeTokens(
+            base = bestAncestorTokens,
+            left = ourAncestorTokens,
+            right = theirAncestorTokens
+          ).left.map(_.toString)
+
+          _ <- mergeResult match
+            case Result.FullyMerged(elements) =>
+              val mergedContent = elements.map(_.text).mkString
+              for
+                mergedBlobId <- storeBlobFor(path, mergedContent)
+                _ <- recordModificationInIndex(
+                  path,
+                  mergedFileMode,
+                  mergedBlobId
+                )
+                - <- Try {
+                  s"git cat-file blob $mergedBlobId" #> path.toFile !!
+                }
+                  .labelExceptionWith(label =
+                    s"Unexpected error: could not update working directory tree with merged file: $path."
+                  )
+              yield ()
+              end for
+            // case Result.MergedWithConflicts(leftElements, rightElements) =>
+            // ???
+        yield ()
 
       case (_, (Change.Deletion, Some(Change.Deletion))) =>
         // We already have the deletion in our branch, so no need to
@@ -294,12 +356,11 @@ object Main:
         )
       }) !!
     }.labelExceptionWith(
-      s"Unexpected error: could not update index for file: $path modified on $commitIdOrBranchName."
+      s"Unexpected error: could not update conflict stage #$stageIndex index for modified file: $path from $commitIdOrBranchName."
     )
   end recordConflictModificationInIndex
 
   private def recordModificationInIndex(
-      commitIdOrBranchName: CommitIdOrBranchName,
       path: Path,
       mode: Mode,
       blobId: BlobId
@@ -312,11 +373,10 @@ object Main:
         )
       }) !!
     }.labelExceptionWith(
-      s"Unexpected error: could not update index for file: $path modified on $commitIdOrBranchName."
+      s"Unexpected error: could not update index for modified file: $path."
     )
 
   private def recordAdditionInIndex(
-      commitIdOrBranchName: CommitIdOrBranchName,
       path: Path,
       mode: Mode,
       blobId: BlobId
@@ -324,11 +384,10 @@ object Main:
     Try {
       s"git update-index --add --cacheinfo $mode,$blobId,$path" !!
     }.labelExceptionWith(
-      s"Unexpected error: could not update index for file: $path added on: $commitIdOrBranchName."
+      s"Unexpected error: could not update index for added file: $path."
     )
 
   private def recordDeletionInIndex(
-      commitIdOrBranchName: CommitIdOrBranchName,
       path: Path
   ): Either[Label, String] =
     Try {
@@ -339,7 +398,7 @@ object Main:
         )
       }) !!
     }.labelExceptionWith(
-      s"Unexpected error: could not update index for file: $path deleted on $commitIdOrBranchName."
+      s"Unexpected error: could not update index for deleted file: $path."
     )
 
   private def pathChangeFor(
@@ -359,8 +418,9 @@ object Main:
           )
         case Array("D", path) =>
           Path.of(path) -> Right(Change.Deletion)
+      end match
     }.labelExceptionWith(label =
-      s"Unexpected error - can't parse changes reported by Git: $line"
+      s"Unexpected error - can't parse changes reported by Git: $line."
     ).flatMap { case (path, changed) => changed.map(path -> _) }
 
   private def blobAndContentFor(commitIdOrBranchName: CommitIdOrBranchName)(
@@ -379,6 +439,22 @@ object Main:
       s"Unexpected error - can't determine blob id for path: $path in commit or branch: $commitIdOrBranchName."
     )
   end blobAndContentFor
+
+  private def storeBlobFor(
+      path: Path,
+      content: Content
+  ): Either[String, BlobId] =
+    Try {
+      val line = (s"git hash-object -t blob -w --stdin" #< {
+        new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8))
+      }) !!
+
+      line.split(whitespaceRun) match
+        case Array(blobId) => blobId
+      end match
+    }.labelExceptionWith(label =
+      s"Unexpected error - could not create a blob for file: $path."
+    )
 
   private enum Change:
     case Modification(mode: Mode, blobId: BlobId, content: Content)
