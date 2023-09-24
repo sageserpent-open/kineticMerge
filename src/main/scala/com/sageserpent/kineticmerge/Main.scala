@@ -107,7 +107,36 @@ object Main:
             ourBranchHead,
             theirBranchHead
           )(overallChangesInvolvingTheirs)
-        yield indexUpdates
+
+          needsAMergeCommit = indexUpdates.forall {
+            case IndexState.OneEntry           => true
+            case IndexState.ConflictingEntries => false
+          }
+
+          _ <-
+            if needsAMergeCommit then
+              for
+                treeId <- Try {
+                  s"git write-tree" !!
+                }
+                  .labelExceptionWith(label =
+                    s"Unexpected error: could not write a tree object from the index."
+                  )
+                commitId <- Try {
+                  s"git commit-tree -p $ourBranchHead -p $theirBranchHead" !!
+                }.labelExceptionWith(label =
+                  s"Unexpected error: count not create a commit from tree object: $treeId"
+                )
+                _ <- Try {
+                  s"git reset --hard $commitId" !!
+                }
+                  .labelExceptionWith(label =
+                    s"Unexpected error: could not advance $ourBranchHead to commit: $commitId."
+                  )
+              yield ()
+            else Right(())
+            end if
+        yield ()
 
         workflow.fold(
           exception =>
@@ -133,7 +162,7 @@ object Main:
       theirBranchHead: CommitIdOrBranchName
   )(
       overallChangesInvolvingTheirs: List[(Path, (Change, Option[Change]))]
-  ): Either[Label, List[Any]] =
+  ): Either[Label, List[IndexState]] =
     overallChangesInvolvingTheirs.traverse {
       case (
             path,
@@ -191,7 +220,7 @@ object Main:
               .labelExceptionWith(label =
                 s"Unexpected error: could not update working directory tree with conflicted merge file: $path"
               )
-        yield ()
+        yield IndexState.ConflictingEntries
 
       case (
             path,
@@ -220,7 +249,7 @@ object Main:
         // The modified file would have been present on our branch; given
         // that we started with a clean working directory tree, we just
         // leave it there to match what Git merge does.
-        yield ()
+        yield IndexState.ConflictingEntries
 
       case (path, (Change.Modification(mode, blobId, _), None)) =>
         for
@@ -231,7 +260,7 @@ object Main:
             .labelExceptionWith(label =
               s"Unexpected error: could not update working directory tree with modified file: $path."
             )
-        yield ()
+        yield IndexState.OneEntry
 
       case (path, (Change.Addition(mode, blobId, _), None)) =>
         for
@@ -242,7 +271,7 @@ object Main:
             .labelExceptionWith(label =
               s"Unexpected error: could not update working directory tree with added file: $path."
             )
-        yield ()
+        yield IndexState.OneEntry
 
       case (path, (Change.Deletion, None)) =>
         for
@@ -253,7 +282,7 @@ object Main:
             .labelExceptionWith(label =
               s"Unexpected error: could not update working directory tree by deleting file: $path."
             )
-        yield ()
+        yield IndexState.OneEntry
 
       case (
             path,
@@ -312,7 +341,7 @@ object Main:
             right = theirAncestorTokens
           ).left.map(_.toString)
 
-          _ <- mergeResult match
+          indexState <- mergeResult match
             case Result.FullyMerged(elements) =>
               val mergedContent = elements.map(_.text).mkString
               for
@@ -328,7 +357,7 @@ object Main:
                   .labelExceptionWith(label =
                     s"Unexpected error: could not update working directory tree with merged file: $path."
                   )
-              yield ()
+              yield IndexState.OneEntry
               end for
 
             case Result.MergedWithConflicts(leftElements, rightElements) =>
@@ -391,6 +420,7 @@ object Main:
 
                 leftBlob  <- storeBlobFor(path, leftContent)
                 rightBlob <- storeBlobFor(path, rightContent)
+                _         <- recordDeletionInIndex(path)
                 _ <- recordConflictModificationInIndex(stageIndex = 1)(
                   bestAncestorCommit,
                   path,
@@ -403,22 +433,22 @@ object Main:
                   ourMode,
                   leftBlob
                 )
-                _ <- recordConflictModificationInIndex(stageIndex = 1)(
+                _ <- recordConflictModificationInIndex(stageIndex = 3)(
                   theirBranchHead,
                   path,
                   theirMode,
                   rightBlob
                 )
-              yield ()
+              yield IndexState.ConflictingEntries
               end for
-        yield ()
+        yield indexState
 
       case (_, (Change.Deletion, Some(Change.Deletion))) =>
         // We already have the deletion in our branch, so no need to
         // update the index. We do yield a result so that there is still a
         // merge commit if this is the only change, though - this should
         // *not* be a fast-forward merge.
-        Right(())
+        Right(IndexState.OneEntry)
     }
 
   private def temporaryFile(suffix: Content): Either[Label, File] =
@@ -552,5 +582,10 @@ object Main:
     case Addition(mode: Mode, blobId: BlobId, content: Content)
     case Deletion
   end Change
+
+  private enum IndexState:
+    case OneEntry
+    case ConflictingEntries
+  end IndexState
 
 end Main
