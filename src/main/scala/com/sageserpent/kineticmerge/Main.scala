@@ -391,54 +391,26 @@ object Main:
 
       indexState <- mergeResult match
         case Result.FullyMerged(elements) =>
-          val mergedContent = elements.map(_.text).mkString
-          for
-            mergedBlobId <- storeBlobFor(path, mergedContent)
-            _ <- recordModificationInIndex(
-              path,
-              mergedFileMode,
-              mergedBlobId
-            )
-            - <- Try { s"git cat-file blob $mergedBlobId" #> path.toFile !! }
-              .labelExceptionWith(label =
-                s"Unexpected error: could not update working directory tree with merged file: $path."
-              )
-          yield IndexState.OneEntry
-          end for
+          indexStateForCleanMerge(path, mergedFileMode, elements)
 
         case Result.MergedWithConflicts(leftElements, rightElements) =>
           val leftContent  = leftElements.map(_.text).mkString
           val rightContent = rightElements.map(_.text).mkString
 
           for
-            baseTemporaryFile <- temporaryFile(suffix = ".base")
-            - <- Try {
-              Files.write(
-                baseTemporaryFile.toPath,
-                bestAncestorCommitIdContent.getBytes(StandardCharsets.UTF_8)
-              )
-            }.labelExceptionWith(label =
-              s"Unexpected error: could not write to temporary file: $baseTemporaryFile."
+            baseTemporaryFile <- temporaryFile(
+              suffix = ".base",
+              content = bestAncestorCommitIdContent
             )
 
-            leftTemporaryFile <- temporaryFile(suffix = ".left")
-            - <- Try {
-              Files.write(
-                leftTemporaryFile.toPath,
-                leftContent.getBytes(StandardCharsets.UTF_8)
-              )
-            }.labelExceptionWith(label =
-              s"Unexpected error: could not write to temporary file: $leftTemporaryFile."
+            leftTemporaryFile <- temporaryFile(
+              suffix = ".left",
+              content = leftContent
             )
 
-            rightTemporaryFile <- temporaryFile(suffix = ".right")
-            - <- Try {
-              Files.write(
-                rightTemporaryFile.toPath,
-                rightContent.getBytes(StandardCharsets.UTF_8)
-              )
-            }.labelExceptionWith(label =
-              s"Unexpected error: could not write to temporary file: $rightTemporaryFile."
+            rightTemporaryFile <- temporaryFile(
+              suffix = ".right",
+              content = rightContent
             )
 
             _ <-
@@ -486,17 +458,85 @@ object Main:
           end for
     yield indexState
 
-  private def temporaryFile(suffix: Content): Either[Label, File] =
+  private def indexStateForCleanMerge(
+      path: Path,
+      mergedFileMode: Mode,
+      elements: IndexedSeq[Token]
+  ) =
+    val mergedContent = elements.map(_.text).mkString
     for
-      baseTemporaryFile <- Try {
-        Files.createTempFile("kinetic-merge-", suffix).toFile
+      mergedBlobId <- storeBlobFor(path, mergedContent)
+      _ <- recordModificationInIndex(
+        path,
+        mergedFileMode,
+        mergedBlobId
+      )
+      - <- Try {
+        s"git cat-file blob $mergedBlobId" #> path.toFile !!
+      }
+        .labelExceptionWith(label =
+          s"Unexpected error: could not update working directory tree with merged file: $path."
+        )
+    yield IndexState.OneEntry
+    end for
+  end indexStateForCleanMerge
+
+  private def recordModificationInIndex(
+      path: Path,
+      mode: Mode,
+      blobId: BlobId
+  ): Either[Label, Unit] =
+    Try {
+      val _ = (s"git update-index --index-info" #< {
+        new ByteArrayInputStream(
+          s"$mode $blobId\t$path"
+            .getBytes(StandardCharsets.UTF_8)
+        )
+      }) !!
+    }.labelExceptionWith(
+      s"Unexpected error: could not update index for modified file: $path."
+    )
+
+  private def storeBlobFor(
+      path: Path,
+      content: Content
+  ): Either[Label, BlobId] =
+    Try {
+      val line = (s"git hash-object -t blob -w --stdin" #< {
+        new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8))
+      }) !!
+
+      line.split(whitespaceRun) match
+        case Array(blobId) => blobId
+      end match
+    }.labelExceptionWith(label =
+      s"Unexpected error - could not create a blob for file: $path."
+    )
+
+  private def temporaryFile(
+      suffix: String,
+      content: Content
+  ): Either[Label, File] =
+    for
+      temporaryFile <- Try {
+        Files.createTempFile("kinetic-merge-", ".base").toFile
       }.labelExceptionWith(
         s"Unexpected error: could not create temporary file."
       )
-      _ <- Try { baseTemporaryFile.deleteOnExit() }.labelExceptionWith(label =
-        s"Unexpected error: could not register temporary file: $baseTemporaryFile for deletion on exit."
+      _ <- Try {
+        temporaryFile.deleteOnExit()
+      }.labelExceptionWith(label =
+        s"Unexpected error: could not register temporary file: $temporaryFile for deletion on exit."
       )
-    yield baseTemporaryFile
+      - <- Try {
+        Files.write(
+          temporaryFile.toPath,
+          content.getBytes(StandardCharsets.UTF_8)
+        )
+      }.labelExceptionWith(label =
+        s"Unexpected error: could not write to temporary file: $temporaryFile."
+      )
+    yield temporaryFile
 
   private def recordConflictModificationInIndex(stageIndex: Int)(
       commitIdOrBranchName: CommitIdOrBranchName,
@@ -515,22 +555,6 @@ object Main:
       s"Unexpected error: could not update conflict stage #$stageIndex index for modified file: $path from $commitIdOrBranchName."
     )
   end recordConflictModificationInIndex
-
-  private def recordModificationInIndex(
-      path: Path,
-      mode: Mode,
-      blobId: BlobId
-  ): Either[Label, Unit] =
-    Try {
-      val _ = (s"git update-index --index-info" #< {
-        new ByteArrayInputStream(
-          s"$mode $blobId\t$path"
-            .getBytes(StandardCharsets.UTF_8)
-        )
-      }) !!
-    }.labelExceptionWith(
-      s"Unexpected error: could not update index for modified file: $path."
-    )
 
   private def recordAdditionInIndex(
       path: Path,
@@ -595,22 +619,6 @@ object Main:
       s"Unexpected error - can't determine blob id for path: $path in commit or branch: $commitIdOrBranchName."
     )
   end blobAndContentFor
-
-  private def storeBlobFor(
-      path: Path,
-      content: Content
-  ): Either[Label, BlobId] =
-    Try {
-      val line = (s"git hash-object -t blob -w --stdin" #< {
-        new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8))
-      }) !!
-
-      line.split(whitespaceRun) match
-        case Array(blobId) => blobId
-      end match
-    }.labelExceptionWith(label =
-      s"Unexpected error - could not create a blob for file: $path."
-    )
 
   private enum Change:
     case Modification(mode: Mode, blobId: BlobId, content: Content)
