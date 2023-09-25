@@ -59,8 +59,8 @@ object Main:
 
             if branchName.nonEmpty then branchName
             else
-              val commitId = ("git log -1 --format:%H" !!).strip()
-              commitId
+              // Handle a detached commit.
+              ("git rev-parse HEAD" !!).strip()
             end if
           }.labelExceptionWith(label =
             s"Can't determine a branch name or commit id for our branch head."
@@ -118,15 +118,14 @@ object Main:
             theirBranchHead
           )(overallChangesInvolvingTheirs)
 
-          // TODO: fast-forward merges have been swept under the carpet, and we
-          // aren't generating the correct exit code when there are conflicts.
+          // TODO: fast-forward merges have been swept under the carpet.
           // Also, what about `MERGE_HEAD`?
           needsAMergeCommit = indexUpdates.forall {
             case IndexState.OneEntry           => true
             case IndexState.ConflictingEntries => false
           }
 
-          _ <-
+          exitCodeWhenThereAreNoUnexpectedErrors <-
             if needsAMergeCommit then
               for
                 treeId <- Try {
@@ -149,18 +148,21 @@ object Main:
                   .labelExceptionWith(label =
                     s"Unexpected error: could not advance $ourBranchHead to commit: $commitId."
                   )
-              yield ()
-            else Right(())
+              yield 0
+            else
+              for _ <- Try {}.labelExceptionWith(label =
+                  s"Unexpected error: could not write `MERGE_HEAD` to reference $theirBranchHead."
+                )
+              yield 1
             end if
-        yield ()
+        yield exitCodeWhenThereAreNoUnexpectedErrors
 
         workflow.fold(
           label =>
             println(label)
             1
           ,
-          // TODO: suppose we have merge conflicts?
-          stuff => 0
+          identity
         )
       case Array() =>
         Console.err.println("No branch or commit id provided to merge from.")
