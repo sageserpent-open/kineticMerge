@@ -123,9 +123,12 @@ object Main:
                     s"Unexpected error: could not write a tree object from the index."
                   )
                 commitId <- Try {
-                  s"git commit-tree -p $ourBranchHead -p $theirBranchHead" !!
+                  val message =
+                    s"Merge from: $theirBranchHead into: $ourBranchHead."
+
+                  s"git commit-tree -p $ourBranchHead -p $theirBranchHead -m '$message' $treeId" !!
                 }.labelExceptionWith(label =
-                  s"Unexpected error: count not create a commit from tree object: $treeId"
+                  s"Unexpected error: could not create a commit from tree object: $treeId"
                 )
                 _ <- Try {
                   s"git reset --hard $commitId" !!
