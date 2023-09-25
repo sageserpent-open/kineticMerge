@@ -82,23 +82,23 @@ object Main:
               s"Unexpected error: working tree reported by Git: $workingTree is not a valid path."
             )
 
-          bestAncestorCommit <- Try {
+          bestAncestorCommitId <- Try {
             (s"git merge-base $ourBranchHead $theirBranchHead" !!).strip()
           }.labelExceptionWith(label =
             s"Can't determine a best ancestor commit between $ourBranchHead and $theirBranchHead."
           )
 
           ourChanges <- Try {
-            s"git diff --no-renames --name-status $bestAncestorCommit $ourBranchHead".lazyLines.toList
+            s"git diff --no-renames --name-status $bestAncestorCommitId $ourBranchHead".lazyLines.toList
           }.labelExceptionWith(label =
-            s"Can't determine changes made on our branch since ancestor commit $bestAncestorCommit"
+            s"Can't determine changes made on our branch since ancestor commit $bestAncestorCommitId"
           ).flatMap(_.traverse(pathChangeFor(ourBranchHead)))
             .map(_.toMap)
 
           theirChanges <- Try {
-            s"git diff --no-renames --name-status $bestAncestorCommit $theirBranchHead".lazyLines.toList
+            s"git diff --no-renames --name-status $bestAncestorCommitId $theirBranchHead".lazyLines.toList
           }.labelExceptionWith(label =
-            s"Can't determine changes made on their branch $theirBranchHead since ancestor commit $bestAncestorCommit"
+            s"Can't determine changes made on their branch $theirBranchHead since ancestor commit $bestAncestorCommitId"
           ).flatMap(_.traverse(pathChangeFor(theirBranchHead)))
             .map(_.toMap)
 
@@ -113,7 +113,7 @@ object Main:
           }
 
           indexUpdates <- indexUpdates(
-            bestAncestorCommit,
+            bestAncestorCommitId,
             ourBranchHead,
             theirBranchHead
           )(overallChangesInvolvingTheirs)
@@ -175,7 +175,7 @@ object Main:
   end main
 
   private def indexUpdates(
-      bestAncestorCommit: CommitIdOrBranchName,
+      bestAncestorCommitId: CommitIdOrBranchName,
       ourBranchHead: CommitIdOrBranchName,
       theirBranchHead: CommitIdOrBranchName
   )(
@@ -212,15 +212,15 @@ object Main:
             )
           ) =>
         for
-          (_, bestAncestorCommitBlobId, _) <- blobAndContentFor(
-            bestAncestorCommit
+          (_, bestAncestorCommitIdBlobId, _) <- blobAndContentFor(
+            bestAncestorCommitId
           )(path)
           _ <- recordDeletionInIndex(path)
           _ <- recordConflictModificationInIndex(stageIndex = 1)(
-            bestAncestorCommit,
+            bestAncestorCommitId,
             path,
             mode,
-            bestAncestorCommitBlobId
+            bestAncestorCommitIdBlobId
           )
           - <- recordConflictModificationInIndex(stageIndex = 3)(
             theirBranchHead,
@@ -248,15 +248,15 @@ object Main:
             )
           ) =>
         for
-          (_, bestAncestorCommitBlobId, _) <- blobAndContentFor(
-            bestAncestorCommit
+          (_, bestAncestorCommitIdBlobId, _) <- blobAndContentFor(
+            bestAncestorCommitId
           )(path)
           - <- recordDeletionInIndex(path)
           - <- recordConflictModificationInIndex(stageIndex = 1)(
-            bestAncestorCommit,
+            bestAncestorCommitId,
             path,
             mode,
-            bestAncestorCommitBlobId
+            bestAncestorCommitIdBlobId
           )
           - <- recordConflictModificationInIndex(stageIndex = 2)(
             ourBranchHead,
@@ -320,7 +320,11 @@ object Main:
               Some(Change.Modification(ourMode, ourBlobId, ourContent))
             )
           ) =>
-        indexStateForMerge(bestAncestorCommit, ourBranchHead, theirBranchHead)(
+        indexStateForMerge(
+          bestAncestorCommitId,
+          ourBranchHead,
+          theirBranchHead
+        )(
           path,
           theirMode,
           theirContent,
@@ -337,7 +341,7 @@ object Main:
     }
 
   private def indexStateForMerge(
-      bestAncestorCommit: CommitIdOrBranchName,
+      bestAncestorCommitId: CommitIdOrBranchName,
       ourBranchHead: CommitIdOrBranchName,
       theirBranchHead: CommitIdOrBranchName
   )(
@@ -349,24 +353,25 @@ object Main:
   ) =
     for
       (
-        bestAncestorCommitMode,
-        bestAncestorCommitBlobId,
-        bestAncestorCommitContent
-      ) <- blobAndContentFor(bestAncestorCommit)(path)
+        bestAncestorCommitIdMode,
+        bestAncestorCommitIdBlobId,
+        bestAncestorCommitIdContent
+      ) <- blobAndContentFor(bestAncestorCommitId)(path)
 
       mergedFileMode <-
-        if bestAncestorCommitMode == ourMode then Right(theirMode)
-        else if bestAncestorCommitMode == theirMode then Right(ourMode)
+        if bestAncestorCommitIdMode == ourMode then Right(theirMode)
+        else if bestAncestorCommitIdMode == theirMode then Right(ourMode)
         else if ourMode == theirMode then Right(ourMode)
         else
           Left(
-            s"Conflicting file modes for file: $path; on base ancestor commit: $bestAncestorCommitMode, on our branch head: $ourMode and on their branch head: $theirMode."
+            s"Conflicting file modes for file: $path; on base ancestor commit: $bestAncestorCommitIdMode, on our branch head: $ourMode and on their branch head: $theirMode."
           )
 
-      bestAncestorTokens <- Try { Token.tokens(bestAncestorCommitContent).get }
-        .labelExceptionWith(label =
-          s"Failed to tokenize file: $path on best ancestor commit: $bestAncestorCommit."
-        )
+      bestAncestorTokens <- Try {
+        Token.tokens(bestAncestorCommitIdContent).get
+      }.labelExceptionWith(label =
+        s"Failed to tokenize file: $path on best ancestor commit: $bestAncestorCommitId."
+      )
 
       ourAncestorTokens <- Try { Token.tokens(ourContent).get }
         .labelExceptionWith(label =
@@ -410,7 +415,7 @@ object Main:
             - <- Try {
               Files.write(
                 baseTemporaryFile.toPath,
-                bestAncestorCommitContent.getBytes(StandardCharsets.UTF_8)
+                bestAncestorCommitIdContent.getBytes(StandardCharsets.UTF_8)
               )
             }.labelExceptionWith(label =
               s"Unexpected error: could not write to temporary file: $baseTemporaryFile."
@@ -438,7 +443,7 @@ object Main:
 
             _ <-
               val exitCode =
-                s"git merge-file -L $ourBranchHead -L $bestAncestorCommit -L $theirBranchHead $leftTemporaryFile $baseTemporaryFile $rightTemporaryFile" !
+                s"git merge-file -L $ourBranchHead -L $bestAncestorCommitId -L $theirBranchHead $leftTemporaryFile $baseTemporaryFile $rightTemporaryFile" !
 
               if 0 <= exitCode then Right(())
               else
@@ -460,10 +465,10 @@ object Main:
             rightBlob <- storeBlobFor(path, rightContent)
             _         <- recordDeletionInIndex(path)
             _ <- recordConflictModificationInIndex(stageIndex = 1)(
-              bestAncestorCommit,
+              bestAncestorCommitId,
               path,
-              bestAncestorCommitMode,
-              bestAncestorCommitBlobId
+              bestAncestorCommitIdMode,
+              bestAncestorCommitIdBlobId
             )
             _ <- recordConflictModificationInIndex(stageIndex = 2)(
               ourBranchHead,
