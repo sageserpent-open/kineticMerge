@@ -54,6 +54,11 @@ object Main:
             "The current working directory is not part of a Git working tree."
           )
 
+          workingTreePath <- Try { Path.of(workingTree) }
+            .labelExceptionWith(label =
+              s"Unexpected error: working tree reported by Git: $workingTree is not a valid path."
+            )
+
           ourBranchHead: CommitIdOrBranchName <- Try {
             val branchName = ("git branch --show-current" !!).strip()
 
@@ -66,7 +71,7 @@ object Main:
             s"Can't determine a branch name or commit id for our branch head."
           )
 
-          _ <- Try {
+          theirCommitId <- Try {
             s"git rev-parse $theirBranchHead" !!
           }.labelExceptionWith(label =
             s"$theirBranchHead is not a valid branch or commit."
@@ -75,11 +80,6 @@ object Main:
           _ <- Try { s"git diff-index --exit-code $ourBranchHead" !! }
             .labelExceptionWith(label =
               "There are uncommitted changes prior to commencing the merge."
-            )
-
-          workingTreePath <- Try { Path.of(workingTree) }
-            .labelExceptionWith(label =
-              s"Unexpected error: working tree reported by Git: $workingTree is not a valid path."
             )
 
           bestAncestorCommitId <- Try {
@@ -150,7 +150,19 @@ object Main:
                   )
               yield 0
             else
-              for _ <- Try {}.labelExceptionWith(label =
+              for
+                gitDir <- Try { ("git rev-parse --git-dir" !!).strip() }
+                  .labelExceptionWith(label =
+                    "Could not determine location of `GIT_DIR`."
+                  )
+                gitDirPath <- Try { Path.of(gitDir) }.labelExceptionWith(label =
+                  s"Unexpected error: `GIT_DIR` reported by Git: $gitDir is not a valid path."
+                )
+                _ <- Try {
+                  s"echo $theirCommitId" #> gitDirPath
+                    .resolve("MERGE_HEAD")
+                    .toFile !!
+                }.labelExceptionWith(label =
                   s"Unexpected error: could not write `MERGE_HEAD` to reference $theirBranchHead."
                 )
               yield 1
