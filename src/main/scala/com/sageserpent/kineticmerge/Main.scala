@@ -25,8 +25,6 @@ object Main:
 
   private val whitespaceRun = "\\s+"
 
-  private val ourBranchHead: CommitIdOrBranchName = "HEAD"
-
   private val fakeModeForDeletion: Mode = "0"
 
   private val fakeBlobIdForDeletion: BlobId =
@@ -44,22 +42,34 @@ object Main:
     // time of writing, Mac OS Ventura 13.5.2 ships Git 2.24.3, contrast with
     // Git 2.42.0 being the latest stable release.
 
-    args match
+    val exitCode = args match
       case Array(theirBranchHead: CommitIdOrBranchName) =>
         val workflow = for
           _ <- Try { "git --version" !! }
             .labelExceptionWith(label = "Git is not available.")
 
           workingTree <- Try {
-            "git rev-parse --show-toplevel" !!
+            ("git rev-parse --show-toplevel" !!).strip()
           }.labelExceptionWith(label =
             "The current working directory is not part of a Git working tree."
+          )
+
+          ourBranchHead: CommitIdOrBranchName <- Try {
+            val branchName = ("git branch --show-current" !!).strip()
+
+            if branchName.nonEmpty then branchName
+            else
+              val commitId = ("git log -1 --format:%H" !!).strip()
+              commitId
+            end if
+          }.labelExceptionWith(label =
+            s"Can't determine a branch name or commit id for our branch head."
           )
 
           _ <- Try {
             s"git rev-parse $theirBranchHead" !!
           }.labelExceptionWith(label =
-            s"Can't determine a best ancestor commit between $ourBranchHead and $theirBranchHead."
+            s"$theirBranchHead is not a valid branch or commit."
           )
 
           _ <- Try { s"git diff-index --exit-code $ourBranchHead" !! }
@@ -73,9 +83,9 @@ object Main:
             )
 
           bestAncestorCommit <- Try {
-            s"git merge-base $ourBranchHead $theirBranchHead" !!
+            (s"git merge-base $ourBranchHead $theirBranchHead" !!).strip()
           }.labelExceptionWith(label =
-            s"$theirBranchHead is not a valid branch or commit."
+            s"Can't determine a best ancestor commit between $ourBranchHead and $theirBranchHead."
           )
 
           ourChanges <- Try {
@@ -117,7 +127,7 @@ object Main:
             if needsAMergeCommit then
               for
                 treeId <- Try {
-                  s"git write-tree" !!
+                  (s"git write-tree" !!).strip()
                 }
                   .labelExceptionWith(label =
                     s"Unexpected error: could not write a tree object from the index."
@@ -126,7 +136,7 @@ object Main:
                   val message =
                     s"Merge from: $theirBranchHead into: $ourBranchHead."
 
-                  s"git commit-tree -p $ourBranchHead -p $theirBranchHead -m '$message' $treeId" !!
+                  (s"git commit-tree -p $ourBranchHead -p $theirBranchHead -m '$message' $treeId" !!).strip()
                 }.labelExceptionWith(label =
                   s"Unexpected error: could not create a commit from tree object: $treeId"
                 )
@@ -142,22 +152,24 @@ object Main:
         yield ()
 
         workflow.fold(
-          exception =>
-            println(exception)
-            System.exit(1)
+          label =>
+            println(label)
+            1
           ,
-          stuff =>
-            println(stuff)
-            0
+          // TODO: suppose we have merge conflicts?
+          stuff => 0
         )
       case Array() =>
         Console.err.println("No branch or commit id provided to merge from.")
-        System.exit(2)
+        2
       case _ =>
         Console.err.println(
           s"Expected a single branch or commit id, but got multiple entries shown below:\n${args.mkString("\n")}"
         )
-        System.exit(3)
+        3
+
+    System.exit(exitCode)
+  end main
 
   private def indexUpdates(
       bestAncestorCommit: CommitIdOrBranchName,
@@ -471,9 +483,9 @@ object Main:
       path: Path,
       mode: Mode,
       blobId: BlobId
-  ): Either[Label, String] =
+  ): Either[Label, Unit] =
     Try {
-      (s"git update-index --index-info" #< {
+      val _ = (s"git update-index --index-info" #< {
         new ByteArrayInputStream(
           s"$mode $blobId $stageIndex\t$path"
             .getBytes(StandardCharsets.UTF_8)
@@ -488,9 +500,9 @@ object Main:
       path: Path,
       mode: Mode,
       blobId: BlobId
-  ): Either[Label, String] =
+  ): Either[Label, Unit] =
     Try {
-      (s"git update-index --index-info" #< {
+      val _ = (s"git update-index --index-info" #< {
         new ByteArrayInputStream(
           s"$mode $blobId\t$path"
             .getBytes(StandardCharsets.UTF_8)
@@ -504,18 +516,18 @@ object Main:
       path: Path,
       mode: Mode,
       blobId: BlobId
-  ): Either[Label, String] =
+  ): Either[Label, Unit] =
     Try {
-      s"git update-index --add --cacheinfo $mode,$blobId,$path" !!
+      val _ = s"git update-index --add --cacheinfo $mode,$blobId,$path" !!
     }.labelExceptionWith(
       s"Unexpected error: could not update index for added file: $path."
     )
 
   private def recordDeletionInIndex(
       path: Path
-  ): Either[Label, String] =
+  ): Either[Label, Unit] =
     Try {
-      (s"git update-index --index-info" #< {
+      val _ = (s"git update-index --index-info" #< {
         new ByteArrayInputStream(
           s"$fakeModeForDeletion $fakeBlobIdForDeletion\t$path"
             .getBytes(StandardCharsets.UTF_8)
