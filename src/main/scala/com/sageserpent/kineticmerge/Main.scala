@@ -309,9 +309,16 @@ object Main:
               Some(Change.Addition(ourMode, ourBlobId, ourContent))
             )
           ) =>
-        // TODO - perform merge and update the index depending on whether
-        // the merge was clean or conflicted.
-        ???
+        indexStateForTwoWayMerge(
+          ourBranchHead,
+          theirBranchHead
+        )(
+          path,
+          theirMode,
+          theirContent,
+          ourMode,
+          ourContent
+        )
 
       case (
             path,
@@ -320,7 +327,7 @@ object Main:
               Some(Change.Modification(ourMode, ourBlobId, ourContent))
             )
           ) =>
-        indexStateForMerge(
+        indexStateForThreeWayMerge(
           bestAncestorCommitId,
           ourBranchHead,
           theirBranchHead
@@ -340,7 +347,106 @@ object Main:
         Right(IndexState.OneEntry)
     }
 
-  private def indexStateForMerge(
+  private def indexStateForTwoWayMerge(
+      ourBranchHead: CommitIdOrBranchName,
+      theirBranchHead: CommitIdOrBranchName
+  )(
+      path: Path,
+      theirMode: Mode,
+      theirContent: Content,
+      ourMode: Mode,
+      ourContent: Content
+  ) =
+    for
+      mergedFileMode <-
+        if ourMode == theirMode then Right(ourMode)
+        else
+          Left(
+            s"Conflicting file modes for file: $path; on our branch head: $ourMode and on their branch head: $theirMode."
+          )
+
+      ourAncestorTokens <- Try { Token.tokens(ourContent).get }
+        .labelExceptionWith(label =
+          s"Failed to tokenize file: $path on our branch head: $ourBranchHead."
+        )
+
+      theirAncestorTokens <- Try { Token.tokens(theirContent).get }
+        .labelExceptionWith(label =
+          s"Failed to tokenize file: $path on their branch head: $theirBranchHead."
+        )
+
+      mergeResult <- mergeTokens(
+        base = Vector.empty,
+        left = ourAncestorTokens,
+        right = theirAncestorTokens
+      ).left.map(_.toString)
+
+      indexState <- mergeResult match
+        case Result.FullyMerged(elements) =>
+          indexStateForCleanMerge(path, mergedFileMode, elements)
+
+        case Result.MergedWithConflicts(leftElements, rightElements) =>
+          val leftContent  = leftElements.map(_.text).mkString
+          val rightContent = rightElements.map(_.text).mkString
+
+          for
+            fakeBaseTemporaryFile <- temporaryFile(
+              suffix = ".base",
+              content = ""
+            )
+
+            leftTemporaryFile <- temporaryFile(
+              suffix = ".left",
+              content = leftContent
+            )
+
+            rightTemporaryFile <- temporaryFile(
+              suffix = ".right",
+              content = rightContent
+            )
+
+            _ <-
+              val noPriorContentName = "no prior content"
+
+              val exitCode =
+                s"git merge-file -L $ourBranchHead -L '$noPriorContentName' -L $theirBranchHead $leftTemporaryFile $fakeBaseTemporaryFile $rightTemporaryFile" !
+
+              if 0 <= exitCode then Right(())
+              else
+                Left(
+                  s"Unexpected error: could not generate conflicted file contents on behalf of: $path in temporary file: $leftTemporaryFile"
+                )
+              end if
+            _ <- Try {
+              Files.copy(
+                leftTemporaryFile.toPath,
+                path,
+                StandardCopyOption.REPLACE_EXISTING
+              )
+            }.labelExceptionWith(label =
+              s"Unexpected error: could not copy results of conflicted merge in: $leftTemporaryFile to working directory tree file: $path."
+            )
+
+            leftBlob  <- storeBlobFor(path, leftContent)
+            rightBlob <- storeBlobFor(path, rightContent)
+            _         <- recordDeletionInIndex(path)
+            _ <- recordConflictModificationInIndex(stageIndex = 2)(
+              ourBranchHead,
+              path,
+              ourMode,
+              leftBlob
+            )
+            _ <- recordConflictModificationInIndex(stageIndex = 3)(
+              theirBranchHead,
+              path,
+              theirMode,
+              rightBlob
+            )
+          yield IndexState.ConflictingEntries
+          end for
+    yield indexState
+
+  private def indexStateForThreeWayMerge(
       bestAncestorCommitId: CommitIdOrBranchName,
       ourBranchHead: CommitIdOrBranchName,
       theirBranchHead: CommitIdOrBranchName
