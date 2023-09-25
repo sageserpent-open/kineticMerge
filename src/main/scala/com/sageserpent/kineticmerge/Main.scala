@@ -118,6 +118,9 @@ object Main:
             theirBranchHead
           )(overallChangesInvolvingTheirs)
 
+          // TODO: fast-forward merges have been swept under the carpet, and we
+          // aren't generating the correct exit code when there are conflicts.
+          // Also, what about `MERGE_HEAD`?
           needsAMergeCommit = indexUpdates.forall {
             case IndexState.OneEntry           => true
             case IndexState.ConflictingEntries => false
@@ -317,146 +320,13 @@ object Main:
               Some(Change.Modification(ourMode, ourBlobId, ourContent))
             )
           ) =>
-        for
-          (
-            bestAncestorCommitMode,
-            bestAncestorCommitBlobId,
-            bestAncestorCommitContent
-          ) <-
-            blobAndContentFor(bestAncestorCommit)(path)
-
-          mergedFileMode <-
-            if bestAncestorCommitMode == ourMode then Right(theirMode)
-            else if bestAncestorCommitMode == theirMode then Right(ourMode)
-            else if ourMode == theirMode then Right(ourMode)
-            else
-              Left(
-                s"Conflicting file modes for file: $path; on base ancestor commit: $bestAncestorCommitMode, on our branch head: $ourMode and on their branch head: $theirMode."
-              )
-
-          bestAncestorTokens <- Try {
-            Token.tokens(bestAncestorCommitContent).get
-          }.labelExceptionWith(label =
-            s"Failed to tokenize file: $path on best ancestor commit: $bestAncestorCommit."
-          )
-
-          ourAncestorTokens <- Try { Token.tokens(ourContent).get }
-            .labelExceptionWith(label =
-              s"Failed to tokenize file: $path on our branch head: $ourBranchHead."
-            )
-
-          theirAncestorTokens <- Try { Token.tokens(theirContent).get }
-            .labelExceptionWith(label =
-              s"Failed to tokenize file: $path on their branch head: $theirBranchHead."
-            )
-
-          mergeResult <- mergeTokens(
-            base = bestAncestorTokens,
-            left = ourAncestorTokens,
-            right = theirAncestorTokens
-          ).left.map(_.toString)
-
-          indexState <- mergeResult match
-            case Result.FullyMerged(elements) =>
-              val mergedContent = elements.map(_.text).mkString
-              for
-                mergedBlobId <- storeBlobFor(path, mergedContent)
-                _ <- recordModificationInIndex(
-                  path,
-                  mergedFileMode,
-                  mergedBlobId
-                )
-                - <- Try {
-                  s"git cat-file blob $mergedBlobId" #> path.toFile !!
-                }
-                  .labelExceptionWith(label =
-                    s"Unexpected error: could not update working directory tree with merged file: $path."
-                  )
-              yield IndexState.OneEntry
-              end for
-
-            case Result.MergedWithConflicts(leftElements, rightElements) =>
-              val leftContent  = leftElements.map(_.text).mkString
-              val rightContent = rightElements.map(_.text).mkString
-
-              for
-                baseTemporaryFile <- temporaryFile(suffix = ".base")
-                - <- Try {
-                  Files.write(
-                    baseTemporaryFile.toPath,
-                    bestAncestorCommitContent.getBytes(StandardCharsets.UTF_8)
-                  )
-                }
-                  .labelExceptionWith(label =
-                    s"Unexpected error: could not write to temporary file: $baseTemporaryFile."
-                  )
-
-                leftTemporaryFile <- temporaryFile(suffix = ".left")
-                - <- Try {
-                  Files.write(
-                    leftTemporaryFile.toPath,
-                    leftContent.getBytes(StandardCharsets.UTF_8)
-                  )
-                }
-                  .labelExceptionWith(label =
-                    s"Unexpected error: could not write to temporary file: $leftTemporaryFile."
-                  )
-
-                rightTemporaryFile <- temporaryFile(suffix = ".right")
-                - <- Try {
-                  Files.write(
-                    rightTemporaryFile.toPath,
-                    rightContent.getBytes(StandardCharsets.UTF_8)
-                  )
-                }
-                  .labelExceptionWith(label =
-                    s"Unexpected error: could not write to temporary file: $rightTemporaryFile."
-                  )
-
-                _ <-
-                  val exitCode =
-                    s"git merge-file -L $ourBranchHead -L $bestAncestorCommit -L $theirBranchHead $leftTemporaryFile $baseTemporaryFile $rightTemporaryFile" !
-
-                  if 0 <= exitCode then Right(())
-                  else
-                    Left(
-                      s"Unexpected error: could not generate conflicted file contents on behalf of: $path in temporary file: $leftTemporaryFile"
-                    )
-                  end if
-                _ <- Try {
-                  Files.copy(
-                    leftTemporaryFile.toPath,
-                    path,
-                    StandardCopyOption.REPLACE_EXISTING
-                  )
-                }.labelExceptionWith(label =
-                  s"Unexpected error: could not copy results of conflicted merge in: $leftTemporaryFile to working directory tree file: $path."
-                )
-
-                leftBlob  <- storeBlobFor(path, leftContent)
-                rightBlob <- storeBlobFor(path, rightContent)
-                _         <- recordDeletionInIndex(path)
-                _ <- recordConflictModificationInIndex(stageIndex = 1)(
-                  bestAncestorCommit,
-                  path,
-                  bestAncestorCommitMode,
-                  bestAncestorCommitBlobId
-                )
-                _ <- recordConflictModificationInIndex(stageIndex = 2)(
-                  ourBranchHead,
-                  path,
-                  ourMode,
-                  leftBlob
-                )
-                _ <- recordConflictModificationInIndex(stageIndex = 3)(
-                  theirBranchHead,
-                  path,
-                  theirMode,
-                  rightBlob
-                )
-              yield IndexState.ConflictingEntries
-              end for
-        yield indexState
+        indexStateForMerge(bestAncestorCommit, ourBranchHead, theirBranchHead)(
+          path,
+          theirMode,
+          theirContent,
+          ourMode,
+          ourContent
+        )
 
       case (_, (Change.Deletion, Some(Change.Deletion))) =>
         // We already have the deletion in our branch, so no need to
@@ -465,6 +335,151 @@ object Main:
         // *not* be a fast-forward merge.
         Right(IndexState.OneEntry)
     }
+
+  private def indexStateForMerge(
+      bestAncestorCommit: CommitIdOrBranchName,
+      ourBranchHead: CommitIdOrBranchName,
+      theirBranchHead: CommitIdOrBranchName
+  )(
+      path: Path,
+      theirMode: Mode,
+      theirContent: Content,
+      ourMode: Mode,
+      ourContent: Content
+  ) =
+    for
+      (
+        bestAncestorCommitMode,
+        bestAncestorCommitBlobId,
+        bestAncestorCommitContent
+      ) <- blobAndContentFor(bestAncestorCommit)(path)
+
+      mergedFileMode <-
+        if bestAncestorCommitMode == ourMode then Right(theirMode)
+        else if bestAncestorCommitMode == theirMode then Right(ourMode)
+        else if ourMode == theirMode then Right(ourMode)
+        else
+          Left(
+            s"Conflicting file modes for file: $path; on base ancestor commit: $bestAncestorCommitMode, on our branch head: $ourMode and on their branch head: $theirMode."
+          )
+
+      bestAncestorTokens <- Try { Token.tokens(bestAncestorCommitContent).get }
+        .labelExceptionWith(label =
+          s"Failed to tokenize file: $path on best ancestor commit: $bestAncestorCommit."
+        )
+
+      ourAncestorTokens <- Try { Token.tokens(ourContent).get }
+        .labelExceptionWith(label =
+          s"Failed to tokenize file: $path on our branch head: $ourBranchHead."
+        )
+
+      theirAncestorTokens <- Try { Token.tokens(theirContent).get }
+        .labelExceptionWith(label =
+          s"Failed to tokenize file: $path on their branch head: $theirBranchHead."
+        )
+
+      mergeResult <- mergeTokens(
+        base = bestAncestorTokens,
+        left = ourAncestorTokens,
+        right = theirAncestorTokens
+      ).left.map(_.toString)
+
+      indexState <- mergeResult match
+        case Result.FullyMerged(elements) =>
+          val mergedContent = elements.map(_.text).mkString
+          for
+            mergedBlobId <- storeBlobFor(path, mergedContent)
+            _ <- recordModificationInIndex(
+              path,
+              mergedFileMode,
+              mergedBlobId
+            )
+            - <- Try { s"git cat-file blob $mergedBlobId" #> path.toFile !! }
+              .labelExceptionWith(label =
+                s"Unexpected error: could not update working directory tree with merged file: $path."
+              )
+          yield IndexState.OneEntry
+          end for
+
+        case Result.MergedWithConflicts(leftElements, rightElements) =>
+          val leftContent  = leftElements.map(_.text).mkString
+          val rightContent = rightElements.map(_.text).mkString
+
+          for
+            baseTemporaryFile <- temporaryFile(suffix = ".base")
+            - <- Try {
+              Files.write(
+                baseTemporaryFile.toPath,
+                bestAncestorCommitContent.getBytes(StandardCharsets.UTF_8)
+              )
+            }.labelExceptionWith(label =
+              s"Unexpected error: could not write to temporary file: $baseTemporaryFile."
+            )
+
+            leftTemporaryFile <- temporaryFile(suffix = ".left")
+            - <- Try {
+              Files.write(
+                leftTemporaryFile.toPath,
+                leftContent.getBytes(StandardCharsets.UTF_8)
+              )
+            }.labelExceptionWith(label =
+              s"Unexpected error: could not write to temporary file: $leftTemporaryFile."
+            )
+
+            rightTemporaryFile <- temporaryFile(suffix = ".right")
+            - <- Try {
+              Files.write(
+                rightTemporaryFile.toPath,
+                rightContent.getBytes(StandardCharsets.UTF_8)
+              )
+            }.labelExceptionWith(label =
+              s"Unexpected error: could not write to temporary file: $rightTemporaryFile."
+            )
+
+            _ <-
+              val exitCode =
+                s"git merge-file -L $ourBranchHead -L $bestAncestorCommit -L $theirBranchHead $leftTemporaryFile $baseTemporaryFile $rightTemporaryFile" !
+
+              if 0 <= exitCode then Right(())
+              else
+                Left(
+                  s"Unexpected error: could not generate conflicted file contents on behalf of: $path in temporary file: $leftTemporaryFile"
+                )
+              end if
+            _ <- Try {
+              Files.copy(
+                leftTemporaryFile.toPath,
+                path,
+                StandardCopyOption.REPLACE_EXISTING
+              )
+            }.labelExceptionWith(label =
+              s"Unexpected error: could not copy results of conflicted merge in: $leftTemporaryFile to working directory tree file: $path."
+            )
+
+            leftBlob  <- storeBlobFor(path, leftContent)
+            rightBlob <- storeBlobFor(path, rightContent)
+            _         <- recordDeletionInIndex(path)
+            _ <- recordConflictModificationInIndex(stageIndex = 1)(
+              bestAncestorCommit,
+              path,
+              bestAncestorCommitMode,
+              bestAncestorCommitBlobId
+            )
+            _ <- recordConflictModificationInIndex(stageIndex = 2)(
+              ourBranchHead,
+              path,
+              ourMode,
+              leftBlob
+            )
+            _ <- recordConflictModificationInIndex(stageIndex = 3)(
+              theirBranchHead,
+              path,
+              theirMode,
+              rightBlob
+            )
+          yield IndexState.ConflictingEntries
+          end for
+    yield indexState
 
   private def temporaryFile(suffix: Content): Either[Label, File] =
     for
@@ -579,7 +594,7 @@ object Main:
   private def storeBlobFor(
       path: Path,
       content: Content
-  ): Either[String, BlobId] =
+  ): Either[Label, BlobId] =
     Try {
       val line = (s"git hash-object -t blob -w --stdin" #< {
         new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8))
