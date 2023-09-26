@@ -30,6 +30,12 @@ object Main:
   private val fakeBlobIdForDeletion: BlobId =
     "0000000000000000000000000000000000000000"
 
+  private val successfulMerge: Int      = 0
+  private val conflictedMerge: Int      = 1
+  private val theirBranchIsMissing: Int = 2
+  private val tooManyArguments: Int     = 3
+  private val unexpectedError: Int      = 4
+
   extension [Payload](fallible: Try[Payload])
     private def labelExceptionWith(label: Label): Either[Label, Payload] =
       fallible.toEither.left.map(_ => label)
@@ -112,81 +118,116 @@ object Main:
             (path, (theirChange, ourChanges.get(path))) :: partialResult
           }
 
-          indexUpdates <- indexUpdates(
-            bestAncestorCommitId,
-            ourBranchHead,
-            theirBranchHead
-          )(overallChangesInvolvingTheirs)
-
-          // TODO: fast-forward merges have been swept under the carpet.
-          // Also, what about `MERGE_HEAD`?
-          needsAMergeCommit = indexUpdates.forall {
-            case IndexState.OneEntry           => true
-            case IndexState.ConflictingEntries => false
-          }
-
-          exitCodeWhenThereAreNoUnexpectedErrors <-
-            if needsAMergeCommit then
-              for
-                treeId <- Try {
-                  (s"git write-tree" !!).strip()
-                }
-                  .labelExceptionWith(label =
-                    s"Unexpected error: could not write a tree object from the index."
-                  )
-                commitId <- Try {
-                  val message =
-                    s"Merge from: $theirBranchHead into: $ourBranchHead."
-
-                  (s"git commit-tree -p $ourBranchHead -p $theirBranchHead -m '$message' $treeId" !!).strip()
-                }.labelExceptionWith(label =
-                  s"Unexpected error: could not create a commit from tree object: $treeId"
-                )
-                _ <- Try {
-                  s"git reset --hard $commitId" !!
-                }
-                  .labelExceptionWith(label =
-                    s"Unexpected error: could not advance $ourBranchHead to commit: $commitId."
-                  )
-              yield 0
-            else
-              for
-                gitDir <- Try { ("git rev-parse --git-dir" !!).strip() }
-                  .labelExceptionWith(label =
-                    "Could not determine location of `GIT_DIR`."
-                  )
-                gitDirPath <- Try { Path.of(gitDir) }.labelExceptionWith(label =
-                  s"Unexpected error: `GIT_DIR` reported by Git: $gitDir is not a valid path."
-                )
-                _ <- Try {
-                  s"echo $theirCommitId" #> gitDirPath
-                    .resolve("MERGE_HEAD")
-                    .toFile !!
-                }.labelExceptionWith(label =
-                  s"Unexpected error: could not write `MERGE_HEAD` to reference $theirBranchHead."
-                )
-              yield 1
-            end if
-        yield exitCodeWhenThereAreNoUnexpectedErrors
+          result <-
+            mergeWithRollback(
+              theirBranchHead,
+              ourBranchHead,
+              theirCommitId,
+              bestAncestorCommitId,
+              overallChangesInvolvingTheirs
+            )
+        yield result
 
         workflow.fold(
           label =>
             println(label)
-            1
+            unexpectedError
           ,
           identity
         )
       case Array() =>
         Console.err.println("No branch or commit id provided to merge from.")
-        2
+        theirBranchIsMissing
       case _ =>
         Console.err.println(
           s"Expected a single branch or commit id, but got multiple entries shown below:\n${args.mkString("\n")}"
         )
-        3
+        tooManyArguments
 
     System.exit(exitCode)
   end main
+
+  private def mergeWithRollback(
+      theirBranchHead: Content,
+      ourBranchHead: CommitIdOrBranchName,
+      theirCommitId: String,
+      bestAncestorCommitId: Content,
+      overallChangesInvolvingTheirs: List[(Path, (Change, Option[Change]))]
+  ): Either[Label, Int] =
+    val workflow =
+      for
+        indexUpdates <- indexUpdates(
+          bestAncestorCommitId,
+          ourBranchHead,
+          theirBranchHead
+        )(overallChangesInvolvingTheirs)
+
+        // TODO: fast-forward merges have been swept under the carpet.
+        needsAMergeCommit = indexUpdates.forall {
+          case IndexState.OneEntry           => true
+          case IndexState.ConflictingEntries => false
+        }
+
+        exitCodeWhenThereAreNoUnexpectedErrors <-
+          if needsAMergeCommit then
+            for
+              treeId <- Try {
+                (s"git write-tree" !!).strip()
+              }
+                .labelExceptionWith(label =
+                  s"Unexpected error: could not write a tree object from the index."
+                )
+              commitId <- Try {
+                val message =
+                  s"Merge from: $theirBranchHead into: $ourBranchHead."
+
+                (s"git commit-tree -p $ourBranchHead -p $theirBranchHead -m '$message' $treeId" !!).strip()
+              }.labelExceptionWith(label =
+                s"Unexpected error: could not create a commit from tree object: $treeId"
+              )
+              _ <- Try {
+                s"git reset --hard $commitId" !!
+              }
+                .labelExceptionWith(label =
+                  s"Unexpected error: could not advance $ourBranchHead to commit: $commitId."
+                )
+            yield successfulMerge
+          else
+            for
+              gitDir <- Try {
+                ("git rev-parse --git-dir" !!).strip()
+              }
+                .labelExceptionWith(label =
+                  "Could not determine location of `GIT_DIR`."
+                )
+              gitDirPath <- Try {
+                Path.of(gitDir)
+              }
+                .labelExceptionWith(label =
+                  s"Unexpected error: `GIT_DIR` reported by Git: $gitDir is not a valid path."
+                )
+              _ <- Try {
+                s"echo $theirCommitId" #> gitDirPath
+                  .resolve("MERGE_HEAD")
+                  .toFile !!
+              }.labelExceptionWith(label =
+                s"Unexpected error: could not write `MERGE_HEAD` to reference $theirBranchHead."
+              )
+            yield conflictedMerge
+          end if
+      yield exitCodeWhenThereAreNoUnexpectedErrors
+
+    // NASTY HACK: hokey cleanup, need to think about the best approach...
+    workflow.left.map(label =>
+      try "git reset --hard" !!
+      catch
+        case exception =>
+          println(s"Failed to rollback changes after unexpected error.")
+      end try
+
+      label
+    )
+  end mergeWithRollback
 
   private def indexUpdates(
       bestAncestorCommitId: CommitIdOrBranchName,
