@@ -25,6 +25,8 @@ object Main:
 
   private type ExitCode = Int
 
+  private type Workflow[Payload] = Either[Label, Payload]
+
   private val whitespaceRun = "\\s+"
 
   private val fakeModeForDeletion: Mode = "0"
@@ -39,7 +41,7 @@ object Main:
   private val unexpectedError: ExitCode      = 4
 
   extension [Payload](fallible: Try[Payload])
-    private def labelExceptionWith(label: Label): Either[Label, Payload] =
+    private def labelExceptionWith(label: Label): Workflow[Payload] =
       fallible.toEither.left.map(_ => label)
   end extension
 
@@ -175,7 +177,7 @@ object Main:
   private def firstBranchIsContainedBySecond(
       firstBranchHead: Content,
       secondBranchHead: CommitIdOrBranchName
-  ): Either[Label, Boolean] =
+  ): Workflow[Boolean] =
     Try {
       s"git merge-base --is-ancestor $firstBranchHead $secondBranchHead" !
     }
@@ -190,7 +192,7 @@ object Main:
       theirCommitId: String,
       bestAncestorCommitId: Content,
       overallChangesInvolvingTheirs: List[(Path, (Change, Option[Change]))]
-  ): Either[Label, ExitCode] =
+  ): Workflow[ExitCode] =
     val workflow =
       for
         indexUpdates <- indexUpdates(
@@ -271,7 +273,7 @@ object Main:
       theirBranchHead: CommitIdOrBranchName
   )(
       overallChangesInvolvingTheirs: List[(Path, (Change, Option[Change]))]
-  ): Either[Label, List[IndexState]] =
+  ): Workflow[List[IndexState]] =
     overallChangesInvolvingTheirs.traverse {
       case (
             path,
@@ -682,7 +684,7 @@ object Main:
       path: Path,
       mode: Mode,
       blobId: BlobId
-  ): Either[Label, Unit] =
+  ): Workflow[Unit] =
     Try {
       val _ = (s"git update-index --index-info" #< {
         new ByteArrayInputStream(
@@ -697,7 +699,7 @@ object Main:
   private def storeBlobFor(
       path: Path,
       content: Content
-  ): Either[Label, BlobId] =
+  ): Workflow[BlobId] =
     Try {
       val line = (s"git hash-object -t blob -w --stdin" #< {
         new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8))
@@ -713,7 +715,7 @@ object Main:
   private def temporaryFile(
       suffix: String,
       content: Content
-  ): Either[Label, File] =
+  ): Workflow[File] =
     for
       temporaryFile <- Try {
         Files.createTempFile("kinetic-merge-", ".base").toFile
@@ -740,7 +742,7 @@ object Main:
       path: Path,
       mode: Mode,
       blobId: BlobId
-  ): Either[Label, Unit] =
+  ): Workflow[Unit] =
     Try {
       val _ = (s"git update-index --index-info" #< {
         new ByteArrayInputStream(
@@ -757,7 +759,7 @@ object Main:
       path: Path,
       mode: Mode,
       blobId: BlobId
-  ): Either[Label, Unit] =
+  ): Workflow[Unit] =
     Try {
       val _ = s"git update-index --add --cacheinfo $mode,$blobId,$path" !!
     }.labelExceptionWith(
@@ -766,7 +768,7 @@ object Main:
 
   private def recordDeletionInIndex(
       path: Path
-  ): Either[Label, Unit] =
+  ): Workflow[Unit] =
     Try {
       val _ = (s"git update-index --index-info" #< {
         new ByteArrayInputStream(
@@ -780,7 +782,7 @@ object Main:
 
   private def pathChangeFor(
       commitIdOrBranchName: CommitIdOrBranchName
-  )(line: String): Either[Label, (Path, Change)] =
+  )(line: String): Workflow[(Path, Change)] =
     Try {
       line.split(whitespaceRun) match
         case Array("M", changedFile) =>
@@ -802,7 +804,7 @@ object Main:
 
   private def blobAndContentFor(commitIdOrBranchName: CommitIdOrBranchName)(
       path: Path
-  ): Either[Label, (Mode, BlobId, Content)] =
+  ): Workflow[(Mode, BlobId, Content)] =
     Try {
       val line = s"git ls-tree $commitIdOrBranchName $path" !!
 
