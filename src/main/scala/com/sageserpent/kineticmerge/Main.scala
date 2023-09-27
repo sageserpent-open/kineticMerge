@@ -23,6 +23,8 @@ object Main:
 
   private type Label = String
 
+  private type ExitCode = Int
+
   private val whitespaceRun = "\\s+"
 
   private val fakeModeForDeletion: Mode = "0"
@@ -30,11 +32,11 @@ object Main:
   private val fakeBlobIdForDeletion: BlobId =
     "0000000000000000000000000000000000000000"
 
-  private val successfulMerge: Int      = 0
-  private val conflictedMerge: Int      = 1
-  private val theirBranchIsMissing: Int = 2
-  private val tooManyArguments: Int     = 3
-  private val unexpectedError: Int      = 4
+  private val successfulMerge: ExitCode      = 0
+  private val conflictedMerge: ExitCode      = 1
+  private val theirBranchIsMissing: ExitCode = 2
+  private val tooManyArguments: ExitCode     = 3
+  private val unexpectedError: ExitCode      = 4
 
   extension [Payload](fallible: Try[Payload])
     private def labelExceptionWith(label: Label): Either[Label, Payload] =
@@ -77,56 +79,79 @@ object Main:
             s"Can't determine a branch name or commit id for our branch head."
           )
 
-          theirCommitId <- Try {
-            s"git rev-parse $theirBranchHead" !!
-          }.labelExceptionWith(label =
-            s"$theirBranchHead is not a valid branch or commit."
+          oursAlreadyContainsTheirs <- firstBranchIsContainedBySecond(
+            theirBranchHead,
+            ourBranchHead
           )
 
-          _ <- Try { s"git diff-index --exit-code $ourBranchHead" !! }
-            .labelExceptionWith(label =
-              "There are uncommitted changes prior to commencing the merge."
-            )
-
-          bestAncestorCommitId <- Try {
-            (s"git merge-base $ourBranchHead $theirBranchHead" !!).strip()
-          }.labelExceptionWith(label =
-            s"Can't determine a best ancestor commit between $ourBranchHead and $theirBranchHead."
+          theirsAlreadyContainsOurs <- firstBranchIsContainedBySecond(
+            ourBranchHead,
+            theirBranchHead
           )
 
-          ourChanges <- Try {
-            s"git diff --no-renames --name-status $bestAncestorCommitId $ourBranchHead".lazyLines.toList
-          }.labelExceptionWith(label =
-            s"Can't determine changes made on our branch since ancestor commit $bestAncestorCommitId"
-          ).flatMap(_.traverse(pathChangeFor(ourBranchHead)))
-            .map(_.toMap)
+          exitCode <-
+            if oursAlreadyContainsTheirs then
+              // Nothing to do, our branch has all their commits already.
+              Right(successfulMerge)
+            else if theirsAlreadyContainsOurs then
+              // Fast-forward our branch to their head commit.
+              Try { s"git reset --hard $theirBranchHead" !!; successfulMerge }
+                .labelExceptionWith(label =
+                  s"Unexpected error: could not fast-forward our branch $ourBranchHead to their branch: $theirBranchHead"
+                )
+            else // Perform a real merge...
+              for
+                theirCommitId <- Try {
+                  s"git rev-parse $theirBranchHead" !!
+                }.labelExceptionWith(label =
+                  s"$theirBranchHead is not a valid branch or commit."
+                )
 
-          theirChanges <- Try {
-            s"git diff --no-renames --name-status $bestAncestorCommitId $theirBranchHead".lazyLines.toList
-          }.labelExceptionWith(label =
-            s"Can't determine changes made on their branch $theirBranchHead since ancestor commit $bestAncestorCommitId"
-          ).flatMap(_.traverse(pathChangeFor(theirBranchHead)))
-            .map(_.toMap)
+                _ <- Try { s"git diff-index --exit-code $ourBranchHead" !! }
+                  .labelExceptionWith(label =
+                    "There are uncommitted changes prior to commencing the merge."
+                  )
 
-          // NOTE: changes that belong only to our branch don't need to be
-          // handled explicitly - they are already in the merge by default,
-          // because we build the merge commit index from the point of view of
-          // our branch.
-          overallChangesInvolvingTheirs = theirChanges.foldLeft(
-            List.empty[(Path, (Change, Option[Change]))]
-          ) { case (partialResult, (path, theirChange)) =>
-            (path, (theirChange, ourChanges.get(path))) :: partialResult
-          }
+                bestAncestorCommitId <- Try {
+                  (s"git merge-base $ourBranchHead $theirBranchHead" !!).strip()
+                }.labelExceptionWith(label =
+                  s"Can't determine a best ancestor commit between $ourBranchHead and $theirBranchHead."
+                )
 
-          result <-
-            mergeWithRollback(
-              theirBranchHead,
-              ourBranchHead,
-              theirCommitId,
-              bestAncestorCommitId,
-              overallChangesInvolvingTheirs
-            )
-        yield result
+                ourChanges <- Try {
+                  s"git diff --no-renames --name-status $bestAncestorCommitId $ourBranchHead".lazyLines.toList
+                }.labelExceptionWith(label =
+                  s"Can't determine changes made on our branch since ancestor commit $bestAncestorCommitId"
+                ).flatMap(_.traverse(pathChangeFor(ourBranchHead)))
+                  .map(_.toMap)
+
+                theirChanges <- Try {
+                  s"git diff --no-renames --name-status $bestAncestorCommitId $theirBranchHead".lazyLines.toList
+                }.labelExceptionWith(label =
+                  s"Can't determine changes made on their branch $theirBranchHead since ancestor commit $bestAncestorCommitId"
+                ).flatMap(_.traverse(pathChangeFor(theirBranchHead)))
+                  .map(_.toMap)
+
+                // NOTE: changes that belong only to our branch don't need to be
+                // handled explicitly - they are already in the merge by
+                // default, because we build the merge commit index from the
+                // point of view of our branch.
+                overallChangesInvolvingTheirs = theirChanges.foldLeft(
+                  List.empty[(Path, (Change, Option[Change]))]
+                ) { case (partialResult, (path, theirChange)) =>
+                  (path, (theirChange, ourChanges.get(path))) :: partialResult
+                }
+
+                exitCode <-
+                  mergeWithRollback(
+                    theirBranchHead,
+                    ourBranchHead,
+                    theirCommitId,
+                    bestAncestorCommitId,
+                    overallChangesInvolvingTheirs
+                  )
+              yield exitCode
+        yield exitCode
 
         workflow.fold(
           label =>
@@ -147,13 +172,25 @@ object Main:
     System.exit(exitCode)
   end main
 
+  private def firstBranchIsContainedBySecond(
+      firstBranchHead: Content,
+      secondBranchHead: CommitIdOrBranchName
+  ): Either[Label, Boolean] =
+    Try {
+      s"git merge-base --is-ancestor $firstBranchHead $secondBranchHead" !
+    }
+      .labelExceptionWith(label =
+        s"Unexpected error: could not determine whether $firstBranchHead is an ancestor of $secondBranchHead."
+      )
+      .map(0 == _)
+
   private def mergeWithRollback(
       theirBranchHead: Content,
       ourBranchHead: CommitIdOrBranchName,
       theirCommitId: String,
       bestAncestorCommitId: Content,
       overallChangesInvolvingTheirs: List[(Path, (Change, Option[Change]))]
-  ): Either[Label, Int] =
+  ): Either[Label, ExitCode] =
     val workflow =
       for
         indexUpdates <- indexUpdates(
@@ -162,14 +199,13 @@ object Main:
           theirBranchHead
         )(overallChangesInvolvingTheirs)
 
-        // TODO: fast-forward merges have been swept under the carpet.
-        needsAMergeCommit = indexUpdates.forall {
+        goodForAMergeCommit = indexUpdates.forall {
           case IndexState.OneEntry           => true
           case IndexState.ConflictingEntries => false
         }
 
         exitCodeWhenThereAreNoUnexpectedErrors <-
-          if needsAMergeCommit then
+          if goodForAMergeCommit then
             for
               treeId <- Try {
                 (s"git write-tree" !!).strip()
