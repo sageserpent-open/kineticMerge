@@ -2,9 +2,9 @@ package com.sageserpent.kineticmerge
 
 import cats.data.{EitherT, Writer}
 import cats.syntax.traverse.toTraverseOps
-import com.sageserpent.kineticmerge.Main.BlobId
 import com.sageserpent.kineticmerge.core.merge.Result
 import com.sageserpent.kineticmerge.core.{Token, mergeTokens}
+import com.softwaremill.tagging.*
 import fansi.Str
 
 import java.io.{ByteArrayInputStream, File}
@@ -15,54 +15,34 @@ import scala.sys.process.*
 import scala.util.Try
 
 object Main:
-  private type Mode = String
-
-  private type BlobId = String
-
-  private type Content = String
-
-  private type CommitIdOrBranchName = String
-
-  private type Label = String
-
-  private type ExitCode = Int
-
-  private type StageIndex = Int
-
-  private type WorkflowLog = List[String]
-
+  private type WorkflowLog                = List[String]
   private type WorkflowLogWriter[Payload] = Writer[WorkflowLog, Payload]
-
-  private type Workflow[Payload] = EitherT[WorkflowLogWriter, Label, Payload]
-
+  private type Workflow[Payload] =
+    EitherT[WorkflowLogWriter, String @@ Tags.ErrorMessage, Payload]
+  
   private val whitespaceRun = "\\s+"
 
-  private val fakeModeForDeletion: Mode = "0"
+  private val fakeModeForDeletion: String @@ Tags.Mode =
+    "0".taggedWith[Tags.Mode]
+  private val fakeBlobIdForDeletion: String @@ Tags.BlobId =
+    "0000000000000000000000000000000000000000".taggedWith[Tags.BlobId]
 
-  private val fakeBlobIdForDeletion: BlobId =
-    "0000000000000000000000000000000000000000"
+  private val successfulMerge: Int @@ Tags.ExitCode =
+    0.taggedWith[Tags.ExitCode]
+  private val conflictedMerge: Int @@ Tags.ExitCode =
+    1.taggedWith[Tags.ExitCode]
+  private val theirBranchIsMissing: Int @@ Tags.ExitCode =
+    2.taggedWith[Tags.ExitCode]
+  private val tooManyArguments: Int @@ Tags.ExitCode =
+    3.taggedWith[Tags.ExitCode]
+  private val error: Int @@ Tags.ExitCode = 4.taggedWith[Tags.ExitCode]
 
-  private val successfulMerge: ExitCode      = 0
-  private val conflictedMerge: ExitCode      = 1
-  private val theirBranchIsMissing: ExitCode = 2
-  private val tooManyArguments: ExitCode     = 3
-  private val error: ExitCode                = 4
-
-  private val bestCommonAncestorStageIndex: StageIndex = 1
-  private val ourStageIndex: StageIndex                = 2
-  private val theirStageIndex: StageIndex              = 3
-
-  extension [Payload](fallible: Try[Payload])
-    private def labelExceptionWith(errorMessage: Label): Workflow[Payload] =
-      EitherT
-        .fromEither[WorkflowLogWriter](fallible.toEither)
-        .leftMap(_ => errorMessage)
-  end extension
-
-  extension [Payload](workflow: Workflow[Payload])
-    private def logOperation(message: String): Workflow[Payload] =
-      workflow.semiflatTap(_ => Writer.tell(List(message)))
-  end extension
+  private val bestCommonAncestorStageIndex: Int @@ Tags.StageIndex =
+    1.taggedWith[Tags.StageIndex]
+  private val ourStageIndex: Int @@ Tags.StageIndex =
+    2.taggedWith[Tags.StageIndex]
+  private val theirStageIndex: Int @@ Tags.StageIndex =
+    3.taggedWith[Tags.StageIndex]
 
   def main(args: Array[String]): Unit =
     // NOTE: the use of Git below is based on spike work on MacOS - the version
@@ -72,7 +52,10 @@ object Main:
     // Git 2.42.0 being the latest stable release.
 
     val exitCode = args match
-      case Array(theirBranchHead: CommitIdOrBranchName) =>
+      case Array(singleArgument) =>
+        val theirBranchHead: String @@ Tags.CommitOrBranchName =
+          singleArgument.taggedWith[Tags.CommitOrBranchName]
+
         val workflow = for
           _ <- Try { "git --version" !! }
             .labelExceptionWith(errorMessage = "Git is not available.")
@@ -88,13 +71,15 @@ object Main:
               s"Unexpected error: working tree reported by Git ${underline(workingTree)} is not a valid path."
             )
 
-          ourBranchHead: CommitIdOrBranchName <- Try {
+          ourBranchHead <- Try {
             val branchName = ("git branch --show-current" !!).strip()
+            .taggedWith[Tags.CommitOrBranchName]
 
             if branchName.nonEmpty then branchName
             else
               // Handle a detached commit.
               ("git rev-parse HEAD" !!).strip()
+              .taggedWith[Tags.CommitOrBranchName]
             end if
           }.labelExceptionWith(errorMessage =
             s"Could not determine a branch name or commit id for our branch head."
@@ -141,6 +126,7 @@ object Main:
 
                 bestAncestorCommitId <- Try {
                   (s"git merge-base $ourBranchHead $theirBranchHead" !!).strip()
+                  .taggedWith[Tags.CommitOrBranchName]
                 }.labelExceptionWith(errorMessage =
                   s"Could not determine a best ancestor commit between our branch ${underline(ourBranchHead)} and their branch ${underline(theirBranchHead)}."
                 )
@@ -184,9 +170,9 @@ object Main:
           .foldF(
             errorMessage =>
               Writer
-                .value[WorkflowLog, ExitCode](error)
+                .value[WorkflowLog, Int @@ Tags.ExitCode](error)
                 .tell(List(errorMessage)),
-            Writer.value[WorkflowLog, ExitCode]
+            Writer.value[WorkflowLog, Int @@ Tags.ExitCode]
           )
           .run
 
@@ -205,9 +191,21 @@ object Main:
     System.exit(exitCode)
   end main
 
+  extension [Payload](fallible: Try[Payload])
+    private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
+      EitherT
+        .fromEither[WorkflowLogWriter](fallible.toEither)
+        .leftMap(_ => errorMessage.taggedWith[Tags.ErrorMessage])
+  end extension
+
+  extension [Payload](workflow: Workflow[Payload])
+    private def logOperation(message: String): Workflow[Payload] =
+      workflow.semiflatTap(_ => Writer.tell(List(message)))
+  end extension
+
   private def firstBranchIsContainedBySecond(
-      firstBranchHead: CommitIdOrBranchName,
-      secondBranchHead: CommitIdOrBranchName
+      firstBranchHead: String @@ Tags.CommitOrBranchName,
+      secondBranchHead: String @@ Tags.CommitOrBranchName
   ): Workflow[Boolean] =
     Try {
       s"git merge-base --is-ancestor $firstBranchHead $secondBranchHead" !
@@ -218,12 +216,12 @@ object Main:
       .map(0 == _)
 
   private def mergeWithRollback(
-      theirBranchHead: CommitIdOrBranchName,
-      ourBranchHead: CommitIdOrBranchName,
+      theirBranchHead: String @@ Tags.CommitOrBranchName,
+      ourBranchHead: String @@ Tags.CommitOrBranchName,
       theirCommitId: String,
-      bestAncestorCommitId: CommitIdOrBranchName,
+      bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
       overallChangesInvolvingTheirs: List[(Path, (Change, Option[Change]))]
-  ): Workflow[ExitCode] =
+  ): Workflow[Int @@ Tags.ExitCode] =
     val workflow =
       for
         indexUpdates <- indexUpdates(
@@ -304,9 +302,9 @@ object Main:
   end mergeWithRollback
 
   private def indexUpdates(
-      bestAncestorCommitId: CommitIdOrBranchName,
-      ourBranchHead: CommitIdOrBranchName,
-      theirBranchHead: CommitIdOrBranchName
+      bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
+      ourBranchHead: String @@ Tags.CommitOrBranchName,
+      theirBranchHead: String @@ Tags.CommitOrBranchName
   )(
       overallChangesInvolvingTheirs: List[(Path, (Change, Option[Change]))]
   ): Workflow[List[IndexState]] =
@@ -491,20 +489,22 @@ object Main:
     fansi.Underlined.On(anything.toString)
 
   private def left[Payload](errorMessage: String): Workflow[Payload] =
-    EitherT.leftT[WorkflowLogWriter, Payload](errorMessage)
+    EitherT.leftT[WorkflowLogWriter, Payload](
+      errorMessage.taggedWith[Tags.ErrorMessage]
+    )
 
   private def right[Payload](payload: Payload): Workflow[Payload] =
-    EitherT.rightT[WorkflowLogWriter, Label](payload)
+    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
 
   private def indexStateForTwoWayMerge(
-      ourBranchHead: CommitIdOrBranchName,
-      theirBranchHead: CommitIdOrBranchName
+      ourBranchHead: String @@ Tags.CommitOrBranchName,
+      theirBranchHead: String @@ Tags.CommitOrBranchName
   )(
       path: Path,
-      theirMode: Mode,
-      theirContent: Content,
-      ourMode: Mode,
-      ourContent: Content
+      theirMode: String @@ Tags.Mode,
+      theirContent: String @@ Tags.Content,
+      ourMode: String @@ Tags.Mode,
+      ourContent: String @@ Tags.Content
   ): Workflow[IndexState] =
     for
       mergedFileMode <-
@@ -532,20 +532,22 @@ object Main:
             right = theirAncestorTokens
           )
         )
-        .leftMap(_.toString)
+        .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
 
       indexState <- mergeResult match
         case Result.FullyMerged(elements) =>
           indexStateForCleanMerge(path, mergedFileMode, elements)
 
         case Result.MergedWithConflicts(leftElements, rightElements) =>
-          val leftContent  = leftElements.map(_.text).mkString
-          val rightContent = rightElements.map(_.text).mkString
+          val leftContent =
+            leftElements.map(_.text).mkString.taggedWith[Tags.Content]
+          val rightContent =
+            rightElements.map(_.text).mkString.taggedWith[Tags.Content]
 
           (for
             fakeBaseTemporaryFile <- temporaryFile(
               suffix = ".base",
-              content = ""
+              content = "".taggedWith[Tags.Content]
             )
 
             leftTemporaryFile <- temporaryFile(
@@ -603,15 +605,15 @@ object Main:
     yield indexState
 
   private def indexStateForThreeWayMerge(
-      bestAncestorCommitId: CommitIdOrBranchName,
-      ourBranchHead: CommitIdOrBranchName,
-      theirBranchHead: CommitIdOrBranchName
+      bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
+      ourBranchHead: String @@ Tags.CommitOrBranchName,
+      theirBranchHead: String @@ Tags.CommitOrBranchName
   )(
       path: Path,
-      theirMode: Mode,
-      theirContent: Content,
-      ourMode: Mode,
-      ourContent: Content
+      theirMode: String @@ Tags.Mode,
+      theirContent: String @@ Tags.Content,
+      ourMode: String @@ Tags.Mode,
+      ourContent: String @@ Tags.Content
   ): Workflow[IndexState] =
     for
       (
@@ -653,15 +655,17 @@ object Main:
             right = theirAncestorTokens
           )
         )
-        .leftMap(_.toString)
+        .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
 
       indexState <- mergeResult match
         case Result.FullyMerged(elements) =>
           indexStateForCleanMerge(path, mergedFileMode, elements)
 
         case Result.MergedWithConflicts(leftElements, rightElements) =>
-          val leftContent  = leftElements.map(_.text).mkString
-          val rightContent = rightElements.map(_.text).mkString
+          val leftContent =
+            leftElements.map(_.text).mkString.taggedWith[Tags.Content]
+          val rightContent =
+            rightElements.map(_.text).mkString.taggedWith[Tags.Content]
 
           (for
             baseTemporaryFile <- temporaryFile(
@@ -731,10 +735,11 @@ object Main:
 
   private def indexStateForCleanMerge(
       path: Path,
-      mergedFileMode: Mode,
+      mergedFileMode: String @@ Tags.Mode,
       elements: IndexedSeq[Token]
   ): Workflow[IndexState] =
-    val mergedContent = elements.map(_.text).mkString
+    val mergedContent =
+      elements.map(_.text).mkString.taggedWith[Tags.Content]
     for
       mergedBlobId <- storeBlobFor(path, mergedContent)
       _ <- recordModificationInIndex(
@@ -754,8 +759,8 @@ object Main:
 
   private def recordModificationInIndex(
       path: Path,
-      mode: Mode,
-      blobId: BlobId
+      mode: String @@ Tags.Mode,
+      blobId: String @@ Tags.BlobId
   ): Workflow[Unit] =
     Try {
       val _ = (s"git update-index --index-info" #< {
@@ -770,15 +775,15 @@ object Main:
 
   private def storeBlobFor(
       path: Path,
-      content: Content
-  ): Workflow[BlobId] =
+      content: String @@ Tags.Content
+  ): Workflow[String @@ Tags.BlobId] =
     Try {
       val line = (s"git hash-object -t blob -w --stdin" #< {
         new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8))
       }) !!
 
       line.split(whitespaceRun) match
-        case Array(blobId) => blobId
+        case Array(blobId) => blobId.taggedWith[Tags.BlobId]
       end match
     }.labelExceptionWith(errorMessage =
       s"Unexpected error - could not create a blob for file ${underline(path)}."
@@ -786,7 +791,7 @@ object Main:
 
   private def temporaryFile(
       suffix: String,
-      content: Content
+      content: String @@ Tags.Content
   ): Workflow[File] =
     for
       temporaryFile <- Try {
@@ -809,11 +814,13 @@ object Main:
       )
     yield temporaryFile
 
-  private def recordConflictModificationInIndex(stageIndex: StageIndex)(
-      commitIdOrBranchName: CommitIdOrBranchName,
+  private def recordConflictModificationInIndex(
+      stageIndex: Int @@ Tags.StageIndex
+  )(
+      commitIdOrBranchName: String @@ Tags.CommitOrBranchName,
       path: Path,
-      mode: Mode,
-      blobId: BlobId
+      mode: String @@ Tags.Mode,
+      blobId: String @@ Tags.BlobId
   ): Workflow[Unit] =
     Try {
       val _ = (s"git update-index --index-info" #< {
@@ -829,8 +836,8 @@ object Main:
 
   private def recordAdditionInIndex(
       path: Path,
-      mode: Mode,
-      blobId: BlobId
+      mode: String @@ Tags.Mode,
+      blobId: String @@ Tags.BlobId
   ): Workflow[Unit] =
     Try {
       val _ = s"git update-index --add --cacheinfo $mode,$blobId,$path" !!
@@ -853,7 +860,7 @@ object Main:
     )
 
   private def pathChangeFor(
-      commitIdOrBranchName: CommitIdOrBranchName
+      commitIdOrBranchName: String @@ Tags.CommitOrBranchName
   )(line: String): Workflow[(Path, Change)] =
     Try {
       line.split(whitespaceRun) match
@@ -874,9 +881,13 @@ object Main:
       s"Unexpected error - can't parse changes reported by Git ${underline(line)}."
     ).flatMap { case (path, changed) => changed.map(path -> _) }
 
-  private def blobAndContentFor(commitIdOrBranchName: CommitIdOrBranchName)(
+  private def blobAndContentFor(
+      commitIdOrBranchName: String @@ Tags.CommitOrBranchName
+  )(
       path: Path
-  ): Workflow[(Mode, BlobId, Content)] =
+  ): Workflow[
+    (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
+  ] =
     Try {
       val line = s"git ls-tree $commitIdOrBranchName $path" !!
 
@@ -884,16 +895,38 @@ object Main:
         case Array(mode, _, blobId, _) =>
           val content = s"git cat-file blob $blobId" !!
 
-          (mode, blobId, content)
+          (
+            mode.taggedWith[Tags.Mode],
+            blobId.taggedWith[Tags.BlobId],
+            content.taggedWith[Tags.Content]
+          )
       end match
     }.labelExceptionWith(errorMessage =
       s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
     )
   end blobAndContentFor
 
+  object Tags:
+    trait Mode
+    trait BlobId
+    trait Content
+    trait CommitOrBranchName
+    trait ErrorMessage
+    trait ExitCode
+    trait StageIndex
+  end Tags
+
   private enum Change:
-    case Modification(mode: Mode, blobId: BlobId, content: Content)
-    case Addition(mode: Mode, blobId: BlobId, content: Content)
+    case Modification(
+        mode: String @@ Tags.Mode,
+        blobId: String @@ Tags.BlobId,
+        content: String @@ Tags.Content
+    )
+    case Addition(
+        mode: String @@ Tags.Mode,
+        blobId: String @@ Tags.BlobId,
+        content: String @@ Tags.Content
+    )
     case Deletion
   end Change
 
