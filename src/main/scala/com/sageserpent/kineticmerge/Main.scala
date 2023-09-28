@@ -5,6 +5,7 @@ import cats.syntax.traverse.toTraverseOps
 import com.sageserpent.kineticmerge.Main.BlobId
 import com.sageserpent.kineticmerge.core.merge.Result
 import com.sageserpent.kineticmerge.core.{Token, mergeTokens}
+import fansi.Str
 
 import java.io.{ByteArrayInputStream, File}
 import java.nio.charset.StandardCharsets
@@ -84,7 +85,7 @@ object Main:
 
           workingTreePath <- Try { Path.of(workingTree) }
             .labelExceptionWith(errorMessage =
-              s"Unexpected error: working tree reported by Git: $workingTree is not a valid path."
+              s"Unexpected error: working tree reported by Git ${underline(workingTree)} is not a valid path."
             )
 
           ourBranchHead: CommitIdOrBranchName <- Try {
@@ -102,7 +103,7 @@ object Main:
           theirCommitId <- Try {
             s"git rev-parse $theirBranchHead" !!
           }.labelExceptionWith(errorMessage =
-            s"Ref: $theirBranchHead is not a valid branch or commit."
+            s"Ref ${underline(theirBranchHead)} is not a valid branch or commit."
           )
 
           oursAlreadyContainsTheirs <- firstBranchIsContainedBySecond(
@@ -120,16 +121,16 @@ object Main:
               // Nothing to do, our branch has all their commits already.
               right(successfulMerge)
                 .logOperation(
-                  s"Nothing to do - our branch: $ourBranchHead already contains: $theirBranchHead."
+                  s"Nothing to do - our branch ${underline(ourBranchHead)} already contains ${underline(theirBranchHead)}."
                 )
             else if theirsAlreadyContainsOurs then
               // Fast-forward our branch to their head commit.
               Try { s"git reset --hard $theirBranchHead" !!; successfulMerge }
                 .labelExceptionWith(errorMessage =
-                  s"Unexpected error: could not fast-forward our branch: $ourBranchHead to their branch: $theirBranchHead."
+                  s"Unexpected error: could not fast-forward our branch ${underline(ourBranchHead)} to their branch ${underline(theirBranchHead)}."
                 )
                 .logOperation(
-                  s"Fast forward our branch: $ourBranchHead to their branch: $theirBranchHead."
+                  s"Fast forward our branch ${underline(ourBranchHead)} to their branch ${underline(theirBranchHead)}."
                 )
             else // Perform a real merge...
               for
@@ -141,20 +142,20 @@ object Main:
                 bestAncestorCommitId <- Try {
                   (s"git merge-base $ourBranchHead $theirBranchHead" !!).strip()
                 }.labelExceptionWith(errorMessage =
-                  s"Could not determine a best ancestor commit between our branch: $ourBranchHead and their branch: $theirBranchHead."
+                  s"Could not determine a best ancestor commit between our branch ${underline(ourBranchHead)} and their branch ${underline(theirBranchHead)}."
                 )
 
                 ourChanges <- Try {
                   s"git diff --no-renames --name-status $bestAncestorCommitId $ourBranchHead".lazyLines.toList
                 }.labelExceptionWith(errorMessage =
-                  s"Could not determine changes made on our branch: $ourBranchHead since ancestor commit: $bestAncestorCommitId."
+                  s"Could not determine changes made on our branch ${underline(ourBranchHead)} since ancestor commit ${underline(bestAncestorCommitId)}."
                 ).flatMap(_.traverse(pathChangeFor(ourBranchHead)))
                   .map(_.toMap)
 
                 theirChanges <- Try {
                   s"git diff --no-renames --name-status $bestAncestorCommitId $theirBranchHead".lazyLines.toList
                 }.labelExceptionWith(errorMessage =
-                  s"Could not determine changes made on their branch: $theirBranchHead since ancestor commit: $bestAncestorCommitId."
+                  s"Could not determine changes made on their branch ${underline(theirBranchHead)} since ancestor commit ${underline(bestAncestorCommitId)}."
                 ).flatMap(_.traverse(pathChangeFor(theirBranchHead)))
                   .map(_.toMap)
 
@@ -212,7 +213,7 @@ object Main:
       s"git merge-base --is-ancestor $firstBranchHead $secondBranchHead" !
     }
       .labelExceptionWith(errorMessage =
-        s"Unexpected error: could not determine whether branch: $firstBranchHead is an ancestor of branch: $secondBranchHead."
+        s"Unexpected error: could not determine whether branch ${underline(firstBranchHead)} is an ancestor of branch ${underline(secondBranchHead)}."
       )
       .map(0 == _)
 
@@ -247,20 +248,20 @@ object Main:
                 )
               commitId <- Try {
                 val message =
-                  s"Merge from: $theirBranchHead into: $ourBranchHead."
+                  s"Merge from ${underline(theirBranchHead)} into ${underline(ourBranchHead)}."
 
                 (s"git commit-tree -p $ourBranchHead -p $theirBranchHead -m '$message' $treeId" !!).strip()
               }.labelExceptionWith(errorMessage =
-                s"Unexpected error: could not create a commit from tree object: $treeId"
+                s"Unexpected error: could not create a commit from tree object ${underline(treeId)}"
               )
               _ <- Try {
                 s"git reset --hard $commitId" !!
               }
                 .labelExceptionWith(errorMessage =
-                  s"Unexpected error: could not advance branch: $ourBranchHead to commit: $commitId."
+                  s"Unexpected error: could not advance branch ${underline(ourBranchHead)} to commit ${underline(commitId)}."
                 )
                 .logOperation(
-                  s"Successful merge, made a new commit: $commitId"
+                  s"Successful merge, made a new commit ${underline(commitId)}"
                 )
             yield successfulMerge
           else
@@ -275,14 +276,14 @@ object Main:
                 Path.of(gitDir)
               }
                 .labelExceptionWith(errorMessage =
-                  s"Unexpected error: `GIT_DIR` reported by Git: $gitDir is not a valid path."
+                  s"Unexpected error: `GIT_DIR` reported by Git ${underline(gitDir)} is not a valid path."
                 )
               _ <- Try {
                 s"echo $theirCommitId" #> gitDirPath
                   .resolve("MERGE_HEAD")
                   .toFile !!
               }.labelExceptionWith(errorMessage =
-                s"Unexpected error: could not write `MERGE_HEAD` to reference their branch: $theirBranchHead."
+                s"Unexpected error: could not write `MERGE_HEAD` to reference their branch ${underline(theirBranchHead)}."
               ).logOperation(
                 "Merge conflicts found, handing over for manual resolution..."
               )
@@ -318,7 +319,7 @@ object Main:
             )
           ) =>
         left(
-          s"Unexpected error: file: $path has been added on our branch: $ourBranchHead and either deleted or modified on their branch: $theirBranchHead."
+          s"Unexpected error: file ${underline(path)} has been added on our branch ${underline(ourBranchHead)} and either deleted or modified on their branch ${underline(theirBranchHead)}."
         )
 
       case (
@@ -329,7 +330,7 @@ object Main:
             )
           ) =>
         left(
-          s"Unexpected error: file: $path has been either deleted or modified on our branch: $ourBranchHead and added on their branch: $theirBranchHead."
+          s"Unexpected error: file ${underline(path)} has been either deleted or modified on our branch ${underline(ourBranchHead)} and added on their branch ${underline(theirBranchHead)}."
         )
 
       case (
@@ -366,10 +367,10 @@ object Main:
               s"git cat-file blob $theirBlobId" #> path.toFile !!
             }
               .labelExceptionWith(errorMessage =
-                s"Unexpected error: could not update working directory tree with conflicted merge file: $path"
+                s"Unexpected error: could not update working directory tree with conflicted merge file ${underline(path)}"
               )
         yield IndexState.ConflictingEntries).logOperation(
-          s"Conflict - file: $path was deleted on our branch: $ourBranchHead and modified on their branch: $theirBranchHead."
+          s"Conflict - file ${underline(path)} was deleted on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
         )
 
       case (
@@ -402,7 +403,7 @@ object Main:
         // that we started with a clean working directory tree, we just
         // leave it there to match what Git merge does.
         yield IndexState.ConflictingEntries).logOperation(
-          s"Conflict - file: $path was modified on our branch: $ourBranchHead and deleted on their branch: $theirBranchHead."
+          s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and deleted on their branch ${underline(theirBranchHead)}."
         )
 
       case (path, (Change.Modification(mode, blobId, _), None)) =>
@@ -412,7 +413,7 @@ object Main:
             s"git cat-file blob $blobId" #> path.toFile !!
           }
             .labelExceptionWith(errorMessage =
-              s"Unexpected error: could not update working directory tree with modified file: $path."
+              s"Unexpected error: could not update working directory tree with modified file ${underline(path)}."
             )
         yield IndexState.OneEntry
 
@@ -423,7 +424,7 @@ object Main:
             s"git cat-file blob $blobId" #> path.toFile !!
           }
             .labelExceptionWith(errorMessage =
-              s"Unexpected error: could not update working directory tree with added file: $path."
+              s"Unexpected error: could not update working directory tree with added file ${underline(path)}."
             )
         yield IndexState.OneEntry
 
@@ -434,7 +435,7 @@ object Main:
             s"rm -rf $path" !!
           }
             .labelExceptionWith(errorMessage =
-              s"Unexpected error: could not update working directory tree by deleting file: $path."
+              s"Unexpected error: could not update working directory tree by deleting file ${underline(path)}."
             )
         yield IndexState.OneEntry
 
@@ -482,9 +483,12 @@ object Main:
         // *not* be a fast-forward merge.
         right(IndexState.OneEntry)
           .logOperation(
-            s"Coincidental deletion of file: $path on our branch: $ourBranchHead and on their branch: $theirBranchHead."
+            s"Coincidental deletion of file ${underline(path)} on our branch ${underline(ourBranchHead)} and on their branch ${underline(theirBranchHead)}."
           )
     }
+
+  private def underline(anything: Any): Str =
+    fansi.Underlined.On(anything.toString)
 
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](errorMessage)
@@ -507,17 +511,17 @@ object Main:
         if ourMode == theirMode then right(ourMode)
         else
           left(
-            s"Conflicting file modes for file: $path; on our branch head: $ourMode and on their branch head: $theirMode."
+            s"Conflicting file modes for file ${underline(path)}; on our branch head ${underline(ourMode)} and on their branch head ${underline(theirMode)}."
           )
 
       ourAncestorTokens <- Try { Token.tokens(ourContent).get }
         .labelExceptionWith(errorMessage =
-          s"Failed to tokenize file: $path on our branch head: $ourBranchHead."
+          s"Failed to tokenize file ${underline(path)} on our branch head ${underline(ourBranchHead)}."
         )
 
       theirAncestorTokens <- Try { Token.tokens(theirContent).get }
         .labelExceptionWith(errorMessage =
-          s"Failed to tokenize file: $path on their branch head: $theirBranchHead."
+          s"Failed to tokenize file ${underline(path)} on their branch head ${underline(theirBranchHead)}."
         )
 
       mergeResult <- EitherT
@@ -563,7 +567,7 @@ object Main:
               if 0 <= exitCode then right(())
               else
                 left(
-                  s"Unexpected error: could not generate conflicted file contents on behalf of: $path in temporary file: $leftTemporaryFile"
+                  s"Unexpected error: could not generate conflicted file contents on behalf of ${underline(path)} in temporary file ${underline(leftTemporaryFile)}"
                 )
               end if
             _ <- Try {
@@ -573,7 +577,7 @@ object Main:
                 StandardCopyOption.REPLACE_EXISTING
               )
             }.labelExceptionWith(errorMessage =
-              s"Unexpected error: could not copy results of conflicted merge in: $leftTemporaryFile to working directory tree file: $path."
+              s"Unexpected error: could not copy results of conflicted merge in ${underline(leftTemporaryFile)} to working directory tree file ${underline(path)}."
             )
 
             leftBlob  <- storeBlobFor(path, leftContent)
@@ -594,7 +598,7 @@ object Main:
               rightBlob
             )
           yield IndexState.ConflictingEntries).logOperation(
-            s"Conflict - file: $path was added on our branch: $ourBranchHead and added on their branch: $theirBranchHead."
+            s"Conflict - file ${underline(path)} was added on our branch ${underline(ourBranchHead)} and added on their branch ${underline(theirBranchHead)}."
           )
     yield indexState
 
@@ -622,23 +626,23 @@ object Main:
         else if ourMode == theirMode then right(ourMode)
         else
           left(
-            s"Conflicting file modes for file: $path; on base ancestor commit: $bestAncestorCommitIdMode, on our branch head: $ourMode and on their branch head: $theirMode."
+            s"Conflicting file modes for file ${underline(path)}; on base ancestor commit ${underline(bestAncestorCommitIdMode)}, on our branch head ${underline(ourMode)} and on their branch head ${underline(theirMode)}."
           )
 
       bestAncestorTokens <- Try {
         Token.tokens(bestAncestorCommitIdContent).get
       }.labelExceptionWith(errorMessage =
-        s"Failed to tokenize file: $path on best ancestor commit: $bestAncestorCommitId."
+        s"Failed to tokenize file ${underline(path)} on best ancestor commit ${underline(bestAncestorCommitId)}."
       )
 
       ourAncestorTokens <- Try { Token.tokens(ourContent).get }
         .labelExceptionWith(errorMessage =
-          s"Failed to tokenize file: $path on our branch head: $ourBranchHead."
+          s"Failed to tokenize file ${underline(path)} on our branch head ${underline(ourBranchHead)}."
         )
 
       theirAncestorTokens <- Try { Token.tokens(theirContent).get }
         .labelExceptionWith(errorMessage =
-          s"Failed to tokenize file: $path on their branch head: $theirBranchHead."
+          s"Failed to tokenize file ${underline(path)} on their branch head ${underline(theirBranchHead)}."
         )
 
       mergeResult <- EitherT
@@ -682,7 +686,7 @@ object Main:
               if 0 <= exitCode then right(())
               else
                 left(
-                  s"Unexpected error: could not generate conflicted file contents on behalf of: $path in temporary file: $leftTemporaryFile"
+                  s"Unexpected error: could not generate conflicted file contents on behalf of ${underline(path)} in temporary file ${underline(leftTemporaryFile)}"
                 )
               end if
             _ <- Try {
@@ -692,7 +696,7 @@ object Main:
                 StandardCopyOption.REPLACE_EXISTING
               )
             }.labelExceptionWith(errorMessage =
-              s"Unexpected error: could not copy results of conflicted merge in: $leftTemporaryFile to working directory tree file: $path."
+              s"Unexpected error: could not copy results of conflicted merge in ${underline(leftTemporaryFile)} to working directory tree file ${underline(path)}."
             )
 
             leftBlob  <- storeBlobFor(path, leftContent)
@@ -721,7 +725,7 @@ object Main:
               rightBlob
             )
           yield IndexState.ConflictingEntries).logOperation(
-            s"Conflict - file: $path was modified on our branch: $ourBranchHead and modified on their branch: $theirBranchHead."
+            s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
           )
     yield indexState
 
@@ -742,7 +746,7 @@ object Main:
         s"git cat-file blob $mergedBlobId" #> path.toFile !!
       }
         .labelExceptionWith(errorMessage =
-          s"Unexpected error: could not update working directory tree with merged file: $path."
+          s"Unexpected error: could not update working directory tree with merged file ${underline(path)}."
         )
     yield IndexState.OneEntry
     end for
@@ -761,7 +765,7 @@ object Main:
         )
       }) !!
     }.labelExceptionWith(
-      s"Unexpected error: could not update index for modified file: $path."
+      s"Unexpected error: could not update index for modified file ${underline(path)}."
     )
 
   private def storeBlobFor(
@@ -777,7 +781,7 @@ object Main:
         case Array(blobId) => blobId
       end match
     }.labelExceptionWith(errorMessage =
-      s"Unexpected error - could not create a blob for file: $path."
+      s"Unexpected error - could not create a blob for file ${underline(path)}."
     )
 
   private def temporaryFile(
@@ -793,7 +797,7 @@ object Main:
       _ <- Try {
         temporaryFile.deleteOnExit()
       }.labelExceptionWith(errorMessage =
-        s"Unexpected error: could not register temporary file: $temporaryFile for deletion on exit."
+        s"Unexpected error: could not register temporary file ${underline(temporaryFile)} for deletion on exit."
       )
       - <- Try {
         Files.write(
@@ -801,7 +805,7 @@ object Main:
           content.getBytes(StandardCharsets.UTF_8)
         )
       }.labelExceptionWith(errorMessage =
-        s"Unexpected error: could not write to temporary file: $temporaryFile."
+        s"Unexpected error: could not write to temporary file ${underline(temporaryFile)}."
       )
     yield temporaryFile
 
@@ -819,7 +823,7 @@ object Main:
         )
       }) !!
     }.labelExceptionWith(
-      s"Unexpected error: could not update conflict stage #$stageIndex index for modified file: $path from commit or branch: $commitIdOrBranchName."
+      s"Unexpected error: could not update conflict stage #${underline(stageIndex)} index for modified file ${underline(path)} from commit or branch ${underline(commitIdOrBranchName)}."
     )
   end recordConflictModificationInIndex
 
@@ -831,7 +835,7 @@ object Main:
     Try {
       val _ = s"git update-index --add --cacheinfo $mode,$blobId,$path" !!
     }.labelExceptionWith(
-      s"Unexpected error: could not update index for added file: $path."
+      s"Unexpected error: could not update index for added file ${underline(path)}."
     )
 
   private def recordDeletionInIndex(
@@ -845,7 +849,7 @@ object Main:
         )
       }) !!
     }.labelExceptionWith(
-      s"Unexpected error: could not update index for deleted file: $path."
+      s"Unexpected error: could not update index for deleted file ${underline(path)}."
     )
 
   private def pathChangeFor(
@@ -867,7 +871,7 @@ object Main:
           Path.of(path) -> right(Change.Deletion)
       end match
     }.labelExceptionWith(errorMessage =
-      s"Unexpected error - can't parse changes reported by Git: $line."
+      s"Unexpected error - can't parse changes reported by Git ${underline(line)}."
     ).flatMap { case (path, changed) => changed.map(path -> _) }
 
   private def blobAndContentFor(commitIdOrBranchName: CommitIdOrBranchName)(
@@ -883,7 +887,7 @@ object Main:
           (mode, blobId, content)
       end match
     }.labelExceptionWith(errorMessage =
-      s"Unexpected error - can't determine blob id for path: $path in commit or branch: $commitIdOrBranchName."
+      s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
     )
   end blobAndContentFor
 
