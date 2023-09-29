@@ -72,11 +72,8 @@ class MainTest:
         IO {
           println(Process(s"pwd", Some(path.toFile)) !!)
           println(Process(s"git status", Some(path.toFile)) !!)
-          println(Process(path.resolve("arthur.txt").toFile) #< {
-            new ByteArrayInputStream(
-              "Hello, my old mucker!\n".getBytes(StandardCharsets.UTF_8)
-            )
-          } !!)
+          Files
+            .writeString(path.resolve("arthur.txt"), "Hello, my old mucker!\n")
           println(Process(s"git add arthur.txt", Some(path.toFile)) !!)
           println(Process(s"git diff --cached", Some(path.toFile)) !!)
           println(Process(s"git commit -m 'Messing'", Some(path.toFile)) !!)
