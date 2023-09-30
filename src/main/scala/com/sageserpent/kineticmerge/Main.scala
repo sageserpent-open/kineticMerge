@@ -83,7 +83,8 @@ object Main:
       // command is run using `ProcessBuilder` methods such as `!!`, `lines`.
       // The default runs in the current working directory, but tests can change
       // this to their own temporary Git repository.
-      processFromCommandString: ProcessBuilderFromCommandString = stringToProcess
+      processFromCommandString: ProcessBuilderFromCommandString =
+        stringToProcess
   ): Int @@ Main.Tags.ExitCode =
     val workflow = for
       _ <- Try {
@@ -274,7 +275,7 @@ object Main:
                 s"Unexpected error: could not create a commit from tree object ${underline(treeId)}"
               )
               _ <- Try {
-                s"git reset --hard $commitId" !!
+                s"git reset --soft $commitId" !!
               }
                 .labelExceptionWith(errorMessage =
                   s"Unexpected error: could not advance branch ${underline(ourBranchHead)} to commit ${underline(commitId)}."
@@ -882,7 +883,9 @@ object Main:
 
   private def pathChangeFor(
       commitIdOrBranchName: String @@ Tags.CommitOrBranchName
-  )(line: String)(using ProcessBuilderFromCommandString): Workflow[(Path, Change)] =
+  )(
+      line: String
+  )(using ProcessBuilderFromCommandString): Workflow[(Path, Change)] =
     Try {
       line.split(whitespaceRun) match
         case Array("M", changedFile) =>
