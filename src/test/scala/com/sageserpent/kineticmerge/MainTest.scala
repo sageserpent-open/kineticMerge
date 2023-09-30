@@ -14,7 +14,7 @@ import java.nio.file.*
 import java.nio.file.attribute.BasicFileAttributes
 import java.util.Comparator
 import scala.language.postfixOps
-import scala.sys.process.{Process, stringToProcess}
+import scala.sys.process.Process
 
 object MainTest:
   private type ImperativeResource[Payload] = Resource[IO, Payload]
