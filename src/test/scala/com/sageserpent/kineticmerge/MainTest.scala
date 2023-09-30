@@ -103,7 +103,8 @@ class MainTest:
           )
           println(s"git commit -am 'Second commit.'" !!)
 
-          val commitOfAdvancedBranch = s"git log -1 --format=tformat:%H" !!
+          val commitOfAdvancedBranch =
+            (s"git log -1 --format=tformat:%H" !!).strip
 
           val exitCode = Main.mergeTheirBranch(
             masterBranch.taggedWith[Main.Tags.CommitOrBranchName]
@@ -112,9 +113,13 @@ class MainTest:
           assert(exitCode == 0)
 
           val postMergeCommitOfAdvancedBranch =
-            s"git log -1 --format=tformat:%H" !!
+            (s"git log -1 --format=tformat:%H" !!).strip
 
           assert(postMergeCommitOfAdvancedBranch == commitOfAdvancedBranch)
+
+          val status = (s"git status --short" !!).strip
+
+          assert(status.isEmpty)
         }
       )
       .unsafeRunSync()
@@ -143,7 +148,8 @@ class MainTest:
           )
           println(s"git commit -am 'Second commit.'" !!)
 
-          val commitOfAdvancedBranch = s"git log -1 --format=tformat:%H" !!
+          val commitOfAdvancedBranch =
+            (s"git log -1 --format=tformat:%H" !!).strip
 
           println(s"git checkout $masterBranch" !!)
 
@@ -153,9 +159,14 @@ class MainTest:
 
           assert(exitCode == 0)
 
-          val commitOfMasterBranch = s"git log -1 --format=tformat:%H" !!
+          val commitOfMasterBranch =
+            (s"git log -1 --format=tformat:%H" !!).strip
 
           assert(commitOfMasterBranch == commitOfAdvancedBranch)
+
+          val status = (s"git status --short" !!).strip
+
+          assert(status.isEmpty)
         }
       )
       .unsafeRunSync()
