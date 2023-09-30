@@ -80,6 +80,47 @@ end MainTest
 
 class MainTest:
   @Test
+  def noOperationMerge(): Unit =
+    gitRepository()
+      .use(path =>
+        IO {
+          given ProcessBuilderFromCommandString =
+            processFromCommandString(path)
+
+          val arthur = "arthur.txt"
+          Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
+          println(s"git add $arthur" !!)
+          println(s"git commit -m 'First commit.'" !!)
+
+          val advancedBranch = "advancedBranch"
+
+          println(s"git checkout -b $advancedBranch" !!)
+
+          Files.writeString(
+            path.resolve(arthur),
+            "Pleased to see you, old boy.\n",
+            StandardOpenOption.APPEND
+          )
+          println(s"git commit -am 'Second commit.'" !!)
+
+          val commitOfAdvancedBranch = s"git log -1 --format=tformat:%H" !!
+
+          val exitCode = Main.mergeTheirBranch(
+            masterBranch.taggedWith[Main.Tags.CommitOrBranchName]
+          )
+
+          assert(exitCode == 0)
+
+          val postMergeCommitOfAdvancedBranch =
+            s"git log -1 --format=tformat:%H" !!
+
+          assert(postMergeCommitOfAdvancedBranch == commitOfAdvancedBranch)
+        }
+      )
+      .unsafeRunSync()
+  end noOperationMerge
+
+  @Test
   def fastForwardMerge(): Unit =
     gitRepository()
       .use(path =>
@@ -91,7 +132,7 @@ class MainTest:
           println(s"git add $arthur" !!)
           println(s"git commit -m 'First commit.'" !!)
 
-          val advancedBranch = "furtherDevelopment"
+          val advancedBranch = "advancedBranch"
 
           println(s"git checkout -b $advancedBranch" !!)
 
@@ -118,4 +159,5 @@ class MainTest:
         }
       )
       .unsafeRunSync()
+  end fastForwardMerge
 end MainTest
