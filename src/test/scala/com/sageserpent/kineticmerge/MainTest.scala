@@ -112,6 +112,10 @@ class MainTest:
 
           assert(exitCode == 0)
 
+          val branchName = ("git branch --show-current" !!).strip()
+
+          assert(branchName == advancedBranch)
+
           val postMergeCommitOfAdvancedBranch =
             (s"git log -1 --format=tformat:%H" !!).strip
 
@@ -158,6 +162,10 @@ class MainTest:
           )
 
           assert(exitCode == 0)
+
+          val branchName = ("git branch --show-current" !!).strip()
+
+          assert(branchName == masterBranch)
 
           val postMergeCommitOfMasterBranch =
             (s"git log -1 --format=tformat:%H" !!).strip
@@ -213,6 +221,10 @@ class MainTest:
           )
 
           assert(exitCode == 0)
+
+          val branchName = ("git branch --show-current" !!).strip()
+
+          assert(branchName == masterBranch)
 
           val postMergeCommitOfMasterBranch =
             (s"git log -1 --format=tformat:%H" !!).strip
