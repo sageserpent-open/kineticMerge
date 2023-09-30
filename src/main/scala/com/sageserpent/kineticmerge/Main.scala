@@ -11,15 +11,17 @@ import java.io.{ByteArrayInputStream, File}
 import java.nio.charset.StandardCharsets
 import java.nio.file.{CopyOption, Files, Path, StandardCopyOption}
 import scala.language.postfixOps
-import scala.sys.process.*
+import scala.sys.process.{ProcessBuilder, stringToProcess}
 import scala.util.Try
 
 object Main:
+  type ProcessBuilderFromCommandString = Conversion[String, ProcessBuilder]
+
   private type WorkflowLog                = List[String]
   private type WorkflowLogWriter[Payload] = Writer[WorkflowLog, Payload]
   private type Workflow[Payload] =
     EitherT[WorkflowLogWriter, String @@ Tags.ErrorMessage, Payload]
-  
+
   private val whitespaceRun = "\\s+"
 
   private val fakeModeForDeletion: String @@ Tags.Mode =
@@ -44,6 +46,8 @@ object Main:
   private val theirStageIndex: Int @@ Tags.StageIndex =
     3.taggedWith[Tags.StageIndex]
 
+  private val currentWorkingDirectorySpecifier = "."
+
   def main(args: Array[String]): Unit =
     // NOTE: the use of Git below is based on spike work on MacOS - the version
     // of Git shipped tends to be a *long* way behind the latest release, so the
@@ -53,132 +57,13 @@ object Main:
 
     val exitCode = args match
       case Array(singleArgument) =>
-        val theirBranchHead: String @@ Tags.CommitOrBranchName =
+        // Assume this can never fail, so no need to handle exceptions. Famous
+        // last words...
+        val workingDirectory = Path.of(currentWorkingDirectorySpecifier)
+
+        mergeTheirBranch(
           singleArgument.taggedWith[Tags.CommitOrBranchName]
-
-        val workflow = for
-          _ <- Try { "git --version" !! }
-            .labelExceptionWith(errorMessage = "Git is not available.")
-
-          workingTree <- Try {
-            ("git rev-parse --show-toplevel" !!).strip()
-          }.labelExceptionWith(errorMessage =
-            "The current working directory is not part of a Git working tree."
-          )
-
-          workingTreePath <- Try { Path.of(workingTree) }
-            .labelExceptionWith(errorMessage =
-              s"Unexpected error: working tree reported by Git ${underline(workingTree)} is not a valid path."
-            )
-
-          ourBranchHead <- Try {
-            val branchName = ("git branch --show-current" !!).strip()
-            .taggedWith[Tags.CommitOrBranchName]
-
-            if branchName.nonEmpty then branchName
-            else
-              // Handle a detached commit.
-              ("git rev-parse HEAD" !!).strip()
-              .taggedWith[Tags.CommitOrBranchName]
-            end if
-          }.labelExceptionWith(errorMessage =
-            s"Could not determine a branch name or commit id for our branch head."
-          )
-
-          theirCommitId <- Try {
-            s"git rev-parse $theirBranchHead" !!
-          }.labelExceptionWith(errorMessage =
-            s"Ref ${underline(theirBranchHead)} is not a valid branch or commit."
-          )
-
-          oursAlreadyContainsTheirs <- firstBranchIsContainedBySecond(
-            theirBranchHead,
-            ourBranchHead
-          )
-
-          theirsAlreadyContainsOurs <- firstBranchIsContainedBySecond(
-            ourBranchHead,
-            theirBranchHead
-          )
-
-          exitCode <-
-            if oursAlreadyContainsTheirs then
-              // Nothing to do, our branch has all their commits already.
-              right(successfulMerge)
-                .logOperation(
-                  s"Nothing to do - our branch ${underline(ourBranchHead)} already contains ${underline(theirBranchHead)}."
-                )
-            else if theirsAlreadyContainsOurs then
-              // Fast-forward our branch to their head commit.
-              Try { s"git reset --hard $theirBranchHead" !!; successfulMerge }
-                .labelExceptionWith(errorMessage =
-                  s"Unexpected error: could not fast-forward our branch ${underline(ourBranchHead)} to their branch ${underline(theirBranchHead)}."
-                )
-                .logOperation(
-                  s"Fast forward our branch ${underline(ourBranchHead)} to their branch ${underline(theirBranchHead)}."
-                )
-            else // Perform a real merge...
-              for
-                _ <- Try { s"git diff-index --exit-code $ourBranchHead" !! }
-                  .labelExceptionWith(errorMessage =
-                    "There are uncommitted changes prior to commencing the merge."
-                  )
-
-                bestAncestorCommitId <- Try {
-                  (s"git merge-base $ourBranchHead $theirBranchHead" !!).strip()
-                  .taggedWith[Tags.CommitOrBranchName]
-                }.labelExceptionWith(errorMessage =
-                  s"Could not determine a best ancestor commit between our branch ${underline(ourBranchHead)} and their branch ${underline(theirBranchHead)}."
-                )
-
-                ourChanges <- Try {
-                  s"git diff --no-renames --name-status $bestAncestorCommitId $ourBranchHead".lazyLines.toList
-                }.labelExceptionWith(errorMessage =
-                  s"Could not determine changes made on our branch ${underline(ourBranchHead)} since ancestor commit ${underline(bestAncestorCommitId)}."
-                ).flatMap(_.traverse(pathChangeFor(ourBranchHead)))
-                  .map(_.toMap)
-
-                theirChanges <- Try {
-                  s"git diff --no-renames --name-status $bestAncestorCommitId $theirBranchHead".lazyLines.toList
-                }.labelExceptionWith(errorMessage =
-                  s"Could not determine changes made on their branch ${underline(theirBranchHead)} since ancestor commit ${underline(bestAncestorCommitId)}."
-                ).flatMap(_.traverse(pathChangeFor(theirBranchHead)))
-                  .map(_.toMap)
-
-                // NOTE: changes that belong only to our branch don't need to be
-                // handled explicitly - they are already in the merge by
-                // default, because we build the merge commit index from the
-                // point of view of our branch.
-                overallChangesInvolvingTheirs = theirChanges.foldLeft(
-                  List.empty[(Path, (Change, Option[Change]))]
-                ) { case (partialResult, (path, theirChange)) =>
-                  (path, (theirChange, ourChanges.get(path))) :: partialResult
-                }
-
-                exitCode <-
-                  mergeWithRollback(
-                    theirBranchHead,
-                    ourBranchHead,
-                    theirCommitId,
-                    bestAncestorCommitId,
-                    overallChangesInvolvingTheirs
-                  )
-              yield exitCode
-        yield exitCode
-
-        val (log, exitCode) = workflow
-          .foldF(
-            errorMessage =>
-              Writer
-                .value[WorkflowLog, Int @@ Tags.ExitCode](error)
-                .tell(List(errorMessage)),
-            Writer.value[WorkflowLog, Int @@ Tags.ExitCode]
-          )
-          .run
-
-        log.foreach(println)
-
-        exitCode
+        )
       case Array() =>
         Console.err.println("No branch or commit id provided to merge from.")
         theirBranchIsMissing
@@ -190,6 +75,142 @@ object Main:
 
     System.exit(exitCode)
   end main
+
+  def mergeTheirBranch(
+      theirBranchHead: String @@ Main.Tags.CommitOrBranchName
+  )(using
+      // This is passed down the call chain to be used in all places where a
+      // command is run using `ProcessBuilder` methods such as `!!`, `lines`.
+      // The default runs in the current working directory, but tests can change
+      // this to their own temporary Git repository.
+      processFromCommandString: ProcessBuilderFromCommandString = stringToProcess
+  ): Int @@ Main.Tags.ExitCode =
+    val workflow = for
+      _ <- Try {
+        "git --version" !!
+      }
+        .labelExceptionWith(errorMessage = "Git is not available.")
+
+      _ <- Try {
+        ("git rev-parse --show-toplevel" !!).strip()
+      }.labelExceptionWith(errorMessage =
+        "The current working directory is not part of a Git working tree."
+      )
+
+      ourBranchHead <- Try {
+        val branchName = ("git branch --show-current" !!).strip()
+        .taggedWith[Tags.CommitOrBranchName]
+
+        if branchName.nonEmpty then branchName
+        else
+          // Handle a detached commit.
+          ("git rev-parse HEAD" !!).strip()
+          .taggedWith[Tags.CommitOrBranchName]
+        end if
+      }.labelExceptionWith(errorMessage =
+        s"Could not determine a branch name or commit id for our branch head."
+      )
+
+      theirCommitId <- Try {
+        s"git rev-parse $theirBranchHead" !!
+      }.labelExceptionWith(errorMessage =
+        s"Ref ${underline(theirBranchHead)} is not a valid branch or commit."
+      )
+
+      oursAlreadyContainsTheirs <- firstBranchIsContainedBySecond(
+        theirBranchHead,
+        ourBranchHead
+      )
+
+      theirsAlreadyContainsOurs <- firstBranchIsContainedBySecond(
+        ourBranchHead,
+        theirBranchHead
+      )
+
+      exitCode <-
+        if oursAlreadyContainsTheirs then
+          // Nothing to do, our branch has all their commits already.
+          right(successfulMerge)
+            .logOperation(
+              s"Nothing to do - our branch ${underline(ourBranchHead)} already contains ${underline(theirBranchHead)}."
+            )
+        else if theirsAlreadyContainsOurs then
+          // Fast-forward our branch to their head commit.
+          Try {
+            (s"git reset --hard $theirBranchHead" !!): Unit
+            successfulMerge
+          }
+            .labelExceptionWith(errorMessage =
+              s"Unexpected error: could not fast-forward our branch ${underline(ourBranchHead)} to their branch ${underline(theirBranchHead)}."
+            )
+            .logOperation(
+              s"Fast forward our branch ${underline(ourBranchHead)} to their branch ${underline(theirBranchHead)}."
+            )
+        else // Perform a real merge...
+          for
+            _ <- Try {
+              s"git diff-index --exit-code $ourBranchHead" !!
+            }
+              .labelExceptionWith(errorMessage =
+                "There are uncommitted changes prior to commencing the merge."
+              )
+
+            bestAncestorCommitId <- Try {
+              (s"git merge-base $ourBranchHead $theirBranchHead" !!).strip()
+              .taggedWith[Tags.CommitOrBranchName]
+            }.labelExceptionWith(errorMessage =
+              s"Could not determine a best ancestor commit between our branch ${underline(ourBranchHead)} and their branch ${underline(theirBranchHead)}."
+            )
+
+            ourChanges <- Try {
+              s"git diff --no-renames --name-status $bestAncestorCommitId $ourBranchHead".lazyLines.toList
+            }.labelExceptionWith(errorMessage =
+              s"Could not determine changes made on our branch ${underline(ourBranchHead)} since ancestor commit ${underline(bestAncestorCommitId)}."
+            ).flatMap(_.traverse(pathChangeFor(ourBranchHead)))
+              .map(_.toMap)
+
+            theirChanges <- Try {
+              s"git diff --no-renames --name-status $bestAncestorCommitId $theirBranchHead".lazyLines.toList
+            }.labelExceptionWith(errorMessage =
+              s"Could not determine changes made on their branch ${underline(theirBranchHead)} since ancestor commit ${underline(bestAncestorCommitId)}."
+            ).flatMap(_.traverse(pathChangeFor(theirBranchHead)))
+              .map(_.toMap)
+
+            // NOTE: changes that belong only to our branch don't need to be
+            // handled explicitly - they are already in the merge by
+            // default, because we build the merge commit index from the
+            // point of view of our branch.
+            overallChangesInvolvingTheirs = theirChanges.foldLeft(
+              List.empty[(Path, (Change, Option[Change]))]
+            ) { case (partialResult, (path, theirChange)) =>
+              (path, (theirChange, ourChanges.get(path))) :: partialResult
+            }
+
+            exitCode <-
+              mergeWithRollback(
+                theirBranchHead,
+                ourBranchHead,
+                theirCommitId,
+                bestAncestorCommitId,
+                overallChangesInvolvingTheirs
+              )
+          yield exitCode
+    yield exitCode
+
+    val (log, exitCode) = workflow
+      .foldF(
+        errorMessage =>
+          Writer
+            .value[WorkflowLog, Int @@ Tags.ExitCode](error)
+            .tell(List(errorMessage)),
+        Writer.value[WorkflowLog, Int @@ Tags.ExitCode]
+      )
+      .run
+
+    log.foreach(println)
+
+    exitCode
+  end mergeTheirBranch
 
   extension [Payload](fallible: Try[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
@@ -206,7 +227,7 @@ object Main:
   private def firstBranchIsContainedBySecond(
       firstBranchHead: String @@ Tags.CommitOrBranchName,
       secondBranchHead: String @@ Tags.CommitOrBranchName
-  ): Workflow[Boolean] =
+  )(using ProcessBuilderFromCommandString): Workflow[Boolean] =
     Try {
       s"git merge-base --is-ancestor $firstBranchHead $secondBranchHead" !
     }
@@ -221,7 +242,7 @@ object Main:
       theirCommitId: String,
       bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
       overallChangesInvolvingTheirs: List[(Path, (Change, Option[Change]))]
-  ): Workflow[Int @@ Tags.ExitCode] =
+  )(using ProcessBuilderFromCommandString): Workflow[Int @@ Tags.ExitCode] =
     val workflow =
       for
         indexUpdates <- indexUpdates(
@@ -307,7 +328,7 @@ object Main:
       theirBranchHead: String @@ Tags.CommitOrBranchName
   )(
       overallChangesInvolvingTheirs: List[(Path, (Change, Option[Change]))]
-  ): Workflow[List[IndexState]] =
+  )(using ProcessBuilderFromCommandString): Workflow[List[IndexState]] =
     overallChangesInvolvingTheirs.traverse {
       case (
             path,
@@ -505,7 +526,7 @@ object Main:
       theirContent: String @@ Tags.Content,
       ourMode: String @@ Tags.Mode,
       ourContent: String @@ Tags.Content
-  ): Workflow[IndexState] =
+  )(using ProcessBuilderFromCommandString): Workflow[IndexState] =
     for
       mergedFileMode <-
         if ourMode == theirMode then right(ourMode)
@@ -614,7 +635,7 @@ object Main:
       theirContent: String @@ Tags.Content,
       ourMode: String @@ Tags.Mode,
       ourContent: String @@ Tags.Content
-  ): Workflow[IndexState] =
+  )(using ProcessBuilderFromCommandString): Workflow[IndexState] =
     for
       (
         bestAncestorCommitIdMode,
@@ -737,7 +758,7 @@ object Main:
       path: Path,
       mergedFileMode: String @@ Tags.Mode,
       elements: IndexedSeq[Token]
-  ): Workflow[IndexState] =
+  )(using ProcessBuilderFromCommandString): Workflow[IndexState] =
     val mergedContent =
       elements.map(_.text).mkString.taggedWith[Tags.Content]
     for
@@ -761,7 +782,7 @@ object Main:
       path: Path,
       mode: String @@ Tags.Mode,
       blobId: String @@ Tags.BlobId
-  ): Workflow[Unit] =
+  )(using ProcessBuilderFromCommandString): Workflow[Unit] =
     Try {
       val _ = (s"git update-index --index-info" #< {
         new ByteArrayInputStream(
@@ -776,7 +797,7 @@ object Main:
   private def storeBlobFor(
       path: Path,
       content: String @@ Tags.Content
-  ): Workflow[String @@ Tags.BlobId] =
+  )(using ProcessBuilderFromCommandString): Workflow[String @@ Tags.BlobId] =
     Try {
       val line = (s"git hash-object -t blob -w --stdin" #< {
         new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8))
@@ -821,7 +842,7 @@ object Main:
       path: Path,
       mode: String @@ Tags.Mode,
       blobId: String @@ Tags.BlobId
-  ): Workflow[Unit] =
+  )(using ProcessBuilderFromCommandString): Workflow[Unit] =
     Try {
       val _ = (s"git update-index --index-info" #< {
         new ByteArrayInputStream(
@@ -838,7 +859,7 @@ object Main:
       path: Path,
       mode: String @@ Tags.Mode,
       blobId: String @@ Tags.BlobId
-  ): Workflow[Unit] =
+  )(using ProcessBuilderFromCommandString): Workflow[Unit] =
     Try {
       val _ = s"git update-index --add --cacheinfo $mode,$blobId,$path" !!
     }.labelExceptionWith(
@@ -847,7 +868,7 @@ object Main:
 
   private def recordDeletionInIndex(
       path: Path
-  ): Workflow[Unit] =
+  )(using ProcessBuilderFromCommandString): Workflow[Unit] =
     Try {
       val _ = (s"git update-index --index-info" #< {
         new ByteArrayInputStream(
@@ -861,7 +882,7 @@ object Main:
 
   private def pathChangeFor(
       commitIdOrBranchName: String @@ Tags.CommitOrBranchName
-  )(line: String): Workflow[(Path, Change)] =
+  )(line: String)(using ProcessBuilderFromCommandString): Workflow[(Path, Change)] =
     Try {
       line.split(whitespaceRun) match
         case Array("M", changedFile) =>
@@ -885,7 +906,7 @@ object Main:
       commitIdOrBranchName: String @@ Tags.CommitOrBranchName
   )(
       path: Path
-  ): Workflow[
+  )(using ProcessBuilderFromCommandString): Workflow[
     (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
   ] =
     Try {

@@ -2,20 +2,24 @@ package com.sageserpent.kineticmerge
 
 import cats.effect.unsafe.implicits.global
 import cats.effect.{IO, Resource}
-import com.sageserpent.kineticmerge.MainTest.gitRepository
+import com.sageserpent.kineticmerge.Main.ProcessBuilderFromCommandString
+import com.sageserpent.kineticmerge.MainTest.{gitRepository, masterBranch, processFromCommandString}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
+import com.softwaremill.tagging.*
 import org.junit.jupiter.api.{BeforeEach, Test}
 
 import java.io.{ByteArrayInputStream, File, IOException}
 import java.nio.charset.StandardCharsets
+import java.nio.file.*
 import java.nio.file.attribute.BasicFileAttributes
-import java.nio.file.{FileVisitResult, FileVisitor, Files, Path}
 import java.util.Comparator
 import scala.language.postfixOps
-import scala.sys.process.*
+import scala.sys.process.{Process, stringToProcess}
 
 object MainTest:
   private type ImperativeResource[Payload] = Resource[IO, Payload]
+
+  private val masterBranch = "master"
 
   private def gitRepository(): ImperativeResource[Path] =
     for
@@ -56,28 +60,61 @@ object MainTest:
         }
       )
 
-      _ <- Resource.eval(IO { s"git init $temporaryDirectory" !! })
-      _ <- Resource.eval(IO {
-        Process(s"git checkout -b master", Some(temporaryDirectory.toFile)) !!
-      })
+      given ProcessBuilderFromCommandString = processFromCommandString(
+        temporaryDirectory
+      )
+
+      _ <- Resource.eval(IO { "git init" !! })
+      _ <- Resource.eval(IO { s"git checkout -b $masterBranch" !! })
     yield temporaryDirectory
+    end for
   end gitRepository
+
+  private def processFromCommandString(
+      path: Path
+  ): ProcessBuilderFromCommandString =
+    (command: String) => Process(command, Some(path.toFile))
+  end processFromCommandString
+
 end MainTest
 
 class MainTest:
   @Test
-  def tryOutTheResource(): Unit =
+  def fastForwardMerge(): Unit =
     gitRepository()
       .use(path =>
         IO {
-          println(Process(s"pwd", Some(path.toFile)) !!)
-          println(Process(s"git status", Some(path.toFile)) !!)
-          Files
-            .writeString(path.resolve("arthur.txt"), "Hello, my old mucker!\n")
-          println(Process(s"git add arthur.txt", Some(path.toFile)) !!)
-          println(Process(s"git diff --cached", Some(path.toFile)) !!)
-          println(Process(s"git commit -m 'Messing'", Some(path.toFile)) !!)
-          println(Process(s"git log", Some(path.toFile)) !!)
+          given ProcessBuilderFromCommandString = processFromCommandString(path)
+
+          val arthur = "arthur.txt"
+          Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
+          println(s"git add $arthur" !!)
+          println(s"git commit -m 'First commit.'" !!)
+
+          val advancedBranch = "furtherDevelopment"
+
+          println(s"git checkout -b $advancedBranch" !!)
+
+          Files.writeString(
+            path.resolve(arthur),
+            "Pleased to see you, old boy.\n",
+            StandardOpenOption.APPEND
+          )
+          println(s"git commit -am 'Second commit.'" !!)
+
+          val commitOfAdvancedBranch = s"git log -1 --format=tformat:%H" !!
+
+          println(s"git checkout $masterBranch" !!)
+
+          val exitCode = Main.mergeTheirBranch(
+            advancedBranch.taggedWith[Main.Tags.CommitOrBranchName]
+          )
+
+          assert(exitCode == 0)
+
+          val commitOfMasterBranch = s"git log -1 --format=tformat:%H" !!
+
+          assert(commitOfMasterBranch == commitOfAdvancedBranch)
         }
       )
       .unsafeRunSync()
