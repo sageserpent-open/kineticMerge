@@ -159,10 +159,10 @@ class MainTest:
 
           assert(exitCode == 0)
 
-          val commitOfMasterBranch =
+          val postMergeCommitOfMasterBranch =
             (s"git log -1 --format=tformat:%H" !!).strip
 
-          assert(commitOfMasterBranch == commitOfAdvancedBranch)
+          assert(postMergeCommitOfMasterBranch == commitOfAdvancedBranch)
 
           val status = (s"git status --short" !!).strip
 
@@ -171,4 +171,70 @@ class MainTest:
       )
       .unsafeRunSync()
   end fastForwardMerge
+
+  @Test
+  def cleanMergeBringingInANewFile(): Unit =
+    gitRepository()
+      .use(path =>
+        IO {
+          given ProcessBuilderFromCommandString = processFromCommandString(path)
+
+          val arthur = "arthur.txt"
+          Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
+          println(s"git add $arthur" !!)
+          println(s"git commit -m 'Introducing Arthur.'" !!)
+
+          val newFileBranch = "newFileBranch"
+
+          println(s"git checkout -b $newFileBranch" !!)
+
+          val tyson = "tyson.txt"
+          Files.writeString(path.resolve(tyson), "Alright marra!\n")
+          println(s"git add $tyson" !!)
+          println(s"git commit -m 'Tyson responds.'" !!)
+
+          val commitOfNewFileBranch =
+            (s"git log -1 --format=tformat:%H" !!).strip
+
+          println(s"git checkout $masterBranch" !!)
+
+          Files.writeString(
+            path.resolve(arthur),
+            "Pleased to see you, old boy.\n",
+            StandardOpenOption.APPEND
+          )
+          println(s"git commit -am 'Arthur continues...'" !!)
+
+          val commitOfMasterBranch =
+            (s"git log -1 --format=tformat:%H" !!).strip
+
+          val exitCode = Main.mergeTheirBranch(
+            newFileBranch.taggedWith[Main.Tags.CommitOrBranchName]
+          )
+
+          assert(exitCode == 0)
+
+          val postMergeCommitOfMasterBranch =
+            (s"git log -1 --format=tformat:%H" !!).strip
+
+          assert(postMergeCommitOfMasterBranch != commitOfMasterBranch)
+          assert(postMergeCommitOfMasterBranch != commitOfNewFileBranch)
+
+          val commitOfMasterBranchIsAncestor =
+            (s"git merge-base --is-ancestor $commitOfMasterBranch $postMergeCommitOfMasterBranch" !) == 0
+
+          assert(commitOfMasterBranchIsAncestor)
+
+          val commitOfNewFileBranchIsAncestor =
+            (s"git merge-base --is-ancestor $commitOfNewFileBranch $postMergeCommitOfMasterBranch" !) == 0
+
+          assert(commitOfNewFileBranchIsAncestor)
+
+          val status = (s"git status --short" !!).strip
+
+          assert(status.isEmpty)
+        }
+      )
+      .unsafeRunSync()
+  end cleanMergeBringingInANewFile
 end MainTest
