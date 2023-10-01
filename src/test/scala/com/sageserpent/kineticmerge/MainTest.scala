@@ -102,7 +102,7 @@ class MainTest:
 
           val exitCode = Main.mergeTheirBranch(
             masterBranch.taggedWith[Main.Tags.CommitOrBranchName]
-          )
+          )(workingDirectory = path)
 
           assert(exitCode == 0)
 
@@ -154,7 +154,7 @@ class MainTest:
 
           val exitCode = Main.mergeTheirBranch(
             advancedBranch.taggedWith[Main.Tags.CommitOrBranchName]
-          )
+          )(workingDirectory = path)
 
           assert(exitCode == 0)
 
@@ -214,7 +214,7 @@ class MainTest:
 
           val exitCode = Main.mergeTheirBranch(
             newFileBranch.taggedWith[Main.Tags.CommitOrBranchName]
-          )
+          )(workingDirectory = path)
 
           assert(exitCode == 0)
 

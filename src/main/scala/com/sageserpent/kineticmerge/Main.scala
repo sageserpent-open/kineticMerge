@@ -51,7 +51,9 @@ object Main:
   private val theirStageIndex: Int @@ Tags.StageIndex =
     3.taggedWith[Tags.StageIndex]
 
-  private val currentWorkingDirectorySpecifier = "."
+  // Assume this can never fail, so no need to handle exceptions. Famous last
+  // words...
+  private val defaultWorkingDirectory = Path.of(".")
 
   def main(args: Array[String]): Unit =
     // NOTE: the use of Git below is based on spike work on MacOS - the version
@@ -62,13 +64,9 @@ object Main:
 
     val exitCode = args match
       case Array(singleArgument) =>
-        // Assume this can never fail, so no need to handle exceptions. Famous
-        // last words...
-        val workingDirectory = Path.of(currentWorkingDirectorySpecifier)
-
         mergeTheirBranch(
           singleArgument.taggedWith[Tags.CommitOrBranchName]
-        )
+        )(defaultWorkingDirectory)
       case Array() =>
         Console.err.println("No branch or commit id provided to merge from.")
         theirBranchIsMissing
@@ -83,14 +81,14 @@ object Main:
 
   def mergeTheirBranch(
       theirBranchHead: String @@ Main.Tags.CommitOrBranchName
-  )(using
-      // This is passed down the call chain to be used in all places where a
-      // command is run using `ProcessBuilder` methods such as `!!`, `lines`.
-      // The default runs in the current working directory, but tests can change
-      // this to their own temporary Git repository.
-      processFromCommandString: ProcessBuilderFromCommandString =
-        stringToProcess
-  ): Int @@ Main.Tags.ExitCode =
+  )(workingDirectory: Path): Int @@ Main.Tags.ExitCode =
+    // This is passed down the call chain to be used in all places where a
+    // command is run using `ProcessBuilder` methods such as `!!`, `lines`. The
+    // default runs in the current working directory, but tests can change this
+    // to their own temporary Git repository.
+    given ProcessBuilderFromCommandString =
+      processBuilderFromCommandStringUsing(workingDirectory)
+
     val workflow = for
       _ <- Try {
         "git --version" !!
@@ -143,7 +141,7 @@ object Main:
         else if theirsAlreadyContainsOurs then
           // Fast-forward our branch to their head commit.
           Try {
-            (s"git reset --hard $theirBranchHead" !!): Unit
+            s"git reset --hard $theirBranchHead" !! : Unit
             successfulMerge
           }
             .labelExceptionWith(errorMessage =
@@ -194,6 +192,7 @@ object Main:
 
             exitCode <-
               mergeWithRollback(
+                workingDirectory,
                 theirBranchHead,
                 ourBranchHead,
                 theirCommitId,
@@ -243,6 +242,7 @@ object Main:
       .map(0 == _)
 
   private def mergeWithRollback(
+      workingDirectory: Path,
       theirBranchHead: String @@ Tags.CommitOrBranchName,
       ourBranchHead: String @@ Tags.CommitOrBranchName,
       theirCommitId: String,
@@ -252,6 +252,7 @@ object Main:
     val workflow =
       for
         indexUpdates <- indexUpdates(
+          workingDirectory,
           bestAncestorCommitId,
           ourBranchHead,
           theirBranchHead
@@ -292,7 +293,9 @@ object Main:
           else
             for
               gitDir <- Try {
-                ("git rev-parse --git-dir" !!).strip()
+                // TODO - write a test that exposes the need for an absolute git
+                // as opposed to a merely relative git.
+                ("git rev-parse --absolute-git-dir" !!).strip()
               }
                 .labelExceptionWith(errorMessage =
                   "Could not determine location of `GIT_DIR`."
@@ -329,6 +332,7 @@ object Main:
   end mergeWithRollback
 
   private def indexUpdates(
+      workingDirectory: Path,
       bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
       ourBranchHead: String @@ Tags.CommitOrBranchName,
       theirBranchHead: String @@ Tags.CommitOrBranchName
@@ -389,7 +393,9 @@ object Main:
             // modified file which wouldn't have been present on our
             // branch prior to the merge. So that's what we do too.
             Try {
-              s"git cat-file blob $theirBlobId" #> path.toFile !!
+              s"git cat-file blob $theirBlobId" #> workingDirectory
+                .resolve(path)
+                .toFile !!
             }
               .labelExceptionWith(errorMessage =
                 s"Unexpected error: could not update working directory tree with conflicted merge file ${underline(path)}"
@@ -435,7 +441,9 @@ object Main:
         for
           _ <- recordModificationInIndex(path, mode, blobId)
           - <- Try {
-            s"git cat-file blob $blobId" #> path.toFile !!
+            s"git cat-file blob $blobId" #> workingDirectory
+              .resolve(path)
+              .toFile !!
           }
             .labelExceptionWith(errorMessage =
               s"Unexpected error: could not update working directory tree with modified file ${underline(path)}."
@@ -446,7 +454,9 @@ object Main:
         for
           _ <- recordAdditionInIndex(path, mode, blobId)
           - <- Try {
-            s"git cat-file blob $blobId" #> path.toFile !!
+            s"git cat-file blob $blobId" #> workingDirectory
+              .resolve(path)
+              .toFile !!
           }
             .labelExceptionWith(errorMessage =
               s"Unexpected error: could not update working directory tree with added file ${underline(path)}."
@@ -472,6 +482,7 @@ object Main:
             )
           ) =>
         indexStateForTwoWayMerge(
+          workingDirectory,
           ourBranchHead,
           theirBranchHead
         )(
@@ -490,6 +501,7 @@ object Main:
             )
           ) =>
         indexStateForThreeWayMerge(
+          workingDirectory,
           bestAncestorCommitId,
           ourBranchHead,
           theirBranchHead
@@ -524,6 +536,7 @@ object Main:
     EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
 
   private def indexStateForTwoWayMerge(
+      workingDirectory: Path,
       ourBranchHead: String @@ Tags.CommitOrBranchName,
       theirBranchHead: String @@ Tags.CommitOrBranchName
   )(
@@ -563,7 +576,11 @@ object Main:
 
       indexState <- mergeResult match
         case Result.FullyMerged(elements) =>
-          indexStateForCleanMerge(path, mergedFileMode, elements)
+          indexStateForCleanMerge(workingDirectory)(
+            path,
+            mergedFileMode,
+            elements
+          )
 
         case Result.MergedWithConflicts(leftElements, rightElements) =>
           val leftContent =
@@ -632,6 +649,7 @@ object Main:
     yield indexState
 
   private def indexStateForThreeWayMerge(
+      workingDirectory: Path,
       bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
       ourBranchHead: String @@ Tags.CommitOrBranchName,
       theirBranchHead: String @@ Tags.CommitOrBranchName
@@ -686,7 +704,11 @@ object Main:
 
       indexState <- mergeResult match
         case Result.FullyMerged(elements) =>
-          indexStateForCleanMerge(path, mergedFileMode, elements)
+          indexStateForCleanMerge(workingDirectory)(
+            path,
+            mergedFileMode,
+            elements
+          )
 
         case Result.MergedWithConflicts(leftElements, rightElements) =>
           val leftContent =
@@ -760,7 +782,7 @@ object Main:
           )
     yield indexState
 
-  private def indexStateForCleanMerge(
+  private def indexStateForCleanMerge(workingDirectory: Path)(
       path: Path,
       mergedFileMode: String @@ Tags.Mode,
       elements: IndexedSeq[Token]
@@ -775,7 +797,9 @@ object Main:
         mergedBlobId
       )
       - <- Try {
-        s"git cat-file blob $mergedBlobId" #> path.toFile !!
+        s"git cat-file blob $mergedBlobId" #> workingDirectory
+          .resolve(path)
+          .toFile !!
       }
         .labelExceptionWith(errorMessage =
           s"Unexpected error: could not update working directory tree with merged file ${underline(path)}."
