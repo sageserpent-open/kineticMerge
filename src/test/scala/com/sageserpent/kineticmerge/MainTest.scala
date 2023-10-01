@@ -220,7 +220,7 @@ class MainTest:
               println(s"git add $arthur" !!)
               println(s"git commit -m 'Introducing Arthur.'" !!)
 
-              val newFileBranch = "newFileBranch"
+              val newFileBranch = "deletedFileBranch"
 
               println(s"git checkout -b $newFileBranch" !!)
 
@@ -280,4 +280,81 @@ class MainTest:
           .unsafeRunSync()
       )
   end cleanMergeBringingInANewFile
+
+  @TestFactory
+  def cleanMergeDeletingAFile(): DynamicTests =
+    optionalSubdirectories
+      .withLimit(2)
+      .dynamicTests(optionalSubdirectory =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory.foreach(subdirectory =>
+                Files.createDirectory(path.resolve(subdirectory))
+              )
+
+              given ProcessBuilderFromCommandString =
+                processBuilderFromCommandStringUsing(path)
+
+              val arthur = "arthur.txt"
+              Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
+              println(s"git add $arthur" !!)
+              println(s"git commit -m 'Introducing Arthur.'" !!)
+
+              val deletedFileBranch = "deletedFileBranch"
+
+              println(s"git checkout -b $deletedFileBranch" !!)
+
+              println(s"git rm $arthur" !!)
+              println(s"git commit -m 'Exeunt Arthur.'" !!)
+
+              val commitOfDeletedFileBranch =
+                (s"git log -1 --format=tformat:%H" !!).strip
+
+              println(s"git checkout $masterBranch" !!)
+
+              val tyson = "tyson.txt"
+              Files.writeString(path.resolve(tyson), "Alright marra!\n")
+              println(s"git add $tyson" !!)
+              println(s"git commit -m 'Tyson responds.'" !!)
+
+              val commitOfMasterBranch =
+                (s"git log -1 --format=tformat:%H" !!).strip
+
+              val exitCode = Main.mergeTheirBranch(
+                deletedFileBranch.taggedWith[Main.Tags.CommitOrBranchName]
+              )(workingDirectory =
+                optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
+              )
+
+              assert(exitCode == 0)
+
+              val branchName = ("git branch --show-current" !!).strip()
+
+              assert(branchName == masterBranch)
+
+              val postMergeCommitOfMasterBranch =
+                (s"git log -1 --format=tformat:%H" !!).strip
+
+              assert(postMergeCommitOfMasterBranch != commitOfMasterBranch)
+              assert(postMergeCommitOfMasterBranch != commitOfDeletedFileBranch)
+
+              val commitOfMasterBranchIsAncestor =
+                (s"git merge-base --is-ancestor $commitOfMasterBranch $postMergeCommitOfMasterBranch" !) == 0
+
+              assert(commitOfMasterBranchIsAncestor)
+
+              val commitOfNewFileBranchIsAncestor =
+                (s"git merge-base --is-ancestor $commitOfDeletedFileBranch $postMergeCommitOfMasterBranch" !) == 0
+
+              assert(commitOfNewFileBranchIsAncestor)
+
+              val status = (s"git status --short" !!).strip
+
+              assert(status.isEmpty)
+            }
+          )
+          .unsafeRunSync()
+      )
+  end cleanMergeDeletingAFile
 end MainTest
