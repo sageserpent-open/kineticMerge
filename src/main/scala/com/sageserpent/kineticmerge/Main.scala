@@ -82,10 +82,6 @@ object Main:
   def mergeTheirBranch(
       theirBranchHead: String @@ Main.Tags.CommitOrBranchName
   )(workingDirectory: Path): Int @@ Main.Tags.ExitCode =
-    // This is passed down the call chain to be used in all places where a
-    // command is run using `ProcessBuilder` methods such as `!!`, `lines`. The
-    // default runs in the current working directory, but tests can change this
-    // to their own temporary Git repository.
     given ProcessBuilderFromCommandString =
       processBuilderFromCommandStringUsing(workingDirectory)
 
@@ -95,11 +91,23 @@ object Main:
       }
         .labelExceptionWith(errorMessage = "Git is not available.")
 
-      _ <- Try {
+      topLevel <- Try {
         ("git rev-parse --show-toplevel" !!).strip()
       }.labelExceptionWith(errorMessage =
         "The current working directory is not part of a Git working tree."
       )
+
+      topLevelWorkingDirectory <- Try { Path.of(topLevel) }
+        .labelExceptionWith(errorMessage =
+          s"Unexpected error: top level of Git repository ${underline(topLevel)} is not a valid path."
+        )
+
+      // This is passed down the call chain to be used in all places where a
+      // command is run using `ProcessBuilder` methods such as `!!`, `lines`.
+      // The default runs in the current working directory, but tests can change
+      // this to their own temporary Git repository.
+      given ProcessBuilderFromCommandString =
+        processBuilderFromCommandStringUsing(topLevelWorkingDirectory)
 
       ourBranchHead <- Try {
         val branchName = ("git branch --show-current" !!).strip()
@@ -192,7 +200,7 @@ object Main:
 
             exitCode <-
               mergeWithRollback(
-                workingDirectory,
+                topLevelWorkingDirectory,
                 theirBranchHead,
                 ourBranchHead,
                 theirCommitId,
