@@ -213,9 +213,12 @@ object Main:
     val (log, exitCode) = workflow
       .foldF(
         errorMessage =>
+          // NASTY HACK: hokey error reporting, need to think about the best
+          // approach...
+          Console.err.println(errorMessage)
           Writer
             .value[WorkflowLog, Int @@ Tags.ExitCode](error)
-            .tell(List(errorMessage)),
+        ,
         Writer.value[WorkflowLog, Int @@ Tags.ExitCode]
       )
       .run
