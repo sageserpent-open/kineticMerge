@@ -26,6 +26,8 @@ lazy val root = (project in file("."))
       name.value
     },
     libraryDependencies += "org.typelevel" %% "cats-collections-core" % "0.9.6",
+    libraryDependencies += "org.typelevel" %% "cats-core"   % "2.10.0",
+    libraryDependencies += "org.typelevel" %% "cats-effect" % "3.5.2",
     libraryDependencies ++= Seq(
       "dev.optics" %% "monocle-core"  % "3.2.0",
       "dev.optics" %% "monocle-macro" % "3.2.0"
