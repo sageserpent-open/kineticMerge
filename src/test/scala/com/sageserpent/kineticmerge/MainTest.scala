@@ -2,10 +2,12 @@ package com.sageserpent.kineticmerge
 
 import cats.effect.unsafe.implicits.global
 import cats.effect.{IO, Resource}
-import com.sageserpent.kineticmerge.MainTest.{gitRepository, masterBranch}
+import com.sageserpent.americium.Trials
+import com.sageserpent.americium.junit5.{DynamicTests, *}
+import com.sageserpent.kineticmerge.MainTest.{gitRepository, masterBranch, optionalSubdirectories}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.softwaremill.tagging.*
-import org.junit.jupiter.api.{BeforeEach, Test}
+import org.junit.jupiter.api.{BeforeEach, DynamicTest, Test, TestFactory}
 
 import java.io.{ByteArrayInputStream, File, IOException}
 import java.nio.charset.StandardCharsets
@@ -19,6 +21,9 @@ object MainTest:
   private type ImperativeResource[Payload] = Resource[IO, Payload]
 
   private val masterBranch = "master"
+
+  private val optionalSubdirectories: Trials[Option[Path]] =
+    Trials.api.only("runMergeInHere").map(Path.of(_)).options
 
   private def gitRepository(): ImperativeResource[Path] =
     for
@@ -73,176 +78,206 @@ object MainTest:
 end MainTest
 
 class MainTest:
-  @Test
-  def noOperationMerge(): Unit =
-    gitRepository()
-      .use(path =>
-        IO {
-          given ProcessBuilderFromCommandString =
-            processBuilderFromCommandStringUsing(path)
+  @TestFactory
+  def noOperationMerge(): DynamicTests =
+    optionalSubdirectories
+      .withLimit(2)
+      .dynamicTests(optionalSubdirectory =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory.foreach(subdirectory =>
+                Files.createDirectory(path.resolve(subdirectory))
+              )
 
-          val arthur = "arthur.txt"
-          Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
-          println(s"git add $arthur" !!)
-          println(s"git commit -m 'First commit.'" !!)
+              given ProcessBuilderFromCommandString =
+                processBuilderFromCommandStringUsing(path)
 
-          val advancedBranch = "advancedBranch"
+              val arthur = "arthur.txt"
+              Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
+              println(s"git add $arthur" !!)
+              println(s"git commit -m 'First commit.'" !!)
 
-          println(s"git checkout -b $advancedBranch" !!)
+              val advancedBranch = "advancedBranch"
 
-          Files.writeString(
-            path.resolve(arthur),
-            "Pleased to see you, old boy.\n",
-            StandardOpenOption.APPEND
+              println(s"git checkout -b $advancedBranch" !!)
+
+              Files.writeString(
+                path.resolve(arthur),
+                "Pleased to see you, old boy.\n",
+                StandardOpenOption.APPEND
+              )
+              println(s"git commit -am 'Second commit.'" !!)
+
+              val commitOfAdvancedBranch =
+                (s"git log -1 --format=tformat:%H" !!).strip
+
+              val exitCode = Main.mergeTheirBranch(
+                masterBranch.taggedWith[Main.Tags.CommitOrBranchName]
+              )(workingDirectory =
+                optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
+              )
+
+              assert(exitCode == 0)
+
+              val branchName = ("git branch --show-current" !!).strip()
+
+              assert(branchName == advancedBranch)
+
+              val postMergeCommitOfAdvancedBranch =
+                (s"git log -1 --format=tformat:%H" !!).strip
+
+              assert(postMergeCommitOfAdvancedBranch == commitOfAdvancedBranch)
+
+              val status = (s"git status --short" !!).strip
+
+              assert(status.isEmpty)
+            }
           )
-          println(s"git commit -am 'Second commit.'" !!)
-
-          val commitOfAdvancedBranch =
-            (s"git log -1 --format=tformat:%H" !!).strip
-
-          val exitCode = Main.mergeTheirBranch(
-            masterBranch.taggedWith[Main.Tags.CommitOrBranchName]
-          )(workingDirectory = path)
-
-          assert(exitCode == 0)
-
-          val branchName = ("git branch --show-current" !!).strip()
-
-          assert(branchName == advancedBranch)
-
-          val postMergeCommitOfAdvancedBranch =
-            (s"git log -1 --format=tformat:%H" !!).strip
-
-          assert(postMergeCommitOfAdvancedBranch == commitOfAdvancedBranch)
-
-          val status = (s"git status --short" !!).strip
-
-          assert(status.isEmpty)
-        }
+          .unsafeRunSync()
       )
-      .unsafeRunSync()
   end noOperationMerge
 
-  @Test
-  def fastForwardMerge(): Unit =
-    gitRepository()
-      .use(path =>
-        IO {
-          given ProcessBuilderFromCommandString =
-            processBuilderFromCommandStringUsing(path)
+  @TestFactory
+  def fastForwardMerge(): DynamicTests =
+    optionalSubdirectories
+      .withLimit(2)
+      .dynamicTests(optionalSubdirectory =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory.foreach(subdirectory =>
+                Files.createDirectory(path.resolve(subdirectory))
+              )
 
-          val arthur = "arthur.txt"
-          Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
-          println(s"git add $arthur" !!)
-          println(s"git commit -m 'First commit.'" !!)
+              given ProcessBuilderFromCommandString =
+                processBuilderFromCommandStringUsing(path)
 
-          val advancedBranch = "advancedBranch"
+              val arthur = "arthur.txt"
+              Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
+              println(s"git add $arthur" !!)
+              println(s"git commit -m 'First commit.'" !!)
 
-          println(s"git checkout -b $advancedBranch" !!)
+              val advancedBranch = "advancedBranch"
 
-          Files.writeString(
-            path.resolve(arthur),
-            "Pleased to see you, old boy.\n",
-            StandardOpenOption.APPEND
+              println(s"git checkout -b $advancedBranch" !!)
+
+              Files.writeString(
+                path.resolve(arthur),
+                "Pleased to see you, old boy.\n",
+                StandardOpenOption.APPEND
+              )
+              println(s"git commit -am 'Second commit.'" !!)
+
+              val commitOfAdvancedBranch =
+                (s"git log -1 --format=tformat:%H" !!).strip
+
+              println(s"git checkout $masterBranch" !!)
+
+              val exitCode = Main.mergeTheirBranch(
+                advancedBranch.taggedWith[Main.Tags.CommitOrBranchName]
+              )(workingDirectory =
+                optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
+              )
+
+              assert(exitCode == 0)
+
+              val branchName = ("git branch --show-current" !!).strip()
+
+              assert(branchName == masterBranch)
+
+              val postMergeCommitOfMasterBranch =
+                (s"git log -1 --format=tformat:%H" !!).strip
+
+              assert(postMergeCommitOfMasterBranch == commitOfAdvancedBranch)
+
+              val status = (s"git status --short" !!).strip
+
+              assert(status.isEmpty)
+            }
           )
-          println(s"git commit -am 'Second commit.'" !!)
-
-          val commitOfAdvancedBranch =
-            (s"git log -1 --format=tformat:%H" !!).strip
-
-          println(s"git checkout $masterBranch" !!)
-
-          val exitCode = Main.mergeTheirBranch(
-            advancedBranch.taggedWith[Main.Tags.CommitOrBranchName]
-          )(workingDirectory = path)
-
-          assert(exitCode == 0)
-
-          val branchName = ("git branch --show-current" !!).strip()
-
-          assert(branchName == masterBranch)
-
-          val postMergeCommitOfMasterBranch =
-            (s"git log -1 --format=tformat:%H" !!).strip
-
-          assert(postMergeCommitOfMasterBranch == commitOfAdvancedBranch)
-
-          val status = (s"git status --short" !!).strip
-
-          assert(status.isEmpty)
-        }
+          .unsafeRunSync()
       )
-      .unsafeRunSync()
   end fastForwardMerge
 
-  @Test
-  def cleanMergeBringingInANewFile(): Unit =
-    gitRepository()
-      .use(path =>
-        IO {
-          given ProcessBuilderFromCommandString =
-            processBuilderFromCommandStringUsing(path)
+  @TestFactory
+  def cleanMergeBringingInANewFile(): DynamicTests =
+    optionalSubdirectories
+      .withLimit(2)
+      .dynamicTests(optionalSubdirectory =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory.foreach(subdirectory =>
+                Files.createDirectory(path.resolve(subdirectory))
+              )
 
-          val arthur = "arthur.txt"
-          Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
-          println(s"git add $arthur" !!)
-          println(s"git commit -m 'Introducing Arthur.'" !!)
+              given ProcessBuilderFromCommandString =
+                processBuilderFromCommandStringUsing(path)
 
-          val newFileBranch = "newFileBranch"
+              val arthur = "arthur.txt"
+              Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
+              println(s"git add $arthur" !!)
+              println(s"git commit -m 'Introducing Arthur.'" !!)
 
-          println(s"git checkout -b $newFileBranch" !!)
+              val newFileBranch = "newFileBranch"
 
-          val tyson = "tyson.txt"
-          Files.writeString(path.resolve(tyson), "Alright marra!\n")
-          println(s"git add $tyson" !!)
-          println(s"git commit -m 'Tyson responds.'" !!)
+              println(s"git checkout -b $newFileBranch" !!)
 
-          val commitOfNewFileBranch =
-            (s"git log -1 --format=tformat:%H" !!).strip
+              val tyson = "tyson.txt"
+              Files.writeString(path.resolve(tyson), "Alright marra!\n")
+              println(s"git add $tyson" !!)
+              println(s"git commit -m 'Tyson responds.'" !!)
 
-          println(s"git checkout $masterBranch" !!)
+              val commitOfNewFileBranch =
+                (s"git log -1 --format=tformat:%H" !!).strip
 
-          Files.writeString(
-            path.resolve(arthur),
-            "Pleased to see you, old boy.\n",
-            StandardOpenOption.APPEND
+              println(s"git checkout $masterBranch" !!)
+
+              Files.writeString(
+                path.resolve(arthur),
+                "Pleased to see you, old boy.\n",
+                StandardOpenOption.APPEND
+              )
+              println(s"git commit -am 'Arthur continues...'" !!)
+
+              val commitOfMasterBranch =
+                (s"git log -1 --format=tformat:%H" !!).strip
+
+              val exitCode = Main.mergeTheirBranch(
+                newFileBranch.taggedWith[Main.Tags.CommitOrBranchName]
+              )(workingDirectory =
+                optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
+              )
+
+              assert(exitCode == 0)
+
+              val branchName = ("git branch --show-current" !!).strip()
+
+              assert(branchName == masterBranch)
+
+              val postMergeCommitOfMasterBranch =
+                (s"git log -1 --format=tformat:%H" !!).strip
+
+              assert(postMergeCommitOfMasterBranch != commitOfMasterBranch)
+              assert(postMergeCommitOfMasterBranch != commitOfNewFileBranch)
+
+              val commitOfMasterBranchIsAncestor =
+                (s"git merge-base --is-ancestor $commitOfMasterBranch $postMergeCommitOfMasterBranch" !) == 0
+
+              assert(commitOfMasterBranchIsAncestor)
+
+              val commitOfNewFileBranchIsAncestor =
+                (s"git merge-base --is-ancestor $commitOfNewFileBranch $postMergeCommitOfMasterBranch" !) == 0
+
+              assert(commitOfNewFileBranchIsAncestor)
+
+              val status = (s"git status --short" !!).strip
+
+              assert(status.isEmpty)
+            }
           )
-          println(s"git commit -am 'Arthur continues...'" !!)
-
-          val commitOfMasterBranch =
-            (s"git log -1 --format=tformat:%H" !!).strip
-
-          val exitCode = Main.mergeTheirBranch(
-            newFileBranch.taggedWith[Main.Tags.CommitOrBranchName]
-          )(workingDirectory = path)
-
-          assert(exitCode == 0)
-
-          val branchName = ("git branch --show-current" !!).strip()
-
-          assert(branchName == masterBranch)
-
-          val postMergeCommitOfMasterBranch =
-            (s"git log -1 --format=tformat:%H" !!).strip
-
-          assert(postMergeCommitOfMasterBranch != commitOfMasterBranch)
-          assert(postMergeCommitOfMasterBranch != commitOfNewFileBranch)
-
-          val commitOfMasterBranchIsAncestor =
-            (s"git merge-base --is-ancestor $commitOfMasterBranch $postMergeCommitOfMasterBranch" !) == 0
-
-          assert(commitOfMasterBranchIsAncestor)
-
-          val commitOfNewFileBranchIsAncestor =
-            (s"git merge-base --is-ancestor $commitOfNewFileBranch $postMergeCommitOfMasterBranch" !) == 0
-
-          assert(commitOfNewFileBranchIsAncestor)
-
-          val status = (s"git status --short" !!).strip
-
-          assert(status.isEmpty)
-        }
+          .unsafeRunSync()
       )
-      .unsafeRunSync()
   end cleanMergeBringingInANewFile
 end MainTest
