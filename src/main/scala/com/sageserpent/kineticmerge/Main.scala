@@ -753,8 +753,7 @@ object Main:
             _ <- Try {
               Files.copy(
                 leftTemporaryFile.toPath,
-                // TODO: there is a bug here. So write a test to expose it...
-                path,
+                workingDirectory.resolve(path),
                 StandardCopyOption.REPLACE_EXISTING
               )
             }.labelExceptionWith(errorMessage =
