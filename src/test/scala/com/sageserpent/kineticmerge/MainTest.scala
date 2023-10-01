@@ -639,4 +639,103 @@ class MainTest:
           .unsafeRunSync()
       }
   end conflictingModificationOfTheSameFile
+
+  @TestFactory
+  def cleanMergeOfAFileDeletedInBothBranches(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(4)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory.foreach(subdirectory =>
+                Files.createDirectory(path.resolve(subdirectory))
+              )
+
+              given ProcessBuilderFromCommandString =
+                processBuilderFromCommandStringUsing(path)
+
+              val arthur = "arthur.txt"
+              Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
+              println(s"git add $arthur" !!)
+              println(s"git commit -m 'Introducing Arthur.'" !!)
+
+              val concurrentlyDeletedFileBranch =
+                "concurrentlyDeletedFileBranch"
+
+              println(s"git checkout -b $concurrentlyDeletedFileBranch" !!)
+
+              val tyson = "tyson.txt"
+              Files.writeString(path.resolve(tyson), "Alright marra!\n")
+              println(s"git add $tyson" !!)
+              println(s"git commit -m 'Tyson responds.'" !!)
+
+              println(s"git rm $arthur" !!)
+              println(s"git commit -m 'Exeunt Arthur.'" !!)
+
+              val commitOfConcurrentlyDeletedFileBranch =
+                (s"git log -1 --format=tformat:%H" !!).strip
+
+              println(s"git checkout $masterBranch" !!)
+
+              Files.writeString(
+                path.resolve(arthur),
+                "Pleased to see you, old boy.\n",
+                StandardOpenOption.APPEND
+              )
+              println(s"git commit -am 'Arthur continues...'" !!)
+
+              println(s"git rm $arthur" !!)
+              println(s"git commit -m 'Arthur excuses himself.'" !!)
+
+              val commitOfMasterBranch =
+                (s"git log -1 --format=tformat:%H" !!).strip
+
+              if flipBranches then
+                println(
+                  s"git checkout $concurrentlyDeletedFileBranch" !!
+                )
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then
+                  concurrentlyDeletedFileBranch -> masterBranch
+                else masterBranch               -> concurrentlyDeletedFileBranch
+
+              val exitCode = Main.mergeTheirBranch(
+                theirBranch.taggedWith[Main.Tags.CommitOrBranchName]
+              )(workingDirectory =
+                optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
+              )
+
+              assert(exitCode == 0)
+
+              val branchName = ("git branch --show-current" !!).strip()
+
+              assert(branchName == ourBranch)
+
+              val postMergeCommit =
+                (s"git log -1 --format=tformat:%H" !!).strip
+
+              assert(postMergeCommit != commitOfMasterBranch)
+              assert(postMergeCommit != commitOfConcurrentlyDeletedFileBranch)
+
+              val commitOfMasterBranchIsAncestor =
+                (s"git merge-base --is-ancestor $commitOfMasterBranch $postMergeCommit" !) == 0
+
+              assert(commitOfMasterBranchIsAncestor)
+
+              val commitOfNewFileBranchIsAncestor =
+                (s"git merge-base --is-ancestor $commitOfConcurrentlyDeletedFileBranch $postMergeCommit" !) == 0
+
+              assert(commitOfNewFileBranchIsAncestor)
+
+              val status = (s"git status --short" !!).strip
+
+              assert(status.isEmpty)
+            }
+          )
+          .unsafeRunSync()
+      }
+  end cleanMergeOfAFileDeletedInBothBranches
 end MainTest
