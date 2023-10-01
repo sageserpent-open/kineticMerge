@@ -59,9 +59,10 @@ object MainTest:
         }
       )
 
-      given ProcessBuilderFromCommandString = processBuilderFromCommandString(
-        temporaryDirectory
-      )
+      given ProcessBuilderFromCommandString =
+        processBuilderFromCommandStringUsing(
+          temporaryDirectory
+        )
 
       _ <- Resource.eval(IO { "git init" !! })
       _ <- Resource.eval(IO { s"git checkout -b $masterBranch" !! })
@@ -78,7 +79,7 @@ class MainTest:
       .use(path =>
         IO {
           given ProcessBuilderFromCommandString =
-            processBuilderFromCommandString(path)
+            processBuilderFromCommandStringUsing(path)
 
           val arthur = "arthur.txt"
           Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
@@ -128,7 +129,7 @@ class MainTest:
       .use(path =>
         IO {
           given ProcessBuilderFromCommandString =
-            processBuilderFromCommandString(path)
+            processBuilderFromCommandStringUsing(path)
 
           val arthur = "arthur.txt"
           Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
@@ -180,7 +181,7 @@ class MainTest:
       .use(path =>
         IO {
           given ProcessBuilderFromCommandString =
-            processBuilderFromCommandString(path)
+            processBuilderFromCommandStringUsing(path)
 
           val arthur = "arthur.txt"
           Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")

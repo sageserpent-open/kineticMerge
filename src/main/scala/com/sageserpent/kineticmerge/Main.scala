@@ -15,11 +15,11 @@ import scala.sys.process.{Process, ProcessBuilder, stringToProcess}
 import scala.util.Try
 
 type ProcessBuilderFromCommandString = Conversion[String, ProcessBuilder]
-def processBuilderFromCommandString(
+def processBuilderFromCommandStringUsing(
     path: Path
 ): ProcessBuilderFromCommandString =
   (command: String) => Process(command, Some(path.toFile))
-end processBuilderFromCommandString
+end processBuilderFromCommandStringUsing
 
 object Main:
   private type WorkflowLog                = List[String]
