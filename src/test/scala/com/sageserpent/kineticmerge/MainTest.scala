@@ -450,4 +450,84 @@ class MainTest:
           .unsafeRunSync()
       }
   end conflictingAdditionOfTheSameFile
+
+  @TestFactory
+  def conflictingModificationAndDeletionOfTheSameFile(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(4)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory.foreach(subdirectory =>
+                Files.createDirectory(path.resolve(subdirectory))
+              )
+
+              given ProcessBuilderFromCommandString =
+                processBuilderFromCommandStringUsing(path)
+
+              val arthur = "arthur.txt"
+              Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
+              println(s"git add $arthur" !!)
+              println(s"git commit -m 'Introducing Arthur.'" !!)
+
+              val deletedFileBranch = "deletedFileBranch"
+
+              println(s"git checkout -b $deletedFileBranch" !!)
+
+              println(s"git rm $arthur" !!)
+              println(s"git commit -m 'Exeunt Arthur.'" !!)
+
+              val commitOfDeletedFileBranch =
+                (s"git log -1 --format=tformat:%H" !!).strip
+
+              println(s"git checkout $masterBranch" !!)
+
+              Files.writeString(
+                path.resolve(arthur),
+                "Pleased to see you, old boy.\n",
+                StandardOpenOption.APPEND
+              )
+              println(s"git commit -am 'Arthur continues...'" !!)
+
+              val commitOfMasterBranch =
+                (s"git log -1 --format=tformat:%H" !!).strip
+
+              if flipBranches then
+                println(s"git checkout $deletedFileBranch" !!)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then deletedFileBranch -> masterBranch
+                else masterBranch                      -> deletedFileBranch
+
+              val exitCode = Main.mergeTheirBranch(
+                theirBranch.taggedWith[Main.Tags.CommitOrBranchName]
+              )(workingDirectory =
+                optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
+              )
+
+              assert(exitCode == 1)
+
+              val branchName = ("git branch --show-current" !!).strip()
+
+              assert(branchName == ourBranch)
+
+              val postMergeCommit =
+                (s"git log -1 --format=tformat:%H" !!).strip
+
+              assert(
+                postMergeCommit == (if flipBranches then
+                                      commitOfDeletedFileBranch
+                                    else commitOfMasterBranch)
+              )
+
+              val status = (s"git status --short" !!).strip
+
+              assert(status.contains(arthur))
+            }
+          )
+          .unsafeRunSync()
+      }
+  end conflictingModificationAndDeletionOfTheSameFile
 end MainTest
