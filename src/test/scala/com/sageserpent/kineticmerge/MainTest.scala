@@ -3,6 +3,7 @@ package com.sageserpent.kineticmerge
 import cats.effect.unsafe.implicits.global
 import cats.effect.{IO, Resource}
 import com.sageserpent.americium.Trials
+import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.{DynamicTests, *}
 import com.sageserpent.kineticmerge.MainTest.{gitRepository, masterBranch, optionalSubdirectories}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
@@ -23,7 +24,7 @@ object MainTest:
   private val masterBranch = "master"
 
   private val optionalSubdirectories: Trials[Option[Path]] =
-    Trials.api.only("runMergeInHere").map(Path.of(_)).options
+    trialsApi.only("runMergeInHere").map(Path.of(_)).options
 
   private def gitRepository(): ImperativeResource[Path] =
     for
@@ -202,9 +203,9 @@ class MainTest:
 
   @TestFactory
   def cleanMergeBringingInANewFile(): DynamicTests =
-    optionalSubdirectories
-      .withLimit(2)
-      .dynamicTests(optionalSubdirectory =>
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(4)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
         gitRepository()
           .use(path =>
             IO {
@@ -244,8 +245,15 @@ class MainTest:
               val commitOfMasterBranch =
                 (s"git log -1 --format=tformat:%H" !!).strip
 
+              if flipBranches then println(s"git checkout $newFileBranch" !!)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then newFileBranch -> masterBranch
+                else masterBranch                  -> newFileBranch
+
               val exitCode = Main.mergeTheirBranch(
-                newFileBranch.taggedWith[Main.Tags.CommitOrBranchName]
+                theirBranch.taggedWith[Main.Tags.CommitOrBranchName]
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
@@ -254,21 +262,21 @@ class MainTest:
 
               val branchName = ("git branch --show-current" !!).strip()
 
-              assert(branchName == masterBranch)
+              assert(branchName == ourBranch)
 
-              val postMergeCommitOfMasterBranch =
+              val postMergeCommit =
                 (s"git log -1 --format=tformat:%H" !!).strip
 
-              assert(postMergeCommitOfMasterBranch != commitOfMasterBranch)
-              assert(postMergeCommitOfMasterBranch != commitOfNewFileBranch)
+              assert(postMergeCommit != commitOfMasterBranch)
+              assert(postMergeCommit != commitOfNewFileBranch)
 
               val commitOfMasterBranchIsAncestor =
-                (s"git merge-base --is-ancestor $commitOfMasterBranch $postMergeCommitOfMasterBranch" !) == 0
+                (s"git merge-base --is-ancestor $commitOfMasterBranch $postMergeCommit" !) == 0
 
               assert(commitOfMasterBranchIsAncestor)
 
               val commitOfNewFileBranchIsAncestor =
-                (s"git merge-base --is-ancestor $commitOfNewFileBranch $postMergeCommitOfMasterBranch" !) == 0
+                (s"git merge-base --is-ancestor $commitOfNewFileBranch $postMergeCommit" !) == 0
 
               assert(commitOfNewFileBranchIsAncestor)
 
@@ -278,14 +286,14 @@ class MainTest:
             }
           )
           .unsafeRunSync()
-      )
+      }
   end cleanMergeBringingInANewFile
 
   @TestFactory
   def cleanMergeDeletingAFile(): DynamicTests =
-    optionalSubdirectories
-      .withLimit(2)
-      .dynamicTests(optionalSubdirectory =>
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(4)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
         gitRepository()
           .use(path =>
             IO {
@@ -321,8 +329,16 @@ class MainTest:
               val commitOfMasterBranch =
                 (s"git log -1 --format=tformat:%H" !!).strip
 
+              if flipBranches then
+                println(s"git checkout $deletedFileBranch" !!)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then deletedFileBranch -> masterBranch
+                else masterBranch                      -> deletedFileBranch
+
               val exitCode = Main.mergeTheirBranch(
-                deletedFileBranch.taggedWith[Main.Tags.CommitOrBranchName]
+                theirBranch.taggedWith[Main.Tags.CommitOrBranchName]
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
@@ -331,21 +347,21 @@ class MainTest:
 
               val branchName = ("git branch --show-current" !!).strip()
 
-              assert(branchName == masterBranch)
+              assert(branchName == ourBranch)
 
-              val postMergeCommitOfMasterBranch =
+              val postMergeCommit =
                 (s"git log -1 --format=tformat:%H" !!).strip
 
-              assert(postMergeCommitOfMasterBranch != commitOfMasterBranch)
-              assert(postMergeCommitOfMasterBranch != commitOfDeletedFileBranch)
+              assert(postMergeCommit != commitOfMasterBranch)
+              assert(postMergeCommit != commitOfDeletedFileBranch)
 
               val commitOfMasterBranchIsAncestor =
-                (s"git merge-base --is-ancestor $commitOfMasterBranch $postMergeCommitOfMasterBranch" !) == 0
+                (s"git merge-base --is-ancestor $commitOfMasterBranch $postMergeCommit" !) == 0
 
               assert(commitOfMasterBranchIsAncestor)
 
               val commitOfNewFileBranchIsAncestor =
-                (s"git merge-base --is-ancestor $commitOfDeletedFileBranch $postMergeCommitOfMasterBranch" !) == 0
+                (s"git merge-base --is-ancestor $commitOfDeletedFileBranch $postMergeCommit" !) == 0
 
               assert(commitOfNewFileBranchIsAncestor)
 
@@ -355,6 +371,6 @@ class MainTest:
             }
           )
           .unsafeRunSync()
-      )
+      }
   end cleanMergeDeletingAFile
 end MainTest
