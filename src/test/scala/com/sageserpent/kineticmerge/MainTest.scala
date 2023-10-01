@@ -794,4 +794,113 @@ class MainTest:
           .unsafeRunSync()
       }
   end cleanMergeOfAFileDeletedInBothBranches
+
+  @TestFactory
+  def cleanMergeOfAFileModifiedInBothBranches(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(4)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory.foreach(subdirectory =>
+                Files.createDirectory(path.resolve(subdirectory))
+              )
+
+              given ProcessBuilderFromCommandString =
+                processBuilderFromCommandStringUsing(path)
+
+              val arthur = "arthur.txt"
+              Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
+              println(s"git add $arthur" !!)
+              println(s"git commit -m 'Introducing Arthur.'" !!)
+
+              val sandra = "sandra.txt"
+              Files.writeString(
+                path.resolve(sandra),
+                "Hiya - just gan yam now...\n"
+              )
+              println(s"git add $sandra" !!)
+              println(s"git commit -m 'Sandra stops by briefly...'" !!)
+
+              val concurrentlyModifiedFileBranch =
+                "concurrentlyModifiedFileBranch"
+
+              println(s"git checkout -b $concurrentlyModifiedFileBranch" !!)
+
+              val tyson = "tyson.txt"
+              Files.writeString(path.resolve(tyson), "Alright marra!\n")
+              println(s"git add $tyson" !!)
+              println(s"git commit -m 'Tyson responds.'" !!)
+
+              Files.writeString(
+                path.resolve(arthur),
+                "Hello, all and sundry!\n",
+                StandardOpenOption.TRUNCATE_EXISTING
+              )
+              println(s"git commit -am 'Arthur corrects himself.'" !!)
+
+              val commitOfConcurrentlyModifiedFileBranch =
+                (s"git log -1 --format=tformat:%H" !!).strip
+
+              println(s"git checkout $masterBranch" !!)
+
+              println(s"git rm $sandra" !!)
+              println(s"git commit -m 'Sandra heads off home.'" !!)
+
+              Files.writeString(
+                path.resolve(arthur),
+                "Pleased to see you, old boy.\n",
+                StandardOpenOption.APPEND
+              )
+              println(s"git commit -am 'Arthur continues...'" !!)
+
+              val commitOfMasterBranch =
+                (s"git log -1 --format=tformat:%H" !!).strip
+
+              if flipBranches then
+                println(s"git checkout $concurrentlyModifiedFileBranch" !!)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then
+                  concurrentlyModifiedFileBranch -> masterBranch
+                else masterBranch -> concurrentlyModifiedFileBranch
+
+              val exitCode = Main.mergeTheirBranch(
+                theirBranch.taggedWith[Main.Tags.CommitOrBranchName]
+              )(workingDirectory =
+                optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
+              )
+
+              assert(exitCode == 0)
+
+              val branchName = ("git branch --show-current" !!).strip()
+
+              assert(branchName == ourBranch)
+
+              val postMergeCommit =
+                (s"git log -1 --format=tformat:%H" !!).strip
+
+              assert(postMergeCommit != commitOfMasterBranch)
+              assert(postMergeCommit != commitOfConcurrentlyModifiedFileBranch)
+
+              val commitOfMasterBranchIsAncestor =
+                (s"git merge-base --is-ancestor $commitOfMasterBranch $postMergeCommit" !) == 0
+
+              assert(commitOfMasterBranchIsAncestor)
+
+              val commitOfNewFileBranchIsAncestor =
+                (s"git merge-base --is-ancestor $commitOfConcurrentlyModifiedFileBranch $postMergeCommit" !) == 0
+
+              assert(commitOfNewFileBranchIsAncestor)
+
+              val status = (s"git status --short" !!).strip
+
+              assert(status.isEmpty)
+            }
+          )
+          .unsafeRunSync()
+      }
+  end cleanMergeOfAFileModifiedInBothBranches
 end MainTest
