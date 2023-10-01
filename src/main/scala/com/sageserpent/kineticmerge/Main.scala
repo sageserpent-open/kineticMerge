@@ -11,12 +11,17 @@ import java.io.{ByteArrayInputStream, File}
 import java.nio.charset.StandardCharsets
 import java.nio.file.{CopyOption, Files, Path, StandardCopyOption}
 import scala.language.postfixOps
-import scala.sys.process.{ProcessBuilder, stringToProcess}
+import scala.sys.process.{Process, ProcessBuilder, stringToProcess}
 import scala.util.Try
 
-object Main:
-  type ProcessBuilderFromCommandString = Conversion[String, ProcessBuilder]
+type ProcessBuilderFromCommandString = Conversion[String, ProcessBuilder]
+def processBuilderFromCommandString(
+    path: Path
+): ProcessBuilderFromCommandString =
+  (command: String) => Process(command, Some(path.toFile))
+end processBuilderFromCommandString
 
+object Main:
   private type WorkflowLog                = List[String]
   private type WorkflowLogWriter[Payload] = Writer[WorkflowLog, Payload]
   private type Workflow[Payload] =

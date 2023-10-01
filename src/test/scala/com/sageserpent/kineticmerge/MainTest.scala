@@ -2,8 +2,7 @@ package com.sageserpent.kineticmerge
 
 import cats.effect.unsafe.implicits.global
 import cats.effect.{IO, Resource}
-import com.sageserpent.kineticmerge.Main.ProcessBuilderFromCommandString
-import com.sageserpent.kineticmerge.MainTest.{gitRepository, masterBranch, processFromCommandString}
+import com.sageserpent.kineticmerge.MainTest.{gitRepository, masterBranch}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.softwaremill.tagging.*
 import org.junit.jupiter.api.{BeforeEach, Test}
@@ -60,7 +59,7 @@ object MainTest:
         }
       )
 
-      given ProcessBuilderFromCommandString = processFromCommandString(
+      given ProcessBuilderFromCommandString = processBuilderFromCommandString(
         temporaryDirectory
       )
 
@@ -69,12 +68,6 @@ object MainTest:
     yield temporaryDirectory
     end for
   end gitRepository
-
-  private def processFromCommandString(
-      path: Path
-  ): ProcessBuilderFromCommandString =
-    (command: String) => Process(command, Some(path.toFile))
-  end processFromCommandString
 
 end MainTest
 
@@ -85,7 +78,7 @@ class MainTest:
       .use(path =>
         IO {
           given ProcessBuilderFromCommandString =
-            processFromCommandString(path)
+            processBuilderFromCommandString(path)
 
           val arthur = "arthur.txt"
           Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
@@ -134,7 +127,8 @@ class MainTest:
     gitRepository()
       .use(path =>
         IO {
-          given ProcessBuilderFromCommandString = processFromCommandString(path)
+          given ProcessBuilderFromCommandString =
+            processBuilderFromCommandString(path)
 
           val arthur = "arthur.txt"
           Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
@@ -185,7 +179,8 @@ class MainTest:
     gitRepository()
       .use(path =>
         IO {
-          given ProcessBuilderFromCommandString = processFromCommandString(path)
+          given ProcessBuilderFromCommandString =
+            processBuilderFromCommandString(path)
 
           val arthur = "arthur.txt"
           Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
