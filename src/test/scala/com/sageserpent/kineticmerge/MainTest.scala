@@ -394,6 +394,14 @@ class MainTest:
               println(s"git add $arthur" !!)
               println(s"git commit -m 'Introducing Arthur.'" !!)
 
+              val sandra = "sandra.txt"
+              Files.writeString(
+                path.resolve(sandra),
+                "Hiya - just gan yam now...\n"
+              )
+              println(s"git add $sandra" !!)
+              println(s"git commit -m 'Sandra stops by briefly...'" !!)
+
               val evilTwinBranch = "evilTwin"
 
               println(s"git checkout -b $evilTwinBranch" !!)
@@ -407,6 +415,9 @@ class MainTest:
                 (s"git log -1 --format=tformat:%H" !!).strip
 
               println(s"git checkout $masterBranch" !!)
+
+              println(s"git rm $sandra" !!)
+              println(s"git commit -m 'Sandra heads off home.'" !!)
 
               Files.writeString(path.resolve(tyson), "Alright marra!\n")
               println(s"git add $tyson" !!)
@@ -445,6 +456,10 @@ class MainTest:
               val status = (s"git status --short" !!).strip
 
               assert(s"AA\\s+$tyson".r.findFirstIn(status).isDefined)
+              if flipBranches then
+                assert(s"D\\s+$sandra".r.findFirstIn(status).isDefined)
+              else assert(!status.contains(sandra))
+              end if
               assert(!status.contains(arthur))
             }
           )
@@ -472,6 +487,14 @@ class MainTest:
               println(s"git add $arthur" !!)
               println(s"git commit -m 'Introducing Arthur.'" !!)
 
+              val sandra = "sandra.txt"
+              Files.writeString(
+                path.resolve(sandra),
+                "Hiya - just gan yam now...\n"
+              )
+              println(s"git add $sandra" !!)
+              println(s"git commit -m 'Sandra stops by briefly...'" !!)
+
               val deletedFileBranch = "deletedFileBranch"
 
               println(s"git checkout -b $deletedFileBranch" !!)
@@ -488,6 +511,9 @@ class MainTest:
                 (s"git log -1 --format=tformat:%H" !!).strip
 
               println(s"git checkout $masterBranch" !!)
+
+              println(s"git rm $sandra" !!)
+              println(s"git commit -m 'Sandra heads off home.'" !!)
 
               Files.writeString(
                 path.resolve(arthur),
@@ -535,8 +561,12 @@ class MainTest:
                   .findFirstIn(status)
                   .isDefined
               )
-              if flipBranches then assert(!status.contains(tyson))
-              else assert(s"A\\s+$tyson.*".r.findFirstIn(status).isDefined)
+              if flipBranches then
+                assert(s"D\\s+$sandra".r.findFirstIn(status).isDefined)
+                assert(!status.contains(tyson))
+              else
+                assert(!status.contains(sandra))
+                assert(s"A\\s+$tyson.*".r.findFirstIn(status).isDefined)
               end if
             }
           )
@@ -564,6 +594,14 @@ class MainTest:
               println(s"git add $arthur" !!)
               println(s"git commit -m 'Introducing Arthur.'" !!)
 
+              val sandra = "sandra.txt"
+              Files.writeString(
+                path.resolve(sandra),
+                "Hiya - just gan yam now...\n"
+              )
+              println(s"git add $sandra" !!)
+              println(s"git commit -m 'Sandra stops by briefly...'" !!)
+
               val concurrentlyModifiedFileBranch =
                 "concurrentlyModifiedFileBranch"
 
@@ -585,6 +623,9 @@ class MainTest:
                 (s"git log -1 --format=tformat:%H" !!).strip
 
               println(s"git checkout $masterBranch" !!)
+
+              println(s"git rm $sandra" !!)
+              println(s"git commit -m 'Sandra heads off home.'" !!)
 
               Files.writeString(
                 path.resolve(arthur),
@@ -631,8 +672,12 @@ class MainTest:
               assert(
                 s"UU\\s+$arthur".r.findFirstIn(status).isDefined
               )
-              if flipBranches then assert(!status.contains(tyson))
-              else assert(s"A\\s+$tyson.*".r.findFirstIn(status).isDefined)
+              if flipBranches then
+                assert(s"D\\s+$sandra".r.findFirstIn(status).isDefined)
+                assert(!status.contains(tyson))
+              else
+                assert(!status.contains(sandra))
+                assert(s"A\\s+$tyson.*".r.findFirstIn(status).isDefined)
               end if
             }
           )
@@ -660,6 +705,14 @@ class MainTest:
               println(s"git add $arthur" !!)
               println(s"git commit -m 'Introducing Arthur.'" !!)
 
+              val sandra = "sandra.txt"
+              Files.writeString(
+                path.resolve(sandra),
+                "Hiya - just gan yam now...\n"
+              )
+              println(s"git add $sandra" !!)
+              println(s"git commit -m 'Sandra stops by briefly...'" !!)
+
               val concurrentlyDeletedFileBranch =
                 "concurrentlyDeletedFileBranch"
 
@@ -677,6 +730,9 @@ class MainTest:
                 (s"git log -1 --format=tformat:%H" !!).strip
 
               println(s"git checkout $masterBranch" !!)
+
+              println(s"git rm $sandra" !!)
+              println(s"git commit -m 'Sandra heads off home.'" !!)
 
               Files.writeString(
                 path.resolve(arthur),
