@@ -543,4 +543,100 @@ class MainTest:
           .unsafeRunSync()
       }
   end conflictingModificationAndDeletionOfTheSameFile
+
+  @TestFactory
+  def conflictingModificationOfTheSameFile(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(4)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory.foreach(subdirectory =>
+                Files.createDirectory(path.resolve(subdirectory))
+              )
+
+              given ProcessBuilderFromCommandString =
+                processBuilderFromCommandStringUsing(path)
+
+              val arthur = "arthur.txt"
+              Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
+              println(s"git add $arthur" !!)
+              println(s"git commit -m 'Introducing Arthur.'" !!)
+
+              val concurrentlyModifiedFileBranch =
+                "concurrentlyModifiedFileBranch"
+
+              println(s"git checkout -b $concurrentlyModifiedFileBranch" !!)
+
+              val tyson = "tyson.txt"
+              Files.writeString(path.resolve(tyson), "Alright marra!\n")
+              println(s"git add $tyson" !!)
+              println(s"git commit -m 'Tyson responds.'" !!)
+
+              Files.writeString(
+                path.resolve(arthur),
+                "Pleased to see you, old chap.\n",
+                StandardOpenOption.APPEND
+              )
+              println(s"git commit -am 'Arthur elaborates.'" !!)
+
+              val commitOfConcurrentlyModifiedFileBranch =
+                (s"git log -1 --format=tformat:%H" !!).strip
+
+              println(s"git checkout $masterBranch" !!)
+
+              Files.writeString(
+                path.resolve(arthur),
+                "Pleased to see you, old boy.\n",
+                StandardOpenOption.APPEND
+              )
+              println(s"git commit -am 'Arthur continues...'" !!)
+
+              val commitOfMasterBranch =
+                (s"git log -1 --format=tformat:%H" !!).strip
+
+              if flipBranches then
+                println(s"git checkout $concurrentlyModifiedFileBranch" !!)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then
+                  concurrentlyModifiedFileBranch -> masterBranch
+                else masterBranch -> concurrentlyModifiedFileBranch
+
+              val exitCode = Main.mergeTheirBranch(
+                theirBranch.taggedWith[Main.Tags.CommitOrBranchName]
+              )(workingDirectory =
+                optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
+              )
+
+              assert(exitCode == 1)
+
+              val branchName = ("git branch --show-current" !!).strip()
+
+              assert(branchName == ourBranch)
+
+              val postMergeCommit =
+                (s"git log -1 --format=tformat:%H" !!).strip
+
+              assert(
+                postMergeCommit == (if flipBranches then
+                                      commitOfConcurrentlyModifiedFileBranch
+                                    else commitOfMasterBranch)
+              )
+
+              val status = (s"git status --short" !!).strip
+
+              assert(
+                s"UU\\s+$arthur".r.findFirstIn(status).isDefined
+              )
+              if flipBranches then assert(!status.contains(tyson))
+              else assert(s"A\\s+$tyson.*".r.findFirstIn(status).isDefined)
+              end if
+            }
+          )
+          .unsafeRunSync()
+      }
+  end conflictingModificationOfTheSameFile
 end MainTest
