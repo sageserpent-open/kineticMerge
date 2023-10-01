@@ -444,7 +444,8 @@ class MainTest:
 
               val status = (s"git status --short" !!).strip
 
-              assert(status.contains(tyson))
+              assert(s"AA\\s+$tyson".r.findFirstIn(status).isDefined)
+              assert(!status.contains(arthur))
             }
           )
           .unsafeRunSync()
@@ -474,6 +475,11 @@ class MainTest:
               val deletedFileBranch = "deletedFileBranch"
 
               println(s"git checkout -b $deletedFileBranch" !!)
+
+              val tyson = "tyson.txt"
+              Files.writeString(path.resolve(tyson), "Alright marra!\n")
+              println(s"git add $tyson" !!)
+              println(s"git commit -m 'Tyson responds.'" !!)
 
               println(s"git rm $arthur" !!)
               println(s"git commit -m 'Exeunt Arthur.'" !!)
@@ -524,7 +530,14 @@ class MainTest:
 
               val status = (s"git status --short" !!).strip
 
-              assert(status.contains(arthur))
+              assert(
+                s"${if flipBranches then "DU" else "UD"}\\s+$arthur".r
+                  .findFirstIn(status)
+                  .isDefined
+              )
+              if flipBranches then assert(!status.contains(tyson))
+              else assert(s"A\\s+$tyson.*".r.findFirstIn(status).isDefined)
+              end if
             }
           )
           .unsafeRunSync()
