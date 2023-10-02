@@ -287,10 +287,11 @@ object Main:
                   s"Unexpected error: could not write a tree object from the index."
                 )
               commitId <- IO {
-                val message =
-                  s"Merge from ${underline(theirBranchHead)} into ${underline(ourBranchHead)}."
+                val commitMessage =
+                  // No underlining here, please...
+                  s"Merge from $theirBranchHead into $ourBranchHead."
 
-                (s"git commit-tree -p $ourBranchHead -p $theirBranchHead -m '$message' $treeId" !!).strip()
+                (s"git commit-tree -p $ourBranchHead -p $theirBranchHead -m '$commitMessage' $treeId" !!).strip()
               }.labelExceptionWith(errorMessage =
                 s"Unexpected error: could not create a commit from tree object ${underline(treeId)}"
               )
