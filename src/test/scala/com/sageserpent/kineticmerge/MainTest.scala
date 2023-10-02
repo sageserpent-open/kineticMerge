@@ -157,6 +157,27 @@ object MainTest:
   private def sandraIsMarkedAsDeletedInTheIndex(status: String): Unit =
     assert(s"D\\s+$sandra".r.findFirstIn(status).isDefined)
 
+  private def verifyTrivialMergeMovesToTheMostAdvancedCommitLeavesWithACleanIndex(
+      commitOfAdvancedBranch: String,
+      ourBranch: String,
+      exitCode: Int @@ Main.Tags.ExitCode
+  )(using ProcessBuilderFromCommandString): Unit =
+    assert(exitCode == 0)
+
+    val branchName = ("git branch --show-current" !!).strip()
+
+    assert(branchName == ourBranch)
+
+    val postMergeCommitOfAdvancedBranch =
+      (s"git log -1 --format=tformat:%H" !!).strip
+
+    assert(postMergeCommitOfAdvancedBranch == commitOfAdvancedBranch)
+
+    val status = (s"git status --short" !!).strip
+
+    assert(status.isEmpty)
+  end verifyTrivialMergeMovesToTheMostAdvancedCommitLeavesWithACleanIndex
+
   private def verifyMergeMakesANewCommitWithACleanIndex(
       commitOfConcurrentlyModifiedFileBranch: String,
       commitOfMasterBranch: String,
@@ -266,10 +287,10 @@ end MainTest
 
 class MainTest:
   @TestFactory
-  def noOperationMerge(): DynamicTests =
-    optionalSubdirectories
-      .withLimit(2)
-      .dynamicTests(optionalSubdirectory =>
+  def trivialMerge(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(4)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
         gitRepository()
           .use(path =>
             IO {
@@ -291,85 +312,29 @@ class MainTest:
               val commitOfAdvancedBranch =
                 (s"git log -1 --format=tformat:%H" !!).strip
 
+              if flipBranches then println(s"git checkout $masterBranch" !!)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then masterBranch -> advancedBranch
+                else advancedBranch               -> masterBranch
+
               val exitCode = Main.mergeTheirBranch(
-                masterBranch.taggedWith[Tags.CommitOrBranchName]
+                theirBranch.taggedWith[Tags.CommitOrBranchName]
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
 
-              assert(exitCode == 0)
-
-              val branchName = ("git branch --show-current" !!).strip()
-
-              assert(branchName == advancedBranch)
-
-              val postMergeCommitOfAdvancedBranch =
-                (s"git log -1 --format=tformat:%H" !!).strip
-
-              assert(postMergeCommitOfAdvancedBranch == commitOfAdvancedBranch)
-
-              val status = (s"git status --short" !!).strip
-
-              assert(status.isEmpty)
+              verifyTrivialMergeMovesToTheMostAdvancedCommitLeavesWithACleanIndex(
+                commitOfAdvancedBranch,
+                ourBranch,
+                exitCode
+              )
             }
           )
           .unsafeRunSync()
-      )
-  end noOperationMerge
-
-  @TestFactory
-  def fastForwardMerge(): DynamicTests =
-    optionalSubdirectories
-      .withLimit(2)
-      .dynamicTests(optionalSubdirectory =>
-        gitRepository()
-          .use(path =>
-            IO {
-              optionalSubdirectory.foreach(subdirectory =>
-                Files.createDirectory(path.resolve(subdirectory))
-              )
-
-              given ProcessBuilderFromCommandString =
-                processBuilderFromCommandStringUsing(path)
-
-              introducingArthur(path)
-
-              val advancedBranch = "advancedBranch"
-
-              println(s"git checkout -b $advancedBranch" !!)
-
-              arthurContinues(path)
-
-              val commitOfAdvancedBranch =
-                (s"git log -1 --format=tformat:%H" !!).strip
-
-              println(s"git checkout $masterBranch" !!)
-
-              val exitCode = Main.mergeTheirBranch(
-                advancedBranch.taggedWith[Tags.CommitOrBranchName]
-              )(workingDirectory =
-                optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
-              )
-
-              assert(exitCode == 0)
-
-              val branchName = ("git branch --show-current" !!).strip()
-
-              assert(branchName == masterBranch)
-
-              val postMergeCommitOfMasterBranch =
-                (s"git log -1 --format=tformat:%H" !!).strip
-
-              assert(postMergeCommitOfMasterBranch == commitOfAdvancedBranch)
-
-              val status = (s"git status --short" !!).strip
-
-              assert(status.isEmpty)
-            }
-          )
-          .unsafeRunSync()
-      )
-  end fastForwardMerge
+      }
+  end trivialMerge
 
   @TestFactory
   def cleanMergeBringingInANewFile(): DynamicTests =
