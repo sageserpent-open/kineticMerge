@@ -157,6 +157,61 @@ object MainTest:
   private def sandraIsMarkedAsDeletedInTheIndex(status: String): Unit =
     assert(s"D\\s+$sandra".r.findFirstIn(status).isDefined)
 
+  private def verifyMergeMakesANewCommitWithACleanIndex(
+      commitOfConcurrentlyModifiedFileBranch: String,
+      commitOfMasterBranch: String,
+      ourBranch: String,
+      exitCode: Int @@ Main.Tags.ExitCode
+  )(using ProcessBuilderFromCommandString): Unit =
+    assert(exitCode == 0)
+
+    val branchName = ("git branch --show-current" !!).strip()
+
+    assert(branchName == ourBranch)
+
+    val postMergeCommit =
+      (s"git log -1 --format=tformat:%H" !!).strip
+
+    assert(postMergeCommit != commitOfMasterBranch)
+    assert(postMergeCommit != commitOfConcurrentlyModifiedFileBranch)
+
+    val commitOfMasterBranchIsAncestor =
+      (s"git merge-base --is-ancestor $commitOfMasterBranch $postMergeCommit" !) == 0
+
+    assert(commitOfMasterBranchIsAncestor)
+
+    val commitOfNewFileBranchIsAncestor =
+      (s"git merge-base --is-ancestor $commitOfConcurrentlyModifiedFileBranch $postMergeCommit" !) == 0
+
+    assert(commitOfNewFileBranchIsAncestor)
+
+    val status = (s"git status --short" !!).strip
+
+    assert(status.isEmpty)
+  end verifyMergeMakesANewCommitWithACleanIndex
+
+  private def verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+      flipBranches: Boolean,
+      commitOfDeletedFileBranch: String,
+      commitOfMasterBranch: String,
+      ourBranch: String,
+      exitCode: Int @@ Main.Tags.ExitCode
+  )(using ProcessBuilderFromCommandString): Unit =
+    assert(exitCode == 1)
+
+    val branchName = ("git branch --show-current" !!).strip()
+
+    assert(branchName == ourBranch)
+
+    val postMergeCommit =
+      (s"git log -1 --format=tformat:%H" !!).strip
+
+    assert(
+      postMergeCommit == (if flipBranches then commitOfDeletedFileBranch
+                          else commitOfMasterBranch)
+    )
+  end verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex
+
   private def gitRepository(): ImperativeResource[Path] =
     for
       temporaryDirectory <- Resource.make(IO {
@@ -362,31 +417,12 @@ class MainTest:
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
 
-              assert(exitCode == 0)
-
-              val branchName = ("git branch --show-current" !!).strip()
-
-              assert(branchName == ourBranch)
-
-              val postMergeCommit =
-                (s"git log -1 --format=tformat:%H" !!).strip
-
-              assert(postMergeCommit != commitOfMasterBranch)
-              assert(postMergeCommit != commitOfNewFileBranch)
-
-              val commitOfMasterBranchIsAncestor =
-                (s"git merge-base --is-ancestor $commitOfMasterBranch $postMergeCommit" !) == 0
-
-              assert(commitOfMasterBranchIsAncestor)
-
-              val commitOfNewFileBranchIsAncestor =
-                (s"git merge-base --is-ancestor $commitOfNewFileBranch $postMergeCommit" !) == 0
-
-              assert(commitOfNewFileBranchIsAncestor)
-
-              val status = (s"git status --short" !!).strip
-
-              assert(status.isEmpty)
+              verifyMergeMakesANewCommitWithACleanIndex(
+                commitOfNewFileBranch,
+                commitOfMasterBranch,
+                ourBranch,
+                exitCode
+              )
             }
           )
           .unsafeRunSync()
@@ -440,31 +476,12 @@ class MainTest:
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
 
-              assert(exitCode == 0)
-
-              val branchName = ("git branch --show-current" !!).strip()
-
-              assert(branchName == ourBranch)
-
-              val postMergeCommit =
-                (s"git log -1 --format=tformat:%H" !!).strip
-
-              assert(postMergeCommit != commitOfMasterBranch)
-              assert(postMergeCommit != commitOfDeletedFileBranch)
-
-              val commitOfMasterBranchIsAncestor =
-                (s"git merge-base --is-ancestor $commitOfMasterBranch $postMergeCommit" !) == 0
-
-              assert(commitOfMasterBranchIsAncestor)
-
-              val commitOfNewFileBranchIsAncestor =
-                (s"git merge-base --is-ancestor $commitOfDeletedFileBranch $postMergeCommit" !) == 0
-
-              assert(commitOfNewFileBranchIsAncestor)
-
-              val status = (s"git status --short" !!).strip
-
-              assert(status.isEmpty)
+              verifyMergeMakesANewCommitWithACleanIndex(
+                commitOfDeletedFileBranch,
+                commitOfMasterBranch,
+                ourBranch,
+                exitCode
+              )
             }
           )
           .unsafeRunSync()
@@ -521,18 +538,12 @@ class MainTest:
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
 
-              assert(exitCode == 1)
-
-              val branchName = ("git branch --show-current" !!).strip()
-
-              assert(branchName == ourBranch)
-
-              val postMergeCommit =
-                (s"git log -1 --format=tformat:%H" !!).strip
-
-              assert(
-                postMergeCommit == (if flipBranches then commitOfEvilTwinBranch
-                                    else commitOfMasterBranch)
+              verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                flipBranches,
+                commitOfEvilTwinBranch,
+                commitOfMasterBranch,
+                ourBranch,
+                exitCode
               )
 
               val status = (s"git status --short" !!).strip
@@ -603,19 +614,12 @@ class MainTest:
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
 
-              assert(exitCode == 1)
-
-              val branchName = ("git branch --show-current" !!).strip()
-
-              assert(branchName == ourBranch)
-
-              val postMergeCommit =
-                (s"git log -1 --format=tformat:%H" !!).strip
-
-              assert(
-                postMergeCommit == (if flipBranches then
-                                      commitOfDeletedFileBranch
-                                    else commitOfMasterBranch)
+              verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                flipBranches,
+                commitOfDeletedFileBranch,
+                commitOfMasterBranch,
+                ourBranch,
+                exitCode
               )
 
               val status = (s"git status --short" !!).strip
@@ -693,19 +697,12 @@ class MainTest:
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
 
-              assert(exitCode == 1)
-
-              val branchName = ("git branch --show-current" !!).strip()
-
-              assert(branchName == ourBranch)
-
-              val postMergeCommit =
-                (s"git log -1 --format=tformat:%H" !!).strip
-
-              assert(
-                postMergeCommit == (if flipBranches then
-                                      commitOfConcurrentlyModifiedFileBranch
-                                    else commitOfMasterBranch)
+              verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                flipBranches,
+                commitOfConcurrentlyModifiedFileBranch,
+                commitOfMasterBranch,
+                ourBranch,
+                exitCode
               )
 
               val status = (s"git status --short" !!).strip
@@ -784,31 +781,12 @@ class MainTest:
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
 
-              assert(exitCode == 0)
-
-              val branchName = ("git branch --show-current" !!).strip()
-
-              assert(branchName == ourBranch)
-
-              val postMergeCommit =
-                (s"git log -1 --format=tformat:%H" !!).strip
-
-              assert(postMergeCommit != commitOfMasterBranch)
-              assert(postMergeCommit != commitOfConcurrentlyDeletedFileBranch)
-
-              val commitOfMasterBranchIsAncestor =
-                (s"git merge-base --is-ancestor $commitOfMasterBranch $postMergeCommit" !) == 0
-
-              assert(commitOfMasterBranchIsAncestor)
-
-              val commitOfNewFileBranchIsAncestor =
-                (s"git merge-base --is-ancestor $commitOfConcurrentlyDeletedFileBranch $postMergeCommit" !) == 0
-
-              assert(commitOfNewFileBranchIsAncestor)
-
-              val status = (s"git status --short" !!).strip
-
-              assert(status.isEmpty)
+              verifyMergeMakesANewCommitWithACleanIndex(
+                commitOfConcurrentlyDeletedFileBranch,
+                commitOfMasterBranch,
+                ourBranch,
+                exitCode
+              )
             }
           )
           .unsafeRunSync()
@@ -870,31 +848,12 @@ class MainTest:
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
 
-              assert(exitCode == 0)
-
-              val branchName = ("git branch --show-current" !!).strip()
-
-              assert(branchName == ourBranch)
-
-              val postMergeCommit =
-                (s"git log -1 --format=tformat:%H" !!).strip
-
-              assert(postMergeCommit != commitOfMasterBranch)
-              assert(postMergeCommit != commitOfConcurrentlyModifiedFileBranch)
-
-              val commitOfMasterBranchIsAncestor =
-                (s"git merge-base --is-ancestor $commitOfMasterBranch $postMergeCommit" !) == 0
-
-              assert(commitOfMasterBranchIsAncestor)
-
-              val commitOfNewFileBranchIsAncestor =
-                (s"git merge-base --is-ancestor $commitOfConcurrentlyModifiedFileBranch $postMergeCommit" !) == 0
-
-              assert(commitOfNewFileBranchIsAncestor)
-
-              val status = (s"git status --short" !!).strip
-
-              assert(status.isEmpty)
+              verifyMergeMakesANewCommitWithACleanIndex(
+                commitOfConcurrentlyModifiedFileBranch,
+                commitOfMasterBranch,
+                ourBranch,
+                exitCode
+              )
             }
           )
           .unsafeRunSync()
