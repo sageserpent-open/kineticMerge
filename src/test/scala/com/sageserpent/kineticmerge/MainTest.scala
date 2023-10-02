@@ -120,6 +120,43 @@ object MainTest:
     println(s"git commit -m 'Sandra stops by briefly...'" !!)
   end sandraStopsByBriefly
 
+  private def noUpdatesInIndexForArthur(status: String): Unit =
+    assert(!status.contains(arthur))
+
+  private def arthurIsMarkedWithConflictingUpdatesInTheIndex(
+      status: String
+  ): Unit =
+    assert(
+      s"UU\\s+$arthur".r.findFirstIn(status).isDefined
+    )
+
+  private def arthurIsMarkedWithConflictingDeletionAndUpdateInTheIndex(
+      flipBranches: Boolean,
+      status: String
+  ): Unit =
+    assert(
+      s"${if flipBranches then "DU" else "UD"}\\s+$arthur".r
+        .findFirstIn(status)
+        .isDefined
+    )
+
+  private def noUpdatesInIndexForTyson(status: String): Unit =
+    assert(!status.contains(tyson))
+
+  private def tysonIsMarkedAsAddedInTheIndex(status: String): Unit =
+    assert(s"A\\s+$tyson.*".r.findFirstIn(status).isDefined)
+
+  private def tysonIsMarkedWithConflictingAddiitonsInTheIndex(
+      status: String
+  ): Unit =
+    assert(s"AA\\s+$tyson".r.findFirstIn(status).isDefined)
+
+  private def noUpdatesInIndexForSandra(status: String): Unit =
+    assert(!status.contains(sandra))
+
+  private def sandraIsMarkedAsDeletedInTheIndex(status: String): Unit =
+    assert(s"D\\s+$sandra".r.findFirstIn(status).isDefined)
+
   private def gitRepository(): ImperativeResource[Path] =
     for
       temporaryDirectory <- Resource.make(IO {
@@ -500,12 +537,13 @@ class MainTest:
 
               val status = (s"git status --short" !!).strip
 
-              assert(s"AA\\s+$tyson".r.findFirstIn(status).isDefined)
-              if flipBranches then
-                assert(s"D\\s+$sandra".r.findFirstIn(status).isDefined)
-              else assert(!status.contains(sandra))
+              noUpdatesInIndexForArthur(status)
+
+              tysonIsMarkedWithConflictingAddiitonsInTheIndex(status)
+
+              if flipBranches then sandraIsMarkedAsDeletedInTheIndex(status)
+              else noUpdatesInIndexForSandra(status)
               end if
-              assert(!status.contains(arthur))
             }
           )
           .unsafeRunSync()
@@ -582,17 +620,17 @@ class MainTest:
 
               val status = (s"git status --short" !!).strip
 
-              assert(
-                s"${if flipBranches then "DU" else "UD"}\\s+$arthur".r
-                  .findFirstIn(status)
-                  .isDefined
+              arthurIsMarkedWithConflictingDeletionAndUpdateInTheIndex(
+                flipBranches,
+                status
               )
+
               if flipBranches then
-                assert(s"D\\s+$sandra".r.findFirstIn(status).isDefined)
-                assert(!status.contains(tyson))
+                sandraIsMarkedAsDeletedInTheIndex(status)
+                noUpdatesInIndexForTyson(status)
               else
-                assert(!status.contains(sandra))
-                assert(s"A\\s+$tyson.*".r.findFirstIn(status).isDefined)
+                noUpdatesInIndexForSandra(status)
+                tysonIsMarkedAsAddedInTheIndex(status)
               end if
             }
           )
@@ -672,15 +710,14 @@ class MainTest:
 
               val status = (s"git status --short" !!).strip
 
-              assert(
-                s"UU\\s+$arthur".r.findFirstIn(status).isDefined
-              )
+              arthurIsMarkedWithConflictingUpdatesInTheIndex(status)
+
               if flipBranches then
-                assert(s"D\\s+$sandra".r.findFirstIn(status).isDefined)
-                assert(!status.contains(tyson))
+                sandraIsMarkedAsDeletedInTheIndex(status)
+                noUpdatesInIndexForTyson(status)
               else
-                assert(!status.contains(sandra))
-                assert(s"A\\s+$tyson.*".r.findFirstIn(status).isDefined)
+                noUpdatesInIndexForSandra(status)
+                tysonIsMarkedAsAddedInTheIndex(status)
               end if
             }
           )
