@@ -5,7 +5,8 @@ import cats.effect.{IO, Resource}
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.{DynamicTests, *}
-import com.sageserpent.kineticmerge.MainTest.{gitRepository, masterBranch, optionalSubdirectories}
+import com.sageserpent.kineticmerge.Main.Tags
+import com.sageserpent.kineticmerge.MainTest.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.softwaremill.tagging.*
 import org.junit.jupiter.api.{BeforeEach, DynamicTest, Test, TestFactory}
@@ -23,8 +24,101 @@ object MainTest:
 
   private val masterBranch = "master"
 
+  private val arthur = "arthur.txt"
+
+  private val sandra = "sandra.txt"
+
+  private val tyson = "tyson.txt"
+
   private val optionalSubdirectories: Trials[Option[Path]] =
     trialsApi.only("runMergeInHere").map(Path.of(_)).options
+
+  private def introducingArthur(path: Path)(using
+      ProcessBuilderFromCommandString
+  ): Unit =
+    Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
+    println(s"git add $arthur" !!)
+    println(s"git commit -m 'Introducing Arthur.'" !!)
+  end introducingArthur
+
+  private def arthurContinues(path: Path)(using
+      ProcessBuilderFromCommandString
+  ): Unit =
+    Files.writeString(
+      path.resolve(arthur),
+      "Pleased to see you, old boy.\n",
+      StandardOpenOption.APPEND
+    )
+    println(s"git commit -am 'Arthur continues...'" !!)
+  end arthurContinues
+
+  private def arthurElaborates(path: Path)(using
+      ProcessBuilderFromCommandString
+  ): Unit =
+    Files.writeString(
+      path.resolve(arthur),
+      "Pleased to see you, old chap.\n",
+      StandardOpenOption.APPEND
+    )
+    println(s"git commit -am 'Arthur elaborates.'" !!)
+  end arthurElaborates
+
+  private def arthurCorrectHimself(path: Path)(using
+      ProcessBuilderFromCommandString
+  ): Unit =
+    Files.writeString(
+      path.resolve(arthur),
+      "Hello, all and sundry!\n",
+      StandardOpenOption.TRUNCATE_EXISTING
+    )
+    println(s"git commit -am 'Arthur corrects himself.'" !!)
+  end arthurCorrectHimself
+
+  private def exeuntArthur()(using ProcessBuilderFromCommandString): Unit =
+    println(s"git rm $arthur" !!)
+    println(s"git commit -m 'Exeunt Arthur.'" !!)
+  end exeuntArthur
+
+  private def arthurExcusesHimself()(using
+      ProcessBuilderFromCommandString
+  ): Unit =
+    println(s"git rm $arthur" !!)
+    println(s"git commit -m 'Arthur excuses himself.'" !!)
+  end arthurExcusesHimself
+
+  private def enterTysonStageLeft(path: Path)(using
+      ProcessBuilderFromCommandString
+  ): Unit =
+    Files.writeString(path.resolve(tyson), "Alright marra!\n")
+    println(s"git add $tyson" !!)
+    println(s"git commit -m 'Tyson responds.'" !!)
+  end enterTysonStageLeft
+
+  private def evilTysonMakesDramaticEntranceExulting(path: Path)(using
+      ProcessBuilderFromCommandString
+  ): Unit =
+    Files.writeString(path.resolve(tyson), "Ha, ha, ha, ha, hah!\n")
+    println(s"git add $tyson" !!)
+    println(s"git commit -m 'Evil Tyson exults.'" !!)
+  end evilTysonMakesDramaticEntranceExulting
+
+  private def sandraHeadsOffHome()(using
+      ProcessBuilderFromCommandString
+  ): Unit =
+    println(s"git rm $sandra" !!)
+    println(s"git commit -m 'Sandra heads off home.'" !!)
+  end sandraHeadsOffHome
+
+  private def sandraStopsByBriefly(path: Path)(using
+      ProcessBuilderFromCommandString
+  ): Unit =
+    Files.writeString(
+      path.resolve(sandra),
+      "Hiya - just gan yam now...\n"
+    )
+    println(s"git add $sandra" !!)
+    println(s"git commit -m 'Sandra stops by briefly...'" !!)
+  end sandraStopsByBriefly
 
   private def gitRepository(): ImperativeResource[Path] =
     for
@@ -94,27 +188,19 @@ class MainTest:
               given ProcessBuilderFromCommandString =
                 processBuilderFromCommandStringUsing(path)
 
-              val arthur = "arthur.txt"
-              Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
-              println(s"git add $arthur" !!)
-              println(s"git commit -m 'First commit.'" !!)
+              introducingArthur(path)
 
               val advancedBranch = "advancedBranch"
 
               println(s"git checkout -b $advancedBranch" !!)
 
-              Files.writeString(
-                path.resolve(arthur),
-                "Pleased to see you, old boy.\n",
-                StandardOpenOption.APPEND
-              )
-              println(s"git commit -am 'Second commit.'" !!)
+              arthurContinues(path)
 
               val commitOfAdvancedBranch =
                 (s"git log -1 --format=tformat:%H" !!).strip
 
               val exitCode = Main.mergeTheirBranch(
-                masterBranch.taggedWith[Main.Tags.CommitOrBranchName]
+                masterBranch.taggedWith[Tags.CommitOrBranchName]
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
@@ -154,21 +240,13 @@ class MainTest:
               given ProcessBuilderFromCommandString =
                 processBuilderFromCommandStringUsing(path)
 
-              val arthur = "arthur.txt"
-              Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
-              println(s"git add $arthur" !!)
-              println(s"git commit -m 'First commit.'" !!)
+              introducingArthur(path)
 
               val advancedBranch = "advancedBranch"
 
               println(s"git checkout -b $advancedBranch" !!)
 
-              Files.writeString(
-                path.resolve(arthur),
-                "Pleased to see you, old boy.\n",
-                StandardOpenOption.APPEND
-              )
-              println(s"git commit -am 'Second commit.'" !!)
+              arthurContinues(path)
 
               val commitOfAdvancedBranch =
                 (s"git log -1 --format=tformat:%H" !!).strip
@@ -176,7 +254,7 @@ class MainTest:
               println(s"git checkout $masterBranch" !!)
 
               val exitCode = Main.mergeTheirBranch(
-                advancedBranch.taggedWith[Main.Tags.CommitOrBranchName]
+                advancedBranch.taggedWith[Tags.CommitOrBranchName]
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
@@ -216,31 +294,20 @@ class MainTest:
               given ProcessBuilderFromCommandString =
                 processBuilderFromCommandStringUsing(path)
 
-              val arthur = "arthur.txt"
-              Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
-              println(s"git add $arthur" !!)
-              println(s"git commit -m 'Introducing Arthur.'" !!)
+              introducingArthur(path)
 
               val newFileBranch = "newFileBranch"
 
               println(s"git checkout -b $newFileBranch" !!)
 
-              val tyson = "tyson.txt"
-              Files.writeString(path.resolve(tyson), "Alright marra!\n")
-              println(s"git add $tyson" !!)
-              println(s"git commit -m 'Tyson responds.'" !!)
+              enterTysonStageLeft(path)
 
               val commitOfNewFileBranch =
                 (s"git log -1 --format=tformat:%H" !!).strip
 
               println(s"git checkout $masterBranch" !!)
 
-              Files.writeString(
-                path.resolve(arthur),
-                "Pleased to see you, old boy.\n",
-                StandardOpenOption.APPEND
-              )
-              println(s"git commit -am 'Arthur continues...'" !!)
+              arthurContinues(path)
 
               val commitOfMasterBranch =
                 (s"git log -1 --format=tformat:%H" !!).strip
@@ -253,7 +320,7 @@ class MainTest:
                 else masterBranch                  -> newFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                theirBranch.taggedWith[Main.Tags.CommitOrBranchName]
+                theirBranch.taggedWith[Tags.CommitOrBranchName]
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
@@ -304,27 +371,20 @@ class MainTest:
               given ProcessBuilderFromCommandString =
                 processBuilderFromCommandStringUsing(path)
 
-              val arthur = "arthur.txt"
-              Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
-              println(s"git add $arthur" !!)
-              println(s"git commit -m 'Introducing Arthur.'" !!)
+              introducingArthur(path)
 
               val deletedFileBranch = "deletedFileBranch"
 
               println(s"git checkout -b $deletedFileBranch" !!)
 
-              println(s"git rm $arthur" !!)
-              println(s"git commit -m 'Exeunt Arthur.'" !!)
+              exeuntArthur()
 
               val commitOfDeletedFileBranch =
                 (s"git log -1 --format=tformat:%H" !!).strip
 
               println(s"git checkout $masterBranch" !!)
 
-              val tyson = "tyson.txt"
-              Files.writeString(path.resolve(tyson), "Alright marra!\n")
-              println(s"git add $tyson" !!)
-              println(s"git commit -m 'Tyson responds.'" !!)
+              enterTysonStageLeft(path)
 
               val commitOfMasterBranch =
                 (s"git log -1 --format=tformat:%H" !!).strip
@@ -338,7 +398,7 @@ class MainTest:
                 else masterBranch                      -> deletedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                theirBranch.taggedWith[Main.Tags.CommitOrBranchName]
+                theirBranch.taggedWith[Tags.CommitOrBranchName]
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
@@ -389,39 +449,24 @@ class MainTest:
               given ProcessBuilderFromCommandString =
                 processBuilderFromCommandStringUsing(path)
 
-              val arthur = "arthur.txt"
-              Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
-              println(s"git add $arthur" !!)
-              println(s"git commit -m 'Introducing Arthur.'" !!)
+              introducingArthur(path)
 
-              val sandra = "sandra.txt"
-              Files.writeString(
-                path.resolve(sandra),
-                "Hiya - just gan yam now...\n"
-              )
-              println(s"git add $sandra" !!)
-              println(s"git commit -m 'Sandra stops by briefly...'" !!)
+              sandraStopsByBriefly(path)
 
               val evilTwinBranch = "evilTwin"
 
               println(s"git checkout -b $evilTwinBranch" !!)
 
-              val tyson = "tyson.txt"
-              Files.writeString(path.resolve(tyson), "Ha, ha, ha, ha, hah!\n")
-              println(s"git add $tyson" !!)
-              println(s"git commit -m 'Evil Tyson exults.'" !!)
+              evilTysonMakesDramaticEntranceExulting(path)
 
               val commitOfEvilTwinBranch =
                 (s"git log -1 --format=tformat:%H" !!).strip
 
               println(s"git checkout $masterBranch" !!)
 
-              println(s"git rm $sandra" !!)
-              println(s"git commit -m 'Sandra heads off home.'" !!)
+              sandraHeadsOffHome()
 
-              Files.writeString(path.resolve(tyson), "Alright marra!\n")
-              println(s"git add $tyson" !!)
-              println(s"git commit -m 'Good Tyson responds.'" !!)
+              enterTysonStageLeft(path)
 
               val commitOfMasterBranch =
                 (s"git log -1 --format=tformat:%H" !!).strip
@@ -434,7 +479,7 @@ class MainTest:
                 else masterBranch                   -> evilTwinBranch
 
               val exitCode = Main.mergeTheirBranch(
-                theirBranch.taggedWith[Main.Tags.CommitOrBranchName]
+                theirBranch.taggedWith[Tags.CommitOrBranchName]
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
@@ -482,45 +527,26 @@ class MainTest:
               given ProcessBuilderFromCommandString =
                 processBuilderFromCommandStringUsing(path)
 
-              val arthur = "arthur.txt"
-              Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
-              println(s"git add $arthur" !!)
-              println(s"git commit -m 'Introducing Arthur.'" !!)
+              introducingArthur(path)
 
-              val sandra = "sandra.txt"
-              Files.writeString(
-                path.resolve(sandra),
-                "Hiya - just gan yam now...\n"
-              )
-              println(s"git add $sandra" !!)
-              println(s"git commit -m 'Sandra stops by briefly...'" !!)
+              sandraStopsByBriefly(path)
 
               val deletedFileBranch = "deletedFileBranch"
 
               println(s"git checkout -b $deletedFileBranch" !!)
 
-              val tyson = "tyson.txt"
-              Files.writeString(path.resolve(tyson), "Alright marra!\n")
-              println(s"git add $tyson" !!)
-              println(s"git commit -m 'Tyson responds.'" !!)
+              enterTysonStageLeft(path)
 
-              println(s"git rm $arthur" !!)
-              println(s"git commit -m 'Exeunt Arthur.'" !!)
+              exeuntArthur()
 
               val commitOfDeletedFileBranch =
                 (s"git log -1 --format=tformat:%H" !!).strip
 
               println(s"git checkout $masterBranch" !!)
 
-              println(s"git rm $sandra" !!)
-              println(s"git commit -m 'Sandra heads off home.'" !!)
+              sandraHeadsOffHome()
 
-              Files.writeString(
-                path.resolve(arthur),
-                "Pleased to see you, old boy.\n",
-                StandardOpenOption.APPEND
-              )
-              println(s"git commit -am 'Arthur continues...'" !!)
+              arthurContinues(path)
 
               val commitOfMasterBranch =
                 (s"git log -1 --format=tformat:%H" !!).strip
@@ -534,7 +560,7 @@ class MainTest:
                 else masterBranch                      -> deletedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                theirBranch.taggedWith[Main.Tags.CommitOrBranchName]
+                theirBranch.taggedWith[Tags.CommitOrBranchName]
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
@@ -589,50 +615,27 @@ class MainTest:
               given ProcessBuilderFromCommandString =
                 processBuilderFromCommandStringUsing(path)
 
-              val arthur = "arthur.txt"
-              Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
-              println(s"git add $arthur" !!)
-              println(s"git commit -m 'Introducing Arthur.'" !!)
+              introducingArthur(path)
 
-              val sandra = "sandra.txt"
-              Files.writeString(
-                path.resolve(sandra),
-                "Hiya - just gan yam now...\n"
-              )
-              println(s"git add $sandra" !!)
-              println(s"git commit -m 'Sandra stops by briefly...'" !!)
+              sandraStopsByBriefly(path)
 
               val concurrentlyModifiedFileBranch =
                 "concurrentlyModifiedFileBranch"
 
               println(s"git checkout -b $concurrentlyModifiedFileBranch" !!)
 
-              val tyson = "tyson.txt"
-              Files.writeString(path.resolve(tyson), "Alright marra!\n")
-              println(s"git add $tyson" !!)
-              println(s"git commit -m 'Tyson responds.'" !!)
+              enterTysonStageLeft(path)
 
-              Files.writeString(
-                path.resolve(arthur),
-                "Pleased to see you, old chap.\n",
-                StandardOpenOption.APPEND
-              )
-              println(s"git commit -am 'Arthur elaborates.'" !!)
+              arthurElaborates(path)
 
               val commitOfConcurrentlyModifiedFileBranch =
                 (s"git log -1 --format=tformat:%H" !!).strip
 
               println(s"git checkout $masterBranch" !!)
 
-              println(s"git rm $sandra" !!)
-              println(s"git commit -m 'Sandra heads off home.'" !!)
+              sandraHeadsOffHome()
 
-              Files.writeString(
-                path.resolve(arthur),
-                "Pleased to see you, old boy.\n",
-                StandardOpenOption.APPEND
-              )
-              println(s"git commit -am 'Arthur continues...'" !!)
+              arthurContinues(path)
 
               val commitOfMasterBranch =
                 (s"git log -1 --format=tformat:%H" !!).strip
@@ -647,7 +650,7 @@ class MainTest:
                 else masterBranch -> concurrentlyModifiedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                theirBranch.taggedWith[Main.Tags.CommitOrBranchName]
+                theirBranch.taggedWith[Tags.CommitOrBranchName]
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
@@ -700,49 +703,29 @@ class MainTest:
               given ProcessBuilderFromCommandString =
                 processBuilderFromCommandStringUsing(path)
 
-              val arthur = "arthur.txt"
-              Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
-              println(s"git add $arthur" !!)
-              println(s"git commit -m 'Introducing Arthur.'" !!)
+              introducingArthur(path)
 
-              val sandra = "sandra.txt"
-              Files.writeString(
-                path.resolve(sandra),
-                "Hiya - just gan yam now...\n"
-              )
-              println(s"git add $sandra" !!)
-              println(s"git commit -m 'Sandra stops by briefly...'" !!)
+              sandraStopsByBriefly(path)
 
               val concurrentlyDeletedFileBranch =
                 "concurrentlyDeletedFileBranch"
 
               println(s"git checkout -b $concurrentlyDeletedFileBranch" !!)
 
-              val tyson = "tyson.txt"
-              Files.writeString(path.resolve(tyson), "Alright marra!\n")
-              println(s"git add $tyson" !!)
-              println(s"git commit -m 'Tyson responds.'" !!)
+              enterTysonStageLeft(path)
 
-              println(s"git rm $arthur" !!)
-              println(s"git commit -m 'Exeunt Arthur.'" !!)
+              exeuntArthur()
 
               val commitOfConcurrentlyDeletedFileBranch =
                 (s"git log -1 --format=tformat:%H" !!).strip
 
               println(s"git checkout $masterBranch" !!)
 
-              println(s"git rm $sandra" !!)
-              println(s"git commit -m 'Sandra heads off home.'" !!)
+              sandraHeadsOffHome()
 
-              Files.writeString(
-                path.resolve(arthur),
-                "Pleased to see you, old boy.\n",
-                StandardOpenOption.APPEND
-              )
-              println(s"git commit -am 'Arthur continues...'" !!)
+              arthurContinues(path)
 
-              println(s"git rm $arthur" !!)
-              println(s"git commit -m 'Arthur excuses himself.'" !!)
+              arthurExcusesHimself()
 
               val commitOfMasterBranch =
                 (s"git log -1 --format=tformat:%H" !!).strip
@@ -759,7 +742,7 @@ class MainTest:
                 else masterBranch               -> concurrentlyDeletedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                theirBranch.taggedWith[Main.Tags.CommitOrBranchName]
+                theirBranch.taggedWith[Tags.CommitOrBranchName]
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
@@ -810,50 +793,27 @@ class MainTest:
               given ProcessBuilderFromCommandString =
                 processBuilderFromCommandStringUsing(path)
 
-              val arthur = "arthur.txt"
-              Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
-              println(s"git add $arthur" !!)
-              println(s"git commit -m 'Introducing Arthur.'" !!)
+              introducingArthur(path)
 
-              val sandra = "sandra.txt"
-              Files.writeString(
-                path.resolve(sandra),
-                "Hiya - just gan yam now...\n"
-              )
-              println(s"git add $sandra" !!)
-              println(s"git commit -m 'Sandra stops by briefly...'" !!)
+              sandraStopsByBriefly(path)
 
               val concurrentlyModifiedFileBranch =
                 "concurrentlyModifiedFileBranch"
 
               println(s"git checkout -b $concurrentlyModifiedFileBranch" !!)
 
-              val tyson = "tyson.txt"
-              Files.writeString(path.resolve(tyson), "Alright marra!\n")
-              println(s"git add $tyson" !!)
-              println(s"git commit -m 'Tyson responds.'" !!)
+              enterTysonStageLeft(path)
 
-              Files.writeString(
-                path.resolve(arthur),
-                "Hello, all and sundry!\n",
-                StandardOpenOption.TRUNCATE_EXISTING
-              )
-              println(s"git commit -am 'Arthur corrects himself.'" !!)
+              arthurCorrectHimself(path)
 
               val commitOfConcurrentlyModifiedFileBranch =
                 (s"git log -1 --format=tformat:%H" !!).strip
 
               println(s"git checkout $masterBranch" !!)
 
-              println(s"git rm $sandra" !!)
-              println(s"git commit -m 'Sandra heads off home.'" !!)
+              sandraHeadsOffHome()
 
-              Files.writeString(
-                path.resolve(arthur),
-                "Pleased to see you, old boy.\n",
-                StandardOpenOption.APPEND
-              )
-              println(s"git commit -am 'Arthur continues...'" !!)
+              arthurContinues(path)
 
               val commitOfMasterBranch =
                 (s"git log -1 --format=tformat:%H" !!).strip
@@ -868,7 +828,7 @@ class MainTest:
                 else masterBranch -> concurrentlyModifiedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                theirBranch.taggedWith[Main.Tags.CommitOrBranchName]
+                theirBranch.taggedWith[Tags.CommitOrBranchName]
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
