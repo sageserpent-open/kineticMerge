@@ -30,6 +30,10 @@ object MainTest:
 
   private val tyson = "tyson.txt"
 
+  private val oneVariation = "chap"
+
+  private val anotherVariation = "boy"
+
   private val optionalSubdirectories: Trials[Option[Path]] =
     trialsApi.only("runMergeInHere").map(Path.of(_)).options
 
@@ -46,7 +50,7 @@ object MainTest:
   ): Unit =
     Files.writeString(
       path.resolve(arthur),
-      "Pleased to see you, old boy.\n",
+      s"Pleased to see you, old $anotherVariation.\n",
       StandardOpenOption.APPEND
     )
     println(s"git commit -am 'Arthur continues...'" !!)
@@ -57,7 +61,7 @@ object MainTest:
   ): Unit =
     Files.writeString(
       path.resolve(arthur),
-      "Pleased to see you, old chap.\n",
+      s"Pleased to see you, old $oneVariation.\n",
       StandardOpenOption.APPEND
     )
     println(s"git commit -am 'Arthur elaborates.'" !!)
@@ -129,6 +133,15 @@ object MainTest:
     assert(
       s"UU\\s+$arthur".r.findFirstIn(status).isDefined
     )
+
+  private def arthurSaidConflictingThings(path: Path): Unit =
+    val arthurSaid = Files.readString(path.resolve(arthur))
+
+    assert(
+      arthurSaid.contains(oneVariation) && arthurSaid
+        .contains(anotherVariation)
+    )
+  end arthurSaidConflictingThings
 
   private def arthurIsMarkedWithConflictingDeletionAndUpdateInTheIndex(
       flipBranches: Boolean,
@@ -213,7 +226,7 @@ object MainTest:
 
   private def verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex(
       flipBranches: Boolean,
-      commitOfDeletedFileBranch: String,
+      commitOfNonMasterFileBranch: String,
       commitOfMasterBranch: String,
       ourBranch: String,
       exitCode: Int @@ Main.Tags.ExitCode
@@ -228,7 +241,7 @@ object MainTest:
       (s"git log -1 --format=tformat:%H" !!).strip
 
     assert(
-      postMergeCommit == (if flipBranches then commitOfDeletedFileBranch
+      postMergeCommit == (if flipBranches then commitOfNonMasterFileBranch
                           else commitOfMasterBranch)
     )
   end verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex
@@ -673,6 +686,8 @@ class MainTest:
               val status = (s"git status --short" !!).strip
 
               arthurIsMarkedWithConflictingUpdatesInTheIndex(status)
+
+              arthurSaidConflictingThings(path)
 
               if flipBranches then
                 sandraIsMarkedAsDeletedInTheIndex(status)
