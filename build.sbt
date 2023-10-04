@@ -1,5 +1,6 @@
 import scala.sys.process.*
 import scala.language.postfixOps
+import xerial.sbt.Sonatype.*
 
 ThisBuild / version := "0.1.0-SNAPSHOT"
 
@@ -10,6 +11,22 @@ lazy val packageExecutable =
 
 lazy val root = (project in file("."))
   .settings(
+    publishTo              := sonatypePublishToBundle.value,
+    pomIncludeRepository   := { _ => false },
+    sonatypeCredentialHost := "s01.oss.sonatype.org",
+    publishMavenStyle      := true,
+    licenses += ("MIT", url("https://opensource.org/licenses/MIT")),
+    organization     := "com.sageserpent",
+    organizationName := "sageserpent",
+    description := "Merge branches in the presence of code motion within and between files.",
+    sonatypeProjectHosting := Some(
+      GitHubHosting(
+        user = "sageserpent-open",
+        repository = "kineticMerge",
+        email = "gjmurphy1@icloud.com"
+      )
+    ),
+    releaseCrossBuild := false, // No cross-building here - just Scala 3.
     scalacOptions ++= List("-source:future"),
     name         := "kinetic-merge",
     organization := "com.sageserpent",
