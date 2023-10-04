@@ -312,8 +312,6 @@ object Main:
           else
             for
               gitDir <- IO {
-                // TODO - write a test that exposes the need for an absolute git
-                // as opposed to a merely relative git.
                 ("git rev-parse --absolute-git-dir" !!).strip()
               }
                 .labelExceptionWith(errorMessage =
