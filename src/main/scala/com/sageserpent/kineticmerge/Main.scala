@@ -66,7 +66,9 @@ object Main:
     val exitCode = args match
       case Array(singleArgument) =>
         mergeTheirBranch(
-          singleArgument.taggedWith[Tags.CommitOrBranchName]
+          CommandLineArguments(theirBranchHead =
+            singleArgument.taggedWith[Tags.CommitOrBranchName]
+          )
         )(defaultWorkingDirectory)
       case Array() =>
         Console.err.println("No branch or commit id provided to merge from.")
@@ -81,7 +83,7 @@ object Main:
   end main
 
   def mergeTheirBranch(
-      theirBranchHead: String @@ Main.Tags.CommitOrBranchName
+      commandLineArguments: CommandLineArguments
   )(workingDirectory: Path): Int @@ Main.Tags.ExitCode =
     given ProcessBuilderFromCommandString =
       processBuilderFromCommandStringUsing(workingDirectory)
@@ -125,19 +127,19 @@ object Main:
       )
 
       theirCommitId <- IO {
-        s"git rev-parse $theirBranchHead" !!
+        s"git rev-parse ${commandLineArguments.theirBranchHead}" !!
       }.labelExceptionWith(errorMessage =
-        s"Ref ${underline(theirBranchHead)} is not a valid branch or commit."
+        s"Ref ${underline(commandLineArguments.theirBranchHead)} is not a valid branch or commit."
       )
 
       oursAlreadyContainsTheirs <- firstBranchIsContainedBySecond(
-        theirBranchHead,
+        commandLineArguments.theirBranchHead,
         ourBranchHead
       )
 
       theirsAlreadyContainsOurs <- firstBranchIsContainedBySecond(
         ourBranchHead,
-        theirBranchHead
+        commandLineArguments.theirBranchHead
       )
 
       exitCode <-
@@ -145,19 +147,19 @@ object Main:
           // Nothing to do, our branch has all their commits already.
           right(successfulMerge)
             .logOperation(
-              s"Nothing to do - our branch ${underline(ourBranchHead)} already contains ${underline(theirBranchHead)}."
+              s"Nothing to do - our branch ${underline(ourBranchHead)} already contains ${underline(commandLineArguments.theirBranchHead)}."
             )
         else if theirsAlreadyContainsOurs then
           // Fast-forward our branch to their head commit.
           IO {
-            s"git reset --hard $theirBranchHead" !! : Unit
+            s"git reset --hard ${commandLineArguments.theirBranchHead}" !! : Unit
             successfulMerge
           }
             .labelExceptionWith(errorMessage =
-              s"Unexpected error: could not fast-forward our branch ${underline(ourBranchHead)} to their branch ${underline(theirBranchHead)}."
+              s"Unexpected error: could not fast-forward our branch ${underline(ourBranchHead)} to their branch ${underline(commandLineArguments.theirBranchHead)}."
             )
             .logOperation(
-              s"Fast forward our branch ${underline(ourBranchHead)} to their branch ${underline(theirBranchHead)}."
+              s"Fast forward our branch ${underline(ourBranchHead)} to their branch ${underline(commandLineArguments.theirBranchHead)}."
             )
         else // Perform a real merge...
           for
@@ -169,10 +171,10 @@ object Main:
               )
 
             bestAncestorCommitId <- IO {
-              (s"git merge-base $ourBranchHead $theirBranchHead" !!).strip()
+              (s"git merge-base $ourBranchHead ${commandLineArguments.theirBranchHead}" !!).strip()
               .taggedWith[Tags.CommitOrBranchName]
             }.labelExceptionWith(errorMessage =
-              s"Could not determine a best ancestor commit between our branch ${underline(ourBranchHead)} and their branch ${underline(theirBranchHead)}."
+              s"Could not determine a best ancestor commit between our branch ${underline(ourBranchHead)} and their branch ${underline(commandLineArguments.theirBranchHead)}."
             )
 
             ourChanges <- IO {
@@ -183,11 +185,12 @@ object Main:
               .map(_.toMap)
 
             theirChanges <- IO {
-              s"git diff --no-renames --name-status $bestAncestorCommitId $theirBranchHead".lazyLines.toList
+              s"git diff --no-renames --name-status $bestAncestorCommitId ${commandLineArguments.theirBranchHead}".lazyLines.toList
             }.labelExceptionWith(errorMessage =
-              s"Could not determine changes made on their branch ${underline(theirBranchHead)} since ancestor commit ${underline(bestAncestorCommitId)}."
-            ).flatMap(_.traverse(pathChangeFor(theirBranchHead)))
-              .map(_.toMap)
+              s"Could not determine changes made on their branch ${underline(commandLineArguments.theirBranchHead)} since ancestor commit ${underline(bestAncestorCommitId)}."
+            ).flatMap(
+              _.traverse(pathChangeFor(commandLineArguments.theirBranchHead))
+            ).map(_.toMap)
 
             // NOTE: changes that belong only to our branch don't need to be
             // handled explicitly - they are already in the merge by
@@ -202,7 +205,7 @@ object Main:
             exitCode <-
               mergeWithRollback(
                 topLevelWorkingDirectory,
-                theirBranchHead,
+                commandLineArguments.theirBranchHead,
                 ourBranchHead,
                 theirCommitId,
                 bestAncestorCommitId,
@@ -230,6 +233,18 @@ object Main:
     exitCode
   end mergeTheirBranch
 
+  private def firstBranchIsContainedBySecond(
+      firstBranchHead: String @@ Tags.CommitOrBranchName,
+      secondBranchHead: String @@ Tags.CommitOrBranchName
+  )(using ProcessBuilderFromCommandString): Workflow[Boolean] =
+    IO {
+      s"git merge-base --is-ancestor $firstBranchHead $secondBranchHead" !
+    }
+      .labelExceptionWith(errorMessage =
+        s"Unexpected error: could not determine whether branch ${underline(firstBranchHead)} is an ancestor of branch ${underline(secondBranchHead)}."
+      )
+      .map(0 == _)
+
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
       EitherT
@@ -242,18 +257,6 @@ object Main:
     private def logOperation(message: String): Workflow[Payload] =
       workflow.semiflatTap(_ => WriterT.tell(List(message)))
   end extension
-
-  private def firstBranchIsContainedBySecond(
-      firstBranchHead: String @@ Tags.CommitOrBranchName,
-      secondBranchHead: String @@ Tags.CommitOrBranchName
-  )(using ProcessBuilderFromCommandString): Workflow[Boolean] =
-    IO {
-      s"git merge-base --is-ancestor $firstBranchHead $secondBranchHead" !
-    }
-      .labelExceptionWith(errorMessage =
-        s"Unexpected error: could not determine whether branch ${underline(firstBranchHead)} is an ancestor of branch ${underline(secondBranchHead)}."
-      )
-      .map(0 == _)
 
   private def mergeWithRollback(
       workingDirectory: Path,
@@ -973,6 +976,12 @@ object Main:
       s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
     )
   end blobAndContentFor
+
+  case class CommandLineArguments(
+      theirBranchHead: String @@ Main.Tags.CommitOrBranchName,
+      noCommit: Boolean = false,
+      noFastForward: Boolean = false
+  )
 
   object Tags:
     trait Mode

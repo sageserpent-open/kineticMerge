@@ -5,7 +5,7 @@ import cats.effect.{IO, Resource}
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.{DynamicTests, *}
-import com.sageserpent.kineticmerge.Main.Tags
+import com.sageserpent.kineticmerge.Main.{CommandLineArguments, Tags}
 import com.sageserpent.kineticmerge.MainTest.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.softwaremill.tagging.*
@@ -320,7 +320,9 @@ class MainTest:
                 else advancedBranch               -> masterBranch
 
               val exitCode = Main.mergeTheirBranch(
-                theirBranch.taggedWith[Tags.CommitOrBranchName]
+                CommandLineArguments(theirBranchHead =
+                  theirBranch.taggedWith[Tags.CommitOrBranchName]
+                )
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
@@ -377,7 +379,9 @@ class MainTest:
                 else masterBranch                  -> newFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                theirBranch.taggedWith[Tags.CommitOrBranchName]
+                CommandLineArguments(theirBranchHead =
+                  theirBranch.taggedWith[Tags.CommitOrBranchName]
+                )
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
@@ -436,7 +440,9 @@ class MainTest:
                 else masterBranch                      -> deletedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                theirBranch.taggedWith[Tags.CommitOrBranchName]
+                CommandLineArguments(theirBranchHead =
+                  theirBranch.taggedWith[Tags.CommitOrBranchName]
+                )
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
@@ -498,7 +504,9 @@ class MainTest:
                 else masterBranch                   -> evilTwinBranch
 
               val exitCode = Main.mergeTheirBranch(
-                theirBranch.taggedWith[Tags.CommitOrBranchName]
+                CommandLineArguments(theirBranchHead =
+                  theirBranch.taggedWith[Tags.CommitOrBranchName]
+                )
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
@@ -574,7 +582,9 @@ class MainTest:
                 else masterBranch                      -> deletedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                theirBranch.taggedWith[Tags.CommitOrBranchName]
+                CommandLineArguments(theirBranchHead =
+                  theirBranch.taggedWith[Tags.CommitOrBranchName]
+                )
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
@@ -657,7 +667,9 @@ class MainTest:
                 else masterBranch -> concurrentlyModifiedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                theirBranch.taggedWith[Tags.CommitOrBranchName]
+                CommandLineArguments(theirBranchHead =
+                  theirBranch.taggedWith[Tags.CommitOrBranchName]
+                )
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
@@ -741,7 +753,9 @@ class MainTest:
                 else masterBranch               -> concurrentlyDeletedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                theirBranch.taggedWith[Tags.CommitOrBranchName]
+                CommandLineArguments(theirBranchHead =
+                  theirBranch.taggedWith[Tags.CommitOrBranchName]
+                )
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
@@ -808,7 +822,9 @@ class MainTest:
                 else masterBranch -> concurrentlyModifiedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                theirBranch.taggedWith[Tags.CommitOrBranchName]
+                CommandLineArguments(theirBranchHead =
+                  theirBranch.taggedWith[Tags.CommitOrBranchName]
+                )
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
