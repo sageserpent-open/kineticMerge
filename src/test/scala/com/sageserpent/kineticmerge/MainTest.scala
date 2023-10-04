@@ -157,7 +157,7 @@ object MainTest:
   private def sandraIsMarkedAsDeletedInTheIndex(status: String): Unit =
     assert(s"D\\s+$sandra".r.findFirstIn(status).isDefined)
 
-  private def verifyTrivialMergeMovesToTheMostAdvancedCommitLeavesWithACleanIndex(
+  private def verifyTrivialMergeMovesToTheMostAdvancedCommitWithACleanIndex(
       commitOfAdvancedBranch: String,
       ourBranch: String,
       exitCode: Int @@ Main.Tags.ExitCode
@@ -176,7 +176,7 @@ object MainTest:
     val status = (s"git status --short" !!).strip
 
     assert(status.isEmpty)
-  end verifyTrivialMergeMovesToTheMostAdvancedCommitLeavesWithACleanIndex
+  end verifyTrivialMergeMovesToTheMostAdvancedCommitWithACleanIndex
 
   private def verifyMergeMakesANewCommitWithACleanIndex(
       commitOfConcurrentlyModifiedFileBranch: String,
@@ -288,53 +288,65 @@ end MainTest
 class MainTest:
   @TestFactory
   def trivialMerge(): DynamicTests =
-    (optionalSubdirectories and trialsApi.booleans)
+    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
       .withLimit(4)
-      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
-        gitRepository()
-          .use(path =>
-            IO {
-              optionalSubdirectory.foreach(subdirectory =>
-                Files.createDirectory(path.resolve(subdirectory))
-              )
-
-              given ProcessBuilderFromCommandString =
-                processBuilderFromCommandStringUsing(path)
-
-              introducingArthur(path)
-
-              val advancedBranch = "advancedBranch"
-
-              println(s"git checkout -b $advancedBranch" !!)
-
-              arthurContinues(path)
-
-              val commitOfAdvancedBranch =
-                (s"git log -1 --format=tformat:%H" !!).strip
-
-              if flipBranches then println(s"git checkout $masterBranch" !!)
-              end if
-
-              val (ourBranch, theirBranch) =
-                if flipBranches then masterBranch -> advancedBranch
-                else advancedBranch               -> masterBranch
-
-              val exitCode = Main.mergeTheirBranch(
-                CommandLineArguments(theirBranchHead =
-                  theirBranch.taggedWith[Tags.CommitOrBranchName]
+      .dynamicTests {
+        case (optionalSubdirectory, flipBranches, noFastForward) =>
+          gitRepository()
+            .use(path =>
+              IO {
+                optionalSubdirectory.foreach(subdirectory =>
+                  Files.createDirectory(path.resolve(subdirectory))
                 )
-              )(workingDirectory =
-                optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
-              )
 
-              verifyTrivialMergeMovesToTheMostAdvancedCommitLeavesWithACleanIndex(
-                commitOfAdvancedBranch,
-                ourBranch,
-                exitCode
-              )
-            }
-          )
-          .unsafeRunSync()
+                given ProcessBuilderFromCommandString =
+                  processBuilderFromCommandStringUsing(path)
+
+                introducingArthur(path)
+
+                val advancedBranch = "advancedBranch"
+
+                println(s"git checkout -b $advancedBranch" !!)
+
+                arthurContinues(path)
+
+                val commitOfAdvancedBranch =
+                  (s"git log -1 --format=tformat:%H" !!).strip
+
+                if flipBranches then println(s"git checkout $masterBranch" !!)
+                end if
+
+                val (ourBranch, theirBranch) =
+                  if flipBranches then masterBranch -> advancedBranch
+                  else advancedBranch               -> masterBranch
+
+                val exitCode = Main.mergeTheirBranch(
+                  CommandLineArguments(
+                    theirBranchHead =
+                      theirBranch.taggedWith[Tags.CommitOrBranchName],
+                    noFastForward = noFastForward
+                  )
+                )(workingDirectory =
+                  optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
+                )
+
+                if noFastForward then
+                  verifyMergeMakesANewCommitWithACleanIndex(
+                    commitOfAdvancedBranch,
+                    theirBranch,
+                    ourBranch,
+                    exitCode
+                  )
+                else
+                  verifyTrivialMergeMovesToTheMostAdvancedCommitWithACleanIndex(
+                    commitOfAdvancedBranch,
+                    ourBranch,
+                    exitCode
+                  )
+                end if
+              }
+            )
+            .unsafeRunSync()
       }
   end trivialMerge
 
