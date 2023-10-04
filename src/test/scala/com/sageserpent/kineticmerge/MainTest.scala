@@ -30,9 +30,11 @@ object MainTest:
 
   private val tyson = "tyson.txt"
 
-  private val oneVariation = "chap"
+  private val arthurFirstVariation  = "chap"
+  private val arthurSecondVariation = "boy"
 
-  private val anotherVariation = "boy"
+  private val tysonResponse       = "Alright marra?"
+  private val evilTysonExultation = "Ha, ha, ha, ha, hah!"
 
   private val optionalSubdirectories: Trials[Option[Path]] =
     trialsApi.only("runMergeInHere").map(Path.of(_)).options
@@ -50,7 +52,7 @@ object MainTest:
   ): Unit =
     Files.writeString(
       path.resolve(arthur),
-      s"Pleased to see you, old $anotherVariation.\n",
+      s"Pleased to see you, old $arthurSecondVariation.\n",
       StandardOpenOption.APPEND
     )
     println(s"git commit -am 'Arthur continues...'" !!)
@@ -61,7 +63,7 @@ object MainTest:
   ): Unit =
     Files.writeString(
       path.resolve(arthur),
-      s"Pleased to see you, old $oneVariation.\n",
+      s"Pleased to see you, old $arthurFirstVariation.\n",
       StandardOpenOption.APPEND
     )
     println(s"git commit -am 'Arthur elaborates.'" !!)
@@ -93,7 +95,7 @@ object MainTest:
   private def enterTysonStageLeft(path: Path)(using
       ProcessBuilderFromCommandString
   ): Unit =
-    Files.writeString(path.resolve(tyson), "Alright marra!\n")
+    Files.writeString(path.resolve(tyson), s"$tysonResponse\n")
     println(s"git add $tyson" !!)
     println(s"git commit -m 'Tyson responds.'" !!)
   end enterTysonStageLeft
@@ -101,7 +103,7 @@ object MainTest:
   private def evilTysonMakesDramaticEntranceExulting(path: Path)(using
       ProcessBuilderFromCommandString
   ): Unit =
-    Files.writeString(path.resolve(tyson), "Ha, ha, ha, ha, hah!\n")
+    Files.writeString(path.resolve(tyson), s"$evilTysonExultation\n")
     println(s"git add $tyson" !!)
     println(s"git commit -m 'Evil Tyson exults.'" !!)
   end evilTysonMakesDramaticEntranceExulting
@@ -138,10 +140,19 @@ object MainTest:
     val arthurSaid = Files.readString(path.resolve(arthur))
 
     assert(
-      arthurSaid.contains(oneVariation) && arthurSaid
-        .contains(anotherVariation)
+      arthurSaid.contains(arthurFirstVariation) && arthurSaid
+        .contains(arthurSecondVariation)
     )
   end arthurSaidConflictingThings
+
+  private def tysonSaidConflictingThings(path: Path): Unit =
+    val tysonSaid = Files.readString(path.resolve(tyson))
+
+    assert(
+      tysonSaid.contains(tysonResponse) && tysonSaid
+        .contains(evilTysonExultation)
+    )
+  end tysonSaidConflictingThings
 
   private def arthurIsMarkedWithConflictingDeletionAndUpdateInTheIndex(
       flipBranches: Boolean,
@@ -159,7 +170,7 @@ object MainTest:
   private def tysonIsMarkedAsAddedInTheIndex(status: String): Unit =
     assert(s"A\\s+$tyson.*".r.findFirstIn(status).isDefined)
 
-  private def tysonIsMarkedWithConflictingAddiitonsInTheIndex(
+  private def tysonIsMarkedWithConflictingAdditionsInTheIndex(
       status: String
   ): Unit =
     assert(s"AA\\s+$tyson".r.findFirstIn(status).isDefined)
@@ -528,7 +539,9 @@ class MainTest:
 
               noUpdatesInIndexForArthur(status)
 
-              tysonIsMarkedWithConflictingAddiitonsInTheIndex(status)
+              tysonIsMarkedWithConflictingAdditionsInTheIndex(status)
+
+              tysonSaidConflictingThings(path)
 
               if flipBranches then sandraIsMarkedAsDeletedInTheIndex(status)
               else noUpdatesInIndexForSandra(status)
