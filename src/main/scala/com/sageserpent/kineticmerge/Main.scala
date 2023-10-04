@@ -143,13 +143,14 @@ object Main:
       )
 
       exitCode <-
-        if oursAlreadyContainsTheirs then
+        if oursAlreadyContainsTheirs && !commandLineArguments.noFastForward then
           // Nothing to do, our branch has all their commits already.
           right(successfulMerge)
             .logOperation(
               s"Nothing to do - our branch ${underline(ourBranchHead)} already contains ${underline(commandLineArguments.theirBranchHead)}."
             )
-        else if theirsAlreadyContainsOurs then
+        else if theirsAlreadyContainsOurs && !commandLineArguments.noFastForward
+        then
           // Fast-forward our branch to their head commit.
           IO {
             s"git reset --hard ${commandLineArguments.theirBranchHead}" !! : Unit
