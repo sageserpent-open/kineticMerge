@@ -212,12 +212,14 @@ object MainTest:
   end verifyMergeMakesANewCommitWithACleanIndex
 
   private def verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+      path: Path
+  )(
       flipBranches: Boolean,
       commitOfDeletedFileBranch: String,
       commitOfMasterBranch: String,
       ourBranch: String,
       exitCode: Int @@ Main.Tags.ExitCode
-  )(using ProcessBuilderFromCommandString): Unit =
+  )(using ProcessBuilderFromCommandString): String =
     assert(exitCode == 1)
 
     val branchName = ("git branch --show-current" !!).strip()
@@ -231,7 +233,21 @@ object MainTest:
       postMergeCommit == (if flipBranches then commitOfDeletedFileBranch
                           else commitOfMasterBranch)
     )
+
+    assert(
+      mergeHead(path) == (if flipBranches then commitOfMasterBranch
+                          else commitOfDeletedFileBranch)
+    )
+
+    val status = (s"git status --short" !!).strip
+
+    assert(status.nonEmpty)
+
+    status
   end verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex
+
+  private def mergeHead(path: Path) =
+    Files.readString(path.resolve(".git").resolve("MERGE_HEAD")).strip()
 
   private def gitRepository(): ImperativeResource[Path] =
     for
@@ -523,15 +539,16 @@ class MainTest:
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
 
-              verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex(
-                flipBranches,
-                commitOfEvilTwinBranch,
-                commitOfMasterBranch,
-                ourBranch,
-                exitCode
-              )
-
-              val status = (s"git status --short" !!).strip
+              val status =
+                verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                  path
+                )(
+                  flipBranches,
+                  commitOfEvilTwinBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
 
               noUpdatesInIndexForArthur(status)
 
@@ -601,15 +618,16 @@ class MainTest:
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
 
-              verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex(
-                flipBranches,
-                commitOfDeletedFileBranch,
-                commitOfMasterBranch,
-                ourBranch,
-                exitCode
-              )
-
-              val status = (s"git status --short" !!).strip
+              val status =
+                verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                  path
+                )(
+                  flipBranches,
+                  commitOfDeletedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
 
               arthurIsMarkedWithConflictingDeletionAndUpdateInTheIndex(
                 flipBranches,
@@ -686,15 +704,16 @@ class MainTest:
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
 
-              verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex(
-                flipBranches,
-                commitOfConcurrentlyModifiedFileBranch,
-                commitOfMasterBranch,
-                ourBranch,
-                exitCode
-              )
-
-              val status = (s"git status --short" !!).strip
+              val status =
+                verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                  path
+                )(
+                  flipBranches,
+                  commitOfConcurrentlyModifiedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
 
               arthurIsMarkedWithConflictingUpdatesInTheIndex(status)
 
