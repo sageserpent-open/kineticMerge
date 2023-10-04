@@ -368,9 +368,9 @@ class MainTest:
 
   @TestFactory
   def cleanMergeBringingInANewFile(): DynamicTests =
-    (optionalSubdirectories and trialsApi.booleans)
-      .withLimit(4)
-      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches, noCommit) =>
         gitRepository()
           .use(path =>
             IO {
@@ -407,19 +407,33 @@ class MainTest:
                 else masterBranch                  -> newFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                CommandLineArguments(theirBranchHead =
-                  theirBranch.taggedWith[Tags.CommitOrBranchName]
+                CommandLineArguments(
+                  theirBranchHead =
+                    theirBranch.taggedWith[Tags.CommitOrBranchName],
+                  noCommit = noCommit
                 )
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
 
-              verifyMergeMakesANewCommitWithACleanIndex(
-                commitOfNewFileBranch,
-                commitOfMasterBranch,
-                ourBranch,
-                exitCode
-              )
+              if noCommit then
+                verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                  path
+                )(
+                  flipBranches,
+                  commitOfNewFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              else
+                verifyMergeMakesANewCommitWithACleanIndex(
+                  commitOfNewFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              end if
             }
           )
           .unsafeRunSync()
@@ -428,9 +442,9 @@ class MainTest:
 
   @TestFactory
   def cleanMergeDeletingAFile(): DynamicTests =
-    (optionalSubdirectories and trialsApi.booleans)
-      .withLimit(4)
-      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches, noCommit) =>
         gitRepository()
           .use(path =>
             IO {
@@ -468,19 +482,33 @@ class MainTest:
                 else masterBranch                      -> deletedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                CommandLineArguments(theirBranchHead =
-                  theirBranch.taggedWith[Tags.CommitOrBranchName]
+                CommandLineArguments(
+                  theirBranchHead =
+                    theirBranch.taggedWith[Tags.CommitOrBranchName],
+                  noCommit = noCommit
                 )
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
 
-              verifyMergeMakesANewCommitWithACleanIndex(
-                commitOfDeletedFileBranch,
-                commitOfMasterBranch,
-                ourBranch,
-                exitCode
-              )
+              if noCommit then
+                verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                  path
+                )(
+                  flipBranches,
+                  commitOfDeletedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              else
+                verifyMergeMakesANewCommitWithACleanIndex(
+                  commitOfDeletedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              end if
             }
           )
           .unsafeRunSync()
@@ -732,9 +760,9 @@ class MainTest:
 
   @TestFactory
   def cleanMergeOfAFileDeletedInBothBranches(): DynamicTests =
-    (optionalSubdirectories and trialsApi.booleans)
-      .withLimit(4)
-      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches, noCommit) =>
         gitRepository()
           .use(path =>
             IO {
@@ -784,19 +812,34 @@ class MainTest:
                 else masterBranch               -> concurrentlyDeletedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                CommandLineArguments(theirBranchHead =
-                  theirBranch.taggedWith[Tags.CommitOrBranchName]
+                CommandLineArguments(
+                  theirBranchHead =
+                    theirBranch.taggedWith[Tags.CommitOrBranchName],
+                  noCommit = noCommit
                 )
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
 
-              verifyMergeMakesANewCommitWithACleanIndex(
-                commitOfConcurrentlyDeletedFileBranch,
-                commitOfMasterBranch,
-                ourBranch,
-                exitCode
-              )
+              if noCommit then
+                verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                  path
+                )(
+                  flipBranches,
+                  commitOfConcurrentlyDeletedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              else
+                verifyMergeMakesANewCommitWithACleanIndex(
+                  commitOfConcurrentlyDeletedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              end if
+
             }
           )
           .unsafeRunSync()
@@ -805,9 +848,9 @@ class MainTest:
 
   @TestFactory
   def cleanMergeOfAFileModifiedInBothBranches(): DynamicTests =
-    (optionalSubdirectories and trialsApi.booleans)
-      .withLimit(4)
-      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches, noCommit) =>
         gitRepository()
           .use(path =>
             IO {
@@ -853,19 +896,33 @@ class MainTest:
                 else masterBranch -> concurrentlyModifiedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                CommandLineArguments(theirBranchHead =
-                  theirBranch.taggedWith[Tags.CommitOrBranchName]
+                CommandLineArguments(
+                  theirBranchHead =
+                    theirBranch.taggedWith[Tags.CommitOrBranchName],
+                  noCommit = noCommit
                 )
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
               )
 
-              verifyMergeMakesANewCommitWithACleanIndex(
-                commitOfConcurrentlyModifiedFileBranch,
-                commitOfMasterBranch,
-                ourBranch,
-                exitCode
-              )
+              if noCommit then
+                verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                  path
+                )(
+                  flipBranches,
+                  commitOfConcurrentlyModifiedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              else
+                verifyMergeMakesANewCommitWithACleanIndex(
+                  commitOfConcurrentlyModifiedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              end if
             }
           )
           .unsafeRunSync()
