@@ -210,7 +210,8 @@ object Main:
                 ourBranchHead,
                 theirCommitId,
                 bestAncestorCommitId,
-                overallChangesInvolvingTheirs
+                overallChangesInvolvingTheirs,
+                commandLineArguments.noCommit
               )
           yield exitCode
     yield exitCode
@@ -265,7 +266,8 @@ object Main:
       ourBranchHead: String @@ Tags.CommitOrBranchName,
       theirCommitId: String,
       bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
-      overallChangesInvolvingTheirs: List[(Path, (Change, Option[Change]))]
+      overallChangesInvolvingTheirs: List[(Path, (Change, Option[Change]))],
+      noCommit: Boolean
   )(using ProcessBuilderFromCommandString): Workflow[Int @@ Tags.ExitCode] =
     val workflow =
       for
@@ -282,7 +284,7 @@ object Main:
         }
 
         exitCodeWhenThereAreNoUnexpectedErrors <-
-          if goodForAMergeCommit then
+          if goodForAMergeCommit && !noCommit then
             for
               treeId <- IO {
                 (s"git write-tree" !!).strip()
