@@ -369,9 +369,11 @@ object Main:
                   s"Unexpected error: `GIT_DIR` reported by Git ${underline(gitDir)} is not a valid path."
                 )
               _ <- IO {
-                s"echo $theirCommitId" #> gitDirPath
-                  .resolve("MERGE_HEAD")
-                  .toFile !!
+                Files.write(
+                  gitDirPath
+                    .resolve("MERGE_HEAD"),
+                  theirCommitId.getBytes(StandardCharsets.UTF_8)
+                )
               }.labelExceptionWith(errorMessage =
                 s"Unexpected error: could not write `MERGE_HEAD` to reference their branch ${underline(theirBranchHead)}."
               ).logOperation(
