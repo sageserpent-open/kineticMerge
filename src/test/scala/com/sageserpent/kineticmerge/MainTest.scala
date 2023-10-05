@@ -235,16 +235,16 @@ object MainTest:
     assert(status.isEmpty)
   end verifyMergeMakesANewCommitWithACleanIndex
 
-  private def verifyATrivialNoCommitMergeDoesNotMakeACommit(
+  private def verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit(
       path: Path
   )(
-      flipBranches: Boolean,
+      ourBranchIsBehindTheirs: Boolean,
       commitOfAdvancedBranch: String,
       commitOfRetardedBranch: String,
       ourBranch: String,
       exitCode: Int @@ Main.Tags.ExitCode
   )(using ProcessBuilderFromCommandString): String =
-    assert(exitCode == 1)
+    assert(exitCode == (if ourBranchIsBehindTheirs then 1 else 0))
 
     val branchName = ("git branch --show-current" !!).strip()
 
@@ -254,26 +254,25 @@ object MainTest:
       (s"git log -1 --format=tformat:%H" !!).strip
 
     assert(
-      postMergeCommit == (if flipBranches then commitOfAdvancedBranch
-                          else commitOfRetardedBranch)
-    )
-
-    assert(
-      mergeHead(path) == (if flipBranches then commitOfRetardedBranch
+      postMergeCommit == (if ourBranchIsBehindTheirs then commitOfRetardedBranch
                           else commitOfAdvancedBranch)
     )
 
+    if ourBranchIsBehindTheirs then
+      assert(
+        mergeHead(path) == commitOfAdvancedBranch
+      )
+    else assert(!Files.exists(mergeHeadPath(path)))
+    end if
+
     val status = (s"git status --short" !!).strip
 
-    if flipBranches then assert(status.isEmpty)
-    else assert(status.nonEmpty)
+    if ourBranchIsBehindTheirs then assert(status.nonEmpty)
+    else assert(status.isEmpty)
     end if
 
     status
-  end verifyATrivialNoCommitMergeDoesNotMakeACommit
-
-  private def mergeHead(path: Path) =
-    Files.readString(path.resolve(".git").resolve("MERGE_HEAD")).strip()
+  end verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit
 
   private def verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
       path: Path
@@ -309,6 +308,12 @@ object MainTest:
 
     status
   end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
+
+  private def mergeHead(path: Path) =
+    Files.readString(mergeHeadPath(path)).strip()
+
+  private def mergeHeadPath(path: Path) =
+    path.resolve(".git").resolve("MERGE_HEAD")
 
   private def gitRepository(): ImperativeResource[Path] =
     for
@@ -368,7 +373,12 @@ class MainTest:
     (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans and trialsApi.booleans)
       .withLimit(14)
       .dynamicTests {
-        case (optionalSubdirectory, flipBranches, noFastForward, noCommit) =>
+        case (
+              optionalSubdirectory,
+              ourBranchIsBehindTheirs,
+              noFastForward,
+              noCommit
+            ) =>
           gitRepository()
             .use(path =>
               IO {
@@ -393,15 +403,13 @@ class MainTest:
                 val commitOfAdvancedBranch =
                   (s"git log -1 --format=tformat:%H" !!).strip
 
-                // The convention used in the other tests is to have the master
-                // branch as our branch the 'usual' way around, so we have to
-                // check it back out.
-                if !flipBranches then println(s"git checkout $masterBranch" !!)
+                if ourBranchIsBehindTheirs then
+                  println(s"git checkout $masterBranch" !!)
                 end if
 
                 val (ourBranch, theirBranch) =
-                  if flipBranches then advancedBranch -> masterBranch
-                  else masterBranch                   -> advancedBranch
+                  if ourBranchIsBehindTheirs then masterBranch -> advancedBranch
+                  else advancedBranch                          -> masterBranch
 
                 val exitCode = Main.mergeTheirBranch(
                   CommandLineArguments(
@@ -416,10 +424,10 @@ class MainTest:
 
                 if noFastForward then
                   if noCommit then
-                    verifyATrivialNoCommitMergeDoesNotMakeACommit(
+                    verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit(
                       path
                     )(
-                      flipBranches,
+                      ourBranchIsBehindTheirs,
                       commitOfAdvancedBranch,
                       commitOfMasterBranch,
                       ourBranch,
