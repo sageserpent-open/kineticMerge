@@ -329,7 +329,7 @@ class MainTest:
   @TestFactory
   def trivialMerge(): DynamicTests =
     (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
-      .withLimit(4)
+      .withLimit(10)
       .dynamicTests {
         case (optionalSubdirectory, flipBranches, noFastForward) =>
           gitRepository()
