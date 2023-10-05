@@ -375,7 +375,10 @@ object Main:
               }.labelExceptionWith(errorMessage =
                 s"Unexpected error: could not write `MERGE_HEAD` to reference their branch ${underline(theirBranchHead)}."
               ).logOperation(
-                "Merge conflicts found, handing over for manual resolution..."
+                if goodForAMergeCommit then
+                  "Successful merge, leaving merged changes in the index for review..."
+                else
+                  "Merge conflicts found, handing over for manual resolution..."
               )
             yield conflictedMerge
           end if
