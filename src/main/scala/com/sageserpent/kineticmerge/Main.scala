@@ -30,7 +30,8 @@ object Main:
   // latest and greatest versions of commands are not always available. At time
   // of writing, Mac OS Ventura 13.5.2 ships Git 2.24.3, contrast with Git
   // 2.42.0 being the latest stable release.
-  private type WorkflowLog                = List[String]
+  private type ErrorOrOperationMessage    = Either[String, String]
+  private type WorkflowLog                = List[ErrorOrOperationMessage]
   private type WorkflowLogWriter[Payload] = WriterT[IO, WorkflowLog, Payload]
   private type Workflow[Payload] =
     EitherT[WorkflowLogWriter, String @@ Tags.ErrorMessage, Payload]
@@ -262,18 +263,17 @@ object Main:
     val (log, exitCode) = workflow
       .foldF(
         errorMessage =>
-          // NASTY HACK: hokey error reporting, need to think about the best
-          // approach...
-          Console.err.println(errorMessage)
-          WriterT
-            .value[IO, WorkflowLog, Int @@ Tags.ExitCode](error)
-        ,
-        WriterT.value[IO, WorkflowLog, Int @@ Tags.ExitCode]
+          for _ <- WriterT.tell(List(Left(errorMessage)))
+          yield error,
+        WriterT.value
       )
       .run
       .unsafeRunSync()
 
-    log.foreach(println)
+    log.foreach {
+      case Left(errorMessage)      => Console.err.println(errorMessage)
+      case Right(operationMessage) => Console.println(operationMessage)
+    }
 
     exitCode
   end mergeTheirBranch
@@ -300,7 +300,7 @@ object Main:
 
   extension [Payload](workflow: Workflow[Payload])
     private def logOperation(message: String): Workflow[Payload] =
-      workflow.semiflatTap(_ => WriterT.tell(List(message)))
+      workflow.semiflatTap(_ => WriterT.tell(List(Right(message))))
   end extension
 
   private def mergeWithRollback(
