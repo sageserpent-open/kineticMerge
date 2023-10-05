@@ -235,16 +235,14 @@ object MainTest:
     assert(status.isEmpty)
   end verifyMergeMakesANewCommitWithACleanIndex
 
-  private def verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit(
+  private def verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit(
       path: Path
   )(
-      ourBranchIsBehindTheirs: Boolean,
       commitOfAdvancedBranch: String,
-      commitOfRetardedBranch: String,
       ourBranch: String,
       exitCode: Int @@ Main.Tags.ExitCode
-  )(using ProcessBuilderFromCommandString): String =
-    assert(exitCode == (if ourBranchIsBehindTheirs then 1 else 0))
+  )(using ProcessBuilderFromCommandString): Unit =
+    assert(exitCode == 0)
 
     val branchName = ("git branch --show-current" !!).strip()
 
@@ -254,25 +252,51 @@ object MainTest:
       (s"git log -1 --format=tformat:%H" !!).strip
 
     assert(
-      postMergeCommit == (if ourBranchIsBehindTheirs then commitOfRetardedBranch
-                          else commitOfAdvancedBranch)
+      postMergeCommit == commitOfAdvancedBranch
     )
 
-    if ourBranchIsBehindTheirs then
-      assert(
-        mergeHead(path) == commitOfAdvancedBranch
-      )
-    else assert(!Files.exists(mergeHeadPath(path)))
-    end if
+    assert(!Files.exists(mergeHeadPath(path)))
 
     val status = (s"git status --short" !!).strip
 
-    if ourBranchIsBehindTheirs then assert(status.nonEmpty)
-    else assert(status.isEmpty)
-    end if
+    assert(status.isEmpty)
+  end verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit
 
-    status
+  private def verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit(
+      path: Path
+  )(
+      commitOfAdvancedBranch: String,
+      commitOfRetardedBranch: String,
+      ourBranch: String,
+      exitCode: Int @@ Main.Tags.ExitCode
+  )(using ProcessBuilderFromCommandString): Unit =
+    assert(exitCode == 1)
+
+    val branchName = ("git branch --show-current" !!).strip()
+
+    assert(branchName == ourBranch)
+
+    val postMergeCommit =
+      (s"git log -1 --format=tformat:%H" !!).strip
+
+    assert(
+      postMergeCommit == commitOfRetardedBranch
+    )
+
+    assert(
+      mergeHead(path) == commitOfAdvancedBranch
+    )
+
+    val status = (s"git status --short" !!).strip
+
+    assert(status.nonEmpty)
   end verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit
+
+  private def mergeHead(path: Path) =
+    Files.readString(mergeHeadPath(path)).strip()
+
+  private def mergeHeadPath(path: Path) =
+    path.resolve(".git").resolve("MERGE_HEAD")
 
   private def verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
       path: Path
@@ -308,12 +332,6 @@ object MainTest:
 
     status
   end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
-
-  private def mergeHead(path: Path) =
-    Files.readString(mergeHeadPath(path)).strip()
-
-  private def mergeHeadPath(path: Path) =
-    path.resolve(".git").resolve("MERGE_HEAD")
 
   private def gitRepository(): ImperativeResource[Path] =
     for
@@ -423,11 +441,18 @@ class MainTest:
                 )
 
                 if noFastForward then
-                  if noCommit then
+                  if !ourBranchIsBehindTheirs then
+                    verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit(
+                      path
+                    )(
+                      commitOfAdvancedBranch,
+                      ourBranch,
+                      exitCode
+                    )
+                  else if noCommit then
                     verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit(
                       path
                     )(
-                      ourBranchIsBehindTheirs,
                       commitOfAdvancedBranch,
                       commitOfMasterBranch,
                       ourBranch,
