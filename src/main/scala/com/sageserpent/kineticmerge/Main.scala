@@ -187,7 +187,8 @@ object Main:
       )
 
       exitCode <-
-        if oursAlreadyContainsTheirs && !commandLineArguments.noFastForward then
+        if oursAlreadyContainsTheirs && (!commandLineArguments.noFastForward || commandLineArguments.noCommit)
+        then
           // Nothing to do, our branch has all their commits already.
           right(successfulMerge)
             .logOperation(
