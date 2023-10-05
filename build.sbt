@@ -42,6 +42,7 @@ lazy val root = (project in file("."))
 
       name.value
     },
+    libraryDependencies += "com.github.scopt" %% "scopt" % "4.1.0",
     libraryDependencies += "org.typelevel" %% "cats-collections-core" % "0.9.6",
     libraryDependencies += "org.typelevel" %% "cats-core"   % "2.10.0",
     libraryDependencies += "org.typelevel" %% "cats-effect" % "3.5.2",

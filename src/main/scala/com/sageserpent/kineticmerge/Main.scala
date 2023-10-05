@@ -4,10 +4,12 @@ import cats.data.{EitherT, WriterT}
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.syntax.traverse.toTraverseOps
+import com.sageserpent.kineticmerge.Main.Tags
 import com.sageserpent.kineticmerge.core.merge.Result
 import com.sageserpent.kineticmerge.core.{Token, mergeTokens}
 import com.softwaremill.tagging.*
 import fansi.Str
+import scopt.OParser
 
 import java.io.{ByteArrayInputStream, File}
 import java.nio.charset.StandardCharsets
@@ -23,12 +25,20 @@ def processBuilderFromCommandStringUsing(
 end processBuilderFromCommandStringUsing
 
 object Main:
+  // NOTE: the use of Git below is based on spike work on MacOS - the version of
+  // Git shipped tends to be a *long* way behind the latest release, so the
+  // latest and greatest versions of commands are not always available. At time
+  // of writing, Mac OS Ventura 13.5.2 ships Git 2.24.3, contrast with Git
+  // 2.42.0 being the latest stable release.
   private type WorkflowLog                = List[String]
   private type WorkflowLogWriter[Payload] = WriterT[IO, WorkflowLog, Payload]
   private type Workflow[Payload] =
     EitherT[WorkflowLogWriter, String @@ Tags.ErrorMessage, Payload]
 
   private val whitespaceRun = "\\s+"
+
+  private val noBranchProvided: String @@ Tags.CommitOrBranchName =
+    "".taggedWith[Tags.CommitOrBranchName]
 
   private val fakeModeForDeletion: String @@ Tags.Mode =
     "0".taggedWith[Tags.Mode]
@@ -39,11 +49,9 @@ object Main:
     0.taggedWith[Tags.ExitCode]
   private val conflictedMerge: Int @@ Tags.ExitCode =
     1.taggedWith[Tags.ExitCode]
-  private val theirBranchIsMissing: Int @@ Tags.ExitCode =
+  private val incorrectCommandLine: Int @@ Tags.ExitCode =
     2.taggedWith[Tags.ExitCode]
-  private val tooManyArguments: Int @@ Tags.ExitCode =
-    3.taggedWith[Tags.ExitCode]
-  private val error: Int @@ Tags.ExitCode = 4.taggedWith[Tags.ExitCode]
+  private val error: Int @@ Tags.ExitCode = 3.taggedWith[Tags.ExitCode]
 
   private val bestCommonAncestorStageIndex: Int @@ Tags.StageIndex =
     1.taggedWith[Tags.StageIndex]
@@ -57,27 +65,62 @@ object Main:
   private val defaultWorkingDirectory = Path.of(".")
 
   def main(args: Array[String]): Unit =
-    // NOTE: the use of Git below is based on spike work on MacOS - the version
-    // of Git shipped tends to be a *long* way behind the latest release, so the
-    // latest and greatest versions of commands are not always available. At
-    // time of writing, Mac OS Ventura 13.5.2 ships Git 2.24.3, contrast with
-    // Git 2.42.0 being the latest stable release.
+    val parser =
+      val builder = OParser.builder[CommandLineArguments]
+      import builder.*
 
-    val exitCode = args match
-      case Array(singleArgument) =>
-        mergeTheirBranch(
-          CommandLineArguments(theirBranchHead =
-            singleArgument.taggedWith[Tags.CommitOrBranchName]
+      val kineticMergeVersion = "TODO: burn the version into a resource."
+
+      OParser.sequence(
+        programName("kinetic-merge"),
+        head("kinetic-merge", s"$kineticMergeVersion"),
+        opt[Unit](name = "no-commit")
+          .action((noCommit, commandLineArguments) =>
+            commandLineArguments.copy(noCommit = true)
           )
-        )(defaultWorkingDirectory)
-      case Array() =>
-        Console.err.println("No branch or commit id provided to merge from.")
-        theirBranchIsMissing
-      case _ =>
-        Console.err.println(
-          s"Expected a single branch or commit id, but got multiple entries shown below:\n${args.mkString("\n")}"
+          .text(
+            "Do not commit a successful merge - leave merged changes staged in the index for review."
+          ),
+        opt[Unit](name = "no-ff")
+          .action((noFastForward, commandLineArguments) =>
+            commandLineArguments.copy(noFastForward = true)
+          )
+          .text("Prevent fast-forward merge - make a merge commit instead."),
+        arg[String](name = "<their branch to merge into ours>")
+          .action((theirBranch, commandLineArguments) =>
+            commandLineArguments.copy(theirBranchHead =
+              theirBranch.taggedWith[Tags.CommitOrBranchName]
+            )
+          )
+          .required()
+          .maxOccurs(1),
+        note(
+          "Utility to merge another Git branch's changes ('their branch') into the active Git branch in the current working directory ('our branch')."
+        ),
+        note(
+          s"Exits with code $successfulMerge on completed successful merge."
+        ),
+        note(
+          s"Exits with code $conflictedMerge on completed successful merge."
+        ),
+        note(
+          s"Exits with code $incorrectCommandLine if command line is incorrect."
+        ),
+        note(
+          s"Exits with code $error if Git porcelain or the filesystem experiences an error; any changes are rolled back."
         )
-        tooManyArguments
+      )
+    end parser
+
+    val exitCode = OParser
+      .parse(
+        parser,
+        args,
+        CommandLineArguments(theirBranchHead = noBranchProvided)
+      )
+      .fold(ifEmpty = incorrectCommandLine)(
+        mergeTheirBranch(_)(defaultWorkingDirectory)
+      )
 
     System.exit(exitCode)
   end main
