@@ -262,6 +262,9 @@ object MainTest:
     assert(status.isEmpty)
   end verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit
 
+  private def mergeHeadPath(path: Path) =
+    path.resolve(".git").resolve("MERGE_HEAD")
+
   private def verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit(
       path: Path
   )(
@@ -291,12 +294,6 @@ object MainTest:
 
     assert(status.nonEmpty)
   end verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit
-
-  private def mergeHead(path: Path) =
-    Files.readString(mergeHeadPath(path)).strip()
-
-  private def mergeHeadPath(path: Path) =
-    path.resolve(".git").resolve("MERGE_HEAD")
 
   private def verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
       path: Path
@@ -332,6 +329,9 @@ object MainTest:
 
     status
   end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
+
+  private def mergeHead(path: Path) =
+    Files.readString(mergeHeadPath(path)).strip()
 
   private def gitRepository(): ImperativeResource[Path] =
     for
@@ -457,6 +457,16 @@ class MainTest:
                       commitOfMasterBranch,
                       ourBranch,
                       exitCode
+                    )
+
+                    println(s"git commit -m 'Completing merge.'" !!)
+
+                    verifyMergeMakesANewCommitWithACleanIndex(
+                      commitOfMasterBranch,
+                      commitOfAdvancedBranch,
+                      ourBranch,
+                      exitCode =
+                        0.taggedWith[Tags.ExitCode] // Placeholder as Kinetic Merge hasn't actually done the merge.
                     )
                   else
                     verifyMergeMakesANewCommitWithACleanIndex(
