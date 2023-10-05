@@ -203,8 +203,8 @@ object MainTest:
   end verifyTrivialMergeMovesToTheMostAdvancedCommitWithACleanIndex
 
   private def verifyMergeMakesANewCommitWithACleanIndex(
-      commitOfConcurrentlyModifiedFileBranch: String,
-      commitOfMasterBranch: String,
+      commitOfOneBranch: String,
+      commitOfTheOtherBranch: String,
       ourBranch: String,
       exitCode: Int @@ Main.Tags.ExitCode
   )(using ProcessBuilderFromCommandString): Unit =
@@ -217,25 +217,65 @@ object MainTest:
     val postMergeCommit =
       (s"git log -1 --format=tformat:%H" !!).strip
 
-    assert(postMergeCommit != commitOfMasterBranch)
-    assert(postMergeCommit != commitOfConcurrentlyModifiedFileBranch)
+    assert(postMergeCommit != commitOfOneBranch)
+    assert(postMergeCommit != commitOfTheOtherBranch)
 
-    val commitOfMasterBranchIsAncestor =
-      (s"git merge-base --is-ancestor $commitOfMasterBranch $postMergeCommit" !) == 0
+    val commitOfOneBranchIsAncestor =
+      (s"git merge-base --is-ancestor $commitOfOneBranch $postMergeCommit" !) == 0
 
-    assert(commitOfMasterBranchIsAncestor)
+    assert(commitOfOneBranchIsAncestor)
 
-    val commitOfNewFileBranchIsAncestor =
-      (s"git merge-base --is-ancestor $commitOfConcurrentlyModifiedFileBranch $postMergeCommit" !) == 0
+    val commitOfTheOtherBranchIsAncestor =
+      (s"git merge-base --is-ancestor $commitOfTheOtherBranch $postMergeCommit" !) == 0
 
-    assert(commitOfNewFileBranchIsAncestor)
+    assert(commitOfTheOtherBranchIsAncestor)
 
     val status = (s"git status --short" !!).strip
 
     assert(status.isEmpty)
   end verifyMergeMakesANewCommitWithACleanIndex
 
-  private def verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+  private def verifyATrivialNoCommitMergeDoesNotMakeACommit(
+      path: Path
+  )(
+      flipBranches: Boolean,
+      commitOfAdvancedBranch: String,
+      commitOfRetardedBranch: String,
+      ourBranch: String,
+      exitCode: Int @@ Main.Tags.ExitCode
+  )(using ProcessBuilderFromCommandString): String =
+    assert(exitCode == 1)
+
+    val branchName = ("git branch --show-current" !!).strip()
+
+    assert(branchName == ourBranch)
+
+    val postMergeCommit =
+      (s"git log -1 --format=tformat:%H" !!).strip
+
+    assert(
+      postMergeCommit == (if flipBranches then commitOfAdvancedBranch
+                          else commitOfRetardedBranch)
+    )
+
+    assert(
+      mergeHead(path) == (if flipBranches then commitOfRetardedBranch
+                          else commitOfAdvancedBranch)
+    )
+
+    val status = (s"git status --short" !!).strip
+
+    if flipBranches then assert(status.isEmpty)
+    else assert(status.nonEmpty)
+    end if
+
+    status
+  end verifyATrivialNoCommitMergeDoesNotMakeACommit
+
+  private def mergeHead(path: Path) =
+    Files.readString(path.resolve(".git").resolve("MERGE_HEAD")).strip()
+
+  private def verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
       path: Path
   )(
       flipBranches: Boolean,
@@ -268,10 +308,7 @@ object MainTest:
     assert(status.nonEmpty)
 
     status
-  end verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex
-
-  private def mergeHead(path: Path) =
-    Files.readString(path.resolve(".git").resolve("MERGE_HEAD")).strip()
+  end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
 
   private def gitRepository(): ImperativeResource[Path] =
     for
@@ -328,10 +365,10 @@ end MainTest
 class MainTest:
   @TestFactory
   def trivialMerge(): DynamicTests =
-    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
-      .withLimit(10)
+    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans and trialsApi.booleans)
+      .withLimit(14)
       .dynamicTests {
-        case (optionalSubdirectory, flipBranches, noFastForward) =>
+        case (optionalSubdirectory, flipBranches, noFastForward, noCommit) =>
           gitRepository()
             .use(path =>
               IO {
@@ -344,6 +381,9 @@ class MainTest:
 
                 introducingArthur(path)
 
+                val commitOfMasterBranch =
+                  (s"git log -1 --format=tformat:%H" !!).strip
+
                 val advancedBranch = "advancedBranch"
 
                 println(s"git checkout -b $advancedBranch" !!)
@@ -353,17 +393,21 @@ class MainTest:
                 val commitOfAdvancedBranch =
                   (s"git log -1 --format=tformat:%H" !!).strip
 
-                if flipBranches then println(s"git checkout $masterBranch" !!)
+                // The convention used in the other tests is to have the master
+                // branch as our branch the 'usual' way around, so we have to
+                // check it back out.
+                if !flipBranches then println(s"git checkout $masterBranch" !!)
                 end if
 
                 val (ourBranch, theirBranch) =
-                  if flipBranches then masterBranch -> advancedBranch
-                  else advancedBranch               -> masterBranch
+                  if flipBranches then advancedBranch -> masterBranch
+                  else masterBranch                   -> advancedBranch
 
                 val exitCode = Main.mergeTheirBranch(
                   CommandLineArguments(
                     theirBranchHead =
                       theirBranch.taggedWith[Tags.CommitOrBranchName],
+                    noCommit = noCommit,
                     noFastForward = noFastForward
                   )
                 )(workingDirectory =
@@ -371,12 +415,23 @@ class MainTest:
                 )
 
                 if noFastForward then
-                  verifyMergeMakesANewCommitWithACleanIndex(
-                    commitOfAdvancedBranch,
-                    theirBranch,
-                    ourBranch,
-                    exitCode
-                  )
+                  if noCommit then
+                    verifyATrivialNoCommitMergeDoesNotMakeACommit(
+                      path
+                    )(
+                      flipBranches,
+                      commitOfAdvancedBranch,
+                      commitOfMasterBranch,
+                      ourBranch,
+                      exitCode
+                    )
+                  else
+                    verifyMergeMakesANewCommitWithACleanIndex(
+                      commitOfMasterBranch,
+                      commitOfAdvancedBranch,
+                      ourBranch,
+                      exitCode
+                    )
                 else
                   verifyTrivialMergeMovesToTheMostAdvancedCommitWithACleanIndex(
                     commitOfAdvancedBranch,
@@ -441,7 +496,7 @@ class MainTest:
               )
 
               if noCommit then
-                verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
                   path
                 )(
                   flipBranches,
@@ -516,7 +571,7 @@ class MainTest:
               )
 
               if noCommit then
-                verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
                   path
                 )(
                   flipBranches,
@@ -592,7 +647,7 @@ class MainTest:
               )
 
               val status =
-                verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
                   path
                 )(
                   flipBranches,
@@ -673,7 +728,7 @@ class MainTest:
               )
 
               val status =
-                verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
                   path
                 )(
                   flipBranches,
@@ -759,7 +814,7 @@ class MainTest:
               )
 
               val status =
-                verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
                   path
                 )(
                   flipBranches,
@@ -850,7 +905,7 @@ class MainTest:
               )
 
               if noCommit then
-                verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
                   path
                 )(
                   flipBranches,
@@ -934,7 +989,7 @@ class MainTest:
               )
 
               if noCommit then
-                verifyAConflictedMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
                   path
                 )(
                   flipBranches,
