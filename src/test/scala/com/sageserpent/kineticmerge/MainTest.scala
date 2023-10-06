@@ -214,8 +214,11 @@ object MainTest:
 
     assert(branchName == ourBranch)
 
-    val postMergeCommit =
-      (s"git log -1 --format=tformat:%H" !!).strip
+    val Array(postMergeCommit, parents*) =
+      (s"git log -1 --format='tformat:%H %P'" !!).strip
+      .split("\\s+"): @unchecked
+
+    assert(parents.size == 2)
 
     assert(postMergeCommit != commitOfOneBranch)
     assert(postMergeCommit != commitOfTheOtherBranch)
@@ -262,9 +265,6 @@ object MainTest:
     assert(status.isEmpty)
   end verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit
 
-  private def mergeHeadPath(path: Path) =
-    path.resolve(".git").resolve("MERGE_HEAD")
-
   private def verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit(
       path: Path
   )(
@@ -294,6 +294,12 @@ object MainTest:
 
     assert(status.nonEmpty)
   end verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit
+
+  private def mergeHead(path: Path) =
+    Files.readString(mergeHeadPath(path)).strip()
+
+  private def mergeHeadPath(path: Path) =
+    path.resolve(".git").resolve("MERGE_HEAD")
 
   private def verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
       path: Path
@@ -329,9 +335,6 @@ object MainTest:
 
     status
   end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
-
-  private def mergeHead(path: Path) =
-    Files.readString(mergeHeadPath(path)).strip()
 
   private def gitRepository(): ImperativeResource[Path] =
     for
