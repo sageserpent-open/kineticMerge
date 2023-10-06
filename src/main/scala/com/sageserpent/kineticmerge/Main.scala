@@ -332,6 +332,10 @@ object Main:
         }
 
         exitCodeWhenThereAreNoUnexpectedErrors <-
+          val commitMessage =
+            // No underlining here, please...
+            s"Merge from $theirBranchHead into $ourBranchHead."
+
           if goodForAMergeCommit && !noCommit then
             for
               treeId <- IO {
@@ -341,10 +345,6 @@ object Main:
                   s"Unexpected error: could not write a tree object from the index."
                 )
               commitId <- IO {
-                val commitMessage =
-                  // No underlining here, please...
-                  s"Merge from $theirBranchHead into $ourBranchHead."
-
                 (s"git commit-tree -p $ourBranchHead -p $theirBranchHead -m '$commitMessage' $treeId" !!).strip()
               }.labelExceptionWith(errorMessage =
                 s"Unexpected error: could not create a commit from tree object ${underline(treeId)}"
@@ -391,6 +391,15 @@ object Main:
                 )
               }.labelExceptionWith(errorMessage =
                 s"Unexpected error: could not write `MERGE_MODE` to propagate the merge mode ${underline(mergeMode)}."
+              )
+              _ <- IO {
+                Files.write(
+                  gitDirPath
+                    .resolve("MERGE_MSG"),
+                  commitMessage.getBytes(StandardCharsets.UTF_8)
+                )
+              }.labelExceptionWith(errorMessage =
+                s"Unexpected error: could not write `MERGE_MSG` to prepare the commit message ${underline(commitMessage)}."
               ).logOperation(
                 if goodForAMergeCommit then
                   "Successful merge, leaving merged changes in the index for review..."
