@@ -75,6 +75,8 @@ object Main:
       OParser.sequence(
         programName("kinetic-merge"),
         head("kinetic-merge", s"$kineticMergeVersion"),
+        help(name = "help").text("Output this summary."),
+        version(name = "version").text("Show the version of this command."),
         opt[Unit](name = "no-commit")
           .action((noCommit, commandLineArguments) =>
             commandLineArguments.copy(noCommit = true)
