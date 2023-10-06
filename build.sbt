@@ -55,7 +55,7 @@ lazy val root = (project in file("."))
 
       val executablePath = s"${target.value}${Path.sep}${name.value}"
 
-      s"cs bootstrap --verbose --scala-version ${scalaBinaryVersion.value} -f $localArtifactCoordinates -o $executablePath" !
+      s"cs bootstrap --verbose --bat=true --scala-version ${scalaBinaryVersion.value} -f $localArtifactCoordinates -o $executablePath" !
 
       name.value
     },
