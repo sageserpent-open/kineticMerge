@@ -132,6 +132,8 @@ object Main:
     given ProcessBuilderFromCommandString =
       processBuilderFromCommandStringUsing(workingDirectory)
 
+    import commandLineArguments.*
+
     val workflow = for
       _ <- IO {
         "git --version" !!
@@ -171,19 +173,19 @@ object Main:
       )
 
       theirCommitId <- IO {
-        s"git rev-parse ${commandLineArguments.theirBranchHead}" !!
+        s"git rev-parse ${theirBranchHead}" !!
       }.labelExceptionWith(errorMessage =
-        s"Ref ${underline(commandLineArguments.theirBranchHead)} is not a valid branch or commit."
+        s"Ref ${underline(theirBranchHead)} is not a valid branch or commit."
       )
 
       oursAlreadyContainsTheirs <- firstBranchIsContainedBySecond(
-        commandLineArguments.theirBranchHead,
+        theirBranchHead,
         ourBranchHead
       )
 
       theirsAlreadyContainsOurs <- firstBranchIsContainedBySecond(
         ourBranchHead,
-        commandLineArguments.theirBranchHead
+        theirBranchHead
       )
 
       exitCode <-
@@ -192,20 +194,20 @@ object Main:
           // Nothing to do, our branch has all their commits already.
           right(successfulMerge)
             .logOperation(
-              s"Nothing to do - our branch ${underline(ourBranchHead)} already contains ${underline(commandLineArguments.theirBranchHead)}."
+              s"Nothing to do - our branch ${underline(ourBranchHead)} already contains ${underline(theirBranchHead)}."
             )
-        else if theirsAlreadyContainsOurs && !commandLineArguments.noFastForward
+        else if theirsAlreadyContainsOurs && !noFastForward
         then
           // Fast-forward our branch to their head commit.
           IO {
-            s"git reset --hard ${commandLineArguments.theirBranchHead}" !! : Unit
+            s"git reset --hard ${theirBranchHead}" !! : Unit
             successfulMerge
           }
             .labelExceptionWith(errorMessage =
-              s"Unexpected error: could not fast-forward our branch ${underline(ourBranchHead)} to their branch ${underline(commandLineArguments.theirBranchHead)}."
+              s"Unexpected error: could not fast-forward our branch ${underline(ourBranchHead)} to their branch ${underline(theirBranchHead)}."
             )
             .logOperation(
-              s"Fast forward our branch ${underline(ourBranchHead)} to their branch ${underline(commandLineArguments.theirBranchHead)}."
+              s"Fast forward our branch ${underline(ourBranchHead)} to their branch ${underline(theirBranchHead)}."
             )
         else // Perform a real merge...
           for
@@ -217,10 +219,10 @@ object Main:
               )
 
             bestAncestorCommitId <- IO {
-              (s"git merge-base $ourBranchHead ${commandLineArguments.theirBranchHead}" !!).strip()
+              (s"git merge-base $ourBranchHead ${theirBranchHead}" !!).strip()
               .taggedWith[Tags.CommitOrBranchName]
             }.labelExceptionWith(errorMessage =
-              s"Could not determine a best ancestor commit between our branch ${underline(ourBranchHead)} and their branch ${underline(commandLineArguments.theirBranchHead)}."
+              s"Could not determine a best ancestor commit between our branch ${underline(ourBranchHead)} and their branch ${underline(theirBranchHead)}."
             )
 
             ourChanges <- IO {
@@ -231,11 +233,11 @@ object Main:
               .map(_.toMap)
 
             theirChanges <- IO {
-              s"git diff --no-renames --name-status $bestAncestorCommitId ${commandLineArguments.theirBranchHead}".lazyLines.toList
+              s"git diff --no-renames --name-status $bestAncestorCommitId ${theirBranchHead}".lazyLines.toList
             }.labelExceptionWith(errorMessage =
-              s"Could not determine changes made on their branch ${underline(commandLineArguments.theirBranchHead)} since ancestor commit ${underline(bestAncestorCommitId)}."
+              s"Could not determine changes made on their branch ${underline(theirBranchHead)} since ancestor commit ${underline(bestAncestorCommitId)}."
             ).flatMap(
-              _.traverse(pathChangeFor(commandLineArguments.theirBranchHead))
+              _.traverse(pathChangeFor(theirBranchHead))
             ).map(_.toMap)
 
             // NOTE: changes that belong only to our branch don't need to be
@@ -251,12 +253,13 @@ object Main:
             exitCode <-
               mergeWithRollback(
                 topLevelWorkingDirectory,
-                commandLineArguments.theirBranchHead,
+                theirBranchHead,
                 ourBranchHead,
                 theirCommitId,
                 bestAncestorCommitId,
                 overallChangesInvolvingTheirs,
-                commandLineArguments.noCommit
+                noCommit,
+                noFastForward
               )
           yield exitCode
     yield exitCode
@@ -311,7 +314,8 @@ object Main:
       theirCommitId: String,
       bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
       overallChangesInvolvingTheirs: List[(Path, (Change, Option[Change]))],
-      noCommit: Boolean
+      noCommit: Boolean,
+      noFastForward: Boolean
   )(using ProcessBuilderFromCommandString): Workflow[Int @@ Tags.ExitCode] =
     val workflow =
       for
@@ -377,6 +381,16 @@ object Main:
                 )
               }.labelExceptionWith(errorMessage =
                 s"Unexpected error: could not write `MERGE_HEAD` to reference their branch ${underline(theirBranchHead)}."
+              )
+              mergeMode = if noFastForward then "no-ff" else ""
+              _ <- IO {
+                Files.write(
+                  gitDirPath
+                    .resolve("MERGE_MODE"),
+                  mergeMode.getBytes(StandardCharsets.UTF_8)
+                )
+              }.labelExceptionWith(errorMessage =
+                s"Unexpected error: could not write `MERGE_MODE` to propagate the merge mode ${underline(mergeMode)}."
               ).logOperation(
                 if goodForAMergeCommit then
                   "Successful merge, leaving merged changes in the index for review..."
