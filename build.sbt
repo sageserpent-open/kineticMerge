@@ -1,5 +1,6 @@
 import scala.sys.process.*
 import scala.language.postfixOps
+import sbtrelease.ReleaseStateTransformations.*
 import xerial.sbt.Sonatype.*
 
 ThisBuild / version := "0.1.0-SNAPSHOT"
@@ -27,9 +28,25 @@ lazy val root = (project in file("."))
       )
     ),
     releaseCrossBuild := false, // No cross-building here - just Scala 3.
+    releaseProcess := Seq[ReleaseStep](
+      checkSnapshotDependencies,
+      inquireVersions,
+      runClean,
+      runTest,
+      setReleaseVersion,
+      commitReleaseVersion,
+      tagRelease,
+      releaseStepCommandAndRemaining(
+        "publishSigned"
+      ), // ... finally the publishing step using SBT's own mechanism.
+      releaseStepCommand("sonatypeBundleRelease"),
+      releaseStepCommand("packageExecutable"),
+      setNextVersion,
+      commitNextVersion,
+      pushChanges
+    ),
     scalacOptions ++= List("-source:future"),
-    name         := "kinetic-merge",
-    organization := "com.sageserpent",
+    name := "kinetic-merge",
     packageExecutable := {
       val _ = publishLocal.value; (rabinFingerprint / publishLocal).value
 
