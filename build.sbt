@@ -3,6 +3,8 @@ import scala.language.postfixOps
 import sbtrelease.ReleaseStateTransformations.*
 import xerial.sbt.Sonatype.*
 
+enablePlugins(ShadingPlugin)
+
 lazy val javaVersion = "14"
 
 ThisBuild / version := "0.1.0-SNAPSHOT"
@@ -19,7 +21,7 @@ lazy val root = (project in file("."))
     publishTo              := sonatypePublishToBundle.value,
     pomIncludeRepository   := { _ => false },
     sonatypeCredentialHost := "s01.oss.sonatype.org",
-    publishMavenStyle      := true,
+    publishMavenStyle      := false,
     licenses += ("MIT", url("https://opensource.org/licenses/MIT")),
     organization     := "com.sageserpent",
     organizationName := "sageserpent",
@@ -52,7 +54,7 @@ lazy val root = (project in file("."))
     scalacOptions ++= List("-source:future"),
     name := "kinetic-merge",
     packageExecutable := {
-      val _ = publishLocal.value; (rabinFingerprint / publishLocal).value
+      val _ = publishLocal.value
 
       val localArtifactCoordinates =
         s"${organization.value}:${name.value}_${scalaBinaryVersion.value}:${version.value}"
@@ -78,11 +80,22 @@ lazy val root = (project in file("."))
     libraryDependencies += "com.lihaoyi"     %% "pprint"    % "0.8.1"  % Test,
     libraryDependencies += "com.eed3si9n.expecty" %% "expecty" % "0.16.0" % Test,
     libraryDependencies += "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
-    Test / fork               := true,
-    Test / testForkedParallel := true,
-    Test / javaOptions ++= Seq("-Xms10G", "-Xmx10G")
+    // NASTY HACK: instead of an explicit inter-project dependency via
+    // `.dependsOn`, use this to stop Coursier from pulling in the JAR from
+    // `rabinFingerprint`.
+    libraryDependencies += (rabinFingerprint / projectID).value % Provided,
+    Test / fork                                                := true,
+    Test / testForkedParallel                                  := true,
+    Test / javaOptions ++= Seq("-Xms10G", "-Xmx10G"),
+    shadingVerbose := true,
+    shadedJars += (rabinFingerprint / Compile / packageBin).value,
+    shadingRules ++= Seq(
+      ShadingRule.moveUnder("org.rabinfingerprint", "shaded")
+    ),
+    validNamespaces ++= Set("com", "org", "shaded"),
+    validEntries += "usage.txt",
+    packageBin := shadedPackageBin.value
   )
-  .dependsOn(rabinFingerprint)
 
 lazy val rabinFingerprint = (project in file("rabinfingerprint")).settings(
   crossPaths                               := false,
