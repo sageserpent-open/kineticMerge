@@ -21,7 +21,7 @@ lazy val root = (project in file("."))
     publishTo              := sonatypePublishToBundle.value,
     pomIncludeRepository   := { _ => false },
     sonatypeCredentialHost := "s01.oss.sonatype.org",
-    publishMavenStyle      := false,
+    publishMavenStyle      := true,
     licenses += ("MIT", url("https://opensource.org/licenses/MIT")),
     organization     := "com.sageserpent",
     organizationName := "sageserpent",
@@ -81,11 +81,12 @@ lazy val root = (project in file("."))
     libraryDependencies += "com.eed3si9n.expecty" %% "expecty" % "0.16.0" % Test,
     libraryDependencies += "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
     // NASTY HACK: instead of an explicit inter-project dependency via
-    // `.dependsOn`, use this to stop Coursier from pulling in the JAR from
-    // `rabinFingerprint`.
-    libraryDependencies += (rabinFingerprint / projectID).value % Provided,
-    Test / fork                                                := true,
-    Test / testForkedParallel                                  := true,
+    // `.dependsOn`, use this to stop both Coursier from pulling in the JAR from
+    // `rabinFingerprint` *and* also the generated POM from referencing said
+    // dependency.
+    Compile / internalDependencyClasspath ++= (rabinFingerprint / Compile / exportedProducts).value ++ (rabinFingerprint / Compile / externalDependencyClasspath).value,
+    Test / fork               := true,
+    Test / testForkedParallel := true,
     Test / javaOptions ++= Seq("-Xms10G", "-Xmx10G"),
     shadingVerbose := true,
     shadedJars += (rabinFingerprint / Compile / packageBin).value,
@@ -98,7 +99,10 @@ lazy val root = (project in file("."))
   )
 
 lazy val rabinFingerprint = (project in file("rabinfingerprint")).settings(
+  publishMavenStyle                        := false,
   crossPaths                               := false,
+  packageBin / publishArtifact             := false,
+  packageSrc / publishArtifact             := false,
   packageDoc / publishArtifact             := false,
   libraryDependencies += "com.google.guava" % "guava" % "32.1.2-jre",
   libraryDependencies += "junit"            % "junit" % "4.13.2" % Test
