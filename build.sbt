@@ -3,9 +3,13 @@ import scala.language.postfixOps
 import sbtrelease.ReleaseStateTransformations.*
 import xerial.sbt.Sonatype.*
 
+lazy val javaVersion = "14"
+
 ThisBuild / version := "0.1.0-SNAPSHOT"
 
 ThisBuild / scalaVersion := "3.3.0"
+
+ThisBuild / javacOptions ++= Seq("-source", javaVersion, "-target", javaVersion)
 
 lazy val packageExecutable =
   taskKey[String]("Package an executable with Coursier")
@@ -81,6 +85,7 @@ lazy val root = (project in file("."))
   .dependsOn(rabinFingerprint)
 
 lazy val rabinFingerprint = (project in file("rabinfingerprint")).settings(
+  crossPaths                               := false,
   packageDoc / publishArtifact             := false,
   libraryDependencies += "com.google.guava" % "guava" % "32.1.2-jre",
   libraryDependencies += "junit"            % "junit" % "4.13.2" % Test
