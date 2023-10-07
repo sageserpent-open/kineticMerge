@@ -84,7 +84,10 @@ lazy val root = (project in file("."))
     // `.dependsOn`, use this to stop both Coursier from pulling in the JAR from
     // `rabinFingerprint` *and* also the generated POM from referencing said
     // dependency.
-    Compile / internalDependencyClasspath ++= (rabinFingerprint / Compile / exportedProducts).value ++ (rabinFingerprint / Compile / externalDependencyClasspath).value,
+    // NOTE: the common expressions are *not* de-duplicated as they rely on
+    // macro magic.
+    Compile / internalDependencyClasspath ++= ((rabinFingerprint / Compile / exportedProducts).value ++ (rabinFingerprint / Compile / externalDependencyClasspath).value),
+    Test / internalDependencyClasspath ++= ((rabinFingerprint / Compile / exportedProducts).value ++ (rabinFingerprint / Compile / externalDependencyClasspath).value),
     Test / fork               := true,
     Test / testForkedParallel := true,
     Test / javaOptions ++= Seq("-Xms10G", "-Xmx10G"),
