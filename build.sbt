@@ -2,6 +2,8 @@ import scala.sys.process.*
 import scala.language.postfixOps
 import sbtrelease.ReleaseStateTransformations.*
 import xerial.sbt.Sonatype.*
+import scala.xml.transform.{RuleTransformer, RewriteRule}
+import scala.xml.{Node, Elem}
 
 enablePlugins(ShadingPlugin)
 
@@ -25,6 +27,28 @@ lazy val root = (project in file("."))
     pomIncludeRepository   := { _ => false },
     sonatypeCredentialHost := "s01.oss.sonatype.org",
     publishMavenStyle      := true,
+    pomPostProcess := { node =>
+      val rejectedDependencyArtifact =
+        (rabinFingerprint / Compile / packageBin / artifact).value.name
+
+      object removeRejectedDependencyArtifact extends RewriteRule {
+        override def transform(subtreeNode: Node): Seq[Node] =
+          subtreeNode match {
+            case element: Elem if element.label == "dependency" =>
+              if (
+                element.child
+                  .filter(_.label == "artifactId")
+                  .exists(rejectedDependencyArtifact == _.text)
+              ) Seq.empty
+              else Seq(subtreeNode)
+            case _ => Seq(subtreeNode)
+          }
+      }
+
+      val transformer = new RuleTransformer(removeRejectedDependencyArtifact)
+
+      transformer.transform(node).head
+    },
     licenses += ("MIT", url("https://opensource.org/licenses/MIT")),
     organization     := "com.sageserpent",
     organizationName := "sageserpent",
@@ -96,14 +120,6 @@ lazy val root = (project in file("."))
     libraryDependencies += "com.lihaoyi"     %% "pprint"    % "0.8.1"  % Test,
     libraryDependencies += "com.eed3si9n.expecty" %% "expecty" % "0.16.0" % Test,
     libraryDependencies += "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
-    // NASTY HACK: instead of an explicit inter-project dependency via
-    // `.dependsOn`, use this to stop both Coursier from pulling in the JAR from
-    // `rabinFingerprint` *and* also the generated POM from referencing said
-    // dependency.
-    // NOTE: the common expressions are *not* de-duplicated as they rely on
-    // macro magic.
-    Compile / internalDependencyClasspath ++= ((rabinFingerprint / Compile / exportedProducts).value ++ (rabinFingerprint / Compile / externalDependencyClasspath).value),
-    Test / internalDependencyClasspath ++= ((rabinFingerprint / Compile / exportedProducts).value ++ (rabinFingerprint / Compile / externalDependencyClasspath).value),
     Test / fork               := true,
     Test / testForkedParallel := true,
     Test / javaOptions ++= Seq("-Xms10G", "-Xmx10G"),
@@ -116,6 +132,10 @@ lazy val root = (project in file("."))
     validEntries ++= Set("version.txt", "usage.txt"),
     packageBin := shadedPackageBin.value
   )
+  // Just an optional dependency - otherwise Coursier will pick this up. It's
+  // enough to allow IntelliJ to both import from SBT and run tests, given that
+  // the Rabin fingerprint code is shaded into Kinetic Merge.
+  .dependsOn(rabinFingerprint % Optional)
 
 lazy val rabinFingerprint = (project in file("rabinfingerprint")).settings(
   publishMavenStyle                        := false,
