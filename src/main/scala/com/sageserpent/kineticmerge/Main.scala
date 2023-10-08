@@ -14,6 +14,7 @@ import scopt.OParser
 import java.io.{ByteArrayInputStream, File}
 import java.nio.charset.StandardCharsets
 import java.nio.file.{CopyOption, Files, Path, StandardCopyOption}
+import scala.io.Source
 import scala.language.postfixOps
 import scala.sys.process.{Process, ProcessBuilder, stringToProcess}
 
@@ -70,7 +71,11 @@ object Main:
       val builder = OParser.builder[CommandLineArguments]
       import builder.*
 
-      val kineticMergeVersion = "TODO: burn the version into a resource."
+      val kineticMergeVersion = Source
+        .fromResource("version.txt")
+        .getLines()
+        .nextOption()
+        .getOrElse("Not a packaged build.")
 
       OParser.sequence(
         programName("kinetic-merge"),

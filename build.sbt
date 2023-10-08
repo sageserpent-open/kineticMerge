@@ -64,6 +64,8 @@ lazy val root = (project in file("."))
     Compile / resourceGenerators += Def.task {
       val location = versionResource.value
 
+      println(s"Generating version resource: $location")
+
       IO.write(location, (ThisBuild / version).value)
 
       Seq(location)
