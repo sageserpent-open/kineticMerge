@@ -28,7 +28,7 @@ object MainTest:
 
   private val sandra = "sandra.txt"
 
-  private val tyson = "tyson.txt"
+  private val tyson = Path.of("pathPrefix").resolve("tyson.txt").toString
 
   private val arthurFirstVariation  = "chap"
   private val arthurSecondVariation = "boy"
@@ -95,6 +95,7 @@ object MainTest:
   private def enterTysonStageLeft(path: Path)(using
       ProcessBuilderFromCommandString
   ): Unit =
+    Files.createDirectory(path.resolve(tyson).getParent)
     Files.writeString(path.resolve(tyson), s"$tysonResponse\n")
     println(s"git add $tyson" !!)
     println(s"git commit -m 'Tyson responds.'" !!)
@@ -103,6 +104,7 @@ object MainTest:
   private def evilTysonMakesDramaticEntranceExulting(path: Path)(using
       ProcessBuilderFromCommandString
   ): Unit =
+    Files.createDirectory(path.resolve(tyson).getParent)
     Files.writeString(path.resolve(tyson), s"$evilTysonExultation\n")
     println(s"git add $tyson" !!)
     println(s"git commit -m 'Evil Tyson exults.'" !!)
