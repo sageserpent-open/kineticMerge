@@ -34,16 +34,22 @@ Come the PR, Noah's changes all live in their original location, and so Git rega
 
 Kinetic Merge's job is to augment the process of merging in Git so that the code motion due to refactoring is sensibly interpreted, taking into account all the files in the repository. If it can do a clean merge, it will and Git will see an ordinary merge commit. If it can't fully complete the merge, it writes the same staging information that Git would in a conflicted merge; it then hands over to Git and you, the user, to resolve the final conflicts - but it tries to take the code motion pain out of the process before it hands over, so that the final manual merge should feel like a simple one.
 
+## Status
+Well, that's the plan. It's no longer vapourware, there is a release, but the code motion aspect isn't supported at all - it is currently a conventional file-by-file merge tool, although the merge algorithm is I believe novel. Whether you like what is currently does is for you to judge, try it out.
+
+Be aware that things will be changing in that department as support for code motion is introduced - this has quite a large bearing on the granularity of the merging, which is currently extremely fine grained and will sometimes produce some _surprising_ results.
+
 ## I can't build this under IntelliJ! ##
 
-Sorry about that. The problem is that at time of writing, the SBT build definition does then very cruel and unsual things to avoid having to publish the locally built dependency project for Rabin fingerprinting (this is third party source code that is not currently published to Sonatype / Maven Central). Instead that specific project's JAR is shared into the one made by Kinetic Merge, but *not* as a convetional fat-JAR with the entire set of transitive dependencies also pulled in. In addition to not publishing the local JAR built from the third party code, it also has to stop Kinetic Merge's published POM from referencing that JAR, hence all the hackery.
+Sorry about that. 
+
+The problem is that at time of writing, the SBT build definition does some very cruel and unsual things to avoid having to publish the locally built dependency project for Rabin fingerprinting (this is third party source code that is not currently published to Sonatype / Maven Central). Instead that specific project's JAR is shaded into the one made by Kinetic Merge, but *not* as a conventional fat-JAR with the entire set of transitive dependencies also pulled in. In addition to not publishing the local JAR built from the third party code, it also has to stop Kinetic Merge's published POM from referencing that JAR, hence all the hackery.
 
 The upshot is that IntelliJ's SBT project structure extractor doesn't pick up the, ahem, _nuances_ of the SBT build definition, thus the imported project doesn't build properly.
 
 The workaround for now is to switch on project building via SBT *in addition to* project reloading - see `Build, Execution, Deployment > Build Tools > sbt` in the IntelliJ project settings.
 
-## Status
-Well, that's the plan - right now this is vapourware. I don't even know if I can deliver such a thing, to be honest. Let's see...
+There is a [ticket for this](https://github.com/sageserpent-open/kineticMerge/issues/16).
 
 ## Simple Use Cases
 [Behold the Chamber of Horrors...](./documents/EXAMPLES.md)
