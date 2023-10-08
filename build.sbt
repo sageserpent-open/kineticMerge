@@ -16,6 +16,9 @@ ThisBuild / javacOptions ++= Seq("-source", javaVersion, "-target", javaVersion)
 lazy val packageExecutable =
   taskKey[String]("Package an executable with Coursier")
 
+lazy val versionResource =
+  settingKey[File]("Location of generated version resource file.")
+
 lazy val root = (project in file("."))
   .settings(
     publishTo              := sonatypePublishToBundle.value,
@@ -53,6 +56,18 @@ lazy val root = (project in file("."))
     ),
     scalacOptions ++= List("-source:future"),
     name := "kinetic-merge",
+    versionResource := {
+      val additionalResourcesDirectory = (Compile / resourceManaged).value
+
+      additionalResourcesDirectory.toPath.resolve("version.txt").toFile
+    },
+    Compile / resourceGenerators += Def.task {
+      val location = versionResource.value
+
+      IO.write(location, (ThisBuild / version).value)
+
+      Seq(location)
+    }.taskValue,
     packageExecutable := {
       val localArtifactCoordinates =
         s"${organization.value}:${name.value}_${scalaBinaryVersion.value}:${version.value}"
@@ -96,7 +111,7 @@ lazy val root = (project in file("."))
       ShadingRule.moveUnder("org.rabinfingerprint", "shaded")
     ),
     validNamespaces ++= Set("com", "org", "shaded"),
-    validEntries ++= Set("hello.txt", "usage.txt"),
+    validEntries ++= Set("version.txt", "usage.txt"),
     packageBin := shadedPackageBin.value
   )
 
