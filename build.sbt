@@ -54,8 +54,6 @@ lazy val root = (project in file("."))
     scalacOptions ++= List("-source:future"),
     name := "kinetic-merge",
     packageExecutable := {
-      val _ = publishLocal.value
-
       val localArtifactCoordinates =
         s"${organization.value}:${name.value}_${scalaBinaryVersion.value}:${version.value}"
 
@@ -65,6 +63,7 @@ lazy val root = (project in file("."))
 
       name.value
     },
+    packageExecutable := (packageExecutable dependsOn publishLocal).value,
     libraryDependencies += "com.github.scopt" %% "scopt" % "4.1.0",
     libraryDependencies += "org.typelevel" %% "cats-collections-core" % "0.9.6",
     libraryDependencies += "org.typelevel" %% "cats-core"   % "2.10.0",
@@ -97,7 +96,7 @@ lazy val root = (project in file("."))
       ShadingRule.moveUnder("org.rabinfingerprint", "shaded")
     ),
     validNamespaces ++= Set("com", "org", "shaded"),
-    validEntries += "usage.txt",
+    validEntries ++= Set("hello.txt", "usage.txt"),
     packageBin := shadedPackageBin.value
   )
 
