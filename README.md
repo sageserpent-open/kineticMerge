@@ -9,6 +9,18 @@ Merge a heavily refactored codebase and stay sane.
 - Work alongside the usual Git workflows, allowing ordinary Git merge to take over at the end if necessary.
 - A simple command line tool that tries to do as much as it can without supervision, and with minimal supervision when complexities are encountered.
 
+## Installation ##
+
+```bash
+curl -LJO --verbose http://github.com/sageserpent-open/kineticMerge/releases/download/v<release version>/kinetic-merge
+
+chmod ug+x kineticMerge
+```
+
+Alternatively, go to the [releases](https://github.com/sageserpent-open/kineticMerge/releases) and manually download `kinetic-merge`. You'll still have to execute `chmod ug+x kineticMerge` so you can run it.
+
+If you're on Windows, change `kinetic-merge` to *`kinetic-merge.bat`*.
+
 ## Why?
 Meet Noah Shortcut and Seymour Checks, two likely software engineers from [ThreePhantasticTales](http://www.octopull.co.uk/sw-dev/ThreePhantasticTails.html), and their manager, Mr Deadline.
 
