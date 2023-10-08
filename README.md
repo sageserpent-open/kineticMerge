@@ -35,7 +35,7 @@ Come the PR, Noah's changes all live in their original location, and so Git rega
 Kinetic Merge's job is to augment the process of merging in Git so that the code motion due to refactoring is sensibly interpreted, taking into account all the files in the repository. If it can do a clean merge, it will and Git will see an ordinary merge commit. If it can't fully complete the merge, it writes the same staging information that Git would in a conflicted merge; it then hands over to Git and you, the user, to resolve the final conflicts - but it tries to take the code motion pain out of the process before it hands over, so that the final manual merge should feel like a simple one.
 
 ## Status
-Well, that's the plan. It's no longer vapourware, there is a release, but the code motion aspect isn't supported at all - it is currently a conventional file-by-file merge tool, although the merge algorithm is I believe novel. Whether you like what is currently does is for you to judge, try it out.
+Well, that's the plan. It's no longer vapourware, there is a release, but the code motion aspect isn't supported at all yet - it is currently a conventional file-by-file merge tool, although the merge algorithm is I believe novel. Whether you like what is currently does is for you to judge, try it out.
 
 Be aware that things will be changing in that department as support for code motion is introduced - this has quite a large bearing on the granularity of the merging, which is currently extremely fine grained and will sometimes produce some _surprising_ results.
 
