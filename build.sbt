@@ -69,11 +69,11 @@ lazy val root = (project in file("."))
       setReleaseVersion,
       commitReleaseVersion,
       tagRelease,
-      releaseStepCommandAndRemaining(
+      releaseStepCommand("packageExecutable"),
+      releaseStepCommand(
         "publishSigned"
       ), // ... finally the publishing step using SBT's own mechanism.
       releaseStepCommand("sonatypeBundleRelease"),
-      releaseStepCommand("packageExecutable"),
       setNextVersion,
       commitNextVersion,
       pushChanges
@@ -96,7 +96,7 @@ lazy val root = (project in file("."))
     }.taskValue,
     packageExecutable := {
       val localArtifactCoordinates =
-        s"${organization.value}:${name.value}_${scalaBinaryVersion.value}:${version.value}"
+        s"${organization.value}:${name.value}_${scalaBinaryVersion.value}:${(ThisBuild / version).value}"
 
       val executablePath = s"${target.value}${Path.sep}${name.value}"
 
