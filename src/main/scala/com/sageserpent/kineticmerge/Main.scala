@@ -9,7 +9,7 @@ import com.sageserpent.kineticmerge.core.merge.Result
 import com.sageserpent.kineticmerge.core.{Token, mergeTokens}
 import com.softwaremill.tagging.*
 import fansi.Str
-import os.{Path, RelPath}
+import os.{CommandResult, Path, RelPath}
 import scopt.OParser
 
 import scala.io.Source
@@ -144,41 +144,13 @@ object Main:
           s"Unexpected error: top level of Git repository ${underline(topLevel)} is not a valid path."
         )
 
-      ourBranchHead <- IO {
-        val branchName = os
-          .proc("git", "branch", "--show-current")
-          .call(topLevelWorkingDirectory)
-          .out
-          .text()
-          .strip()
-          .taggedWith[Tags.CommitOrBranchName]
-
-        if branchName.nonEmpty then branchName
-        else
-          // Handle a detached commit.
-          os.proc("git", "rev-parse", "HEAD")
-            .call(topLevelWorkingDirectory)
-            .out
-            .text()
-            .strip()
-            .taggedWith[Tags.CommitOrBranchName]
-        end if
-      }.labelExceptionWith(errorMessage =
-        s"Could not determine a branch name or commit id for our branch head."
-      )
-
-      theirCommitId <- IO {
-        os.proc("git", "rev-parse", theirBranchHead)
-          .call(topLevelWorkingDirectory)
-          .out
-          .text()
-      }.labelExceptionWith(errorMessage =
-        s"Ref ${underline(theirBranchHead)} is not a valid branch or commit."
-      )
-
       inTopLevelWorkingDirectory = InWorkingDirectory(
         topLevelWorkingDirectory
       )
+
+      ourBranchHead <- inTopLevelWorkingDirectory.ourBranchHead()
+
+      theirCommitId <- inTopLevelWorkingDirectory.theirCommitId(theirBranchHead)
 
       oursAlreadyContainsTheirs <- inTopLevelWorkingDirectory
         .firstBranchIsContainedBySecond(
@@ -202,76 +174,32 @@ object Main:
             )
         else if theirsAlreadyContainsOurs && !noFastForward
         then
-          // Fast-forward our branch to their head commit.
-          IO {
-            os.proc("git", "reset", "--hard", theirBranchHead)
-              .call(topLevelWorkingDirectory): Unit
-            successfulMerge
-          }
-            .labelExceptionWith(errorMessage =
-              s"Unexpected error: could not fast-forward our branch ${underline(ourBranchHead)} to their branch ${underline(theirBranchHead)}."
-            )
-            .logOperation(
-              s"Fast forward our branch ${underline(ourBranchHead)} to their branch ${underline(theirBranchHead)}."
-            )
+          inTopLevelWorkingDirectory.fastForwardToTheirs(
+            ourBranchHead,
+            theirBranchHead
+          )
         else // Perform a real merge...
           for
-            _ <- IO {
-              os.proc("git", "diff-index", "--exit-code", ourBranchHead)
-                .call(topLevelWorkingDirectory)
-            }
-              .labelExceptionWith(errorMessage =
-                "There are uncommitted changes prior to commencing the merge."
-              )
-
-            bestAncestorCommitId <- IO {
-              os.proc("git", "merge-base", ourBranchHead, theirBranchHead)
-                .call(topLevelWorkingDirectory)
-                .out
-                .text()
-                .strip()
-                .taggedWith[Tags.CommitOrBranchName]
-            }.labelExceptionWith(errorMessage =
-              s"Could not determine a best ancestor commit between our branch ${underline(ourBranchHead)} and their branch ${underline(theirBranchHead)}."
+            _ <- inTopLevelWorkingDirectory.confirmThereAreNoUncommittedChanges(
+              ourBranchHead
             )
 
-            ourChanges <- IO {
-              os.proc(
-                "git",
-                "diff",
-                "--no-renames",
-                "--name-status",
-                bestAncestorCommitId,
-                ourBranchHead
-              ).call(topLevelWorkingDirectory)
-                .out
-                .lines()
-            }.labelExceptionWith(errorMessage =
-              s"Could not determine changes made on our branch ${underline(ourBranchHead)} since ancestor commit ${underline(bestAncestorCommitId)}."
-            ).flatMap(
-              _.traverse(
-                inTopLevelWorkingDirectory.pathChangeFor(ourBranchHead)
-              )
-            ).map(_.toMap)
+            bestAncestorCommitId <- inTopLevelWorkingDirectory
+              .bestAncestorCommitId(ourBranchHead, theirBranchHead)
 
-            theirChanges <- IO {
-              os.proc(
-                "git",
-                "diff",
-                "--no-renames",
-                "--name-status",
-                bestAncestorCommitId,
-                theirBranchHead
-              ).call(topLevelWorkingDirectory)
-                .out
-                .lines()
-            }.labelExceptionWith(errorMessage =
-              s"Could not determine changes made on their branch ${underline(theirBranchHead)} since ancestor commit ${underline(bestAncestorCommitId)}."
-            ).flatMap(
-              _.traverse(
-                inTopLevelWorkingDirectory.pathChangeFor(theirBranchHead)
-              )
-            ).map(_.toMap)
+            ourChanges <- inTopLevelWorkingDirectory.changes(
+              inTopLevelWorkingDirectory,
+              ourBranchHead,
+              bestAncestorCommitId,
+              possessive = "our"
+            )
+
+            theirChanges <- inTopLevelWorkingDirectory.changes(
+              inTopLevelWorkingDirectory,
+              theirBranchHead,
+              bestAncestorCommitId,
+              possessive = "their"
+            )
 
             // NOTE: changes that belong only to our branch don't need to be
             // handled explicitly - they are already in the merge by
@@ -327,11 +255,11 @@ object Main:
       workflow.semiflatTap(_ => WriterT.tell(List(Right(message))))
   end extension
 
-  private def right[Payload](payload: Payload): Workflow[Payload] =
-    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
-
   private def underline(anything: Any): Str =
     fansi.Underlined.On(anything.toString)
+
+  private def right[Payload](payload: Payload): Workflow[Payload] =
+    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
 
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](
@@ -361,6 +289,43 @@ object Main:
   )
 
   private case class InWorkingDirectory(workingDirectory: Path):
+    def ourBranchHead(): Workflow[String @@ Main.Tags.CommitOrBranchName] =
+      IO {
+        val branchName = os
+          .proc("git", "branch", "--show-current")
+          .call(workingDirectory)
+          .out
+          .text()
+          .strip()
+          .taggedWith[Tags.CommitOrBranchName]
+
+        if branchName.nonEmpty then branchName
+        else
+          // Handle a detached commit.
+          os.proc("git", "rev-parse", "HEAD")
+            .call(workingDirectory)
+            .out
+            .text()
+            .strip()
+            .taggedWith[Tags.CommitOrBranchName]
+        end if
+      }.labelExceptionWith(errorMessage =
+        s"Could not determine a branch name or commit id for our branch head."
+      )
+
+    def theirCommitId(
+        theirBranchHead: String @@ Main.Tags.CommitOrBranchName
+    ): Workflow[String @@ Tags.CommitOrBranchName] =
+      IO {
+        os.proc("git", "rev-parse", theirBranchHead)
+          .call(workingDirectory)
+          .out
+          .text()
+          .taggedWith[Tags.CommitOrBranchName]
+      }.labelExceptionWith(errorMessage =
+        s"Ref ${underline(theirBranchHead)} is not a valid branch or commit."
+      )
+
     def firstBranchIsContainedBySecond(
         firstBranchHead: String @@ Tags.CommitOrBranchName,
         secondBranchHead: String @@ Tags.CommitOrBranchName
@@ -377,6 +342,74 @@ object Main:
       }.labelExceptionWith(errorMessage =
         s"Unexpected error: could not determine whether branch ${underline(firstBranchHead)} is an ancestor of branch ${underline(secondBranchHead)}."
       ).map(0 == _)
+
+    def fastForwardToTheirs(
+        ourBranchHead: String @@ Main.Tags.CommitOrBranchName,
+        theirBranchHead: String @@ Main.Tags.CommitOrBranchName
+    ): Workflow[Int @@ Main.Tags.ExitCode] =
+      IO {
+        os.proc("git", "reset", "--hard", theirBranchHead)
+          .call(workingDirectory): Unit
+        successfulMerge
+      }
+        .labelExceptionWith(errorMessage =
+          s"Unexpected error: could not fast-forward our branch ${underline(ourBranchHead)} to their branch ${underline(theirBranchHead)}."
+        )
+        .logOperation(
+          s"Fast forward our branch ${underline(ourBranchHead)} to their branch ${underline(theirBranchHead)}."
+        )
+
+    def confirmThereAreNoUncommittedChanges(
+        ourBranchHead: String @@ Main.Tags.CommitOrBranchName
+    ): Workflow[Unit] =
+      IO {
+        val _ = os
+          .proc("git", "diff-index", "--exit-code", ourBranchHead)
+          .call(workingDirectory)
+      }
+        .labelExceptionWith(errorMessage =
+          "There are uncommitted changes prior to commencing the merge."
+        )
+
+    def bestAncestorCommitId(
+        ourBranchHead: String @@ Main.Tags.CommitOrBranchName,
+        theirBranchHead: String @@ Main.Tags.CommitOrBranchName
+    ): Workflow[String @@ Main.Tags.CommitOrBranchName] =
+      IO {
+        os.proc("git", "merge-base", ourBranchHead, theirBranchHead)
+          .call(workingDirectory)
+          .out
+          .text()
+          .strip()
+          .taggedWith[Tags.CommitOrBranchName]
+      }.labelExceptionWith(errorMessage =
+        s"Could not determine a best ancestor commit between our branch ${underline(ourBranchHead)} and their branch ${underline(theirBranchHead)}."
+      )
+
+    def changes(
+        inTopLevelWorkingDirectory: InWorkingDirectory,
+        branchOrCommit: String @@ Main.Tags.CommitOrBranchName,
+        bestAncestorCommitId: String @@ Main.Tags.CommitOrBranchName,
+        possessive: String
+    ): Workflow[Map[Path, Change]] =
+      IO {
+        os.proc(
+          "git",
+          "diff",
+          "--no-renames",
+          "--name-status",
+          bestAncestorCommitId,
+          branchOrCommit
+        ).call(workingDirectory)
+          .out
+          .lines()
+      }.labelExceptionWith(errorMessage =
+        s"Could not determine changes made on $possessive branch ${underline(branchOrCommit)} since ancestor commit ${underline(bestAncestorCommitId)}."
+      ).flatMap(
+        _.traverse(
+          inTopLevelWorkingDirectory.pathChangeFor(branchOrCommit)
+        )
+      ).map(_.toMap)
 
     def pathChangeFor(commitIdOrBranchName: String @@ Tags.CommitOrBranchName)(
         line: String
@@ -440,7 +473,7 @@ object Main:
     def mergeWithRollback(
         theirBranchHead: String @@ Tags.CommitOrBranchName,
         ourBranchHead: String @@ Tags.CommitOrBranchName,
-        theirCommitId: String,
+        theirCommitId: String @@ Tags.CommitOrBranchName,
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
         overallChangesInvolvingTheirs: List[(Path, (Change, Option[Change]))],
         noCommit: Boolean,
