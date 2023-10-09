@@ -88,15 +88,23 @@ lazy val root = (project in file("."))
     Compile / resourceGenerators += Def.task {
       val location = versionResource.value
 
-      println(s"Generating version resource: $location")
+      val packagingVersion = (ThisBuild / version).value
 
-      IO.write(location, (ThisBuild / version).value)
+      println(
+        s"Generating version resource: $location for version: $packagingVersion"
+      )
+
+      IO.write(location, packagingVersion)
 
       Seq(location)
     }.taskValue,
     packageExecutable := {
+      val packagingVersion = (ThisBuild / version).value
+
+      println(s"Packaging executable with version: $packagingVersion")
+
       val localArtifactCoordinates =
-        s"${organization.value}:${name.value}_${scalaBinaryVersion.value}:${(ThisBuild / version).value}"
+        s"${organization.value}:${name.value}_${scalaBinaryVersion.value}:$packagingVersion"
 
       val executablePath = s"${target.value}${Path.sep}${name.value}"
 
