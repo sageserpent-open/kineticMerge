@@ -125,12 +125,12 @@ object Main:
 
     val workflow = for
       _ <- IO {
-        os.proc("git --version".split(whitespaceRun)).call(workingDirectory)
+        os.proc("git", "--version").call(workingDirectory)
       }
         .labelExceptionWith(errorMessage = "Git is not available.")
 
       topLevel <- IO {
-        os.proc("git rev-parse --show-toplevel".split(whitespaceRun))
+        os.proc("git", "rev-parse", "--show-toplevel")
           .call(workingDirectory)
           .out
           .text()
@@ -146,7 +146,7 @@ object Main:
 
       ourBranchHead <- IO {
         val branchName = os
-          .proc("git branch --show-current".split(whitespaceRun))
+          .proc("git", "branch", "--show-current")
           .call(workingDirectory)
           .out
           .text()
@@ -156,7 +156,7 @@ object Main:
         if branchName.nonEmpty then branchName
         else
           // Handle a detached commit.
-          os.proc("git rev-parse HEAD".split(whitespaceRun))
+          os.proc("git", "rev-parse", "HEAD")
             .call(workingDirectory)
             .out
             .text()
@@ -168,7 +168,7 @@ object Main:
       )
 
       theirCommitId <- IO {
-        os.proc(s"git rev-parse $theirBranchHead".split(whitespaceRun))
+        os.proc("git", "rev-parse", theirBranchHead)
           .call(workingDirectory)
           .out
           .text()
@@ -202,7 +202,7 @@ object Main:
         then
           // Fast-forward our branch to their head commit.
           IO {
-            os.proc(s"git reset --hard $theirBranchHead".split(whitespaceRun))
+            os.proc("git", "reset", "--hard", theirBranchHead)
               .call(workingDirectory): Unit
             successfulMerge
           }
@@ -215,22 +215,16 @@ object Main:
         else // Perform a real merge...
           for
             _ <- IO {
-              os.proc(
-                s"git diff-index --exit-code $ourBranchHead".split(
-                  whitespaceRun
-                )
-              ).call(workingDirectory)
+              os.proc("git", "diff-index", "--exit-code", ourBranchHead)
+                .call(workingDirectory)
             }
               .labelExceptionWith(errorMessage =
                 "There are uncommitted changes prior to commencing the merge."
               )
 
             bestAncestorCommitId <- IO {
-              os.proc(
-                s"git merge-base $ourBranchHead $theirBranchHead".split(
-                  whitespaceRun
-                )
-              ).call(workingDirectory)
+              os.proc("git", "merge-base", ourBranchHead, theirBranchHead)
+                .call(workingDirectory)
                 .out
                 .text()
                 .strip()
@@ -241,8 +235,12 @@ object Main:
 
             ourChanges <- IO {
               os.proc(
-                s"git diff --no-renames --name-status $bestAncestorCommitId $ourBranchHead"
-                  .split(whitespaceRun)
+                "git",
+                "diff",
+                "--no-renames",
+                "--name-status",
+                bestAncestorCommitId,
+                ourBranchHead
               ).call(workingDirectory)
                 .out
                 .lines()
@@ -254,8 +252,12 @@ object Main:
 
             theirChanges <- IO {
               os.proc(
-                s"git diff --no-renames --name-status $bestAncestorCommitId $theirBranchHead"
-                  .split(whitespaceRun)
+                "git",
+                "diff",
+                "--no-renames",
+                "--name-status",
+                bestAncestorCommitId,
+                theirBranchHead
               ).call(workingDirectory)
                 .out
                 .lines()
@@ -315,8 +317,11 @@ object Main:
   ): Workflow[Boolean] =
     IO {
       os.proc(
-        s"git merge-base --is-ancestor $firstBranchHead $secondBranchHead"
-          .split(whitespaceRun)
+        "git",
+        "merge-base",
+        "--is-ancestor",
+        firstBranchHead,
+        secondBranchHead
       ).call(workingDirectory, check = false)
         .exitCode
     }.labelExceptionWith(errorMessage =
@@ -368,7 +373,7 @@ object Main:
           if goodForAMergeCommit && !noCommit then
             for
               treeId <- IO {
-                os.proc(s"git write-tree".split(whitespaceRun))
+                os.proc("git", "write-tree")
                   .call(workingDirectory)
                   .out
                   .text()
@@ -379,10 +384,15 @@ object Main:
                 )
               commitId <- IO {
                 os.proc(
-                  // NASTY HACK: fudge around the commit message containing
-                  // whitespace for now...
-                  s"git commit-tree -p $ourBranchHead -p $theirBranchHead -m"
-                    .split(whitespaceRun) :+ "'$commitMessage'" :+ s"$treeId"
+                  "git",
+                  "commit-tree",
+                  "-p",
+                  ourBranchHead,
+                  "-p",
+                  theirBranchHead,
+                  "-m",
+                  s"'$commitMessage'",
+                  treeId
                 ).call(workingDirectory)
                   .out
                   .text()
@@ -391,7 +401,7 @@ object Main:
                 s"Unexpected error: could not create a commit from tree object ${underline(treeId)}"
               )
               _ <- IO {
-                os.proc(s"git reset --soft $commitId".split(whitespaceRun))
+                os.proc("git", "reset", "--soft", commitId)
                   .call(workingDirectory)
                   .out
                   .text()
@@ -406,7 +416,7 @@ object Main:
           else
             for
               gitDir <- IO {
-                os.proc("git rev-parse --absolute-git-dir".split(whitespaceRun))
+                os.proc("git", "rev-parse", "--absolute-git-dir")
                   .call(workingDirectory)
                   .out
                   .text()
@@ -448,8 +458,7 @@ object Main:
 
     // NASTY HACK: hokey cleanup, need to think about the best approach...
     workflow.leftMap(label =>
-      try
-        os.proc("git reset --hard".split(whitespaceRun)).call(workingDirectory)
+      try os.proc("git", "reset", "--hard").call(workingDirectory)
       catch
         case exception =>
           println(s"Failed to rollback changes after unexpected error.")
@@ -525,7 +534,7 @@ object Main:
             // modified file which wouldn't have been present on our
             // branch prior to the merge. So that's what we do too.
             IO {
-              os.proc(s"git cat-file blob $theirBlobId".split(whitespaceRun))
+              os.proc("git", "cat-file", "blob", theirBlobId)
                 .call(workingDirectory, stdout = path)
             }
               .labelExceptionWith(errorMessage =
@@ -576,7 +585,7 @@ object Main:
         for
           _ <- recordModificationInIndex(workingDirectory)(path, mode, blobId)
           - <- IO {
-            os.proc(s"git cat-file blob $blobId".split(whitespaceRun))
+            os.proc("git", "cat-file", "blob", blobId)
               .call(workingDirectory, stdout = path)
           }
             .labelExceptionWith(errorMessage =
@@ -590,7 +599,7 @@ object Main:
           - <- IO {
             os.write.over(
               path,
-              os.proc(s"git cat-file blob $blobId".split(whitespaceRun))
+              os.proc("git", "cat-file", "blob", blobId)
                 .spawn(workingDirectory)
                 .stdout,
               createFolders = true
@@ -605,7 +614,7 @@ object Main:
         for
           _ <- recordDeletionInIndex(workingDirectory)(path)
           _ <- IO {
-            os.proc(s"rm -rf $path".split(whitespaceRun)).call(workingDirectory)
+            os.proc("rm", "-rf", path).call(workingDirectory)
           }
             .labelExceptionWith(errorMessage =
               s"Unexpected error: could not update working directory tree by deleting file ${underline(path)}."
@@ -747,10 +756,17 @@ object Main:
 
               val exitCode =
                 os.proc(
-                  (s"git merge-file -L $ourBranchHead -L".split(
-                    whitespaceRun
-                  ) :+ s"'$noPriorContentName'") ++ s"-L $theirBranchHead $leftTemporaryFile $fakeBaseTemporaryFile $rightTemporaryFile"
-                    .split(whitespaceRun)
+                  "git",
+                  "merge-file",
+                  "-L",
+                  ourBranchHead,
+                  "-L",
+                  s"'$noPriorContentName'",
+                  "-L",
+                  theirBranchHead,
+                  leftTemporaryFile,
+                  fakeBaseTemporaryFile,
+                  rightTemporaryFile
                 ).call(workingDirectory, check = false)
                   .exitCode
 
@@ -877,8 +893,17 @@ object Main:
             _ <-
               val exitCode =
                 os.proc(
-                  s"git merge-file -L $ourBranchHead -L $bestAncestorCommitId -L $theirBranchHead $leftTemporaryFile $baseTemporaryFile $rightTemporaryFile"
-                    .split(whitespaceRun)
+                  "git",
+                  "merge-file",
+                  "-L",
+                  ourBranchHead,
+                  "-L",
+                  bestAncestorCommitId,
+                  "-L",
+                  theirBranchHead,
+                  leftTemporaryFile,
+                  baseTemporaryFile,
+                  rightTemporaryFile
                 ).call(workingDirectory, check = false)
                   .exitCode
 
@@ -941,7 +966,7 @@ object Main:
         mergedBlobId
       )
       - <- IO {
-        os.proc(s"git cat-file blob $mergedBlobId".split(whitespaceRun))
+        os.proc("git", "cat-file", "blob", mergedBlobId)
           .call(workingDirectory, stdout = path)
       }
         .labelExceptionWith(errorMessage =
@@ -958,7 +983,7 @@ object Main:
   ): Workflow[Unit] =
     IO {
       val _ = os
-        .proc(s"git update-index --index-info".split(whitespaceRun))
+        .proc("git", "update-index", "--index-info")
         .call(
           workingDirectory,
           stdin = s"$mode $blobId\t${path relativeTo workingDirectory}"
@@ -973,7 +998,7 @@ object Main:
   ): Workflow[String @@ Tags.BlobId] =
     IO {
       val line = os
-        .proc(s"git hash-object -t blob -w --stdin".split(whitespaceRun))
+        .proc("git", "hash-object", "-t", "blob", "-w", "--stdin")
         .call(workingDirectory, stdin = content)
         .out
         .text()
@@ -1011,7 +1036,7 @@ object Main:
   ): Workflow[Unit] =
     IO {
       val _ = os
-        .proc(s"git update-index --index-info".split(whitespaceRun))
+        .proc("git", "update-index", "--index-info")
         .call(
           workingDirectory,
           stdin =
@@ -1030,10 +1055,13 @@ object Main:
     IO {
       val _ = os
         .proc(
-          s"git update-index --add --cacheinfo $mode,$blobId,${path relativeTo workingDirectory}"
-            .split(
-              whitespaceRun
-            )
+          "git",
+          "update-index",
+          "--add",
+          "--cacheinfo",
+          mode,
+          blobId,
+          path relativeTo workingDirectory
         )
         .call(workingDirectory)
     }.labelExceptionWith(
@@ -1045,7 +1073,7 @@ object Main:
   ): Workflow[Unit] =
     IO {
       val _ = os
-        .proc(s"git update-index --index-info".split(whitespaceRun))
+        .proc("git", "update-index", "--index-info")
         .call(
           workingDirectory,
           stdin =
@@ -1093,7 +1121,7 @@ object Main:
   ] =
     IO {
       val line = os
-        .proc(s"git ls-tree $commitIdOrBranchName $path".split(whitespaceRun))
+        .proc("git", "ls-tree", commitIdOrBranchName, path)
         .call(workingDirectory)
         .out
         .text()
@@ -1101,7 +1129,7 @@ object Main:
       line.split(whitespaceRun) match
         case Array(mode, _, blobId, _) =>
           val content = os
-            .proc(s"git cat-file blob $blobId".split(whitespaceRun))
+            .proc("git", "cat-file", "blob", blobId)
             .call(workingDirectory)
             .out
             .text()
