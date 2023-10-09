@@ -12,14 +12,32 @@ Merge a heavily refactored codebase and stay sane.
 ## Installation ##
 
 ```bash
-curl -LJO --verbose http://github.com/sageserpent-open/kineticMerge/releases/download/v<release version>/kinetic-merge
+curl -LJO --verbose http://github.com/sageserpent-open/kineticMerge/releases/download/v<RELEASE VERSION FROM GITHUB>/kinetic-merge
 
 chmod ug+x kinetic-merge
 ```
+Put on on your path.
 
 Alternatively, go to the [releases](https://github.com/sageserpent-open/kineticMerge/releases) and manually download `kinetic-merge`. You'll still have to execute `chmod ug+x kineticMerge` so you can run it.
 
-If you're on Windows, change `kinetic-merge` to *`kinetic-merge.bat`*.
+If you're on Windows, instead of `kinetic-merge` use the companion download *`kinetic-merge.bat`*.
+
+## Running it ##
+
+Go to your Git repository. Check your repository has a branch checked out (so not a *bare* repository) and that it doesn't have uncommitted work; decide what branch you want to merge from and off you go:
+
+```bash
+git status
+
+kinetic-merge <the branch you want to merge into the current one>
+```
+If the merge goes through cleanly, Kinetic Merge will make a merge commit and advance the current branch to it, just like `git merge` would do.
+
+If the merge encounters conflicts, Kinetic Merge will do as much merging as it can up-front, and stage conflicting *partially merged* files into the Git index along with writing the file with conflict markers in it, so you can use your usual workflow to resolve the conflicts. You can open up an editor directly on the file and resolve the conflicts by hand - mark them as resolved in the usual way with `git add <resolved file>` and the commit with `git commit`, or just `git merge --continue` - or use your usual IDE to resolve the conflicts; I use IntelliJ, that works nicely.
+
+Unlike a conventional Git merge, if you use an IDE that reads the staged conflicting files, you will see that the *left* and *right* versions are already partially merged for you.
+
+It supports fast-forwarding, plus the `--no-ff` and `--no-commit` options too. Use `--help` if you need a reminder.
 
 ## Why?
 Meet Noah Shortcut and Seymour Checks, two likely software engineers from [ThreePhantasticTales](http://www.octopull.co.uk/sw-dev/ThreePhantasticTails.html), and their manager, Mr Deadline.
@@ -38,6 +56,8 @@ Kinetic Merge's job is to augment the process of merging in Git so that the code
 Well, that's the plan. It's no longer vapourware, there is a release, but the code motion aspect isn't supported at all yet - it is currently a conventional file-by-file merge tool, although the merge algorithm is I believe novel. Whether you like what is currently does is for you to judge, try it out.
 
 Be aware that things will be changing in that department as support for code motion is introduced - this has quite a large bearing on the granularity of the merging, which is currently extremely fine grained and will sometimes produce some _surprising_ results.
+
+For now, consider this in **BETA** release. Be brave - or run away.
 
 ## Simple Use Cases
 [Behold the Chamber of Horrors...](./documents/EXAMPLES.md)
