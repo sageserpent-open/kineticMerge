@@ -61,7 +61,7 @@ Be aware that things will be changing in that department as support for code mot
 
 For now, consider this in **BETA** release. Be brave - or run away.
 
-Bear in mind you can use either `--no-commit` or rollback with `git reset --hard`, but know what you're doing before you use the second technique.
+Bear in mind you can use either `--no-commit` or rollback with `git merge --abort` or `git reset --hard`, but know what you're doing before you use the third technique.
 
 ## Simple Use Cases
 [Behold the Chamber of Horrors...](./documents/EXAMPLES.md)
