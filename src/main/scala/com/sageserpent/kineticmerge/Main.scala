@@ -9,21 +9,10 @@ import com.sageserpent.kineticmerge.core.merge.Result
 import com.sageserpent.kineticmerge.core.{Token, mergeTokens}
 import com.softwaremill.tagging.*
 import fansi.Str
+import os.{Path, RelPath}
 import scopt.OParser
 
-import java.io.{ByteArrayInputStream, File}
-import java.nio.charset.StandardCharsets
-import java.nio.file.{CopyOption, Files, Path, StandardCopyOption}
 import scala.io.Source
-import scala.language.postfixOps
-import scala.sys.process.{Process, ProcessBuilder, stringToProcess}
-
-type ProcessBuilderFromCommandString = Conversion[String, ProcessBuilder]
-def processBuilderFromCommandStringUsing(
-    path: Path
-): ProcessBuilderFromCommandString =
-  (command: String) => Process(command, Some(path.toFile))
-end processBuilderFromCommandStringUsing
 
 object Main:
   // NOTE: the use of Git below is based on spike work on MacOS - the version of
@@ -61,10 +50,6 @@ object Main:
     2.taggedWith[Tags.StageIndex]
   private val theirStageIndex: Int @@ Tags.StageIndex =
     3.taggedWith[Tags.StageIndex]
-
-  // Assume this can never fail, so no need to handle exceptions. Famous last
-  // words...
-  private val defaultWorkingDirectory = Path.of(".")
 
   def main(args: Array[String]): Unit =
     val parser =
@@ -127,7 +112,7 @@ object Main:
         CommandLineArguments(theirBranchHead = noBranchProvided)
       )
       .fold(ifEmpty = incorrectCommandLine)(
-        mergeTheirBranch(_)(defaultWorkingDirectory)
+        mergeTheirBranch(_)(os.pwd)
       )
 
     System.exit(exitCode)
@@ -136,61 +121,71 @@ object Main:
   def mergeTheirBranch(
       commandLineArguments: CommandLineArguments
   )(workingDirectory: Path): Int @@ Main.Tags.ExitCode =
-    given ProcessBuilderFromCommandString =
-      processBuilderFromCommandStringUsing(workingDirectory)
-
     import commandLineArguments.*
 
     val workflow = for
       _ <- IO {
-        "git --version" !!
+        os.proc("git --version".split(whitespaceRun)).call(workingDirectory)
       }
         .labelExceptionWith(errorMessage = "Git is not available.")
 
       topLevel <- IO {
-        ("git rev-parse --show-toplevel" !!).strip()
+        os.proc("git rev-parse --show-toplevel".split(whitespaceRun))
+          .call(workingDirectory)
+          .out
+          .text()
+          .strip()
       }.labelExceptionWith(errorMessage =
         "The current working directory is not part of a Git working tree."
       )
 
-      topLevelWorkingDirectory <- IO { Path.of(topLevel) }
+      topLevelWorkingDirectory <- IO { Path(topLevel) }
         .labelExceptionWith(errorMessage =
           s"Unexpected error: top level of Git repository ${underline(topLevel)} is not a valid path."
         )
 
-      // This is passed down the call chain to be used in all places where a
-      // command is run using `ProcessBuilder` methods such as `!!`, `lines`.
-      // The default runs in the current working directory, but tests can change
-      // this to their own temporary Git repository.
-      given ProcessBuilderFromCommandString =
-        processBuilderFromCommandStringUsing(topLevelWorkingDirectory)
-
       ourBranchHead <- IO {
-        val branchName = ("git branch --show-current" !!).strip()
-        .taggedWith[Tags.CommitOrBranchName]
+        val branchName = os
+          .proc("git branch --show-current".split(whitespaceRun))
+          .call(workingDirectory)
+          .out
+          .text()
+          .strip()
+          .taggedWith[Tags.CommitOrBranchName]
 
         if branchName.nonEmpty then branchName
         else
           // Handle a detached commit.
-          ("git rev-parse HEAD" !!).strip()
-          .taggedWith[Tags.CommitOrBranchName]
+          os.proc("git rev-parse HEAD".split(whitespaceRun))
+            .call(workingDirectory)
+            .out
+            .text()
+            .strip()
+            .taggedWith[Tags.CommitOrBranchName]
         end if
       }.labelExceptionWith(errorMessage =
         s"Could not determine a branch name or commit id for our branch head."
       )
 
       theirCommitId <- IO {
-        s"git rev-parse ${theirBranchHead}" !!
+        os.proc(s"git rev-parse $theirBranchHead".split(whitespaceRun))
+          .call(workingDirectory)
+          .out
+          .text()
       }.labelExceptionWith(errorMessage =
         s"Ref ${underline(theirBranchHead)} is not a valid branch or commit."
       )
 
       oursAlreadyContainsTheirs <- firstBranchIsContainedBySecond(
+        workingDirectory
+      )(
         theirBranchHead,
         ourBranchHead
       )
 
       theirsAlreadyContainsOurs <- firstBranchIsContainedBySecond(
+        workingDirectory
+      )(
         ourBranchHead,
         theirBranchHead
       )
@@ -207,7 +202,8 @@ object Main:
         then
           // Fast-forward our branch to their head commit.
           IO {
-            s"git reset --hard ${theirBranchHead}" !! : Unit
+            os.proc(s"git reset --hard $theirBranchHead".split(whitespaceRun))
+              .call(workingDirectory): Unit
             successfulMerge
           }
             .labelExceptionWith(errorMessage =
@@ -219,32 +215,56 @@ object Main:
         else // Perform a real merge...
           for
             _ <- IO {
-              s"git diff-index --exit-code $ourBranchHead" !!
+              os.proc(
+                s"git diff-index --exit-code $ourBranchHead".split(
+                  whitespaceRun
+                )
+              ).call(workingDirectory)
             }
               .labelExceptionWith(errorMessage =
                 "There are uncommitted changes prior to commencing the merge."
               )
 
             bestAncestorCommitId <- IO {
-              (s"git merge-base $ourBranchHead ${theirBranchHead}" !!).strip()
-              .taggedWith[Tags.CommitOrBranchName]
+              os.proc(
+                s"git merge-base $ourBranchHead $theirBranchHead".split(
+                  whitespaceRun
+                )
+              ).call(workingDirectory)
+                .out
+                .text()
+                .strip()
+                .taggedWith[Tags.CommitOrBranchName]
             }.labelExceptionWith(errorMessage =
               s"Could not determine a best ancestor commit between our branch ${underline(ourBranchHead)} and their branch ${underline(theirBranchHead)}."
             )
 
             ourChanges <- IO {
-              s"git diff --no-renames --name-status $bestAncestorCommitId $ourBranchHead".lazyLines.toList
+              os.proc(
+                s"git diff --no-renames --name-status $bestAncestorCommitId $ourBranchHead"
+                  .split(whitespaceRun)
+              ).call(workingDirectory)
+                .out
+                .lines()
             }.labelExceptionWith(errorMessage =
               s"Could not determine changes made on our branch ${underline(ourBranchHead)} since ancestor commit ${underline(bestAncestorCommitId)}."
-            ).flatMap(_.traverse(pathChangeFor(ourBranchHead)))
-              .map(_.toMap)
+            ).flatMap(
+              _.traverse(pathChangeFor(topLevelWorkingDirectory, ourBranchHead))
+            ).map(_.toMap)
 
             theirChanges <- IO {
-              s"git diff --no-renames --name-status $bestAncestorCommitId ${theirBranchHead}".lazyLines.toList
+              os.proc(
+                s"git diff --no-renames --name-status $bestAncestorCommitId $theirBranchHead"
+                  .split(whitespaceRun)
+              ).call(workingDirectory)
+                .out
+                .lines()
             }.labelExceptionWith(errorMessage =
               s"Could not determine changes made on their branch ${underline(theirBranchHead)} since ancestor commit ${underline(bestAncestorCommitId)}."
             ).flatMap(
-              _.traverse(pathChangeFor(theirBranchHead))
+              _.traverse(
+                pathChangeFor(topLevelWorkingDirectory, theirBranchHead)
+              )
             ).map(_.toMap)
 
             // NOTE: changes that belong only to our branch don't need to be
@@ -289,17 +309,19 @@ object Main:
     exitCode
   end mergeTheirBranch
 
-  private def firstBranchIsContainedBySecond(
+  private def firstBranchIsContainedBySecond(workingDirectory: Path)(
       firstBranchHead: String @@ Tags.CommitOrBranchName,
       secondBranchHead: String @@ Tags.CommitOrBranchName
-  )(using ProcessBuilderFromCommandString): Workflow[Boolean] =
+  ): Workflow[Boolean] =
     IO {
-      s"git merge-base --is-ancestor $firstBranchHead $secondBranchHead" !
-    }
-      .labelExceptionWith(errorMessage =
-        s"Unexpected error: could not determine whether branch ${underline(firstBranchHead)} is an ancestor of branch ${underline(secondBranchHead)}."
-      )
-      .map(0 == _)
+      os.proc(
+        s"git merge-base --is-ancestor $firstBranchHead $secondBranchHead"
+          .split(whitespaceRun)
+      ).call(workingDirectory, check = false)
+        .exitCode
+    }.labelExceptionWith(errorMessage =
+      s"Unexpected error: could not determine whether branch ${underline(firstBranchHead)} is an ancestor of branch ${underline(secondBranchHead)}."
+    ).map(0 == _)
 
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
@@ -323,7 +345,7 @@ object Main:
       overallChangesInvolvingTheirs: List[(Path, (Change, Option[Change]))],
       noCommit: Boolean,
       noFastForward: Boolean
-  )(using ProcessBuilderFromCommandString): Workflow[Int @@ Tags.ExitCode] =
+  ): Workflow[Int @@ Tags.ExitCode] =
     val workflow =
       for
         indexUpdates <- indexUpdates(
@@ -346,18 +368,33 @@ object Main:
           if goodForAMergeCommit && !noCommit then
             for
               treeId <- IO {
-                (s"git write-tree" !!).strip()
+                os.proc(s"git write-tree".split(whitespaceRun))
+                  .call(workingDirectory)
+                  .out
+                  .text()
+                  .strip()
               }
                 .labelExceptionWith(errorMessage =
                   s"Unexpected error: could not write a tree object from the index."
                 )
               commitId <- IO {
-                (s"git commit-tree -p $ourBranchHead -p $theirBranchHead -m '$commitMessage' $treeId" !!).strip()
+                os.proc(
+                  // NASTY HACK: fudge around the commit message containing
+                  // whitespace for now...
+                  s"git commit-tree -p $ourBranchHead -p $theirBranchHead -m"
+                    .split(whitespaceRun) :+ "'$commitMessage'" :+ s"$treeId"
+                ).call(workingDirectory)
+                  .out
+                  .text()
+                  .strip()
               }.labelExceptionWith(errorMessage =
                 s"Unexpected error: could not create a commit from tree object ${underline(treeId)}"
               )
               _ <- IO {
-                s"git reset --soft $commitId" !!
+                os.proc(s"git reset --soft $commitId".split(whitespaceRun))
+                  .call(workingDirectory)
+                  .out
+                  .text()
               }
                 .labelExceptionWith(errorMessage =
                   s"Unexpected error: could not advance branch ${underline(ourBranchHead)} to commit ${underline(commitId)}."
@@ -369,42 +406,34 @@ object Main:
           else
             for
               gitDir <- IO {
-                ("git rev-parse --absolute-git-dir" !!).strip()
+                os.proc("git rev-parse --absolute-git-dir".split(whitespaceRun))
+                  .call(workingDirectory)
+                  .out
+                  .text()
+                  .strip()
               }
                 .labelExceptionWith(errorMessage =
                   "Could not determine location of `GIT_DIR`."
                 )
               gitDirPath <- IO {
-                Path.of(gitDir)
+                Path(gitDir)
               }
                 .labelExceptionWith(errorMessage =
                   s"Unexpected error: `GIT_DIR` reported by Git ${underline(gitDir)} is not a valid path."
                 )
               _ <- IO {
-                Files.write(
-                  gitDirPath
-                    .resolve("MERGE_HEAD"),
-                  theirCommitId.getBytes(StandardCharsets.UTF_8)
-                )
+                os.write.over(gitDirPath / "MERGE_HEAD", theirCommitId)
               }.labelExceptionWith(errorMessage =
                 s"Unexpected error: could not write `MERGE_HEAD` to reference their branch ${underline(theirBranchHead)}."
               )
               mergeMode = if noFastForward then "no-ff" else ""
               _ <- IO {
-                Files.write(
-                  gitDirPath
-                    .resolve("MERGE_MODE"),
-                  mergeMode.getBytes(StandardCharsets.UTF_8)
-                )
+                os.write.over(gitDirPath / "MERGE_MODE", mergeMode)
               }.labelExceptionWith(errorMessage =
                 s"Unexpected error: could not write `MERGE_MODE` to propagate the merge mode ${underline(mergeMode)}."
               )
               _ <- IO {
-                Files.write(
-                  gitDirPath
-                    .resolve("MERGE_MSG"),
-                  commitMessage.getBytes(StandardCharsets.UTF_8)
-                )
+                os.write.over(gitDirPath / "MERGE_MSG", commitMessage)
               }.labelExceptionWith(errorMessage =
                 s"Unexpected error: could not write `MERGE_MSG` to prepare the commit message ${underline(commitMessage)}."
               ).logOperation(
@@ -419,7 +448,8 @@ object Main:
 
     // NASTY HACK: hokey cleanup, need to think about the best approach...
     workflow.leftMap(label =>
-      try "git reset --hard" !!
+      try
+        os.proc("git reset --hard".split(whitespaceRun)).call(workingDirectory)
       catch
         case exception =>
           println(s"Failed to rollback changes after unexpected error.")
@@ -436,7 +466,7 @@ object Main:
       theirBranchHead: String @@ Tags.CommitOrBranchName
   )(
       overallChangesInvolvingTheirs: List[(Path, (Change, Option[Change]))]
-  )(using ProcessBuilderFromCommandString): Workflow[List[IndexState]] =
+  ): Workflow[List[IndexState]] =
     overallChangesInvolvingTheirs.traverse {
       case (
             path,
@@ -469,10 +499,12 @@ object Main:
           ) =>
         (for
           (_, bestAncestorCommitIdBlobId, _) <- blobAndContentFor(
+            workingDirectory
+          )(
             bestAncestorCommitId
           )(path)
-          _ <- recordDeletionInIndex(path)
-          _ <- recordConflictModificationInIndex(stageIndex =
+          _ <- recordDeletionInIndex(workingDirectory)(path)
+          _ <- recordConflictModificationInIndex(workingDirectory)(stageIndex =
             bestCommonAncestorStageIndex
           )(
             bestAncestorCommitId,
@@ -480,7 +512,9 @@ object Main:
             mode,
             bestAncestorCommitIdBlobId
           )
-          - <- recordConflictModificationInIndex(stageIndex = theirStageIndex)(
+          - <- recordConflictModificationInIndex(workingDirectory)(stageIndex =
+            theirStageIndex
+          )(
             theirBranchHead,
             path,
             mode,
@@ -491,9 +525,8 @@ object Main:
             // modified file which wouldn't have been present on our
             // branch prior to the merge. So that's what we do too.
             IO {
-              s"git cat-file blob $theirBlobId" #> workingDirectory
-                .resolve(path)
-                .toFile !!
+              os.proc(s"git cat-file blob $theirBlobId".split(whitespaceRun))
+                .call(workingDirectory, stdout = path)
             }
               .labelExceptionWith(errorMessage =
                 s"Unexpected error: could not update working directory tree with conflicted merge file ${underline(path)}"
@@ -511,10 +544,12 @@ object Main:
           ) =>
         (for
           (_, bestAncestorCommitIdBlobId, _) <- blobAndContentFor(
+            workingDirectory
+          )(
             bestAncestorCommitId
           )(path)
-          - <- recordDeletionInIndex(path)
-          - <- recordConflictModificationInIndex(stageIndex =
+          - <- recordDeletionInIndex(workingDirectory)(path)
+          - <- recordConflictModificationInIndex(workingDirectory)(stageIndex =
             bestCommonAncestorStageIndex
           )(
             bestAncestorCommitId,
@@ -522,7 +557,9 @@ object Main:
             mode,
             bestAncestorCommitIdBlobId
           )
-          - <- recordConflictModificationInIndex(stageIndex = ourStageIndex)(
+          - <- recordConflictModificationInIndex(workingDirectory)(stageIndex =
+            ourStageIndex
+          )(
             ourBranchHead,
             path,
             mode,
@@ -537,11 +574,10 @@ object Main:
 
       case (path, (Change.Modification(mode, blobId, _), None)) =>
         for
-          _ <- recordModificationInIndex(path, mode, blobId)
+          _ <- recordModificationInIndex(workingDirectory)(path, mode, blobId)
           - <- IO {
-            s"git cat-file blob $blobId" #> workingDirectory
-              .resolve(path)
-              .toFile !!
+            os.proc(s"git cat-file blob $blobId".split(whitespaceRun))
+              .call(workingDirectory, stdout = path)
           }
             .labelExceptionWith(errorMessage =
               s"Unexpected error: could not update working directory tree with modified file ${underline(path)}."
@@ -550,11 +586,15 @@ object Main:
 
       case (path, (Change.Addition(mode, blobId, _), None)) =>
         for
-          _ <- recordAdditionInIndex(path, mode, blobId)
+          _ <- recordAdditionInIndex(workingDirectory)(path, mode, blobId)
           - <- IO {
-            s"git cat-file blob $blobId" #> workingDirectory
-              .resolve(path)
-              .toFile !!
+            os.write.over(
+              path,
+              os.proc(s"git cat-file blob $blobId".split(whitespaceRun))
+                .spawn(workingDirectory)
+                .stdout,
+              createFolders = true
+            )
           }
             .labelExceptionWith(errorMessage =
               s"Unexpected error: could not update working directory tree with added file ${underline(path)}."
@@ -563,9 +603,9 @@ object Main:
 
       case (path, (Change.Deletion, None)) =>
         for
-          _ <- recordDeletionInIndex(path)
+          _ <- recordDeletionInIndex(workingDirectory)(path)
           _ <- IO {
-            s"rm -rf $path" !!
+            os.proc(s"rm -rf $path".split(whitespaceRun)).call(workingDirectory)
           }
             .labelExceptionWith(errorMessage =
               s"Unexpected error: could not update working directory tree by deleting file ${underline(path)}."
@@ -643,7 +683,7 @@ object Main:
       theirContent: String @@ Tags.Content,
       ourMode: String @@ Tags.Mode,
       ourContent: String @@ Tags.Content
-  )(using ProcessBuilderFromCommandString): Workflow[IndexState] =
+  ): Workflow[IndexState] =
     for
       mergedFileMode <-
         if ourMode == theirMode then right(ourMode)
@@ -706,7 +746,13 @@ object Main:
               val noPriorContentName = "no prior content"
 
               val exitCode =
-                s"git merge-file -L $ourBranchHead -L '$noPriorContentName' -L $theirBranchHead $leftTemporaryFile $fakeBaseTemporaryFile $rightTemporaryFile" !
+                os.proc(
+                  (s"git merge-file -L $ourBranchHead -L".split(
+                    whitespaceRun
+                  ) :+ s"'$noPriorContentName'") ++ s"-L $theirBranchHead $leftTemporaryFile $fakeBaseTemporaryFile $rightTemporaryFile"
+                    .split(whitespaceRun)
+                ).call(workingDirectory, check = false)
+                  .exitCode
 
               if 0 <= exitCode then right(())
               else
@@ -715,26 +761,24 @@ object Main:
                 )
               end if
             _ <- IO {
-              Files.copy(
-                leftTemporaryFile.toPath,
-                workingDirectory.resolve(path),
-                StandardCopyOption.REPLACE_EXISTING
-              )
+              os.copy.over(leftTemporaryFile, path)
             }.labelExceptionWith(errorMessage =
               s"Unexpected error: could not copy results of conflicted merge in ${underline(leftTemporaryFile)} to working directory tree file ${underline(path)}."
             )
 
-            leftBlob  <- storeBlobFor(path, leftContent)
-            rightBlob <- storeBlobFor(path, rightContent)
-            _         <- recordDeletionInIndex(path)
-            _ <- recordConflictModificationInIndex(stageIndex = ourStageIndex)(
+            leftBlob  <- storeBlobFor(workingDirectory)(path, leftContent)
+            rightBlob <- storeBlobFor(workingDirectory)(path, rightContent)
+            _         <- recordDeletionInIndex(workingDirectory)(path)
+            _ <- recordConflictModificationInIndex(workingDirectory)(
+              stageIndex = ourStageIndex
+            )(
               ourBranchHead,
               path,
               ourMode,
               leftBlob
             )
-            _ <- recordConflictModificationInIndex(stageIndex =
-              theirStageIndex
+            _ <- recordConflictModificationInIndex(workingDirectory)(
+              stageIndex = theirStageIndex
             )(
               theirBranchHead,
               path,
@@ -757,13 +801,13 @@ object Main:
       theirContent: String @@ Tags.Content,
       ourMode: String @@ Tags.Mode,
       ourContent: String @@ Tags.Content
-  )(using ProcessBuilderFromCommandString): Workflow[IndexState] =
+  ): Workflow[IndexState] =
     for
       (
         bestAncestorCommitIdMode,
         bestAncestorCommitIdBlobId,
         bestAncestorCommitIdContent
-      ) <- blobAndContentFor(bestAncestorCommitId)(path)
+      ) <- blobAndContentFor(workingDirectory)(bestAncestorCommitId)(path)
 
       mergedFileMode <-
         if bestAncestorCommitIdMode == ourMode then right(theirMode)
@@ -832,7 +876,11 @@ object Main:
 
             _ <-
               val exitCode =
-                s"git merge-file -L $ourBranchHead -L $bestAncestorCommitId -L $theirBranchHead $leftTemporaryFile $baseTemporaryFile $rightTemporaryFile" !
+                os.proc(
+                  s"git merge-file -L $ourBranchHead -L $bestAncestorCommitId -L $theirBranchHead $leftTemporaryFile $baseTemporaryFile $rightTemporaryFile"
+                    .split(whitespaceRun)
+                ).call(workingDirectory, check = false)
+                  .exitCode
 
               if 0 <= exitCode then right(())
               else
@@ -841,34 +889,32 @@ object Main:
                 )
               end if
             _ <- IO {
-              Files.copy(
-                leftTemporaryFile.toPath,
-                workingDirectory.resolve(path),
-                StandardCopyOption.REPLACE_EXISTING
-              )
+              os.copy.over(leftTemporaryFile, path)
             }.labelExceptionWith(errorMessage =
               s"Unexpected error: could not copy results of conflicted merge in ${underline(leftTemporaryFile)} to working directory tree file ${underline(path)}."
             )
 
-            leftBlob  <- storeBlobFor(path, leftContent)
-            rightBlob <- storeBlobFor(path, rightContent)
-            _         <- recordDeletionInIndex(path)
-            _ <- recordConflictModificationInIndex(stageIndex =
-              bestCommonAncestorStageIndex
+            leftBlob  <- storeBlobFor(workingDirectory)(path, leftContent)
+            rightBlob <- storeBlobFor(workingDirectory)(path, rightContent)
+            _         <- recordDeletionInIndex(workingDirectory)(path)
+            _ <- recordConflictModificationInIndex(workingDirectory)(
+              stageIndex = bestCommonAncestorStageIndex
             )(
               bestAncestorCommitId,
               path,
               bestAncestorCommitIdMode,
               bestAncestorCommitIdBlobId
             )
-            _ <- recordConflictModificationInIndex(stageIndex = ourStageIndex)(
+            _ <- recordConflictModificationInIndex(workingDirectory)(
+              stageIndex = ourStageIndex
+            )(
               ourBranchHead,
               path,
               ourMode,
               leftBlob
             )
-            _ <- recordConflictModificationInIndex(stageIndex =
-              theirStageIndex
+            _ <- recordConflictModificationInIndex(workingDirectory)(
+              stageIndex = theirStageIndex
             )(
               theirBranchHead,
               path,
@@ -884,20 +930,19 @@ object Main:
       path: Path,
       mergedFileMode: String @@ Tags.Mode,
       elements: IndexedSeq[Token]
-  )(using ProcessBuilderFromCommandString): Workflow[IndexState] =
+  ): Workflow[IndexState] =
     val mergedContent =
       elements.map(_.text).mkString.taggedWith[Tags.Content]
     for
-      mergedBlobId <- storeBlobFor(path, mergedContent)
-      _ <- recordModificationInIndex(
+      mergedBlobId <- storeBlobFor(workingDirectory)(path, mergedContent)
+      _ <- recordModificationInIndex(workingDirectory)(
         path,
         mergedFileMode,
         mergedBlobId
       )
       - <- IO {
-        s"git cat-file blob $mergedBlobId" #> workingDirectory
-          .resolve(path)
-          .toFile !!
+        os.proc(s"git cat-file blob $mergedBlobId".split(whitespaceRun))
+          .call(workingDirectory, stdout = path)
       }
         .labelExceptionWith(errorMessage =
           s"Unexpected error: could not update working directory tree with merged file ${underline(path)}."
@@ -906,30 +951,32 @@ object Main:
     end for
   end indexStateForCleanMerge
 
-  private def recordModificationInIndex(
+  private def recordModificationInIndex(workingDirectory: Path)(
       path: Path,
       mode: String @@ Tags.Mode,
       blobId: String @@ Tags.BlobId
-  )(using ProcessBuilderFromCommandString): Workflow[Unit] =
+  ): Workflow[Unit] =
     IO {
-      val _ = (s"git update-index --index-info" #< {
-        new ByteArrayInputStream(
-          s"$mode $blobId\t$path"
-            .getBytes(StandardCharsets.UTF_8)
+      val _ = os
+        .proc(s"git update-index --index-info".split(whitespaceRun))
+        .call(
+          workingDirectory,
+          stdin = s"$mode $blobId\t${path relativeTo workingDirectory}"
         )
-      }) !!
     }.labelExceptionWith(
       s"Unexpected error: could not update index for modified file ${underline(path)}."
     )
 
-  private def storeBlobFor(
+  private def storeBlobFor(workingDirectory: Path)(
       path: Path,
       content: String @@ Tags.Content
-  )(using ProcessBuilderFromCommandString): Workflow[String @@ Tags.BlobId] =
+  ): Workflow[String @@ Tags.BlobId] =
     IO {
-      val line = (s"git hash-object -t blob -w --stdin" #< {
-        new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8))
-      }) !!
+      val line = os
+        .proc(s"git hash-object -t blob -w --stdin".split(whitespaceRun))
+        .call(workingDirectory, stdin = content)
+        .out
+        .text()
 
       line.split(whitespaceRun) match
         case Array(blobId) => blobId.taggedWith[Tags.BlobId]
@@ -941,110 +988,123 @@ object Main:
   private def temporaryFile(
       suffix: String,
       content: String @@ Tags.Content
-  ): Workflow[File] =
-    for
-      temporaryFile <- IO {
-        Files.createTempFile("kinetic-merge-", ".base").toFile
+  ): Workflow[Path] =
+    for temporaryFile <- IO {
+        os.temp(
+          contents = content,
+          prefix = "kinetic-merge-",
+          suffix = ".base",
+          deleteOnExit = true
+        )
       }.labelExceptionWith(
         s"Unexpected error: could not create temporary file."
       )
-      _ <- IO {
-        temporaryFile.deleteOnExit()
-      }.labelExceptionWith(errorMessage =
-        s"Unexpected error: could not register temporary file ${underline(temporaryFile)} for deletion on exit."
-      )
-      - <- IO {
-        Files.write(
-          temporaryFile.toPath,
-          content.getBytes(StandardCharsets.UTF_8)
-        )
-      }.labelExceptionWith(errorMessage =
-        s"Unexpected error: could not write to temporary file ${underline(temporaryFile)}."
-      )
     yield temporaryFile
 
-  private def recordConflictModificationInIndex(
+  private def recordConflictModificationInIndex(workingDirectory: Path)(
       stageIndex: Int @@ Tags.StageIndex
   )(
       commitIdOrBranchName: String @@ Tags.CommitOrBranchName,
       path: Path,
       mode: String @@ Tags.Mode,
       blobId: String @@ Tags.BlobId
-  )(using ProcessBuilderFromCommandString): Workflow[Unit] =
+  ): Workflow[Unit] =
     IO {
-      val _ = (s"git update-index --index-info" #< {
-        new ByteArrayInputStream(
-          s"$mode $blobId $stageIndex\t$path"
-            .getBytes(StandardCharsets.UTF_8)
+      val _ = os
+        .proc(s"git update-index --index-info".split(whitespaceRun))
+        .call(
+          workingDirectory,
+          stdin =
+            s"$mode $blobId $stageIndex\t${path relativeTo workingDirectory}"
         )
-      }) !!
     }.labelExceptionWith(
       s"Unexpected error: could not update conflict stage #${underline(stageIndex)} index for modified file ${underline(path)} from commit or branch ${underline(commitIdOrBranchName)}."
     )
   end recordConflictModificationInIndex
 
-  private def recordAdditionInIndex(
+  private def recordAdditionInIndex(workingDirectory: Path)(
       path: Path,
       mode: String @@ Tags.Mode,
       blobId: String @@ Tags.BlobId
-  )(using ProcessBuilderFromCommandString): Workflow[Unit] =
+  ): Workflow[Unit] =
     IO {
-      val _ = s"git update-index --add --cacheinfo $mode,$blobId,$path" !!
+      val _ = os
+        .proc(
+          s"git update-index --add --cacheinfo $mode,$blobId,${path relativeTo workingDirectory}"
+            .split(
+              whitespaceRun
+            )
+        )
+        .call(workingDirectory)
     }.labelExceptionWith(
       s"Unexpected error: could not update index for added file ${underline(path)}."
     )
 
-  private def recordDeletionInIndex(
+  private def recordDeletionInIndex(workingDirectory: Path)(
       path: Path
-  )(using ProcessBuilderFromCommandString): Workflow[Unit] =
+  ): Workflow[Unit] =
     IO {
-      val _ = (s"git update-index --index-info" #< {
-        new ByteArrayInputStream(
-          s"$fakeModeForDeletion $fakeBlobIdForDeletion\t$path"
-            .getBytes(StandardCharsets.UTF_8)
+      val _ = os
+        .proc(s"git update-index --index-info".split(whitespaceRun))
+        .call(
+          workingDirectory,
+          stdin =
+            s"$fakeModeForDeletion $fakeBlobIdForDeletion\t${path relativeTo workingDirectory}"
         )
-      }) !!
     }.labelExceptionWith(
       s"Unexpected error: could not update index for deleted file ${underline(path)}."
     )
 
   private def pathChangeFor(
+      workingDirectory: Path,
       commitIdOrBranchName: String @@ Tags.CommitOrBranchName
   )(
       line: String
-  )(using ProcessBuilderFromCommandString): Workflow[(Path, Change)] =
+  ): Workflow[(Path, Change)] =
     IO {
       line.split(whitespaceRun) match
         case Array("M", changedFile) =>
-          val path = Path.of(changedFile)
-          path -> blobAndContentFor(commitIdOrBranchName)(path).map(
+          val path = workingDirectory / changedFile
+          path -> blobAndContentFor(workingDirectory)(commitIdOrBranchName)(
+            path
+          ).map(
             Change.Modification.apply.tupled
           )
         case Array("A", changedFile) =>
-          val path = Path.of(changedFile)
-          path -> blobAndContentFor(commitIdOrBranchName)(path).map(
+          val path = workingDirectory / RelPath(changedFile)
+          path -> blobAndContentFor(workingDirectory)(commitIdOrBranchName)(
+            path
+          ).map(
             Change.Addition.apply.tupled
           )
         case Array("D", path) =>
-          Path.of(path) -> right(Change.Deletion)
+          workingDirectory / path -> right(Change.Deletion)
       end match
     }.labelExceptionWith(errorMessage =
       s"Unexpected error - can't parse changes reported by Git ${underline(line)}."
     ).flatMap { case (path, changed) => changed.map(path -> _) }
 
-  private def blobAndContentFor(
+  private def blobAndContentFor(workingDirectory: Path)(
       commitIdOrBranchName: String @@ Tags.CommitOrBranchName
   )(
       path: Path
-  )(using ProcessBuilderFromCommandString): Workflow[
+  ): Workflow[
     (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
   ] =
     IO {
-      val line = s"git ls-tree $commitIdOrBranchName $path" !!
+      val line = os
+        .proc(s"git ls-tree $commitIdOrBranchName $path".split(whitespaceRun))
+        .call(workingDirectory)
+        .out
+        .text()
 
       line.split(whitespaceRun) match
         case Array(mode, _, blobId, _) =>
-          val content = s"git cat-file blob $blobId" !!
+          val content = os
+            .proc(s"git cat-file blob $blobId".split(whitespaceRun))
+            .call(workingDirectory)
+            .out
+            .text()
 
           (
             mode.taggedWith[Tags.Mode],

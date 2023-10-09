@@ -17,9 +17,10 @@ import java.nio.file.*
 import java.nio.file.attribute.BasicFileAttributes
 import java.util.Comparator
 import scala.language.postfixOps
-import scala.sys.process.Process
+import scala.sys.process.{Process, ProcessBuilder}
 
 object MainTest:
+  type ProcessBuilderFromCommandString     = Conversion[String, ProcessBuilder]
   private type ImperativeResource[Payload] = Resource[IO, Payload]
 
   private val masterBranch = "master"
@@ -388,6 +389,12 @@ object MainTest:
     end for
   end gitRepository
 
+  def processBuilderFromCommandStringUsing(
+      path: Path
+  ): ProcessBuilderFromCommandString =
+    (command: String) => Process(command, Some(path.toFile))
+  end processBuilderFromCommandStringUsing
+
 end MainTest
 
 class MainTest:
@@ -442,7 +449,9 @@ class MainTest:
                     noFastForward = noFastForward
                   )
                 )(workingDirectory =
-                  optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
+                  os.Path(
+                    optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
+                  )
                 )
 
                 if noFastForward then
@@ -540,7 +549,7 @@ class MainTest:
                   noCommit = noCommit
                 )
               )(workingDirectory =
-                optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
+                os.Path(optionalSubdirectory.fold(ifEmpty = path)(path.resolve))
               )
 
               if noCommit then
@@ -615,7 +624,7 @@ class MainTest:
                   noCommit = noCommit
                 )
               )(workingDirectory =
-                optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
+                os.Path(optionalSubdirectory.fold(ifEmpty = path)(path.resolve))
               )
 
               if noCommit then
@@ -691,7 +700,7 @@ class MainTest:
                   theirBranch.taggedWith[Tags.CommitOrBranchName]
                 )
               )(workingDirectory =
-                optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
+                os.Path(optionalSubdirectory.fold(ifEmpty = path)(path.resolve))
               )
 
               val status =
@@ -772,7 +781,7 @@ class MainTest:
                   theirBranch.taggedWith[Tags.CommitOrBranchName]
                 )
               )(workingDirectory =
-                optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
+                os.Path(optionalSubdirectory.fold(ifEmpty = path)(path.resolve))
               )
 
               val status =
@@ -858,7 +867,7 @@ class MainTest:
                   theirBranch.taggedWith[Tags.CommitOrBranchName]
                 )
               )(workingDirectory =
-                optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
+                os.Path(optionalSubdirectory.fold(ifEmpty = path)(path.resolve))
               )
 
               val status =
@@ -949,7 +958,7 @@ class MainTest:
                   noCommit = noCommit
                 )
               )(workingDirectory =
-                optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
+                os.Path(optionalSubdirectory.fold(ifEmpty = path)(path.resolve))
               )
 
               if noCommit then
@@ -1033,7 +1042,7 @@ class MainTest:
                   noCommit = noCommit
                 )
               )(workingDirectory =
-                optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
+                os.Path(optionalSubdirectory.fold(ifEmpty = path)(path.resolve))
               )
 
               if noCommit then
