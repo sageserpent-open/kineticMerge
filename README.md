@@ -14,7 +14,7 @@ Merge a heavily refactored codebase and stay sane.
 ```bash
 curl -LJO --verbose http://github.com/sageserpent-open/kineticMerge/releases/download/v<release version>/kinetic-merge
 
-chmod ug+x kineticMerge
+chmod ug+x kinetic-merge
 ```
 
 Alternatively, go to the [releases](https://github.com/sageserpent-open/kineticMerge/releases) and manually download `kinetic-merge`. You'll still have to execute `chmod ug+x kineticMerge` so you can run it.
