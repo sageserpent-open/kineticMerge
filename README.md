@@ -1,6 +1,8 @@
 # kineticMerge
 Merge a heavily refactored codebase and stay sane.
 
+(In **BETA**).
+
 ## Goals
 - Merge two branches of a Git repository *across the entire codebase*.
 - Take into account the motion of code in either branch due to refactoring.
@@ -58,6 +60,8 @@ Well, that's the plan. It's no longer vapourware, there is a release, but the co
 Be aware that things will be changing in that department as support for code motion is introduced - this has quite a large bearing on the granularity of the merging, which is currently extremely fine grained and will sometimes produce some _surprising_ results.
 
 For now, consider this in **BETA** release. Be brave - or run away.
+
+Bear in mind you can use either `--no-commit` or rollback with `git reset --hard`, but know what you're doing before you use the second technique.
 
 ## Simple Use Cases
 [Behold the Chamber of Horrors...](./documents/EXAMPLES.md)
