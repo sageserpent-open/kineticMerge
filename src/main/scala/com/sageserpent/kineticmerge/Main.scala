@@ -614,7 +614,7 @@ object Main:
         for
           _ <- recordDeletionInIndex(workingDirectory)(path)
           _ <- IO {
-            os.proc("rm", "-rf", path).call(workingDirectory)
+            os.remove(path)
           }
             .labelExceptionWith(errorMessage =
               s"Unexpected error: could not update working directory tree by deleting file ${underline(path)}."
