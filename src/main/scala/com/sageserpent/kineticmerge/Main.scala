@@ -147,7 +147,7 @@ object Main:
       ourBranchHead <- IO {
         val branchName = os
           .proc("git", "branch", "--show-current")
-          .call(workingDirectory)
+          .call(topLevelWorkingDirectory)
           .out
           .text()
           .strip()
@@ -157,7 +157,7 @@ object Main:
         else
           // Handle a detached commit.
           os.proc("git", "rev-parse", "HEAD")
-            .call(workingDirectory)
+            .call(topLevelWorkingDirectory)
             .out
             .text()
             .strip()
@@ -169,22 +169,24 @@ object Main:
 
       theirCommitId <- IO {
         os.proc("git", "rev-parse", theirBranchHead)
-          .call(workingDirectory)
+          .call(topLevelWorkingDirectory)
           .out
           .text()
       }.labelExceptionWith(errorMessage =
         s"Ref ${underline(theirBranchHead)} is not a valid branch or commit."
       )
 
-      inWorkingDirectory = InWorkingDirectory(workingDirectory)
+      inTopLevelWorkingDirectory = InWorkingDirectory(
+        topLevelWorkingDirectory
+      )
 
-      oursAlreadyContainsTheirs <- inWorkingDirectory
+      oursAlreadyContainsTheirs <- inTopLevelWorkingDirectory
         .firstBranchIsContainedBySecond(
           theirBranchHead,
           ourBranchHead
         )
 
-      theirsAlreadyContainsOurs <- inWorkingDirectory
+      theirsAlreadyContainsOurs <- inTopLevelWorkingDirectory
         .firstBranchIsContainedBySecond(
           ourBranchHead,
           theirBranchHead
@@ -203,7 +205,7 @@ object Main:
           // Fast-forward our branch to their head commit.
           IO {
             os.proc("git", "reset", "--hard", theirBranchHead)
-              .call(workingDirectory): Unit
+              .call(topLevelWorkingDirectory): Unit
             successfulMerge
           }
             .labelExceptionWith(errorMessage =
@@ -216,7 +218,7 @@ object Main:
           for
             _ <- IO {
               os.proc("git", "diff-index", "--exit-code", ourBranchHead)
-                .call(workingDirectory)
+                .call(topLevelWorkingDirectory)
             }
               .labelExceptionWith(errorMessage =
                 "There are uncommitted changes prior to commencing the merge."
@@ -224,17 +226,13 @@ object Main:
 
             bestAncestorCommitId <- IO {
               os.proc("git", "merge-base", ourBranchHead, theirBranchHead)
-                .call(workingDirectory)
+                .call(topLevelWorkingDirectory)
                 .out
                 .text()
                 .strip()
                 .taggedWith[Tags.CommitOrBranchName]
             }.labelExceptionWith(errorMessage =
               s"Could not determine a best ancestor commit between our branch ${underline(ourBranchHead)} and their branch ${underline(theirBranchHead)}."
-            )
-
-            inTopLevelWorkingDirectory = InWorkingDirectory(
-              topLevelWorkingDirectory
             )
 
             ourChanges <- IO {
@@ -245,7 +243,7 @@ object Main:
                 "--name-status",
                 bestAncestorCommitId,
                 ourBranchHead
-              ).call(workingDirectory)
+              ).call(topLevelWorkingDirectory)
                 .out
                 .lines()
             }.labelExceptionWith(errorMessage =
@@ -264,7 +262,7 @@ object Main:
                 "--name-status",
                 bestAncestorCommitId,
                 theirBranchHead
-              ).call(workingDirectory)
+              ).call(topLevelWorkingDirectory)
                 .out
                 .lines()
             }.labelExceptionWith(errorMessage =
