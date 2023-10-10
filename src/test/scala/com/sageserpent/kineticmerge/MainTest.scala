@@ -10,26 +10,18 @@ import com.sageserpent.kineticmerge.MainTest.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.softwaremill.tagging.*
 import org.junit.jupiter.api.{BeforeEach, DynamicTest, Test, TestFactory}
-
-import java.io.{ByteArrayInputStream, File, IOException}
-import java.nio.charset.StandardCharsets
-import java.nio.file.*
-import java.nio.file.attribute.BasicFileAttributes
-import java.util.Comparator
-import scala.language.postfixOps
-import scala.sys.process.{Process, ProcessBuilder}
+import os.{Path, RelPath}
 
 object MainTest:
-  type ProcessBuilderFromCommandString     = Conversion[String, ProcessBuilder]
   private type ImperativeResource[Payload] = Resource[IO, Payload]
 
   private val masterBranch = "master"
 
-  private val arthur = "arthur.txt"
+  private val arthur = RelPath("arthur.txt")
 
-  private val sandra = "sandra.txt"
+  private val sandra = RelPath("sandra.txt")
 
-  private val tyson = Path.of("pathPrefix").resolve("tyson.txt").toString
+  private val tyson = RelPath("pathPrefix") / "tyson.txt"
 
   private val arthurFirstVariation  = "chap"
   private val arthurSecondVariation = "boy"
@@ -37,96 +29,114 @@ object MainTest:
   private val tysonResponse       = "Alright marra?"
   private val evilTysonExultation = "Ha, ha, ha, ha, hah!"
 
-  private val optionalSubdirectories: Trials[Option[Path]] =
-    trialsApi.only("runMergeInHere").map(Path.of(_)).options
+  private val optionalSubdirectories: Trials[Option[RelPath]] =
+    trialsApi.only("runMergeInHere").map(RelPath.apply).options
 
-  private def introducingArthur(path: Path)(using
-      ProcessBuilderFromCommandString
-  ): Unit =
-    Files.writeString(path.resolve(arthur), "Hello, my old mucker!\n")
-    println(s"git add $arthur" !!)
-    println(s"git commit -m 'Introducing Arthur.'" !!)
+  private def introducingArthur(path: Path): Unit =
+    os.write(path / arthur, "Hello, my old mucker!\n")
+    println(os.proc("git", "add", arthur).call(path).out.text())
+    println(
+      os.proc("git", "commit", "-m", "'Introducing Arthur.'")
+        .call(path)
+        .out
+        .text()
+    )
   end introducingArthur
 
-  private def arthurContinues(path: Path)(using
-      ProcessBuilderFromCommandString
-  ): Unit =
-    Files.writeString(
-      path.resolve(arthur),
-      s"Pleased to see you, old $arthurSecondVariation.\n",
-      StandardOpenOption.APPEND
+  private def arthurContinues(path: Path): Unit =
+    os.write.append(
+      path / arthur,
+      s"Pleased to see you, old $arthurSecondVariation.\n"
     )
-    println(s"git commit -am 'Arthur continues...'" !!)
+    println(
+      os.proc("git", "commit", "-am", "'Arthur continues...'")
+        .call(path)
+        .out
+        .text()
+    )
   end arthurContinues
 
-  private def arthurElaborates(path: Path)(using
-      ProcessBuilderFromCommandString
-  ): Unit =
-    Files.writeString(
-      path.resolve(arthur),
-      s"Pleased to see you, old $arthurFirstVariation.\n",
-      StandardOpenOption.APPEND
+  private def arthurElaborates(path: Path): Unit =
+    os.write.append(
+      path / arthur,
+      s"Pleased to see you, old $arthurFirstVariation.\n"
     )
-    println(s"git commit -am 'Arthur elaborates.'" !!)
+    println(
+      os.proc("git", "commit", "-am", "'Arthur elaborates.'")
+        .call(path)
+        .out
+        .text()
+    )
   end arthurElaborates
 
-  private def arthurCorrectHimself(path: Path)(using
-      ProcessBuilderFromCommandString
-  ): Unit =
-    Files.writeString(
-      path.resolve(arthur),
-      "Hello, all and sundry!\n",
-      StandardOpenOption.TRUNCATE_EXISTING
+  private def arthurCorrectsHimself(path: Path): Unit =
+    os.write.over(
+      path / arthur,
+      "Hello, all and sundry!\n"
     )
-    println(s"git commit -am 'Arthur corrects himself.'" !!)
-  end arthurCorrectHimself
+    println(
+      os.proc("git", "commit", "-am", "'Arthur corrects himself.'")
+        .call(path)
+        .out
+        .text()
+    )
+  end arthurCorrectsHimself
 
-  private def exeuntArthur()(using ProcessBuilderFromCommandString): Unit =
-    println(s"git rm $arthur" !!)
-    println(s"git commit -m 'Exeunt Arthur.'" !!)
+  private def exeuntArthur(path: Path): Unit =
+    println(os.proc("git", "rm", arthur).call(path).out.text())
+    println(
+      os.proc(s"git", "commit", "-m", "'Exeunt Arthur.'").call(path).out.text()
+    )
   end exeuntArthur
 
-  private def arthurExcusesHimself()(using
-      ProcessBuilderFromCommandString
-  ): Unit =
-    println(s"git rm $arthur" !!)
-    println(s"git commit -m 'Arthur excuses himself.'" !!)
+  private def arthurExcusesHimself(path: Path): Unit =
+    println(os.proc("git", "rm", arthur).call(path).out.text())
+    println(
+      os.proc("git", "commit", "-m", "'Arthur excuses himself.'")
+        .call(path)
+        .out
+        .text()
+    )
   end arthurExcusesHimself
 
-  private def enterTysonStageLeft(path: Path)(using
-      ProcessBuilderFromCommandString
-  ): Unit =
-    Files.createDirectory(path.resolve(tyson).getParent)
-    Files.writeString(path.resolve(tyson), s"$tysonResponse\n")
-    println(s"git add $tyson" !!)
-    println(s"git commit -m 'Tyson responds.'" !!)
+  private def enterTysonStageLeft(path: Path): Unit =
+    os.write(path / tyson, s"$tysonResponse\n", createFolders = true)
+    println(os.proc("git", "add", tyson).call(path).out.text())
+    println(
+      os.proc("git", "commit", "-m", "'Tyson responds.'").call(path).out.text()
+    )
   end enterTysonStageLeft
 
-  private def evilTysonMakesDramaticEntranceExulting(path: Path)(using
-      ProcessBuilderFromCommandString
-  ): Unit =
-    Files.createDirectory(path.resolve(tyson).getParent)
-    Files.writeString(path.resolve(tyson), s"$evilTysonExultation\n")
-    println(s"git add $tyson" !!)
-    println(s"git commit -m 'Evil Tyson exults.'" !!)
+  private def evilTysonMakesDramaticEntranceExulting(path: Path): Unit =
+    os.write(path / tyson, s"$evilTysonExultation\n", createFolders = true)
+    println(os.proc("git", "add", tyson).call(path).out.text())
+    println(
+      os.proc("git", "commit", "-m", "'Evil Tyson exults.'")
+        .call(path)
+        .out
+        .text()
+    )
   end evilTysonMakesDramaticEntranceExulting
 
-  private def sandraHeadsOffHome()(using
-      ProcessBuilderFromCommandString
-  ): Unit =
-    println(s"git rm $sandra" !!)
-    println(s"git commit -m 'Sandra heads off home.'" !!)
+  private def sandraHeadsOffHome(path: Path): Unit =
+    println(os.proc("git", "rm", sandra).call(path).out.text())
+    println(
+      os.proc("git", "commit", "-m", "'Sandra heads off home.'")
+        .call(path)
+        .out
+        .text()
+    )
   end sandraHeadsOffHome
 
-  private def sandraStopsByBriefly(path: Path)(using
-      ProcessBuilderFromCommandString
-  ): Unit =
-    Files.writeString(
-      path.resolve(sandra),
-      "Hiya - just gan yam now...\n"
+  private def sandraStopsByBriefly(path: Path): Unit =
+    os.write(path / sandra, "Hiya - just gan yam now...\n")
+    println(os.proc("git", "add", sandra).call(path).out.text())
+    println(
+      os.proc("git", "commit", "-m", "'Sandra stops by briefly...'")
+        .call(path)
+        .out
+        .text()
     )
-    println(s"git add $sandra" !!)
-    println(s"git commit -m 'Sandra stops by briefly...'" !!)
   end sandraStopsByBriefly
 
   private def noUpdatesInIndexForArthur(status: String): Unit =
@@ -140,7 +150,7 @@ object MainTest:
     )
 
   private def arthurSaidConflictingThings(path: Path): Unit =
-    val arthurSaid = Files.readString(path.resolve(arthur))
+    val arthurSaid = os.read(path / arthur)
 
     assert(
       arthurSaid.contains(arthurFirstVariation) && arthurSaid
@@ -149,7 +159,7 @@ object MainTest:
   end arthurSaidConflictingThings
 
   private def tysonSaidConflictingThings(path: Path): Unit =
-    val tysonSaid = Files.readString(path.resolve(tyson))
+    val tysonSaid = os.read(path / tyson)
 
     assert(
       tysonSaid.contains(tysonResponse) && tysonSaid
@@ -185,41 +195,55 @@ object MainTest:
     assert(s"D\\s+$sandra".r.findFirstIn(status).isDefined)
 
   private def verifyTrivialMergeMovesToTheMostAdvancedCommitWithACleanIndex(
+      path: Path
+  )(
       commitOfAdvancedBranch: String,
       ourBranch: String,
       exitCode: Int @@ Main.Tags.ExitCode
-  )(using ProcessBuilderFromCommandString): Unit =
+  ): Unit =
     assert(exitCode == 0)
 
-    val branchName = ("git branch --show-current" !!).strip()
+    val branchName =
+      os.proc("git", "branch", "--show-current").call(path).out.text().strip()
 
     assert(branchName == ourBranch)
 
     val postMergeCommitOfAdvancedBranch =
-      (s"git log -1 --format=tformat:%H" !!).strip
+      os.proc("git", "log", "-1", "--format=tformat:%H")
+        .call(path)
+        .out
+        .text()
+        .strip
 
     assert(postMergeCommitOfAdvancedBranch == commitOfAdvancedBranch)
 
-    val status = (s"git status --short" !!).strip
+    val status =
+      os.proc(s"git", "status", "--short").call(path).out.text().strip
 
     assert(status.isEmpty)
   end verifyTrivialMergeMovesToTheMostAdvancedCommitWithACleanIndex
 
-  private def verifyMergeMakesANewCommitWithACleanIndex(
+  private def verifyMergeMakesANewCommitWithACleanIndex(path: Path)(
       commitOfOneBranch: String,
       commitOfTheOtherBranch: String,
       ourBranch: String,
       exitCode: Int @@ Main.Tags.ExitCode
-  )(using ProcessBuilderFromCommandString): Unit =
+  ): Unit =
     assert(exitCode == 0)
 
-    val branchName = ("git branch --show-current" !!).strip()
+    val branchName =
+      os.proc("git", "branch", "--show-current").call(path).out.text().strip()
 
     assert(branchName == ourBranch)
 
     val Array(postMergeCommit, parents*) =
-      (s"git log -1 --format='tformat:%H %P'" !!).strip
-      .split("\\s+"): @unchecked
+      os
+        .proc(s"git", "log", "-1", "--format=tformat:%H %P")
+        .call(path)
+        .out
+        .text()
+        .strip
+        .split("\\s+"): @unchecked
 
     assert(parents.size == 2)
 
@@ -227,16 +251,31 @@ object MainTest:
     assert(postMergeCommit != commitOfTheOtherBranch)
 
     val commitOfOneBranchIsAncestor =
-      (s"git merge-base --is-ancestor $commitOfOneBranch $postMergeCommit" !) == 0
+      os.proc(
+        "git",
+        "merge-base",
+        "--is-ancestor",
+        commitOfOneBranch,
+        postMergeCommit
+      ).call(path, check = false)
+        .exitCode == 0
 
     assert(commitOfOneBranchIsAncestor)
 
     val commitOfTheOtherBranchIsAncestor =
-      (s"git merge-base --is-ancestor $commitOfTheOtherBranch $postMergeCommit" !) == 0
+      os.proc(
+        "git",
+        "merge-base",
+        "--is-ancestor",
+        commitOfTheOtherBranch,
+        postMergeCommit
+      ).call(path, check = false)
+        .exitCode == 0
 
     assert(commitOfTheOtherBranchIsAncestor)
 
-    val status = (s"git status --short" !!).strip
+    val status =
+      os.proc(s"git", "status", "--short").call(path).out.text().strip
 
     assert(status.isEmpty)
   end verifyMergeMakesANewCommitWithACleanIndex
@@ -247,23 +286,28 @@ object MainTest:
       commitOfAdvancedBranch: String,
       ourBranch: String,
       exitCode: Int @@ Main.Tags.ExitCode
-  )(using ProcessBuilderFromCommandString): Unit =
+  ): Unit =
     assert(exitCode == 0)
 
-    val branchName = ("git branch --show-current" !!).strip()
+    val branchName =
+      os.proc("git", "branch", "--show-current").call(path).out.text().strip()
 
     assert(branchName == ourBranch)
 
     val postMergeCommit =
-      (s"git log -1 --format=tformat:%H" !!).strip
+      os.proc("git", "log", "-1", "--format=tformat:%H")
+        .call(path)
+        .out
+        .text()
+        .strip
 
     assert(
       postMergeCommit == commitOfAdvancedBranch
     )
 
-    assert(!Files.exists(mergeHeadPath(path)))
+    assert(!os.exists(mergeHeadPath(path)))
 
-    val status = (s"git status --short" !!).strip
+    val status = os.proc("git", "status", "--short").call(path).out.text().strip
 
     assert(status.isEmpty)
   end verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit
@@ -275,15 +319,20 @@ object MainTest:
       commitOfRetardedBranch: String,
       ourBranch: String,
       exitCode: Int @@ Main.Tags.ExitCode
-  )(using ProcessBuilderFromCommandString): Unit =
+  ): Unit =
     assert(exitCode == 1)
 
-    val branchName = ("git branch --show-current" !!).strip()
+    val branchName =
+      os.proc("git", "branch", "--show-current").call(path).out.text().strip()
 
     assert(branchName == ourBranch)
 
     val postMergeCommit =
-      (s"git log -1 --format=tformat:%H" !!).strip
+      os.proc("git", "log", "-1", "--format=tformat:%H")
+        .call(path)
+        .out
+        .text()
+        .strip
 
     assert(
       postMergeCommit == commitOfRetardedBranch
@@ -293,16 +342,11 @@ object MainTest:
       mergeHead(path) == commitOfAdvancedBranch
     )
 
-    val status = (s"git status --short" !!).strip
+    val status =
+      os.proc(s"git", "status", "--short").call(path).out.text().strip
 
     assert(status.nonEmpty)
   end verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit
-
-  private def mergeHead(path: Path) =
-    Files.readString(mergeHeadPath(path)).strip()
-
-  private def mergeHeadPath(path: Path) =
-    path.resolve(".git").resolve("MERGE_HEAD")
 
   private def verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
       path: Path
@@ -312,15 +356,20 @@ object MainTest:
       commitOfMasterBranch: String,
       ourBranch: String,
       exitCode: Int @@ Main.Tags.ExitCode
-  )(using ProcessBuilderFromCommandString): String =
+  ): String =
     assert(exitCode == 1)
 
-    val branchName = ("git branch --show-current" !!).strip()
+    val branchName =
+      os.proc("git", "branch", "--show-current").call(path).out.text().strip()
 
     assert(branchName == ourBranch)
 
     val postMergeCommit =
-      (s"git log -1 --format=tformat:%H" !!).strip
+      os.proc(s"git", "log", "-1", "--format=tformat:%H")
+        .call(path)
+        .out
+        .text()
+        .strip
 
     assert(
       postMergeCommit == (if flipBranches then commitOfNonMasterFileBranch
@@ -332,68 +381,38 @@ object MainTest:
                           else commitOfNonMasterFileBranch)
     )
 
-    val status = (s"git status --short" !!).strip
+    val status =
+      os.proc(s"git", "status", "--short").call(path).out.text().strip
 
     assert(status.nonEmpty)
 
     status
   end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
 
+  private def mergeHead(path: Path) =
+    os.read(mergeHeadPath(path)).strip()
+
+  private def mergeHeadPath(path: Path) =
+    path / ".git" / "MERGE_HEAD"
+
   private def gitRepository(): ImperativeResource[Path] =
     for
       temporaryDirectory <- Resource.make(IO {
-        Files.createTempDirectory("toyGitRepository")
-      })(temporaryDirectory =>
-        IO {
-          Files
-            .walkFileTree(
-              temporaryDirectory,
-              new FileVisitor[Path]:
-                override def preVisitDirectory(
-                    dir: Path,
-                    attrs: BasicFileAttributes
-                ): FileVisitResult = FileVisitResult.CONTINUE
-
-                override def visitFile(
-                    path: Path,
-                    attrs: BasicFileAttributes
-                ): FileVisitResult =
-                  Files.delete(path)
-                  FileVisitResult.CONTINUE
-                end visitFile
-
-                override def visitFileFailed(
-                    file: Path,
-                    exc: IOException
-                ): FileVisitResult = FileVisitResult.CONTINUE
-
-                override def postVisitDirectory(
-                    path: Path,
-                    exc: IOException
-                ): FileVisitResult =
-                  Files.delete(path)
-                  FileVisitResult.CONTINUE
-                end postVisitDirectory
-            )
-        }
-      )
-
-      given ProcessBuilderFromCommandString =
-        processBuilderFromCommandStringUsing(
-          temporaryDirectory
-        )
-
-      _ <- Resource.eval(IO { "git init" !! })
-      _ <- Resource.eval(IO { s"git checkout -b $masterBranch" !! })
+        os.temp.dir(prefix = "toyGitRepository")
+      })(temporaryDirectory => IO { os.remove.all.apply(temporaryDirectory) })
+      _ <- Resource.eval(IO {
+        os.proc("git", "init").call(temporaryDirectory).out.text()
+      })
+      _ <- Resource.eval(IO {
+        os
+          .proc("git", "checkout", "-b", masterBranch)
+          .call(temporaryDirectory)
+          .out
+          .text()
+      })
     yield temporaryDirectory
     end for
   end gitRepository
-
-  def processBuilderFromCommandStringUsing(
-      path: Path
-  ): ProcessBuilderFromCommandString =
-    (command: String) => Process(command, Some(path.toFile))
-  end processBuilderFromCommandStringUsing
 
 end MainTest
 
@@ -412,29 +431,45 @@ class MainTest:
           gitRepository()
             .use(path =>
               IO {
-                optionalSubdirectory.foreach(subdirectory =>
-                  Files.createDirectory(path.resolve(subdirectory))
-                )
-
-                given ProcessBuilderFromCommandString =
-                  processBuilderFromCommandStringUsing(path)
+                optionalSubdirectory
+                  .foreach(subdirectory => os.makeDir(path / subdirectory))
 
                 introducingArthur(path)
 
                 val commitOfMasterBranch =
-                  (s"git log -1 --format=tformat:%H" !!).strip
+                  os
+                    .proc("git", "log", "-1", "--format=tformat:%H")
+                    .call(path)
+                    .out
+                    .text()
+                    .strip
 
                 val advancedBranch = "advancedBranch"
 
-                println(s"git checkout -b $advancedBranch" !!)
+                println(
+                  os.proc("git", "checkout", "-b", advancedBranch)
+                    .call(path)
+                    .out
+                    .text()
+                )
 
                 arthurContinues(path)
 
                 val commitOfAdvancedBranch =
-                  (s"git log -1 --format=tformat:%H" !!).strip
+                  os
+                    .proc("git", "log", "-1", "--format=tformat:%H")
+                    .call(path)
+                    .out
+                    .text()
+                    .strip
 
                 if ourBranchIsBehindTheirs then
-                  println(s"git checkout $masterBranch" !!)
+                  println(
+                    os.proc("git", "checkout", masterBranch)
+                      .call(path)
+                      .out
+                      .text()
+                  )
                 end if
 
                 val (ourBranch, theirBranch) =
@@ -449,9 +484,7 @@ class MainTest:
                     noFastForward = noFastForward
                   )
                 )(workingDirectory =
-                  os.Path(
-                    optionalSubdirectory.fold(ifEmpty = path)(path.resolve)
-                  )
+                  optionalSubdirectory.fold(ifEmpty = path)(path / _)
                 )
 
                 if noFastForward then
@@ -473,9 +506,14 @@ class MainTest:
                       exitCode
                     )
 
-                    println(s"git commit -m 'Completing merge.'" !!)
+                    println(
+                      os.proc("git", "commit", "-m", "'Completing merge.'")
+                        .call(path)
+                        .out
+                        .text()
+                    )
 
-                    verifyMergeMakesANewCommitWithACleanIndex(
+                    verifyMergeMakesANewCommitWithACleanIndex(path)(
                       commitOfMasterBranch,
                       commitOfAdvancedBranch,
                       ourBranch,
@@ -483,7 +521,7 @@ class MainTest:
                         0.taggedWith[Tags.ExitCode] // Placeholder as Kinetic Merge hasn't actually done the merge.
                     )
                   else
-                    verifyMergeMakesANewCommitWithACleanIndex(
+                    verifyMergeMakesANewCommitWithACleanIndex(path)(
                       commitOfMasterBranch,
                       commitOfAdvancedBranch,
                       ourBranch,
@@ -491,6 +529,8 @@ class MainTest:
                     )
                 else
                   verifyTrivialMergeMovesToTheMostAdvancedCommitWithACleanIndex(
+                    path
+                  )(
                     commitOfAdvancedBranch,
                     ourBranch,
                     exitCode
@@ -510,32 +550,49 @@ class MainTest:
         gitRepository()
           .use(path =>
             IO {
-              optionalSubdirectory.foreach(subdirectory =>
-                Files.createDirectory(path.resolve(subdirectory))
-              )
-
-              given ProcessBuilderFromCommandString =
-                processBuilderFromCommandStringUsing(path)
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
 
               introducingArthur(path)
 
               val newFileBranch = "newFileBranch"
 
-              println(s"git checkout -b $newFileBranch" !!)
+              println(
+                os.proc("git", "checkout", "-b", newFileBranch)
+                  .call(path)
+                  .out
+                  .text()
+              )
 
               enterTysonStageLeft(path)
 
               val commitOfNewFileBranch =
-                (s"git log -1 --format=tformat:%H" !!).strip
+                os.proc("git", "log", "-1", "--format=tformat:%H")
+                  .call(path)
+                  .out
+                  .text()
+                  .strip
 
-              println(s"git checkout $masterBranch" !!)
+              println(
+                os.proc("git", "checkout", masterBranch).call(path).out.text()
+              )
 
               arthurContinues(path)
 
               val commitOfMasterBranch =
-                (s"git log -1 --format=tformat:%H" !!).strip
+                os.proc("git", "log", "-1", "--format=tformat:%H")
+                  .call(path)
+                  .out
+                  .text()
+                  .strip
 
-              if flipBranches then println(s"git checkout $newFileBranch" !!)
+              if flipBranches then
+                println(
+                  os.proc("git", "checkout", newFileBranch)
+                    .call(path)
+                    .out
+                    .text()
+                )
               end if
 
               val (ourBranch, theirBranch) =
@@ -549,7 +606,7 @@ class MainTest:
                   noCommit = noCommit
                 )
               )(workingDirectory =
-                os.Path(optionalSubdirectory.fold(ifEmpty = path)(path.resolve))
+                optionalSubdirectory.fold(ifEmpty = path)(path / _)
               )
 
               if noCommit then
@@ -563,7 +620,7 @@ class MainTest:
                   exitCode
                 )
               else
-                verifyMergeMakesANewCommitWithACleanIndex(
+                verifyMergeMakesANewCommitWithACleanIndex(path)(
                   commitOfNewFileBranch,
                   commitOfMasterBranch,
                   ourBranch,
@@ -584,33 +641,49 @@ class MainTest:
         gitRepository()
           .use(path =>
             IO {
-              optionalSubdirectory.foreach(subdirectory =>
-                Files.createDirectory(path.resolve(subdirectory))
-              )
-
-              given ProcessBuilderFromCommandString =
-                processBuilderFromCommandStringUsing(path)
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
 
               introducingArthur(path)
 
               val deletedFileBranch = "deletedFileBranch"
 
-              println(s"git checkout -b $deletedFileBranch" !!)
+              println(
+                os.proc("git", "checkout", "-b", deletedFileBranch)
+                  .call(path)
+                  .out
+                  .text()
+              )
 
-              exeuntArthur()
+              exeuntArthur(path)
 
               val commitOfDeletedFileBranch =
-                (s"git log -1 --format=tformat:%H" !!).strip
+                os.proc("git", "log", "-1", "--format=tformat:%H")
+                  .call(path)
+                  .out
+                  .text()
+                  .strip
 
-              println(s"git checkout $masterBranch" !!)
+              println(
+                os.proc("git", "checkout", masterBranch).call(path).out.text()
+              )
 
               enterTysonStageLeft(path)
 
               val commitOfMasterBranch =
-                (s"git log -1 --format=tformat:%H" !!).strip
+                os.proc("git", "log", "-1", "--format=tformat:%H")
+                  .call(path)
+                  .out
+                  .text()
+                  .strip
 
               if flipBranches then
-                println(s"git checkout $deletedFileBranch" !!)
+                println(
+                  os.proc("git", "checkout", deletedFileBranch)
+                    .call(path)
+                    .out
+                    .text()
+                )
               end if
 
               val (ourBranch, theirBranch) =
@@ -624,7 +697,7 @@ class MainTest:
                   noCommit = noCommit
                 )
               )(workingDirectory =
-                os.Path(optionalSubdirectory.fold(ifEmpty = path)(path.resolve))
+                optionalSubdirectory.fold(ifEmpty = path)(path / _)
               )
 
               if noCommit then
@@ -638,7 +711,7 @@ class MainTest:
                   exitCode
                 )
               else
-                verifyMergeMakesANewCommitWithACleanIndex(
+                verifyMergeMakesANewCommitWithACleanIndex(path)(
                   commitOfDeletedFileBranch,
                   commitOfMasterBranch,
                   ourBranch,
@@ -659,12 +732,8 @@ class MainTest:
         gitRepository()
           .use(path =>
             IO {
-              optionalSubdirectory.foreach(subdirectory =>
-                Files.createDirectory(path.resolve(subdirectory))
-              )
-
-              given ProcessBuilderFromCommandString =
-                processBuilderFromCommandStringUsing(path)
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
 
               introducingArthur(path)
 
@@ -672,23 +741,44 @@ class MainTest:
 
               val evilTwinBranch = "evilTwin"
 
-              println(s"git checkout -b $evilTwinBranch" !!)
+              println(
+                os.proc("git", "checkout", "-b", evilTwinBranch)
+                  .call(path)
+                  .out
+                  .text()
+              )
 
               evilTysonMakesDramaticEntranceExulting(path)
 
               val commitOfEvilTwinBranch =
-                (s"git log -1 --format=tformat:%H" !!).strip
+                os.proc("git", "log", "-1", "--format=tformat:%H")
+                  .call(path)
+                  .out
+                  .text()
+                  .strip
 
-              println(s"git checkout $masterBranch" !!)
+              println(
+                os.proc("git", "checkout", masterBranch).call(path).out.text()
+              )
 
-              sandraHeadsOffHome()
+              sandraHeadsOffHome(path)
 
               enterTysonStageLeft(path)
 
               val commitOfMasterBranch =
-                (s"git log -1 --format=tformat:%H" !!).strip
+                os.proc("git", "log", "-1", "--format=tformat:%H")
+                  .call(path)
+                  .out
+                  .text()
+                  .strip
 
-              if flipBranches then println(s"git checkout $evilTwinBranch" !!)
+              if flipBranches then
+                println(
+                  os.proc("git", "checkout", evilTwinBranch)
+                    .call(path)
+                    .out
+                    .text()
+                )
               end if
 
               val (ourBranch, theirBranch) =
@@ -700,7 +790,7 @@ class MainTest:
                   theirBranch.taggedWith[Tags.CommitOrBranchName]
                 )
               )(workingDirectory =
-                os.Path(optionalSubdirectory.fold(ifEmpty = path)(path.resolve))
+                optionalSubdirectory.fold(ifEmpty = path)(path / _)
               )
 
               val status =
@@ -737,12 +827,8 @@ class MainTest:
         gitRepository()
           .use(path =>
             IO {
-              optionalSubdirectory.foreach(subdirectory =>
-                Files.createDirectory(path.resolve(subdirectory))
-              )
-
-              given ProcessBuilderFromCommandString =
-                processBuilderFromCommandStringUsing(path)
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
 
               introducingArthur(path)
 
@@ -750,26 +836,46 @@ class MainTest:
 
               val deletedFileBranch = "deletedFileBranch"
 
-              println(s"git checkout -b $deletedFileBranch" !!)
+              println(
+                os.proc("git", "checkout", "-b", deletedFileBranch)
+                  .call(path)
+                  .out
+                  .text()
+              )
 
               enterTysonStageLeft(path)
 
-              exeuntArthur()
+              exeuntArthur(path)
 
               val commitOfDeletedFileBranch =
-                (s"git log -1 --format=tformat:%H" !!).strip
+                os.proc("git", "log", "-1", "--format=tformat:%H")
+                  .call(path)
+                  .out
+                  .text()
+                  .strip
 
-              println(s"git checkout $masterBranch" !!)
+              println(
+                os.proc("git", "checkout", masterBranch).call(path).out.text()
+              )
 
-              sandraHeadsOffHome()
+              sandraHeadsOffHome(path)
 
               arthurContinues(path)
 
               val commitOfMasterBranch =
-                (s"git log -1 --format=tformat:%H" !!).strip
+                os.proc("git", "log", "-1", "--format=tformat:%H")
+                  .call(path)
+                  .out
+                  .text()
+                  .strip
 
               if flipBranches then
-                println(s"git checkout $deletedFileBranch" !!)
+                println(
+                  os.proc("git", "checkout", deletedFileBranch)
+                    .call(path)
+                    .out
+                    .text()
+                )
               end if
 
               val (ourBranch, theirBranch) =
@@ -781,7 +887,7 @@ class MainTest:
                   theirBranch.taggedWith[Tags.CommitOrBranchName]
                 )
               )(workingDirectory =
-                os.Path(optionalSubdirectory.fold(ifEmpty = path)(path.resolve))
+                optionalSubdirectory.fold(ifEmpty = path)(path / _)
               )
 
               val status =
@@ -821,12 +927,8 @@ class MainTest:
         gitRepository()
           .use(path =>
             IO {
-              optionalSubdirectory.foreach(subdirectory =>
-                Files.createDirectory(path.resolve(subdirectory))
-              )
-
-              given ProcessBuilderFromCommandString =
-                processBuilderFromCommandStringUsing(path)
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
 
               introducingArthur(path)
 
@@ -835,26 +937,46 @@ class MainTest:
               val concurrentlyModifiedFileBranch =
                 "concurrentlyModifiedFileBranch"
 
-              println(s"git checkout -b $concurrentlyModifiedFileBranch" !!)
+              println(
+                os.proc("git", "checkout", "-b", concurrentlyModifiedFileBranch)
+                  .call(path)
+                  .out
+                  .text()
+              )
 
               enterTysonStageLeft(path)
 
               arthurElaborates(path)
 
               val commitOfConcurrentlyModifiedFileBranch =
-                (s"git log -1 --format=tformat:%H" !!).strip
+                os.proc("git", "log", "-1", "--format=tformat:%H")
+                  .call(path)
+                  .out
+                  .text()
+                  .strip
 
-              println(s"git checkout $masterBranch" !!)
+              println(
+                os.proc("git", "checkout", masterBranch).call(path).out.text()
+              )
 
-              sandraHeadsOffHome()
+              sandraHeadsOffHome(path)
 
               arthurContinues(path)
 
               val commitOfMasterBranch =
-                (s"git log -1 --format=tformat:%H" !!).strip
+                os.proc("git", "log", "-1", "--format=tformat:%H")
+                  .call(path)
+                  .out
+                  .text()
+                  .strip
 
               if flipBranches then
-                println(s"git checkout $concurrentlyModifiedFileBranch" !!)
+                println(
+                  os.proc("git", "checkout", concurrentlyModifiedFileBranch)
+                    .call(path)
+                    .out
+                    .text()
+                )
               end if
 
               val (ourBranch, theirBranch) =
@@ -867,7 +989,7 @@ class MainTest:
                   theirBranch.taggedWith[Tags.CommitOrBranchName]
                 )
               )(workingDirectory =
-                os.Path(optionalSubdirectory.fold(ifEmpty = path)(path.resolve))
+                optionalSubdirectory.fold(ifEmpty = path)(path / _)
               )
 
               val status =
@@ -906,12 +1028,8 @@ class MainTest:
         gitRepository()
           .use(path =>
             IO {
-              optionalSubdirectory.foreach(subdirectory =>
-                Files.createDirectory(path.resolve(subdirectory))
-              )
-
-              given ProcessBuilderFromCommandString =
-                processBuilderFromCommandStringUsing(path)
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
 
               introducingArthur(path)
 
@@ -920,29 +1038,48 @@ class MainTest:
               val concurrentlyDeletedFileBranch =
                 "concurrentlyDeletedFileBranch"
 
-              println(s"git checkout -b $concurrentlyDeletedFileBranch" !!)
+              println(
+                os.proc("git", "checkout", "-b", concurrentlyDeletedFileBranch)
+                  .call(path)
+                  .out
+                  .text()
+              )
 
               enterTysonStageLeft(path)
 
-              exeuntArthur()
+              exeuntArthur(path)
 
               val commitOfConcurrentlyDeletedFileBranch =
-                (s"git log -1 --format=tformat:%H" !!).strip
+                os.proc("git", "log", "-1", "--format=tformat:%H")
+                  .call(path)
+                  .out
+                  .text()
+                  .strip
 
-              println(s"git checkout $masterBranch" !!)
+              println(
+                os.proc("git", "checkout", masterBranch).call(path).out.text()
+              )
 
-              sandraHeadsOffHome()
+              sandraHeadsOffHome(path)
 
               arthurContinues(path)
 
-              arthurExcusesHimself()
+              arthurExcusesHimself(path)
 
               val commitOfMasterBranch =
-                (s"git log -1 --format=tformat:%H" !!).strip
+                os.proc("git", "log", "-1", "--format=tformat:%H")
+                  .call(path)
+                  .out
+                  .text()
+                  .strip
 
               if flipBranches then
                 println(
-                  s"git checkout $concurrentlyDeletedFileBranch" !!
+                  os
+                    .proc("git", "checkout", concurrentlyDeletedFileBranch)
+                    .call(path)
+                    .out
+                    .text()
                 )
               end if
 
@@ -958,7 +1095,7 @@ class MainTest:
                   noCommit = noCommit
                 )
               )(workingDirectory =
-                os.Path(optionalSubdirectory.fold(ifEmpty = path)(path.resolve))
+                optionalSubdirectory.fold(ifEmpty = path)(path / _)
               )
 
               if noCommit then
@@ -972,7 +1109,7 @@ class MainTest:
                   exitCode
                 )
               else
-                verifyMergeMakesANewCommitWithACleanIndex(
+                verifyMergeMakesANewCommitWithACleanIndex(path)(
                   commitOfConcurrentlyDeletedFileBranch,
                   commitOfMasterBranch,
                   ourBranch,
@@ -994,12 +1131,8 @@ class MainTest:
         gitRepository()
           .use(path =>
             IO {
-              optionalSubdirectory.foreach(subdirectory =>
-                Files.createDirectory(path.resolve(subdirectory))
-              )
-
-              given ProcessBuilderFromCommandString =
-                processBuilderFromCommandStringUsing(path)
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
 
               introducingArthur(path)
 
@@ -1008,26 +1141,46 @@ class MainTest:
               val concurrentlyModifiedFileBranch =
                 "concurrentlyModifiedFileBranch"
 
-              println(s"git checkout -b $concurrentlyModifiedFileBranch" !!)
+              println(
+                os.proc("git", "checkout", "-b", concurrentlyModifiedFileBranch)
+                  .call(path)
+                  .out
+                  .text()
+              )
 
               enterTysonStageLeft(path)
 
-              arthurCorrectHimself(path)
+              arthurCorrectsHimself(path)
 
               val commitOfConcurrentlyModifiedFileBranch =
-                (s"git log -1 --format=tformat:%H" !!).strip
+                os.proc("git", "log", "-1", "--format=tformat:%H")
+                  .call(path)
+                  .out
+                  .text()
+                  .strip
 
-              println(s"git checkout $masterBranch" !!)
+              println(
+                os.proc("git", "checkout", masterBranch).call(path).out.text()
+              )
 
-              sandraHeadsOffHome()
+              sandraHeadsOffHome(path)
 
               arthurContinues(path)
 
               val commitOfMasterBranch =
-                (s"git log -1 --format=tformat:%H" !!).strip
+                os.proc("git", "log", "-1", "--format=tformat:%H")
+                  .call(path)
+                  .out
+                  .text()
+                  .strip
 
               if flipBranches then
-                println(s"git checkout $concurrentlyModifiedFileBranch" !!)
+                println(
+                  os.proc("git", "checkout", concurrentlyModifiedFileBranch)
+                    .call(path)
+                    .out
+                    .text()
+                )
               end if
 
               val (ourBranch, theirBranch) =
@@ -1042,7 +1195,7 @@ class MainTest:
                   noCommit = noCommit
                 )
               )(workingDirectory =
-                os.Path(optionalSubdirectory.fold(ifEmpty = path)(path.resolve))
+                optionalSubdirectory.fold(ifEmpty = path)(path / _)
               )
 
               if noCommit then
@@ -1056,7 +1209,7 @@ class MainTest:
                   exitCode
                 )
               else
-                verifyMergeMakesANewCommitWithACleanIndex(
+                verifyMergeMakesANewCommitWithACleanIndex(path)(
                   commitOfConcurrentlyModifiedFileBranch,
                   commitOfMasterBranch,
                   ourBranch,
