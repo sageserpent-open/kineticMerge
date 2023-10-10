@@ -203,24 +203,16 @@ object MainTest:
   ): Unit =
     assert(exitCode == 0)
 
-    val branchName =
-      os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+    val branchName = currentBranch(path)
 
     assert(branchName == ourBranch)
 
     val postMergeCommitOfAdvancedBranch =
-      os.proc("git", "log", "-1", "--format=tformat:%H")
-        .call(path)
-        .out
-        .text()
-        .strip
+      currentCommit(path)
 
     assert(postMergeCommitOfAdvancedBranch == commitOfAdvancedBranch)
 
-    val status =
-      os.proc(s"git", "status", "--short").call(path).out.text().strip
-
-    assert(status.isEmpty)
+    assert(currentStatus(path).isEmpty)
   end verifyTrivialMergeMovesToTheMostAdvancedCommitWithACleanIndex
 
   private def verifyMergeMakesANewCommitWithACleanIndex(path: Path)(
@@ -231,19 +223,11 @@ object MainTest:
   ): Unit =
     assert(exitCode == 0)
 
-    val branchName =
-      os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+    val branchName = currentBranch(path)
 
     assert(branchName == ourBranch)
 
-    val Array(postMergeCommit, parents*) =
-      os
-        .proc(s"git", "log", "-1", "--format=tformat:%H %P")
-        .call(path)
-        .out
-        .text()
-        .strip
-        .split("\\s+"): @unchecked
+    val (postMergeCommit, parents) = currentMergeCommit(path)
 
     assert(parents.size == 2)
 
@@ -274,11 +258,19 @@ object MainTest:
 
     assert(commitOfTheOtherBranchIsAncestor)
 
-    val status =
-      os.proc(s"git", "status", "--short").call(path).out.text().strip
-
-    assert(status.isEmpty)
+    assert(currentStatus(path).isEmpty)
   end verifyMergeMakesANewCommitWithACleanIndex
+
+  private def currentMergeCommit(path: Path): (String, Seq[String]) =
+    os
+      .proc(s"git", "log", "-1", "--format=tformat:%H %P")
+      .call(path)
+      .out
+      .text()
+      .strip
+      .split("\\s+") match
+      case Array(postMergeCommit, parents*) => postMergeCommit -> parents
+    : @unchecked
 
   private def verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit(
       path: Path
@@ -289,17 +281,12 @@ object MainTest:
   ): Unit =
     assert(exitCode == 0)
 
-    val branchName =
-      os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+    val branchName = currentBranch(path)
 
     assert(branchName == ourBranch)
 
     val postMergeCommit =
-      os.proc("git", "log", "-1", "--format=tformat:%H")
-        .call(path)
-        .out
-        .text()
-        .strip
+      currentCommit(path)
 
     assert(
       postMergeCommit == commitOfAdvancedBranch
@@ -322,17 +309,12 @@ object MainTest:
   ): Unit =
     assert(exitCode == 1)
 
-    val branchName =
-      os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+    val branchName = currentBranch(path)
 
     assert(branchName == ourBranch)
 
     val postMergeCommit =
-      os.proc("git", "log", "-1", "--format=tformat:%H")
-        .call(path)
-        .out
-        .text()
-        .strip
+      currentCommit(path)
 
     assert(
       postMergeCommit == commitOfRetardedBranch
@@ -342,11 +324,27 @@ object MainTest:
       mergeHead(path) == commitOfAdvancedBranch
     )
 
-    val status =
-      os.proc(s"git", "status", "--short").call(path).out.text().strip
-
-    assert(status.nonEmpty)
+    assert(currentStatus(path).nonEmpty)
   end verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit
+
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+
+  private def currentCommit(path: Path) =
+    os.proc("git", "log", "-1", "--format=tformat:%H")
+      .call(path)
+      .out
+      .text()
+      .strip
+
+  private def mergeHead(path: Path) =
+    os.read(mergeHeadPath(path)).strip()
+
+  private def mergeHeadPath(path: Path) =
+    path / ".git" / "MERGE_HEAD"
 
   private def verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
       path: Path
@@ -359,17 +357,11 @@ object MainTest:
   ): String =
     assert(exitCode == 1)
 
-    val branchName =
-      os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+    val branchName = currentBranch(path)
 
     assert(branchName == ourBranch)
 
-    val postMergeCommit =
-      os.proc(s"git", "log", "-1", "--format=tformat:%H")
-        .call(path)
-        .out
-        .text()
-        .strip
+    val postMergeCommit = currentCommit(path)
 
     assert(
       postMergeCommit == (if flipBranches then commitOfNonMasterFileBranch
@@ -381,19 +373,10 @@ object MainTest:
                           else commitOfNonMasterFileBranch)
     )
 
-    val status =
-      os.proc(s"git", "status", "--short").call(path).out.text().strip
+    assert(currentStatus(path).nonEmpty)
 
-    assert(status.nonEmpty)
-
-    status
+    currentStatus(path)
   end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
-
-  private def mergeHead(path: Path) =
-    os.read(mergeHeadPath(path)).strip()
-
-  private def mergeHeadPath(path: Path) =
-    path / ".git" / "MERGE_HEAD"
 
   private def gitRepository(): ImperativeResource[Path] =
     for
@@ -404,16 +387,27 @@ object MainTest:
         os.proc("git", "init").call(temporaryDirectory).out.text()
       })
       _ <- Resource.eval(IO {
-        os
-          .proc("git", "checkout", "-b", masterBranch)
-          .call(temporaryDirectory)
-          .out
-          .text()
+        makeNewBranch(temporaryDirectory)(masterBranch)
       })
     yield temporaryDirectory
     end for
   end gitRepository
 
+  private def makeNewBranch(path: Path)(evilTwinBranch: String): Unit =
+    println(
+      os.proc("git", "checkout", "-b", evilTwinBranch)
+        .call(path)
+        .out
+        .text()
+    )
+
+  private def checkoutBranch(path: Path)(evilTwinBranch: String): Unit =
+    println(
+      os.proc("git", "checkout", evilTwinBranch)
+        .call(path)
+        .out
+        .text()
+    )
 end MainTest
 
 class MainTest:
@@ -436,40 +430,18 @@ class MainTest:
 
                 introducingArthur(path)
 
-                val commitOfMasterBranch =
-                  os
-                    .proc("git", "log", "-1", "--format=tformat:%H")
-                    .call(path)
-                    .out
-                    .text()
-                    .strip
+                val commitOfMasterBranch = currentCommit(path)
 
                 val advancedBranch = "advancedBranch"
 
-                println(
-                  os.proc("git", "checkout", "-b", advancedBranch)
-                    .call(path)
-                    .out
-                    .text()
-                )
+                makeNewBranch(path)(advancedBranch)
 
                 arthurContinues(path)
 
-                val commitOfAdvancedBranch =
-                  os
-                    .proc("git", "log", "-1", "--format=tformat:%H")
-                    .call(path)
-                    .out
-                    .text()
-                    .strip
+                val commitOfAdvancedBranch = currentCommit(path)
 
                 if ourBranchIsBehindTheirs then
-                  println(
-                    os.proc("git", "checkout", masterBranch)
-                      .call(path)
-                      .out
-                      .text()
-                  )
+                  checkoutBranch(path)(masterBranch)
                 end if
 
                 val (ourBranch, theirBranch) =
@@ -557,42 +529,19 @@ class MainTest:
 
               val newFileBranch = "newFileBranch"
 
-              println(
-                os.proc("git", "checkout", "-b", newFileBranch)
-                  .call(path)
-                  .out
-                  .text()
-              )
+              makeNewBranch(path)(newFileBranch)
 
               enterTysonStageLeft(path)
 
-              val commitOfNewFileBranch =
-                os.proc("git", "log", "-1", "--format=tformat:%H")
-                  .call(path)
-                  .out
-                  .text()
-                  .strip
+              val commitOfNewFileBranch = currentCommit(path)
 
-              println(
-                os.proc("git", "checkout", masterBranch).call(path).out.text()
-              )
+              checkoutBranch(path)(masterBranch)
 
               arthurContinues(path)
 
-              val commitOfMasterBranch =
-                os.proc("git", "log", "-1", "--format=tformat:%H")
-                  .call(path)
-                  .out
-                  .text()
-                  .strip
+              val commitOfMasterBranch = currentCommit(path)
 
-              if flipBranches then
-                println(
-                  os.proc("git", "checkout", newFileBranch)
-                    .call(path)
-                    .out
-                    .text()
-                )
+              if flipBranches then checkoutBranch(path)(newFileBranch)
               end if
 
               val (ourBranch, theirBranch) =
@@ -648,42 +597,19 @@ class MainTest:
 
               val deletedFileBranch = "deletedFileBranch"
 
-              println(
-                os.proc("git", "checkout", "-b", deletedFileBranch)
-                  .call(path)
-                  .out
-                  .text()
-              )
+              makeNewBranch(path)(deletedFileBranch)
 
               exeuntArthur(path)
 
-              val commitOfDeletedFileBranch =
-                os.proc("git", "log", "-1", "--format=tformat:%H")
-                  .call(path)
-                  .out
-                  .text()
-                  .strip
+              val commitOfDeletedFileBranch = currentCommit(path)
 
-              println(
-                os.proc("git", "checkout", masterBranch).call(path).out.text()
-              )
+              checkoutBranch(path)(masterBranch)
 
               enterTysonStageLeft(path)
 
-              val commitOfMasterBranch =
-                os.proc("git", "log", "-1", "--format=tformat:%H")
-                  .call(path)
-                  .out
-                  .text()
-                  .strip
+              val commitOfMasterBranch = currentCommit(path)
 
-              if flipBranches then
-                println(
-                  os.proc("git", "checkout", deletedFileBranch)
-                    .call(path)
-                    .out
-                    .text()
-                )
+              if flipBranches then checkoutBranch(path)(deletedFileBranch)
               end if
 
               val (ourBranch, theirBranch) =
@@ -741,44 +667,21 @@ class MainTest:
 
               val evilTwinBranch = "evilTwin"
 
-              println(
-                os.proc("git", "checkout", "-b", evilTwinBranch)
-                  .call(path)
-                  .out
-                  .text()
-              )
+              makeNewBranch(path)(evilTwinBranch)
 
               evilTysonMakesDramaticEntranceExulting(path)
 
-              val commitOfEvilTwinBranch =
-                os.proc("git", "log", "-1", "--format=tformat:%H")
-                  .call(path)
-                  .out
-                  .text()
-                  .strip
+              val commitOfEvilTwinBranch = currentCommit(path)
 
-              println(
-                os.proc("git", "checkout", masterBranch).call(path).out.text()
-              )
+              checkoutBranch(path)(masterBranch)
 
               sandraHeadsOffHome(path)
 
               enterTysonStageLeft(path)
 
-              val commitOfMasterBranch =
-                os.proc("git", "log", "-1", "--format=tformat:%H")
-                  .call(path)
-                  .out
-                  .text()
-                  .strip
+              val commitOfMasterBranch = currentCommit(path).strip
 
-              if flipBranches then
-                println(
-                  os.proc("git", "checkout", evilTwinBranch)
-                    .call(path)
-                    .out
-                    .text()
-                )
+              if flipBranches then checkoutBranch(path)(evilTwinBranch)
               end if
 
               val (ourBranch, theirBranch) =
@@ -836,46 +739,23 @@ class MainTest:
 
               val deletedFileBranch = "deletedFileBranch"
 
-              println(
-                os.proc("git", "checkout", "-b", deletedFileBranch)
-                  .call(path)
-                  .out
-                  .text()
-              )
+              makeNewBranch(path)(deletedFileBranch)
 
               enterTysonStageLeft(path)
 
               exeuntArthur(path)
 
-              val commitOfDeletedFileBranch =
-                os.proc("git", "log", "-1", "--format=tformat:%H")
-                  .call(path)
-                  .out
-                  .text()
-                  .strip
+              val commitOfDeletedFileBranch = currentCommit(path)
 
-              println(
-                os.proc("git", "checkout", masterBranch).call(path).out.text()
-              )
+              checkoutBranch(path)(masterBranch)
 
               sandraHeadsOffHome(path)
 
               arthurContinues(path)
 
-              val commitOfMasterBranch =
-                os.proc("git", "log", "-1", "--format=tformat:%H")
-                  .call(path)
-                  .out
-                  .text()
-                  .strip
+              val commitOfMasterBranch = currentCommit(path)
 
-              if flipBranches then
-                println(
-                  os.proc("git", "checkout", deletedFileBranch)
-                    .call(path)
-                    .out
-                    .text()
-                )
+              if flipBranches then checkoutBranch(path)(deletedFileBranch)
               end if
 
               val (ourBranch, theirBranch) =
@@ -937,46 +817,24 @@ class MainTest:
               val concurrentlyModifiedFileBranch =
                 "concurrentlyModifiedFileBranch"
 
-              println(
-                os.proc("git", "checkout", "-b", concurrentlyModifiedFileBranch)
-                  .call(path)
-                  .out
-                  .text()
-              )
+              makeNewBranch(path)(concurrentlyModifiedFileBranch)
 
               enterTysonStageLeft(path)
 
               arthurElaborates(path)
 
-              val commitOfConcurrentlyModifiedFileBranch =
-                os.proc("git", "log", "-1", "--format=tformat:%H")
-                  .call(path)
-                  .out
-                  .text()
-                  .strip
+              val commitOfConcurrentlyModifiedFileBranch = currentCommit(path)
 
-              println(
-                os.proc("git", "checkout", masterBranch).call(path).out.text()
-              )
+              checkoutBranch(path)(masterBranch)
 
               sandraHeadsOffHome(path)
 
               arthurContinues(path)
 
-              val commitOfMasterBranch =
-                os.proc("git", "log", "-1", "--format=tformat:%H")
-                  .call(path)
-                  .out
-                  .text()
-                  .strip
+              val commitOfMasterBranch = currentCommit(path)
 
               if flipBranches then
-                println(
-                  os.proc("git", "checkout", concurrentlyModifiedFileBranch)
-                    .call(path)
-                    .out
-                    .text()
-                )
+                checkoutBranch(path)(concurrentlyModifiedFileBranch)
               end if
 
               val (ourBranch, theirBranch) =
@@ -1038,27 +896,15 @@ class MainTest:
               val concurrentlyDeletedFileBranch =
                 "concurrentlyDeletedFileBranch"
 
-              println(
-                os.proc("git", "checkout", "-b", concurrentlyDeletedFileBranch)
-                  .call(path)
-                  .out
-                  .text()
-              )
+              makeNewBranch(path)(concurrentlyDeletedFileBranch)
 
               enterTysonStageLeft(path)
 
               exeuntArthur(path)
 
-              val commitOfConcurrentlyDeletedFileBranch =
-                os.proc("git", "log", "-1", "--format=tformat:%H")
-                  .call(path)
-                  .out
-                  .text()
-                  .strip
+              val commitOfConcurrentlyDeletedFileBranch = currentCommit(path)
 
-              println(
-                os.proc("git", "checkout", masterBranch).call(path).out.text()
-              )
+              checkoutBranch(path)(masterBranch)
 
               sandraHeadsOffHome(path)
 
@@ -1066,21 +912,10 @@ class MainTest:
 
               arthurExcusesHimself(path)
 
-              val commitOfMasterBranch =
-                os.proc("git", "log", "-1", "--format=tformat:%H")
-                  .call(path)
-                  .out
-                  .text()
-                  .strip
+              val commitOfMasterBranch = currentCommit(path)
 
               if flipBranches then
-                println(
-                  os
-                    .proc("git", "checkout", concurrentlyDeletedFileBranch)
-                    .call(path)
-                    .out
-                    .text()
-                )
+                checkoutBranch(path)(concurrentlyDeletedFileBranch)
               end if
 
               val (ourBranch, theirBranch) =
@@ -1141,46 +976,24 @@ class MainTest:
               val concurrentlyModifiedFileBranch =
                 "concurrentlyModifiedFileBranch"
 
-              println(
-                os.proc("git", "checkout", "-b", concurrentlyModifiedFileBranch)
-                  .call(path)
-                  .out
-                  .text()
-              )
+              makeNewBranch(path)(concurrentlyModifiedFileBranch)
 
               enterTysonStageLeft(path)
 
               arthurCorrectsHimself(path)
 
-              val commitOfConcurrentlyModifiedFileBranch =
-                os.proc("git", "log", "-1", "--format=tformat:%H")
-                  .call(path)
-                  .out
-                  .text()
-                  .strip
+              val commitOfConcurrentlyModifiedFileBranch = currentCommit(path)
 
-              println(
-                os.proc("git", "checkout", masterBranch).call(path).out.text()
-              )
+              checkoutBranch(path)(masterBranch)
 
               sandraHeadsOffHome(path)
 
               arthurContinues(path)
 
-              val commitOfMasterBranch =
-                os.proc("git", "log", "-1", "--format=tformat:%H")
-                  .call(path)
-                  .out
-                  .text()
-                  .strip
+              val commitOfMasterBranch = currentCommit(path)
 
               if flipBranches then
-                println(
-                  os.proc("git", "checkout", concurrentlyModifiedFileBranch)
-                    .call(path)
-                    .out
-                    .text()
-                )
+                checkoutBranch(path)(concurrentlyModifiedFileBranch)
               end if
 
               val (ourBranch, theirBranch) =
