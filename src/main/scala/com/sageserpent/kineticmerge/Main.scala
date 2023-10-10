@@ -417,20 +417,21 @@ object Main:
       IO {
         line.split(whitespaceRun) match
           case Array("M", changedFile) =>
-            val path = workingDirectory / changedFile
+            val path = workingDirectory / RelPath(changedFile)
             path -> blobAndContentFor(commitIdOrBranchName)(
               path
             ).map(
               Change.Modification.apply.tupled
             )
-          case Array("A", changedFile) =>
-            val path = workingDirectory / RelPath(changedFile)
+          case Array("A", addedFile) =>
+            val path = workingDirectory / RelPath(addedFile)
             path -> blobAndContentFor(commitIdOrBranchName)(
               path
             ).map(
               Change.Addition.apply.tupled
             )
-          case Array("D", path) =>
+          case Array("D", deletedFile) =>
+            val path = RelPath(deletedFile)
             workingDirectory / path -> right(Change.Deletion)
         end match
       }.labelExceptionWith(errorMessage =
