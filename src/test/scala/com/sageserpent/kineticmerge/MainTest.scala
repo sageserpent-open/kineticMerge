@@ -17,11 +17,11 @@ object MainTest:
 
   private val masterBranch = "master"
 
-  private val arthur = RelPath("arthur.txt")
+  private val arthur = RelPath("pathPrefix1") / "arthur.txt"
 
-  private val sandra = RelPath("sandra.txt")
+  private val sandra = RelPath("pathPrefix1") / "pathPrefix2" / "sandra.txt"
 
-  private val tyson = RelPath("pathPrefix") / "tyson.txt"
+  private val tyson = RelPath("pathPrefix1") / "pathPrefix2" / "tyson.txt"
 
   private val arthurFirstVariation  = "chap"
   private val arthurSecondVariation = "boy"
@@ -33,7 +33,7 @@ object MainTest:
     trialsApi.only("runMergeInHere").map(RelPath.apply).options
 
   private def introducingArthur(path: Path): Unit =
-    os.write(path / arthur, "Hello, my old mucker!\n")
+    os.write(path / arthur, "Hello, my old mucker!\n", createFolders = true)
     println(os.proc("git", "add", arthur).call(path).out.text())
     println(
       os.proc("git", "commit", "-m", "'Introducing Arthur.'")
@@ -129,7 +129,11 @@ object MainTest:
   end sandraHeadsOffHome
 
   private def sandraStopsByBriefly(path: Path): Unit =
-    os.write(path / sandra, "Hiya - just gan yam now...\n")
+    os.write(
+      path / sandra,
+      "Hiya - just gan yam now...\n",
+      createFolders = true
+    )
     println(os.proc("git", "add", sandra).call(path).out.text())
     println(
       os.proc("git", "commit", "-m", "'Sandra stops by briefly...'")
