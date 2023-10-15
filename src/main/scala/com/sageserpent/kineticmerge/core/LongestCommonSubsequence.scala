@@ -261,47 +261,73 @@ object LongestCommonSubsequence:
                   of(baseIndex, leftIndex, rightIndex)
                     .addCommon(baseElement, leftElement, rightElement)
                 else
-                  val resultDroppingTheBaseAndLeft = Option.when(
-                    baseEqualsLeft
-                  ) {
-                    of(baseIndex, leftIndex, onePastRightIndex)
-                      .addCommonBaseAndLeft(baseElement, leftElement)
-                  }
+                  val resultDroppingTheBaseAndLeft =
+                    if baseEqualsLeft then
+                      of(baseIndex, leftIndex, onePastRightIndex)
+                        .addCommonBaseAndLeft(baseElement, leftElement)
+                    else
+                      val resultDroppingTheEndOfTheBase =
+                        of(baseIndex, onePastLeftIndex, onePastRightIndex)
+                          .addBaseDifference(baseElement)
 
-                  val resultDroppingTheBaseAndRight = Option.when(
-                    baseEqualsRight
-                  ) {
-                    of(baseIndex, onePastLeftIndex, rightIndex)
-                      .addCommonBaseAndRight(baseElement, rightElement)
-                  }
+                      val resultDroppingTheEndOfTheLeft =
+                        of(onePastBaseIndex, leftIndex, onePastRightIndex)
+                          .addLeftDifference(leftElement)
+
+                      orderBySize.max(
+                        resultDroppingTheEndOfTheBase,
+                        resultDroppingTheEndOfTheLeft
+                      )
+                    end if
+                  end resultDroppingTheBaseAndLeft
+
+                  val resultDroppingTheBaseAndRight =
+                    if baseEqualsRight then
+                      of(baseIndex, onePastLeftIndex, rightIndex)
+                        .addCommonBaseAndRight(baseElement, rightElement)
+                    else
+                      val resultDroppingTheEndOfTheBase =
+                        of(baseIndex, onePastLeftIndex, onePastRightIndex)
+                          .addBaseDifference(baseElement)
+
+                      val resultDroppingTheEndOfTheRight =
+                        of(onePastBaseIndex, onePastLeftIndex, rightIndex)
+                          .addRightDifference(rightElement)
+
+                      orderBySize.max(
+                        resultDroppingTheEndOfTheBase,
+                        resultDroppingTheEndOfTheRight
+                      )
+                    end if
+                  end resultDroppingTheBaseAndRight
 
                   val leftEqualsRight = equality.eqv(leftElement, rightElement)
 
-                  val resultDroppingTheLeftAndRight = Option.when(
-                    leftEqualsRight
-                  ) {
-                    of(onePastBaseIndex, leftIndex, rightIndex)
-                      .addCommonLeftAndRight(leftElement, rightElement)
-                  }
+                  val resultDroppingTheLeftAndRight =
+                    if leftEqualsRight then
+                      of(onePastBaseIndex, leftIndex, rightIndex)
+                        .addCommonLeftAndRight(leftElement, rightElement)
+                    else
+                      val resultDroppingTheEndOfTheLeft =
+                        of(onePastBaseIndex, leftIndex, onePastRightIndex)
+                          .addLeftDifference(leftElement)
 
-                  val resultDroppingTheEndOfTheBase =
-                    of(baseIndex, onePastLeftIndex, onePastRightIndex)
-                      .addBaseDifference(baseElement)
-                  val resultDroppingTheEndOfTheLeft =
-                    of(onePastBaseIndex, leftIndex, onePastRightIndex)
-                      .addLeftDifference(leftElement)
-                  val resultDroppingTheEndOfTheRight =
-                    of(onePastBaseIndex, onePastLeftIndex, rightIndex)
-                      .addRightDifference(rightElement)
+                      val resultDroppingTheEndOfTheRight =
+                        of(onePastBaseIndex, onePastLeftIndex, rightIndex)
+                          .addRightDifference(rightElement)
+
+                      orderBySize.max(
+                        resultDroppingTheEndOfTheLeft,
+                        resultDroppingTheEndOfTheRight
+                      )
+                    end if
+                  end resultDroppingTheLeftAndRight
 
                   Iterator(
                     resultDroppingTheBaseAndLeft,
                     resultDroppingTheBaseAndRight,
-                    resultDroppingTheLeftAndRight,
-                    Some(resultDroppingTheEndOfTheBase),
-                    Some(resultDroppingTheEndOfTheLeft),
-                    Some(resultDroppingTheEndOfTheRight)
-                  ).flatten.maxBy(_.size)
+                    resultDroppingTheLeftAndRight
+                  ).maxBy(_.size)
                 end if
               }
             )
