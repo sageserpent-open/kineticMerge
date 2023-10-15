@@ -261,19 +261,23 @@ object LongestCommonSubsequence:
                   of(baseIndex, leftIndex, rightIndex)
                     .addCommon(baseElement, leftElement, rightElement)
                 else
+                  lazy val resultDroppingTheEndOfTheBase =
+                    of(baseIndex, onePastLeftIndex, onePastRightIndex)
+                      .addBaseDifference(baseElement)
+
+                  lazy val resultDroppingTheEndOfTheLeft =
+                    of(onePastBaseIndex, leftIndex, onePastRightIndex)
+                      .addLeftDifference(leftElement)
+
+                  lazy val resultDroppingTheEndOfTheRight =
+                    of(onePastBaseIndex, onePastLeftIndex, rightIndex)
+                      .addRightDifference(rightElement)
+
                   val resultDroppingTheBaseAndLeft =
                     if baseEqualsLeft then
                       of(baseIndex, leftIndex, onePastRightIndex)
                         .addCommonBaseAndLeft(baseElement, leftElement)
                     else
-                      val resultDroppingTheEndOfTheBase =
-                        of(baseIndex, onePastLeftIndex, onePastRightIndex)
-                          .addBaseDifference(baseElement)
-
-                      val resultDroppingTheEndOfTheLeft =
-                        of(onePastBaseIndex, leftIndex, onePastRightIndex)
-                          .addLeftDifference(leftElement)
-
                       orderBySize.max(
                         resultDroppingTheEndOfTheBase,
                         resultDroppingTheEndOfTheLeft
@@ -286,14 +290,6 @@ object LongestCommonSubsequence:
                       of(baseIndex, onePastLeftIndex, rightIndex)
                         .addCommonBaseAndRight(baseElement, rightElement)
                     else
-                      val resultDroppingTheEndOfTheBase =
-                        of(baseIndex, onePastLeftIndex, onePastRightIndex)
-                          .addBaseDifference(baseElement)
-
-                      val resultDroppingTheEndOfTheRight =
-                        of(onePastBaseIndex, onePastLeftIndex, rightIndex)
-                          .addRightDifference(rightElement)
-
                       orderBySize.max(
                         resultDroppingTheEndOfTheBase,
                         resultDroppingTheEndOfTheRight
@@ -308,14 +304,6 @@ object LongestCommonSubsequence:
                       of(onePastBaseIndex, leftIndex, rightIndex)
                         .addCommonLeftAndRight(leftElement, rightElement)
                     else
-                      val resultDroppingTheEndOfTheLeft =
-                        of(onePastBaseIndex, leftIndex, onePastRightIndex)
-                          .addLeftDifference(leftElement)
-
-                      val resultDroppingTheEndOfTheRight =
-                        of(onePastBaseIndex, onePastLeftIndex, rightIndex)
-                          .addRightDifference(rightElement)
-
                       orderBySize.max(
                         resultDroppingTheEndOfTheLeft,
                         resultDroppingTheEndOfTheRight
