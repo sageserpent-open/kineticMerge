@@ -3,9 +3,16 @@ package com.sageserpent.kineticmerge.core
 import com.google.common.hash.{Hashing, PrimitiveSink}
 import com.sageserpent.kineticmerge.core.PartitionedThreeWayTransform.Input
 import com.sageserpent.kineticmerge.core.Token
-import com.sageserpent.kineticmerge.core.Token.{Significant, Whitespace, WithTrailingWhitespace}
+import com.sageserpent.kineticmerge.core.Token.{
+  Significant,
+  Whitespace,
+  WithTrailingWhitespace
+}
 import org.rabinfingerprint.polynomial.Polynomial
-import org.rabinfingerprint.polynomial.Polynomial.{Reducibility, createFromBytes}
+import org.rabinfingerprint.polynomial.Polynomial.{
+  Reducibility,
+  createFromBytes
+}
 
 import scala.annotation.tailrec
 import scala.util.Random
@@ -24,8 +31,7 @@ object mergeTokens:
     def threeWayTransform(
         input: Input[Token]
     ): Either[merge.Divergence.type, merge.Result[Token]] =
-      if input.isCommonPartition then
-        Right(merge.Result.FullyMerged(input.left))
+      if input.isCommonPartition then Right(merge.FullyMerged(input.left))
       else merge.of(input.base, input.left, input.right)(equality)
 
     partitionedThreeWayTransform(base, left, right)(
@@ -68,31 +74,31 @@ object mergeTokens:
       rhsMerge <- rhs
     yield lhsMerge -> rhsMerge match
       case (
-            merge.Result.FullyMerged(lhsElements),
-            merge.Result.FullyMerged(rhsElements)
+            merge.FullyMerged(lhsElements),
+            merge.FullyMerged(rhsElements)
           ) =>
-        merge.Result.FullyMerged(lhsElements ++ rhsElements)
+        merge.FullyMerged(lhsElements ++ rhsElements)
       case (
-            merge.Result.FullyMerged(lhsElements),
-            merge.Result.MergedWithConflicts(rhsLeftElements, rhsRightElements)
+            merge.FullyMerged(lhsElements),
+            merge.MergedWithConflicts(rhsLeftElements, rhsRightElements)
           ) =>
-        merge.Result.MergedWithConflicts(
+        merge.MergedWithConflicts(
           lhsElements ++ rhsLeftElements,
           lhsElements ++ rhsRightElements
         )
       case (
-            merge.Result.MergedWithConflicts(lhsLeftElements, lhsRightElements),
-            merge.Result.FullyMerged(rhsElements)
+            merge.MergedWithConflicts(lhsLeftElements, lhsRightElements),
+            merge.FullyMerged(rhsElements)
           ) =>
-        merge.Result.MergedWithConflicts(
+        merge.MergedWithConflicts(
           lhsLeftElements ++ rhsElements,
           lhsRightElements ++ rhsElements
         )
       case (
-            merge.Result.MergedWithConflicts(lhsLeftElements, lhsRightElements),
-            merge.Result.MergedWithConflicts(rhsLeftElements, rhsRightElements)
+            merge.MergedWithConflicts(lhsLeftElements, lhsRightElements),
+            merge.MergedWithConflicts(rhsLeftElements, rhsRightElements)
           ) =>
-        merge.Result.MergedWithConflicts(
+        merge.MergedWithConflicts(
           lhsLeftElements ++ rhsLeftElements,
           lhsRightElements ++ rhsRightElements
         )

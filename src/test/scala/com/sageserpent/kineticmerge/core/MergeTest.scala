@@ -4,17 +4,19 @@ import cats.syntax.all.*
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
+import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Contribution
-import com.sageserpent.kineticmerge.core.merge.Result
-import com.sageserpent.kineticmerge.core.merge.Result.*
 import com.sageserpent.kineticmerge.core.MergeTest.*
+import com.sageserpent.kineticmerge.core.merge.{
+  FullyMerged,
+  MergedWithConflicts,
+  Result
+}
 import monocle.syntax.all.*
 import org.junit.jupiter.api.{DynamicTest, Test, TestFactory}
 import pprint.*
 
 import scala.collection.mutable.Map as MutableMap
-
-import ExpectyFlavouredAssert.assert
 
 class MergeTest:
   private val fullyMergedTestCases: Trials[MergeTestCase] =
@@ -298,12 +300,12 @@ class MergeTest:
           ): @unchecked
 
         result match
-          case Result.MergedWithConflicts(_, _) =>
+          case MergedWithConflicts(_, _) =>
             println("*************")
             pprintln(testCase)
 
             testCase.validate(result)
-          case Result.FullyMerged(_) => Trials.reject()
+          case FullyMerged(_) => Trials.reject()
         end match
 
   def simpleMergeTestCases(
@@ -387,8 +389,8 @@ class MergeTest:
                 .modify(_ :+ leftElement)
                 .focus(_.expectedMerge.some)
                 .modify:
-                  case Result.FullyMerged(elements) =>
-                    Result.FullyMerged(elements :+ leftElement)
+                  case FullyMerged(elements) =>
+                    FullyMerged(elements :+ leftElement)
                 .focus(_.moves)
                 .modify(_ :+ Move.LeftInsertion)
             )
@@ -408,8 +410,8 @@ class MergeTest:
                 .modify(_ :+ rightElement)
                 .focus(_.expectedMerge.some)
                 .modify:
-                  case Result.FullyMerged(elements) =>
-                    Result.FullyMerged(elements :+ rightElement)
+                  case FullyMerged(elements) =>
+                    FullyMerged(elements :+ rightElement)
                 .focus(_.moves)
                 .modify(_ :+ Move.RightInsertion)
             )
@@ -440,8 +442,8 @@ class MergeTest:
                 )
                 .focus(_.expectedMerge.some)
                 .modify:
-                  case Result.FullyMerged(elements) =>
-                    Result.FullyMerged(elements :+ elementMatch.dominantElement)
+                  case FullyMerged(elements) =>
+                    FullyMerged(elements :+ elementMatch.dominantElement)
                 .focus(_.moves)
                 .modify(_ :+ Move.CoincidentInsertion)
           yield result
@@ -476,8 +478,8 @@ class MergeTest:
                 )
                 .focus(_.expectedMerge.some)
                 .modify:
-                  case Result.FullyMerged(elements) =>
-                    Result.FullyMerged(
+                  case FullyMerged(elements) =>
+                    FullyMerged(
                       elements :+ elementMatch.dominantElement
                     )
                 .focus(_.moves)
@@ -601,7 +603,7 @@ object MergeTest:
       right = IndexedSeq.empty,
       matchesByElement = Map.empty,
       expectedMerge = Option.unless(allowConflicts) {
-        Result.FullyMerged(elements = IndexedSeq.empty)
+        FullyMerged(elements = IndexedSeq.empty)
       },
       moves = IndexedSeq.empty
     )

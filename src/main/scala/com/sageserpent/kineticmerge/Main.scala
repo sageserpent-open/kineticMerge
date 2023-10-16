@@ -5,7 +5,11 @@ import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.syntax.traverse.toTraverseOps
 import com.sageserpent.kineticmerge.Main.Tags
-import com.sageserpent.kineticmerge.core.merge.Result
+import com.sageserpent.kineticmerge.core.merge.{
+  FullyMerged,
+  MergedWithConflicts,
+  Result
+}
 import com.sageserpent.kineticmerge.core.{Token, mergeTokens}
 import com.softwaremill.tagging.*
 import fansi.Str
@@ -839,14 +843,14 @@ object Main:
           .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
 
         indexState <- mergeResult match
-          case Result.FullyMerged(elements) =>
+          case FullyMerged(elements) =>
             indexStateForCleanMerge(
               path,
               mergedFileMode,
               elements
             )
 
-          case Result.MergedWithConflicts(leftElements, rightElements) =>
+          case MergedWithConflicts(leftElements, rightElements) =>
             val leftContent =
               leftElements.map(_.text).mkString.taggedWith[Tags.Content]
             val rightContent =
@@ -1006,14 +1010,14 @@ object Main:
           .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
 
         indexState <- mergeResult match
-          case Result.FullyMerged(elements) =>
+          case FullyMerged(elements) =>
             indexStateForCleanMerge(
               path,
               mergedFileMode,
               elements
             )
 
-          case Result.MergedWithConflicts(leftElements, rightElements) =>
+          case MergedWithConflicts(leftElements, rightElements) =>
             val leftContent =
               leftElements.map(_.text).mkString.taggedWith[Tags.Content]
             val rightContent =
