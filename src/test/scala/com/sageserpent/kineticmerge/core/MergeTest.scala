@@ -315,16 +315,7 @@ class MergeTest:
       precedingRightDeletions: Boolean = false
   )(partialResult: MergeTestCase): Trials[MergeTestCase] =
     val extendedMergeTestCases =
-      def zeroRelativeElements: Trials[Element] =
-        // Using the complexity provides unique element labels.
-        for
-          complexity <- trialsApi.complexities
-          _ <- trialsApi.choose(
-            Iterable.single(0)
-          ) // NASTY HACK - force an increase in complexity so that successive calls do not yield the same label.
-        yield complexity
-        end for
-      end zeroRelativeElements
+      val zeroRelativeElements: Trials[Element] = trialsApi.uniqueIds
 
       val choices = predecessorBias match
         case _ if allowConflicts =>

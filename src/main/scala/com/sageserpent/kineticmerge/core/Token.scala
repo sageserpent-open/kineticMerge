@@ -1,15 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
-import com.sageserpent.kineticmerge.core.Token.{
-  Significant,
-  WithTrailingWhitespace,
-  ident,
-  opt,
-  parse,
-  phrase,
-  rep,
-  whiteSpace
-}
+import com.sageserpent.kineticmerge.core.Token.{Significant, Whitespace, WithTrailingWhitespace, ident, opt, parse, phrase, rep, whiteSpace}
 
 import scala.util.parsing.combinator.JavaTokenParsers
 
@@ -44,19 +35,23 @@ object Token extends JavaTokenParsers:
   private def whitespaceRun: Parser[Token.Whitespace] =
     whiteSpace ^^ Token.Whitespace.apply
 
+  case class Whitespace(blanks: String) extends Token:
+    require(blanks.isBlank)
+  end Whitespace
+
+  case class Significant(letters: String) extends Token
+
+  case class WithTrailingWhitespace(
+      coreToken: Significant,
+      whitespace: Whitespace
+  ) extends Token
+
 end Token
 
-enum Token:
+trait Token:
   def text: String = this match
     case Whitespace(blanks)   => blanks
     case Significant(letters) => letters
     case WithTrailingWhitespace(coreToken, whitespace) =>
       coreToken.text ++ whitespace.text
-
-  case Whitespace(blanks: String)
-  case Significant(letters: String)
-  case WithTrailingWhitespace(
-      coreToken: Token,
-      whitespace: Whitespace
-  )
 end Token
