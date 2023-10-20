@@ -49,13 +49,13 @@ object CodeMotionAnalysis:
     require(0 < minimumSizeFractionForMotionDetection)
     require(1 >= minimumSizeFractionForMotionDetection)
 
-    val baseSections =
+    val baseFilesByPath =
       base.filesByPath
 
-    val leftSections =
+    val leftFilesByPath =
       left.filesByPath
 
-    val rightSections =
+    val rightFilesByPath =
       right.filesByPath
 
     Right(
@@ -64,11 +64,11 @@ object CodeMotionAnalysis:
             section: Section
         ): Option[Match[Section]] = None
 
-        override def base: Map[Path, File] = baseSections
+        override def base: Map[Path, File] = baseFilesByPath
 
-        override def left: Map[Path, File] = leftSections
+        override def left: Map[Path, File] = leftFilesByPath
 
-        override def right: Map[Path, File] = rightSections
+        override def right: Map[Path, File] = rightFilesByPath
     )
   end of
 
