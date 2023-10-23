@@ -16,5 +16,5 @@ case class File(
 
   def size: Int = sections.foldLeft(0)(_ + _.size)
 
-  def contents: String = sections.foldLeft("")(_ ++ _.content)
+  def content: String = sections.foldLeft("")(_ ++ _.content)
 end File

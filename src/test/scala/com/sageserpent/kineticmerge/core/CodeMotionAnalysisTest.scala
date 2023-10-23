@@ -2,10 +2,7 @@ package com.sageserpent.kineticmerge.core
 
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.java.junit5.ConfiguredTrialsTest
-import com.sageserpent.americium.java.{
-  CasesLimitStrategy,
-  TrialsScaffolding as JavaTrialsScaffolding
-}
+import com.sageserpent.americium.java.{CasesLimitStrategy, TrialsScaffolding as JavaTrialsScaffolding}
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.americium.{Trials, TrialsApi, TrialsScaffolding}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.FakeSources
@@ -43,7 +40,7 @@ class CodeMotionAnalysisTest:
         assert(results.keys == sources.filesByPath.keys)
 
         results.foreach { case (path, result) =>
-          assert(result.contents == sources.filesByPath(path).contents)
+          assert(result.content == sources.filesByPath(path).content)
         }
       end matches
     end extension
