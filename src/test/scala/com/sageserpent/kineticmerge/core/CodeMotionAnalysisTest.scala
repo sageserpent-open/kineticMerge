@@ -35,7 +35,7 @@ class CodeMotionAnalysisTest:
 
   @TestFactory
   def sourcesCanBeReconstructedFromTheAnalysis: DynamicTests =
-    extension (results: Map[Int, File])
+    extension (results: Map[Int, File[Char]])
       private infix def matches(sources: FakeSources): Unit =
         assert(results.keys == sources.filesByPath.keys)
 
@@ -54,7 +54,7 @@ class CodeMotionAnalysisTest:
             right: FakeSources,
             minimumSizeFraction: Double
         ) =>
-          val Right(analysis: CodeMotionAnalysis[FakeSources#Path]) =
+          val Right(analysis: CodeMotionAnalysis[FakeSources#Path, Char]) =
             CodeMotionAnalysis.of(base, left, right)(
               minimumSizeFraction
             ): @unchecked
@@ -74,8 +74,9 @@ class CodeMotionAnalysisTest:
 end CodeMotionAnalysisTest
 
 object CodeMotionAnalysisTest:
-  case class FakeSources(textsByPath: Map[Int, String]) extends Sources[Int]:
-    override def filesByPath: Map[Path, File] =
+  case class FakeSources(textsByPath: Map[Int, String])
+      extends Sources[Int, Char]:
+    override def filesByPath: Map[Path, File[Element]] =
       textsByPath.map { case (path, text) =>
         path -> File(
           Vector(
@@ -92,8 +93,8 @@ object CodeMotionAnalysisTest:
         path: Path,
         override val startOffset: Int,
         override val size: Int
-    ) extends Section:
-      override def content: String =
+    ) extends Section[Element]:
+      override def content: IndexedSeq[Element] =
         textsByPath(path).substring(startOffset, onePastEndOffset)
     end SectionImplementation
 

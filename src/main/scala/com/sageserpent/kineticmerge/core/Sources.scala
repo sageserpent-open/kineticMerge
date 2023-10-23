@@ -7,8 +7,9 @@ package com.sageserpent.kineticmerge.core
   * while it could be a [[String]] or [[java.nio.file.Path]], it could also be a
   * simple [[Int]] that labels a [[File]].
   */
-trait Sources[PathType]:
+trait Sources[PathType, ElementType]:
   type Path = PathType
+  type Element = ElementType
 
-  def filesByPath: Map[Path, File]
+  def filesByPath: Map[Path, File[ElementType]]
 end Sources

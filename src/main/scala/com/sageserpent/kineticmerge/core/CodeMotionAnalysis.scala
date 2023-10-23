@@ -4,7 +4,7 @@ import cats.Order
 
 object CodeMotionAnalysis:
 
-  given orderEvidence: Order[Section] = ???
+  given orderEvidence[Element]: Order[Section[Element]] = ???
 
   /** Analyse code motion from the sources of {@code base} to both {@code left}
     * and {@code right}, breaking them into [[File]] and thence [[Section]]
@@ -39,13 +39,13 @@ object CodeMotionAnalysis:
     *   instances and thence into [[Section]] instances for each of the three
     *   sources.
     */
-  def of[Path](
-      base: Sources[Path],
-      left: Sources[Path],
-      right: Sources[Path]
+  def of[Path, Element](
+      base: Sources[Path, Element],
+      left: Sources[Path, Element],
+      right: Sources[Path, Element]
   )(
       minimumSizeFractionForMotionDetection: Double
-  ): Either[AmbiguousMatch.type, CodeMotionAnalysis[Path]] =
+  ): Either[AmbiguousMatch.type, CodeMotionAnalysis[Path, Element]] =
     require(0 < minimumSizeFractionForMotionDetection)
     require(1 >= minimumSizeFractionForMotionDetection)
 
@@ -59,16 +59,16 @@ object CodeMotionAnalysis:
       right.filesByPath
 
     Right(
-      new CodeMotionAnalysis[Path]:
+      new CodeMotionAnalysis[Path, Element]:
         override def matchFor(
-            section: Section
-        ): Option[Match[Section]] = None
+            section: Section[Element]
+        ): Option[Match[Section[Element]]] = None
 
-        override def base: Map[Path, File] = baseFilesByPath
+        override def base: Map[Path, File[Element]] = baseFilesByPath
 
-        override def left: Map[Path, File] = leftFilesByPath
+        override def left: Map[Path, File[Element]] = leftFilesByPath
 
-        override def right: Map[Path, File] = rightFilesByPath
+        override def right: Map[Path, File[Element]] = rightFilesByPath
     )
   end of
 
@@ -76,10 +76,10 @@ object CodeMotionAnalysis:
   case object AmbiguousMatch
 end CodeMotionAnalysis
 
-trait CodeMotionAnalysis[Path]:
-  def base: Map[Path, File]
-  def left: Map[Path, File]
-  def right: Map[Path, File]
+trait CodeMotionAnalysis[Path, Element]:
+  def base: Map[Path, File[Element]]
+  def left: Map[Path, File[Element]]
+  def right: Map[Path, File[Element]]
 
-  def matchFor(section: Section): Option[Match[Section]]
+  def matchFor(section: Section[Element]): Option[Match[Section[Element]]]
 end CodeMotionAnalysis
