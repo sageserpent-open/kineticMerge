@@ -27,8 +27,8 @@ class CodeMotionAnalysisTest:
         .integers(1, 1000)
         .maps(
           trialsApi
-            .characters(lowerBound = 'a', upperBound = 'z')
-            .lotsOfSize(textSize)
+            .integers(lowerBound = 1, upperBound = 20)
+            .lotsOfSize[Vector[Int]](textSize)
         )
         .filter(_.nonEmpty)
     yield FakeSources(textsByPath)
@@ -77,9 +77,9 @@ end CodeMotionAnalysisTest
 
 object CodeMotionAnalysisTest:
   type Path    = Int
-  type Element = Char
+  type Element = Int
 
-  case class FakeSources(textsByPath: Map[Path, String])
+  case class FakeSources(textsByPath: Map[Path, Vector[Int]])
       extends Sources[Path, Element]:
     override def filesByPath: Map[Path, File[Element]] =
       textsByPath.map { case (path, text) =>
@@ -100,7 +100,7 @@ object CodeMotionAnalysisTest:
         override val size: Int
     ) extends Section[Element]:
       override def content: IndexedSeq[Element] =
-        textsByPath(path).substring(startOffset, onePastEndOffset)
+        textsByPath(path).slice(startOffset, onePastEndOffset)
     end SectionImplementation
 
   end FakeSources
