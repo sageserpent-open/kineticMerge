@@ -3,16 +3,9 @@ package com.sageserpent.kineticmerge.core
 import com.google.common.hash.{Hashing, PrimitiveSink}
 import com.sageserpent.kineticmerge.core.PartitionedThreeWayTransform.Input
 import com.sageserpent.kineticmerge.core.Token
-import com.sageserpent.kineticmerge.core.Token.{
-  Significant,
-  Whitespace,
-  WithTrailingWhitespace
-}
+import com.sageserpent.kineticmerge.core.Token.{Significant, Whitespace, WithTrailingWhitespace}
 import org.rabinfingerprint.polynomial.Polynomial
-import org.rabinfingerprint.polynomial.Polynomial.{
-  Reducibility,
-  createFromBytes
-}
+import org.rabinfingerprint.polynomial.Polynomial.{Reducibility, createFromBytes}
 
 import scala.annotation.tailrec
 import scala.util.Random
@@ -24,9 +17,9 @@ object mergeTokens:
   )
 
   def apply(
-      base: Vector[Token],
-      left: Vector[Token],
-      right: Vector[Token]
+      base: IndexedSeq[Token],
+      left: IndexedSeq[Token],
+      right: IndexedSeq[Token]
   ): Either[merge.Divergence.type, merge.Result[Token]] =
     def threeWayTransform(
         input: Input[Token]
