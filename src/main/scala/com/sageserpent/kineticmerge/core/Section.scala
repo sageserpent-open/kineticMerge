@@ -11,10 +11,6 @@ package com.sageserpent.kineticmerge.core
 trait Section:
   def startOffset: Int
 
-  /** @note
-    *   The size may be zero - this is useful in representing the deletion of
-    *   text when finding code motion matches in [[CodeMotionAnalysis]].
-    */
   def size: Int
 
   def onePastEndOffset: Int = startOffset + size
