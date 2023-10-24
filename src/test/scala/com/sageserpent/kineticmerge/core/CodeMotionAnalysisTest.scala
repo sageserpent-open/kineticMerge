@@ -1,11 +1,12 @@
 package com.sageserpent.kineticmerge.core
 
+import com.google.common.hash.{Hashing, PrimitiveSink}
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.java.junit5.ConfiguredTrialsTest
 import com.sageserpent.americium.java.{CasesLimitStrategy, TrialsScaffolding as JavaTrialsScaffolding}
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.americium.{Trials, TrialsApi, TrialsScaffolding}
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.FakeSources
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.{FakeSources, funnel}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import org.junit.jupiter.api.*
 import org.junit.jupiter.api.DynamicTest.dynamicTest
@@ -59,6 +60,10 @@ class CodeMotionAnalysisTest:
           ) =
             CodeMotionAnalysis.of(base, left, right)(
               minimumSizeFraction
+            )(
+              equality = _ == _,
+              hashFunction = Hashing.murmur3_32_fixed(),
+              funnel = funnel
             ): @unchecked
 
           analysis.base matches base
@@ -79,7 +84,11 @@ object CodeMotionAnalysisTest:
   type Path    = Int
   type Element = Int
 
-  case class FakeSources(textsByPath: Map[Path, Vector[Int]])
+  private def funnel(element: Int, primitiveSink: PrimitiveSink): Unit =
+    primitiveSink.putInt(element)
+  end funnel
+
+  case class FakeSources(textsByPath: Map[Path, Vector[Element]])
       extends Sources[Path, Element]:
     override def filesByPath: Map[Path, File[Element]] =
       textsByPath.map { case (path, text) =>

@@ -1,10 +1,9 @@
 package com.sageserpent.kineticmerge.core
 
-import cats.Order
+import cats.{Eq, Order}
+import com.google.common.hash.{Funnel, HashFunction}
 
 object CodeMotionAnalysis:
-
-  given orderEvidence[Element]: Order[Section[Element]] = ???
 
   /** Analyse code motion from the sources of {@code base} to both {@code left}
     * and {@code right}, breaking them into [[File]] and thence [[Section]]
@@ -45,6 +44,10 @@ object CodeMotionAnalysis:
       right: Sources[Path, Element]
   )(
       minimumSizeFractionForMotionDetection: Double
+  )(
+      equality: Eq[Element],
+      hashFunction: HashFunction,
+      funnel: Funnel[Element]
   ): Either[AmbiguousMatch.type, CodeMotionAnalysis[Path, Element]] =
     require(0 < minimumSizeFractionForMotionDetection)
     require(1 >= minimumSizeFractionForMotionDetection)
