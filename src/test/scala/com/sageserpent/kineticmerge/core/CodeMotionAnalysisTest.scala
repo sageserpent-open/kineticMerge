@@ -6,7 +6,7 @@ import com.sageserpent.americium.java.junit5.ConfiguredTrialsTest
 import com.sageserpent.americium.java.{CasesLimitStrategy, TrialsScaffolding as JavaTrialsScaffolding}
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.americium.{Trials, TrialsApi, TrialsScaffolding}
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.{FakeSources, funnel}
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.{FakeSources, funnel, nonEmptyPartitioning, partitioning}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import org.junit.jupiter.api.*
 import org.junit.jupiter.api.DynamicTest.dynamicTest
@@ -72,12 +72,182 @@ class CodeMotionAnalysisTest:
       )
   end sourcesCanBeReconstructedFromTheAnalysis
 
-  // TODO - test *exact* matching of sections across *three* sources.
-  // TODO - test *exact* matching of sections across *two* sources augmented
-  // with a nominal match to bring in the 'missing' section.
-  // Matches should be maximal in extent across three sources. This is subtle,
-  // as a match may be extensible across just two sources, but the extension
-  // won't work for the third sources.
+  @TestFactory
+  def matchingSectionsAreFound(): DynamicTests =
+    case class TestPlan(
+        commonToAllThreeSides: IndexedSeq[Vector[FakeSources#Element]],
+        commonToBaseAndLeft: IndexedSeq[Vector[FakeSources#Element]],
+        commonToBaseAndRight: IndexedSeq[Vector[FakeSources#Element]],
+        commonToLeftAndRight: IndexedSeq[Vector[FakeSources#Element]],
+        uniqueToBase: IndexedSeq[Vector[FakeSources#Element]],
+        uniqueToLeft: IndexedSeq[Vector[FakeSources#Element]],
+        uniqueToRight: IndexedSeq[Vector[FakeSources#Element]],
+        baseSources: FakeSources,
+        leftSources: FakeSources,
+        rightSources: FakeSources
+    ):
+      commonToAllThreeSides.foreach { section =>
+        require(baseSources.contains(section))
+        require(leftSources.contains(section))
+        require(rightSources.contains(section))
+      }
+
+      commonToBaseAndLeft.foreach { section =>
+        require(baseSources.contains(section))
+        require(leftSources.contains(section))
+      }
+
+      commonToBaseAndRight.foreach { section =>
+        require(baseSources.contains(section))
+        require(rightSources.contains(section))
+      }
+
+      commonToLeftAndRight.foreach { section =>
+        require(leftSources.contains(section))
+        require(rightSources.contains(section))
+      }
+
+      uniqueToBase.foreach { section => require(baseSources.contains(section)) }
+      uniqueToLeft.foreach { section => require(leftSources.contains(section)) }
+      uniqueToRight.foreach { section =>
+        require(rightSources.contains(section))
+      }
+    end TestPlan
+
+    val alphabet = 1 to 20
+
+    // Test plan: start with a set of sequences, so these cannot match each
+    // other ...
+    val sequences =
+      trialsApi
+        .integers(1, 10)
+        .flatMap(sequenceLength =>
+          trialsApi
+            .choose(alphabet)
+            .lotsOfSize[Vector[FakeSources#Element]](sequenceLength)
+        )
+
+    val setsOfSequences = trialsApi
+      .integers(4, 30)
+      .flatMap(numberOfSequences =>
+        sequences
+          .lotsOfSize[Set[Vector[FakeSources#Element]]](numberOfSequences)
+      )
+
+    val testPlans: Trials[TestPlan] = setsOfSequences.flatMap(sequences =>
+      trialsApi
+        // ... split into several sets ...
+        .partitioning(sequences.toIndexedSeq, numberOfPartitions = 7)
+        .flatMap {
+          case Seq(
+                // ... the first four sets are of sequences that are expected to
+                // be matched across three or just two sides ...
+                commonToAllThreeSides,
+                commonToBaseAndLeft,
+                commonToBaseAndRight,
+                commonToLeftAndRight,
+                // ... and the last three are specific to the three sides, so
+                // they are unmatchable.
+                uniqueToBase,
+                uniqueToLeft,
+                uniqueToRight
+              ) =>
+            val baseCommonSequences =
+              commonToAllThreeSides ++ commonToBaseAndLeft ++ commonToBaseAndRight
+            val leftCommonSequences =
+              commonToAllThreeSides ++ commonToBaseAndLeft ++ commonToLeftAndRight
+            val rightCommonSequences =
+              commonToAllThreeSides ++ commonToBaseAndRight ++ commonToLeftAndRight
+
+            def sourcesForASide(
+                sideCommonSequences: IndexedSeq[Vector[FakeSources#Element]],
+                sideUniqueSequences: IndexedSeq[Vector[FakeSources#Element]]
+            ): Trials[FakeSources] =
+              // Mix up the three-side and two-side matches....
+              val sideCommonSequencesRearrangements =
+                trialsApi
+                  .indexPermutations(sideCommonSequences.size)
+                  .map(_.map(sideCommonSequences.apply))
+
+              // ...intersperse unique sequences between chunks of common
+              // sequences; a unique sequence never abuts another unique
+              // sequence...
+
+              val sequenceMixtures
+                  : Trials[IndexedSeq[Vector[FakeSources#Element]]] =
+                if sideCommonSequences.nonEmpty then
+                  if sideUniqueSequences.nonEmpty then
+                    sideCommonSequencesRearrangements
+                      .flatMap(sideCommonSequencesRearrangement =>
+                        if sideCommonSequencesRearrangement.size >= sideUniqueSequences.size
+                        then
+                          trialsApi.nonEmptyPartitioning(
+                            sideCommonSequencesRearrangement,
+                            numberOfPartitions = sideUniqueSequences.size
+                          )
+                        else trialsApi.impossible
+                      )
+                      .map(commonSequencesInChunks =>
+                        commonSequencesInChunks
+                          .zip(sideUniqueSequences)
+                          .flatMap {
+                            case (chunkOfCommonSequences, uniqueSequence) =>
+                              chunkOfCommonSequences :+ uniqueSequence
+                          }
+                          .toIndexedSeq
+                      )
+                  else sideCommonSequencesRearrangements
+                else trialsApi.only(sideUniqueSequences)
+
+              // ... finally, allocate the sequences in groups to paths.
+
+              sequenceMixtures
+                .flatMap(sequenceMixture =>
+                  if sequenceMixture.nonEmpty then
+                    trialsApi
+                      .integers(1, sequenceMixture.size)
+                      .flatMap(numberOfPaths =>
+                        trialsApi.nonEmptyPartitioning(
+                          sequenceMixture,
+                          numberOfPartitions = numberOfPaths
+                        )
+                      )
+                  else trialsApi.only(Seq.empty)
+                )
+                .map(_.zipWithIndex)
+                .map(_.map { case (sequences, path) =>
+                  path -> sequences.flatten
+                }.toMap)
+                .map(FakeSources.apply)
+            end sourcesForASide
+
+            for
+              baseSources <- sourcesForASide(baseCommonSequences, uniqueToBase)
+              leftSources <- sourcesForASide(leftCommonSequences, uniqueToLeft)
+              rightSources <- sourcesForASide(
+                rightCommonSequences,
+                uniqueToRight
+              )
+            yield TestPlan(
+              commonToAllThreeSides,
+              commonToBaseAndLeft,
+              commonToBaseAndRight,
+              commonToLeftAndRight,
+              uniqueToBase,
+              uniqueToLeft,
+              uniqueToRight,
+              baseSources,
+              leftSources,
+              rightSources
+            )
+            end for
+        }
+    )
+
+    testPlans
+      .withLimit(200)
+      .dynamicTests(testPlan => pprint.pprintln(testPlan))
+  end matchingSectionsAreFound
 end CodeMotionAnalysisTest
 
 object CodeMotionAnalysisTest:
@@ -88,7 +258,82 @@ object CodeMotionAnalysisTest:
     primitiveSink.putInt(element)
   end funnel
 
-  case class FakeSources(textsByPath: Map[Path, Vector[Element]])
+  extension (trialsApi: TrialsApi)
+    def nonEmptyPartitioning[Element](
+        things: IndexedSeq[Element],
+        numberOfPartitions: Int
+    ): Trials[Seq[IndexedSeq[Element]]] =
+      require(0 < numberOfPartitions)
+
+      val chunkSizeVectors =
+        val numberOfThings = things.size
+
+        val partitionPointIndexVectors = trialsApi.indexCombinations(
+          numberOfIndices = numberOfThings,
+          combinationSize = numberOfPartitions - 1
+        )
+
+        partitionPointIndexVectors.map(partitionPointIndices =>
+          (0 +: partitionPointIndices)
+            .zip(partitionPointIndices :+ numberOfThings)
+            .map { case (partitionStartIndex, onePastPartitionEndIndex) =>
+              onePastPartitionEndIndex - partitionStartIndex
+            }
+        )
+      end chunkSizeVectors
+
+      chunkSizeVectors.map(chunkSizes => thingsInChunks(chunkSizes, things))
+    end nonEmptyPartitioning
+
+    def partitioning[Element](
+        things: IndexedSeq[Element],
+        numberOfPartitions: Int
+    ): Trials[Seq[IndexedSeq[Element]]] =
+      require(0 < numberOfPartitions)
+
+      val chunkSizeVectors =
+        val numberOfThings = things.size
+
+        val partitionPointIndexVectors =
+          if 0 < numberOfThings then
+            trialsApi
+              .integers(lowerBound = 0, upperBound = numberOfThings - 1)
+              .lotsOfSize[Vector[Int]](numberOfPartitions - 1)
+              .map(_.sorted)
+          else trialsApi.only(Vector.fill(numberOfPartitions - 1)(0))
+
+        partitionPointIndexVectors.map(partitionPointIndices =>
+          (0 +: partitionPointIndices)
+            .zip(partitionPointIndices :+ numberOfThings)
+            .map { case (partitionStartIndex, onePastPartitionEndIndex) =>
+              onePastPartitionEndIndex - partitionStartIndex
+            }
+        )
+      end chunkSizeVectors
+
+      chunkSizeVectors.map { chunkSizes =>
+        assume(chunkSizes.sum == things.size)
+        assume(chunkSizes.size == numberOfPartitions)
+        thingsInChunks(chunkSizes, things)
+      }
+    end partitioning
+
+    private def thingsInChunks[Element](
+        chunkSizes: Seq[Int],
+        things: IndexedSeq[Element]
+    ): Seq[IndexedSeq[Element]] =
+      chunkSizes match
+        case Seq(leadingChunkSize, chunkSizesTail*) =>
+          val (leadingChunk, remainder) = things.splitAt(leadingChunkSize)
+
+          leadingChunk +: thingsInChunks(chunkSizesTail, remainder)
+        case Nil =>
+          assume(things.isEmpty)
+          Seq.empty
+    end thingsInChunks
+  end extension
+
+  case class FakeSources(textsByPath: Map[Path, IndexedSeq[Element]])
       extends Sources[Path, Element]:
     override def filesByPath: Map[Path, File[Element]] =
       textsByPath.map { case (path, text) =>
@@ -102,6 +347,9 @@ object CodeMotionAnalysisTest:
           )
         )
       }
+
+    def contains(section: IndexedSeq[Element]): Boolean =
+      textsByPath.values.exists(_ containsSlice section)
 
     case class SectionImplementation(
         path: Path,

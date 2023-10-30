@@ -3,9 +3,7 @@ package com.sageserpent.kineticmerge.core
 enum Match[+Element]:
   /** @return
     *   The dominant element in the match, provided the element is part of some
-    *   match. If the difference(s) is/are due to whitespace changes then it
-    *   will be from the left (our) contribution, as per Git merge. In addition,
-    *   the overall match is also provided.
+    *   match.
     * @note
     *   The notion of dominance does *not* concern itself with the merge
     *   precedence of edits or deletions - that is handled downstream.
