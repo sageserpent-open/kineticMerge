@@ -116,8 +116,8 @@ class CodeMotionAnalysisTest:
 
     val alphabet = 1 to 20
 
-    // Test plan: start with a set of sequences, so these cannot match each
-    // other ...
+    // Test plan synthesis: start with a set of sequences, so these cannot match
+    // each other ...
     val sequences =
       trialsApi
         .integers(1, 10)
@@ -136,7 +136,7 @@ class CodeMotionAnalysisTest:
 
     val testPlans: Trials[TestPlan] = setsOfSequences.flatMap(sequences =>
       trialsApi
-        // ... split into several sets ...
+        // ... split into seven sets ...
         .partitioning(sequences.toIndexedSeq, numberOfPartitions = 7)
         .flatMap {
           case Seq(
@@ -152,31 +152,29 @@ class CodeMotionAnalysisTest:
                 uniqueToLeft,
                 uniqueToRight
               ) =>
-            val baseCommonSequences =
-              commonToAllThreeSides ++ commonToBaseAndLeft ++ commonToBaseAndRight
-            val leftCommonSequences =
-              commonToAllThreeSides ++ commonToBaseAndLeft ++ commonToLeftAndRight
-            val rightCommonSequences =
-              commonToAllThreeSides ++ commonToBaseAndRight ++ commonToLeftAndRight
-
             def sourcesForASide(
-                sideCommonSequences: IndexedSeq[Vector[FakeSources#Element]],
+                commonToAllThreeSides: IndexedSeq[Vector[FakeSources#Element]],
+                commonToOnePairOfSides: IndexedSeq[Vector[FakeSources#Element]],
+                commonToTheOtherPairOfSides: IndexedSeq[
+                  Vector[FakeSources#Element]
+                ],
                 sideUniqueSequences: IndexedSeq[Vector[FakeSources#Element]]
             ): Trials[FakeSources] =
-              // Mix up the three-side and two-side matches....
-              val sideCommonSequencesRearrangements =
-                trialsApi
-                  .indexPermutations(sideCommonSequences.size)
-                  .map(_.map(sideCommonSequences.apply))
-
-              // ...intersperse unique sequences between chunks of common
-              // sequences; a unique sequence never abuts another unique
-              // sequence...
-
               val sequenceMixtures
                   : Trials[IndexedSeq[Vector[FakeSources#Element]]] =
-                if sideCommonSequences.nonEmpty then
+                if commonToAllThreeSides.nonEmpty || commonToOnePairOfSides.nonEmpty || commonToTheOtherPairOfSides.nonEmpty
+                then
+                  // Mix up the three-side and two-side matches....
+                  val sideCommonSequencesRearrangements =
+                    trialsApi.pickAlternatelyFrom(
+                      shrinkToRoundRobin = false,
+                      commonToAllThreeSides ++ commonToOnePairOfSides ++ commonToTheOtherPairOfSides
+                    )
+
                   if sideUniqueSequences.nonEmpty then
+                    // ...intersperse unique sequences between chunks of common
+                    // sequences; a unique sequence never abuts another unique
+                    // sequence...
                     sideCommonSequencesRearrangements
                       .flatMap(sideCommonSequencesRearrangement =>
                         if sideCommonSequencesRearrangement.size >= sideUniqueSequences.size
@@ -197,6 +195,7 @@ class CodeMotionAnalysisTest:
                           .toIndexedSeq
                       )
                   else sideCommonSequencesRearrangements
+                  end if
                 else trialsApi.only(sideUniqueSequences)
 
               // ... finally, allocate the sequences in groups to paths.
@@ -212,20 +211,35 @@ class CodeMotionAnalysisTest:
                           numberOfPartitions = numberOfPaths
                         )
                       )
-                  else trialsApi.only(Seq.empty)
+                  else
+                    // Sometimes we generate an empty side with no files.
+                    trialsApi.only(Seq.empty)
                 )
                 .map(_.zipWithIndex)
                 .map(_.map { case (sequences, path) =>
-                  path -> sequences.flatten
+                  val fileContents = sequences.flatten
+                  path -> fileContents
                 }.toMap)
                 .map(FakeSources.apply)
             end sourcesForASide
 
             for
-              baseSources <- sourcesForASide(baseCommonSequences, uniqueToBase)
-              leftSources <- sourcesForASide(leftCommonSequences, uniqueToLeft)
+              baseSources <- sourcesForASide(
+                commonToAllThreeSides,
+                commonToBaseAndLeft,
+                commonToBaseAndRight,
+                uniqueToBase
+              )
+              leftSources <- sourcesForASide(
+                commonToAllThreeSides,
+                commonToBaseAndLeft,
+                commonToLeftAndRight,
+                uniqueToLeft
+              )
               rightSources <- sourcesForASide(
-                rightCommonSequences,
+                commonToAllThreeSides,
+                commonToBaseAndRight,
+                commonToLeftAndRight,
                 uniqueToRight
               )
             yield TestPlan(
@@ -333,23 +347,23 @@ object CodeMotionAnalysisTest:
     end thingsInChunks
   end extension
 
-  case class FakeSources(textsByPath: Map[Path, IndexedSeq[Element]])
+  case class FakeSources(contentsByPath: Map[Path, IndexedSeq[Element]])
       extends Sources[Path, Element]:
     override def filesByPath: Map[Path, File[Element]] =
-      textsByPath.map { case (path, text) =>
+      contentsByPath.map { case (path, content) =>
         path -> File(
           Vector(
             SectionImplementation(
               path = path,
               startOffset = 0,
-              size = text.length
+              size = content.length
             )
           )
         )
       }
 
     def contains(section: IndexedSeq[Element]): Boolean =
-      textsByPath.values.exists(_ containsSlice section)
+      contentsByPath.values.exists(_ containsSlice section)
 
     case class SectionImplementation(
         path: Path,
@@ -357,7 +371,7 @@ object CodeMotionAnalysisTest:
         override val size: Int
     ) extends Section[Element]:
       override def content: IndexedSeq[Element] =
-        textsByPath(path).slice(startOffset, onePastEndOffset)
+        contentsByPath(path).slice(startOffset, onePastEndOffset)
     end SectionImplementation
 
   end FakeSources
