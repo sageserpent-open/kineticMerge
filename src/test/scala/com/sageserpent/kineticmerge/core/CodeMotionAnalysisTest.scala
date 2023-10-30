@@ -6,7 +6,7 @@ import com.sageserpent.americium.java.junit5.ConfiguredTrialsTest
 import com.sageserpent.americium.java.{CasesLimitStrategy, TrialsScaffolding as JavaTrialsScaffolding}
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.americium.{Trials, TrialsApi, TrialsScaffolding}
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.{FakeSources, funnel, nonEmptyPartitioning, partitioning}
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import org.junit.jupiter.api.*
 import org.junit.jupiter.api.DynamicTest.dynamicTest
@@ -112,6 +112,31 @@ class CodeMotionAnalysisTest:
       uniqueToRight.foreach { section =>
         require(rightSources.contains(section))
       }
+
+      def minimumSizeFractionForMotionDetection: Double =
+        def numberOfElementsCoveredBy(
+            allocations: IndexedSeq[Vector[FakeSources#Element]]*
+        ): Int =
+          allocations.map(_.map(_.size).sum).sum
+
+        def minimumNumberOfElementsCoveredBy(
+            allocations: IndexedSeq[Vector[FakeSources#Element]]*
+        ): Int =
+          allocations
+            .map(_.map(_.size).minOption.getOrElse(1))
+            .minOption
+            .getOrElse(1)
+
+        val minimumMatchableSize = minimumNumberOfElementsCoveredBy(
+          commonToAllThreeSides,
+          commonToBaseAndLeft,
+          commonToBaseAndRight,
+          commonToLeftAndRight
+        )
+
+        minimumMatchableSize.toDouble / (baseSources.maximumContentsSize max leftSources.maximumContentsSize max rightSources.maximumContentsSize)
+      end minimumSizeFractionForMotionDetection
+
     end TestPlan
 
     val alphabet = 1 to 20
@@ -260,7 +285,116 @@ class CodeMotionAnalysisTest:
 
     testPlans
       .withLimit(200)
-      .dynamicTests(testPlan => pprint.pprintln(testPlan))
+      .dynamicTests { testPlan =>
+        pprint.pprintln(testPlan)
+
+        import testPlan.*
+
+        val Right(
+          analysis: CodeMotionAnalysis[FakeSources#Path, FakeSources#Element]
+        ) =
+          CodeMotionAnalysis.of(
+            baseSources,
+            leftSources,
+            rightSources
+          )(minimumSizeFractionForMotionDetection)(
+            equality = _ == _,
+            hashFunction = Hashing.murmur3_32_fixed(),
+            funnel = funnel
+          ): @unchecked
+        end val
+
+        def matches(sideFilesByPath: Map[Path, File[Element]]) =
+          sideFilesByPath.values
+            .flatMap(_.sections)
+            .collect(Function.unlift(analysis.matchFor))
+
+        def verify(
+            matches: Iterable[Match[Section[FakeSources#Element]]]
+        ): Unit =
+          // NOTE: all of the cases below have to consider the possibility that
+          // juxtaposition of sequences may create incidental match
+          // opportunities that don't necessarily encompass the expected
+          // matches. If so, we just reject the trial as inconclusive, but not
+          // before we have done some mandatory validation beforehand.
+          matches.foreach {
+            case Match.AllThree(baseSection, leftSection, rightSection) =>
+              assert(analysis.base.values.exists(_ == baseSection))
+              assert(analysis.left.values.exists(_ == leftSection))
+              assert(analysis.right.values.exists(_ == rightSection))
+
+              assert(leftSection == baseSection)
+              assert(rightSection == baseSection)
+
+              if !commonToAllThreeSides
+                  .exists(baseSection.content containsSlice _)
+              then Trials.reject()
+              end if
+
+            case Match.BaseAndLeft(baseSection, leftSection) =>
+              assert(analysis.base.values.exists(_ == baseSection))
+              assert(analysis.left.values.exists(_ == leftSection))
+
+              assert(leftSection == baseSection)
+
+              if !commonToBaseAndLeft.exists(
+                  baseSection.content containsSlice _
+                )
+              then Trials.reject()
+              end if
+
+            case Match.BaseAndRight(baseSection, rightSection) =>
+              assert(analysis.base.values.exists(_ == baseSection))
+              assert(analysis.right.values.exists(_ == rightSection))
+
+              assert(rightSection == baseSection)
+
+              if !commonToBaseAndRight.exists(
+                  baseSection.content containsSlice _
+                )
+              then Trials.reject()
+              end if
+
+            case Match.LeftAndRight(leftSection, rightSection) =>
+              assert(analysis.left.values.exists(_ == leftSection))
+              assert(analysis.right.values.exists(_ == rightSection))
+
+              assert(rightSection == leftSection)
+
+              if !commonToBaseAndLeft.exists(
+                  leftSection.content containsSlice _
+                )
+              then Trials.reject()
+              end if
+          }
+
+        val baseMatches: Iterable[Match[Section[FakeSources#Element]]] =
+          matches(analysis.base)
+
+        if commonToAllThreeSides.nonEmpty || commonToBaseAndLeft.nonEmpty || commonToBaseAndRight.nonEmpty
+        then assert(baseMatches.nonEmpty)
+        end if
+
+        verify(baseMatches)
+
+        val leftMatches: Iterable[Match[Section[FakeSources#Element]]] =
+          matches(analysis.left)
+
+        if commonToAllThreeSides.nonEmpty || commonToBaseAndLeft.nonEmpty || commonToLeftAndRight.nonEmpty
+        then assert(leftMatches.nonEmpty)
+        end if
+
+        verify(leftMatches)
+
+        val rightMatches: Iterable[Match[Section[FakeSources#Element]]] =
+          matches(analysis.right)
+
+        if commonToAllThreeSides.nonEmpty || commonToBaseAndRight.nonEmpty || commonToLeftAndRight.nonEmpty
+        then assert(rightMatches.nonEmpty)
+        end if
+
+        verify(rightMatches)
+      }
   end matchingSectionsAreFound
 end CodeMotionAnalysisTest
 
@@ -364,6 +498,9 @@ object CodeMotionAnalysisTest:
 
     def contains(section: IndexedSeq[Element]): Boolean =
       contentsByPath.values.exists(_ containsSlice section)
+
+    def maximumContentsSize: Int =
+      contentsByPath.values.map(_.size).maxOption.getOrElse(0)
 
     case class SectionImplementation(
         path: Path,
