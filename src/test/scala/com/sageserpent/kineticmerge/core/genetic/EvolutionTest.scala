@@ -55,10 +55,10 @@ class EvolutionTest:
             Population.singleton((0 until mess.size).toVector)
 
           given Evolution[Chromosome] with
-            override def mutate(chromosome: Chromosome): Chromosome =
+            override def mutate(chromosome: Chromosome)(using
+                random: Random
+            ): Chromosome =
               require(1 < chromosome.size)
-
-              val random = new Random(chromosome.hashCode())
 
               val indexOne = random.nextInt(chromosome.size)
 
@@ -77,10 +77,8 @@ class EvolutionTest:
             override def breed(
                 first: Chromosome,
                 second: Chromosome
-            ): Chromosome =
+            )(using random: Random): Chromosome =
               require(first.size == second.size)
-
-              val random = new Random((first -> second).hashCode())
 
               val firstMapsToEven = random.nextBoolean()
 
@@ -105,7 +103,7 @@ class EvolutionTest:
           end given
 
           val evolvedPopulation: Population[Chromosome] =
-            Evolution.of(initialPopulation, maximumPopulationSize = 10)
+            Evolution.of(initialPopulation, maximumPopulationSize = 50)
 
           assert(
             candidateSequence(evolvedPopulation.fittest) == targetSortedSequence
