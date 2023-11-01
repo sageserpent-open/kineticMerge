@@ -32,7 +32,7 @@ class EvolutionTest:
           .indexPermutations(ascendingValueSequence.size)
           .map(ascendingValueSequence -> _.map(ascendingValueSequence.apply))
       )
-      .withLimit(100)
+      .withLimit(1000)
       .dynamicTests {
         (targetSortedSequence: Vector[Long], mess: Vector[Long]) =>
           type Chromosome = Vector[Int]
