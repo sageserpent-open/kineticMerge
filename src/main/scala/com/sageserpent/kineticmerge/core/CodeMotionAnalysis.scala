@@ -1,6 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
-import cats.{Eq, Order}
+import cats.Eq
 import com.google.common.hash.{Funnel, HashFunction}
 
 object CodeMotionAnalysis:
