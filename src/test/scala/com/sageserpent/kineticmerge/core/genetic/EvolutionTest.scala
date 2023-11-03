@@ -53,18 +53,28 @@ class EvolutionTest:
             ): Chromosome =
               require(1 < chromosome.size)
 
-              val indexOne = random.nextInt(chromosome.size)
+              if random.nextBoolean() then
+                // Swap a pair of indices...
+                val indexOne = random.nextInt(chromosome.size)
 
-              val indexTwo =
-                (indexOne + 1 + random.nextInt(
-                  chromosome.size - 1
-                )) % chromosome.size
+                val indexTwo =
+                  (indexOne + 1 + random.nextInt(
+                    chromosome.size - 1
+                  )) % chromosome.size
 
-              val withTwoIndicesSwapped = chromosome
-                .updated(indexOne, chromosome(indexTwo))
-                .updated(indexTwo, chromosome(indexOne))
+                val withTwoIndicesSwapped = chromosome
+                  .updated(indexOne, chromosome(indexTwo))
+                  .updated(indexTwo, chromosome(indexOne))
 
-              withTwoIndicesSwapped
+                withTwoIndicesSwapped
+              else
+                // Cyclic permutation...
+                val rotateLeftBy = 1 + random.nextInt(chromosome.size - 1)
+
+                val (prefix, suffix) = chromosome.splitAt(rotateLeftBy)
+
+                suffix ++ prefix
+              end if
             end mutate
 
             override def breed(
