@@ -5,7 +5,6 @@ import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
-import com.sageserpent.kineticmerge.core.genetic.Evolution.Population
 import org.junit.jupiter.api.TestFactory
 
 import scala.collection.immutable.TreeSet
@@ -47,12 +46,6 @@ class EvolutionTest:
 
             sequence.zip(sequence.tail).count(_ <= _)
           end numberOfCorrectlyOrderedAdjacentElements
-
-          given Order[Chromosome] =
-            Order.by(numberOfCorrectlyOrderedAdjacentElements)
-
-          val initialPopulation: Population[Chromosome] =
-            Population.singleton((0 until mess.size).toVector)
 
           given Evolution[Chromosome] with
             override def mutate(chromosome: Chromosome)(using
@@ -102,11 +95,16 @@ class EvolutionTest:
 
           end given
 
-          val evolvedPopulation: Population[Chromosome] =
-            Evolution.of(initialPopulation, maximumPopulationSize = 50)
+          given Order[Chromosome] =
+            Order.by(numberOfCorrectlyOrderedAdjacentElements)
+
+          val initial: Chromosome = (0 until mess.size).toVector
+
+          val fittest: Chromosome =
+            Evolution.of(initial, testBudget = 10)
 
           assert(
-            candidateSequence(evolvedPopulation.fittest) == targetSortedSequence
+            candidateSequence(fittest) == targetSortedSequence
           )
       }
   end evolutionSelectsTheSortedSequence
