@@ -67,9 +67,10 @@ object Evolution:
             val second = population(columnIndex)
 
             val offspring = evolution.breed(first, second)
-            val mutant    = evolution.mutate(offspring)
+            val mutants =
+              Seq.fill(1 + numberOfRetries)(evolution.mutate(offspring))
 
-            Seq(offspring, mutant)
+            offspring +: mutants
           )
           .iterator
           .distinct
@@ -88,13 +89,13 @@ object Evolution:
           )
           .distinct
           .sorted(descendingFitnessOrdering)
-          .take(2000) // <<---- NASTY HACK!
+          .take(200) // <<---- NASTY HACK!
 
       val noImprovement = survivingOffspring.headOption.fold(true)(
         ascendingFitnessOrder.gteqv(fittestSoFar, _)
       )
 
-      if noImprovement && 1 < numberOfRetries && survivingOffspring.size == populationSize
+      if noImprovement && 30 < numberOfRetries
       then fittestSoFar
       else
         // The new generation takes over...
