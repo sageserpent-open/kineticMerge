@@ -27,88 +27,94 @@ object Evolution:
 
     val descendingFitnessOrdering = ascendingFitnessOrder.toOrdering.reverse
 
-    // PLAN: evolve a population that is a sorted set of chromosomes in
-    // descending order of fitness. Each cycle improves the population by
-    // breeding the fittest individuals and their mutations to make a stream of
-    // offspring, expanding the offspring population until one of them beats the
-    // fittest chromosome from the previous cycle.
-
-    // This terminates when the fittest chromosome mutates to worse chromosomes
-    // each time over the test budget.
-
-    // TWEAKS:
-    // 1. Use a diagonal strategy to breed chromosomes.
-    // 2. Prevent the population from collapsing by adding mutants.
-    // 3. Ratchet the population size.
-
     def ensureMoreThanOneChromosomeInPopulation(
-        population: Seq[Chromosome]
-    ): Seq[Chromosome] =
+        population: IndexedSeq[Chromosome]
+    ): IndexedSeq[Chromosome] =
       require(population.nonEmpty)
       if population.size > 1 then population
       else
         val sole = population.head
-        Seq(sole, evolution.mutate(sole))
+        Vector(sole, evolution.mutate(sole)).sorted(descendingFitnessOrdering)
       end if
     end ensureMoreThanOneChromosomeInPopulation
 
     @tailrec
-    def lifecycle(population: Seq[Chromosome]): Chromosome =
+    def lifecycle(
+        population: IndexedSeq[Chromosome],
+        numberOfRetries: Int
+    ): Chromosome =
       require(1 < population.size)
 
       val fittestSoFar = population.head
 
-      val fittestCohort =
-        population.takeWhile(ascendingFitnessOrder.eqv(_, fittestSoFar))
+      val populationSize = population.size
 
-      val fittestCannotBeBeatenInTestBudget =
-        Iterator
-          .fill(testBudget)(fittestSoFar)
-          .map(evolution.mutate)
-          .filterNot(fittestCohort.contains)
-          .forall(ascendingFitnessOrder.lt(_, fittestSoFar))
+      println((populationSize, numberOfRetries))
 
-      if fittestCannotBeBeatenInTestBudget then fittestSoFar
-      else
-        val offspringIterator = LazyList
-          .from(population)
-          .flatMap(first =>
-            LazyList
-              .from(population)
-              .flatMap(second =>
-                if first != second then
-                  val nonMutant = evolution.breed(first, second)
-                  Seq(nonMutant, evolution.mutate(nonMutant))
-                else Seq.empty
-              )
+      val ranks = 0 until populationSize
+
+      val diagonalStripes = ranks.flatMap(rank =>
+        ((1 + rank) / 2 to rank).map(indexAlongStripe =>
+          indexAlongStripe -> (rank - indexAlongStripe)
+        )
+      )
+
+      val offspringIterator =
+        LazyList
+          .from(diagonalStripes)
+          .flatMap((rowIndex, columnIndex) =>
+            val first  = population(rowIndex)
+            val second = population(columnIndex)
+
+            val offspring = evolution.breed(first, second)
+            val mutant    = evolution.mutate(offspring)
+
+            Seq(offspring, mutant)
           )
           .iterator
           .distinct
 
-        val survivingOffspring =
-          Seq
-            .from(
-              Iterator.unfold(false)(hasImproved =>
-                Option.unless(hasImproved || !offspringIterator.hasNext) {
-                  val offspring = offspringIterator.next()
-                  val improvement =
-                    ascendingFitnessOrder.gt(offspring, fittestSoFar)
-                  offspring -> improvement
-                }
-              )
+      val survivingOffspring =
+        Vector
+          .from(
+            Iterator.unfold(false)(hasImproved =>
+              Option.unless(hasImproved || !offspringIterator.hasNext) {
+                val offspring = offspringIterator.next()
+                val improvement =
+                  ascendingFitnessOrder.gt(offspring, fittestSoFar)
+                offspring -> improvement
+              }
             )
-            .sorted(descendingFitnessOrdering)
+          )
+          .distinct
+          .sorted(descendingFitnessOrdering)
+          .take(2000) // <<---- NASTY HACK!
 
-        if survivingOffspring.isEmpty then
-          // Keep trying...
-          lifecycle(population)
-        else
-          // The new generation takes over...
-          lifecycle(ensureMoreThanOneChromosomeInPopulation(survivingOffspring))
-        end if
+      val noImprovement = survivingOffspring.headOption.fold(true)(
+        ascendingFitnessOrder.gteqv(fittestSoFar, _)
+      )
+
+      if noImprovement && 1 < numberOfRetries && survivingOffspring.size == populationSize
+      then fittestSoFar
+      else
+        // The new generation takes over...
+        val ongoingPopulation = ensureMoreThanOneChromosomeInPopulation(
+          survivingOffspring
+        )
+        lifecycle(
+          ongoingPopulation,
+          numberOfRetries = if noImprovement then 1 + numberOfRetries else 0
+        )
       end if
     end lifecycle
 
-    lifecycle(ensureMoreThanOneChromosomeInPopulation(Seq(initial)))
+    val initialPopulation = ensureMoreThanOneChromosomeInPopulation(
+      Vector(initial)
+    )
+
+    lifecycle(
+      initialPopulation,
+      numberOfRetries = 0
+    )
   end of
 end Evolution
