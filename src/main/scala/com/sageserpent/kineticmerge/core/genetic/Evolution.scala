@@ -18,7 +18,7 @@ object Evolution:
 
   def of[Chromosome](
       initial: Chromosome,
-      testBudget: Int
+      maximumNumberOfRetries: Int
   )(using
       evolution: Evolution[Chromosome],
       ascendingFitnessOrder: Order[Chromosome]
@@ -95,7 +95,7 @@ object Evolution:
         ascendingFitnessOrder.gteqv(fittestSoFar, _)
       )
 
-      if noImprovement && 30 < numberOfRetries
+      if noImprovement && maximumNumberOfRetries == numberOfRetries
       then fittestSoFar
       else
         // The new generation takes over...
