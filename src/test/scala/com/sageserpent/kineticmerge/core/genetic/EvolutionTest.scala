@@ -111,7 +111,11 @@ class EvolutionTest:
           val initial: Chromosome = (0 until mess.size).toVector
 
           val fittest: Chromosome =
-            Evolution.of(initial, maximumNumberOfRetries = initial.size * 3)
+            Evolution.of(
+              initial,
+              maximumNumberOfRetries = initial.size * 3,
+              maximumPopulationSize = 200
+            )
 
           assert(
             candidateSequence(fittest) == targetSortedSequence

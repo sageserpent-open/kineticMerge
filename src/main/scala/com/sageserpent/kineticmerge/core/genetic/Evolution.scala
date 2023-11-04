@@ -18,7 +18,8 @@ object Evolution:
 
   def of[Chromosome](
       initial: Chromosome,
-      maximumNumberOfRetries: Int
+      maximumNumberOfRetries: Int,
+      maximumPopulationSize: Int
   )(using
       evolution: Evolution[Chromosome],
       ascendingFitnessOrder: Order[Chromosome]
@@ -48,8 +49,6 @@ object Evolution:
       val fittestSoFar = population.head
 
       val populationSize = population.size
-
-      println((populationSize, numberOfRetries))
 
       val ranks = 0 until populationSize
 
@@ -89,7 +88,7 @@ object Evolution:
           )
           .distinct
           .sorted(descendingFitnessOrdering)
-          .take(200) // <<---- NASTY HACK!
+          .take(maximumPopulationSize)
 
       val noImprovement = survivingOffspring.headOption.fold(true)(
         ascendingFitnessOrder.gteqv(fittestSoFar, _)
