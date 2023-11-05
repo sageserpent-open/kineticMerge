@@ -57,8 +57,6 @@ object Evolution:
 
       val populationSize = population.size
 
-      println((numberOfRetries, populationSize, population.take(5)))
-
       val maximumRank = populationSize - 1
 
       val ranks = 0 to maximumRank
