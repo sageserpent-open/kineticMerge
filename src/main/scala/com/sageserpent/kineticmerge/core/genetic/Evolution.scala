@@ -7,26 +7,33 @@ import scala.annotation.tailrec
 import scala.collection.immutable.SortedSet
 import scala.util.Random
 
-trait Evolution[Chromosome]:
+trait Evolution[Chromosome, Phenotype]:
   def mutate(chromosome: Chromosome)(using random: Random): Chromosome
   def breed(first: Chromosome, second: Chromosome)(using
       random: Random
   ): Chromosome
+  def initialChromosome: Chromosome
+  def phenotype(chromosome: Chromosome): Phenotype
 end Evolution
 
 object Evolution:
 
-  def of[Chromosome](
-      initial: Chromosome,
+  def of[Chromosome, Phenotype](
       maximumNumberOfRetries: Int,
       maximumPopulationSize: Int
   )(using
-      evolution: Evolution[Chromosome],
-      ascendingFitnessOrder: Order[Chromosome]
-  ): Chromosome =
-    given Random = new Random(initial.hashCode())
+      evolution: Evolution[Chromosome, Phenotype],
+      ascendingFitnessOrder: Order[Phenotype]
+  ): Phenotype =
+    val initialChromosome = evolution.initialChromosome
 
-    val descendingFitnessOrdering = ascendingFitnessOrder.toOrdering.reverse
+    given Random = new Random(initialChromosome.hashCode())
+
+    val ascendingChromosomeFitnessOrder =
+      Order.by[Chromosome, Phenotype](evolution.phenotype)
+
+    val descendingChromosomeFitnessOrdering =
+      ascendingChromosomeFitnessOrder.toOrdering.reverse
 
     def ensureMoreThanOneChromosomeInPopulation(
         population: IndexedSeq[Chromosome]
@@ -35,7 +42,8 @@ object Evolution:
       if population.size > 1 then population
       else
         val sole = population.head
-        Vector(sole, evolution.mutate(sole)).sorted(descendingFitnessOrdering)
+        Vector(sole, evolution.mutate(sole))
+          .sorted(descendingChromosomeFitnessOrdering)
       end if
     end ensureMoreThanOneChromosomeInPopulation
 
@@ -46,9 +54,11 @@ object Evolution:
     ): Chromosome =
       require(1 < population.size)
 
-      val fittestSoFar = population.head
+      val fittestChromosome = population.head
 
       val populationSize = population.size
+
+      println((numberOfRetries, populationSize, population.take(5)))
 
       val ranks = 0 until populationSize
 
@@ -81,21 +91,22 @@ object Evolution:
               Option.unless(hasImproved || !offspringIterator.hasNext) {
                 val offspring = offspringIterator.next()
                 val improvement =
-                  ascendingFitnessOrder.gt(offspring, fittestSoFar)
+                  ascendingChromosomeFitnessOrder
+                    .gt(offspring, fittestChromosome)
                 offspring -> improvement
               }
             )
           )
           .distinct
-          .sorted(descendingFitnessOrdering)
+          .sorted(descendingChromosomeFitnessOrdering)
           .take(maximumPopulationSize)
 
       val noImprovement = survivingOffspring.headOption.fold(true)(
-        ascendingFitnessOrder.gteqv(fittestSoFar, _)
+        ascendingChromosomeFitnessOrder.gteqv(fittestChromosome, _)
       )
 
       if noImprovement && maximumNumberOfRetries == numberOfRetries
-      then fittestSoFar
+      then fittestChromosome
       else
         // The new generation takes over...
         val ongoingPopulation = ensureMoreThanOneChromosomeInPopulation(
@@ -109,12 +120,14 @@ object Evolution:
     end lifecycle
 
     val initialPopulation = ensureMoreThanOneChromosomeInPopulation(
-      Vector(initial)
+      Vector(initialChromosome)
     )
 
-    lifecycle(
+    val fittestChromosome = lifecycle(
       initialPopulation,
       numberOfRetries = 0
     )
+
+    evolution.phenotype(fittestChromosome)
   end of
 end Evolution
