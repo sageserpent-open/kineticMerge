@@ -50,23 +50,30 @@ object Evolution:
     @tailrec
     def lifecycle(
         population: IndexedSeq[Chromosome],
+        fittestChromosome: Chromosome,
         numberOfRetries: Int
     ): Chromosome =
       require(1 < population.size)
-
-      val fittestChromosome = population.head
 
       val populationSize = population.size
 
       println((numberOfRetries, populationSize, population.take(5)))
 
-      val ranks = 0 until populationSize
+      val maximumRank = populationSize - 1
+
+      val ranks = 0 to maximumRank
 
       val diagonalStripes = ranks.flatMap(rank =>
         ((1 + rank) / 2 to rank).map(indexAlongStripe =>
           indexAlongStripe -> (rank - indexAlongStripe)
         )
-      )
+      ) ++ ranks.reverse
+        .drop(1)
+        .flatMap(rank =>
+          ((1 + rank) / 2 to rank).map(indexAlongStripe =>
+            (maximumRank - indexAlongStripe) -> (maximumRank - (rank - indexAlongStripe))
+          )
+        )
 
       val offspringIterator =
         LazyList
@@ -76,10 +83,9 @@ object Evolution:
             val second = population(columnIndex)
 
             val offspring = evolution.breed(first, second)
-            val mutants =
-              Seq.fill(1 + numberOfRetries)(evolution.mutate(offspring))
+            val mutant    = evolution.mutate(offspring)
 
-            offspring +: mutants
+            Seq(offspring, mutant)
           )
           .iterator
           .distinct
@@ -97,7 +103,6 @@ object Evolution:
               }
             )
           )
-          .distinct
           .sorted(descendingChromosomeFitnessOrdering)
           .take(maximumPopulationSize)
 
@@ -112,10 +117,20 @@ object Evolution:
         val ongoingPopulation = ensureMoreThanOneChromosomeInPopulation(
           survivingOffspring
         )
-        lifecycle(
-          ongoingPopulation,
-          numberOfRetries = if noImprovement then 1 + numberOfRetries else 0
-        )
+        if noImprovement then
+          lifecycle(
+            population = ongoingPopulation,
+            fittestChromosome, // The previous record holder still stands.
+            numberOfRetries = 1 + numberOfRetries
+          )
+        else
+          lifecycle(
+            population = ongoingPopulation,
+            fittestChromosome =
+              ongoingPopulation.head, // All hail the new pretender.
+            numberOfRetries = 0
+          )
+        end if
       end if
     end lifecycle
 
@@ -124,7 +139,8 @@ object Evolution:
     )
 
     val fittestChromosome = lifecycle(
-      initialPopulation,
+      population = initialPopulation,
+      fittestChromosome = initialPopulation.head,
       numberOfRetries = 0
     )
 
