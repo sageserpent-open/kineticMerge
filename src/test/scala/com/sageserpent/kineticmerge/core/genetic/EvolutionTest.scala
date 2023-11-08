@@ -4,6 +4,7 @@ import cats.kernel.Order
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
+import com.sageserpent.americium.randomEnrichment.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.genetic.EvolutionTest.{*, given}
 import org.junit.jupiter.api.TestFactory
@@ -16,9 +17,12 @@ object EvolutionTest:
   type Chromosome = Vector[Int]
   val ascendingValueSequences: Trials[Phenotype] =
     trialsApi
+        .integers(1, 20)
+        .flatMap(size =>
+          trialsApi
       .choose(0L until 9L)
-      .several[Vector[Long]]
-      .filter(_.nonEmpty)
+            .lotsOfSize[Vector[Long]](size)
+        )
       .flatMap(increments =>
         trialsApi
           .longs(1L, 10L)
@@ -69,24 +73,8 @@ object EvolutionTest:
       )(using random: Random): Chromosome =
         require(first.size == second.size)
 
-        val firstMapsToEven = random.nextBoolean()
+        random.pickAlternatelyFrom(Iterable(first, second)).distinct.toVector
 
-        val chosenUniqueValues = (first zip second).map {
-          (firstIndex, secondIndex) =>
-            val chooseTheFirst = random.nextBoolean()
-
-            if chooseTheFirst then
-              if firstMapsToEven then 2 * firstIndex
-              else 2 * firstIndex + 1
-            else if firstMapsToEven then 2 * secondIndex + 1
-            else 2 * secondIndex
-            end if
-        }
-
-        val translationToNewPermutationIndices =
-          chosenUniqueValues.sorted.zipWithIndex.toMap
-
-        chosenUniqueValues.map(translationToNewPermutationIndices.apply)
       end breed
 
       override def initialChromosome: Chromosome =
