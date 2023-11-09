@@ -39,7 +39,8 @@ object Evolution:
     def lifecycle(
         populationChromosomes: IndexedSeq[Chromosome],
         fittestChromosome: Chromosome,
-        numberOfRetries: Int
+        numberOfRetries: Int,
+        maximumNumberOfRetries: Int
     ): Chromosome =
       require(1 < populationChromosomes.size)
 
@@ -108,7 +109,8 @@ object Evolution:
           lifecycle(
             populationChromosomes = offspringChromosomes,
             fittestChromosome, // The previous record holder still stands.
-            numberOfRetries = 1 + numberOfRetries
+            numberOfRetries = 1 + numberOfRetries,
+            maximumNumberOfRetries = maximumNumberOfRetries
           )
         else
           println("******** Progress...")
@@ -117,7 +119,13 @@ object Evolution:
             populationChromosomes = offspringChromosomes,
             fittestChromosome =
               fittestOffspringChromosome, // All hail the new pretender.
-            numberOfRetries = 0
+            numberOfRetries = 0,
+            maximumNumberOfRetries =
+              if 0 == numberOfRetries then maximumNumberOfRetries
+              else
+                // Increase the maximum number of retries in anticipation of the
+                // next improvement being harder to find.
+                maximumNumberOfRetries + numberOfRetries
           )
         end if
       end if
@@ -130,7 +138,8 @@ object Evolution:
     val fittestChromosome = lifecycle(
       populationChromosomes = initialPopulationChromosomes,
       fittestChromosome = initialPopulationChromosomes.head,
-      numberOfRetries = 0
+      numberOfRetries = 0,
+      maximumNumberOfRetries = maximumNumberOfRetries
     )
 
     evolution.phenotype(fittestChromosome)

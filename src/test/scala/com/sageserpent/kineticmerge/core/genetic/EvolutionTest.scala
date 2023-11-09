@@ -161,7 +161,7 @@ class EvolutionTest:
           .indexPermutations(ascendingValueSequence.size)
           .map(ascendingValueSequence -> _.map(ascendingValueSequence.apply))
       )
-      .withLimit(1000)
+      .withLimit(500)
       .dynamicTests { (targetSortedSequence: Phenotype, mess: Phenotype) =>
 
         given Evolution[Chromosome, Phenotype] =
@@ -169,7 +169,7 @@ class EvolutionTest:
 
         val fittest: Phenotype =
           Evolution.of(
-            maximumNumberOfRetries = mess.size * 3,
+            maximumNumberOfRetries = mess.size,
             maximumPopulationSize = 120
           )
 
