@@ -35,27 +35,15 @@ object Evolution:
     val descendingChromosomeFitnessOrdering =
       ascendingChromosomeFitnessOrder.toOrdering.reverse
 
-    def ensureMoreThanOneChromosomeInPopulation(
-        population: IndexedSeq[Chromosome]
-    ): IndexedSeq[Chromosome] =
-      require(population.nonEmpty)
-      if population.size > 1 then population
-      else
-        val sole = population.head
-        Vector(sole, evolution.mutate(sole))
-          .sorted(descendingChromosomeFitnessOrdering)
-      end if
-    end ensureMoreThanOneChromosomeInPopulation
-
     @tailrec
     def lifecycle(
-        population: IndexedSeq[Chromosome],
+        populationChromosomes: IndexedSeq[Chromosome],
         fittestChromosome: Chromosome,
         numberOfRetries: Int
     ): Chromosome =
-      require(1 < population.size)
+      require(1 < populationChromosomes.size)
 
-      val populationSize = population.size
+      val populationSize = populationChromosomes.size
 
       val maximumRank = populationSize - 1
 
@@ -77,8 +65,8 @@ object Evolution:
         LazyList
           .from(diagonalStripes)
           .flatMap((rowIndex, columnIndex) =>
-            val first  = population(rowIndex)
-            val second = population(columnIndex)
+            val first  = populationChromosomes(rowIndex)
+            val second = populationChromosomes(columnIndex)
 
             val offspring = evolution.breed(first, second)
             val mutant    = evolution.mutate(offspring)
@@ -88,7 +76,7 @@ object Evolution:
           .iterator
           .distinct
 
-      val survivingOffspring =
+      val offspringChromosomes =
         Vector
           .from(
             Iterator.unfold(false)(hasImproved =>
@@ -104,41 +92,44 @@ object Evolution:
           .sorted(descendingChromosomeFitnessOrdering)
           .take(maximumPopulationSize)
 
-      val noImprovement = survivingOffspring.headOption.fold(true)(
-        ascendingChromosomeFitnessOrder.gteqv(fittestChromosome, _)
+      val fittestOffspringChromosome = offspringChromosomes.head
+
+      val noImprovement = ascendingChromosomeFitnessOrder.lteqv(
+        fittestOffspringChromosome,
+        fittestChromosome
       )
 
       if noImprovement && maximumNumberOfRetries == numberOfRetries
       then fittestChromosome
       else
-        // The new generation takes over...
-        val ongoingPopulation = ensureMoreThanOneChromosomeInPopulation(
-          survivingOffspring
-        )
         if noImprovement then
+          println("Retrying...")
+
           lifecycle(
-            population = ongoingPopulation,
+            populationChromosomes = offspringChromosomes,
             fittestChromosome, // The previous record holder still stands.
             numberOfRetries = 1 + numberOfRetries
           )
         else
+          println("******** Progress...")
+
           lifecycle(
-            population = ongoingPopulation,
+            populationChromosomes = offspringChromosomes,
             fittestChromosome =
-              ongoingPopulation.head, // All hail the new pretender.
+              fittestOffspringChromosome, // All hail the new pretender.
             numberOfRetries = 0
           )
         end if
       end if
     end lifecycle
 
-    val initialPopulation = ensureMoreThanOneChromosomeInPopulation(
-      Vector(initialChromosome)
-    )
+    val initialPopulationChromosomes =
+      Vector(initialChromosome, evolution.mutate(initialChromosome))
+        .sorted(descendingChromosomeFitnessOrdering)
 
     val fittestChromosome = lifecycle(
-      population = initialPopulation,
-      fittestChromosome = initialPopulation.head,
+      populationChromosomes = initialPopulationChromosomes,
+      fittestChromosome = initialPopulationChromosomes.head,
       numberOfRetries = 0
     )
 
