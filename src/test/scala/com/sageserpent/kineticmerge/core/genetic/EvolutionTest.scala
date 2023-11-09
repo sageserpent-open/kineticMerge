@@ -126,7 +126,7 @@ class EvolutionTest:
         val fittest: Phenotype =
           Evolution.of(
             maximumNumberOfRetries = mess.size * 3,
-            maximumPopulationSize = 200
+            maximumPopulationSize = 120
           )
 
         assert(
