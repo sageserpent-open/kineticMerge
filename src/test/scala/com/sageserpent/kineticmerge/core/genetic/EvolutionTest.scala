@@ -17,12 +17,12 @@ object EvolutionTest:
   type Chromosome = Vector[Int]
   val ascendingValueSequences: Trials[Phenotype] =
     trialsApi
-        .integers(1, 20)
-        .flatMap(size =>
-          trialsApi
-      .choose(0L until 9L)
-            .lotsOfSize[Vector[Long]](size)
-        )
+      .integers(1, 20)
+      .flatMap(size =>
+        trialsApi
+          .choose(0L until 9L)
+          .lotsOfSize[Vector[Long]](size)
+      )
       .flatMap(increments =>
         trialsApi
           .longs(1L, 10L)
@@ -37,12 +37,12 @@ object EvolutionTest:
   end numberOfCorrectlyOrderedAdjacentElements
 
   def evolution(startingPhenotype: Phenotype) =
-    new Evolution[Chromosome, Phenotype]:
+    require(1 < startingPhenotype.size)
+
+    trait EvolutionImplementation extends Evolution[Chromosome, Phenotype]:
       override def mutate(chromosome: Chromosome)(using
           random: Random
       ): Chromosome =
-        require(1 < chromosome.size)
-
         if random.nextBoolean() then
           // Swap a pair of indices...
           val indexOne = random.nextInt(chromosome.size)
@@ -71,17 +71,61 @@ object EvolutionTest:
           first: Chromosome,
           second: Chromosome
       )(using random: Random): Chromosome =
-        require(first.size == second.size)
-
         random.pickAlternatelyFrom(Iterable(first, second)).distinct.toVector
-
-      end breed
 
       override def initialChromosome: Chromosome =
         (0 until startingPhenotype.size).toVector
 
       override def phenotype(chromosome: Chromosome): Phenotype =
         chromosome.map(startingPhenotype.apply)
+    end EvolutionImplementation
+
+    new EvolutionImplementation with EvolutionContracts(startingPhenotype)
+
+  end evolution
+
+  trait EvolutionContracts(startingPhenotype: Phenotype)
+      extends Evolution[Chromosome, Phenotype]:
+    // NOTE: there are no *precondition* checks here; the assumption is that as
+    // the chromosome type is abstracted in `Evolution`, there is no way for
+    // that to be able to mess up their concrete representation.
+    extension (chromosome: Chromosome)
+      def isWellFormed: Boolean =
+        // The chromosome should be a permutation of indices...
+        startingPhenotype.size == chromosome.size && chromosome.sorted == startingPhenotype.indices
+
+    abstract override def mutate(chromosome: Chromosome)(using
+        random: Random
+    ) =
+      val result = super.mutate(chromosome)
+      // Self-check of the test support logic...
+      assume(result.isWellFormed)
+      // Post-condition...
+      assert(result != chromosome)
+      result
+    end mutate
+
+    abstract override def breed(first: Chromosome, second: Chromosome)(using
+        random: Random
+    ) =
+      val result = super.breed(first, second)
+      // Self-check of the test support logic...
+      assume(result.isWellFormed)
+      // Post-condition...
+      if first == second then assert(result == first)
+      else assert(result != first || result != second)
+      end if
+      result
+    end breed
+
+    abstract override def initialChromosome: Chromosome =
+      val result = super.initialChromosome
+      // Self-check of the test support logic...
+      assume(result.isWellFormed)
+      result
+    end initialChromosome
+
+  end EvolutionContracts
 
 end EvolutionTest
 
