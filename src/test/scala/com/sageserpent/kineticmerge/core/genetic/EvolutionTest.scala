@@ -92,7 +92,7 @@ object EvolutionTest:
     extension (chromosome: Chromosome)
       def isWellFormed: Boolean =
         // The chromosome should be a permutation of indices...
-        startingPhenotype.size == chromosome.size && chromosome.sorted == startingPhenotype.indices
+        chromosome.sorted == startingPhenotype.indices
 
     abstract override def mutate(chromosome: Chromosome)(using
         random: Random
