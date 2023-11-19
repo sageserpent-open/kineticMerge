@@ -38,10 +38,14 @@ class CodeMotionAnalysisTest:
   def sourcesCanBeReconstructedFromTheAnalysis: DynamicTests =
     extension (results: Map[FakeSources#Path, File[FakeSources#Element]])
       private infix def matches(sources: FakeSources): Unit =
-        assert(results.keys == sources.filesByPath.keys)
+        assert(results.keys == sources.filesByPathUtilising(Set.empty).keys)
 
         results.foreach { case (path, result) =>
-          assert(result.content == sources.filesByPath(path).content)
+          assert(
+            result.content == sources
+              .filesByPathUtilising(Set.empty)(path)
+              .content
+          )
         }
       end matches
     end extension
@@ -245,7 +249,10 @@ class CodeMotionAnalysisTest:
                   val fileContents = sequences.flatten
                   path -> fileContents
                 }.toMap)
-                .map(FakeSources.apply)
+                .map(contentsByPath =>
+                  new FakeSources(contentsByPath)
+                    with SourcesContracts[Path, Element]
+                )
             end sourcesForASide
 
             for
@@ -481,9 +488,46 @@ object CodeMotionAnalysisTest:
     end thingsInChunks
   end extension
 
+  trait SourcesContracts[Path, Element] extends Sources[Path, Element]:
+    abstract override def section(
+        path: SourcesContracts.this.Path
+    )(startOffset: Int, size: Int): Section[SourcesContracts.this.Element] =
+      val result = super.section(path)(startOffset, size)
+
+      assert(pathFor(result) == path)
+
+      result
+    end section
+
+    abstract override def filesByPathUtilising(
+        sections: Set[Section[SourcesContracts.this.Element]]
+    ): Map[SourcesContracts.this.Path, File[Element]] =
+      val result = super.filesByPathUtilising(sections)
+
+      sections.foreach(section =>
+        assert(result(pathFor(section)).sections.exists(section == _))
+      )
+
+      assert(result.keys == paths)
+
+      result
+    end filesByPathUtilising
+  end SourcesContracts
+
   case class FakeSources(contentsByPath: Map[Path, IndexedSeq[Element]])
       extends Sources[Path, Element]:
-    override def filesByPath: Map[Path, File[Element]] =
+    override def paths: Set[Path] = contentsByPath.keySet
+
+    override def section(path: Path)(
+        startOffset: CodeMotionAnalysisTest.Path,
+        size: CodeMotionAnalysisTest.Path
+    ): Section[Element] = ???
+
+    override def pathFor(section: Section[Element]): Path = ???
+
+    override def filesByPathUtilising(
+        sections: Set[Section[Element]]
+    ): Map[Path, File[Element]] =
       contentsByPath.map { case (path, content) =>
         path -> File(
           Vector(
@@ -510,7 +554,6 @@ object CodeMotionAnalysisTest:
       override def content: IndexedSeq[Element] =
         contentsByPath(path).slice(startOffset, onePastEndOffset)
     end SectionImplementation
-
   end FakeSources
 
 end CodeMotionAnalysisTest

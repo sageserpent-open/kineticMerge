@@ -8,8 +8,37 @@ package com.sageserpent.kineticmerge.core
   * simple [[Int]] that labels a [[File]].
   */
 trait Sources[PathType, ElementType]:
-  type Path = PathType
+  type Path    = PathType
   type Element = ElementType
 
-  def filesByPath: Map[Path, File[ElementType]]
+  def paths: Set[Path]
+
+  /** Yield an isolated section covering part of the file at {@code path} as
+    * demarcated by {@code startOffset} and {@code size}.
+    * @note
+    *   The file referred to by {@code path} is implied; there is no actual
+    *   [[File]] object associated with the section by default.
+    * @note
+    *   Sections are associated with the [[Sources]] instance that yielded them;
+    *   mixing up sections belonging to another [[Sources]] instance is not
+    *   supported, unless both [[Sources]] instances are deemed equivalent.
+    */
+  def section(path: Path)(startOffset: Int, size: Int): Section[Element]
+
+  /** @return
+    *   The [[Path]] that implies the file that {@code section} refers to.
+    */
+  def pathFor(section: Section[Element]): Path
+
+  /** Yield a breakdown of [[File]] instances arranged by [[Path]], such that
+    * each of the {@code sections} is present in a [[File]] instance.
+    *
+    * This adds additional sections to fill in gaps between the ones given in
+    * {@code sections}, and where a path has no section from {@code sections}
+    * associated with it, it will be given a [[File]] instance with one section
+    * covering the entire file content.
+    */
+  def filesByPathUtilising(
+      sections: Set[Section[Element]]
+  ): Map[Path, File[ElementType]]
 end Sources

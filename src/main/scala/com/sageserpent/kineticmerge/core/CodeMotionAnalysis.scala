@@ -53,13 +53,13 @@ object CodeMotionAnalysis:
     require(1 >= minimumSizeFractionForMotionDetection)
 
     val baseFilesByPath =
-      base.filesByPath
+      base.filesByPathUtilising(Set.empty)
 
     val leftFilesByPath =
-      left.filesByPath
+      left.filesByPathUtilising(Set.empty)
 
     val rightFilesByPath =
-      right.filesByPath
+      right.filesByPathUtilising((Set.empty))
 
     Right(
       new CodeMotionAnalysis[Path, Element]:
