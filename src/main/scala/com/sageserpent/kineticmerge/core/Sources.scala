@@ -37,6 +37,10 @@ trait Sources[PathType, ElementType]:
     * {@code sections}, and where a path has no section from {@code sections}
     * associated with it, it will be given a [[File]] instance with one section
     * covering the entire file content.
+    *
+    * @note
+    *   {@code sections} may be an empty set - this then yields an initial
+    *   coarse breakdown into files of one section each.
     */
   def filesByPathUtilising(
       sections: Set[Section[Element]]

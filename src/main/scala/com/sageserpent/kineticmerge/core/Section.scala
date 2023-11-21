@@ -8,6 +8,8 @@ trait Section[Element]:
 
   def size: Int
 
+  def closedOpenInterval: (Int, Int) = startOffset -> onePastEndOffset
+
   def onePastEndOffset: Int = startOffset + size
 
   def content: IndexedSeq[Element]

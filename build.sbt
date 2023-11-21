@@ -1,9 +1,10 @@
-import scala.sys.process.*
-import scala.language.postfixOps
 import sbtrelease.ReleaseStateTransformations.*
 import xerial.sbt.Sonatype.*
-import scala.xml.transform.{RuleTransformer, RewriteRule}
-import scala.xml.{Node, Elem}
+
+import scala.language.postfixOps
+import scala.sys.process.*
+import scala.xml.transform.{RewriteRule, RuleTransformer}
+import scala.xml.{Elem, Node}
 
 enablePlugins(ShadingPlugin)
 
@@ -115,8 +116,9 @@ lazy val root = (project in file("."))
     packageExecutable := (packageExecutable dependsOn publishLocal).value,
     libraryDependencies += "com.github.scopt" %% "scopt" % "4.1.0",
     libraryDependencies += "org.typelevel" %% "cats-collections-core" % "0.9.6",
-    libraryDependencies += "org.typelevel" %% "cats-core"   % "2.10.0",
-    libraryDependencies += "org.typelevel" %% "cats-effect" % "3.5.2",
+    libraryDependencies += "org.typelevel" %% "cats-core"      % "2.10.0",
+    libraryDependencies += "org.typelevel" %% "alleycats-core" % "2.10.0",
+    libraryDependencies += "org.typelevel" %% "cats-effect"    % "3.5.2",
     libraryDependencies ++= Seq(
       "dev.optics" %% "monocle-core"  % "3.2.0",
       "dev.optics" %% "monocle-macro" % "3.2.0"
@@ -125,9 +127,10 @@ lazy val root = (project in file("."))
     libraryDependencies += "com.lihaoyi"             %% "os-lib"  % "0.9.1",
     libraryDependencies += "com.lihaoyi"             %% "fansi"   % "0.4.0",
     libraryDependencies += "com.softwaremill.common" %% "tagging" % "2.3.4",
-    libraryDependencies += "com.google.guava" % "guava"     % "32.1.2-jre",
-    libraryDependencies += "com.sageserpent" %% "americium" % "1.17.0" % Test,
-    libraryDependencies += "com.lihaoyi"     %% "pprint"    % "0.8.1"  % Test,
+    libraryDependencies += "com.google.guava" % "guava"      % "32.1.2-jre",
+    libraryDependencies += "de.sciss"        %% "fingertree" % "1.5.5",
+    libraryDependencies += "com.sageserpent" %% "americium"  % "1.17.0" % Test,
+    libraryDependencies += "com.lihaoyi"     %% "pprint"     % "0.8.1"  % Test,
     libraryDependencies += "com.eed3si9n.expecty" %% "expecty" % "0.16.0" % Test,
     libraryDependencies += "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
     Test / fork               := true,
