@@ -3,20 +3,12 @@ package com.sageserpent.kineticmerge.core
 import cats.Eq
 import com.google.common.hash.{Funnel, HashFunction}
 import com.sageserpent.kineticmerge.core.PartitionedThreeWayTransform.Input
-import org.rabinfingerprint.fingerprint.{
-  RabinFingerprintLong,
-  RabinFingerprintLongWindowed
-}
+import org.rabinfingerprint.fingerprint.RabinFingerprintLongWindowed
 import org.rabinfingerprint.polynomial.Polynomial
-import org.rabinfingerprint.polynomial.Polynomial.{
-  Reducibility,
-  createFromBytes
-}
 
 import java.lang.Byte as JavaByte
 import scala.annotation.tailrec
 import scala.collection.{SortedMap, mutable}
-import scala.util.Random
 
 /** @param polynomial
   *   This must be an irreducible polynomial, preferably chosen at random.
@@ -226,7 +218,13 @@ class PartitionedThreeWayTransform(polynomial: Polynomial):
                   // Have to perform a check of the common partitions, because
                   // we might have fingerprint collisions either within the same
                   // side or across sides...
-                  if basePartitions.common == leftPartitions.common && basePartitions.common == rightPartitions.common
+                  if sequenceEquality.eqv(
+                      basePartitions.common,
+                      leftPartitions.common
+                    ) && sequenceEquality.eqv(
+                      basePartitions.common,
+                      rightPartitions.common
+                    )
                   then
                     Some(
                       PartitionedSides(
