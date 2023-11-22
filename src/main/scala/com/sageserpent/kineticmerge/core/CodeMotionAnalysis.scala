@@ -11,6 +11,7 @@ import org.rabinfingerprint.fingerprint.RabinFingerprintLongWindowed
 import org.rabinfingerprint.polynomial.Polynomial
 
 import java.lang.Byte as JavaByte
+import scala.annotation.tailrec
 import scala.collection.immutable.TreeSet
 import scala.collection.{SortedMultiDict, mutable}
 import scala.util.Random
@@ -69,18 +70,10 @@ object CodeMotionAnalysis:
 
     val sequenceEquality: Eq[Seq[Element]] = Eq[Seq[Element]]
 
-    val baseFilesByPath =
-      base.filesByPathUtilising(Set.empty)
-
-    val leftFilesByPath =
-      left.filesByPathUtilising(Set.empty)
-
-    val rightFilesByPath =
-      right.filesByPathUtilising(Set.empty)
-
-    val minimumFileSize = baseFilesByPath.map(_._2.size).min min leftFilesByPath
-      .map(_._2.size)
-      .min min rightFilesByPath.map(_._2.size).min
+    val minimumFileSize =
+      base.filesByPath.values.map(_.size).min min
+        left.filesByPath.values.map(_.size).min min
+        right.filesByPath.values.map(_.size).min
 
     val minimumWindowSize =
       (minimumFileSize * minimumSizeFractionForMotionDetection).ceil.toInt
@@ -280,10 +273,9 @@ object CodeMotionAnalysis:
 
       override def phenotype(chromosome: Chromosome): Phenotype =
         def matchesForWindowSize(
+            matchGroupsInDescendingOrderOfKeys: MatchGroupsInDescendingOrderOfKeys,
             windowSize: Int
         ): MatchGroupsInDescendingOrderOfKeys =
-          // TODO: filter on window size for each path.
-
           val fixedNumberOfBytesInElementHash =
             hashFunction.bits / JavaByte.SIZE
 
@@ -346,8 +338,6 @@ object CodeMotionAnalysis:
                 minimumWindowSize to fileSize contains windowSize
               }
               .map { case (path, file) =>
-                val fileSize = file.size
-
                 fingerprintStartIndices(file.content).map(
                   (fingerprint, fingerprintStartIndex) =>
                     fingerprint -> sources
@@ -359,24 +349,104 @@ object CodeMotionAnalysis:
               .reduce(_ concat _)
           end fingerprintSections
 
-          // Using each map of files by path across the sides ...
+          val baseSectionsByFingerprint  = fingerprintSections(base)
+          val leftSectionsByFingerprint  = fingerprintSections(left)
+          val rightSectionsByFingerprint = fingerprintSections(right)
 
-          // Look for matching fingerprints across the three sides, eliminating
-          // false positives. Need to examine the Cartesian product of sets of
-          // (path, starting index) across the sides.
-          // Also need to look for matching fingerprints across just two sides!
-          // This means that if we fail to synchronize on a fingerprint on all
-          // three side (ie. the largest fingerprint increases from the
-          // synchronisation target, or we run out of fingerprints on one or
-          // more sides), then we check to see if two sides have arrived at the
-          // synchronisation target.
+          @tailrec
+          def matchingFingerprintsAcrossSides(
+              baseFingerprints: Iterable[Long],
+              leftFingerprints: Iterable[Long],
+              rightFingerprints: Iterable[Long],
+              // TODO: tighten the type signature to use `Match.AllThree`
+              tripleMatches: Set[Match[Section[Element]]],
+              // TODO: tighten the type signature to use a union type of the
+              // other match kinds.
+              pairMatches: Set[Match[Section[Element]]]
+          ): MatchGroupsInDescendingOrderOfKeys =
+            if baseFingerprints.isEmpty || leftFingerprints.isEmpty || rightFingerprints.isEmpty
+            then
+              // Add the triples first if we have any, then any pairs as we are
+              // adding match groups in descending order of keys.
+              matchGroupsInDescendingOrderOfKeys ++ Seq(
+                (windowSize, MatchGrade.Triple) -> tripleMatches,
+                (windowSize, MatchGrade.Pair)   -> pairMatches
+              ).filter { case (_, matches) => matches.nonEmpty }
+            else
+              val baseHead  = baseFingerprints.head
+              val leftHead  = leftFingerprints.head
+              val rightHead = rightFingerprints.head
 
-          ???
+              val maximumFingerprint = baseHead max leftHead max rightHead
+              val minimumFingerprint = baseHead min leftHead min rightHead
+
+              if maximumFingerprint == minimumFingerprint then
+                // Synchronised the fingerprints across all three sides - so all
+                // match...
+
+                val allSidesMatches: Set[Match[Section[Element]]] =
+                  val baseSections =
+                    baseSectionsByFingerprint.get(maximumFingerprint)
+                  val leftSections =
+                    leftSectionsByFingerprint.get(maximumFingerprint)
+                  val rightSections =
+                    rightSectionsByFingerprint.get(maximumFingerprint)
+
+                  (for
+                    baseSection  <- baseSections
+                    leftSection  <- leftSections
+                    rightSection <- rightSections
+                    // Guard against false positives sharing the same
+                    // fingerprint...
+                    if sequenceEquality.eqv(
+                      baseSection.content,
+                      leftSection.content
+                    ) && sequenceEquality.eqv(
+                      baseSection.content,
+                      rightSection.content
+                    )
+                  yield Match.AllThree(
+                    baseSection,
+                    leftSection,
+                    rightSection
+                  )).toSet
+                end allSidesMatches
+
+                matchingFingerprintsAcrossSides(
+                  baseFingerprints.tail,
+                  leftFingerprints.tail,
+                  rightFingerprints.tail,
+                  tripleMatches ++ allSidesMatches,
+                  pairMatches
+                )
+              else
+                // If we have two sides sharing the *minimum* fingerprint, this
+                // means that there is no further chance of synchronising on
+                // that fingerprint across all three sides, so we declare a
+                // match on two sides...
+
+                // ...if all three sides have differing fingerprints, advance on
+                // the side with the minimum fingerprint, this is conservative
+                // in terms of finding all-sides matches, but makes sure we
+                // don't miss two-sided matches.
+
+                matchingFingerprintsAcrossSides(???, ???, ???, ???, ???)
+              end if
+            end if
+          end matchingFingerprintsAcrossSides
+
+          matchingFingerprintsAcrossSides(
+            baseSectionsByFingerprint.keySet,
+            leftSectionsByFingerprint.keySet,
+            rightSectionsByFingerprint.keySet,
+            tripleMatches = Set.empty,
+            pairMatches = Set.empty
+          )
         end matchesForWindowSize
 
         val matchGroupsInDescendingOrderOfKeys
             : MatchGroupsInDescendingOrderOfKeys =
-          chromosome.windowSizesInDescendingOrder.toSeq.flatMap(
+          chromosome.windowSizesInDescendingOrder.foldLeft(Seq.empty)(
             matchesForWindowSize
           )
 
@@ -387,8 +457,11 @@ object CodeMotionAnalysis:
       end phenotype
     end given
 
-    val mysteriousAnswer =
+    val evolvedPhenotype =
       Evolution.of(maximumNumberOfRetries = 100, maximumPopulationSize = 100)
+
+    // TODO: what happens when we have divergent matches, or *overlapping*
+    // matches (which are a variation on divergent matches)?
 
     Right(
       new CodeMotionAnalysis[Path, Element]:
@@ -396,11 +469,11 @@ object CodeMotionAnalysis:
             section: Section[Element]
         ): Option[Match[Section[Element]]] = None
 
-        override def base: Map[Path, File[Element]] = baseFilesByPath
+        override def base: Map[Path, File[Element]] = ???
 
-        override def left: Map[Path, File[Element]] = leftFilesByPath
+        override def left: Map[Path, File[Element]] = ???
 
-        override def right: Map[Path, File[Element]] = rightFilesByPath
+        override def right: Map[Path, File[Element]] = ???
     )
   end of
 
