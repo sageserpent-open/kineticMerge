@@ -2,20 +2,12 @@ package com.sageserpent.kineticmerge.core
 
 import com.google.common.hash.{Hashing, PrimitiveSink}
 import com.sageserpent.americium.Trials.api as trialsApi
-import com.sageserpent.americium.java.junit5.ConfiguredTrialsTest
-import com.sageserpent.americium.java.{CasesLimitStrategy, TrialsScaffolding as JavaTrialsScaffolding}
 import com.sageserpent.americium.junit5.*
-import com.sageserpent.americium.{Trials, TrialsApi, TrialsScaffolding}
+import com.sageserpent.americium.{Trials, TrialsApi}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import org.junit.jupiter.api.*
-import org.junit.jupiter.api.DynamicTest.dynamicTest
-import org.junit.jupiter.api.TestInstance.Lifecycle
-import org.opentest4j.TestAbortedException
-
-import scala.collection.immutable.{SortedMap, SortedSet}
-import scala.concurrent.duration.{FiniteDuration, SECONDS}
-import scala.jdk.CollectionConverters.*
+import org.rabinfingerprint.polynomial.Polynomial
 
 class CodeMotionAnalysisTest:
   val minimumSizeFractionTrials: Trials[Double] =
@@ -68,7 +60,7 @@ class CodeMotionAnalysisTest:
               equality = _ == _,
               hashFunction = Hashing.murmur3_32_fixed(),
               funnel = funnel
-            ): @unchecked
+            )(Polynomial.createIrreducible(15)): @unchecked
 
           analysis.base matches base
           analysis.left matches left
@@ -308,7 +300,7 @@ class CodeMotionAnalysisTest:
             equality = _ == _,
             hashFunction = Hashing.murmur3_32_fixed(),
             funnel = funnel
-          ): @unchecked
+          )(Polynomial.createIrreducible(15)): @unchecked
         end val
 
         def matches(sideFilesByPath: Map[Path, File[Element]]) =

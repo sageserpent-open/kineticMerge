@@ -45,4 +45,6 @@ trait Sources[PathType, ElementType]:
   def filesByPathUtilising(
       sections: Set[Section[Element]]
   ): Map[Path, File[ElementType]]
+
+  val filesByPath: Map[Path, File[ElementType]] = filesByPathUtilising(Set.empty)
 end Sources

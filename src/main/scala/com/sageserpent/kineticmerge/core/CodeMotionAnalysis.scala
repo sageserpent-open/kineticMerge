@@ -6,10 +6,13 @@ import cats.syntax.traverse.*
 import cats.{Eq, Order}
 import com.google.common.hash.{Funnel, HashFunction}
 import com.sageserpent.kineticmerge.core.genetic.Evolution
-import com.softwaremill.tagging.*
 import de.sciss.fingertree.RangedSeq
+import org.rabinfingerprint.fingerprint.RabinFingerprintLongWindowed
+import org.rabinfingerprint.polynomial.Polynomial
 
+import java.lang.Byte as JavaByte
 import scala.collection.immutable.TreeSet
+import scala.collection.{SortedMultiDict, mutable}
 import scala.util.Random
 
 object CodeMotionAnalysis:
@@ -56,9 +59,15 @@ object CodeMotionAnalysis:
       equality: Eq[Element],
       hashFunction: HashFunction,
       funnel: Funnel[Element]
+  )(
+      polynomial: Polynomial
   ): Either[AmbiguousMatch.type, CodeMotionAnalysis[Path, Element]] =
     require(0 < minimumSizeFractionForMotionDetection)
     require(1 >= minimumSizeFractionForMotionDetection)
+
+    given witness: Eq[Element] = equality
+
+    val sequenceEquality: Eq[Seq[Element]] = Eq[Seq[Element]]
 
     val baseFilesByPath =
       base.filesByPathUtilising(Set.empty)
@@ -75,19 +84,14 @@ object CodeMotionAnalysis:
 
     val minimumWindowSize =
       (minimumFileSize * minimumSizeFractionForMotionDetection).ceil.toInt
-        .taggedWith[Tags.WindowSize]
-
-    object Tags:
-      trait WindowSize
-    end Tags
 
     enum MatchGrade:
       case Triple
       case Pair
     end MatchGrade
 
-    type MatchGroupKey = (Int @@ Tags.WindowSize, MatchGrade)
-    type Chromosome    = TreeSet[Int @@ Tags.WindowSize]
+    type MatchGroupKey                = (Int, MatchGrade)
+    type WindowSizesInDescendingOrder = TreeSet[Int]
     type MatchGroupsInDescendingOrderOfKeys = Seq[
       (
           MatchGroupKey,
@@ -97,6 +101,9 @@ object CodeMotionAnalysis:
       )
     ]
 
+    // TODO: consider integrating the cleanup directly in to the matching
+    // process, as we can work with sections directly, thus avoiding the
+    // decomposition of matches.
     def cleanUp(
         matchGroupsInDescendingOrderOfKeys: MatchGroupsInDescendingOrderOfKeys
     ): MatchGroupsInDescendingOrderOfKeys =
@@ -213,6 +220,10 @@ object CodeMotionAnalysis:
       withoutRedundantMatches.filter { case (_, matches) => matches.isEmpty }
     end cleanUp
 
+    case class Chromosome(
+        windowSizesInDescendingOrder: WindowSizesInDescendingOrder
+    )
+
     case class Phenotype(
         chromosomeSize: Int,
         matchGroupsInReverseOrder: MatchGroupsInDescendingOrderOfKeys
@@ -222,11 +233,6 @@ object CodeMotionAnalysis:
       })
 
     end Phenotype
-
-    // Have to be prolix with the explicit generic type substitutions to avoid
-    // confusing the Scala compiler.
-    given Order[Int @@ Tags.WindowSize] =
-      Order.by[Int @@ Tags.WindowSize, Int](_.eraseTag)
 
     given Order[MatchGrade] with
       override def compare(x: MatchGrade, y: MatchGrade): Int =
@@ -268,16 +274,117 @@ object CodeMotionAnalysis:
           random: Random
       ): Chromosome = ???
 
-      override def initialChromosome: Chromosome = TreeSet(minimumWindowSize)
+      override def initialChromosome: Chromosome = Chromosome(
+        TreeSet(minimumWindowSize)(Ordering[Int].reverse)
+      )
 
       override def phenotype(chromosome: Chromosome): Phenotype =
-        // For each sources....
-        // For each path....
-        // For each window size compatible with the file size (>= minimum size
-        // fraction for that file and <= file size)...
-        // Build Rabin fingerprints....
+        def matchesForWindowSize(
+            windowSize: Int
+        ): MatchGroupsInDescendingOrderOfKeys =
+          // TODO: filter on window size for each path.
 
-        ???
+          val fixedNumberOfBytesInElementHash =
+            hashFunction.bits / JavaByte.SIZE
+
+          val fingerprinting =
+            new RabinFingerprintLongWindowed(
+              polynomial,
+              fixedNumberOfBytesInElementHash * windowSize
+            )
+
+          def fingerprintStartIndices(
+              elements: IndexedSeq[Element]
+          ): SortedMultiDict[Long, Int] =
+            // Fingerprinting is imperative, so go with that style local to this
+            // helper function...
+            fingerprinting.reset()
+
+            val accumulatingResults = mutable.SortedMultiDict.empty[Long, Int]
+
+            def updateFingerprint(elementIndex: Int): Unit =
+              val elementBytes =
+                hashFunction
+                  .newHasher()
+                  .putObject(elements(elementIndex), funnel)
+                  .hash()
+                  .asBytes()
+
+              elementBytes.foreach(fingerprinting.pushByte)
+            end updateFingerprint
+
+            // NOTE: fingerprints are incrementally calculated walking *down*
+            // the elements.
+            val descendingIndices = elements.indices.reverse
+
+            val (primingIndices, fingerprintingIndices) =
+              descendingIndices.splitAt(windowSize - 1)
+
+            // Prime to get ready for the first fingerprint...
+            primingIndices.foreach(updateFingerprint)
+
+            // ... henceforth, each pass records a new fingerprint, starting
+            // with the first.
+            fingerprintingIndices.foreach: fingerprintStartIndex =>
+              updateFingerprint(fingerprintStartIndex)
+              accumulatingResults.addOne(
+                fingerprinting.getFingerprintLong -> fingerprintStartIndex
+              )
+
+            accumulatingResults
+          end fingerprintStartIndices
+
+          def fingerprintSections(
+              sources: Sources[Path, Element]
+          ): SortedMultiDict[Long, Section[Element]] =
+            sources.filesByPath
+              .filter { case (_, file) =>
+                val fileSize = file.size
+                val minimumWindowSize =
+                  (minimumSizeFractionForMotionDetection * fileSize).ceil.toInt
+
+                minimumWindowSize to fileSize contains windowSize
+              }
+              .map { case (path, file) =>
+                val fileSize = file.size
+
+                fingerprintStartIndices(file.content).map(
+                  (fingerprint, fingerprintStartIndex) =>
+                    fingerprint -> sources
+                      .section(path)(fingerprintStartIndex, windowSize)
+                )
+              }
+              // This isn't quite the same as flat-mapping / flattening, because
+              // we want the type of the result to be a `SortedMultiDict`...
+              .reduce(_ concat _)
+          end fingerprintSections
+
+          // Using each map of files by path across the sides ...
+
+          // Look for matching fingerprints across the three sides, eliminating
+          // false positives. Need to examine the Cartesian product of sets of
+          // (path, starting index) across the sides.
+          // Also need to look for matching fingerprints across just two sides!
+          // This means that if we fail to synchronize on a fingerprint on all
+          // three side (ie. the largest fingerprint increases from the
+          // synchronisation target, or we run out of fingerprints on one or
+          // more sides), then we check to see if two sides have arrived at the
+          // synchronisation target.
+
+          ???
+        end matchesForWindowSize
+
+        val matchGroupsInDescendingOrderOfKeys
+            : MatchGroupsInDescendingOrderOfKeys =
+          chromosome.windowSizesInDescendingOrder.toSeq.flatMap(
+            matchesForWindowSize
+          )
+
+        Phenotype(
+          chromosomeSize = chromosome.windowSizesInDescendingOrder.size,
+          matchGroupsInDescendingOrderOfKeys
+        )
+      end phenotype
     end given
 
     val mysteriousAnswer =
