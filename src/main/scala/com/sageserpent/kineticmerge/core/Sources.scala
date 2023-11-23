@@ -30,6 +30,7 @@ trait Sources[PathType, ElementType]:
     */
   def pathFor(section: Section[Element]): Path
 
+  // TODO: suppose there are sections that overlap? Is there absence a precondition, or should this be an admissible failure?
   /** Yield a breakdown of [[File]] instances arranged by [[Path]], such that
     * each of the {@code sections} is present in a [[File]] instance.
     *

@@ -496,11 +496,13 @@ object CodeMotionAnalysisTest:
     ): Map[SourcesContracts.this.Path, File[Element]] =
       val result = super.filesByPathUtilising(sections)
 
+      assert(result.keys == paths)
+
       sections.foreach(section =>
         assert(result(pathFor(section)).sections.exists(section == _))
       )
-
-      assert(result.keys == paths)
+      
+      assert(filesByPath.values.map(_.size) == result.values.map(_.size))
 
       result
     end filesByPathUtilising

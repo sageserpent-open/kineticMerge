@@ -225,6 +225,77 @@ object CodeMotionAnalysis:
         !matchGroup.isEmpty
       })
 
+      def matchesByTheirSections
+          : Map[Section[Element], Match[Section[Element]]] =
+        matchGroupsInReverseOrder.flatMap { case (_, matches) =>
+          matches.flatMap(aMatch =>
+            aMatch match
+              case Match.AllThree(baseSection, leftSection, rightSection) =>
+                Seq(
+                  baseSection  -> aMatch,
+                  leftSection  -> aMatch,
+                  rightSection -> aMatch
+                )
+              case Match.BaseAndLeft(baseSection, leftSection) =>
+                Seq(
+                  baseSection -> aMatch,
+                  leftSection -> aMatch
+                )
+              case Match.BaseAndRight(baseSection, rightSection) =>
+                Seq(
+                  baseSection  -> aMatch,
+                  rightSection -> aMatch
+                )
+              case Match.LeftAndRight(leftSection, rightSection) =>
+                Seq(
+                  leftSection  -> aMatch,
+                  rightSection -> aMatch
+                )
+          )
+        }.toMap
+
+      def baseSections: Set[Section[Element]] = matchGroupsInReverseOrder
+        .map { case (_, matches) =>
+          matches.collect(aMatch =>
+            aMatch match
+              case Match.AllThree(baseSection, _, _) =>
+                baseSection
+              case Match.BaseAndLeft(baseSection, _) =>
+                baseSection
+              case Match.BaseAndRight(baseSection, _) =>
+                baseSection
+          )
+        }
+        .reduce(_ ++ _)
+
+      def leftSections: Set[Section[Element]] = matchGroupsInReverseOrder
+        .map { case (_, matches) =>
+          matches.collect(aMatch =>
+            aMatch match
+              case Match.AllThree(_, leftSection, _) =>
+                leftSection
+              case Match.BaseAndLeft(_, leftSection) =>
+                leftSection
+              case Match.LeftAndRight(leftSection, _) =>
+                leftSection
+          )
+        }
+        .reduce(_ ++ _)
+
+      def rightSections: Set[Section[Element]] = matchGroupsInReverseOrder
+        .map { case (_, matches) =>
+          matches.collect(aMatch =>
+            aMatch match
+              case Match.AllThree(_, _, rightSection) =>
+                rightSection
+              case Match.BaseAndRight(_, rightSection) =>
+                rightSection
+              case Match.LeftAndRight(_, rightSection) =>
+                rightSection
+          )
+        }
+        .reduce(_ ++ _)
+
     end Phenotype
 
     given Order[MatchGrade] with
@@ -460,20 +531,23 @@ object CodeMotionAnalysis:
     val evolvedPhenotype =
       Evolution.of(maximumNumberOfRetries = 100, maximumPopulationSize = 100)
 
-    // TODO: what happens when we have divergent matches, or *overlapping*
-    // matches (which are a variation on divergent matches)?
+    val matchesByTheirSections = evolvedPhenotype.matchesByTheirSections
+
+    val baseFilesByPath  = base.filesByPathUtilising(evolvedPhenotype.baseSections)
+    val leftFilesByPath  = left.filesByPathUtilising(evolvedPhenotype.leftSections)
+    val rightFilesByPath = right.filesByPathUtilising(evolvedPhenotype.rightSections)
 
     Right(
       new CodeMotionAnalysis[Path, Element]:
         override def matchFor(
             section: Section[Element]
-        ): Option[Match[Section[Element]]] = None
+        ): Option[Match[Section[Element]]] = matchesByTheirSections.get(section)
 
-        override def base: Map[Path, File[Element]] = ???
+        override def base: Map[Path, File[Element]] = baseFilesByPath
 
-        override def left: Map[Path, File[Element]] = ???
+        override def left: Map[Path, File[Element]] = leftFilesByPath
 
-        override def right: Map[Path, File[Element]] = ???
+        override def right: Map[Path, File[Element]] = rightFilesByPath
     )
   end of
 
