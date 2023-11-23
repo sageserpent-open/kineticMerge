@@ -492,16 +492,18 @@ object CodeMotionAnalysisTest:
     end section
 
     abstract override def filesByPathUtilising(
-        sections: Set[Section[SourcesContracts.this.Element]]
+        mandatorySections: Set[Section[SourcesContracts.this.Element]]
     ): Map[SourcesContracts.this.Path, File[Element]] =
-      val result = super.filesByPathUtilising(sections)
+      val result = super.filesByPathUtilising(mandatorySections)
 
       assert(result.keys == paths)
 
-      sections.foreach(section =>
-        assert(result(pathFor(section)).sections.exists(section == _))
+      mandatorySections.foreach(mandatorySection =>
+        assert(
+          result(pathFor(mandatorySection)).sections.contains(mandatorySection)
+        )
       )
-      
+
       assert(filesByPath.values.map(_.size) == result.values.map(_.size))
 
       result
@@ -510,29 +512,74 @@ object CodeMotionAnalysisTest:
 
   case class FakeSources(contentsByPath: Map[Path, IndexedSeq[Element]])
       extends Sources[Path, Element]:
-    override def paths: Set[Path] = contentsByPath.keySet
+    override def filesByPathUtilising(
+        mandatorySections: Set[Section[Element]]
+    ): Map[Path, File[Element]] =
+      val sectionsByPath = mandatorySections.groupBy(pathFor)
+
+      contentsByPath.map { case (path, content) =>
+        val pertinentSections = sectionsByPath(path)
+
+        path -> File(
+          if pertinentSections.nonEmpty then
+            val sectionsInStartOffsetOrder =
+              pertinentSections.toSeq.sortBy(_.startOffset)
+
+            sectionsInStartOffsetOrder
+              .zip(sectionsInStartOffsetOrder.tail)
+              .foreach((first, second) =>
+                if first.onePastEndOffset > second.startOffset then
+                  throw new RuntimeException(
+                    s"Overlapping section detected: $first overlaps with start of section: $second."
+                  )
+              )
+
+            val (onePastLastEndOffset, contiguousSections) =
+              sectionsInStartOffsetOrder.foldLeft(
+                0 -> Vector.empty[Section[Element]]
+              ) { case ((onePastPreviousEndOffset, partialResult), section) =>
+                section.onePastEndOffset ->
+                  ((if onePastPreviousEndOffset < section.startOffset then
+                      partialResult :+ this.section(path)(
+                        onePastPreviousEndOffset,
+                        section.startOffset
+                      )
+                    else partialResult) :+ section)
+              }
+
+            if content.size > onePastLastEndOffset then
+              contiguousSections :+ section(path)(
+                onePastLastEndOffset,
+                content.size - onePastLastEndOffset
+              )
+            else contiguousSections
+            end if
+          else
+            Vector(
+              SectionImplementation(
+                path = path,
+                startOffset = 0,
+                size = content.length
+              )
+            )
+        )
+      }
+    end filesByPathUtilising
 
     override def section(path: Path)(
         startOffset: CodeMotionAnalysisTest.Path,
         size: CodeMotionAnalysisTest.Path
-    ): Section[Element] = ???
+    ): Section[Element] = SectionImplementation(path, startOffset, size)
 
-    override def pathFor(section: Section[Element]): Path = ???
+    override def pathFor(section: Section[Element]): Path =
+      section match
+        // If the section implementation does not come from this `FakeSources`,
+        // then it can't be accepted, it's up to the client to be consistent.
+        case SectionImplementation(path, _, _)
+            if contentsByPath.contains(path) =>
+          path
 
-    override def filesByPathUtilising(
-        sections: Set[Section[Element]]
-    ): Map[Path, File[Element]] =
-      contentsByPath.map { case (path, content) =>
-        path -> File(
-          Vector(
-            SectionImplementation(
-              path = path,
-              startOffset = 0,
-              size = content.length
-            )
-          )
-        )
-      }
+    override def paths: Set[Path] = contentsByPath.keySet
 
     def contains(section: IndexedSeq[Element]): Boolean =
       contentsByPath.values.exists(_ containsSlice section)

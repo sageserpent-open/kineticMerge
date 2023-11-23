@@ -10,6 +10,9 @@ package com.sageserpent.kineticmerge.core
 trait Sources[PathType, ElementType]:
   type Path    = PathType
   type Element = ElementType
+  val filesByPath: Map[Path, File[ElementType]] = filesByPathUtilising(
+    Set.empty
+  )
 
   def paths: Set[Path]
 
@@ -25,12 +28,14 @@ trait Sources[PathType, ElementType]:
     */
   def section(path: Path)(startOffset: Int, size: Int): Section[Element]
 
+  // TODO: suppose there are sections that overlap? Is there absence a
+  // precondition, or should this be an admissible failure?
+
   /** @return
     *   The [[Path]] that implies the file that {@code section} refers to.
     */
   def pathFor(section: Section[Element]): Path
 
-  // TODO: suppose there are sections that overlap? Is there absence a precondition, or should this be an admissible failure?
   /** Yield a breakdown of [[File]] instances arranged by [[Path]], such that
     * each of the {@code sections} is present in a [[File]] instance.
     *
@@ -44,8 +49,6 @@ trait Sources[PathType, ElementType]:
     *   coarse breakdown into files of one section each.
     */
   def filesByPathUtilising(
-      sections: Set[Section[Element]]
+      mandatorySections: Set[Section[Element]]
   ): Map[Path, File[ElementType]]
-
-  val filesByPath: Map[Path, File[ElementType]] = filesByPathUtilising(Set.empty)
 end Sources
