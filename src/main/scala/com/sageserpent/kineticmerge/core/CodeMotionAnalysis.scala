@@ -71,9 +71,9 @@ object CodeMotionAnalysis:
     val sequenceEquality: Eq[Seq[Element]] = Eq[Seq[Element]]
 
     val minimumFileSize =
-      base.filesByPath.values.map(_.size).min min
-        left.filesByPath.values.map(_.size).min min
-        right.filesByPath.values.map(_.size).min
+      base.filesByPath.values.map(_.size).minOption.getOrElse(0) min
+        left.filesByPath.values.map(_.size).minOption.getOrElse(0) min
+        right.filesByPath.values.map(_.size).minOption.getOrElse(0)
 
     val minimumWindowSize =
       (minimumFileSize * minimumSizeFractionForMotionDetection).ceil.toInt

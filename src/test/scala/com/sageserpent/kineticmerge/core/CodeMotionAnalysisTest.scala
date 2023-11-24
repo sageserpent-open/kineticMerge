@@ -508,7 +508,11 @@ object CodeMotionAnalysisTest:
         )
       )
 
-      assert(filesByPath.values.map(_.size) == result.values.map(_.size))
+      // If we have mandatory sections, we are definitely not initialising
+      // `filesByPath`, so it is safe to check consistency against it.
+      if mandatorySections.nonEmpty then
+        assert(filesByPath.values.map(_.size) == result.values.map(_.size))
+      end if
 
       result
     end filesByPathUtilising
@@ -522,7 +526,7 @@ object CodeMotionAnalysisTest:
       val sectionsByPath = mandatorySections.groupBy(pathFor)
 
       contentsByPath.map { case (path, content) =>
-        val pertinentSections = sectionsByPath(path)
+        val pertinentSections = sectionsByPath.get(path).getOrElse(Set.empty)
 
         path -> File(
           if pertinentSections.nonEmpty then
