@@ -578,25 +578,97 @@ object CodeMotionAnalysis:
                 // All the fingerprints disagree, so advance the side with the
                 // minimum fingerprint to see if it can catch up and
                 // synchronise...
-                ???
+
+                val minimumFingerprint = baseHead min leftHead min rightHead
+
+                if leftHead == minimumFingerprint then
+                  matchingFingerprintsAcrossSides(
+                    baseFingerprints,
+                    leftFingerprints.tail,
+                    rightFingerprints,
+                    tripleMatches,
+                    pairMatches
+                  )
+                else if rightHead == minimumFingerprint then
+                  matchingFingerprintsAcrossSides(
+                    baseFingerprints,
+                    leftFingerprints,
+                    rightFingerprints.tail,
+                    tripleMatches,
+                    pairMatches
+                  )
+                else
+                  matchingFingerprintsAcrossSides(
+                    baseFingerprints.tail,
+                    leftFingerprints,
+                    rightFingerprints,
+                    tripleMatches,
+                    pairMatches
+                  )
+                end if
 
               case (Some(baseHead), Some(leftHead), None) =>
                 // The base and left fingerprints disagree, so advance the side
                 // with the minimum fingerprint to see if it can catch up and
                 // synchronise...
-                ???
+                if baseHead < leftHead then
+                  matchingFingerprintsAcrossSides(
+                    baseFingerprints.tail,
+                    leftFingerprints,
+                    rightFingerprints,
+                    tripleMatches,
+                    pairMatches
+                  )
+                else
+                  matchingFingerprintsAcrossSides(
+                    baseFingerprints,
+                    leftFingerprints.tail,
+                    rightFingerprints,
+                    tripleMatches,
+                    pairMatches
+                  )
 
               case (Some(baseHead), None, Some(rightHead)) =>
                 // The base and right fingerprints disagree, so advance the side
                 // with the minimum fingerprint to see if it can catch up and
                 // synchronise...
-                ???
+                if baseHead < rightHead then
+                  matchingFingerprintsAcrossSides(
+                    baseFingerprints.tail,
+                    leftFingerprints,
+                    rightFingerprints,
+                    tripleMatches,
+                    pairMatches
+                  )
+                else
+                  matchingFingerprintsAcrossSides(
+                    baseFingerprints,
+                    leftFingerprints,
+                    rightFingerprints.tail,
+                    tripleMatches,
+                    pairMatches
+                  )
 
               case (None, Some(leftHead), Some(rightHead)) =>
                 // The left and right fingerprints disagree, so advance the side
                 // with the minimum fingerprint to see if it can catch up and
                 // synchronise...
-                ???
+                if leftHead < rightHead then
+                  matchingFingerprintsAcrossSides(
+                    baseFingerprints,
+                    leftFingerprints.tail,
+                    rightFingerprints,
+                    tripleMatches,
+                    pairMatches
+                  )
+                else
+                  matchingFingerprintsAcrossSides(
+                    baseFingerprints,
+                    leftFingerprints,
+                    rightFingerprints.tail,
+                    tripleMatches,
+                    pairMatches
+                  )
 
               case _ =>
                 // There are no more opportunities to match a full triple or
