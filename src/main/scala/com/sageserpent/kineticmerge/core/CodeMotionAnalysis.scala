@@ -5,8 +5,10 @@ import cats.instances.seq.*
 import cats.syntax.traverse.*
 import cats.{Eq, Order}
 import com.google.common.hash.{Funnel, HashFunction}
+import com.sageserpent.americium.randomEnrichment.*
 import com.sageserpent.kineticmerge.core.genetic.Evolution
 import de.sciss.fingertree.RangedSeq
+import monocle.syntax.all.*
 import org.rabinfingerprint.fingerprint.RabinFingerprintLongWindowed
 import org.rabinfingerprint.polynomial.Polynomial
 
@@ -77,6 +79,13 @@ object CodeMotionAnalysis:
 
     val minimumWindowSize =
       (minimumFileSize * minimumSizeFractionForMotionDetection).ceil.toInt
+
+    val maximumWindowSize =
+      base.filesByPath.values.map(_.size).maxOption.getOrElse(0) max
+        left.filesByPath.values.map(_.size).maxOption.getOrElse(0) max
+        right.filesByPath.values.map(_.size).maxOption.getOrElse(0)
+
+    val validWindowSizes = minimumWindowSize to maximumWindowSize
 
     enum MatchGrade:
       case Triple
@@ -215,7 +224,11 @@ object CodeMotionAnalysis:
 
     case class Chromosome(
         windowSizesInDescendingOrder: WindowSizesInDescendingOrder
-    )
+    ):
+      windowSizesInDescendingOrder.foreach { size =>
+        require(validWindowSizes contains size)
+      }
+    end Chromosome
 
     case class Phenotype(
         chromosomeSize: Int,
@@ -329,11 +342,38 @@ object CodeMotionAnalysis:
     given Evolution[Chromosome, Phenotype] with
       override def mutate(chromosome: Chromosome)(using
           random: Random
-      ): Chromosome = ???
+      ): Chromosome =
+        val contractionIsPossible =
+          chromosome.windowSizesInDescendingOrder.nonEmpty
+
+        val expansionIsPossible =
+          (minimumWindowSize to maximumWindowSize).size > chromosome.windowSizesInDescendingOrder.size
+
+        if expansionIsPossible && (!contractionIsPossible || random
+            .nextBoolean())
+        then
+          chromosome.focus(_.windowSizesInDescendingOrder).modify { sizes =>
+            val additionalSize =
+              random.chooseOneOf(validWindowSizes.filterNot(sizes.contains))
+
+            sizes + additionalSize
+          }
+        else
+          assume(contractionIsPossible)
+
+          chromosome.focus(_.windowSizesInDescendingOrder).modify { sizes =>
+            val victim = random.chooseOneOf(sizes)
+
+            sizes - victim
+          }
+        end if
+      end mutate
 
       override def breed(first: Chromosome, second: Chromosome)(using
           random: Random
-      ): Chromosome = ???
+      ): Chromosome =
+        // TODO: actually mix up some genetic material!
+        if random.nextBoolean() then first else second
 
       override def initialChromosome: Chromosome = Chromosome(
         TreeSet(minimumWindowSize)(Ordering[Int].reverse)
@@ -416,7 +456,7 @@ object CodeMotionAnalysis:
               }
               // This isn't quite the same as flat-mapping / flattening, because
               // we want the type of the result to be a `SortedMultiDict`...
-              .reduce(_ concat _)
+              .reduceOption(_ concat _).getOrElse(SortedMultiDict.empty)
           end fingerprintSections
 
           val baseSectionsByFingerprint  = fingerprintSections(base)
