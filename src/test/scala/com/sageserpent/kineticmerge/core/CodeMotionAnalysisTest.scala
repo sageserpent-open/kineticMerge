@@ -82,31 +82,35 @@ class CodeMotionAnalysisTest:
         leftSources: FakeSources,
         rightSources: FakeSources
     ):
-      commonToAllThreeSides.foreach { section =>
-        require(baseSources.contains(section))
-        require(leftSources.contains(section))
-        require(rightSources.contains(section))
+      commonToAllThreeSides.foreach { sectionContent =>
+        require(baseSources.contains(sectionContent))
+        require(leftSources.contains(sectionContent))
+        require(rightSources.contains(sectionContent))
       }
 
-      commonToBaseAndLeft.foreach { section =>
-        require(baseSources.contains(section))
-        require(leftSources.contains(section))
+      commonToBaseAndLeft.foreach { sectionContent =>
+        require(baseSources.contains(sectionContent))
+        require(leftSources.contains(sectionContent))
       }
 
-      commonToBaseAndRight.foreach { section =>
-        require(baseSources.contains(section))
-        require(rightSources.contains(section))
+      commonToBaseAndRight.foreach { sectionContent =>
+        require(baseSources.contains(sectionContent))
+        require(rightSources.contains(sectionContent))
       }
 
-      commonToLeftAndRight.foreach { section =>
-        require(leftSources.contains(section))
-        require(rightSources.contains(section))
+      commonToLeftAndRight.foreach { sectionContent =>
+        require(leftSources.contains(sectionContent))
+        require(rightSources.contains(sectionContent))
       }
 
-      uniqueToBase.foreach { section => require(baseSources.contains(section)) }
-      uniqueToLeft.foreach { section => require(leftSources.contains(section)) }
-      uniqueToRight.foreach { section =>
-        require(rightSources.contains(section))
+      uniqueToBase.foreach { sectionContent =>
+        require(baseSources.contains(sectionContent))
+      }
+      uniqueToLeft.foreach { sectionContent =>
+        require(leftSources.contains(sectionContent))
+      }
+      uniqueToRight.foreach { sectionContent =>
+        require(rightSources.contains(sectionContent))
       }
 
       def minimumSizeFractionForMotionDetection: Double =
@@ -530,7 +534,7 @@ object CodeMotionAnalysisTest:
               .foreach((first, second) =>
                 if first.onePastEndOffset > second.startOffset then
                   throw new RuntimeException(
-                    s"Overlapping section detected: $first overlaps with start of section: $second."
+                    s"Overlapping section detected at path: $path: $first overlaps with start of section: $second."
                   )
               )
 
@@ -581,8 +585,10 @@ object CodeMotionAnalysisTest:
 
     override def paths: Set[Path] = contentsByPath.keySet
 
-    def contains(section: IndexedSeq[Element]): Boolean =
-      contentsByPath.values.exists(_ containsSlice section)
+    /** Specific to testing, not part of the [[Sources]] API implementation.
+      */
+    def contains(sectionContent: IndexedSeq[Element]): Boolean =
+      contentsByPath.values.exists(_ containsSlice sectionContent)
 
     def maximumContentsSize: Int =
       contentsByPath.values.map(_.size).maxOption.getOrElse(0)
