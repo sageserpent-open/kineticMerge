@@ -222,7 +222,7 @@ object CodeMotionAnalysis:
         matchGroupsInReverseOrder: MatchGroupsInDescendingOrderOfKeys
     ):
       require(matchGroupsInReverseOrder.forall { case (_, matchGroup) =>
-        !matchGroup.isEmpty
+        matchGroup.nonEmpty
       })
 
       def matchesByTheirSections
@@ -256,43 +256,40 @@ object CodeMotionAnalysis:
 
       def baseSections: Set[Section[Element]] = matchGroupsInReverseOrder
         .map { case (_, matches) =>
-          matches.collect(aMatch =>
-            aMatch match
-              case Match.AllThree(baseSection, _, _) =>
-                baseSection
-              case Match.BaseAndLeft(baseSection, _) =>
-                baseSection
-              case Match.BaseAndRight(baseSection, _) =>
-                baseSection
-          )
+          matches.collect {
+            case Match.AllThree(baseSection, _, _) =>
+              baseSection
+            case Match.BaseAndLeft(baseSection, _) =>
+              baseSection
+            case Match.BaseAndRight(baseSection, _) =>
+              baseSection
+          }
         }
         .reduce(_ ++ _)
 
       def leftSections: Set[Section[Element]] = matchGroupsInReverseOrder
         .map { case (_, matches) =>
-          matches.collect(aMatch =>
-            aMatch match
-              case Match.AllThree(_, leftSection, _) =>
-                leftSection
-              case Match.BaseAndLeft(_, leftSection) =>
-                leftSection
-              case Match.LeftAndRight(leftSection, _) =>
-                leftSection
-          )
+          matches.collect {
+            case Match.AllThree(_, leftSection, _) =>
+              leftSection
+            case Match.BaseAndLeft(_, leftSection) =>
+              leftSection
+            case Match.LeftAndRight(leftSection, _) =>
+              leftSection
+          }
         }
         .reduce(_ ++ _)
 
       def rightSections: Set[Section[Element]] = matchGroupsInReverseOrder
         .map { case (_, matches) =>
-          matches.collect(aMatch =>
-            aMatch match
-              case Match.AllThree(_, _, rightSection) =>
-                rightSection
-              case Match.BaseAndRight(_, rightSection) =>
-                rightSection
-              case Match.LeftAndRight(_, rightSection) =>
-                rightSection
-          )
+          matches.collect {
+            case Match.AllThree(_, _, rightSection) =>
+              rightSection
+            case Match.BaseAndRight(_, rightSection) =>
+              rightSection
+            case Match.LeftAndRight(_, rightSection) =>
+              rightSection
+          }
         }
         .reduce(_ ++ _)
 
@@ -343,6 +340,7 @@ object CodeMotionAnalysis:
       )
 
       override def phenotype(chromosome: Chromosome): Phenotype =
+        // TODO: caching!
         def matchesForWindowSize(
             matchGroupsInDescendingOrderOfKeys: MatchGroupsInDescendingOrderOfKeys,
             windowSize: Int
@@ -400,6 +398,7 @@ object CodeMotionAnalysis:
           def fingerprintSections(
               sources: Sources[Path, Element]
           ): SortedMultiDict[Long, Section[Element]] =
+            // TODO: more caching!
             sources.filesByPath
               .filter { case (_, file) =>
                 val fileSize = file.size
@@ -435,6 +434,9 @@ object CodeMotionAnalysis:
               // other match kinds.
               pairMatches: Set[Match[Section[Element]]]
           ): MatchGroupsInDescendingOrderOfKeys =
+            // TODO: this termination condition is too loose - we may still be
+            // able to pair-wise match when only one side has run out of
+            // fingerprints. Consider pattern matching...
             if baseFingerprints.isEmpty || leftFingerprints.isEmpty || rightFingerprints.isEmpty
             then
               // Add the triples first if we have any, then any pairs as we are
@@ -533,9 +535,12 @@ object CodeMotionAnalysis:
 
     val matchesByTheirSections = evolvedPhenotype.matchesByTheirSections
 
-    val baseFilesByPath  = base.filesByPathUtilising(evolvedPhenotype.baseSections)
-    val leftFilesByPath  = left.filesByPathUtilising(evolvedPhenotype.leftSections)
-    val rightFilesByPath = right.filesByPathUtilising(evolvedPhenotype.rightSections)
+    val baseFilesByPath =
+      base.filesByPathUtilising(evolvedPhenotype.baseSections)
+    val leftFilesByPath =
+      left.filesByPathUtilising(evolvedPhenotype.leftSections)
+    val rightFilesByPath =
+      right.filesByPathUtilising(evolvedPhenotype.rightSections)
 
     Right(
       new CodeMotionAnalysis[Path, Element]:
