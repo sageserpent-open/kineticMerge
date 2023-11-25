@@ -78,7 +78,7 @@ object CodeMotionAnalysis:
         right.filesByPath.values.map(_.size).minOption.getOrElse(0)
 
     val minimumWindowSize =
-      (minimumFileSize * minimumSizeFractionForMotionDetection).ceil.toInt
+      1 max (minimumFileSize * minimumSizeFractionForMotionDetection).ceil.toInt
 
     val maximumWindowSize =
       base.filesByPath.values.map(_.size).maxOption.getOrElse(0) max
@@ -385,6 +385,8 @@ object CodeMotionAnalysis:
             matchGroupsInDescendingOrderOfKeys: MatchGroupsInDescendingOrderOfKeys,
             windowSize: Int
         ): MatchGroupsInDescendingOrderOfKeys =
+          require(0 < windowSize)
+
           val fixedNumberOfBytesInElementHash =
             hashFunction.bits / JavaByte.SIZE
 
@@ -397,6 +399,8 @@ object CodeMotionAnalysis:
           def fingerprintStartIndices(
               elements: IndexedSeq[Element]
           ): SortedMultiDict[Long, Int] =
+            require(elements.size >= windowSize)
+
             // Fingerprinting is imperative, so go with that style local to this
             // helper function...
             fingerprinting.reset()
@@ -456,7 +460,8 @@ object CodeMotionAnalysis:
               }
               // This isn't quite the same as flat-mapping / flattening, because
               // we want the type of the result to be a `SortedMultiDict`...
-              .reduceOption(_ concat _).getOrElse(SortedMultiDict.empty)
+              .reduceOption(_ concat _)
+              .getOrElse(SortedMultiDict.empty)
           end fingerprintSections
 
           val baseSectionsByFingerprint  = fingerprintSections(base)
