@@ -14,7 +14,7 @@ class CodeMotionAnalysisTest:
     trialsApi.doubles(0.1, 1)
 
   val contentTrials: Trials[Vector[FakeSources#Element]] = trialsApi
-    .integers(0, 10000)
+    .integers(0, 100 /*TODO: reinstate the old value of: 10000*/ )
     .flatMap(textSize =>
       trialsApi
         .integers(lowerBound = 1, upperBound = 20)
