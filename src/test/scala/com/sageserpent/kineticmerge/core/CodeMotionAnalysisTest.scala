@@ -13,18 +13,22 @@ class CodeMotionAnalysisTest:
   val minimumSizeFractionTrials: Trials[Double] =
     trialsApi.doubles(0.1, 1)
 
+  val contentTrials: Trials[Vector[FakeSources#Element]] = trialsApi
+    .integers(0, 10000)
+    .flatMap(textSize =>
+      trialsApi
+        .integers(lowerBound = 1, upperBound = 20)
+        .lotsOfSize[Vector[Path]](textSize)
+    )
+
+  val pathTrials: Trials[FakeSources#Path] = trialsApi
+    .integers(1, 1000)
+
   val sourcesTrials: Trials[FakeSources] =
-    for
-      textSize <- trialsApi.integers(0, 10000)
-      textsByPath <- trialsApi
-        .integers(1, 1000)
-        .maps(
-          trialsApi
-            .integers(lowerBound = 1, upperBound = 20)
-            .lotsOfSize[Vector[Int]](textSize)
-        )
-        .filter(_.nonEmpty)
-    yield FakeSources(textsByPath)
+    pathTrials
+      .maps(contentTrials)
+      .filter(_.nonEmpty)
+      .map(FakeSources.apply)
 
   @TestFactory
   def sourcesCanBeReconstructedFromTheAnalysis: DynamicTests =
