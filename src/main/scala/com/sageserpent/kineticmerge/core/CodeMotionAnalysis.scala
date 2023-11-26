@@ -219,12 +219,14 @@ object CodeMotionAnalysis:
           ._2
 
       // 2. Remove zero size match groups.
-      withoutRedundantMatches.filter { case (_, matches) => matches.isEmpty }
+      withoutRedundantMatches.filterNot { case (_, matches) => matches.isEmpty }
     end cleanUp
 
     case class Chromosome(
         windowSizesInDescendingOrder: WindowSizesInDescendingOrder
     ):
+      require(windowSizesInDescendingOrder.nonEmpty)
+
       windowSizesInDescendingOrder.foreach { size =>
         require(validWindowSizes contains size)
       }
@@ -344,7 +346,7 @@ object CodeMotionAnalysis:
           random: Random
       ): Chromosome =
         val contractionIsPossible =
-          chromosome.windowSizesInDescendingOrder.nonEmpty
+          1 < chromosome.windowSizesInDescendingOrder.size
 
         val expansionIsPossible =
           (minimumWindowSize to maximumWindowSize).size > chromosome.windowSizesInDescendingOrder.size
@@ -359,12 +361,18 @@ object CodeMotionAnalysis:
             sizes + additionalSize
           }
         else
-          assume(contractionIsPossible)
-
           chromosome.focus(_.windowSizesInDescendingOrder).modify { sizes =>
             val victim = random.chooseOneOf(sizes)
 
-            sizes - victim
+            val contractedSizes = sizes - victim
+
+            if contractedSizes.isEmpty then
+              // Add the new size on to the empty set to pick up the existing
+              // reverse ordering.
+              contractedSizes + random
+                .chooseOneOf(validWindowSizes.filterNot(sizes.contains))
+            else contractedSizes
+            end if
           }
         end if
       end mutate
@@ -738,9 +746,15 @@ object CodeMotionAnalysis:
 
         val matchGroupsInDescendingOrderOfKeys
             : MatchGroupsInDescendingOrderOfKeys =
-          chromosome.windowSizesInDescendingOrder.foldLeft(Seq.empty)(
-            matchesForWindowSize
+          cleanUp(
+            chromosome.windowSizesInDescendingOrder.foldLeft(Seq.empty)(
+              matchesForWindowSize
+            )
           )
+
+        println(
+          s"Chromosome: $chromosome, matchGroupsInDescendingOrderOfKeys: $matchGroupsInDescendingOrderOfKeys"
+        )
 
         Phenotype(
           chromosomeSize = chromosome.windowSizesInDescendingOrder.size,
