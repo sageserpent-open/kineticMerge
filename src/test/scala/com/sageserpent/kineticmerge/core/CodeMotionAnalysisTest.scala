@@ -319,6 +319,10 @@ class CodeMotionAnalysisTest:
         def verify(
             matches: Iterable[Match[Section[FakeSources#Element]]]
         ): Unit =
+          extension (file: File[Element])
+            def contains(section: Section[Element]) =
+              file.sections.contains(section)
+
           // NOTE: all of the cases below have to consider the possibility that
           // juxtaposition of sequences may create incidental match
           // opportunities that don't necessarily encompass the expected
@@ -326,12 +330,12 @@ class CodeMotionAnalysisTest:
           // before we have done some mandatory validation beforehand.
           matches.foreach {
             case Match.AllThree(baseSection, leftSection, rightSection) =>
-              assert(analysis.base.values.exists(_ == baseSection))
-              assert(analysis.left.values.exists(_ == leftSection))
-              assert(analysis.right.values.exists(_ == rightSection))
+              assert(analysis.base.values.exists(_ contains baseSection))
+              assert(analysis.left.values.exists(_ contains leftSection))
+              assert(analysis.right.values.exists(_ contains rightSection))
 
-              assert(leftSection == baseSection)
-              assert(rightSection == baseSection)
+              assert(leftSection.content == baseSection.content)
+              assert(rightSection.content == baseSection.content)
 
               if !commonToAllThreeSides
                   .exists(baseSection.content containsSlice _)
@@ -339,10 +343,10 @@ class CodeMotionAnalysisTest:
               end if
 
             case Match.BaseAndLeft(baseSection, leftSection) =>
-              assert(analysis.base.values.exists(_ == baseSection))
-              assert(analysis.left.values.exists(_ == leftSection))
+              assert(analysis.base.values.exists(_ contains baseSection))
+              assert(analysis.left.values.exists(_ contains leftSection))
 
-              assert(leftSection == baseSection)
+              assert(leftSection.content == baseSection.content)
 
               if !commonToBaseAndLeft.exists(
                   baseSection.content containsSlice _
@@ -351,10 +355,10 @@ class CodeMotionAnalysisTest:
               end if
 
             case Match.BaseAndRight(baseSection, rightSection) =>
-              assert(analysis.base.values.exists(_ == baseSection))
-              assert(analysis.right.values.exists(_ == rightSection))
+              assert(analysis.base.values.exists(_ contains baseSection))
+              assert(analysis.right.values.exists(_ contains rightSection))
 
-              assert(rightSection == baseSection)
+              assert(rightSection.content == baseSection.content)
 
               if !commonToBaseAndRight.exists(
                   baseSection.content containsSlice _
@@ -363,10 +367,10 @@ class CodeMotionAnalysisTest:
               end if
 
             case Match.LeftAndRight(leftSection, rightSection) =>
-              assert(analysis.left.values.exists(_ == leftSection))
-              assert(analysis.right.values.exists(_ == rightSection))
+              assert(analysis.left.values.exists(_ contains leftSection))
+              assert(analysis.right.values.exists(_ contains rightSection))
 
-              assert(rightSection == leftSection)
+              assert(rightSection.content == leftSection.content)
 
               if !commonToBaseAndLeft.exists(
                   leftSection.content containsSlice _
@@ -374,6 +378,7 @@ class CodeMotionAnalysisTest:
               then Trials.reject()
               end if
           }
+        end verify
 
         val baseMatches: Iterable[Match[Section[FakeSources#Element]]] =
           matches(analysis.base)
@@ -542,19 +547,19 @@ object CodeMotionAnalysisTest:
               .foreach((first, second) =>
                 if first.onePastEndOffset > second.startOffset then
                   throw new RuntimeException(
-                    s"Overlapping section detected at path: $path: $first overlaps with start of section: $second."
+                    s"Overlapping section detected at path: $path: $first (content: ${first.content}) overlaps with start of section: $second (content: ${second.content})."
                   )
               )
 
             val (onePastLastEndOffset, contiguousSections) =
               sectionsInStartOffsetOrder.foldLeft(
                 0 -> Vector.empty[Section[Element]]
-              ) { case ((onePastPreviousEndOffset, partialResult), section) =>
+              ) { case ((onePastLastEndOffset, partialResult), section) =>
                 section.onePastEndOffset ->
-                  ((if onePastPreviousEndOffset < section.startOffset then
+                  ((if onePastLastEndOffset < section.startOffset then
                       partialResult :+ this.section(path)(
-                        onePastPreviousEndOffset,
-                        section.startOffset
+                        onePastLastEndOffset,
+                        section.startOffset - onePastLastEndOffset
                       )
                     else partialResult) :+ section)
               }
@@ -598,6 +603,8 @@ object CodeMotionAnalysisTest:
     def contains(sectionContent: IndexedSeq[Element]): Boolean =
       contentsByPath.values.exists(_ containsSlice sectionContent)
 
+    /** Specific to testing, not part of the [[Sources]] API implementation.
+      */
     def maximumContentsSize: Int =
       contentsByPath.values.map(_.size).maxOption.getOrElse(0)
 
