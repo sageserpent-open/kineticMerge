@@ -84,6 +84,8 @@ object CodeMotionAnalysis:
 
     var exclusiveUpperBoundOnWindowSize: Int = 1 + maximumWindowSize
 
+    var inclusiveUpperBoundOnSuccessfulWindowSize: Int = 1
+
     def validWindowSizes =
       minimumWindowSize until exclusiveUpperBoundOnWindowSize
 
@@ -771,11 +773,25 @@ object CodeMotionAnalysis:
                   if tripleMatches.isEmpty && pairMatches.isEmpty then
                     // There is no point looking for matches with a larger
                     // window size if we could not find any at this size.
+                    // However, we have to be careful and not be fooled by lack
+                    // of matches due to an individual file having a
+                    // prohibitively large minimum window size that would have
+                    // permitted a successful match at a larger window size, so
+                    // we make sure that we don't contract down to the largest
+                    // successful window size seen so far.
                     assume(windowSize < exclusiveUpperBoundOnWindowSize)
-                    exclusiveUpperBoundOnWindowSize = windowSize
+                    exclusiveUpperBoundOnWindowSize =
+                      (1 + inclusiveUpperBoundOnSuccessfulWindowSize) max windowSize
+
+                    println(
+                      s"Exclusive upper bound: $exclusiveUpperBoundOnWindowSize"
+                    )
 
                     sectionsSeenAcrossSides -> matchGroupsInDescendingOrderOfKeys
                   else
+                    inclusiveUpperBoundOnSuccessfulWindowSize =
+                      inclusiveUpperBoundOnSuccessfulWindowSize max windowSize
+
                     sectionsSeenAcrossSides -> (matchGroupsInDescendingOrderOfKeys ++ Seq(
                       (windowSize, MatchGrade.Triple) -> tripleMatches,
                       (windowSize, MatchGrade.Pair)   -> pairMatches
@@ -817,7 +833,10 @@ object CodeMotionAnalysis:
     end given
 
     val evolvedPhenotype =
-      Evolution.of(maximumNumberOfRetries = 2 /*100*/, maximumPopulationSize = 20 /*100*/)
+      Evolution.of(
+        maximumNumberOfRetries = 2 /*100*/,
+        maximumPopulationSize = 20 /*100*/
+      )
 
     val matchesByTheirSections = evolvedPhenotype.matchesByTheirSections
 
