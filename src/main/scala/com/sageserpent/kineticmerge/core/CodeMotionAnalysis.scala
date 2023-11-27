@@ -816,18 +816,23 @@ object CodeMotionAnalysis:
       end phenotype
     end given
 
+    val evolvedPhenotype =
+      Evolution.of(maximumNumberOfRetries = 2 /*100*/, maximumPopulationSize = 20 /*100*/)
+
+    val matchesByTheirSections = evolvedPhenotype.matchesByTheirSections
+
     val baseFilesByPath =
-      base.filesByPath
+      base.filesByPathUtilising(evolvedPhenotype.baseSections)
     val leftFilesByPath =
-      left.filesByPath
+      left.filesByPathUtilising(evolvedPhenotype.leftSections)
     val rightFilesByPath =
-      right.filesByPath
+      right.filesByPathUtilising(evolvedPhenotype.rightSections)
 
     Right(
       new CodeMotionAnalysis[Path, Element]:
         override def matchFor(
             section: Section[Element]
-        ): Option[Match[Section[Element]]] = None
+        ): Option[Match[Section[Element]]] = matchesByTheirSections.get(section)
 
         override def base: Map[Path, File[Element]] = baseFilesByPath
 
