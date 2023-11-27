@@ -1,14 +1,11 @@
 package com.sageserpent.kineticmerge.core
 
-import alleycats.std.set.*
 import cats.instances.seq.*
-import cats.syntax.traverse.*
 import cats.{Eq, Order}
 import com.google.common.hash.{Funnel, HashFunction}
 import com.sageserpent.americium.randomEnrichment.*
 import com.sageserpent.kineticmerge.core.genetic.Evolution
 import de.sciss.fingertree.RangedSeq
-import monocle.syntax.all.*
 import org.rabinfingerprint.fingerprint.RabinFingerprintLongWindowed
 import org.rabinfingerprint.polynomial.Polynomial
 
@@ -105,125 +102,6 @@ object CodeMotionAnalysis:
           ]
       )
     ]
-
-    // TODO: consider integrating the cleanup directly in to the matching
-    // process, as we can work with sections directly, thus avoiding the
-    // decomposition of matches.
-    def cleanUp(
-        matchGroupsInDescendingOrderOfKeys: MatchGroupsInDescendingOrderOfKeys
-    ): MatchGroupsInDescendingOrderOfKeys =
-      // 1. Remove matches that involve one or more sections that are subsumed
-      // within larger sections belonging to other matches...
-
-      val noSections: RangedSeq[Section[Element], Int] = RangedSeq.empty(
-        section => section.startOffset -> section.onePastEndOffset,
-        Ordering[Int]
-      )
-
-      val noSectionsAcrossAllSides = (noSections, noSections, noSections)
-
-      val withoutRedundantMatches: MatchGroupsInDescendingOrderOfKeys =
-        matchGroupsInDescendingOrderOfKeys
-          .mapAccumulate(noSectionsAcrossAllSides) {
-            case (sectionsAcrossAllSidesForKey, (matchGroupKey, matches)) =>
-              val (updatedSectionsAcrossAllSides, cleanedMatchesWithHoles) =
-                matches.mapAccumulate(sectionsAcrossAllSidesForKey) {
-                  case (
-                        sectionsAcrossAllSidesForMatch @ (
-                          baseSections,
-                          leftSections,
-                          rightSections
-                        ),
-                        aMatch
-                      ) =>
-                    aMatch match
-                      case aMatch @ Match.AllThree(
-                            baseSection,
-                            leftSection,
-                            rightSection
-                          ) =>
-                        if baseSections.includes(
-                            baseSection.closedOpenInterval
-                          ) || leftSections
-                            .includes(
-                              leftSection.closedOpenInterval
-                            ) || rightSections.includes(
-                            rightSection.closedOpenInterval
-                          )
-                        then sectionsAcrossAllSidesForMatch -> None
-                        else
-                          (
-                            baseSections + baseSection,
-                            leftSections + leftSection,
-                            rightSections + rightSection
-                          ) -> Some(aMatch)
-                        end if
-
-                      case aMatch @ Match.BaseAndLeft(
-                            baseSection,
-                            leftSection
-                          ) =>
-                        if baseSections.includes(
-                            baseSection.closedOpenInterval
-                          ) || leftSections
-                            .includes(
-                              leftSection.closedOpenInterval
-                            )
-                        then sectionsAcrossAllSidesForMatch -> None
-                        else
-                          (
-                            baseSections + baseSection,
-                            leftSections + leftSection,
-                            rightSections
-                          ) -> Some(aMatch)
-                        end if
-
-                      case aMatch @ Match.BaseAndRight(
-                            baseSection,
-                            rightSection
-                          ) =>
-                        if baseSections.includes(
-                            baseSection.closedOpenInterval
-                          ) || rightSections.includes(
-                            rightSection.closedOpenInterval
-                          )
-                        then sectionsAcrossAllSidesForMatch -> None
-                        else
-                          (
-                            baseSections + baseSection,
-                            leftSections,
-                            rightSections + rightSection
-                          ) -> Some(aMatch)
-                        end if
-
-                      case aMatch @ Match.LeftAndRight(
-                            leftSection,
-                            rightSection
-                          ) =>
-                        if leftSections
-                            .includes(
-                              leftSection.closedOpenInterval
-                            ) || rightSections.includes(
-                            rightSection.closedOpenInterval
-                          )
-                        then sectionsAcrossAllSidesForMatch -> None
-                        else
-                          (
-                            baseSections,
-                            leftSections + leftSection,
-                            rightSections + rightSection
-                          ) -> Some(aMatch)
-                        end if
-                    end match
-                }
-
-              updatedSectionsAcrossAllSides -> (matchGroupKey, cleanedMatchesWithHoles.flatten)
-          }
-          ._2
-
-      // 2. Remove zero size match groups.
-      withoutRedundantMatches.filterNot { case (_, matches) => matches.isEmpty }
-    end cleanUp
 
     case class Chromosome(
         windowSizesInDescendingOrder: WindowSizesInDescendingOrder
@@ -363,7 +241,7 @@ object CodeMotionAnalysis:
           chromosome.windowSizesInDescendingOrder filter validWindowSizesSnapshot.contains
 
         val contractionIsPossible =
-          1 < chromosome.windowSizesInDescendingOrder.size
+          1 < weededWindowSizesInDescendingOrder.size
 
         val expansionIsPossible =
           validWindowSizesSnapshot.size > weededWindowSizesInDescendingOrder.size
@@ -413,11 +291,101 @@ object CodeMotionAnalysis:
       )
 
       override def phenotype(chromosome: Chromosome): Phenotype =
+        type SectionsSeen = RangedSeq[Section[Element], Int]
+
+        case class SectionsSeenAcrossSides(
+            baseSectionsByPath: Map[Path, SectionsSeen] = Map.empty,
+            leftSectionsByPath: Map[Path, SectionsSeen] = Map.empty,
+            rightSectionsByPath: Map[Path, SectionsSeen] = Map.empty
+        ):
+          val containsBaseSection: Section[Element] => Boolean =
+            containsSection(base, baseSectionsByPath)
+          val containsLeftSection: Section[Element] => Boolean =
+            containsSection(left, leftSectionsByPath)
+          val containsRightSection: Section[Element] => Boolean =
+            containsSection(right, rightSectionsByPath)
+
+          private val withBaseSection
+              : Section[Element] => Map[Path, SectionsSeen] =
+            withSection(base, baseSectionsByPath)
+          private val withLeftSection
+              : Section[Element] => Map[Path, SectionsSeen] =
+            withSection(left, leftSectionsByPath)
+          private val withRightSection
+              : Section[Element] => Map[Path, SectionsSeen] =
+            withSection(right, rightSectionsByPath)
+
+          def withSectionsFrom(
+              matches: Set[Match[Section[Element]]]
+          ): SectionsSeenAcrossSides =
+            matches.foldLeft(this)(_.withSectionsFrom(_))
+
+          private def withSectionsFrom(
+              aMatch: Match[Section[Element]]
+          ): SectionsSeenAcrossSides =
+            aMatch match
+              case Match.AllThree(baseSection, leftSection, rightSection) =>
+                copy(
+                  baseSectionsByPath = withBaseSection(baseSection),
+                  leftSectionsByPath = withLeftSection(leftSection),
+                  rightSectionsByPath = withRightSection(rightSection)
+                )
+              case Match.BaseAndLeft(baseSection, leftSection) =>
+                copy(
+                  baseSectionsByPath = withBaseSection(baseSection),
+                  leftSectionsByPath = withLeftSection(leftSection)
+                )
+              case Match.BaseAndRight(baseSection, rightSection) =>
+                copy(
+                  baseSectionsByPath = withBaseSection(baseSection),
+                  rightSectionsByPath = withRightSection(rightSection)
+                )
+              case Match.LeftAndRight(leftSection, rightSection) =>
+                copy(
+                  leftSectionsByPath = withLeftSection(leftSection),
+                  rightSectionsByPath = withRightSection(rightSection)
+                )
+            end match
+          end withSectionsFrom
+
+          private def containsSection(
+              side: Sources[Path, Element],
+              sectionsByPath: Map[Path, SectionsSeen]
+          )(section: Section[Element]): Boolean =
+            sectionsByPath
+              .get(side.pathFor(section))
+              .fold(ifEmpty = false)(
+                _.includes(section.closedOpenInterval)
+              )
+
+          private def withSection(
+              side: Sources[Path, Element],
+              sectionsByPath: Map[Path, SectionsSeen]
+          )(
+              section: Section[Element]
+          ): Map[Path, SectionsSeen] =
+            sectionsByPath.updatedWith(
+              side.pathFor(section)
+            ) {
+              case Some(sections) => Some(sections + section)
+              case None =>
+                Some(
+                  RangedSeq(section)(_.closedOpenInterval, Ordering[Int])
+                )
+            }
+        end SectionsSeenAcrossSides
+
         // TODO: caching!
         def matchesForWindowSize(
-            matchGroupsInDescendingOrderOfKeys: MatchGroupsInDescendingOrderOfKeys,
+            partialResult: (
+                SectionsSeenAcrossSides,
+                MatchGroupsInDescendingOrderOfKeys
+            ),
             windowSize: Int
-        ): MatchGroupsInDescendingOrderOfKeys =
+        ): (SectionsSeenAcrossSides, MatchGroupsInDescendingOrderOfKeys) =
+          val (sectionsSeenAcrossSides, matchGroupsInDescendingOrderOfKeys) =
+            partialResult
+
           if validWindowSizes contains windowSize then
             require(0 < windowSize)
 
@@ -512,8 +480,9 @@ object CodeMotionAnalysis:
                 tripleMatches: Set[Match[Section[Element]]],
                 // TODO: tighten the type signature to use a union type of the
                 // other match kinds.
-                pairMatches: Set[Match[Section[Element]]]
-            ): MatchGroupsInDescendingOrderOfKeys =
+                pairMatches: Set[Match[Section[Element]]],
+                sectionsSeenAcrossSides: SectionsSeenAcrossSides
+            ): (SectionsSeenAcrossSides, MatchGroupsInDescendingOrderOfKeys) =
               (
                 baseFingerprints.headOption,
                 leftFingerprints.headOption,
@@ -543,6 +512,14 @@ object CodeMotionAnalysis:
                         baseSection.content,
                         rightSection.content
                       )
+                      suppressed = sectionsSeenAcrossSides.containsBaseSection(
+                        baseSection
+                      ) || sectionsSeenAcrossSides.containsLeftSection(
+                        leftSection
+                      ) || sectionsSeenAcrossSides.containsRightSection(
+                        rightSection
+                      )
+                      if !suppressed
                     yield Match.AllThree(
                       baseSection,
                       leftSection,
@@ -555,7 +532,9 @@ object CodeMotionAnalysis:
                     leftFingerprints.tail,
                     rightFingerprints.tail,
                     tripleMatches ++ allSidesMatches,
-                    pairMatches
+                    pairMatches,
+                    sectionsSeenAcrossSides
+                      .withSectionsFrom(allSidesMatches)
                   )
 
                 case (Some(baseHead), Some(leftHead), _)
@@ -576,6 +555,12 @@ object CodeMotionAnalysis:
                         baseSection.content,
                         leftSection.content
                       )
+                      suppressed = sectionsSeenAcrossSides.containsBaseSection(
+                        baseSection
+                      ) || sectionsSeenAcrossSides.containsLeftSection(
+                        leftSection
+                      )
+                      if !suppressed
                     yield Match.BaseAndLeft(
                       baseSection,
                       leftSection
@@ -587,7 +572,9 @@ object CodeMotionAnalysis:
                     leftFingerprints.tail,
                     rightFingerprints,
                     tripleMatches,
-                    pairMatches ++ baseLeftMatches
+                    pairMatches ++ baseLeftMatches,
+                    sectionsSeenAcrossSides
+                      .withSectionsFrom(baseLeftMatches)
                   )
 
                 case (Some(baseHead), _, Some(rightHead))
@@ -608,6 +595,12 @@ object CodeMotionAnalysis:
                         baseSection.content,
                         rightSection.content
                       )
+                      suppressed = sectionsSeenAcrossSides.containsBaseSection(
+                        baseSection
+                      ) || sectionsSeenAcrossSides.containsRightSection(
+                        rightSection
+                      )
+                      if !suppressed
                     yield Match.BaseAndRight(
                       baseSection,
                       rightSection
@@ -619,7 +612,9 @@ object CodeMotionAnalysis:
                     leftFingerprints,
                     rightFingerprints.tail,
                     tripleMatches,
-                    pairMatches ++ baseRightMatches
+                    pairMatches ++ baseRightMatches,
+                    sectionsSeenAcrossSides
+                      .withSectionsFrom(baseRightMatches)
                   )
 
                 case (_, Some(leftHead), Some(rightHead))
@@ -640,6 +635,12 @@ object CodeMotionAnalysis:
                         leftSection.content,
                         rightSection.content
                       )
+                      suppressed = sectionsSeenAcrossSides.containsLeftSection(
+                        leftSection
+                      ) || sectionsSeenAcrossSides.containsRightSection(
+                        rightSection
+                      )
+                      if !suppressed
                     yield Match.LeftAndRight(
                       leftSection,
                       rightSection
@@ -651,7 +652,9 @@ object CodeMotionAnalysis:
                     leftFingerprints.tail,
                     rightFingerprints.tail,
                     tripleMatches,
-                    pairMatches ++ leftRightMatches
+                    pairMatches ++ leftRightMatches,
+                    sectionsSeenAcrossSides
+                      .withSectionsFrom(leftRightMatches)
                   )
 
                 case (Some(baseHead), Some(leftHead), Some(rightHead)) =>
@@ -667,7 +670,8 @@ object CodeMotionAnalysis:
                       leftFingerprints.tail,
                       rightFingerprints,
                       tripleMatches,
-                      pairMatches
+                      pairMatches,
+                      sectionsSeenAcrossSides
                     )
                   else if rightHead == minimumFingerprint then
                     matchingFingerprintsAcrossSides(
@@ -675,7 +679,8 @@ object CodeMotionAnalysis:
                       leftFingerprints,
                       rightFingerprints.tail,
                       tripleMatches,
-                      pairMatches
+                      pairMatches,
+                      sectionsSeenAcrossSides
                     )
                   else
                     matchingFingerprintsAcrossSides(
@@ -683,7 +688,8 @@ object CodeMotionAnalysis:
                       leftFingerprints,
                       rightFingerprints,
                       tripleMatches,
-                      pairMatches
+                      pairMatches,
+                      sectionsSeenAcrossSides
                     )
                   end if
 
@@ -697,7 +703,8 @@ object CodeMotionAnalysis:
                       leftFingerprints,
                       rightFingerprints,
                       tripleMatches,
-                      pairMatches
+                      pairMatches,
+                      sectionsSeenAcrossSides
                     )
                   else
                     matchingFingerprintsAcrossSides(
@@ -705,7 +712,8 @@ object CodeMotionAnalysis:
                       leftFingerprints.tail,
                       rightFingerprints,
                       tripleMatches,
-                      pairMatches
+                      pairMatches,
+                      sectionsSeenAcrossSides
                     )
 
                 case (Some(baseHead), None, Some(rightHead)) =>
@@ -718,7 +726,8 @@ object CodeMotionAnalysis:
                       leftFingerprints,
                       rightFingerprints,
                       tripleMatches,
-                      pairMatches
+                      pairMatches,
+                      sectionsSeenAcrossSides
                     )
                   else
                     matchingFingerprintsAcrossSides(
@@ -726,7 +735,8 @@ object CodeMotionAnalysis:
                       leftFingerprints,
                       rightFingerprints.tail,
                       tripleMatches,
-                      pairMatches
+                      pairMatches,
+                      sectionsSeenAcrossSides
                     )
 
                 case (None, Some(leftHead), Some(rightHead)) =>
@@ -739,7 +749,8 @@ object CodeMotionAnalysis:
                       leftFingerprints.tail,
                       rightFingerprints,
                       tripleMatches,
-                      pairMatches
+                      pairMatches,
+                      sectionsSeenAcrossSides
                     )
                   else
                     matchingFingerprintsAcrossSides(
@@ -747,7 +758,8 @@ object CodeMotionAnalysis:
                       leftFingerprints,
                       rightFingerprints.tail,
                       tripleMatches,
-                      pairMatches
+                      pairMatches,
+                      sectionsSeenAcrossSides
                     )
 
                 case _ =>
@@ -762,12 +774,12 @@ object CodeMotionAnalysis:
                     assume(windowSize < exclusiveUpperBoundOnWindowSize)
                     exclusiveUpperBoundOnWindowSize = windowSize
 
-                    matchGroupsInDescendingOrderOfKeys
+                    sectionsSeenAcrossSides -> matchGroupsInDescendingOrderOfKeys
                   else
-                    matchGroupsInDescendingOrderOfKeys ++ Seq(
+                    sectionsSeenAcrossSides -> (matchGroupsInDescendingOrderOfKeys ++ Seq(
                       (windowSize, MatchGrade.Triple) -> tripleMatches,
                       (windowSize, MatchGrade.Pair)   -> pairMatches
-                    ).filter { case (_, matches) => matches.nonEmpty }
+                    ).filter { case (_, matches) => matches.nonEmpty })
               end match
             end matchingFingerprintsAcrossSides
 
@@ -776,17 +788,21 @@ object CodeMotionAnalysis:
               leftSectionsByFingerprint.keySet,
               rightSectionsByFingerprint.keySet,
               tripleMatches = Set.empty,
-              pairMatches = Set.empty
+              pairMatches = Set.empty,
+              sectionsSeenAcrossSides
             )
-          else matchGroupsInDescendingOrderOfKeys
+          else sectionsSeenAcrossSides -> matchGroupsInDescendingOrderOfKeys
+          end if
         end matchesForWindowSize
 
-        val matchGroupsInDescendingOrderOfKeys
-            : MatchGroupsInDescendingOrderOfKeys =
-          cleanUp(
-            chromosome.windowSizesInDescendingOrder.foldLeft(Seq.empty)(
-              matchesForWindowSize
-            )
+        val (
+          _,
+          matchGroupsInDescendingOrderOfKeys: MatchGroupsInDescendingOrderOfKeys
+        ) =
+          chromosome.windowSizesInDescendingOrder.foldLeft(
+            SectionsSeenAcrossSides() -> Seq.empty
+          )(
+            matchesForWindowSize
           )
 
         println(
@@ -801,7 +817,7 @@ object CodeMotionAnalysis:
     end given
 
     val evolvedPhenotype =
-      Evolution.of(maximumNumberOfRetries = 100, maximumPopulationSize = 100)
+      Evolution.of(maximumNumberOfRetries = 2 /*100*/, maximumPopulationSize = 20 /*100*/)
 
     val matchesByTheirSections = evolvedPhenotype.matchesByTheirSections
 
