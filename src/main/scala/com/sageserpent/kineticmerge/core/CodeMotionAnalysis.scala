@@ -84,7 +84,7 @@ object CodeMotionAnalysis:
 
     var exclusiveUpperBoundOnWindowSize: Int = 1 + maximumWindowSize
 
-    var inclusiveUpperBoundOnSuccessfulWindowSize: Int = 1
+    var maximumSuccessfulWindowSizeSoFar: Int = 1
 
     def validWindowSizes =
       minimumWindowSize until exclusiveUpperBoundOnWindowSize
@@ -778,10 +778,14 @@ object CodeMotionAnalysis:
                     // prohibitively large minimum window size that would have
                     // permitted a successful match at a larger window size, so
                     // we make sure that we don't contract down to the largest
-                    // successful window size seen so far.
+                    // successful window size seen so far. It is also worth
+                    // being conservative about how fast the exclusive upper
+                    // bound comes down - we use a geometric convergence
+                    // approach to give window sizes a bit above the failing one
+                    // a chance.
                     assume(windowSize < exclusiveUpperBoundOnWindowSize)
                     exclusiveUpperBoundOnWindowSize =
-                      (1 + inclusiveUpperBoundOnSuccessfulWindowSize) max windowSize
+                      (1 + maximumSuccessfulWindowSizeSoFar) max ((windowSize + exclusiveUpperBoundOnWindowSize) / 2)
 
                     println(
                       s"Exclusive upper bound: $exclusiveUpperBoundOnWindowSize"
@@ -789,8 +793,8 @@ object CodeMotionAnalysis:
 
                     sectionsSeenAcrossSides -> matchGroupsInDescendingOrderOfKeys
                   else
-                    inclusiveUpperBoundOnSuccessfulWindowSize =
-                      inclusiveUpperBoundOnSuccessfulWindowSize max windowSize
+                    maximumSuccessfulWindowSizeSoFar =
+                      maximumSuccessfulWindowSizeSoFar max windowSize
 
                     sectionsSeenAcrossSides -> (matchGroupsInDescendingOrderOfKeys ++ Seq(
                       (windowSize, MatchGrade.Triple) -> tripleMatches,
@@ -835,7 +839,7 @@ object CodeMotionAnalysis:
     val evolvedPhenotype =
       Evolution.of(
         maximumNumberOfRetries = 2 /*100*/,
-        maximumPopulationSize = 20 /*100*/
+        maximumPopulationSize = 5 /*100*/
       )
 
     val matchesByTheirSections = evolvedPhenotype.matchesByTheirSections
