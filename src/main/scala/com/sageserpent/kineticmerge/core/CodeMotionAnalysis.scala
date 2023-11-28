@@ -70,25 +70,20 @@ object CodeMotionAnalysis:
 
     val sequenceEquality: Eq[Seq[Element]] = Eq[Seq[Element]]
 
-    val minimumFileSize =
-      base.filesByPath.values.map(_.size).minOption.getOrElse(0) min
-        left.filesByPath.values.map(_.size).minOption.getOrElse(0) min
-        right.filesByPath.values.map(_.size).minOption.getOrElse(0)
+    // TODO: suppose all the sources are empty? Could this happen?
+    val fileSizes = base.filesByPath.values.map(_.size) ++
+      left.filesByPath.values.map(_.size) ++
+      right.filesByPath.values.map(_.size)
 
-    val minimumWindowSize =
-      1 max (minimumFileSize * minimumSizeFractionForMotionDetection).ceil.toInt
+    val minimumFileSizeAcrossAllFilesOverAllSides = fileSizes.min
 
-    val maximumWindowSize =
-      base.filesByPath.values.map(_.size).maxOption.getOrElse(0) max
-        left.filesByPath.values.map(_.size).maxOption.getOrElse(0) max
-        right.filesByPath.values.map(_.size).maxOption.getOrElse(0)
+    val minimumWindowSizeAcrossAllFilesOverAllSides =
+      1 max (minimumFileSizeAcrossAllFilesOverAllSides * minimumSizeFractionForMotionDetection).ceil.toInt
 
-    var exclusiveUpperBoundOnWindowSize: Int = 1 + maximumWindowSize
+    val maximumFileSizeAcrossAllFilesOverAllSides = fileSizes.max
 
-    var maximumSuccessfulWindowSizeSoFar: Int = 1
-
-    def validWindowSizes =
-      minimumWindowSize until exclusiveUpperBoundOnWindowSize
+    val validWindowSizes =
+      minimumWindowSizeAcrossAllFilesOverAllSides to maximumFileSizeAcrossAllFilesOverAllSides
 
     enum MatchGrade:
       case Triple
@@ -112,14 +107,9 @@ object CodeMotionAnalysis:
       require(windowSizesInDescendingOrder.nonEmpty)
 
       windowSizesInDescendingOrder.foreach { size =>
-        // NOTE: there is a subtlety: ideally we would like the invariant to be
-        // that all sizes are contained in `validWindowSizes`, but the latter
-        // changes dynamically as evolution proceeds, so we would end up with
-        // chromosomes being constructed with the invariant holding, but being
-        // rendered invalid later! We compromise and tolerate chromosomes with
-        // invalid window sizes; they will be weeded out as evolution proceeds,
-        // as they carry an additional burden of useless sizes that don't match.
-        require((minimumWindowSize to maximumWindowSize) contains size)
+        require(
+          validWindowSizes contains size
+        )
       }
     end Chromosome
 
@@ -293,7 +283,9 @@ object CodeMotionAnalysis:
         if random.nextBoolean() then first else second
 
       override def initialChromosome: Chromosome = Chromosome(
-        TreeSet(minimumWindowSize)(Ordering[Int].reverse)
+        TreeSet(minimumWindowSizeAcrossAllFilesOverAllSides)(
+          Ordering[Int].reverse
+        )
       )
 
       override def phenotype(chromosome: Chromosome): Phenotype =
@@ -777,32 +769,10 @@ object CodeMotionAnalysis:
                   // triples first if we have any, then any pairs as we are
                   // adding match groups in descending order of keys.
 
-                  if tripleMatches.isEmpty && pairMatches.isEmpty then
-                    // There is no point looking for matches with a larger
-                    // window size if we could not find any at this size.
-                    // However, we have to be careful and not be fooled by lack
-                    // of matches due to an individual file having a
-                    // prohibitively large minimum window size that would have
-                    // permitted a successful match at a larger window size, so
-                    // we make sure that we don't contract down to the largest
-                    // successful window size seen so far. It is also worth
-                    // being conservative about how fast the exclusive upper
-                    // bound comes down - we use a geometric convergence
-                    // approach to give window sizes a bit above the failing one
-                    // a chance.
-                    assume(windowSize < exclusiveUpperBoundOnWindowSize)
-                    exclusiveUpperBoundOnWindowSize =
-                      (1 + maximumSuccessfulWindowSizeSoFar) max ((windowSize + exclusiveUpperBoundOnWindowSize) / 2)
-
-                    println(
-                      s"Exclusive upper bound: $exclusiveUpperBoundOnWindowSize"
-                    )
-
+                  if tripleMatches.isEmpty && pairMatches.isEmpty
+                  then
                     sectionsSeenAcrossSides -> matchGroupsInDescendingOrderOfKeys
                   else
-                    maximumSuccessfulWindowSizeSoFar =
-                      maximumSuccessfulWindowSizeSoFar max windowSize
-
                     sectionsSeenAcrossSides -> (matchGroupsInDescendingOrderOfKeys ++ Seq(
                       (windowSize, MatchGrade.Triple) -> tripleMatches,
                       (windowSize, MatchGrade.Pair)   -> pairMatches
