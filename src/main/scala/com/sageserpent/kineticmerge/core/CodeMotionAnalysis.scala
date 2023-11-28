@@ -2,6 +2,7 @@ package com.sageserpent.kineticmerge.core
 
 import cats.instances.seq.*
 import cats.{Eq, Order}
+import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction}
 import com.sageserpent.americium.randomEnrichment.*
 import com.sageserpent.kineticmerge.core.genetic.Evolution
@@ -232,6 +233,9 @@ object CodeMotionAnalysis:
     end given
 
     given Evolution[Chromosome, Phenotype] with
+      private val phenotypeCache: Cache[Chromosome, Phenotype] =
+        Caffeine.newBuilder().weakKeys().build()
+
       override def mutate(chromosome: Chromosome)(using
           random: Random
       ): Chromosome =
@@ -293,6 +297,9 @@ object CodeMotionAnalysis:
       )
 
       override def phenotype(chromosome: Chromosome): Phenotype =
+        phenotypeCache.get(chromosome, phenotype_)
+
+      private def phenotype_(chromosome: Chromosome): Phenotype =
         type SectionsSeen = RangedSeq[Section[Element], Int]
 
         case class SectionsSeenAcrossSides(
@@ -833,7 +840,7 @@ object CodeMotionAnalysis:
           chromosomeSize = chromosome.windowSizesInDescendingOrder.size,
           matchGroupsInDescendingOrderOfKeys
         )
-      end phenotype
+      end phenotype_
     end given
 
     val evolvedPhenotype =

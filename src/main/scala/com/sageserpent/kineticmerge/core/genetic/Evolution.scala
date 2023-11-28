@@ -1,7 +1,6 @@
 package com.sageserpent.kineticmerge.core.genetic
 
 import cats.Order
-import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 
 import scala.annotation.tailrec
 import scala.util.Random
@@ -16,6 +15,7 @@ trait Evolution[Chromosome, Phenotype]:
 end Evolution
 
 object Evolution:
+
   def of[Chromosome, Phenotype](
       maximumNumberOfRetries: Int,
       maximumPopulationSize: Int
@@ -23,18 +23,12 @@ object Evolution:
       evolution: Evolution[Chromosome, Phenotype],
       ascendingFitnessOrder: Order[Phenotype]
   ): Phenotype =
-    val phenotypeCache: Cache[Chromosome, Phenotype] =
-      Caffeine.newBuilder().weakKeys().build()
-
-    def phenotypeFor(chromosome: Chromosome): Phenotype =
-      phenotypeCache.get(chromosome, evolution.phenotype)
-
     val initialChromosome = evolution.initialChromosome
 
     given Random = new Random(initialChromosome.hashCode())
 
     val ascendingChromosomeFitnessOrder =
-      Order.by[Chromosome, Phenotype](phenotypeFor)
+      Order.by[Chromosome, Phenotype](evolution.phenotype)
 
     val descendingChromosomeFitnessOrdering =
       ascendingChromosomeFitnessOrder.toOrdering.reverse
@@ -142,6 +136,6 @@ object Evolution:
       maximumNumberOfRetries = maximumNumberOfRetries
     )
 
-    phenotypeFor(fittestChromosome)
+    evolution.phenotype(fittestChromosome)
   end of
 end Evolution
