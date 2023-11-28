@@ -225,6 +225,17 @@ object CodeMotionAnalysis:
     given Evolution[Chromosome, Phenotype] with
       private val phenotypeCache: Cache[Chromosome, Phenotype] =
         Caffeine.newBuilder().maximumSize(100).build()
+      private val fingerprintingCache
+          : Cache[Int, RabinFingerprintLongWindowed] =
+        Caffeine.newBuilder().maximumSize(100).build()
+      // TODO: review this one - a) it does not seem to add much of a
+      // performance benefit because the previous fingerprinting cache cuts out
+      // a much larger overhead and b) if we're going to use this we should
+      // probably lambda-lift the cache population functions too conform to the
+      // caching API's style.
+      private val fingerprintSectionsCache
+          : Cache[Int, FingerprintSectionsAcrossSides] =
+        Caffeine.newBuilder().maximumSize(100).build()
 
       override def mutate(chromosome: Chromosome)(using
           random: Random
@@ -376,7 +387,6 @@ object CodeMotionAnalysis:
             }
         end SectionsSeenAcrossSides
 
-        // TODO: caching!
         def matchesForWindowSize(
             partialResult: (
                 SectionsSeenAcrossSides,
@@ -390,19 +400,23 @@ object CodeMotionAnalysis:
           if validWindowSizes contains windowSize then
             require(0 < windowSize)
 
-            val fixedNumberOfBytesInElementHash =
-              hashFunction.bits / JavaByte.SIZE
-
-            val fingerprinting =
-              new RabinFingerprintLongWindowed(
-                polynomial,
-                fixedNumberOfBytesInElementHash * windowSize
-              )
-
             def fingerprintStartIndices(
                 elements: IndexedSeq[Element]
             ): SortedMultiDict[Long, Int] =
               require(elements.size >= windowSize)
+
+              val fingerprinting = fingerprintingCache.get(
+                windowSize,
+                { (windowSize: Int) =>
+                  val fixedNumberOfBytesInElementHash =
+                    hashFunction.bits / JavaByte.SIZE
+
+                  new RabinFingerprintLongWindowed(
+                    polynomial,
+                    fixedNumberOfBytesInElementHash * windowSize
+                  )
+                }
+              )
 
               // Fingerprinting is imperative, so go with that style local to
               // this helper function...
@@ -445,7 +459,6 @@ object CodeMotionAnalysis:
             def fingerprintSections(
                 sources: Sources[Path, Element]
             ): SortedMultiDict[Long, Section[Element]] =
-              // TODO: more caching!
               sources.filesByPath
                 .filter { case (_, file) =>
                   val fileSize = file.size
@@ -468,9 +481,19 @@ object CodeMotionAnalysis:
                 .getOrElse(SortedMultiDict.empty)
             end fingerprintSections
 
-            val baseSectionsByFingerprint  = fingerprintSections(base)
-            val leftSectionsByFingerprint  = fingerprintSections(left)
-            val rightSectionsByFingerprint = fingerprintSections(right)
+            val FingerprintSectionsAcrossSides(
+              baseSectionsByFingerprint,
+              leftSectionsByFingerprint,
+              rightSectionsByFingerprint
+            ) = fingerprintSectionsCache.get(
+              windowSize,
+              _ =>
+                FingerprintSectionsAcrossSides(
+                  baseSectionsByFingerprint = fingerprintSections(base),
+                  leftSectionsByFingerprint = fingerprintSections(left),
+                  rightSectionsByFingerprint = fingerprintSections(right)
+                )
+            )
 
             @tailrec
             def matchingFingerprintsAcrossSides(
@@ -811,12 +834,18 @@ object CodeMotionAnalysis:
           matchGroupsInDescendingOrderOfKeys
         )
       end phenotype_
+
+      private case class FingerprintSectionsAcrossSides(
+          baseSectionsByFingerprint: SortedMultiDict[Long, Section[Element]],
+          leftSectionsByFingerprint: SortedMultiDict[Long, Section[Element]],
+          rightSectionsByFingerprint: SortedMultiDict[Long, Section[Element]]
+      )
     end given
 
     val evolvedPhenotype =
       Evolution.of(
-        maximumNumberOfRetries = 2 /*100*/,
-        maximumPopulationSize = 5 /*100*/
+        maximumNumberOfRetries = 10 /*100*/,
+        maximumPopulationSize = 10 /*100*/
       )
 
     val matchesByTheirSections = evolvedPhenotype.matchesByTheirSections
