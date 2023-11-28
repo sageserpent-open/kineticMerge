@@ -1,10 +1,8 @@
 package com.sageserpent.kineticmerge.core.genetic
 
 import cats.Order
-import cats.implicits.catsKernelStdOrderForSortedSet
 
 import scala.annotation.tailrec
-import scala.collection.immutable.SortedSet
 import scala.util.Random
 
 trait Evolution[Chromosome, Phenotype]:
