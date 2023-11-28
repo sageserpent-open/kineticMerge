@@ -234,7 +234,7 @@ object CodeMotionAnalysis:
 
     given Evolution[Chromosome, Phenotype] with
       private val phenotypeCache: Cache[Chromosome, Phenotype] =
-        Caffeine.newBuilder().weakKeys().build()
+        Caffeine.newBuilder().maximumSize(100).build()
 
       override def mutate(chromosome: Chromosome)(using
           random: Random
