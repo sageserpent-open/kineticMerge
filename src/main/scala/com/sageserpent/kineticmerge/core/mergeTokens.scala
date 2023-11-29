@@ -2,18 +2,16 @@ package com.sageserpent.kineticmerge.core
 
 import com.google.common.hash.{Hashing, PrimitiveSink}
 import com.sageserpent.kineticmerge.core.PartitionedThreeWayTransform.Input
-import com.sageserpent.kineticmerge.core.Token
 import com.sageserpent.kineticmerge.core.Token.{Significant, Whitespace, WithTrailingWhitespace}
 import org.rabinfingerprint.polynomial.Polynomial
 import org.rabinfingerprint.polynomial.Polynomial.{Reducibility, createFromBytes}
 
 import scala.annotation.tailrec
 import scala.util.Random
-import scala.util.parsing.combinator.{JavaTokenParsers, RegexParsers}
 
 object mergeTokens:
   private val partitionedThreeWayTransform = new PartitionedThreeWayTransform(
-    createIrreducible()
+    irreduciblePolynomial()
   )
 
   def apply(
@@ -96,7 +94,10 @@ object mergeTokens:
           lhsRightElements ++ rhsRightElements
         )
 
-  private def createIrreducible(): Polynomial =
+end mergeTokens
+
+object irreduciblePolynomial:
+  def apply(): Polynomial =
     val random = new Random(45877L)
 
     val degree = 51
@@ -112,5 +113,5 @@ object mergeTokens:
     end tryPolynomial
 
     tryPolynomial
-  end createIrreducible
-end mergeTokens
+  end apply
+end irreduciblePolynomial

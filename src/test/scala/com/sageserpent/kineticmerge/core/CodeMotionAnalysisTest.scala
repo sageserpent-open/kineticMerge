@@ -308,7 +308,7 @@ class CodeMotionAnalysisTest:
             equality = _ == _,
             hashFunction = Hashing.murmur3_32_fixed(),
             funnel = funnel
-          )(Polynomial.createIrreducible(15)): @unchecked
+          )(irreduciblePolynomial()): @unchecked
         end val
 
         def matches(sideFilesByPath: Map[Path, File[Element]]) =
