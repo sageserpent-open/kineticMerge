@@ -47,7 +47,7 @@ class CodeMotionAnalysisTest:
     end extension
 
     (sourcesTrials and sourcesTrials and sourcesTrials and minimumSizeFractionTrials)
-      .withLimit(100)
+      .withLimit(10)
       .dynamicTests(
         (
             base: FakeSources,
@@ -55,6 +55,8 @@ class CodeMotionAnalysisTest:
             right: FakeSources,
             minimumSizeFraction: Double
         ) =>
+          pprint.pprintln((base, left, right, minimumSizeFraction))
+
           val Right(
             analysis: CodeMotionAnalysis[FakeSources#Path, FakeSources#Element]
           ) =

@@ -161,7 +161,8 @@ object CodeMotionAnalysis:
               baseSection
           }
         }
-        .reduce(_ ++ _)
+        .reduceOption(_ ++ _)
+        .getOrElse(Set.empty)
 
       def leftSections: Set[Section[Element]] = matchGroupsInReverseOrder
         .map { case (_, matches) =>
@@ -174,7 +175,8 @@ object CodeMotionAnalysis:
               leftSection
           }
         }
-        .reduce(_ ++ _)
+        .reduceOption(_ ++ _)
+        .getOrElse(Set.empty)
 
       def rightSections: Set[Section[Element]] = matchGroupsInReverseOrder
         .map { case (_, matches) =>
@@ -187,7 +189,8 @@ object CodeMotionAnalysis:
               rightSection
           }
         }
-        .reduce(_ ++ _)
+        .reduceOption(_ ++ _)
+        .getOrElse(Set.empty)
 
     end Phenotype
 
@@ -825,9 +828,9 @@ object CodeMotionAnalysis:
             matchesForWindowSize
           )
 
-        println(
-          s"Chromosome: $chromosome, matchGroupsInDescendingOrderOfKeys: $matchGroupsInDescendingOrderOfKeys"
-        )
+//        println(
+//          s"Chromosome: $chromosome, matchGroupsInDescendingOrderOfKeys: $matchGroupsInDescendingOrderOfKeys"
+//        )
 
         Phenotype(
           chromosomeSize = chromosome.windowSizesInDescendingOrder.size,
