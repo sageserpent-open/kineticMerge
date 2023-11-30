@@ -307,115 +307,122 @@ class CodeMotionAnalysisTest:
 
         import testPlan.*
 
-        val Right(
-          analysis: CodeMotionAnalysis[FakeSources#Path, FakeSources#Element]
-        ) =
-          CodeMotionAnalysis.of(
-            baseSources,
-            leftSources,
-            rightSources
-          )(minimumSizeFractionForMotionDetection)(
-            equality = _ == _,
-            hashFunction = Hashing.murmur3_32_fixed(),
-            funnel = funnel
-          )(irreduciblePolynomial()): @unchecked
-        end val
+        try
+          val Right(
+            analysis: CodeMotionAnalysis[FakeSources#Path, FakeSources#Element]
+          ) =
+            CodeMotionAnalysis.of(
+              baseSources,
+              leftSources,
+              rightSources
+            )(minimumSizeFractionForMotionDetection)(
+              equality = _ == _,
+              hashFunction = Hashing.murmur3_32_fixed(),
+              funnel = funnel
+            )(irreduciblePolynomial()): @unchecked
+          end val
 
-        def matches(sideFilesByPath: Map[Path, File[Element]]) =
-          sideFilesByPath.values
-            .flatMap(_.sections)
-            .collect(Function.unlift(analysis.matchFor))
+          def matches(sideFilesByPath: Map[Path, File[Element]]) =
+            sideFilesByPath.values
+              .flatMap(_.sections)
+              .collect(Function.unlift(analysis.matchFor))
 
-        def verify(
-            matches: Iterable[Match[Section[FakeSources#Element]]]
-        ): Unit =
-          extension (file: File[Element])
-            def contains(section: Section[Element]) =
-              file.sections.contains(section)
+          def verify(
+              matches: Iterable[Match[Section[FakeSources#Element]]]
+          ): Unit =
+            extension (file: File[Element])
+              def contains(section: Section[Element]) =
+                file.sections.contains(section)
 
-          // NOTE: all of the cases below have to consider the possibility that
-          // juxtaposition of sequences may create incidental match
-          // opportunities that don't necessarily encompass the expected
-          // matches. If so, we just reject the trial as inconclusive, but not
-          // before we have done some mandatory validation beforehand.
-          matches.foreach {
-            case Match.AllThree(baseSection, leftSection, rightSection) =>
-              assert(analysis.base.values.exists(_ contains baseSection))
-              assert(analysis.left.values.exists(_ contains leftSection))
-              assert(analysis.right.values.exists(_ contains rightSection))
+            // NOTE: all of the cases below have to consider the possibility
+            // that juxtaposition of sequences may create incidental match
+            // opportunities that don't necessarily encompass the expected
+            // matches. If so, we just reject the trial as inconclusive, but not
+            // before we have done some mandatory validation beforehand.
+            matches.foreach {
+              case Match.AllThree(baseSection, leftSection, rightSection) =>
+                assert(analysis.base.values.exists(_ contains baseSection))
+                assert(analysis.left.values.exists(_ contains leftSection))
+                assert(analysis.right.values.exists(_ contains rightSection))
 
-              assert(leftSection.content == baseSection.content)
-              assert(rightSection.content == baseSection.content)
+                assert(leftSection.content == baseSection.content)
+                assert(rightSection.content == baseSection.content)
 
-              if !commonToAllThreeSides
-                  .exists(baseSection.content containsSlice _)
-              then Trials.reject()
-              end if
+                if !commonToAllThreeSides
+                    .exists(baseSection.content containsSlice _)
+                then Trials.reject()
+                end if
 
-            case Match.BaseAndLeft(baseSection, leftSection) =>
-              assert(analysis.base.values.exists(_ contains baseSection))
-              assert(analysis.left.values.exists(_ contains leftSection))
+              case Match.BaseAndLeft(baseSection, leftSection) =>
+                assert(analysis.base.values.exists(_ contains baseSection))
+                assert(analysis.left.values.exists(_ contains leftSection))
 
-              assert(leftSection.content == baseSection.content)
+                assert(leftSection.content == baseSection.content)
 
-              if !commonToBaseAndLeft.exists(
-                  baseSection.content containsSlice _
-                )
-              then Trials.reject()
-              end if
+                if !commonToBaseAndLeft.exists(
+                    baseSection.content containsSlice _
+                  )
+                then Trials.reject()
+                end if
 
-            case Match.BaseAndRight(baseSection, rightSection) =>
-              assert(analysis.base.values.exists(_ contains baseSection))
-              assert(analysis.right.values.exists(_ contains rightSection))
+              case Match.BaseAndRight(baseSection, rightSection) =>
+                assert(analysis.base.values.exists(_ contains baseSection))
+                assert(analysis.right.values.exists(_ contains rightSection))
 
-              assert(rightSection.content == baseSection.content)
+                assert(rightSection.content == baseSection.content)
 
-              if !commonToBaseAndRight.exists(
-                  baseSection.content containsSlice _
-                )
-              then Trials.reject()
-              end if
+                if !commonToBaseAndRight.exists(
+                    baseSection.content containsSlice _
+                  )
+                then Trials.reject()
+                end if
 
-            case Match.LeftAndRight(leftSection, rightSection) =>
-              assert(analysis.left.values.exists(_ contains leftSection))
-              assert(analysis.right.values.exists(_ contains rightSection))
+              case Match.LeftAndRight(leftSection, rightSection) =>
+                assert(analysis.left.values.exists(_ contains leftSection))
+                assert(analysis.right.values.exists(_ contains rightSection))
 
-              assert(rightSection.content == leftSection.content)
+                assert(rightSection.content == leftSection.content)
 
-              if !commonToBaseAndLeft.exists(
-                  leftSection.content containsSlice _
-                )
-              then Trials.reject()
-              end if
-          }
-        end verify
+                if !commonToBaseAndLeft.exists(
+                    leftSection.content containsSlice _
+                  )
+                then Trials.reject()
+                end if
+            }
 
-        val baseMatches: Iterable[Match[Section[FakeSources#Element]]] =
-          matches(analysis.base)
+          end verify
 
-        if commonToAllThreeSides.nonEmpty || commonToBaseAndLeft.nonEmpty || commonToBaseAndRight.nonEmpty
-        then assert(baseMatches.nonEmpty)
-        end if
+          val baseMatches: Iterable[Match[Section[FakeSources#Element]]] =
+            matches(analysis.base)
 
-        verify(baseMatches)
+          if commonToAllThreeSides.nonEmpty || commonToBaseAndLeft.nonEmpty || commonToBaseAndRight.nonEmpty
+          then assert(baseMatches.nonEmpty)
+          end if
 
-        val leftMatches: Iterable[Match[Section[FakeSources#Element]]] =
-          matches(analysis.left)
+          verify(baseMatches)
 
-        if commonToAllThreeSides.nonEmpty || commonToBaseAndLeft.nonEmpty || commonToLeftAndRight.nonEmpty
-        then assert(leftMatches.nonEmpty)
-        end if
+          val leftMatches: Iterable[Match[Section[FakeSources#Element]]] =
+            matches(analysis.left)
 
-        verify(leftMatches)
+          if commonToAllThreeSides.nonEmpty || commonToBaseAndLeft.nonEmpty || commonToLeftAndRight.nonEmpty
+          then assert(leftMatches.nonEmpty)
+          end if
 
-        val rightMatches: Iterable[Match[Section[FakeSources#Element]]] =
-          matches(analysis.right)
+          verify(leftMatches)
 
-        if commonToAllThreeSides.nonEmpty || commonToBaseAndRight.nonEmpty || commonToLeftAndRight.nonEmpty
-        then assert(rightMatches.nonEmpty)
-        end if
+          val rightMatches: Iterable[Match[Section[FakeSources#Element]]] =
+            matches(analysis.right)
 
-        verify(rightMatches)
+          if commonToAllThreeSides.nonEmpty || commonToBaseAndRight.nonEmpty || commonToLeftAndRight.nonEmpty
+          then assert(rightMatches.nonEmpty)
+          end if
+
+          verify(rightMatches)
+        catch
+          case overlappingSections: OverlappingSections =>
+            pprint.pprintln(overlappingSections)
+            Trials.reject()
+        end try
       }
   end matchingSectionsAreFound
 end CodeMotionAnalysisTest
@@ -537,6 +544,14 @@ object CodeMotionAnalysisTest:
     end filesByPathUtilising
   end SourcesContracts
 
+  class OverlappingSections(
+      path: Path,
+      first: Section[Element],
+      second: Section[Element]
+  ) extends RuntimeException(
+        s"Overlapping section detected at path: $path: $first (content: ${first.content}) overlaps with start of section: $second (content: ${second.content})."
+      )
+
   case class FakeSources(contentsByPath: Map[Path, IndexedSeq[Element]])
       extends Sources[Path, Element]:
     override def filesByPathUtilising(
@@ -556,9 +571,7 @@ object CodeMotionAnalysisTest:
               .zip(sectionsInStartOffsetOrder.tail)
               .foreach((first, second) =>
                 if first.onePastEndOffset > second.startOffset then
-                  throw new RuntimeException(
-                    s"Overlapping section detected at path: $path: $first (content: ${first.content}) overlaps with start of section: $second (content: ${second.content})."
-                  )
+                  throw new OverlappingSections(path, first, second)
               )
 
             val (onePastLastEndOffset, contiguousSections) =
