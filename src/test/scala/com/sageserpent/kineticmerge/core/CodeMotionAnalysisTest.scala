@@ -327,19 +327,27 @@ class CodeMotionAnalysisTest:
               .flatMap(_.sections)
               .collect(Function.unlift(analysis.matchFor))
 
-          def verify(
-              matches: Iterable[Match[Section[FakeSources#Element]]]
-          ): Unit =
-            extension (file: File[Element])
-              def contains(section: Section[Element]) =
-                file.sections.contains(section)
+          extension (file: File[Element])
+            def contains(section: Section[Element]) =
+              file.sections.contains(section)
 
-            // NOTE: all of the cases below have to consider the possibility
-            // that juxtaposition of sequences may create incidental match
-            // opportunities that don't necessarily encompass the expected
-            // matches. If so, we just reject the trial as inconclusive, but not
-            // before we have done some mandatory validation beforehand.
-            matches.foreach {
+          val baseMatches: Iterable[Match[Section[FakeSources#Element]]] =
+            matches(analysis.base)
+
+          if commonToAllThreeSides.nonEmpty || commonToBaseAndLeft.nonEmpty || commonToBaseAndRight.nonEmpty
+          then
+            assert(baseMatches.nonEmpty)
+
+            val survivorsCommonToAllThreeSides =
+              collection.mutable.Set[IndexedSeq[Element]](
+                commonToAllThreeSides*
+              )
+            val survivorsCommonToBaseAndLeft =
+              collection.mutable.Set[IndexedSeq[Element]](commonToBaseAndLeft*)
+            val survivorsCommonToBaseAndRight =
+              collection.mutable.Set[IndexedSeq[Element]](commonToBaseAndRight*)
+
+            baseMatches.foreach {
               case Match.AllThree(baseSection, leftSection, rightSection) =>
                 assert(analysis.base.values.exists(_ contains baseSection))
                 assert(analysis.left.values.exists(_ contains leftSection))
@@ -348,10 +356,9 @@ class CodeMotionAnalysisTest:
                 assert(leftSection.content == baseSection.content)
                 assert(rightSection.content == baseSection.content)
 
-                if !commonToAllThreeSides
-                    .exists(baseSection.content containsSlice _)
-                then Trials.reject()
-                end if
+                survivorsCommonToAllThreeSides.filterInPlace(candidate =>
+                  !(baseSection.content containsSlice candidate)
+                )
 
               case Match.BaseAndLeft(baseSection, leftSection) =>
                 assert(analysis.base.values.exists(_ contains baseSection))
@@ -359,11 +366,9 @@ class CodeMotionAnalysisTest:
 
                 assert(leftSection.content == baseSection.content)
 
-                if !commonToBaseAndLeft.exists(
-                    baseSection.content containsSlice _
-                  )
-                then Trials.reject()
-                end if
+                survivorsCommonToBaseAndLeft.filterInPlace(candidate =>
+                  !(baseSection.content containsSlice candidate)
+                )
 
               case Match.BaseAndRight(baseSection, rightSection) =>
                 assert(analysis.base.values.exists(_ contains baseSection))
@@ -371,11 +376,59 @@ class CodeMotionAnalysisTest:
 
                 assert(rightSection.content == baseSection.content)
 
-                if !commonToBaseAndRight.exists(
-                    baseSection.content containsSlice _
-                  )
-                then Trials.reject()
-                end if
+                survivorsCommonToBaseAndRight.filterInPlace(candidate =>
+                  !(baseSection.content containsSlice candidate)
+                )
+
+              case Match.LeftAndRight(leftSection, rightSection) =>
+            }
+
+            assert(survivorsCommonToAllThreeSides.isEmpty)
+            assert(survivorsCommonToBaseAndLeft.isEmpty)
+            assert(survivorsCommonToBaseAndRight.isEmpty)
+
+          end if
+
+          val leftMatches: Iterable[Match[Section[FakeSources#Element]]] =
+            matches(analysis.left)
+
+          if commonToAllThreeSides.nonEmpty || commonToBaseAndLeft.nonEmpty || commonToLeftAndRight.nonEmpty
+          then
+            assert(leftMatches.nonEmpty)
+
+            val survivorsCommonToAllThreeSides =
+              collection.mutable.Set[IndexedSeq[Element]](
+                commonToAllThreeSides*
+              )
+            val survivorsCommonToBaseAndLeft =
+              collection.mutable.Set[IndexedSeq[Element]](commonToBaseAndLeft*)
+            val survivorsCommonToLeftAndRight =
+              collection.mutable.Set[IndexedSeq[Element]](commonToLeftAndRight*)
+
+            leftMatches.foreach {
+              case Match.AllThree(baseSection, leftSection, rightSection) =>
+                assert(analysis.base.values.exists(_ contains baseSection))
+                assert(analysis.left.values.exists(_ contains leftSection))
+                assert(analysis.right.values.exists(_ contains rightSection))
+
+                assert(leftSection.content == baseSection.content)
+                assert(rightSection.content == baseSection.content)
+
+                survivorsCommonToAllThreeSides.filterInPlace(candidate =>
+                  !(baseSection.content containsSlice candidate)
+                )
+
+              case Match.BaseAndLeft(baseSection, leftSection) =>
+                assert(analysis.base.values.exists(_ contains baseSection))
+                assert(analysis.left.values.exists(_ contains leftSection))
+
+                assert(leftSection.content == baseSection.content)
+
+                survivorsCommonToBaseAndLeft.filterInPlace(candidate =>
+                  !(baseSection.content containsSlice candidate)
+                )
+
+              case Match.BaseAndRight(baseSection, rightSection) =>
 
               case Match.LeftAndRight(leftSection, rightSection) =>
                 assert(analysis.left.values.exists(_ contains leftSection))
@@ -383,41 +436,73 @@ class CodeMotionAnalysisTest:
 
                 assert(rightSection.content == leftSection.content)
 
-                if !commonToBaseAndLeft.exists(
-                    leftSection.content containsSlice _
-                  )
-                then Trials.reject()
-                end if
+                survivorsCommonToLeftAndRight.filterInPlace(candidate =>
+                  !(leftSection.content containsSlice candidate)
+                )
             }
 
-          end verify
-
-          val baseMatches: Iterable[Match[Section[FakeSources#Element]]] =
-            matches(analysis.base)
-
-          if commonToAllThreeSides.nonEmpty || commonToBaseAndLeft.nonEmpty || commonToBaseAndRight.nonEmpty
-          then assert(baseMatches.nonEmpty)
+            assert(survivorsCommonToAllThreeSides.isEmpty)
+            assert(survivorsCommonToBaseAndLeft.isEmpty)
+            assert(survivorsCommonToLeftAndRight.isEmpty)
           end if
-
-          verify(baseMatches)
-
-          val leftMatches: Iterable[Match[Section[FakeSources#Element]]] =
-            matches(analysis.left)
-
-          if commonToAllThreeSides.nonEmpty || commonToBaseAndLeft.nonEmpty || commonToLeftAndRight.nonEmpty
-          then assert(leftMatches.nonEmpty)
-          end if
-
-          verify(leftMatches)
 
           val rightMatches: Iterable[Match[Section[FakeSources#Element]]] =
             matches(analysis.right)
 
           if commonToAllThreeSides.nonEmpty || commonToBaseAndRight.nonEmpty || commonToLeftAndRight.nonEmpty
-          then assert(rightMatches.nonEmpty)
+          then
+            assert(rightMatches.nonEmpty)
+
+            val survivorsCommonToAllThreeSides =
+              collection.mutable.Set[IndexedSeq[Element]](
+                commonToAllThreeSides*
+              )
+            val survivorsCommonToBaseAndRight =
+              collection.mutable.Set[IndexedSeq[Element]](commonToBaseAndRight*)
+            val survivorsCommonToLeftAndRight =
+              collection.mutable.Set[IndexedSeq[Element]](commonToLeftAndRight*)
+
+            rightMatches.foreach {
+              case Match.AllThree(baseSection, leftSection, rightSection) =>
+                assert(analysis.base.values.exists(_ contains baseSection))
+                assert(analysis.left.values.exists(_ contains leftSection))
+                assert(analysis.right.values.exists(_ contains rightSection))
+
+                assert(leftSection.content == baseSection.content)
+                assert(rightSection.content == baseSection.content)
+
+                survivorsCommonToAllThreeSides.filterInPlace(candidate =>
+                  !(baseSection.content containsSlice candidate)
+                )
+
+              case Match.BaseAndLeft(baseSection, leftSection) =>
+
+              case Match.BaseAndRight(baseSection, rightSection) =>
+                assert(analysis.base.values.exists(_ contains baseSection))
+                assert(analysis.right.values.exists(_ contains rightSection))
+
+                assert(rightSection.content == baseSection.content)
+
+                survivorsCommonToBaseAndRight.filterInPlace(candidate =>
+                  !(baseSection.content containsSlice candidate)
+                )
+
+              case Match.LeftAndRight(leftSection, rightSection) =>
+                assert(analysis.left.values.exists(_ contains leftSection))
+                assert(analysis.right.values.exists(_ contains rightSection))
+
+                assert(rightSection.content == leftSection.content)
+
+                survivorsCommonToLeftAndRight.filterInPlace(candidate =>
+                  !(leftSection.content containsSlice candidate)
+                )
+            }
+
+            assert(survivorsCommonToAllThreeSides.isEmpty)
+            assert(survivorsCommonToBaseAndRight.isEmpty)
+            assert(survivorsCommonToLeftAndRight.isEmpty)
           end if
 
-          verify(rightMatches)
         catch
           case overlappingSections: OverlappingSections =>
             pprint.pprintln(overlappingSections)

@@ -828,10 +828,6 @@ object CodeMotionAnalysis:
             matchesForWindowSize
           )
 
-//        println(
-//          s"Chromosome: $chromosome, matchGroupsInDescendingOrderOfKeys: $matchGroupsInDescendingOrderOfKeys"
-//        )
-
         Phenotype(
           chromosomeSize = chromosome.windowSizesInDescendingOrder.size,
           matchGroupsInDescendingOrderOfKeys
@@ -850,6 +846,8 @@ object CodeMotionAnalysis:
         maximumNumberOfRetries = 10 /*100*/,
         maximumPopulationSize = 10 /*100*/
       )
+
+    println(evolvedPhenotype)
 
     val matchesByTheirSections = evolvedPhenotype.matchesByTheirSections
 
