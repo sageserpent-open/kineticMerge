@@ -2,12 +2,16 @@ package com.sageserpent.kineticmerge.core
 
 import com.google.common.hash.{Hashing, PrimitiveSink}
 import com.sageserpent.americium.Trials.api as trialsApi
+import com.sageserpent.americium.java.CasesLimitStrategy
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.americium.{Trials, TrialsApi}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import org.junit.jupiter.api.*
 import org.rabinfingerprint.polynomial.Polynomial
+
+import java.util.concurrent.TimeUnit
+import scala.concurrent.duration.Duration
 
 class CodeMotionAnalysisTest:
   val minimumSizeFractionTrials: Trials[Double] =
@@ -47,7 +51,9 @@ class CodeMotionAnalysisTest:
     end extension
 
     (sourcesTrials and sourcesTrials and sourcesTrials and minimumSizeFractionTrials)
-      .withLimit(10)
+      .withStrategy(_ =>
+        CasesLimitStrategy.timed(Duration.apply(1, TimeUnit.MINUTES))
+      )
       .dynamicTests(
         (
             base: FakeSources,
@@ -295,7 +301,9 @@ class CodeMotionAnalysisTest:
     testPlans
       .withLimit(200)
       .dynamicTests { testPlan =>
-        pprint.pprintln(testPlan)
+        pprint.pprintln(
+          testPlan -> testPlan.minimumSizeFractionForMotionDetection
+        )
 
         import testPlan.*
 
