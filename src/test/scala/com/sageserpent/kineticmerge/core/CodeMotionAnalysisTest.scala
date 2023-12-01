@@ -126,11 +126,6 @@ class CodeMotionAnalysisTest:
       }
 
       def minimumSizeFractionForMotionDetection: Double =
-        def numberOfElementsCoveredBy(
-            allocations: IndexedSeq[Vector[FakeSources#Element]]*
-        ): Int =
-          allocations.map(_.map(_.size).sum).sum
-
         def minimumNumberOfElementsCoveredBy(
             allocations: IndexedSeq[Vector[FakeSources#Element]]*
         ): Int =
