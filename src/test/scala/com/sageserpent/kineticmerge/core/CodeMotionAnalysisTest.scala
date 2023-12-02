@@ -317,17 +317,14 @@ class CodeMotionAnalysisTest:
             )(irreduciblePolynomial()): @unchecked
           end val
 
-          def matches(sideFilesByPath: Map[Path, File[Element]]) =
-            sideFilesByPath.values
-              .flatMap(_.sections)
-              .collect(Function.unlift(analysis.matchFor))
-
           extension (file: File[Element])
             def contains(section: Section[Element]) =
               file.sections.contains(section)
 
           val baseMatches: Iterable[Match[Section[FakeSources#Element]]] =
-            matches(analysis.base)
+            analysis.base.values
+              .flatMap(_.sections)
+              .collect(Function.unlift(analysis.matchForBaseSection))
 
           if commonToAllThreeSides.nonEmpty || commonToBaseAndLeft.nonEmpty || commonToBaseAndRight.nonEmpty
           then
@@ -385,7 +382,9 @@ class CodeMotionAnalysisTest:
           end if
 
           val leftMatches: Iterable[Match[Section[FakeSources#Element]]] =
-            matches(analysis.left)
+            analysis.left.values
+              .flatMap(_.sections)
+              .collect(Function.unlift(analysis.matchForLeftSection))
 
           if commonToAllThreeSides.nonEmpty || commonToBaseAndLeft.nonEmpty || commonToLeftAndRight.nonEmpty
           then
@@ -442,7 +441,9 @@ class CodeMotionAnalysisTest:
           end if
 
           val rightMatches: Iterable[Match[Section[FakeSources#Element]]] =
-            matches(analysis.right)
+            analysis.right.values
+              .flatMap(_.sections)
+              .collect(Function.unlift(analysis.matchForRightSection))
 
           if commonToAllThreeSides.nonEmpty || commonToBaseAndRight.nonEmpty || commonToLeftAndRight.nonEmpty
           then
