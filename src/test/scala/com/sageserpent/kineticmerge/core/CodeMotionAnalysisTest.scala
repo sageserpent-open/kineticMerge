@@ -369,7 +369,9 @@ class CodeMotionAnalysisTest:
     )
 
     testPlans
-      .withLimit(200)
+      .withStrategy(_ =>
+        CasesLimitStrategy.timed(Duration.apply(10, TimeUnit.MINUTES))
+      )
       .dynamicTests { testPlan =>
         pprint.pprintln(
           testPlan -> testPlan.minimumSizeFractionForMotionDetection
