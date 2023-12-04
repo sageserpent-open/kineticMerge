@@ -92,7 +92,10 @@ class CodeMotionAnalysisTest:
         uniqueToRight: IndexedSeq[Vector[FakeSources#Element]],
         baseSources: FakeSources,
         leftSources: FakeSources,
-        rightSources: FakeSources
+        rightSources: FakeSources,
+        adjacentCommonSequencesArePossibleOnBase: Boolean,
+        adjacentCommonSequencesArePossibleOnLeft: Boolean,
+        adjacentCommonSequencesArePossibleOnRight: Boolean
     ):
       commonToAllThreeSides.foreach { sectionContent =>
         require(baseSources.contains(sectionContent))
@@ -191,9 +194,9 @@ class CodeMotionAnalysisTest:
                   Vector[FakeSources#Element]
                 ],
                 sideUniqueSequences: IndexedSeq[Vector[FakeSources#Element]]
-            ): Trials[FakeSources] =
+            ): Trials[(FakeSources, Boolean)] =
               val sequenceMixtures
-                  : Trials[IndexedSeq[Vector[FakeSources#Element]]] =
+                  : Trials[(IndexedSeq[Vector[FakeSources#Element]], Boolean)] =
                 if commonToAllThreeSides.nonEmpty || commonToOnePairOfSides.nonEmpty || commonToTheOtherPairOfSides.nonEmpty
                 then
                   // Mix up the three-side and two-side matches....
@@ -211,72 +214,98 @@ class CodeMotionAnalysisTest:
                       .flatMap(sideCommonSequencesRearrangement =>
                         if sideCommonSequencesRearrangement.size >= sideUniqueSequences.size
                         then
-                          trialsApi.nonEmptyPartitioning(
-                            sideCommonSequencesRearrangement,
-                            numberOfPartitions = sideUniqueSequences.size
-                          )
+                          val adjacentCommonSequencesArePossible =
+                            // Pigeonhole principle: we have too many common
+                            // sequences, so some must share the same slot
+                            // that will be paired with a unique sequence.
+                            sideCommonSequencesRearrangement.size > sideUniqueSequences.size
+                          trialsApi
+                            .nonEmptyPartitioning(
+                              sideCommonSequencesRearrangement,
+                              numberOfPartitions = sideUniqueSequences.size
+                            )
+                            .map(commonSequencesInChunks =>
+                              commonSequencesInChunks
+                                .zip(sideUniqueSequences)
+                                .flatMap {
+                                  case (
+                                        chunkOfCommonSequences,
+                                        uniqueSequence
+                                      ) =>
+                                    chunkOfCommonSequences :+ uniqueSequence
+                                }
+                                .toIndexedSeq -> adjacentCommonSequencesArePossible
+                            )
                         else trialsApi.impossible
+                        end if
                       )
-                      .map(commonSequencesInChunks =>
-                        commonSequencesInChunks
-                          .zip(sideUniqueSequences)
-                          .flatMap {
-                            case (chunkOfCommonSequences, uniqueSequence) =>
-                              chunkOfCommonSequences :+ uniqueSequence
-                          }
-                          .toIndexedSeq
-                      )
-                  else sideCommonSequencesRearrangements
+                  else
+                    // We don't have any unique sequences to put between the
+                    // common sequences, so the latter may be adjacent.
+                    sideCommonSequencesRearrangements.map(_ -> true)
                   end if
-                else trialsApi.only(sideUniqueSequences)
+                else
+                  // We don't have any common sequences at all, so none are
+                  // adjacent.
+                  trialsApi.only(sideUniqueSequences -> false)
 
               // ... finally, allocate the sequences in groups to paths.
 
               sequenceMixtures
-                .flatMap(sequenceMixture =>
-                  if sequenceMixture.nonEmpty then
-                    trialsApi
-                      .integers(1, sequenceMixture.size)
-                      .flatMap(numberOfPaths =>
-                        trialsApi.nonEmptyPartitioning(
-                          sequenceMixture,
-                          numberOfPartitions = numberOfPaths
-                        )
+                .flatMap {
+                  case (sequenceMixture, adjacentCommonSequencesArePossible) =>
+                    val pathContentAllocations =
+                      if sequenceMixture.nonEmpty then
+                        trialsApi
+                          .integers(1, sequenceMixture.size)
+                          .flatMap(numberOfPaths =>
+                            trialsApi.nonEmptyPartitioning(
+                              sequenceMixture,
+                              numberOfPartitions = numberOfPaths
+                            )
+                          )
+                      else
+                        // Sometimes we generate an empty side with no files.
+                        trialsApi.only(Seq.empty)
+
+                    pathContentAllocations
+                      .map(_.zipWithIndex)
+                      .map(_.map { case (pathContentAllocation, path) =>
+                        val fileContents = pathContentAllocation.flatten
+                        path -> fileContents
+                      }.toMap)
+                      .map(contentsByPath =>
+                        new FakeSources(contentsByPath)
+                          with SourcesContracts[
+                            Path,
+                            Element
+                          ] -> adjacentCommonSequencesArePossible
                       )
-                  else
-                    // Sometimes we generate an empty side with no files.
-                    trialsApi.only(Seq.empty)
-                )
-                .map(_.zipWithIndex)
-                .map(_.map { case (sequences, path) =>
-                  val fileContents = sequences.flatten
-                  path -> fileContents
-                }.toMap)
-                .map(contentsByPath =>
-                  new FakeSources(contentsByPath)
-                    with SourcesContracts[Path, Element]
-                )
+                }
             end sourcesForASide
 
             for
-              baseSources <- sourcesForASide(
-                commonToAllThreeSides,
-                commonToBaseAndLeft,
-                commonToBaseAndRight,
-                uniqueToBase
-              )
-              leftSources <- sourcesForASide(
-                commonToAllThreeSides,
-                commonToBaseAndLeft,
-                commonToLeftAndRight,
-                uniqueToLeft
-              )
-              rightSources <- sourcesForASide(
-                commonToAllThreeSides,
-                commonToBaseAndRight,
-                commonToLeftAndRight,
-                uniqueToRight
-              )
+              (baseSources, adjacentCommonSequencesArePossibleOnBase) <-
+                sourcesForASide(
+                  commonToAllThreeSides,
+                  commonToBaseAndLeft,
+                  commonToBaseAndRight,
+                  uniqueToBase
+                )
+              (leftSources, adjacentCommonSequencesArePossibleOnLeft) <-
+                sourcesForASide(
+                  commonToAllThreeSides,
+                  commonToBaseAndLeft,
+                  commonToLeftAndRight,
+                  uniqueToLeft
+                )
+              (rightSources, adjacentCommonSequencesArePossibleOnRight) <-
+                sourcesForASide(
+                  commonToAllThreeSides,
+                  commonToBaseAndRight,
+                  commonToLeftAndRight,
+                  uniqueToRight
+                )
             yield TestPlan(
               commonToAllThreeSides,
               commonToBaseAndLeft,
@@ -287,7 +316,10 @@ class CodeMotionAnalysisTest:
               uniqueToRight,
               baseSources,
               leftSources,
-              rightSources
+              rightSources,
+              adjacentCommonSequencesArePossibleOnBase,
+              adjacentCommonSequencesArePossibleOnLeft,
+              adjacentCommonSequencesArePossibleOnRight
             )
             end for
         }
@@ -326,6 +358,13 @@ class CodeMotionAnalysisTest:
               .flatMap(_.sections)
               .collect(Function.unlift(analysis.matchForBaseSection))
 
+          val leftAndRightPairCouldSubsumeAnAllSidesMatch =
+            adjacentCommonSequencesArePossibleOnLeft && adjacentCommonSequencesArePossibleOnRight
+          val baseAndLeftPairCouldSubsumeAnAllSidesMatch =
+            adjacentCommonSequencesArePossibleOnBase && adjacentCommonSequencesArePossibleOnLeft
+          val baseAndRightPairCouldSubsumeAnAllSidesMatch =
+            adjacentCommonSequencesArePossibleOnBase && adjacentCommonSequencesArePossibleOnRight
+
           if commonToAllThreeSides.nonEmpty || commonToBaseAndLeft.nonEmpty || commonToBaseAndRight.nonEmpty
           then
             assert(baseMatches.nonEmpty)
@@ -362,6 +401,12 @@ class CodeMotionAnalysisTest:
                   !(baseSection.content containsSlice candidate)
                 )
 
+                if baseAndLeftPairCouldSubsumeAnAllSidesMatch then
+                  survivorsCommonToAllThreeSides.filterInPlace(candidate =>
+                    !(baseSection.content containsSlice candidate)
+                  )
+                end if
+
               case Match.BaseAndRight(baseSection, rightSection) =>
                 assert(analysis.base.values.exists(_ contains baseSection))
                 assert(analysis.right.values.exists(_ contains rightSection))
@@ -372,10 +417,18 @@ class CodeMotionAnalysisTest:
                   !(baseSection.content containsSlice candidate)
                 )
 
+                if baseAndRightPairCouldSubsumeAnAllSidesMatch then
+                  survivorsCommonToAllThreeSides.filterInPlace(candidate =>
+                    !(baseSection.content containsSlice candidate)
+                  )
+                end if
+
               case Match.LeftAndRight(leftSection, rightSection) =>
             }
 
-            assert(survivorsCommonToAllThreeSides.isEmpty)
+            if !leftAndRightPairCouldSubsumeAnAllSidesMatch then
+              assert(survivorsCommonToAllThreeSides.isEmpty)
+            end if
             assert(survivorsCommonToBaseAndLeft.isEmpty)
             assert(survivorsCommonToBaseAndRight.isEmpty)
 
@@ -409,7 +462,7 @@ class CodeMotionAnalysisTest:
                 assert(rightSection.content == baseSection.content)
 
                 survivorsCommonToAllThreeSides.filterInPlace(candidate =>
-                  !(baseSection.content containsSlice candidate)
+                  !(leftSection.content containsSlice candidate)
                 )
 
               case Match.BaseAndLeft(baseSection, leftSection) =>
@@ -419,8 +472,14 @@ class CodeMotionAnalysisTest:
                 assert(leftSection.content == baseSection.content)
 
                 survivorsCommonToBaseAndLeft.filterInPlace(candidate =>
-                  !(baseSection.content containsSlice candidate)
+                  !(leftSection.content containsSlice candidate)
                 )
+
+                if baseAndLeftPairCouldSubsumeAnAllSidesMatch then
+                  survivorsCommonToAllThreeSides.filterInPlace(candidate =>
+                    !(leftSection.content containsSlice candidate)
+                  )
+                end if
 
               case Match.BaseAndRight(baseSection, rightSection) =>
 
@@ -433,9 +492,17 @@ class CodeMotionAnalysisTest:
                 survivorsCommonToLeftAndRight.filterInPlace(candidate =>
                   !(leftSection.content containsSlice candidate)
                 )
+
+                if leftAndRightPairCouldSubsumeAnAllSidesMatch then
+                  survivorsCommonToAllThreeSides.filterInPlace(candidate =>
+                    !(leftSection.content containsSlice candidate)
+                  )
+                end if
             }
 
-            assert(survivorsCommonToAllThreeSides.isEmpty)
+            if !baseAndRightPairCouldSubsumeAnAllSidesMatch then
+              assert(survivorsCommonToAllThreeSides.isEmpty)
+            end if
             assert(survivorsCommonToBaseAndLeft.isEmpty)
             assert(survivorsCommonToLeftAndRight.isEmpty)
           end if
@@ -468,7 +535,7 @@ class CodeMotionAnalysisTest:
                 assert(rightSection.content == baseSection.content)
 
                 survivorsCommonToAllThreeSides.filterInPlace(candidate =>
-                  !(baseSection.content containsSlice candidate)
+                  !(rightSection.content containsSlice candidate)
                 )
 
               case Match.BaseAndLeft(baseSection, leftSection) =>
@@ -480,8 +547,14 @@ class CodeMotionAnalysisTest:
                 assert(rightSection.content == baseSection.content)
 
                 survivorsCommonToBaseAndRight.filterInPlace(candidate =>
-                  !(baseSection.content containsSlice candidate)
+                  !(rightSection.content containsSlice candidate)
                 )
+
+                if baseAndRightPairCouldSubsumeAnAllSidesMatch then
+                  survivorsCommonToAllThreeSides.filterInPlace(candidate =>
+                    !(rightSection.content containsSlice candidate)
+                  )
+                end if
 
               case Match.LeftAndRight(leftSection, rightSection) =>
                 assert(analysis.left.values.exists(_ contains leftSection))
@@ -490,11 +563,19 @@ class CodeMotionAnalysisTest:
                 assert(rightSection.content == leftSection.content)
 
                 survivorsCommonToLeftAndRight.filterInPlace(candidate =>
-                  !(leftSection.content containsSlice candidate)
+                  !(rightSection.content containsSlice candidate)
                 )
+
+                if leftAndRightPairCouldSubsumeAnAllSidesMatch then
+                  survivorsCommonToAllThreeSides.filterInPlace(candidate =>
+                    !(rightSection.content containsSlice candidate)
+                  )
+                end if
             }
 
-            assert(survivorsCommonToAllThreeSides.isEmpty)
+            if !baseAndLeftPairCouldSubsumeAnAllSidesMatch then
+              assert(survivorsCommonToAllThreeSides.isEmpty)
+            end if
             assert(survivorsCommonToBaseAndRight.isEmpty)
             assert(survivorsCommonToLeftAndRight.isEmpty)
           end if
