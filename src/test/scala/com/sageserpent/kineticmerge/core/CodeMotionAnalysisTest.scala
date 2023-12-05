@@ -133,9 +133,9 @@ class CodeMotionAnalysisTest:
             allocations: IndexedSeq[Vector[FakeSources#Element]]*
         ): Int =
           allocations
-            .map(_.map(_.size).minOption.getOrElse(1))
+            .collect(Function.unlift(_.map(_.size).minOption))
             .minOption
-            .getOrElse(1)
+            .getOrElse(0)
 
         val minimumMatchableSize = minimumNumberOfElementsCoveredBy(
           commonToAllThreeSides,
@@ -395,7 +395,7 @@ class CodeMotionAnalysisTest:
           end val
 
           extension (file: File[Element])
-            def contains(section: Section[Element]) =
+            private def contains(section: Section[Element]) =
               file.sections.contains(section)
 
           val baseMatches: Iterable[Match[Section[FakeSources#Element]]] =
@@ -780,7 +780,7 @@ object CodeMotionAnalysisTest:
       val sectionsByPath = mandatorySections.groupBy(pathFor)
 
       contentsByPath.map { case (path, content) =>
-        val pertinentSections = sectionsByPath.get(path).getOrElse(Set.empty)
+        val pertinentSections = sectionsByPath.getOrElse(path, Set.empty)
 
         path -> File(
           if pertinentSections.nonEmpty then
