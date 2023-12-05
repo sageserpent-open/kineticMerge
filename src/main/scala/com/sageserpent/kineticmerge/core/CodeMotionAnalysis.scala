@@ -569,7 +569,7 @@ object CodeMotionAnalysis:
                     sectionsSeenAcrossSides
                   )
 
-                case (Some(baseHead), Some(leftHead), quinka)
+                case (Some(baseHead), Some(leftHead), _)
                     if baseHead == leftHead =>
                   // Synchronised the fingerprints between the base and left...
                   val matchesForSynchronisedFingerprint
