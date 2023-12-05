@@ -4,6 +4,7 @@ import cats.instances.seq.*
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction}
+import com.sageserpent.americium.RangeOfSlots
 import com.sageserpent.americium.randomEnrichment.*
 import com.sageserpent.kineticmerge.core.genetic.Evolution
 import de.sciss.fingertree.RangedSeq
@@ -101,16 +102,150 @@ object CodeMotionAnalysis:
       )
     ]
 
+    object Chromosome:
+      private val allWindowSizesAreFree =
+        RangeOfSlots.allSlotsAreVacant(validWindowSizes.size)
+
+      def initial: Chromosome = Chromosome(
+        windowSizesInDescendingOrder = TreeSet(
+          minimumWindowSizeAcrossAllFilesOverAllSides
+        )(Ordering[Int].reverse),
+        windowSizeSlots = allWindowSizesAreFree,
+        deletedWindowSizes = TreeSet.empty
+      )
+    end Chromosome
+
     case class Chromosome(
-        windowSizesInDescendingOrder: WindowSizesInDescendingOrder
+        windowSizesInDescendingOrder: WindowSizesInDescendingOrder,
+        windowSizeSlots: RangeOfSlots,
+        deletedWindowSizes: WindowSizesInDescendingOrder
     ):
       require(windowSizesInDescendingOrder.nonEmpty)
+
+      if isPacked then
+        // Only the window sizes in use are tracked.
+        require(deletedWindowSizes.isEmpty)
+      else
+        // We have vacant slots for window sizes that have never been used, and
+        // an additional pool of window sizes that have been used and then
+        // deleted.
+        require(
+          windowSizeSlots.numberOfFilledSlots == windowSizesInDescendingOrder.size + deletedWindowSizes.size
+        )
+      end if
+
+      lazy val unpackForMutation: Chromosome =
+        if isPacked then
+          // Claim slots corresponding to the window sizes in use. There are no
+          // deleted window sizes as we're building freshly unpacked state;
+          // those deleted sizes are reclaimed as vacant slots.
+          this.copy(
+            windowSizeSlots = windowSizesInDescendingOrder.foldLeft(
+              Chromosome.allWindowSizesAreFree
+            ) { (windowSizeSlots, highestUnclaimedWindowSize) =>
+              val (_, withTheHighestWindowSizeClaimed) =
+                // As we work down the sizes, we maintain the invariant that
+                // all the slots leading up to the one corresponding to the
+                // size we want to claim are vacant. So the slot index we
+                // need is just the size's ordinal number, taken zero
+                // relative.
+                windowSizeSlots.fillVacantSlotAtIndex(
+                  highestUnclaimedWindowSize - validWindowSizes.min
+                )
+              withTheHighestWindowSizeClaimed
+            },
+            deletedWindowSizes = TreeSet.empty
+          )
+        else
+          // Leave any deleted window sizes available in the state.
+          this
+
+      def mutate(using random: Random): Chromosome =
+        enum Choice:
+          case Grow
+          case Contract
+          case Replace
+        end Choice
+
+        val choices = Choice.values.filter {
+          case Choice.Replace | Choice.Grow
+              if validWindowSizes.size > windowSizesInDescendingOrder.size =>
+            // NOTE: replacement has to find an *unused* window size to swap in,
+            // so it has to have at least one free window size to proceed.
+            true
+          case Choice.Contract if 1 < windowSizesInDescendingOrder.size =>
+            true
+          case _ => false
+        }
+
+        random.chooseOneOf(choices) match
+          case Choice.Grow =>
+            unpackForMutation.grown
+          case Choice.Contract =>
+            unpackForMutation.contracted
+
+          case Choice.Replace =>
+            unpackForMutation.grown.contracted
+        end match
+      end mutate
 
       windowSizesInDescendingOrder.foreach { size =>
         require(
           validWindowSizes contains size
         )
       }
+
+      private def grown(using random: Random) =
+        val potentialSlotClaim =
+          random.chooseAnyNumberFromZeroToOneLessThan(
+            validWindowSizes.size - windowSizesInDescendingOrder.size
+          )
+
+        val claimASlot =
+          potentialSlotClaim < windowSizeSlots.numberOfVacantSlots
+
+        if claimASlot then
+          val (claimedSlotIndex, windowSizeSlotsWithClaim) =
+            windowSizeSlots.fillVacantSlotAtIndex(potentialSlotClaim)
+
+          val claimedWindowSize = claimedSlotIndex + validWindowSizes.min
+
+          Chromosome(
+            windowSizesInDescendingOrder =
+              windowSizesInDescendingOrder + claimedWindowSize,
+            windowSizeSlots = windowSizeSlotsWithClaim,
+            deletedWindowSizes = deletedWindowSizes
+          )
+        else
+          val reclaimedWindowSize = random.chooseOneOf(deletedWindowSizes)
+
+          Chromosome(
+            windowSizesInDescendingOrder =
+              windowSizesInDescendingOrder + reclaimedWindowSize,
+            windowSizeSlots = windowSizeSlots,
+            deletedWindowSizes = deletedWindowSizes - reclaimedWindowSize
+          )
+        end if
+      end grown
+
+      private def contracted(using random: Random) =
+        val deletedWindowSize =
+          random.chooseOneOf(windowSizesInDescendingOrder)
+
+        Chromosome(
+          windowSizesInDescendingOrder =
+            windowSizesInDescendingOrder - deletedWindowSize,
+          windowSizeSlots = windowSizeSlots: RangeOfSlots,
+          deletedWindowSizes = deletedWindowSizes + deletedWindowSize
+        )
+      end contracted
+
+      def breedWith(another: Chromosome)(using random: Random): Chromosome =
+        // TODO: seriously?
+        if random.nextBoolean() then this else another
+
+      private def isPacked =
+        0 == windowSizeSlots.numberOfFilledSlots
     end Chromosome
 
     case class Phenotype(
@@ -219,65 +354,13 @@ object CodeMotionAnalysis:
 
       override def mutate(chromosome: Chromosome)(using
           random: Random
-      ): Chromosome =
-        val validWindowSizesSnapshot = validWindowSizes
-
-        // May as well prune any window sizes from the original chromosome that
-        // have become invalid.
-        val weededWindowSizesInDescendingOrder =
-          chromosome.windowSizesInDescendingOrder filter validWindowSizesSnapshot.contains
-
-        val contractionIsPossible =
-          1 < weededWindowSizesInDescendingOrder.size
-
-        val expansionIsPossible =
-          validWindowSizesSnapshot.size > weededWindowSizesInDescendingOrder.size
-
-        if expansionIsPossible && (!contractionIsPossible || random
-            .nextBoolean())
-        then
-          Chromosome {
-            val additionalSize =
-              random.chooseOneOf(
-                validWindowSizesSnapshot.filterNot(
-                  weededWindowSizesInDescendingOrder.contains
-                )
-              )
-
-            weededWindowSizesInDescendingOrder + additionalSize
-          }
-        else
-          Chromosome {
-            val victim = random.chooseOneOf(weededWindowSizesInDescendingOrder)
-
-            val contractedSizes = weededWindowSizesInDescendingOrder - victim
-
-            if contractedSizes.isEmpty then
-              // Add the new size on to the empty set to pick up the existing
-              // reverse ordering.
-              contractedSizes + random
-                .chooseOneOf(
-                  validWindowSizesSnapshot.filterNot(
-                    weededWindowSizesInDescendingOrder.contains
-                  )
-                )
-            else contractedSizes
-            end if
-          }
-        end if
-      end mutate
+      ): Chromosome = chromosome.mutate
 
       override def breed(first: Chromosome, second: Chromosome)(using
           random: Random
-      ): Chromosome =
-        // TODO: actually mix up some genetic material!
-        if random.nextBoolean() then first else second
+      ): Chromosome = first.breedWith(second)
 
-      override def initialChromosome: Chromosome = Chromosome(
-        TreeSet(minimumWindowSizeAcrossAllFilesOverAllSides)(
-          Ordering[Int].reverse
-        )
-      )
+      override def initialChromosome: Chromosome = Chromosome.initial
 
       override def phenotype(chromosome: Chromosome): Phenotype =
         phenotypeCache.get(chromosome, phenotype_)
