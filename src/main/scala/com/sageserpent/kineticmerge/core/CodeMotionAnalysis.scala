@@ -196,17 +196,20 @@ object CodeMotionAnalysis:
       }
 
       private def grown(using random: Random) =
-        val potentialSlotClaim =
+        val claimASlot =
           random.chooseAnyNumberFromZeroToOneLessThan(
             validWindowSizes.size - windowSizesInDescendingOrder.size
-          )
-
-        val claimASlot =
-          potentialSlotClaim < windowSizeSlots.numberOfVacantSlots
+          ) < windowSizeSlots.numberOfVacantSlots
 
         if claimASlot then
-          val (claimedSlotIndex, windowSizeSlotsWithClaim) =
-            windowSizeSlots.fillVacantSlotAtIndex(potentialSlotClaim)
+          @tailrec
+          def claim(potentialSlotClaim: Int): (Int, RangeOfSlots) =
+            if 1 + potentialSlotClaim == windowSizeSlots.numberOfVacantSlots || random
+                .nextBoolean()
+            then windowSizeSlots.fillVacantSlotAtIndex(potentialSlotClaim)
+            else claim(1 + potentialSlotClaim)
+
+          val (claimedSlotIndex, windowSizeSlotsWithClaim) = claim(0)
 
           val claimedWindowSize = claimedSlotIndex + validWindowSizes.min
 
