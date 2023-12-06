@@ -17,6 +17,22 @@ import scala.collection.immutable.TreeSet
 import scala.collection.{SortedMultiDict, mutable}
 import scala.util.Random
 
+trait CodeMotionAnalysis[Path, Element]:
+  def base: Map[Path, File[Element]]
+  def left: Map[Path, File[Element]]
+  def right: Map[Path, File[Element]]
+
+  def matchForBaseSection(
+      section: Section[Element]
+  ): Option[Match[Section[Element]]]
+  def matchForLeftSection(
+      section: Section[Element]
+  ): Option[Match[Section[Element]]]
+  def matchForRightSection(
+      section: Section[Element]
+  ): Option[Match[Section[Element]]]
+end CodeMotionAnalysis
+
 object CodeMotionAnalysis:
   /** Analyse code motion from the sources of {@code base} to both {@code left}
     * and {@code right}, breaking them into [[File]] and thence [[Section]]
@@ -106,19 +122,19 @@ object CodeMotionAnalysis:
       private val allWindowSizesAreFree =
         RangeOfSlots.allSlotsAreVacant(validWindowSizes.size)
 
+      private val descendingWindowSizeOrdering = Ordering[Int].reverse
+
       def initial: Chromosome = Chromosome(
         windowSizesInDescendingOrder = TreeSet(
           minimumWindowSizeAcrossAllFilesOverAllSides
-        )(Ordering[Int].reverse),
-        windowSizeSlots = allWindowSizesAreFree,
-        deletedWindowSizes = TreeSet.empty
+        )(descendingWindowSizeOrdering)
       )
     end Chromosome
 
     case class Chromosome(
         windowSizesInDescendingOrder: WindowSizesInDescendingOrder,
-        windowSizeSlots: RangeOfSlots,
-        deletedWindowSizes: WindowSizesInDescendingOrder
+        windowSizeSlots: RangeOfSlots = allWindowSizesAreFree,
+        deletedWindowSizes: WindowSizesInDescendingOrder = TreeSet.empty(descendingWindowSizeOrdering)
     ):
       require(windowSizesInDescendingOrder.nonEmpty)
 
@@ -154,7 +170,7 @@ object CodeMotionAnalysis:
                 )
               withTheHighestWindowSizeClaimed
             },
-            deletedWindowSizes = TreeSet.empty
+            deletedWindowSizes = TreeSet.empty(Chromosome.descendingWindowSizeOrdering)
           )
         else
           // Leave any deleted window sizes available in the state.
@@ -185,6 +201,9 @@ object CodeMotionAnalysis:
             unpackForMutation.contracted
 
           case Choice.Replace =>
+            // TODO: contraction can just remove the window size that was added
+            // to grow the chromosome, but for now let's live with that as a low
+            // probability occurrence.
             unpackForMutation.grown.contracted
         end match
       end mutate
@@ -209,7 +228,8 @@ object CodeMotionAnalysis:
             then windowSizeSlots.fillVacantSlotAtIndex(potentialSlotClaim)
             else claim(1 + potentialSlotClaim)
 
-          val (claimedSlotIndex, windowSizeSlotsWithClaim) = claim(0)
+          val (claimedSlotIndex, windowSizeSlotsWithClaim) =
+            claim(potentialSlotClaim = 0)
 
           val claimedWindowSize = claimedSlotIndex + validWindowSizes.min
 
@@ -244,8 +264,193 @@ object CodeMotionAnalysis:
       end contracted
 
       def breedWith(another: Chromosome)(using random: Random): Chromosome =
-        // TODO: seriously?
-        if random.nextBoolean() then this else another
+        // Plan: walk down the window sizes from both chromosomes, looking for
+        // synchronization points where the sizes agree. Between these
+        // synchronization points there will be runs of window sizes that belong
+        // to one chromosome or the other; these will either lead directly to
+        // the next synchronization point or will swap chromosomes. Where there
+        // is a swap, choose either the preceding run or the following one.
+        // Where there is just one run leading to a synchronization point,
+        // choose to either include it or omit it. Synchronized window sizes go
+        // through unconditionally, thus making breeding of identical
+        // chromosomes stable.
+
+        enum PickingState:
+          case PickingFirst
+          case SkippingFirst
+          case PickingSecond
+          case SkippingSecond
+          case Synchronized
+        end PickingState
+
+        import PickingState.*
+
+        @tailrec
+        def pickWindowSizes(
+            firstWindowSizesDescending: Iterable[Int],
+            secondWindowSizesDescending: Iterable[Int]
+        )(
+            bredWindowSizes: WindowSizesInDescendingOrder,
+            pickingState: PickingState,
+            mandatoryState: Boolean
+        ): Chromosome =
+          (
+            firstWindowSizesDescending.headOption,
+            secondWindowSizesDescending.headOption
+          ) match
+            case (Some(firstWindowSize), Some(secondWindowSize)) =>
+              if firstWindowSize > secondWindowSize then
+                // The first chromosome leads...
+                pickingState match
+                  case PickingFirst =>
+                    pickWindowSizes(
+                      firstWindowSizesDescending.tail,
+                      secondWindowSizesDescending
+                    )(
+                      bredWindowSizes + firstWindowSize,
+                      pickingState = PickingFirst,
+                      mandatoryState = mandatoryState
+                    )
+                  case SkippingFirst =>
+                    pickWindowSizes(
+                      firstWindowSizesDescending.tail,
+                      secondWindowSizesDescending
+                    )(
+                      bredWindowSizes,
+                      pickingState = SkippingFirst,
+                      mandatoryState = mandatoryState
+                    )
+                  case PickingSecond if !mandatoryState =>
+                    pickWindowSizes(
+                      firstWindowSizesDescending.tail,
+                      secondWindowSizesDescending
+                    )(
+                      bredWindowSizes,
+                      pickingState = SkippingFirst,
+                      mandatoryState = true
+                    )
+                  case SkippingSecond if !mandatoryState =>
+                    pickWindowSizes(
+                      firstWindowSizesDescending.tail,
+                      secondWindowSizesDescending
+                    )(
+                      bredWindowSizes + firstWindowSize,
+                      pickingState = PickingFirst,
+                      mandatoryState = true
+                    )
+                  case Synchronized | PickingSecond | SkippingSecond =>
+                    if random.nextBoolean() then
+                      pickWindowSizes(
+                        firstWindowSizesDescending.tail,
+                        secondWindowSizesDescending
+                      )(
+                        bredWindowSizes + firstWindowSize,
+                        pickingState = PickingFirst,
+                        mandatoryState = false
+                      )
+                    else
+                      pickWindowSizes(
+                        firstWindowSizesDescending.tail,
+                        secondWindowSizesDescending
+                      )(
+                        bredWindowSizes,
+                        pickingState = SkippingFirst,
+                        mandatoryState = false
+                      )
+              else if firstWindowSize < secondWindowSize then
+                // The second chromosome leads...
+                pickingState match
+                  case PickingSecond =>
+                    pickWindowSizes(
+                      firstWindowSizesDescending,
+                      secondWindowSizesDescending.tail
+                    )(
+                      bredWindowSizes + secondWindowSize,
+                      pickingState = PickingSecond,
+                      mandatoryState = mandatoryState
+                    )
+                  case SkippingSecond =>
+                    pickWindowSizes(
+                      firstWindowSizesDescending,
+                      secondWindowSizesDescending.tail
+                    )(
+                      bredWindowSizes,
+                      pickingState = SkippingSecond,
+                      mandatoryState = mandatoryState
+                    )
+                  case PickingFirst if !mandatoryState =>
+                    pickWindowSizes(
+                      firstWindowSizesDescending,
+                      secondWindowSizesDescending.tail
+                    )(
+                      bredWindowSizes,
+                      pickingState = SkippingSecond,
+                      mandatoryState = true
+                    )
+                  case SkippingFirst if !mandatoryState =>
+                    pickWindowSizes(
+                      firstWindowSizesDescending,
+                      secondWindowSizesDescending.tail
+                    )(
+                      bredWindowSizes + firstWindowSize,
+                      pickingState = PickingSecond,
+                      mandatoryState = true
+                    )
+                  case Synchronized | PickingFirst | SkippingFirst =>
+                    if random.nextBoolean() then
+                      pickWindowSizes(
+                        firstWindowSizesDescending,
+                        secondWindowSizesDescending.tail
+                      )(
+                        bredWindowSizes + secondWindowSize,
+                        pickingState = PickingSecond,
+                        mandatoryState = false
+                      )
+                    else
+                      pickWindowSizes(
+                        firstWindowSizesDescending,
+                        secondWindowSizesDescending.tail
+                      )(
+                        bredWindowSizes,
+                        pickingState = SkippingSecond,
+                        mandatoryState = false
+                      )
+              else
+                // Synchronized the two chromosomes...
+                pickWindowSizes(
+                  firstWindowSizesDescending.tail,
+                  secondWindowSizesDescending.tail
+                )(
+                  bredWindowSizes = bredWindowSizes + firstWindowSize,
+                  pickingState = Synchronized,
+                  mandatoryState = false
+                )
+            case (Some(_), None) =>
+              Chromosome(windowSizesInDescendingOrder =
+                if bredWindowSizes.isEmpty || random.nextBoolean() then
+                  bredWindowSizes ++ firstWindowSizesDescending
+                else bredWindowSizes
+              )
+            case (None, Some(_)) =>
+              Chromosome(windowSizesInDescendingOrder =
+                if bredWindowSizes.isEmpty || random.nextBoolean() then
+                  bredWindowSizes ++ secondWindowSizesDescending
+                else bredWindowSizes
+              )
+            case (None, None) =>
+              Chromosome(windowSizesInDescendingOrder = bredWindowSizes)
+          end match
+        end pickWindowSizes
+
+        pickWindowSizes(
+          this.windowSizesInDescendingOrder,
+          another.windowSizesInDescendingOrder
+        )(
+          bredWindowSizes = TreeSet.empty(Chromosome.descendingWindowSizeOrdering),
+          pickingState = Synchronized,
+          mandatoryState = false
+        )
+      end breedWith
 
       private def isPacked =
         0 == windowSizeSlots.numberOfFilledSlots
@@ -349,7 +554,7 @@ object CodeMotionAnalysis:
       // TODO: review this one - a) it does not seem to add much of a
       // performance benefit because the previous fingerprinting cache cuts out
       // a much larger overhead and b) if we're going to use this we should
-      // probably lambda-lift the cache population functions too conform to the
+      // probably lambda-lift the cache population functions to conform to the
       // caching API's style.
       private val fingerprintSectionsCache
           : Cache[Int, FingerprintSectionsAcrossSides] =
@@ -1000,20 +1205,4 @@ object CodeMotionAnalysis:
 
   // TODO - what happened?
   case object AmbiguousMatch
-end CodeMotionAnalysis
-
-trait CodeMotionAnalysis[Path, Element]:
-  def base: Map[Path, File[Element]]
-  def left: Map[Path, File[Element]]
-  def right: Map[Path, File[Element]]
-
-  def matchForBaseSection(
-      section: Section[Element]
-  ): Option[Match[Section[Element]]]
-  def matchForLeftSection(
-      section: Section[Element]
-  ): Option[Match[Section[Element]]]
-  def matchForRightSection(
-      section: Section[Element]
-  ): Option[Match[Section[Element]]]
 end CodeMotionAnalysis
