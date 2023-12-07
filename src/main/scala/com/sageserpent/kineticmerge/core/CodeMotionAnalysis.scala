@@ -94,10 +94,17 @@ object CodeMotionAnalysis:
 
     val minimumFileSizeAcrossAllFilesOverAllSides = fileSizes.min
 
+    // This is the minimum window size that would be allowed in *some* file
+    // across the sources.
     val minimumWindowSizeAcrossAllFilesOverAllSides =
       1 max (minimumFileSizeAcrossAllFilesOverAllSides * minimumSizeFractionForMotionDetection).ceil.toInt
 
     val maximumFileSizeAcrossAllFilesOverAllSides = fileSizes.max
+
+    // This is the minimum window size that would be allowed in *all* files
+    // across the sources.
+    val minimumSureFireWindowSizeAcrossAllFilesOverAllSides =
+      1 max (maximumFileSizeAcrossAllFilesOverAllSides * minimumSizeFractionForMotionDetection).ceil.toInt
 
     val validWindowSizes =
       minimumWindowSizeAcrossAllFilesOverAllSides to maximumFileSizeAcrossAllFilesOverAllSides
@@ -126,6 +133,13 @@ object CodeMotionAnalysis:
 
       def initial: Chromosome = Chromosome(
         windowSizesInDescendingOrder = TreeSet(
+          // Need the sure-fire size to make sure that larger matches stand a
+          // chance of being partially matched at a smaller size, if the desired
+          // match spans files of quite different sizes. Otherwise a potential
+          // large match won't be partially matched with the absolute minimum
+          // window size because that won't make the grade in the larger files
+          // participating in the match.
+          minimumSureFireWindowSizeAcrossAllFilesOverAllSides,
           minimumWindowSizeAcrossAllFilesOverAllSides
         )(descendingWindowSizeOrdering)
       )
@@ -227,9 +241,11 @@ object CodeMotionAnalysis:
       }
 
       private def grown(using random: Random) =
+        val numberOfFreeWindowSizes = validWindowSizes.size - windowSizesInDescendingOrder.size
+
         val claimASlot =
           random.chooseAnyNumberFromZeroToOneLessThan(
-            validWindowSizes.size - windowSizesInDescendingOrder.size
+            numberOfFreeWindowSizes
           ) < windowSizeSlots.numberOfVacantSlots
 
         if claimASlot then
@@ -1156,6 +1172,8 @@ object CodeMotionAnalysis:
           )(
             matchesForWindowSize
           )
+
+        println(s"Chromosome: ${chromosome.windowSizesInDescendingOrder}, matches: $matchGroupsInDescendingOrderOfKeys")
 
         Phenotype(
           chromosomeSize = chromosome.windowSizesInDescendingOrder.size,
