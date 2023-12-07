@@ -155,7 +155,7 @@ class CodeMotionAnalysisTest:
     // each other ...
     val sequences =
       trialsApi
-        .integers(1, 10)
+        .integers(1, 100)
         .flatMap(sequenceLength =>
           trialsApi
             .choose(alphabet)
@@ -370,7 +370,7 @@ class CodeMotionAnalysisTest:
 
     testPlans
       .withStrategy(_ =>
-        CasesLimitStrategy.timed(Duration.apply(10, TimeUnit.MINUTES))
+        CasesLimitStrategy.timed(Duration.apply(20, TimeUnit.MINUTES))
       )
       .dynamicTests { testPlan =>
         pprint.pprintln(
