@@ -132,9 +132,13 @@ object CodeMotionAnalysis:
     end Chromosome
 
     case class Chromosome(
+        // NOTE: only the window sizes determine equality, the rest is baggage
+        // used to allocate new sizes that don't conflict with sizes already in
+        // use.
         windowSizesInDescendingOrder: WindowSizesInDescendingOrder,
         windowSizeSlots: RangeOfSlots = allWindowSizesAreFree,
-        deletedWindowSizes: WindowSizesInDescendingOrder = TreeSet.empty(descendingWindowSizeOrdering)
+        deletedWindowSizes: WindowSizesInDescendingOrder =
+          TreeSet.empty(descendingWindowSizeOrdering)
     ):
       require(windowSizesInDescendingOrder.nonEmpty)
 
@@ -170,11 +174,19 @@ object CodeMotionAnalysis:
                 )
               withTheHighestWindowSizeClaimed
             },
-            deletedWindowSizes = TreeSet.empty(Chromosome.descendingWindowSizeOrdering)
+            deletedWindowSizes =
+              TreeSet.empty(Chromosome.descendingWindowSizeOrdering)
           )
         else
           // Leave any deleted window sizes available in the state.
           this
+
+      override def equals(another: Any): Boolean = another match
+        case another: Chromosome =>
+          this.windowSizesInDescendingOrder == another.windowSizesInDescendingOrder
+        case _ => false
+
+      override def hashCode(): Int = windowSizesInDescendingOrder.hashCode()
 
       def mutate(using random: Random): Chromosome =
         enum Choice:
@@ -258,7 +270,7 @@ object CodeMotionAnalysis:
         Chromosome(
           windowSizesInDescendingOrder =
             windowSizesInDescendingOrder - deletedWindowSize,
-          windowSizeSlots = windowSizeSlots: RangeOfSlots,
+          windowSizeSlots = windowSizeSlots,
           deletedWindowSizes = deletedWindowSizes + deletedWindowSize
         )
       end contracted
@@ -392,7 +404,7 @@ object CodeMotionAnalysis:
                       firstWindowSizesDescending,
                       secondWindowSizesDescending.tail
                     )(
-                      bredWindowSizes + firstWindowSize,
+                      bredWindowSizes + secondWindowSize,
                       pickingState = PickingSecond,
                       mandatoryState = true
                     )
@@ -438,6 +450,7 @@ object CodeMotionAnalysis:
                 else bredWindowSizes
               )
             case (None, None) =>
+              assume(bredWindowSizes.nonEmpty)
               Chromosome(windowSizesInDescendingOrder = bredWindowSizes)
           end match
         end pickWindowSizes
@@ -446,7 +459,8 @@ object CodeMotionAnalysis:
           this.windowSizesInDescendingOrder,
           another.windowSizesInDescendingOrder
         )(
-          bredWindowSizes = TreeSet.empty(Chromosome.descendingWindowSizeOrdering),
+          bredWindowSizes =
+            TreeSet.empty(Chromosome.descendingWindowSizeOrdering),
           pickingState = Synchronized,
           mandatoryState = false
         )
