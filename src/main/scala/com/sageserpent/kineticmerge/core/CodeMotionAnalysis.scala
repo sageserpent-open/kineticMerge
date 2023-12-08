@@ -189,15 +189,18 @@ object CodeMotionAnalysis:
       import Chromosome.*
 
       require(windowSizesInDescendingOrder.nonEmpty)
-      require(
-        windowSizesInDescendingOrder.intersect(deletedWindowSizes).isEmpty
-      )
 
-      // We have vacant slots for window sizes that have never been used, and an
-      // additional pool of window sizes that have been used and then deleted.
-      require(
-        windowSizeSlots.numberOfFilledSlots == windowSizesInDescendingOrder.size + deletedWindowSizes.size
-      )
+      {
+        // We have vacant slots for window sizes that have never been used and
+        // an additional pool of window sizes that have been used and then
+        // deleted.
+        require(
+          windowSizesInDescendingOrder.intersect(deletedWindowSizes).isEmpty
+        )
+        require(
+          windowSizeSlots.numberOfFilledSlots == windowSizesInDescendingOrder.size + deletedWindowSizes.size
+        )
+      }
 
       override def equals(another: Any): Boolean = another match
         case another: Chromosome =>
