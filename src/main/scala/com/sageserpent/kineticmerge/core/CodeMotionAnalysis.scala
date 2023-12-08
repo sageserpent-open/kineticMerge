@@ -141,8 +141,7 @@ object CodeMotionAnalysis:
           // large match won't be partially matched with the absolute minimum
           // window size because that won't make the grade in the larger files
           // participating in the match.
-          minimumSureFireWindowSizeAcrossAllFilesOverAllSides,
-          minimumWindowSizeAcrossAllFilesOverAllSides
+          (minimumWindowSizeAcrossAllFilesOverAllSides to minimumSureFireWindowSizeAcrossAllFilesOverAllSides).reverse*
         )(descendingWindowSizeOrdering)
 
         Chromosome(
@@ -154,6 +153,8 @@ object CodeMotionAnalysis:
         )
       end initial
       extension (windowSizeSlots: RangeOfSlots)
+        // NOTE: careful with this helper - because of its recursion invariant
+        // it shouldn't be folded into a chain of calls.
         private def claimSlotsOnBehalfOf(
             windowSizesInDecreasingOrder: WindowSizesInDescendingOrder
         ) =
@@ -180,21 +181,22 @@ object CodeMotionAnalysis:
         windowSizeSlots: RangeOfSlots,
         deletedWindowSizes: WindowSizesInDescendingOrder = noWindowSizes
     ):
+      println(
+        s"Constructing: $windowSizesInDescendingOrder, $deletedWindowSizes"
+      )
+
       import Chromosome.*
 
       require(windowSizesInDescendingOrder.nonEmpty)
+      require(
+        windowSizesInDescendingOrder.intersect(deletedWindowSizes).isEmpty
+      )
 
-      if isPacked then
-        // Only the window sizes in use are tracked.
-        require(deletedWindowSizes.isEmpty)
-      else
-        // We have vacant slots for window sizes that have never been used, and
-        // an additional pool of window sizes that have been used and then
-        // deleted.
-        require(
-          windowSizeSlots.numberOfFilledSlots == windowSizesInDescendingOrder.size + deletedWindowSizes.size
-        )
-      end if
+      // We have vacant slots for window sizes that have never been used, and an
+      // additional pool of window sizes that have been used and then deleted.
+      require(
+        windowSizeSlots.numberOfFilledSlots == windowSizesInDescendingOrder.size + deletedWindowSizes.size
+      )
 
       override def equals(another: Any): Boolean = another match
         case another: Chromosome =>
@@ -482,14 +484,15 @@ object CodeMotionAnalysis:
             .removedAll(bredWindowSizes)
 
         val windowSizeSlots = allWindowSizesAreFree
-          .claimSlotsOnBehalfOf(bredWindowSizes)
-          .claimSlotsOnBehalfOf(deletedWindowSizes)
+          // NOTE: don't change this into two successive calls of
+          // `claimSlotsOnBehalfOf`, because that helper assumes the claimed
+          // window sizes are presented in descending order, so can't be called
+          // more than once with sizes that are contained in non-overlapping
+          // intervals.
+          .claimSlotsOnBehalfOf(bredWindowSizes ++ deletedWindowSizes)
 
         Chromosome(bredWindowSizes, windowSizeSlots, deletedWindowSizes)
       end breedWith
-
-      private def isPacked =
-        0 == windowSizeSlots.numberOfFilledSlots
     end Chromosome
 
     case class Phenotype(
