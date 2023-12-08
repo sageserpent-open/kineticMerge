@@ -109,6 +109,8 @@ object CodeMotionAnalysis:
     val validWindowSizes =
       minimumWindowSizeAcrossAllFilesOverAllSides to maximumFileSizeAcrossAllFilesOverAllSides
 
+    var looseExclusiveUpperBoundOnMaximumMatchSize = Int.MaxValue
+
     enum MatchGrade:
       case Triple
       case Pair
@@ -182,10 +184,6 @@ object CodeMotionAnalysis:
         windowSizeSlots: RangeOfSlots,
         deletedWindowSizes: WindowSizesInDescendingOrder = noWindowSizes
     ):
-      println(
-        s"Constructing: $windowSizesInDescendingOrder, $deletedWindowSizes"
-      )
-
       import Chromosome.*
 
       require(windowSizesInDescendingOrder.nonEmpty)
@@ -203,6 +201,7 @@ object CodeMotionAnalysis:
       }
 
       override def equals(another: Any): Boolean = another match
+        // TODO: apparently this pattern match cannot be checked at runtime...
         case another: Chromosome =>
           this.windowSizesInDescendingOrder == another.windowSizesInDescendingOrder
         case _ => false
@@ -308,7 +307,9 @@ object CodeMotionAnalysis:
 
       private def contracted(using random: Random) =
         val deletedWindowSize =
-          random.chooseOneOf(windowSizesInDescendingOrder)
+          if windowSizesInDescendingOrder.head < looseExclusiveUpperBoundOnMaximumMatchSize
+          then random.chooseOneOf(windowSizesInDescendingOrder)
+          else windowSizesInDescendingOrder.head
 
         Chromosome(
           windowSizesInDescendingOrder =
@@ -1180,7 +1181,22 @@ object CodeMotionAnalysis:
                     sectionsSeenAcrossSides -> (matchGroupsInDescendingOrderOfKeys ++ Seq(
                       (windowSize, MatchGrade.Triple) -> tripleMatches,
                       (windowSize, MatchGrade.Pair)   -> pairMatches
-                    ).filter { case (_, matches) => matches.nonEmpty })
+                    ).collect(Function.unlift {
+                      case entry @ ((windowSize, _), matches) =>
+                        if matches.nonEmpty then Some(entry)
+                        else
+                          if minimumSureFireWindowSizeAcrossAllFilesOverAllSides <= windowSize
+                          then
+                            // If we failed to get any match at this window size
+                            // and it was not potentially blocked by a per-file
+                            // threshold size, make a note to avoid going over
+                            // this size when growing a chromosome.
+                            looseExclusiveUpperBoundOnMaximumMatchSize =
+                              looseExclusiveUpperBoundOnMaximumMatchSize min windowSize
+                          end if
+
+                          None
+                    }))
               end match
             end matchingFingerprintsAcrossSides
 
