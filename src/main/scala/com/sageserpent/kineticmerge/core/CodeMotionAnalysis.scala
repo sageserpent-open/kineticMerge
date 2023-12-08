@@ -141,7 +141,8 @@ object CodeMotionAnalysis:
           // large match won't be partially matched with the absolute minimum
           // window size because that won't make the grade in the larger files
           // participating in the match.
-          (minimumWindowSizeAcrossAllFilesOverAllSides to minimumSureFireWindowSizeAcrossAllFilesOverAllSides).reverse*
+          minimumSureFireWindowSizeAcrossAllFilesOverAllSides,
+          minimumWindowSizeAcrossAllFilesOverAllSides
         )(descendingWindowSizeOrdering)
 
         Chromosome(
@@ -261,7 +262,26 @@ object CodeMotionAnalysis:
             else claimSlot(1 + potentialSlotClaim)
 
           val (claimedSlotIndex, windowSizeSlotsWithClaim) =
-            claimSlot(potentialSlotClaim = 0)
+            if windowSizesInDescendingOrder.head < validWindowSizes.last && random
+                .nextBoolean()
+            then
+              // Claim a slot for a window size that is larger than all of the
+              // others seen in the inheritance of this chromosome.
+              val largestWindowSizeSeenInTheInheritance =
+                deletedWindowSizes.headOption.fold(ifEmpty =
+                  windowSizesInDescendingOrder.head
+                )(windowSizesInDescendingOrder.head max _)
+
+              val numberOfVacantSlotsWhoseSizesAreTooSmall =
+                1 + largestWindowSizeSeenInTheInheritance - validWindowSizes.min - windowSizeSlots.numberOfFilledSlots
+
+              claimSlot(potentialSlotClaim =
+                numberOfVacantSlotsWhoseSizesAreTooSmall
+              )
+            else
+              // Claim a slot for a window size we've not used before, but
+              // favour smaller window sizes.
+              claimSlot(potentialSlotClaim = 0)
 
           val claimedWindowSize = claimedSlotIndex + validWindowSizes.min
 
