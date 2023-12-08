@@ -131,8 +131,10 @@ object CodeMotionAnalysis:
 
       private val descendingWindowSizeOrdering = Ordering[Int].reverse
 
-      def initial: Chromosome = Chromosome(
-        windowSizesInDescendingOrder = TreeSet(
+      private val noWindowSizes = TreeSet.empty(descendingWindowSizeOrdering)
+
+      def initial: Chromosome =
+        val windowSizesInDescendingOrder = TreeSet(
           // Need the sure-fire size to make sure that larger matches stand a
           // chance of being partially matched at a smaller size, if the desired
           // match spans files of quite different sizes. Otherwise a potential
@@ -142,7 +144,32 @@ object CodeMotionAnalysis:
           minimumSureFireWindowSizeAcrossAllFilesOverAllSides,
           minimumWindowSizeAcrossAllFilesOverAllSides
         )(descendingWindowSizeOrdering)
-      )
+
+        Chromosome(
+          windowSizesInDescendingOrder = windowSizesInDescendingOrder,
+          windowSizeSlots = allWindowSizesAreFree.claimSlotsOnBehalfOf(
+            windowSizesInDescendingOrder
+          ),
+          deletedWindowSizes = noWindowSizes
+        )
+      end initial
+      extension (windowSizeSlots: RangeOfSlots)
+        private def claimSlotsOnBehalfOf(
+            windowSizesInDecreasingOrder: WindowSizesInDescendingOrder
+        ) =
+          windowSizesInDecreasingOrder.foldLeft(windowSizeSlots) {
+            (windowSizeSlots, highestUnclaimedWindowSize) =>
+              val (_, withTheHighestWindowSizeClaimed) =
+                // As we work down the sizes, we maintain the invariant that
+                // all the slots leading up to the one corresponding to the
+                // size we want to claim are vacant. So the slot index we
+                // need is just the size's ordinal number, taken zero
+                // relative.
+                windowSizeSlots.fillVacantSlotAtIndex(
+                  highestUnclaimedWindowSize - validWindowSizes.min
+                )
+              withTheHighestWindowSizeClaimed
+          }
     end Chromosome
 
     case class Chromosome(
@@ -150,10 +177,11 @@ object CodeMotionAnalysis:
         // used to allocate new sizes that don't conflict with sizes already in
         // use.
         windowSizesInDescendingOrder: WindowSizesInDescendingOrder,
-        windowSizeSlots: RangeOfSlots = allWindowSizesAreFree,
-        deletedWindowSizes: WindowSizesInDescendingOrder =
-          TreeSet.empty(descendingWindowSizeOrdering)
+        windowSizeSlots: RangeOfSlots,
+        deletedWindowSizes: WindowSizesInDescendingOrder = noWindowSizes
     ):
+      import Chromosome.*
+
       require(windowSizesInDescendingOrder.nonEmpty)
 
       if isPacked then
@@ -167,33 +195,6 @@ object CodeMotionAnalysis:
           windowSizeSlots.numberOfFilledSlots == windowSizesInDescendingOrder.size + deletedWindowSizes.size
         )
       end if
-
-      lazy val unpackForMutation: Chromosome =
-        if isPacked then
-          // Claim slots corresponding to the window sizes in use. There are no
-          // deleted window sizes as we're building freshly unpacked state;
-          // those deleted sizes are reclaimed as vacant slots.
-          this.copy(
-            windowSizeSlots = windowSizesInDescendingOrder.foldLeft(
-              Chromosome.allWindowSizesAreFree
-            ) { (windowSizeSlots, highestUnclaimedWindowSize) =>
-              val (_, withTheHighestWindowSizeClaimed) =
-                // As we work down the sizes, we maintain the invariant that
-                // all the slots leading up to the one corresponding to the
-                // size we want to claim are vacant. So the slot index we
-                // need is just the size's ordinal number, taken zero
-                // relative.
-                windowSizeSlots.fillVacantSlotAtIndex(
-                  highestUnclaimedWindowSize - validWindowSizes.min
-                )
-              withTheHighestWindowSizeClaimed
-            },
-            deletedWindowSizes =
-              TreeSet.empty(Chromosome.descendingWindowSizeOrdering)
-          )
-        else
-          // Leave any deleted window sizes available in the state.
-          this
 
       override def equals(another: Any): Boolean = another match
         case another: Chromosome =>
@@ -222,15 +223,15 @@ object CodeMotionAnalysis:
 
         random.chooseOneOf(choices) match
           case Choice.Grow =>
-            unpackForMutation.grown
+            grown
           case Choice.Contract =>
-            unpackForMutation.contracted
+            contracted
 
           case Choice.Replace =>
             // TODO: contraction can just remove the window size that was added
             // to grow the chromosome, but for now let's live with that as a low
             // probability occurrence.
-            unpackForMutation.grown.contracted
+            grown.contracted
         end match
       end mutate
 
@@ -241,7 +242,8 @@ object CodeMotionAnalysis:
       }
 
       private def grown(using random: Random) =
-        val numberOfFreeWindowSizes = validWindowSizes.size - windowSizesInDescendingOrder.size
+        val numberOfFreeWindowSizes =
+          validWindowSizes.size - windowSizesInDescendingOrder.size
 
         val claimASlot =
           random.chooseAnyNumberFromZeroToOneLessThan(
@@ -250,14 +252,14 @@ object CodeMotionAnalysis:
 
         if claimASlot then
           @tailrec
-          def claim(potentialSlotClaim: Int): (Int, RangeOfSlots) =
+          def claimSlot(potentialSlotClaim: Int): (Int, RangeOfSlots) =
             if 1 + potentialSlotClaim == windowSizeSlots.numberOfVacantSlots || random
                 .nextBoolean()
             then windowSizeSlots.fillVacantSlotAtIndex(potentialSlotClaim)
-            else claim(1 + potentialSlotClaim)
+            else claimSlot(1 + potentialSlotClaim)
 
           val (claimedSlotIndex, windowSizeSlotsWithClaim) =
-            claim(potentialSlotClaim = 0)
+            claimSlot(potentialSlotClaim = 0)
 
           val claimedWindowSize = claimedSlotIndex + validWindowSizes.min
 
@@ -292,7 +294,7 @@ object CodeMotionAnalysis:
       end contracted
 
       def breedWith(another: Chromosome)(using random: Random): Chromosome =
-        // Plan: walk down the window sizes from both chromosomes, looking for
+        // PLAN: walk down the window sizes from both chromosomes, looking for
         // synchronization points where the sizes agree. Between these
         // synchronization points there will be runs of window sizes that belong
         // to one chromosome or the other; these will either lead directly to
@@ -321,7 +323,7 @@ object CodeMotionAnalysis:
             bredWindowSizes: WindowSizesInDescendingOrder,
             pickingState: PickingState,
             mandatoryState: Boolean
-        ): Chromosome =
+        ): WindowSizesInDescendingOrder =
           (
             firstWindowSizesDescending.headOption,
             secondWindowSizesDescending.headOption
@@ -454,32 +456,36 @@ object CodeMotionAnalysis:
                   mandatoryState = false
                 )
             case (Some(_), None) =>
-              Chromosome(windowSizesInDescendingOrder =
-                if bredWindowSizes.isEmpty || random.nextBoolean() then
-                  bredWindowSizes ++ firstWindowSizesDescending
-                else bredWindowSizes
-              )
+              if bredWindowSizes.isEmpty || random.nextBoolean() then
+                bredWindowSizes ++ firstWindowSizesDescending
+              else bredWindowSizes
             case (None, Some(_)) =>
-              Chromosome(windowSizesInDescendingOrder =
-                if bredWindowSizes.isEmpty || random.nextBoolean() then
-                  bredWindowSizes ++ secondWindowSizesDescending
-                else bredWindowSizes
-              )
+              if bredWindowSizes.isEmpty || random.nextBoolean() then
+                bredWindowSizes ++ secondWindowSizesDescending
+              else bredWindowSizes
             case (None, None) =>
-              assume(bredWindowSizes.nonEmpty)
-              Chromosome(windowSizesInDescendingOrder = bredWindowSizes)
+              bredWindowSizes
           end match
         end pickWindowSizes
 
-        pickWindowSizes(
+        val bredWindowSizes = pickWindowSizes(
           this.windowSizesInDescendingOrder,
           another.windowSizesInDescendingOrder
         )(
-          bredWindowSizes =
-            TreeSet.empty(Chromosome.descendingWindowSizeOrdering),
+          bredWindowSizes = TreeSet.empty(descendingWindowSizeOrdering),
           pickingState = Synchronized,
           mandatoryState = false
         )
+
+        val deletedWindowSizes =
+          (this.deletedWindowSizes ++ another.deletedWindowSizes)
+            .removedAll(bredWindowSizes)
+
+        val windowSizeSlots = allWindowSizesAreFree
+          .claimSlotsOnBehalfOf(bredWindowSizes)
+          .claimSlotsOnBehalfOf(deletedWindowSizes)
+
+        Chromosome(bredWindowSizes, windowSizeSlots, deletedWindowSizes)
       end breedWith
 
       private def isPacked =
@@ -1173,7 +1179,9 @@ object CodeMotionAnalysis:
             matchesForWindowSize
           )
 
-        println(s"Chromosome: ${chromosome.windowSizesInDescendingOrder}, matches: $matchGroupsInDescendingOrderOfKeys")
+        println(
+          s"Chromosome: ${chromosome.windowSizesInDescendingOrder}, matches: $matchGroupsInDescendingOrderOfKeys"
+        )
 
         Phenotype(
           chromosomeSize = chromosome.windowSizesInDescendingOrder.size,
