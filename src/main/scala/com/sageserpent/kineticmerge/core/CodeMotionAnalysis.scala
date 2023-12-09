@@ -261,16 +261,16 @@ object CodeMotionAnalysis:
             else claimSlot(1 + potentialSlotClaim)
 
           val (claimedSlotIndex, windowSizeSlotsWithClaim) =
-            if windowSizesInDescendingOrder.head < validWindowSizes.last && random
+            val largestWindowSizeSeenInTheInheritance =
+              deletedWindowSizes.headOption.fold(ifEmpty =
+                windowSizesInDescendingOrder.head
+              )(windowSizesInDescendingOrder.head max _)
+
+            if largestWindowSizeSeenInTheInheritance < validWindowSizes.last && random
                 .nextBoolean()
             then
               // Claim a slot for a window size that is larger than all of the
               // others seen in the inheritance of this chromosome.
-              val largestWindowSizeSeenInTheInheritance =
-                deletedWindowSizes.headOption.fold(ifEmpty =
-                  windowSizesInDescendingOrder.head
-                )(windowSizesInDescendingOrder.head max _)
-
               val numberOfVacantSlotsWhoseSizesAreTooSmall =
                 1 + largestWindowSizeSeenInTheInheritance - validWindowSizes.min - windowSizeSlots.numberOfFilledSlots
 
@@ -281,6 +281,8 @@ object CodeMotionAnalysis:
               // Claim a slot for a window size we've not used before, but
               // favour smaller window sizes.
               claimSlot(potentialSlotClaim = 0)
+            end if
+          end val
 
           val claimedWindowSize = claimedSlotIndex + validWindowSizes.min
 
