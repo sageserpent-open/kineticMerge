@@ -106,10 +106,8 @@ object CodeMotionAnalysis:
     val minimumSureFireWindowSizeAcrossAllFilesOverAllSides =
       1 max (maximumFileSizeAcrossAllFilesOverAllSides * minimumSizeFractionForMotionDetection).ceil.toInt
 
-    val validWindowSizes =
-      minimumWindowSizeAcrossAllFilesOverAllSides to maximumFileSizeAcrossAllFilesOverAllSides
-
-    var looseExclusiveUpperBoundOnMaximumMatchSize = Int.MaxValue
+    var looseExclusiveUpperBoundOnMaximumMatchSize =
+      1 + maximumFileSizeAcrossAllFilesOverAllSides
 
     enum MatchGrade:
       case Triple
@@ -128,24 +126,27 @@ object CodeMotionAnalysis:
     ]
 
     object Chromosome:
-      private val allWindowSizesAreFree =
-        RangeOfSlots.allSlotsAreVacant(validWindowSizes.size)
-
       private val descendingWindowSizeOrdering = Ordering[Int].reverse
-
       private val noWindowSizes = TreeSet.empty(descendingWindowSizeOrdering)
 
       def initial: Chromosome =
-        val windowSizesInDescendingOrder = TreeSet(
-          // Need the sure-fire size to make sure that larger matches stand a
-          // chance of being partially matched at a smaller size, if the desired
-          // match spans files of quite different sizes. Otherwise a potential
-          // large match won't be partially matched with the absolute minimum
-          // window size because that won't make the grade in the larger files
-          // participating in the match.
+        // Need the sure-fire size to make sure that larger matches stand a
+        // chance of being partially matched at a smaller size, if the desired
+        // match spans files of quite different sizes. Otherwise a potential
+        // large match won't be partially matched with the absolute minimum
+        // window size because that won't make the grade in the larger files
+        // participating in the match; this would cause a Hamming wall because
+        // it is unlikely for mutation to chance on a large enough window size
+        // to get a successful chromosome.
+        withWindowSizes(
           minimumSureFireWindowSizeAcrossAllFilesOverAllSides,
           minimumWindowSizeAcrossAllFilesOverAllSides
-        )(descendingWindowSizeOrdering)
+        )
+      end initial
+
+      private def withWindowSizes(windowSizes: Int*) =
+        val windowSizesInDescendingOrder =
+          TreeSet(windowSizes*)(descendingWindowSizeOrdering)
 
         Chromosome(
           windowSizesInDescendingOrder = windowSizesInDescendingOrder,
@@ -154,7 +155,14 @@ object CodeMotionAnalysis:
           ),
           deletedWindowSizes = noWindowSizes
         )
-      end initial
+      end withWindowSizes
+
+      private def allWindowSizesAreFree =
+        RangeOfSlots.allSlotsAreVacant(validWindowSizes.size)
+
+      private def validWindowSizes =
+        minimumWindowSizeAcrossAllFilesOverAllSides until looseExclusiveUpperBoundOnMaximumMatchSize
+
       extension (windowSizeSlots: RangeOfSlots)
         // NOTE: careful with this helper - because of its recursion invariant
         // it shouldn't be folded into a chain of calls.
@@ -231,15 +239,15 @@ object CodeMotionAnalysis:
 
         random.chooseOneOf(choices) match
           case Choice.Grow =>
-            grown
+            reestablishInvariantIfBrokenSinceConstruction.grown
           case Choice.Contract =>
-            contracted
+            reestablishInvariantIfBrokenSinceConstruction.contracted
 
           case Choice.Replace =>
             // TODO: contraction can just remove the window size that was
             // added to grow the chromosome, but for now let's live with that
             // as a low probability occurrence.
-            grown.contracted
+            reestablishInvariantIfBrokenSinceConstruction.grown.contracted
         end match
       end mutate
 
@@ -315,7 +323,56 @@ object CodeMotionAnalysis:
         )
       end contracted
 
+      // As `validWindowSizes` is dynamically calculated, it is possible for a
+      // chromosome's invariant to be broken post construction; this can happen
+      // when `looseExclusiveUpperBoundOnMaximumMatchSize` is lowered during the
+      // creation of a phenotype. This method trims the chromosome's window
+      // sizes and associated baggage so that the invariant holds again against
+      // the current valid window sizes. We assume that updates to
+      // `validWindowSizes` are never performed concurrently with invocations of
+      // this method. If all of the chromosomes window sizes turn out to be
+      // invalid, we just build a new chromosome using the highest possible
+      // valid one.
+      private def reestablishInvariantIfBrokenSinceConstruction: Chromosome =
+        val numberOfPotentialWindowSizesAtConstruction =
+          windowSizeSlots.numberOfVacantSlots + windowSizeSlots.numberOfFilledSlots
+
+        if numberOfPotentialWindowSizesAtConstruction > validWindowSizes.size
+        then
+          val windowSizesInDescendingOrder =
+            this.windowSizesInDescendingOrder filter (validWindowSizes.max >= _)
+
+          if windowSizesInDescendingOrder.nonEmpty then
+            val deletedWindowSizes =
+              this.deletedWindowSizes filter (validWindowSizes.max >= _)
+
+            val windowSizeSlots = allWindowSizesAreFree.claimSlotsOnBehalfOf(
+              windowSizesInDescendingOrder ++ deletedWindowSizes
+            )
+
+            Chromosome(
+              windowSizesInDescendingOrder,
+              windowSizeSlots,
+              deletedWindowSizes
+            )
+          else Chromosome.withWindowSizes(validWindowSizes.max)
+          end if
+        else
+          assume(
+            numberOfPotentialWindowSizesAtConstruction == validWindowSizes.size
+          )
+          this
+        end if
+      end reestablishInvariantIfBrokenSinceConstruction
+
       def breedWith(another: Chromosome)(using random: Random): Chromosome =
+        this.reestablishInvariantIfBrokenSinceConstruction.breedWith_(
+          another.reestablishInvariantIfBrokenSinceConstruction
+        )
+
+      private def breedWith_(another: Chromosome)(using
+          random: Random
+      ): Chromosome =
         // PLAN: walk down the window sizes from both chromosomes, looking for
         // synchronization points where the sizes agree. Between these
         // synchronization points there will be runs of window sizes that belong
@@ -512,7 +569,7 @@ object CodeMotionAnalysis:
           .claimSlotsOnBehalfOf(bredWindowSizes ++ deletedWindowSizes)
 
         Chromosome(bredWindowSizes, windowSizeSlots, deletedWindowSizes)
-      end breedWith
+      end breedWith_
     end Chromosome
 
     case class Phenotype(
