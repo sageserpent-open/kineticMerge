@@ -727,242 +727,387 @@ object CodeMotionAnalysis:
           val (sectionsSeenAcrossSides, matchGroupsInDescendingOrderOfKeys) =
             partialResult
 
-          if validWindowSizes contains windowSize then
-            require(0 < windowSize)
+          require(0 < windowSize)
 
-            def fingerprintStartIndices(
-                elements: IndexedSeq[Element]
-            ): SortedMultiDict[Long, Int] =
-              require(elements.size >= windowSize)
+          def fingerprintStartIndices(
+              elements: IndexedSeq[Element]
+          ): SortedMultiDict[Long, Int] =
+            require(elements.size >= windowSize)
 
-              val fingerprinting = fingerprintingCache.get(
-                windowSize,
-                { (windowSize: Int) =>
-                  val fixedNumberOfBytesInElementHash =
-                    hashFunction.bits / JavaByte.SIZE
+            val fingerprinting = fingerprintingCache.get(
+              windowSize,
+              { (windowSize: Int) =>
+                val fixedNumberOfBytesInElementHash =
+                  hashFunction.bits / JavaByte.SIZE
 
-                  new RabinFingerprintLongWindowed(
-                    polynomial,
-                    fixedNumberOfBytesInElementHash * windowSize
-                  )
-                }
+                new RabinFingerprintLongWindowed(
+                  polynomial,
+                  fixedNumberOfBytesInElementHash * windowSize
+                )
+              }
+            )
+
+            // Fingerprinting is imperative, so go with that style local to
+            // this helper function...
+            fingerprinting.reset()
+
+            val accumulatingResults = mutable.SortedMultiDict.empty[Long, Int]
+
+            def updateFingerprint(elementIndex: Int): Unit =
+              val elementBytes =
+                hashFunction
+                  .newHasher()
+                  .putObject(elements(elementIndex), funnel)
+                  .hash()
+                  .asBytes()
+
+              elementBytes.foreach(fingerprinting.pushByte)
+            end updateFingerprint
+
+            // NOTE: fingerprints are incrementally calculated walking *down*
+            // the elements.
+            val descendingIndices = elements.indices.reverse
+
+            val (primingIndices, fingerprintingIndices) =
+              descendingIndices.splitAt(windowSize - 1)
+
+            // Prime to get ready for the first fingerprint...
+            primingIndices.foreach(updateFingerprint)
+
+            // ... henceforth, each pass records a new fingerprint, starting
+            // with the first.
+            fingerprintingIndices.foreach: fingerprintStartIndex =>
+              updateFingerprint(fingerprintStartIndex)
+              accumulatingResults.addOne(
+                fingerprinting.getFingerprintLong -> fingerprintStartIndex
               )
 
-              // Fingerprinting is imperative, so go with that style local to
-              // this helper function...
-              fingerprinting.reset()
+            accumulatingResults
+          end fingerprintStartIndices
 
-              val accumulatingResults = mutable.SortedMultiDict.empty[Long, Int]
+          def fingerprintSections(
+              sources: Sources[Path, Element]
+          ): SortedMultiDict[Long, Section[Element]] =
+            sources.filesByPath
+              .filter { case (_, file) =>
+                val fileSize = file.size
+                val minimumWindowSize =
+                  (minimumSizeFractionForMotionDetection * fileSize).ceil.toInt
 
-              def updateFingerprint(elementIndex: Int): Unit =
-                val elementBytes =
-                  hashFunction
-                    .newHasher()
-                    .putObject(elements(elementIndex), funnel)
-                    .hash()
-                    .asBytes()
-
-                elementBytes.foreach(fingerprinting.pushByte)
-              end updateFingerprint
-
-              // NOTE: fingerprints are incrementally calculated walking *down*
-              // the elements.
-              val descendingIndices = elements.indices.reverse
-
-              val (primingIndices, fingerprintingIndices) =
-                descendingIndices.splitAt(windowSize - 1)
-
-              // Prime to get ready for the first fingerprint...
-              primingIndices.foreach(updateFingerprint)
-
-              // ... henceforth, each pass records a new fingerprint, starting
-              // with the first.
-              fingerprintingIndices.foreach: fingerprintStartIndex =>
-                updateFingerprint(fingerprintStartIndex)
-                accumulatingResults.addOne(
-                  fingerprinting.getFingerprintLong -> fingerprintStartIndex
+                minimumWindowSize to fileSize contains windowSize
+              }
+              .map { case (path, file) =>
+                fingerprintStartIndices(file.content).map(
+                  (fingerprint, fingerprintStartIndex) =>
+                    fingerprint -> sources
+                      .section(path)(fingerprintStartIndex, windowSize)
                 )
+              }
+              // This isn't quite the same as flat-mapping / flattening,
+              // because we want the type of the result to be a
+              // `SortedMultiDict`...
+              .reduceOption(_ concat _)
+              .getOrElse(SortedMultiDict.empty)
+          end fingerprintSections
 
-              accumulatingResults
-            end fingerprintStartIndices
+          val FingerprintSectionsAcrossSides(
+            baseSectionsByFingerprint,
+            leftSectionsByFingerprint,
+            rightSectionsByFingerprint
+          ) = fingerprintSectionsCache.get(
+            windowSize,
+            _ =>
+              FingerprintSectionsAcrossSides(
+                baseSectionsByFingerprint = fingerprintSections(base),
+                leftSectionsByFingerprint = fingerprintSections(left),
+                rightSectionsByFingerprint = fingerprintSections(right)
+              )
+          )
 
-            def fingerprintSections(
-                sources: Sources[Path, Element]
-            ): SortedMultiDict[Long, Section[Element]] =
-              sources.filesByPath
-                .filter { case (_, file) =>
-                  val fileSize = file.size
-                  val minimumWindowSize =
-                    (minimumSizeFractionForMotionDetection * fileSize).ceil.toInt
+          @tailrec
+          def matchingFingerprintsAcrossSides(
+              baseFingerprints: Iterable[Long],
+              leftFingerprints: Iterable[Long],
+              rightFingerprints: Iterable[Long],
+              matches: Set[Match[Section[Element]]],
+              sectionsSeenAcrossSides: SectionsSeenAcrossSides
+          ): (SectionsSeenAcrossSides, MatchGroupsInDescendingOrderOfKeys) =
+            (
+              baseFingerprints.headOption,
+              leftFingerprints.headOption,
+              rightFingerprints.headOption
+            ) match
+              case (Some(baseHead), Some(leftHead), Some(rightHead))
+                  if baseHead == leftHead && baseHead == rightHead =>
+                // Synchronised the fingerprints across all three sides...
+                val matchesForSynchronisedFingerprint
+                    : Set[Match[Section[Element]]] =
+                  val baseSections =
+                    baseSectionsByFingerprint.get(baseHead)
+                  val leftSections =
+                    leftSectionsByFingerprint.get(leftHead)
+                  val rightSections =
+                    rightSectionsByFingerprint.get(rightHead)
 
-                  minimumWindowSize to fileSize contains windowSize
-                }
-                .map { case (path, file) =>
-                  fingerprintStartIndices(file.content).map(
-                    (fingerprint, fingerprintStartIndex) =>
-                      fingerprint -> sources
-                        .section(path)(fingerprintStartIndex, windowSize)
-                  )
-                }
-                // This isn't quite the same as flat-mapping / flattening,
-                // because we want the type of the result to be a
-                // `SortedMultiDict`...
-                .reduceOption(_ concat _)
-                .getOrElse(SortedMultiDict.empty)
-            end fingerprintSections
-
-            val FingerprintSectionsAcrossSides(
-              baseSectionsByFingerprint,
-              leftSectionsByFingerprint,
-              rightSectionsByFingerprint
-            ) = fingerprintSectionsCache.get(
-              windowSize,
-              _ =>
-                FingerprintSectionsAcrossSides(
-                  baseSectionsByFingerprint = fingerprintSections(base),
-                  leftSectionsByFingerprint = fingerprintSections(left),
-                  rightSectionsByFingerprint = fingerprintSections(right)
-                )
-            )
-
-            @tailrec
-            def matchingFingerprintsAcrossSides(
-                baseFingerprints: Iterable[Long],
-                leftFingerprints: Iterable[Long],
-                rightFingerprints: Iterable[Long],
-                matches: Set[Match[Section[Element]]],
-                sectionsSeenAcrossSides: SectionsSeenAcrossSides
-            ): (SectionsSeenAcrossSides, MatchGroupsInDescendingOrderOfKeys) =
-              (
-                baseFingerprints.headOption,
-                leftFingerprints.headOption,
-                rightFingerprints.headOption
-              ) match
-                case (Some(baseHead), Some(leftHead), Some(rightHead))
-                    if baseHead == leftHead && baseHead == rightHead =>
-                  // Synchronised the fingerprints across all three sides...
-                  val matchesForSynchronisedFingerprint
-                      : Set[Match[Section[Element]]] =
-                    val baseSections =
-                      baseSectionsByFingerprint.get(baseHead)
-                    val leftSections =
-                      leftSectionsByFingerprint.get(leftHead)
-                    val rightSections =
-                      rightSectionsByFingerprint.get(rightHead)
-
-                    (for
-                      baseSection  <- baseSections
-                      leftSection  <- leftSections
-                      rightSection <- rightSections
-                      // Guard against false positives sharing the same
-                      // fingerprint...
-                      if sequenceEquality.eqv(
-                        baseSection.content,
-                        leftSection.content
-                      ) && sequenceEquality.eqv(
-                        baseSection.content,
-                        rightSection.content
-                      )
-                      baseSubsumed = sectionsSeenAcrossSides
-                        .containsBaseSection(
-                          baseSection
-                        )
-                      leftSubsumed = sectionsSeenAcrossSides
-                        .containsLeftSection(
-                          leftSection
-                        )
-                      rightSubsumed = sectionsSeenAcrossSides
-                        .containsRightSection(
-                          rightSection
-                        )
-                      suppressed =
-                        // In contrast with the pairwise matches below, we have
-                        // the subtlety of a *replacement* of an all-three match
-                        // with a pairwise match to consider, so this condition
-                        // is more complex than the others...
-                        baseSubsumed && leftSubsumed || baseSubsumed && rightSubsumed || leftSubsumed && rightSubsumed
-                      if !suppressed
-                    yield
-                      if baseSubsumed then
-                        Match.LeftAndRight(leftSection, rightSection)
-                      else if leftSubsumed then
-                        Match.BaseAndRight(baseSection, rightSection)
-                      else if rightSubsumed then
-                        Match.BaseAndLeft(baseSection, leftSection)
-                      else
-                        Match.AllThree(
-                          baseSection,
-                          leftSection,
-                          rightSection
-                        )
-                    ).toSet
-                  end matchesForSynchronisedFingerprint
-
-                  matchingFingerprintsAcrossSides(
-                    baseFingerprints.tail,
-                    leftFingerprints.tail,
-                    rightFingerprints.tail,
-                    matches ++ matchesForSynchronisedFingerprint,
-                    sectionsSeenAcrossSides
-                      .withSectionsFrom(matchesForSynchronisedFingerprint)
-                  )
-
-                case (Some(baseHead), Some(leftHead), Some(rightHead))
-                    if baseHead == leftHead && baseHead > rightHead =>
-                  // Tentatively synchronised the fingerprints between the base
-                  // and left, need to advance the right to resolve ...
-                  matchingFingerprintsAcrossSides(
-                    baseFingerprints,
-                    leftFingerprints,
-                    rightFingerprints.tail,
-                    matches,
-                    sectionsSeenAcrossSides
-                  )
-
-                case (Some(baseHead), Some(leftHead), _)
-                    if baseHead == leftHead =>
-                  // Synchronised the fingerprints between the base and left...
-                  val matchesForSynchronisedFingerprint
-                      : Set[Match[Section[Element]]] =
-                    val baseSections =
-                      baseSectionsByFingerprint.get(baseHead)
-                    val leftSections =
-                      leftSectionsByFingerprint.get(leftHead)
-
-                    (for
-                      baseSection <- baseSections
-                      leftSection <- leftSections
-                      // Guard against false positives sharing the same
-                      // fingerprint...
-                      if sequenceEquality.eqv(
-                        baseSection.content,
-                        leftSection.content
-                      )
-                      suppressed = sectionsSeenAcrossSides.containsBaseSection(
+                  (for
+                    baseSection  <- baseSections
+                    leftSection  <- leftSections
+                    rightSection <- rightSections
+                    // Guard against false positives sharing the same
+                    // fingerprint...
+                    if sequenceEquality.eqv(
+                      baseSection.content,
+                      leftSection.content
+                    ) && sequenceEquality.eqv(
+                      baseSection.content,
+                      rightSection.content
+                    )
+                    baseSubsumed = sectionsSeenAcrossSides
+                      .containsBaseSection(
                         baseSection
-                      ) || sectionsSeenAcrossSides.containsLeftSection(
+                      )
+                    leftSubsumed = sectionsSeenAcrossSides
+                      .containsLeftSection(
                         leftSection
                       )
-                      if !suppressed
-                    yield Match.BaseAndLeft(
-                      baseSection,
+                    rightSubsumed = sectionsSeenAcrossSides
+                      .containsRightSection(
+                        rightSection
+                      )
+                    suppressed =
+                      // In contrast with the pairwise matches below, we have
+                      // the subtlety of a *replacement* of an all-three match
+                      // with a pairwise match to consider, so this condition
+                      // is more complex than the others...
+                      baseSubsumed && leftSubsumed || baseSubsumed && rightSubsumed || leftSubsumed && rightSubsumed
+                    if !suppressed
+                  yield
+                    if baseSubsumed then
+                      Match.LeftAndRight(leftSection, rightSection)
+                    else if leftSubsumed then
+                      Match.BaseAndRight(baseSection, rightSection)
+                    else if rightSubsumed then
+                      Match.BaseAndLeft(baseSection, leftSection)
+                    else
+                      Match.AllThree(
+                        baseSection,
+                        leftSection,
+                        rightSection
+                      )
+                  ).toSet
+                end matchesForSynchronisedFingerprint
+
+                matchingFingerprintsAcrossSides(
+                  baseFingerprints.tail,
+                  leftFingerprints.tail,
+                  rightFingerprints.tail,
+                  matches ++ matchesForSynchronisedFingerprint,
+                  sectionsSeenAcrossSides
+                    .withSectionsFrom(matchesForSynchronisedFingerprint)
+                )
+
+              case (Some(baseHead), Some(leftHead), Some(rightHead))
+                  if baseHead == leftHead && baseHead > rightHead =>
+                // Tentatively synchronised the fingerprints between the base
+                // and left, need to advance the right to resolve ...
+                matchingFingerprintsAcrossSides(
+                  baseFingerprints,
+                  leftFingerprints,
+                  rightFingerprints.tail,
+                  matches,
+                  sectionsSeenAcrossSides
+                )
+
+              case (Some(baseHead), Some(leftHead), _)
+                  if baseHead == leftHead =>
+                // Synchronised the fingerprints between the base and left...
+                val matchesForSynchronisedFingerprint
+                    : Set[Match[Section[Element]]] =
+                  val baseSections =
+                    baseSectionsByFingerprint.get(baseHead)
+                  val leftSections =
+                    leftSectionsByFingerprint.get(leftHead)
+
+                  (for
+                    baseSection <- baseSections
+                    leftSection <- leftSections
+                    // Guard against false positives sharing the same
+                    // fingerprint...
+                    if sequenceEquality.eqv(
+                      baseSection.content,
+                      leftSection.content
+                    )
+                    suppressed = sectionsSeenAcrossSides.containsBaseSection(
+                      baseSection
+                    ) || sectionsSeenAcrossSides.containsLeftSection(
                       leftSection
-                    )).toSet
-                  end matchesForSynchronisedFingerprint
+                    )
+                    if !suppressed
+                  yield Match.BaseAndLeft(
+                    baseSection,
+                    leftSection
+                  )).toSet
+                end matchesForSynchronisedFingerprint
 
+                matchingFingerprintsAcrossSides(
+                  baseFingerprints.tail,
+                  leftFingerprints.tail,
+                  rightFingerprints,
+                  matches ++ matchesForSynchronisedFingerprint,
+                  sectionsSeenAcrossSides
+                    .withSectionsFrom(matchesForSynchronisedFingerprint)
+                )
+
+              case (Some(baseHead), Some(leftHead), Some(rightHead))
+                  if baseHead == rightHead && baseHead > leftHead =>
+                // Tentatively synchronised the fingerprints between the base
+                // and right, need to advance the left to resolve ...
+                matchingFingerprintsAcrossSides(
+                  baseFingerprints,
+                  leftFingerprints.tail,
+                  rightFingerprints,
+                  matches,
+                  sectionsSeenAcrossSides
+                )
+
+              case (Some(baseHead), _, Some(rightHead))
+                  if baseHead == rightHead =>
+                // Synchronised the fingerprints between the base and right...
+                val matchesForSynchronisedFingerprint
+                    : Set[Match[Section[Element]]] =
+                  val baseSections =
+                    baseSectionsByFingerprint.get(baseHead)
+                  val rightSections =
+                    rightSectionsByFingerprint.get(rightHead)
+
+                  (for
+                    baseSection  <- baseSections
+                    rightSection <- rightSections
+                    // Guard against false positives sharing the same
+                    // fingerprint...
+                    if sequenceEquality.eqv(
+                      baseSection.content,
+                      rightSection.content
+                    )
+                    suppressed = sectionsSeenAcrossSides.containsBaseSection(
+                      baseSection
+                    ) || sectionsSeenAcrossSides.containsRightSection(
+                      rightSection
+                    )
+                    if !suppressed
+                  yield Match.BaseAndRight(
+                    baseSection,
+                    rightSection
+                  )).toSet
+                end matchesForSynchronisedFingerprint
+
+                matchingFingerprintsAcrossSides(
+                  baseFingerprints.tail,
+                  leftFingerprints,
+                  rightFingerprints.tail,
+                  matches ++ matchesForSynchronisedFingerprint,
+                  sectionsSeenAcrossSides
+                    .withSectionsFrom(matchesForSynchronisedFingerprint)
+                )
+
+              case (Some(baseHead), Some(leftHead), Some(rightHead))
+                  if leftHead == rightHead && leftHead > baseHead =>
+                // Tentatively synchronised the fingerprints between the left
+                // and right, need to advance the base to resolve ...
+                matchingFingerprintsAcrossSides(
+                  baseFingerprints.tail,
+                  leftFingerprints,
+                  rightFingerprints,
+                  matches,
+                  sectionsSeenAcrossSides
+                )
+
+              case (_, Some(leftHead), Some(rightHead))
+                  if leftHead == rightHead =>
+                // Synchronised the fingerprints between the left and right...
+                val matchesForSynchronisedFingerprint
+                    : Set[Match[Section[Element]]] =
+                  val leftSections =
+                    leftSectionsByFingerprint.get(leftHead)
+                  val rightSections =
+                    rightSectionsByFingerprint.get(rightHead)
+
+                  (for
+                    leftSection  <- leftSections
+                    rightSection <- rightSections
+                    // Guard against false positives sharing the same
+                    // fingerprint...
+                    if sequenceEquality.eqv(
+                      leftSection.content,
+                      rightSection.content
+                    )
+                    suppressed = sectionsSeenAcrossSides.containsLeftSection(
+                      leftSection
+                    ) || sectionsSeenAcrossSides.containsRightSection(
+                      rightSection
+                    )
+                    if !suppressed
+                  yield Match.LeftAndRight(
+                    leftSection,
+                    rightSection
+                  )).toSet
+                end matchesForSynchronisedFingerprint
+
+                matchingFingerprintsAcrossSides(
+                  baseFingerprints,
+                  leftFingerprints.tail,
+                  rightFingerprints.tail,
+                  matches ++ matchesForSynchronisedFingerprint,
+                  sectionsSeenAcrossSides
+                    .withSectionsFrom(matchesForSynchronisedFingerprint)
+                )
+
+              case (Some(baseHead), Some(leftHead), Some(rightHead)) =>
+                // All the fingerprints disagree, so advance the side with the
+                // minimum fingerprint to see if it can catch up and
+                // synchronise...
+
+                val minimumFingerprint = baseHead min leftHead min rightHead
+
+                if leftHead == minimumFingerprint then
                   matchingFingerprintsAcrossSides(
-                    baseFingerprints.tail,
+                    baseFingerprints,
                     leftFingerprints.tail,
                     rightFingerprints,
-                    matches ++ matchesForSynchronisedFingerprint,
+                    matches,
                     sectionsSeenAcrossSides
-                      .withSectionsFrom(matchesForSynchronisedFingerprint)
                   )
+                else if rightHead == minimumFingerprint then
+                  matchingFingerprintsAcrossSides(
+                    baseFingerprints,
+                    leftFingerprints,
+                    rightFingerprints.tail,
+                    matches,
+                    sectionsSeenAcrossSides
+                  )
+                else
+                  matchingFingerprintsAcrossSides(
+                    baseFingerprints.tail,
+                    leftFingerprints,
+                    rightFingerprints,
+                    matches,
+                    sectionsSeenAcrossSides
+                  )
+                end if
 
-                case (Some(baseHead), Some(leftHead), Some(rightHead))
-                    if baseHead == rightHead && baseHead > leftHead =>
-                  // Tentatively synchronised the fingerprints between the base
-                  // and right, need to advance the left to resolve ...
+              case (Some(baseHead), Some(leftHead), None) =>
+                // The base and left fingerprints disagree, so advance the
+                // side with the minimum fingerprint to see if it can catch up
+                // and synchronise...
+                if baseHead < leftHead then
+                  matchingFingerprintsAcrossSides(
+                    baseFingerprints.tail,
+                    leftFingerprints,
+                    rightFingerprints,
+                    matches,
+                    sectionsSeenAcrossSides
+                  )
+                else
                   matchingFingerprintsAcrossSides(
                     baseFingerprints,
                     leftFingerprints.tail,
@@ -971,50 +1116,11 @@ object CodeMotionAnalysis:
                     sectionsSeenAcrossSides
                   )
 
-                case (Some(baseHead), _, Some(rightHead))
-                    if baseHead == rightHead =>
-                  // Synchronised the fingerprints between the base and right...
-                  val matchesForSynchronisedFingerprint
-                      : Set[Match[Section[Element]]] =
-                    val baseSections =
-                      baseSectionsByFingerprint.get(baseHead)
-                    val rightSections =
-                      rightSectionsByFingerprint.get(rightHead)
-
-                    (for
-                      baseSection  <- baseSections
-                      rightSection <- rightSections
-                      // Guard against false positives sharing the same
-                      // fingerprint...
-                      if sequenceEquality.eqv(
-                        baseSection.content,
-                        rightSection.content
-                      )
-                      suppressed = sectionsSeenAcrossSides.containsBaseSection(
-                        baseSection
-                      ) || sectionsSeenAcrossSides.containsRightSection(
-                        rightSection
-                      )
-                      if !suppressed
-                    yield Match.BaseAndRight(
-                      baseSection,
-                      rightSection
-                    )).toSet
-                  end matchesForSynchronisedFingerprint
-
-                  matchingFingerprintsAcrossSides(
-                    baseFingerprints.tail,
-                    leftFingerprints,
-                    rightFingerprints.tail,
-                    matches ++ matchesForSynchronisedFingerprint,
-                    sectionsSeenAcrossSides
-                      .withSectionsFrom(matchesForSynchronisedFingerprint)
-                  )
-
-                case (Some(baseHead), Some(leftHead), Some(rightHead))
-                    if leftHead == rightHead && leftHead > baseHead =>
-                  // Tentatively synchronised the fingerprints between the left
-                  // and right, need to advance the base to resolve ...
+              case (Some(baseHead), None, Some(rightHead)) =>
+                // The base and right fingerprints disagree, so advance the
+                // side with the minimum fingerprint to see if it can catch up
+                // and synchronise...
+                if baseHead < rightHead then
                   matchingFingerprintsAcrossSides(
                     baseFingerprints.tail,
                     leftFingerprints,
@@ -1022,174 +1128,66 @@ object CodeMotionAnalysis:
                     matches,
                     sectionsSeenAcrossSides
                   )
+                else
+                  matchingFingerprintsAcrossSides(
+                    baseFingerprints,
+                    leftFingerprints,
+                    rightFingerprints.tail,
+                    matches,
+                    sectionsSeenAcrossSides
+                  )
 
-                case (_, Some(leftHead), Some(rightHead))
-                    if leftHead == rightHead =>
-                  // Synchronised the fingerprints between the left and right...
-                  val matchesForSynchronisedFingerprint
-                      : Set[Match[Section[Element]]] =
-                    val leftSections =
-                      leftSectionsByFingerprint.get(leftHead)
-                    val rightSections =
-                      rightSectionsByFingerprint.get(rightHead)
-
-                    (for
-                      leftSection  <- leftSections
-                      rightSection <- rightSections
-                      // Guard against false positives sharing the same
-                      // fingerprint...
-                      if sequenceEquality.eqv(
-                        leftSection.content,
-                        rightSection.content
-                      )
-                      suppressed = sectionsSeenAcrossSides.containsLeftSection(
-                        leftSection
-                      ) || sectionsSeenAcrossSides.containsRightSection(
-                        rightSection
-                      )
-                      if !suppressed
-                    yield Match.LeftAndRight(
-                      leftSection,
-                      rightSection
-                    )).toSet
-                  end matchesForSynchronisedFingerprint
-
+              case (None, Some(leftHead), Some(rightHead)) =>
+                // The left and right fingerprints disagree, so advance the
+                // side with the minimum fingerprint to see if it can catch up
+                // and synchronise...
+                if leftHead < rightHead then
                   matchingFingerprintsAcrossSides(
                     baseFingerprints,
                     leftFingerprints.tail,
-                    rightFingerprints.tail,
-                    matches ++ matchesForSynchronisedFingerprint,
+                    rightFingerprints,
+                    matches,
                     sectionsSeenAcrossSides
-                      .withSectionsFrom(matchesForSynchronisedFingerprint)
+                  )
+                else
+                  matchingFingerprintsAcrossSides(
+                    baseFingerprints,
+                    leftFingerprints,
+                    rightFingerprints.tail,
+                    matches,
+                    sectionsSeenAcrossSides
                   )
 
-                case (Some(baseHead), Some(leftHead), Some(rightHead)) =>
-                  // All the fingerprints disagree, so advance the side with the
-                  // minimum fingerprint to see if it can catch up and
-                  // synchronise...
+              case _ =>
+                // There are no more opportunities to match a full triple or
+                // just a pair, so this terminates the recursion. Add the
+                // triples first if we have any, then any pairs as we are
+                // adding match groups in descending order of keys.
 
-                  val minimumFingerprint = baseHead min leftHead min rightHead
+                if matches.isEmpty
+                then
+                  sectionsSeenAcrossSides -> matchGroupsInDescendingOrderOfKeys
+                else
+                  val (tripleMatches, pairMatches) = matches.partition {
+                    case _: Match.AllThree[Section[Element]] => true
+                    case _                                   => false
+                  }
 
-                  if leftHead == minimumFingerprint then
-                    matchingFingerprintsAcrossSides(
-                      baseFingerprints,
-                      leftFingerprints.tail,
-                      rightFingerprints,
-                      matches,
-                      sectionsSeenAcrossSides
-                    )
-                  else if rightHead == minimumFingerprint then
-                    matchingFingerprintsAcrossSides(
-                      baseFingerprints,
-                      leftFingerprints,
-                      rightFingerprints.tail,
-                      matches,
-                      sectionsSeenAcrossSides
-                    )
-                  else
-                    matchingFingerprintsAcrossSides(
-                      baseFingerprints.tail,
-                      leftFingerprints,
-                      rightFingerprints,
-                      matches,
-                      sectionsSeenAcrossSides
-                    )
-                  end if
+                  sectionsSeenAcrossSides -> (matchGroupsInDescendingOrderOfKeys ++ Seq(
+                    (windowSize, MatchGrade.Triple) -> tripleMatches,
+                    (windowSize, MatchGrade.Pair)   -> pairMatches
+                  ).filter { case entry @ (_, matches) => matches.nonEmpty })
+            end match
+          end matchingFingerprintsAcrossSides
 
-                case (Some(baseHead), Some(leftHead), None) =>
-                  // The base and left fingerprints disagree, so advance the
-                  // side with the minimum fingerprint to see if it can catch up
-                  // and synchronise...
-                  if baseHead < leftHead then
-                    matchingFingerprintsAcrossSides(
-                      baseFingerprints.tail,
-                      leftFingerprints,
-                      rightFingerprints,
-                      matches,
-                      sectionsSeenAcrossSides
-                    )
-                  else
-                    matchingFingerprintsAcrossSides(
-                      baseFingerprints,
-                      leftFingerprints.tail,
-                      rightFingerprints,
-                      matches,
-                      sectionsSeenAcrossSides
-                    )
+          matchingFingerprintsAcrossSides(
+            baseSectionsByFingerprint.keySet,
+            leftSectionsByFingerprint.keySet,
+            rightSectionsByFingerprint.keySet,
+            matches = Set.empty,
+            sectionsSeenAcrossSides
+          )
 
-                case (Some(baseHead), None, Some(rightHead)) =>
-                  // The base and right fingerprints disagree, so advance the
-                  // side with the minimum fingerprint to see if it can catch up
-                  // and synchronise...
-                  if baseHead < rightHead then
-                    matchingFingerprintsAcrossSides(
-                      baseFingerprints.tail,
-                      leftFingerprints,
-                      rightFingerprints,
-                      matches,
-                      sectionsSeenAcrossSides
-                    )
-                  else
-                    matchingFingerprintsAcrossSides(
-                      baseFingerprints,
-                      leftFingerprints,
-                      rightFingerprints.tail,
-                      matches,
-                      sectionsSeenAcrossSides
-                    )
-
-                case (None, Some(leftHead), Some(rightHead)) =>
-                  // The left and right fingerprints disagree, so advance the
-                  // side with the minimum fingerprint to see if it can catch up
-                  // and synchronise...
-                  if leftHead < rightHead then
-                    matchingFingerprintsAcrossSides(
-                      baseFingerprints,
-                      leftFingerprints.tail,
-                      rightFingerprints,
-                      matches,
-                      sectionsSeenAcrossSides
-                    )
-                  else
-                    matchingFingerprintsAcrossSides(
-                      baseFingerprints,
-                      leftFingerprints,
-                      rightFingerprints.tail,
-                      matches,
-                      sectionsSeenAcrossSides
-                    )
-
-                case _ =>
-                  // There are no more opportunities to match a full triple or
-                  // just a pair, so this terminates the recursion. Add the
-                  // triples first if we have any, then any pairs as we are
-                  // adding match groups in descending order of keys.
-
-                  if matches.isEmpty
-                  then
-                    sectionsSeenAcrossSides -> matchGroupsInDescendingOrderOfKeys
-                  else
-                    val (tripleMatches, pairMatches) = matches.partition {
-                      case _: Match.AllThree[Section[Element]] => true
-                      case _                                   => false
-                    }
-
-                    sectionsSeenAcrossSides -> (matchGroupsInDescendingOrderOfKeys ++ Seq(
-                      (windowSize, MatchGrade.Triple) -> tripleMatches,
-                      (windowSize, MatchGrade.Pair)   -> pairMatches
-                    ).filter { case entry @ (_, matches) => matches.nonEmpty })
-              end match
-            end matchingFingerprintsAcrossSides
-
-            matchingFingerprintsAcrossSides(
-              baseSectionsByFingerprint.keySet,
-              leftSectionsByFingerprint.keySet,
-              rightSectionsByFingerprint.keySet,
-              matches = Set.empty,
-              sectionsSeenAcrossSides
-            )
-          else sectionsSeenAcrossSides -> matchGroupsInDescendingOrderOfKeys
-          end if
         end matchesForWindowSize
 
         val (
