@@ -188,6 +188,9 @@ object CodeMotionAnalysis:
 
       require(windowSizesInDescendingOrder.nonEmpty)
 
+      require(validWindowSizes contains windowSizesInDescendingOrder.head)
+      require(validWindowSizes contains windowSizesInDescendingOrder.last)
+
       {
         // We have vacant slots for window sizes that have never been used and
         // an additional pool of window sizes that have been used and then
@@ -218,8 +221,8 @@ object CodeMotionAnalysis:
         val choices = Choice.values.filter {
           case Choice.Replace | Choice.Grow
               if validWindowSizes.size > windowSizesInDescendingOrder.size =>
-            // NOTE: replacement has to find an *unused* window size to swap in,
-            // so it has to have at least one free window size to proceed.
+            // NOTE: replacement has to find an *unused* window size to swap
+            // in, so it has to have at least one free window size to proceed.
             true
           case Choice.Contract if 1 < windowSizesInDescendingOrder.size =>
             true
@@ -233,18 +236,12 @@ object CodeMotionAnalysis:
             contracted
 
           case Choice.Replace =>
-            // TODO: contraction can just remove the window size that was added
-            // to grow the chromosome, but for now let's live with that as a low
-            // probability occurrence.
+            // TODO: contraction can just remove the window size that was
+            // added to grow the chromosome, but for now let's live with that
+            // as a low probability occurrence.
             grown.contracted
         end match
       end mutate
-
-      windowSizesInDescendingOrder.foreach { size =>
-        require(
-          validWindowSizes contains size
-        )
-      }
 
       private def grown(using random: Random) =
         val numberOfFreeWindowSizes =
@@ -306,10 +303,7 @@ object CodeMotionAnalysis:
       end grown
 
       private def contracted(using random: Random) =
-        val deletedWindowSize =
-          if windowSizesInDescendingOrder.head < looseExclusiveUpperBoundOnMaximumMatchSize
-          then random.chooseOneOf(windowSizesInDescendingOrder)
-          else windowSizesInDescendingOrder.head
+        val deletedWindowSize = random.chooseOneOf(windowSizesInDescendingOrder)
 
         Chromosome(
           windowSizesInDescendingOrder =
@@ -1181,22 +1175,7 @@ object CodeMotionAnalysis:
                     sectionsSeenAcrossSides -> (matchGroupsInDescendingOrderOfKeys ++ Seq(
                       (windowSize, MatchGrade.Triple) -> tripleMatches,
                       (windowSize, MatchGrade.Pair)   -> pairMatches
-                    ).collect(Function.unlift {
-                      case entry @ ((windowSize, _), matches) =>
-                        if matches.nonEmpty then Some(entry)
-                        else
-                          if minimumSureFireWindowSizeAcrossAllFilesOverAllSides <= windowSize
-                          then
-                            // If we failed to get any match at this window size
-                            // and it was not potentially blocked by a per-file
-                            // threshold size, make a note to avoid going over
-                            // this size when growing a chromosome.
-                            looseExclusiveUpperBoundOnMaximumMatchSize =
-                              looseExclusiveUpperBoundOnMaximumMatchSize min windowSize
-                          end if
-
-                          None
-                    }))
+                    ).filter { case entry @ (_, matches) => matches.nonEmpty })
               end match
             end matchingFingerprintsAcrossSides
 
@@ -1224,6 +1203,22 @@ object CodeMotionAnalysis:
         println(
           s"Chromosome: ${chromosome.windowSizesInDescendingOrder}, matches: $matchGroupsInDescendingOrderOfKeys"
         )
+
+        val pointlessWindowSizes = matchGroupsInDescendingOrderOfKeys.headOption
+          .fold(ifEmpty = chromosome.windowSizesInDescendingOrder) {
+            case ((largestMatchingWindowSize, _), _) =>
+              chromosome.windowSizesInDescendingOrder.rangeUntil(
+                largestMatchingWindowSize
+              )
+          }
+          .filter(_ >= minimumSureFireWindowSizeAcrossAllFilesOverAllSides)
+
+        pointlessWindowSizes.minOption
+          .foreach { lowestPointlessWindowSize =>
+            looseExclusiveUpperBoundOnMaximumMatchSize =
+              lowestPointlessWindowSize min
+                looseExclusiveUpperBoundOnMaximumMatchSize
+          }
 
         Phenotype(
           chromosomeSize = chromosome.windowSizesInDescendingOrder.size,
