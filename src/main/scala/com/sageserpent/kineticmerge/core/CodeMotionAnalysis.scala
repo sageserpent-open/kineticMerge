@@ -298,10 +298,15 @@ object CodeMotionAnalysis:
               else
                 // The maximum seen in the inheritance of this chromosome
                 // happens to be the lowest valid window size, so just choose
-                // anything larger.
-                random.chooseAnyNumberFromZeroToOneLessThan(
-                  windowSizeSlots.numberOfVacantSlots
-                )
+                // anything larger, favouring smaller window sizes.
+                @tailrec
+                def considerSlotClaim(potentialSlotClaim: Int): Int =
+                  if 1 + potentialSlotClaim == windowSizeSlots.numberOfVacantSlots || random
+                      .nextBoolean()
+                  then potentialSlotClaim
+                  else considerSlotClaim(1 + potentialSlotClaim)
+
+                considerSlotClaim(potentialSlotClaim = 0)
               end if
             end slotClaim
 
