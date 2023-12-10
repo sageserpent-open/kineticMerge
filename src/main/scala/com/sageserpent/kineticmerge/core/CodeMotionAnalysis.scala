@@ -1292,8 +1292,8 @@ object CodeMotionAnalysis:
 
     val evolvedPhenotype =
       Evolution.of(
-        maximumNumberOfRetries = 10 /*100*/,
-        maximumPopulationSize = 10 /*100*/
+        maximumNumberOfRetries = 3,
+        maximumPopulationSize = 10
       )
 
     println(s"Finally: -----> $evolvedPhenotype")
