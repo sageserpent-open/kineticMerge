@@ -109,6 +109,9 @@ object CodeMotionAnalysis:
     var looseExclusiveUpperBoundOnMaximumMatchSize =
       1 + maximumFileSizeAcrossAllFilesOverAllSides
 
+    def dynamicValidWindowSizes: Range =
+      minimumWindowSizeAcrossAllFilesOverAllSides until looseExclusiveUpperBoundOnMaximumMatchSize
+
     enum MatchGrade:
       case Triple
       case Pair
@@ -141,33 +144,32 @@ object CodeMotionAnalysis:
         withWindowSizes(
           minimumSureFireWindowSizeAcrossAllFilesOverAllSides,
           minimumWindowSizeAcrossAllFilesOverAllSides
-        )
+        )(dynamicValidWindowSizes)
       end initial
 
-      private def withWindowSizes(windowSizes: Int*) =
+      private def withWindowSizes(windowSizes: Int*)(validWindowSizes: Range) =
         val windowSizesInDescendingOrder =
           TreeSet(windowSizes*)(descendingWindowSizeOrdering)
 
         Chromosome(
           windowSizesInDescendingOrder = windowSizesInDescendingOrder,
-          windowSizeSlots = allWindowSizesAreFree.claimSlotsOnBehalfOf(
-            windowSizesInDescendingOrder
-          ),
-          deletedWindowSizes = noWindowSizes
+          windowSizeSlots = RangeOfSlots
+            .allSlotsAreVacant(validWindowSizes.size)
+            .claimSlotsOnBehalfOf(
+              windowSizesInDescendingOrder,
+              validWindowSizes
+            ),
+          deletedWindowSizes = noWindowSizes,
+          validWindowSizes = validWindowSizes
         )
       end withWindowSizes
-
-      private def allWindowSizesAreFree =
-        RangeOfSlots.allSlotsAreVacant(validWindowSizes.size)
-
-      private def validWindowSizes =
-        minimumWindowSizeAcrossAllFilesOverAllSides until looseExclusiveUpperBoundOnMaximumMatchSize
 
       extension (windowSizeSlots: RangeOfSlots)
         // NOTE: careful with this helper - because of its recursion invariant
         // it shouldn't be folded into a chain of calls.
         private def claimSlotsOnBehalfOf(
-            windowSizesInDecreasingOrder: WindowSizesInDescendingOrder
+            windowSizesInDecreasingOrder: WindowSizesInDescendingOrder,
+            validWindowSizes: Range
         ) =
           windowSizesInDecreasingOrder.foldLeft(windowSizeSlots) {
             (windowSizeSlots, highestUnclaimedWindowSize) =>
@@ -190,7 +192,8 @@ object CodeMotionAnalysis:
         // use.
         windowSizesInDescendingOrder: WindowSizesInDescendingOrder,
         windowSizeSlots: RangeOfSlots,
-        deletedWindowSizes: WindowSizesInDescendingOrder = noWindowSizes
+        deletedWindowSizes: WindowSizesInDescendingOrder,
+        validWindowSizes: Range
     ):
       import Chromosome.*
 
@@ -239,15 +242,15 @@ object CodeMotionAnalysis:
 
         random.chooseOneOf(choices) match
           case Choice.Grow =>
-            reestablishInvariantIfBrokenSinceConstruction.grown
+            trimToSuitDynamicValidWindowSizes.grown
           case Choice.Contract =>
-            reestablishInvariantIfBrokenSinceConstruction.contracted
+            trimToSuitDynamicValidWindowSizes.contracted
 
           case Choice.Replace =>
             // TODO: contraction can just remove the window size that was
             // added to grow the chromosome, but for now let's live with that
             // as a low probability occurrence.
-            reestablishInvariantIfBrokenSinceConstruction.grown.contracted
+            trimToSuitDynamicValidWindowSizes.grown.contracted
         end match
       end mutate
 
@@ -298,7 +301,8 @@ object CodeMotionAnalysis:
             windowSizesInDescendingOrder =
               windowSizesInDescendingOrder + claimedWindowSize,
             windowSizeSlots = windowSizeSlotsWithClaim,
-            deletedWindowSizes = deletedWindowSizes
+            deletedWindowSizes = deletedWindowSizes,
+            validWindowSizes = validWindowSizes
           )
         else
           val reclaimedWindowSize = random.chooseOneOf(deletedWindowSizes)
@@ -307,7 +311,8 @@ object CodeMotionAnalysis:
             windowSizesInDescendingOrder =
               windowSizesInDescendingOrder + reclaimedWindowSize,
             windowSizeSlots = windowSizeSlots,
-            deletedWindowSizes = deletedWindowSizes - reclaimedWindowSize
+            deletedWindowSizes = deletedWindowSizes - reclaimedWindowSize,
+            validWindowSizes = validWindowSizes
           )
         end if
       end grown
@@ -319,56 +324,61 @@ object CodeMotionAnalysis:
           windowSizesInDescendingOrder =
             windowSizesInDescendingOrder - deletedWindowSize,
           windowSizeSlots = windowSizeSlots,
-          deletedWindowSizes = deletedWindowSizes + deletedWindowSize
+          deletedWindowSizes = deletedWindowSizes + deletedWindowSize,
+          validWindowSizes = validWindowSizes
         )
       end contracted
 
-      // As `validWindowSizes` is dynamically calculated, it is possible for a
-      // chromosome's invariant to be broken post construction; this can happen
-      // when `looseExclusiveUpperBoundOnMaximumMatchSize` is lowered during the
-      // creation of a phenotype. This method trims the chromosome's window
-      // sizes and associated baggage so that the invariant holds again against
-      // the current valid window sizes. We assume that updates to
-      // `validWindowSizes` are never performed concurrently with invocations of
-      // this method. If all of the chromosomes window sizes turn out to be
-      // invalid, we just build a new chromosome using the highest possible
+      def breedWith(another: Chromosome)(using random: Random): Chromosome =
+        this.trimToSuitDynamicValidWindowSizes.breedWith_(
+          another.trimToSuitDynamicValidWindowSizes
+        )
+
+      // This method trims the chromosome's window sizes and associated baggage
+      // so that the invariant holds again against a snapshot of the dynamic
+      // valid window sizes. If all of the chromosomes window sizes turn out to
+      // be invalid, we just build a new chromosome using the highest possible
       // valid one.
-      private def reestablishInvariantIfBrokenSinceConstruction: Chromosome =
+      private def trimToSuitDynamicValidWindowSizes: Chromosome =
         val numberOfPotentialWindowSizesAtConstruction =
           windowSizeSlots.numberOfVacantSlots + windowSizeSlots.numberOfFilledSlots
 
-        if numberOfPotentialWindowSizesAtConstruction > validWindowSizes.size
+        val validWindowSizesSnapshot = dynamicValidWindowSizes
+
+        if numberOfPotentialWindowSizesAtConstruction > validWindowSizesSnapshot.size
         then
           val windowSizesInDescendingOrder =
-            this.windowSizesInDescendingOrder filter (validWindowSizes.max >= _)
+            this.windowSizesInDescendingOrder filter (validWindowSizesSnapshot.max >= _)
 
           if windowSizesInDescendingOrder.nonEmpty then
             val deletedWindowSizes =
-              this.deletedWindowSizes filter (validWindowSizes.max >= _)
+              this.deletedWindowSizes filter (validWindowSizesSnapshot.max >= _)
 
-            val windowSizeSlots = allWindowSizesAreFree.claimSlotsOnBehalfOf(
-              windowSizesInDescendingOrder ++ deletedWindowSizes
-            )
+            val windowSizeSlots = RangeOfSlots
+              .allSlotsAreVacant(validWindowSizesSnapshot.size)
+              .claimSlotsOnBehalfOf(
+                windowSizesInDescendingOrder ++ deletedWindowSizes,
+                validWindowSizesSnapshot
+              )
 
             Chromosome(
               windowSizesInDescendingOrder,
               windowSizeSlots,
-              deletedWindowSizes
+              deletedWindowSizes,
+              validWindowSizes = validWindowSizesSnapshot
             )
-          else Chromosome.withWindowSizes(validWindowSizes.max)
+          else
+            Chromosome.withWindowSizes(validWindowSizesSnapshot.max)(
+              validWindowSizesSnapshot
+            )
           end if
         else
           assume(
-            numberOfPotentialWindowSizesAtConstruction == validWindowSizes.size
+            numberOfPotentialWindowSizesAtConstruction == validWindowSizesSnapshot.size
           )
           this
         end if
-      end reestablishInvariantIfBrokenSinceConstruction
-
-      def breedWith(another: Chromosome)(using random: Random): Chromosome =
-        this.reestablishInvariantIfBrokenSinceConstruction.breedWith_(
-          another.reestablishInvariantIfBrokenSinceConstruction
-        )
+      end trimToSuitDynamicValidWindowSizes
 
       private def breedWith_(another: Chromosome)(using
           random: Random
@@ -560,15 +570,24 @@ object CodeMotionAnalysis:
           (this.deletedWindowSizes ++ another.deletedWindowSizes)
             .removedAll(bredWindowSizes)
 
-        val windowSizeSlots = allWindowSizesAreFree
+        val windowSizeSlots = RangeOfSlots
+          .allSlotsAreVacant(validWindowSizes.size)
           // NOTE: don't change this into two successive calls of
           // `claimSlotsOnBehalfOf`, because that helper assumes the claimed
           // window sizes are presented in descending order, so can't be called
           // more than once with sizes that are contained in non-overlapping
           // intervals.
-          .claimSlotsOnBehalfOf(bredWindowSizes ++ deletedWindowSizes)
+          .claimSlotsOnBehalfOf(
+            bredWindowSizes ++ deletedWindowSizes,
+            validWindowSizes
+          )
 
-        Chromosome(bredWindowSizes, windowSizeSlots, deletedWindowSizes)
+        Chromosome(
+          bredWindowSizes,
+          windowSizeSlots,
+          deletedWindowSizes,
+          validWindowSizes
+        )
       end breedWith_
     end Chromosome
 
