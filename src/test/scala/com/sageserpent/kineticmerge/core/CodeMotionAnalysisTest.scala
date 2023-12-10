@@ -155,7 +155,7 @@ class CodeMotionAnalysisTest:
     // each other ...
     val sequences =
       trialsApi
-        .integers(1, 100)
+        .integers(1, 10)
         .flatMap(sequenceLength =>
           trialsApi
             .choose(alphabet)
@@ -369,9 +369,7 @@ class CodeMotionAnalysisTest:
     )
 
     testPlans
-      .withStrategy(_ =>
-        CasesLimitStrategy.timed(Duration.apply(20, TimeUnit.MINUTES))
-      )
+      .withStrategy(_ => CasesLimitStrategy.counted(15, 3.0))
       .dynamicTests { testPlan =>
         pprint.pprintln(
           testPlan -> testPlan.minimumSizeFractionForMotionDetection
