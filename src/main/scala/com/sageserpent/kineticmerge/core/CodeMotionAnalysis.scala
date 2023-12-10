@@ -80,7 +80,7 @@ object CodeMotionAnalysis:
   )(
       polynomial: Polynomial
   ): Either[AmbiguousMatch.type, CodeMotionAnalysis[Path, Element]] =
-    require(0 < minimumSizeFractionForMotionDetection)
+    require(0 <= minimumSizeFractionForMotionDetection)
     require(1 >= minimumSizeFractionForMotionDetection)
 
     given witness: Eq[Element] = equality
@@ -197,10 +197,10 @@ object CodeMotionAnalysis:
     ):
       import Chromosome.*
 
-      require(windowSizesInDescendingOrder.nonEmpty)
-
-      require(validWindowSizes contains windowSizesInDescendingOrder.head)
-      require(validWindowSizes contains windowSizesInDescendingOrder.last)
+      if windowSizesInDescendingOrder.nonEmpty then
+        require(validWindowSizes contains windowSizesInDescendingOrder.head)
+        require(validWindowSizes contains windowSizesInDescendingOrder.last)
+      end if
 
       {
         // We have vacant slots for window sizes that have never been used and
@@ -240,18 +240,20 @@ object CodeMotionAnalysis:
           case _ => false
         }
 
-        random.chooseOneOf(choices) match
-          case Choice.Grow =>
-            trimToSuitDynamicValidWindowSizes.grown
-          case Choice.Contract =>
-            trimToSuitDynamicValidWindowSizes.contracted
+        if choices.nonEmpty then
+          random.chooseOneOf(choices) match
+            case Choice.Grow =>
+              trimToSuitDynamicValidWindowSizes.grown
+            case Choice.Contract =>
+              trimToSuitDynamicValidWindowSizes.contracted
 
-          case Choice.Replace =>
-            // TODO: contraction can just remove the window size that was
-            // added to grow the chromosome, but for now let's live with that
-            // as a low probability occurrence.
-            trimToSuitDynamicValidWindowSizes.grown.contracted
-        end match
+            case Choice.Replace =>
+              // TODO: contraction can just remove the window size that was
+              // added to grow the chromosome, but for now let's live with that
+              // as a low probability occurrence.
+              trimToSuitDynamicValidWindowSizes.grown.contracted
+          end match
+        else this
       end mutate
 
       private def grown(using random: Random) =
@@ -264,13 +266,6 @@ object CodeMotionAnalysis:
           ) < windowSizeSlots.numberOfVacantSlots
 
         if claimASlot then
-          @tailrec
-          def claimSlot(potentialSlotClaim: Int): (Int, RangeOfSlots) =
-            if 1 + potentialSlotClaim == windowSizeSlots.numberOfVacantSlots || random
-                .nextBoolean()
-            then windowSizeSlots.fillVacantSlotAtIndex(potentialSlotClaim)
-            else claimSlot(1 + potentialSlotClaim)
-
           val (claimedSlotIndex, windowSizeSlotsWithClaim) =
             val largestWindowSizeSeenInTheInheritance =
               deletedWindowSizes.headOption.fold(ifEmpty =
@@ -281,16 +276,27 @@ object CodeMotionAnalysis:
                 .nextBoolean()
             then
               // Claim a slot for a window size that is larger than all of the
-              // others seen in the inheritance of this chromosome.
+              // others seen in the inheritance of this chromosome. Be bold and
+              // choose any valid size.
               val numberOfVacantSlotsWhoseSizesAreTooSmall =
                 1 + largestWindowSizeSeenInTheInheritance - validWindowSizes.min - windowSizeSlots.numberOfFilledSlots
 
-              claimSlot(potentialSlotClaim =
-                numberOfVacantSlotsWhoseSizesAreTooSmall
-              )
+              val slotClaim = numberOfVacantSlotsWhoseSizesAreTooSmall + random
+                .chooseAnyNumberFromZeroToOneLessThan(
+                  windowSizeSlots.numberOfVacantSlots - numberOfVacantSlotsWhoseSizesAreTooSmall
+                )
+
+              windowSizeSlots.fillVacantSlotAtIndex(slotClaim)
             else
               // Claim a slot for a window size we've not used before, but
               // favour smaller window sizes.
+              @tailrec
+              def claimSlot(potentialSlotClaim: Int): (Int, RangeOfSlots) =
+                if 1 + potentialSlotClaim == windowSizeSlots.numberOfVacantSlots || random
+                    .nextBoolean()
+                then windowSizeSlots.fillVacantSlotAtIndex(potentialSlotClaim)
+                else claimSlot(1 + potentialSlotClaim)
+
               claimSlot(potentialSlotClaim = 0)
             end if
           end val
@@ -329,11 +335,6 @@ object CodeMotionAnalysis:
         )
       end contracted
 
-      def breedWith(another: Chromosome)(using random: Random): Chromosome =
-        this.trimToSuitDynamicValidWindowSizes.breedWith_(
-          another.trimToSuitDynamicValidWindowSizes
-        )
-
       // This method trims the chromosome's window sizes and associated baggage
       // so that the invariant holds again against a snapshot of the dynamic
       // valid window sizes. If all of the chromosomes window sizes turn out to
@@ -348,11 +349,19 @@ object CodeMotionAnalysis:
         if numberOfPotentialWindowSizesAtConstruction > validWindowSizesSnapshot.size
         then
           val windowSizesInDescendingOrder =
-            this.windowSizesInDescendingOrder filter (validWindowSizesSnapshot.max >= _)
+            this.windowSizesInDescendingOrder filter (windowSize =>
+              validWindowSizesSnapshot.maxOption.fold(ifEmpty = false)(
+                _ >= windowSize
+              )
+            )
 
           if windowSizesInDescendingOrder.nonEmpty then
             val deletedWindowSizes =
-              this.deletedWindowSizes filter (validWindowSizesSnapshot.max >= _)
+              this.deletedWindowSizes filter (windowSize =>
+                validWindowSizesSnapshot.maxOption.fold(ifEmpty = false)(
+                  _ >= windowSize
+                )
+              )
 
             val windowSizeSlots = RangeOfSlots
               .allSlotsAreVacant(validWindowSizesSnapshot.size)
@@ -368,7 +377,9 @@ object CodeMotionAnalysis:
               validWindowSizes = validWindowSizesSnapshot
             )
           else
-            Chromosome.withWindowSizes(validWindowSizesSnapshot.max)(
+            Chromosome.withWindowSizes(
+              validWindowSizesSnapshot.maxOption.toSeq*
+            )(
               validWindowSizesSnapshot
             )
           end if
@@ -379,6 +390,11 @@ object CodeMotionAnalysis:
           this
         end if
       end trimToSuitDynamicValidWindowSizes
+
+      def breedWith(another: Chromosome)(using random: Random): Chromosome =
+        this.trimToSuitDynamicValidWindowSizes.breedWith_(
+          another.trimToSuitDynamicValidWindowSizes
+        )
 
       private def breedWith_(another: Chromosome)(using
           random: Random

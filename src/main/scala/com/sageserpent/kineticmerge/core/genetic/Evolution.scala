@@ -40,8 +40,6 @@ object Evolution:
         numberOfRetries: Int,
         maximumNumberOfRetries: Int
     ): Chromosome =
-      require(1 < populationChromosomes.size)
-
       val populationSize = populationChromosomes.size
 
       val maximumRank = populationSize - 1
