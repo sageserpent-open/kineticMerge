@@ -254,6 +254,7 @@ object CodeMotionAnalysis:
               trimToSuitDynamicValidWindowSizes.grown.contracted
           end match
         else this
+        end if
       end mutate
 
       private def grown(using random: Random) =
@@ -272,33 +273,39 @@ object CodeMotionAnalysis:
                 windowSizesInDescendingOrder.head
               )(windowSizesInDescendingOrder.head max _)
 
-            if largestWindowSizeSeenInTheInheritance < validWindowSizes.last && random
-                .nextBoolean()
-            then
-              // Claim a slot for a window size that is larger than all of the
-              // others seen in the inheritance of this chromosome. Be bold and
-              // choose any valid size.
-              val numberOfVacantSlotsWhoseSizesAreTooSmall =
-                1 + largestWindowSizeSeenInTheInheritance - validWindowSizes.min - windowSizeSlots.numberOfFilledSlots
+            val numberOfVacantSlotsWhoseSizesWouldBeLessThanTheMaximum =
+              1 + largestWindowSizeSeenInTheInheritance - validWindowSizes.min - windowSizeSlots.numberOfFilledSlots
 
-              val slotClaim = numberOfVacantSlotsWhoseSizesAreTooSmall + random
-                .chooseAnyNumberFromZeroToOneLessThan(
-                  windowSizeSlots.numberOfVacantSlots - numberOfVacantSlotsWhoseSizesAreTooSmall
+            val slotClaim =
+              if numberOfVacantSlotsWhoseSizesWouldBeLessThanTheMaximum < windowSizeSlots.numberOfVacantSlots && random
+                  .nextBoolean()
+              then
+                // Claim a slot for a window size that is larger than all of the
+                // others seen in the inheritance of this chromosome. Be bold
+                // and choose any valid size.
+                numberOfVacantSlotsWhoseSizesWouldBeLessThanTheMaximum + random
+                  .chooseAnyNumberFromZeroToOneLessThan(
+                    windowSizeSlots.numberOfVacantSlots - numberOfVacantSlotsWhoseSizesWouldBeLessThanTheMaximum
+                  )
+              else if 0 < numberOfVacantSlotsWhoseSizesWouldBeLessThanTheMaximum
+              then
+                // Claim a slot for a window size we've not used before, but
+                // stay below the maximum seen in the inheritance of this
+                // chromosome.
+                random.chooseAnyNumberFromZeroToOneLessThan(
+                  numberOfVacantSlotsWhoseSizesWouldBeLessThanTheMaximum
                 )
+              else
+                // The maximum seen in the inheritance of this chromosome
+                // happens to be the lowest valid window size, so just choose
+                // anything larger.
+                random.chooseAnyNumberFromZeroToOneLessThan(
+                  windowSizeSlots.numberOfVacantSlots
+                )
+              end if
+            end slotClaim
 
-              windowSizeSlots.fillVacantSlotAtIndex(slotClaim)
-            else
-              // Claim a slot for a window size we've not used before, but
-              // favour smaller window sizes.
-              @tailrec
-              def claimSlot(potentialSlotClaim: Int): (Int, RangeOfSlots) =
-                if 1 + potentialSlotClaim == windowSizeSlots.numberOfVacantSlots || random
-                    .nextBoolean()
-                then windowSizeSlots.fillVacantSlotAtIndex(potentialSlotClaim)
-                else claimSlot(1 + potentialSlotClaim)
-
-              claimSlot(potentialSlotClaim = 0)
-            end if
+            windowSizeSlots.fillVacantSlotAtIndex(slotClaim)
           end val
 
           val claimedWindowSize = claimedSlotIndex + validWindowSizes.min
@@ -334,6 +341,11 @@ object CodeMotionAnalysis:
           validWindowSizes = validWindowSizes
         )
       end contracted
+
+      def breedWith(another: Chromosome)(using random: Random): Chromosome =
+        this.trimToSuitDynamicValidWindowSizes.breedWith_(
+          another.trimToSuitDynamicValidWindowSizes
+        )
 
       // This method trims the chromosome's window sizes and associated baggage
       // so that the invariant holds again against a snapshot of the dynamic
@@ -390,11 +402,6 @@ object CodeMotionAnalysis:
           this
         end if
       end trimToSuitDynamicValidWindowSizes
-
-      def breedWith(another: Chromosome)(using random: Random): Chromosome =
-        this.trimToSuitDynamicValidWindowSizes.breedWith_(
-          another.trimToSuitDynamicValidWindowSizes
-        )
 
       private def breedWith_(another: Chromosome)(using
           random: Random
