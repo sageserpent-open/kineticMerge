@@ -161,7 +161,7 @@ class CodeMotionAnalysisTest:
     // each other ...
     val sequences =
       trialsApi
-        .integers(1, 100)
+        .integers(1, 1000)
         .flatMap(sequenceLength =>
           trialsApi
             .choose(alphabet)
