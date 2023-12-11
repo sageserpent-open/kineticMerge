@@ -248,10 +248,13 @@ object CodeMotionAnalysis:
               trimToSuitDynamicValidWindowSizes.contracted
 
             case Choice.Replace =>
-              // TODO: contraction can just remove the window size that was
-              // added to grow the chromosome, but for now let's live with that
-              // as a low probability occurrence.
-              trimToSuitDynamicValidWindowSizes.grown.contracted
+              if random.nextBoolean() then
+                // TODO: contraction can just remove the window size that was
+                // added to grow the chromosome, but for now let's live with
+                // that as a low probability occurrence.
+                trimToSuitDynamicValidWindowSizes.grown.contracted
+              else trimToSuitDynamicValidWindowSizes.nudged
+              end if
           end match
         else this
         end if
@@ -346,6 +349,47 @@ object CodeMotionAnalysis:
           validWindowSizes = validWindowSizes
         )
       end contracted
+
+      private def nudged(using random: Random) =
+        val sizeGaps =
+          (this.windowSizesInDescendingOrder + validWindowSizes.max)
+            .zip(this.windowSizesInDescendingOrder.tail)
+            .filter { case (larger, smaller) => larger > 1 + smaller }
+
+        if sizeGaps.nonEmpty then
+          val (nonContiguousHigherWindowSize, deletedWindowSize) =
+            random.chooseOneOf(sizeGaps)
+
+          val nudgedWindowSize =
+            deletedWindowSize + random.chooseAnyNumberFromOneTo(
+              nonContiguousHigherWindowSize - (1 + deletedWindowSize)
+            )
+
+          val windowSizesInDescendingOrder =
+            this.windowSizesInDescendingOrder - deletedWindowSize + nudgedWindowSize
+
+          // NOTE: It can be the case that `nudgedWindowSize` is lurking in the
+          // set of deleted sizes, so remove it speculatively.
+          val deletedWindowSizes =
+            this.deletedWindowSizes + deletedWindowSize - nudgedWindowSize
+
+          Chromosome(
+            windowSizesInDescendingOrder = windowSizesInDescendingOrder,
+            windowSizeSlots = RangeOfSlots
+              .allSlotsAreVacant(validWindowSizes.size)
+              .claimSlotsOnBehalfOf(
+                windowSizesInDescendingOrder ++ deletedWindowSizes,
+                validWindowSizes
+              ),
+            deletedWindowSizes = deletedWindowSizes,
+            validWindowSizes = validWindowSizes
+          )
+        else
+          // Either just one window size or the only gap is in front of the
+          // lowest window size; for now, do a straight replacement.
+          this.grown.contracted
+        end if
+      end nudged
 
       // This method trims the chromosome's window sizes and associated baggage
       // so that the invariant holds again against a snapshot of the dynamic
@@ -1307,9 +1351,9 @@ object CodeMotionAnalysis:
             matchesForWindowSize
           )
 
-        println(
-          s"Chromosome: ${chromosome.windowSizesInDescendingOrder}, matches: $matchGroupsInDescendingOrderOfKeys"
-        )
+//        println(
+//          s"Chromosome: ${chromosome.windowSizesInDescendingOrder}, matches: $matchGroupsInDescendingOrderOfKeys"
+//        )
 
         val pointlessWindowSizes = matchGroupsInDescendingOrderOfKeys.headOption
           .fold(ifEmpty = chromosome.windowSizesInDescendingOrder) {
