@@ -222,6 +222,8 @@ object CodeMotionAnalysis:
 
       override def hashCode(): Int = windowSizesInDescendingOrder.hashCode()
 
+      override def toString: String = windowSizesInDescendingOrder.toString()
+
       def mutate(using random: Random): Chromosome =
         enum Choice:
           case Grow
@@ -246,15 +248,8 @@ object CodeMotionAnalysis:
               trimToSuitDynamicValidWindowSizes.grown
             case Choice.Contract =>
               trimToSuitDynamicValidWindowSizes.contracted
-
             case Choice.Replace =>
-              if random.nextBoolean() then
-                // TODO: contraction can just remove the window size that was
-                // added to grow the chromosome, but for now let's live with
-                // that as a low probability occurrence.
-                trimToSuitDynamicValidWindowSizes.grown.contracted
-              else trimToSuitDynamicValidWindowSizes.nudged
-              end if
+              trimToSuitDynamicValidWindowSizes.nudged
           end match
         else this
         end if
@@ -757,10 +752,10 @@ object CodeMotionAnalysis:
 
     given Evolution[Chromosome, Phenotype] with
       private val phenotypeCache: Cache[Chromosome, Phenotype] =
-        Caffeine.newBuilder().maximumSize(100).build()
+        Caffeine.newBuilder().build()
       private val fingerprintingCache
           : Cache[Int, RabinFingerprintLongWindowed] =
-        Caffeine.newBuilder().maximumSize(100).build()
+        Caffeine.newBuilder().build()
       // TODO: review this one - a) it does not seem to add much of a
       // performance benefit because the previous fingerprinting cache cuts out
       // a much larger overhead and b) if we're going to use this we should
@@ -768,7 +763,7 @@ object CodeMotionAnalysis:
       // caching API's style.
       private val fingerprintSectionsCache
           : Cache[Int, FingerprintSectionsAcrossSides] =
-        Caffeine.newBuilder().maximumSize(100).build()
+        Caffeine.newBuilder().build()
 
       override def mutate(chromosome: Chromosome)(using
           random: Random
@@ -888,6 +883,8 @@ object CodeMotionAnalysis:
             val fingerprinting = fingerprintingCache.get(
               windowSize,
               { (windowSize: Int) =>
+                println(s"looseExclusiveUpperBoundOnMaximumMatchSize: $looseExclusiveUpperBoundOnMaximumMatchSize, windowSize: $windowSize")
+
                 val fixedNumberOfBytesInElementHash =
                   hashFunction.bits / JavaByte.SIZE
 

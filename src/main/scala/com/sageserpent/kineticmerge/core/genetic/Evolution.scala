@@ -100,6 +100,7 @@ object Evolution:
       then fittestChromosome
       else
         if noImprovement then
+          println("**** RETRYING...")
           lifecycle(
             populationChromosomes = offspringChromosomes,
             fittestChromosome, // The previous record holder still stands.
@@ -107,6 +108,10 @@ object Evolution:
             maximumNumberOfRetries = maximumNumberOfRetries
           )
         else
+          println(
+            s"**** PROGRESSING, fittest: $fittestOffspringChromosome, phenotype: ${evolution
+                .phenotype(fittestOffspringChromosome)}"
+          )
           lifecycle(
             populationChromosomes = offspringChromosomes,
             fittestChromosome =
