@@ -32,7 +32,7 @@ class CodeMotionAnalysisTest:
     pathTrials
       .maps(contentTrials)
       .filter(_.nonEmpty)
-      .map(FakeSources.apply)
+      .map(FakeSources.apply(_, "unlabelled"))
 
   @TestFactory
   def sourcesCanBeReconstructedFromTheAnalysis: DynamicTests =
@@ -50,7 +50,13 @@ class CodeMotionAnalysisTest:
       end matches
     end extension
 
-    (sourcesTrials and sourcesTrials and sourcesTrials and minimumSizeFractionTrials)
+    (sourcesTrials.map(
+      _.copy(label = "base")
+    ) and sourcesTrials.map(
+      _.copy(label = "left")
+    ) and sourcesTrials.map(
+      _.copy(label = "right")
+    ) and minimumSizeFractionTrials)
       .withStrategy(_ =>
         CasesLimitStrategy.timed(Duration.apply(1, TimeUnit.MINUTES))
       )
@@ -218,7 +224,7 @@ class CodeMotionAnalysisTest:
               )
             then trialsApi.impossible
             else
-              def sourcesForASide(
+              def sourcesForASide(label: String)(
                   commonToAllThreeSides: IndexedSeq[
                     Vector[FakeSources#Element]
                   ],
@@ -317,7 +323,7 @@ class CodeMotionAnalysisTest:
                           path -> fileContents
                         }.toMap)
                         .map(contentsByPath =>
-                          new FakeSources(contentsByPath)
+                          new FakeSources(contentsByPath, label)
                             with SourcesContracts[
                               Path,
                               Element
@@ -328,21 +334,21 @@ class CodeMotionAnalysisTest:
 
               for
                 (baseSources, adjacentCommonSequencesArePossibleOnBase) <-
-                  sourcesForASide(
+                  sourcesForASide(label = "base")(
                     commonToAllThreeSides,
                     commonToBaseAndLeft,
                     commonToBaseAndRight,
                     uniqueToBase
                   )
                 (leftSources, adjacentCommonSequencesArePossibleOnLeft) <-
-                  sourcesForASide(
+                  sourcesForASide(label = "base")(
                     commonToAllThreeSides,
                     commonToBaseAndLeft,
                     commonToLeftAndRight,
                     uniqueToLeft
                   )
                 (rightSources, adjacentCommonSequencesArePossibleOnRight) <-
-                  sourcesForASide(
+                  sourcesForASide(label = "right")(
                     commonToAllThreeSides,
                     commonToBaseAndRight,
                     commonToLeftAndRight,
@@ -630,7 +636,7 @@ class CodeMotionAnalysisTest:
           end if
 
         catch
-          case overlappingSections: OverlappingSections =>
+          case overlappingSections: FakeSources#OverlappingSections =>
             pprint.pprintln(overlappingSections)
             Trials.reject()
         end try
@@ -762,16 +768,10 @@ object CodeMotionAnalysisTest:
     end filesByPathUtilising
   end SourcesContracts
 
-  class OverlappingSections(
-      path: Path,
-      first: Section[Element],
-      second: Section[Element]
-  ) extends RuntimeException(
-        s"Overlapping section detected at path: $path: $first (content: ${first.content}) overlaps with start of section: $second (content: ${second.content})."
-      )
-
-  case class FakeSources(contentsByPath: Map[Path, IndexedSeq[Element]])
-      extends Sources[Path, Element]:
+  case class FakeSources(
+      contentsByPath: Map[Path, IndexedSeq[Element]],
+      label: String
+  ) extends Sources[Path, Element]:
     override def filesByPathUtilising(
         mandatorySections: Set[Section[Element]]
     ): Map[Path, File[Element]] =
@@ -848,6 +848,21 @@ object CodeMotionAnalysisTest:
       */
     def maximumContentsSize: Int =
       contentsByPath.values.map(_.size).maxOption.getOrElse(0)
+
+    class OverlappingSections(
+        path: Path,
+        first: Section[Element],
+        second: Section[Element]
+    ) extends RuntimeException({
+          val overlap = section(path)(
+            startOffset = second.startOffset,
+            size = first.onePastEndOffset - second.startOffset
+          )
+
+          s"Overlapping section detected on side: $label at path: $path: $first (content: ${first.content}) overlaps with start of section: $second (content: ${second.content}), overlap content: ${overlap.content}."
+        }):
+
+    end OverlappingSections
 
     case class SectionImplementation(
         path: Path,
