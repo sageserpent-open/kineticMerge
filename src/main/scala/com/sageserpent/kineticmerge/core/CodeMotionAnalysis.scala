@@ -347,11 +347,6 @@ object CodeMotionAnalysis:
         )
       end contracted
 
-      def breedWith(another: Chromosome)(using random: Random): Chromosome =
-        this.trimToSuitDynamicValidWindowSizes.breedWith_(
-          another.trimToSuitDynamicValidWindowSizes
-        )
-
       // This method trims the chromosome's window sizes and associated baggage
       // so that the invariant holds again against a snapshot of the dynamic
       // valid window sizes. If all of the chromosomes window sizes turn out to
@@ -407,6 +402,11 @@ object CodeMotionAnalysis:
           this
         end if
       end trimToSuitDynamicValidWindowSizes
+
+      def breedWith(another: Chromosome)(using random: Random): Chromosome =
+        this.trimToSuitDynamicValidWindowSizes.breedWith_(
+          another.trimToSuitDynamicValidWindowSizes
+        )
 
       private def breedWith_(another: Chromosome)(using
           random: Random
@@ -621,15 +621,16 @@ object CodeMotionAnalysis:
 
     case class Phenotype(
         chromosomeSize: Int,
-        matchGroupsInReverseOrder: MatchGroupsInDescendingOrderOfKeys
+        matchGroupsInDescendingOrderOfKeys: MatchGroupsInDescendingOrderOfKeys
     ):
-      require(matchGroupsInReverseOrder.forall { case (_, matchGroup) =>
-        matchGroup.nonEmpty
+      require(matchGroupsInDescendingOrderOfKeys.forall {
+        case (_, matchGroup) =>
+          matchGroup.nonEmpty
       })
 
       def baseSectionsAndTheirMatches
           : Map[Section[Element], Match[Section[Element]]] =
-        matchGroupsInReverseOrder
+        matchGroupsInDescendingOrderOfKeys
           .map { case (_, matches) =>
             matches.view.collect {
               case aMatch @ Match.AllThree(baseSection, _, _) =>
@@ -645,7 +646,7 @@ object CodeMotionAnalysis:
 
       def leftSectionsAndTheirMatches
           : Map[Section[Element], Match[Section[Element]]] =
-        matchGroupsInReverseOrder
+        matchGroupsInDescendingOrderOfKeys
           .map { case (_, matches) =>
             matches.view.collect {
               case aMatch @ Match.AllThree(_, leftSection, _) =>
@@ -661,7 +662,7 @@ object CodeMotionAnalysis:
 
       def rightSectionsAndTheirMatches
           : Map[Section[Element], Match[Section[Element]]] =
-        matchGroupsInReverseOrder
+        matchGroupsInDescendingOrderOfKeys
           .map { case (_, matches) =>
             matches.view.collect {
               case aMatch @ Match.AllThree(_, _, rightSection) =>
@@ -694,14 +695,16 @@ object CodeMotionAnalysis:
         // keys. The least chromosome size is the final tiebreaker.
         Order.compare(
           (
-            x.matchGroupsInReverseOrder.map { case (matchGroupKey, matches) =>
-              matchGroupKey -> matches.size
+            x.matchGroupsInDescendingOrderOfKeys.map {
+              case (matchGroupKey, matches) =>
+                matchGroupKey -> matches.size
             },
             -x.chromosomeSize
           ),
           (
-            y.matchGroupsInReverseOrder.map { case (matchGroupKey, matches) =>
-              matchGroupKey -> matches.size
+            y.matchGroupsInDescendingOrderOfKeys.map {
+              case (matchGroupKey, matches) =>
+                matchGroupKey -> matches.size
             },
             -y.chromosomeSize
           )
