@@ -4,7 +4,6 @@ import cats.instances.seq.*
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction}
-import com.sageserpent.americium.RangeOfSlots
 import com.sageserpent.americium.randomEnrichment.*
 import com.sageserpent.kineticmerge.core.genetic.Evolution
 import de.sciss.fingertree.RangedSeq
@@ -153,46 +152,13 @@ object CodeMotionAnalysis:
 
         Chromosome(
           windowSizesInDescendingOrder = windowSizesInDescendingOrder,
-          windowSizeSlots = RangeOfSlots
-            .allSlotsAreVacant(validWindowSizes.size)
-            .claimSlotsOnBehalfOf(
-              windowSizesInDescendingOrder,
-              validWindowSizes
-            ),
-          deletedWindowSizes = noWindowSizes,
           validWindowSizes = validWindowSizes
         )
       end withWindowSizes
-
-      extension (windowSizeSlots: RangeOfSlots)
-        // NOTE: careful with this helper - because of its recursion invariant
-        // it shouldn't be folded into a chain of calls.
-        private def claimSlotsOnBehalfOf(
-            windowSizesInDecreasingOrder: WindowSizesInDescendingOrder,
-            validWindowSizes: Range
-        ) =
-          windowSizesInDecreasingOrder.foldLeft(windowSizeSlots) {
-            (windowSizeSlots, highestUnclaimedWindowSize) =>
-              val (_, withTheHighestWindowSizeClaimed) =
-                // As we work down the sizes, we maintain the invariant that
-                // all the slots leading up to the one corresponding to the
-                // size we want to claim are vacant. So the slot index we
-                // need is just the size's ordinal number, taken zero
-                // relative.
-                windowSizeSlots.fillVacantSlotAtIndex(
-                  highestUnclaimedWindowSize - validWindowSizes.min
-                )
-              withTheHighestWindowSizeClaimed
-          }
     end Chromosome
 
     case class Chromosome(
-        // NOTE: only the window sizes determine equality, the rest is baggage
-        // used to allocate new sizes that don't conflict with sizes already in
-        // use.
         windowSizesInDescendingOrder: WindowSizesInDescendingOrder,
-        windowSizeSlots: RangeOfSlots,
-        deletedWindowSizes: WindowSizesInDescendingOrder,
         validWindowSizes: Range
     ):
       import Chromosome.*
@@ -201,28 +167,6 @@ object CodeMotionAnalysis:
         require(validWindowSizes contains windowSizesInDescendingOrder.head)
         require(validWindowSizes contains windowSizesInDescendingOrder.last)
       end if
-
-      {
-        // We have vacant slots for window sizes that have never been used and
-        // an additional pool of window sizes that have been used and then
-        // deleted.
-        require(
-          windowSizesInDescendingOrder.intersect(deletedWindowSizes).isEmpty
-        )
-        require(
-          windowSizeSlots.numberOfFilledSlots == windowSizesInDescendingOrder.size + deletedWindowSizes.size
-        )
-      }
-
-      override def equals(another: Any): Boolean = another match
-        // TODO: apparently this pattern match cannot be checked at runtime...
-        case another: Chromosome =>
-          this.windowSizesInDescendingOrder == another.windowSizesInDescendingOrder
-        case _ => false
-
-      override def hashCode(): Int = windowSizesInDescendingOrder.hashCode()
-
-      override def toString: String = windowSizesInDescendingOrder.toString()
 
       def mutate(using random: Random): Chromosome =
         enum Choice:
@@ -255,83 +199,173 @@ object CodeMotionAnalysis:
         end if
       end mutate
 
+      private def nudged(using random: Random) =
+        val numberOfFreeWindowSizes =
+          validWindowSizes.size - windowSizesInDescendingOrder.size
+
+        val newWindowSizeIndex =
+          random.chooseAnyNumberFromZeroToOneLessThan(numberOfFreeWindowSizes)
+
+        val (outgoingWindowSize, newWindowSize) =
+          // The new window size will either come before the current minimum
+          // or will fit in a gap...
+          val gapBoundaries =
+            LazyList.from(
+              windowSizesInDescendingOrder
+                .incl(oneBeforeLowestValidWindowSize)
+                .incl(oneAfterHighestValidWindowSize)
+            )
+
+          // NOTE: gaps are arranged to *descend* down window size, so larger
+          // indices select smaller window sizes...
+
+          val sizeGaps = gapBoundaries.zip(gapBoundaries.tail).filter {
+            case (larger, smaller) => larger > 1 + smaller
+          }
+
+          val onePastIndexOfEachLowestFreeWindowSizePerGap = sizeGaps
+            .scanLeft(0) { case (index, (larger, smaller)) =>
+              val numberOfVacanciesInGap = larger - (1 + smaller)
+              index + numberOfVacanciesInGap
+            }
+            .tail
+
+          val (
+            onePastIndexOfLowestFreeWindowSize,
+            (
+              _,
+              lowerGapBoundary
+            )
+          ) =
+            onePastIndexOfEachLowestFreeWindowSizePerGap
+              .zip(sizeGaps)
+              .dropWhile { case (onePastIndexOfLowestFreeWindowSize, _) =>
+                onePastIndexOfLowestFreeWindowSize <= newWindowSizeIndex
+              }
+              .head
+
+          lowerGapBoundary -> (lowerGapBoundary + (onePastIndexOfLowestFreeWindowSize - newWindowSizeIndex))
+        end val
+
+        assert(
+          windowSizesInDescendingOrder.contains(
+            outgoingWindowSize
+          ) || outgoingWindowSize == oneBeforeLowestValidWindowSize
+        )
+        assert(!windowSizesInDescendingOrder.contains(newWindowSize))
+        assert(newWindowSize > outgoingWindowSize)
+
+        for successor <- windowSizesInDescendingOrder.maxBefore(
+            outgoingWindowSize
+          )
+        do assert(newWindowSize < successor)
+        end for
+
+        Chromosome(
+          windowSizesInDescendingOrder =
+            windowSizesInDescendingOrder + newWindowSize - outgoingWindowSize,
+          validWindowSizes = validWindowSizes
+        )
+      end nudged
+
+      // NOTE: the following helper is a method because it has a precondition
+      // that there are valid window sizes.
+      private def oneAfterHighestValidWindowSize = 1 + validWindowSizes.max
+
       private def grown(using random: Random) =
         val numberOfFreeWindowSizes =
           validWindowSizes.size - windowSizesInDescendingOrder.size
 
-        val claimASlot =
-          random.chooseAnyNumberFromZeroToOneLessThan(
-            numberOfFreeWindowSizes
-          ) < windowSizeSlots.numberOfVacantSlots
+        val newWindowSizeIndex =
+          random.chooseAnyNumberFromZeroToOneLessThan(numberOfFreeWindowSizes)
 
-        if claimASlot then
-          val (claimedSlotIndex, windowSizeSlotsWithClaim) =
-            val largestWindowSizeSeenInTheInheritance =
-              deletedWindowSizes.headOption.fold(ifEmpty =
-                windowSizesInDescendingOrder.head
-              )(windowSizesInDescendingOrder.head max _)
+        val numberOfFreeWindowSizesAboveTheCurrentMaximum =
+          windowSizesInDescendingOrder.maxOption.fold(ifEmpty =
+            validWindowSizes.size
+          )(validWindowSizes.max - _)
 
-            val numberOfVacantSlotsWhoseSizesWouldBeLessThanTheMaximum =
-              1 + largestWindowSizeSeenInTheInheritance - validWindowSizes.min - windowSizeSlots.numberOfFilledSlots
+        val numberOfFreeWindowSizesBelowTheCurrentMaximum =
+          numberOfFreeWindowSizes - numberOfFreeWindowSizesAboveTheCurrentMaximum
 
-            val slotClaim =
-              if numberOfVacantSlotsWhoseSizesWouldBeLessThanTheMaximum < windowSizeSlots.numberOfVacantSlots && random
-                  .nextBoolean()
-              then
-                // Claim a slot for a window size that is larger than all of the
-                // others seen in the inheritance of this chromosome. Be bold
-                // and choose any valid size.
-                numberOfVacantSlotsWhoseSizesWouldBeLessThanTheMaximum + random
-                  .chooseAnyNumberFromZeroToOneLessThan(
-                    windowSizeSlots.numberOfVacantSlots - numberOfVacantSlotsWhoseSizesWouldBeLessThanTheMaximum
-                  )
-              else if 0 < numberOfVacantSlotsWhoseSizesWouldBeLessThanTheMaximum
-              then
-                // Claim a slot for a window size we've not used before, but
-                // stay below the maximum seen in the inheritance of this
-                // chromosome.
-                random.chooseAnyNumberFromZeroToOneLessThan(
-                  numberOfVacantSlotsWhoseSizesWouldBeLessThanTheMaximum
+        val newWindowSize =
+          if numberOfFreeWindowSizesBelowTheCurrentMaximum > newWindowSizeIndex
+          then
+            // The new window size will either come before the current minimum
+            // or will fit in a gap...
+            val gapBoundaries =
+              LazyList.from(
+                windowSizesInDescendingOrder.incl(
+                  oneBeforeLowestValidWindowSize
                 )
-              else
-                // The maximum seen in the inheritance of this chromosome
-                // happens to be the lowest valid window size, so just choose
-                // anything larger, favouring smaller window sizes.
-                @tailrec
-                def considerSlotClaim(potentialSlotClaim: Int): Int =
-                  if 1 + potentialSlotClaim == windowSizeSlots.numberOfVacantSlots || random
-                      .nextBoolean()
-                  then potentialSlotClaim
-                  else considerSlotClaim(1 + potentialSlotClaim)
+              )
 
-                considerSlotClaim(potentialSlotClaim = 0)
-              end if
-            end slotClaim
+            // NOTE: gaps are arranged to *descend* down window size, so larger
+            // indices select smaller window sizes...
 
-            windowSizeSlots.fillVacantSlotAtIndex(slotClaim)
-          end val
+            val sizeGaps = gapBoundaries.zip(gapBoundaries.tail).filter {
+              case (larger, smaller) => larger > 1 + smaller
+            }
 
-          val claimedWindowSize = claimedSlotIndex + validWindowSizes.min
+            val onePastIndexOfEachLowestFreeWindowSizePerGap = sizeGaps
+              .scanLeft(0) { case (index, (larger, smaller)) =>
+                val numberOfVacanciesInGap = larger - (1 + smaller)
+                index + numberOfVacanciesInGap
+              }
+              .tail
 
-          Chromosome(
-            windowSizesInDescendingOrder =
-              windowSizesInDescendingOrder + claimedWindowSize,
-            windowSizeSlots = windowSizeSlotsWithClaim,
-            deletedWindowSizes = deletedWindowSizes,
-            validWindowSizes = validWindowSizes
-          )
-        else
-          val reclaimedWindowSize = random.chooseOneOf(deletedWindowSizes)
+            val newWindowSizeIndexInReversedSense =
+              numberOfFreeWindowSizesBelowTheCurrentMaximum - (1 + newWindowSizeIndex)
 
-          Chromosome(
-            windowSizesInDescendingOrder =
-              windowSizesInDescendingOrder + reclaimedWindowSize,
-            windowSizeSlots = windowSizeSlots,
-            deletedWindowSizes = deletedWindowSizes - reclaimedWindowSize,
-            validWindowSizes = validWindowSizes
-          )
-        end if
+            val (
+              onePastIndexOfLowestFreeWindowSize,
+              (
+                higherGapBoundary,
+                lowerGapBoundary
+              )
+            ) =
+              onePastIndexOfEachLowestFreeWindowSizePerGap
+                .zip(sizeGaps)
+                .dropWhile { case (onePastIndexOfLowestFreeWindowSize, _) =>
+                  onePastIndexOfLowestFreeWindowSize <= newWindowSizeIndexInReversedSense
+                }
+                .head
+
+            lowerGapBoundary + (onePastIndexOfLowestFreeWindowSize - newWindowSizeIndexInReversedSense)
+          else
+            // Go beyond the maximum window size, but don't be too ambitious...
+            val baselineWindowSize = windowSizesInDescendingOrder.maxOption
+              .fold(ifEmpty = validWindowSizes.min)(1 + _)
+            val geometricMean = Math
+              .sqrt(
+                baselineWindowSize * validWindowSizes.max
+              )
+              .ceil
+              .toInt
+
+            baselineWindowSize + random.chooseAnyNumberFromZeroToOneLessThan(
+              1 + geometricMean - baselineWindowSize
+            )
+          end if
+        end newWindowSize
+
+        assert(!windowSizesInDescendingOrder.contains(newWindowSize))
+
+        for
+          predecessor <- windowSizesInDescendingOrder.minAfter(newWindowSize)
+          successor   <- windowSizesInDescendingOrder.maxBefore(predecessor)
+        do assert(newWindowSize < successor)
+        end for
+
+        Chromosome(
+          windowSizesInDescendingOrder =
+            windowSizesInDescendingOrder + newWindowSize,
+          validWindowSizes = validWindowSizes
+        )
       end grown
+
+      // NOTE: the following helper is a method because it has a precondition
+      // that there are valid window sizes.
+      private def oneBeforeLowestValidWindowSize = validWindowSizes.min - 1
 
       private def contracted(using random: Random) =
         val deletedWindowSize = random.chooseOneOf(windowSizesInDescendingOrder)
@@ -339,106 +373,33 @@ object CodeMotionAnalysis:
         Chromosome(
           windowSizesInDescendingOrder =
             windowSizesInDescendingOrder - deletedWindowSize,
-          windowSizeSlots = windowSizeSlots,
-          deletedWindowSizes = deletedWindowSizes + deletedWindowSize,
           validWindowSizes = validWindowSizes
         )
       end contracted
 
-      private def nudged(using random: Random) =
-        val sizeGaps =
-          (this.windowSizesInDescendingOrder + validWindowSizes.max)
-            .zip(this.windowSizesInDescendingOrder.tail)
-            .filter { case (larger, smaller) => larger > 1 + smaller }
-
-        if sizeGaps.nonEmpty then
-          val (nonContiguousHigherWindowSize, deletedWindowSize) =
-            random.chooseOneOf(sizeGaps)
-
-          val nudgedWindowSize =
-            deletedWindowSize + random.chooseAnyNumberFromOneTo(
-              nonContiguousHigherWindowSize - (1 + deletedWindowSize)
-            )
-
-          val windowSizesInDescendingOrder =
-            this.windowSizesInDescendingOrder - deletedWindowSize + nudgedWindowSize
-
-          // NOTE: It can be the case that `nudgedWindowSize` is lurking in the
-          // set of deleted sizes, so remove it speculatively.
-          val deletedWindowSizes =
-            this.deletedWindowSizes + deletedWindowSize - nudgedWindowSize
-
-          Chromosome(
-            windowSizesInDescendingOrder = windowSizesInDescendingOrder,
-            windowSizeSlots = RangeOfSlots
-              .allSlotsAreVacant(validWindowSizes.size)
-              .claimSlotsOnBehalfOf(
-                windowSizesInDescendingOrder ++ deletedWindowSizes,
-                validWindowSizes
-              ),
-            deletedWindowSizes = deletedWindowSizes,
-            validWindowSizes = validWindowSizes
-          )
-        else
-          // Either just one window size or the only gap is in front of the
-          // lowest window size; for now, do a straight replacement.
-          this.grown.contracted
-        end if
-      end nudged
-
-      // This method trims the chromosome's window sizes and associated baggage
-      // so that the invariant holds again against a snapshot of the dynamic
-      // valid window sizes. If all of the chromosomes window sizes turn out to
-      // be invalid, we just build a new chromosome using the highest possible
-      // valid one.
+      // This method trims the chromosome's window sizes so that the invariant
+      // holds again against a snapshot of the dynamic valid window sizes. If
+      // all of the chromosomes window sizes turn out to be invalid, we just
+      // build a new chromosome using the highest possible valid one.
       private def trimToSuitDynamicValidWindowSizes: Chromosome =
-        val numberOfPotentialWindowSizesAtConstruction =
-          windowSizeSlots.numberOfVacantSlots + windowSizeSlots.numberOfFilledSlots
-
         val validWindowSizesSnapshot = dynamicValidWindowSizes
 
-        if numberOfPotentialWindowSizesAtConstruction > validWindowSizesSnapshot.size
-        then
-          val windowSizesInDescendingOrder =
-            this.windowSizesInDescendingOrder filter (windowSize =>
-              validWindowSizesSnapshot.maxOption.fold(ifEmpty = false)(
-                _ >= windowSize
-              )
-            )
-
-          if windowSizesInDescendingOrder.nonEmpty then
-            val deletedWindowSizes =
-              this.deletedWindowSizes filter (windowSize =>
-                validWindowSizesSnapshot.maxOption.fold(ifEmpty = false)(
-                  _ >= windowSize
-                )
-              )
-
-            val windowSizeSlots = RangeOfSlots
-              .allSlotsAreVacant(validWindowSizesSnapshot.size)
-              .claimSlotsOnBehalfOf(
-                windowSizesInDescendingOrder ++ deletedWindowSizes,
-                validWindowSizesSnapshot
-              )
-
-            Chromosome(
-              windowSizesInDescendingOrder,
-              windowSizeSlots,
-              deletedWindowSizes,
-              validWindowSizes = validWindowSizesSnapshot
-            )
-          else
-            Chromosome.withWindowSizes(
-              validWindowSizesSnapshot.maxOption.toSeq*
-            )(
-              validWindowSizesSnapshot
-            )
-          end if
-        else
-          assume(
-            numberOfPotentialWindowSizesAtConstruction == validWindowSizesSnapshot.size
+        val windowSizesInDescendingOrder = validWindowSizesSnapshot.maxOption
+          .fold(ifEmpty = noWindowSizes)(maximumValidWindowSize =>
+            this.windowSizesInDescendingOrder.rangeFrom(maximumValidWindowSize)
           )
-          this
+
+        if windowSizesInDescendingOrder.nonEmpty then
+          Chromosome(
+            windowSizesInDescendingOrder,
+            validWindowSizes = validWindowSizesSnapshot
+          )
+        else
+          Chromosome.withWindowSizes(
+            validWindowSizesSnapshot.maxOption.toSeq*
+          )(
+            validWindowSizesSnapshot
+          )
         end if
       end trimToSuitDynamicValidWindowSizes
 
@@ -628,31 +589,13 @@ object CodeMotionAnalysis:
           this.windowSizesInDescendingOrder,
           another.windowSizesInDescendingOrder
         )(
-          bredWindowSizes = TreeSet.empty(descendingWindowSizeOrdering),
+          bredWindowSizes = noWindowSizes,
           pickingState = Synchronized,
           mandatoryState = false
         )
 
-        val deletedWindowSizes =
-          (this.deletedWindowSizes ++ another.deletedWindowSizes)
-            .removedAll(bredWindowSizes)
-
-        val windowSizeSlots = RangeOfSlots
-          .allSlotsAreVacant(validWindowSizes.size)
-          // NOTE: don't change this into two successive calls of
-          // `claimSlotsOnBehalfOf`, because that helper assumes the claimed
-          // window sizes are presented in descending order, so can't be called
-          // more than once with sizes that are contained in non-overlapping
-          // intervals.
-          .claimSlotsOnBehalfOf(
-            bredWindowSizes ++ deletedWindowSizes,
-            validWindowSizes
-          )
-
         Chromosome(
           bredWindowSizes,
-          windowSizeSlots,
-          deletedWindowSizes,
           validWindowSizes
         )
       end breedWith_
@@ -883,7 +826,9 @@ object CodeMotionAnalysis:
             val fingerprinting = fingerprintingCache.get(
               windowSize,
               { (windowSize: Int) =>
-                println(s"looseExclusiveUpperBoundOnMaximumMatchSize: $looseExclusiveUpperBoundOnMaximumMatchSize, windowSize: $windowSize")
+                println(
+                  s"looseExclusiveUpperBoundOnMaximumMatchSize: $looseExclusiveUpperBoundOnMaximumMatchSize, windowSize: $windowSize"
+                )
 
                 val fixedNumberOfBytesInElementHash =
                   hashFunction.bits / JavaByte.SIZE
