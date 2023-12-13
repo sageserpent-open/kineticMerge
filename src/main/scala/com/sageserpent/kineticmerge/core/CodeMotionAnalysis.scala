@@ -440,7 +440,9 @@ object CodeMotionAnalysis:
           // or will fit in a gap before the current maximum...
 
           val newWindowSizeIndex =
-            random.chooseAnyNumberFromZeroToOneLessThan(numberOfFreeWindowSizesBelowTheCurrentMaximum)
+            random.chooseAnyNumberFromZeroToOneLessThan(
+              numberOfFreeWindowSizesBelowTheCurrentMaximum
+            )
 
           val (outgoingWindowSize, newWindowSize) =
             val gapBoundaries =
@@ -515,7 +517,7 @@ object CodeMotionAnalysis:
         val numberOfFreeWindowSizes =
           validWindowSizes.size - windowSizesInDescendingOrder.size
 
-        val newWindowSizeIndex =
+        val whereWillThisLand =
           random.chooseAnyNumberFromZeroToOneLessThan(numberOfFreeWindowSizes)
 
         val numberOfFreeWindowSizesAboveTheCurrentMaximum =
@@ -527,8 +529,18 @@ object CodeMotionAnalysis:
           numberOfFreeWindowSizes - numberOfFreeWindowSizesAboveTheCurrentMaximum
 
         val newWindowSize =
-          if numberOfFreeWindowSizesBelowTheCurrentMaximum > newWindowSizeIndex
+          if numberOfFreeWindowSizesBelowTheCurrentMaximum > whereWillThisLand
           then
+            // This is subtle: `whereWillThisLand` should be thought of as
+            // choosing an integer from either [0,
+            // `numberOfFreeWindowSizesBelowTheCurrentMaximum`) - so choosing to
+            // fill in a gap - or
+            // [`numberOfFreeWindowSizesBelowTheCurrentMaximum`,
+            // `numberOfFreeWindowSizes`) - so beating the current maximum. One
+            // we decide to fill in a gap, we use the chosen integer as an index
+            // in reversed sense, so zero selects from the highest gap.
+            val newWindowSizeIndex = whereWillThisLand
+
             // The new window size will either come before the current minimum
             // or will fit in a gap before the current maximum...
             val gapBoundaries =
@@ -552,9 +564,6 @@ object CodeMotionAnalysis:
               }
               .tail
 
-            val newWindowSizeIndexInReversedSense =
-              numberOfFreeWindowSizesBelowTheCurrentMaximum - (1 + newWindowSizeIndex)
-
             val (
               onePastIndexOfLowestFreeWindowSize,
               (
@@ -565,11 +574,11 @@ object CodeMotionAnalysis:
               onePastIndexOfEachLowestFreeWindowSizePerGap
                 .zip(sizeGaps)
                 .dropWhile { case (onePastIndexOfLowestFreeWindowSize, _) =>
-                  onePastIndexOfLowestFreeWindowSize <= newWindowSizeIndexInReversedSense
+                  onePastIndexOfLowestFreeWindowSize <= newWindowSizeIndex
                 }
                 .head
 
-            lowerGapBoundary + (onePastIndexOfLowestFreeWindowSize - newWindowSizeIndexInReversedSense)
+            lowerGapBoundary + (onePastIndexOfLowestFreeWindowSize - newWindowSizeIndex)
           else
             // Go beyond the maximum window size, but don't be too ambitious...
             val baselineWindowSize = windowSizesInDescendingOrder.maxOption
