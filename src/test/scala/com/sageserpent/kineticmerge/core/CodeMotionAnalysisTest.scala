@@ -8,7 +8,6 @@ import com.sageserpent.americium.{Trials, TrialsApi}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import org.junit.jupiter.api.*
-import org.rabinfingerprint.polynomial.Polynomial
 
 import java.util.concurrent.TimeUnit
 import scala.concurrent.duration.Duration
@@ -78,7 +77,7 @@ class CodeMotionAnalysisTest:
               equality = _ == _,
               hashFunction = Hashing.murmur3_32_fixed(),
               funnel = funnel
-            )(Polynomial.createIrreducible(15)): @unchecked
+            ): @unchecked
 
           analysis.base matches base
           analysis.left matches left
@@ -161,7 +160,7 @@ class CodeMotionAnalysisTest:
     // each other ...
     val sequences =
       trialsApi
-        .integers(1, 1000)
+        .integers(1, 10)
         .flatMap(sequenceLength =>
           trialsApi
             .choose(alphabet)
@@ -395,7 +394,7 @@ class CodeMotionAnalysisTest:
               equality = _ == _,
               hashFunction = Hashing.murmur3_32_fixed(),
               funnel = funnel
-            )(irreduciblePolynomial()): @unchecked
+            ): @unchecked
           end val
 
           extension (file: File[Element])

@@ -7,8 +7,8 @@ import com.google.common.hash.{Funnel, HashFunction}
 import com.sageserpent.americium.randomEnrichment.*
 import com.sageserpent.kineticmerge.core.genetic.Evolution
 import de.sciss.fingertree.RangedSeq
-import org.rabinfingerprint.fingerprint.RabinFingerprintLongWindowed
-import org.rabinfingerprint.polynomial.Polynomial
+
+
 
 import java.lang.Byte as JavaByte
 import scala.annotation.tailrec
@@ -76,8 +76,6 @@ object CodeMotionAnalysis:
       equality: Eq[Element],
       hashFunction: HashFunction,
       funnel: Funnel[Element]
-  )(
-      polynomial: Polynomial
   ): Either[AmbiguousMatch.type, CodeMotionAnalysis[Path, Element]] =
     require(0 <= minimumSizeFractionForMotionDetection)
     require(1 >= minimumSizeFractionForMotionDetection)
@@ -717,8 +715,8 @@ object CodeMotionAnalysis:
     given Evolution[Chromosome, Phenotype] with
       private val phenotypeCache: Cache[Chromosome, Phenotype] =
         Caffeine.newBuilder().build()
-      private val fingerprintingCache
-          : Cache[Int, RabinFingerprintLongWindowed] =
+      private val rollingHashFactoryCache
+          : Cache[Int, RollingHash.Factory] =
         Caffeine.newBuilder().build()
       // TODO: review this one - a) it does not seem to add much of a
       // performance benefit because the previous fingerprinting cache cuts out
@@ -841,10 +839,10 @@ object CodeMotionAnalysis:
 
           def fingerprintStartIndices(
               elements: IndexedSeq[Element]
-          ): SortedMultiDict[Long, Int] =
+          ): SortedMultiDict[BigInt, Int] =
             require(elements.size >= windowSize)
 
-            val fingerprinting = fingerprintingCache.get(
+            val rollingHashFactory = rollingHashFactoryCache.get(
               windowSize,
               { (windowSize: Int) =>
                 println(
@@ -854,18 +852,15 @@ object CodeMotionAnalysis:
                 val fixedNumberOfBytesInElementHash =
                   hashFunction.bits / JavaByte.SIZE
 
-                new RabinFingerprintLongWindowed(
-                  polynomial,
+                new RollingHash.Factory(
                   fixedNumberOfBytesInElementHash * windowSize
                 )
               }
             )
 
-            // Fingerprinting is imperative, so go with that style local to
-            // this helper function...
-            fingerprinting.reset()
+            val rollingHash = rollingHashFactory()
 
-            val accumulatingResults = mutable.SortedMultiDict.empty[Long, Int]
+            val accumulatingResults = mutable.SortedMultiDict.empty[BigInt, Int]
 
             def updateFingerprint(elementIndex: Int): Unit =
               val elementBytes =
@@ -875,7 +870,7 @@ object CodeMotionAnalysis:
                   .hash()
                   .asBytes()
 
-              elementBytes.foreach(fingerprinting.pushByte)
+              elementBytes.foreach(rollingHash.pushByte)
             end updateFingerprint
 
             // NOTE: fingerprints are incrementally calculated walking *down*
@@ -893,7 +888,7 @@ object CodeMotionAnalysis:
             fingerprintingIndices.foreach: fingerprintStartIndex =>
               updateFingerprint(fingerprintStartIndex)
               accumulatingResults.addOne(
-                fingerprinting.getFingerprintLong -> fingerprintStartIndex
+                rollingHash.fingerprint -> fingerprintStartIndex
               )
 
             accumulatingResults
@@ -901,7 +896,7 @@ object CodeMotionAnalysis:
 
           def fingerprintSections(
               sources: Sources[Path, Element]
-          ): SortedMultiDict[Long, Section[Element]] =
+          ): SortedMultiDict[BigInt, Section[Element]] =
             sources.filesByPath
               .filter { case (_, file) =>
                 val fileSize = file.size
@@ -940,9 +935,9 @@ object CodeMotionAnalysis:
 
           @tailrec
           def matchingFingerprintsAcrossSides(
-              baseFingerprints: Iterable[Long],
-              leftFingerprints: Iterable[Long],
-              rightFingerprints: Iterable[Long],
+              baseFingerprints: Iterable[BigInt],
+              leftFingerprints: Iterable[BigInt],
+              rightFingerprints: Iterable[BigInt],
               matches: Set[Match[Section[Element]]],
               sectionsSeenAcrossSides: SectionsSeenAcrossSides
           ): (SectionsSeenAcrossSides, MatchGroupsInDescendingOrderOfKeys) =
@@ -1341,9 +1336,9 @@ object CodeMotionAnalysis:
       end phenotype_
 
       private case class FingerprintSectionsAcrossSides(
-          baseSectionsByFingerprint: SortedMultiDict[Long, Section[Element]],
-          leftSectionsByFingerprint: SortedMultiDict[Long, Section[Element]],
-          rightSectionsByFingerprint: SortedMultiDict[Long, Section[Element]]
+          baseSectionsByFingerprint: SortedMultiDict[BigInt, Section[Element]],
+          leftSectionsByFingerprint: SortedMultiDict[BigInt, Section[Element]],
+          rightSectionsByFingerprint: SortedMultiDict[BigInt, Section[Element]]
       )
     end given
 
