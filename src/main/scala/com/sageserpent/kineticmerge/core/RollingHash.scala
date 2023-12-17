@@ -24,24 +24,22 @@ object RollingHash:
   class Factory(windowSize: Int):
     private val seed = 8458945L
     def apply(): RollingHash =
-      val logarithmToTheBaseTwoOfSquare =
-        Integer.SIZE - Integer.numberOfLeadingZeros(
-          windowSize * windowSize - 1
-        )
+      val scale = 1 + BigInt(1 + Byte.MaxValue.toInt - Byte.MinValue.toInt)
 
-      val primeModulusLargerThanSquareOfNumberOfBytes =
-        if 1 <= logarithmToTheBaseTwoOfSquare then
+      val primeModulesMustBeLargerThanThis =
+        BigInt(100000) max (BigInt(windowSize) * windowSize) max scale
+
+      val primeModulus =
+        if 1 <= primeModulesMustBeLargerThanThis.bitLength then
           BigInt.probablePrime(
-            1 + logarithmToTheBaseTwoOfSquare,
+            1 + primeModulesMustBeLargerThanThis.bitLength,
             new Random(seed)
           )
         else BigInt(3)
 
       assert(
-        primeModulusLargerThanSquareOfNumberOfBytes > windowSize * windowSize
+        primeModulus > ((BigInt(windowSize) * windowSize) max scale)
       )
-
-      val scale = BigInt(1) + windowSize
 
       val highestScalePower = scale.pow(windowSize - 1)
 
@@ -65,7 +63,7 @@ object RollingHash:
               ) * highestScalePower
 
               // NOTE: use `mod` and *not* `/` to keep values positive.
-              (polynomialValue - contributionToHashFromOutgoingByte) mod primeModulusLargerThanSquareOfNumberOfBytes
+              (polynomialValue - contributionToHashFromOutgoingByte) mod primeModulus
             else
               polynomialLength += 1
               polynomialValue
@@ -75,7 +73,7 @@ object RollingHash:
           polynomialValue =
             (scale * prefixPolynomialValue + biasByteAsPositiveBigInt(
               byte
-            )) % primeModulusLargerThanSquareOfNumberOfBytes
+            )) % primeModulus
 
           bytesInRollingWindowAsRingBuffer(ringBufferIndexForNextPush) = byte
 

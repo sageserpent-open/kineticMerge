@@ -11,7 +11,10 @@ import scala.collection.immutable.SortedMultiDict
 class RollingHashTest:
   @TestFactory
   def fingerprintCollisionsShouldBeVeryRare(): DynamicTests =
-    case class TestCase(windowSize: Int, setOfByteSequences: Set[Vector[Byte]])
+    case class TestCase(
+        windowSize: Int,
+        distinctSequences: Vector[Vector[Byte]]
+    )
 
     val testCases =
       for
@@ -22,18 +25,19 @@ class RollingHashTest:
 
         subsequences = trialsApi.bytes.lotsOfSize[Vector[Byte]](windowSize)
 
-        setOfByteSequences <- subsequences
-          .several[Set[Vector[Byte]]]
+        distinctSequences <- subsequences
+          .several[Vector[Vector[Byte]]]
           .filter(_.nonEmpty)
-      yield TestCase(windowSize, setOfByteSequences)
+          .map(_.distinct)
+      yield TestCase(windowSize, distinctSequences)
 
-    testCases.withLimit(1000).dynamicTests { testCase =>
+    testCases.withLimit(4000).dynamicTests { testCase =>
       import testCase.*
 
       val factory = RollingHash.Factory(windowSize)
 
       val fingerprintedByteSequences =
-        SortedMultiDict.from(setOfByteSequences.iterator.map { byteSequence =>
+        SortedMultiDict.from(distinctSequences.iterator.map { byteSequence =>
           val rollingHash = factory()
 
           byteSequence.foreach(rollingHash.pushByte)
@@ -70,16 +74,16 @@ class RollingHashTest:
       subsequences = trialsApi.bytes
         .lotsOfSize[Vector[Byte]](windowSize)
 
-      subsequenceArrangement <- subsequences
+      distinctSubsequences <- subsequences
         .several[Vector[Vector[Byte]]]
         .filter(_.nonEmpty)
         .map(_.distinct)
       permutation <- trialsApi
-        .indexPermutations(subsequenceArrangement.size)
-      permutedSubsequences = permutation.map(subsequenceArrangement.apply)
+        .indexPermutations(distinctSubsequences.size)
+      permutedSubsequences = permutation.map(distinctSubsequences.apply)
     yield TestCase(
       windowSize,
-      concatenatedSubsequences = subsequenceArrangement.reduce(_ ++ _),
+      concatenatedSubsequences = distinctSubsequences.reduce(_ ++ _),
       concatenatedPermutedSubsequences = permutedSubsequences.reduce(_ ++ _)
     )
 
