@@ -21,12 +21,12 @@ object RollingHash:
     end fingerprint
   end RollingHashContracts
 
-  class Factory(numberOfBytes: Int):
+  class Factory(windowSize: Int):
     private val seed = 8458945L
     def apply(): RollingHash =
       val logarithmToTheBaseTwoOfSquare =
         Integer.SIZE - Integer.numberOfLeadingZeros(
-          numberOfBytes * numberOfBytes - 1
+          windowSize * windowSize - 1
         )
 
       val primeModulusLargerThanSquareOfNumberOfBytes =
@@ -38,23 +38,23 @@ object RollingHash:
         else BigInt(3)
 
       assert(
-        primeModulusLargerThanSquareOfNumberOfBytes > numberOfBytes * numberOfBytes
+        primeModulusLargerThanSquareOfNumberOfBytes > windowSize * windowSize
       )
 
-      val scale = BigInt(1) + numberOfBytes
+      val scale = BigInt(1) + windowSize
 
-      val highestScalePower = scale.pow(numberOfBytes - 1)
+      val highestScalePower = scale.pow(windowSize - 1)
 
       trait RollingHashImplementation extends RollingHash:
         private val bytesInRollingWindowAsRingBuffer =
-          Array.ofDim[Byte](numberOfBytes)
+          Array.ofDim[Byte](windowSize)
         private var polynomialLength: Int           = 0
         private var polynomialValue: BigInt         = BigInt(0)
         private var ringBufferIndexForNextPush: Int = 0
 
         override def pushByte(byte: Byte): Unit =
           val prefixPolynomialValue =
-            if numberOfBytes == polynomialLength then
+            if windowSize == polynomialLength then
               // The ring buffer is full, so the outgoing byte will lie at the
               // index of the next push.
               val byteLeftBehindByWindow = bytesInRollingWindowAsRingBuffer(
@@ -80,10 +80,10 @@ object RollingHash:
           bytesInRollingWindowAsRingBuffer(ringBufferIndexForNextPush) = byte
 
           ringBufferIndexForNextPush =
-            (1 + ringBufferIndexForNextPush) % numberOfBytes
+            (1 + ringBufferIndexForNextPush) % windowSize
         end pushByte
 
-        def isPrimed: Boolean = numberOfBytes == polynomialLength
+        def isPrimed: Boolean = windowSize == polynomialLength
 
         override def fingerprint: BigInt = polynomialValue
       end RollingHashImplementation

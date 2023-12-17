@@ -6,7 +6,52 @@ import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import org.junit.jupiter.api.TestFactory
 
+import scala.collection.immutable.SortedMultiDict
+
 class RollingHashTest:
+  @TestFactory
+  def fingerprintCollisionsShouldBeVeryRare(): DynamicTests =
+    case class TestCase(windowSize: Int, setOfByteSequences: Set[Vector[Byte]])
+
+    val testCases =
+      for
+        windowSize <- trialsApi.alternate(
+          trialsApi.integers(11, 10000),
+          trialsApi.integers(1, 10)
+        )
+
+        subsequences = trialsApi.bytes.lotsOfSize[Vector[Byte]](windowSize)
+
+        setOfByteSequences <- subsequences
+          .several[Set[Vector[Byte]]]
+          .filter(_.nonEmpty)
+      yield TestCase(windowSize, setOfByteSequences)
+
+    testCases.withLimit(1000).dynamicTests { testCase =>
+      import testCase.*
+
+      val factory = RollingHash.Factory(windowSize)
+
+      val fingerprintedByteSequences =
+        SortedMultiDict.from(setOfByteSequences.iterator.map { byteSequence =>
+          val rollingHash = factory()
+
+          byteSequence.foreach(rollingHash.pushByte)
+
+          rollingHash.fingerprint -> byteSequence
+        })
+
+      fingerprintedByteSequences.keySet.foreach { fingerprint =>
+        val expectedSingletonSet = fingerprintedByteSequences.get(fingerprint)
+
+        assert(
+          1 == expectedSingletonSet.size,
+          s"Collision detected on fingerprint: $fingerprint, colliding sequences are: $expectedSingletonSet"
+        )
+      }
+    }
+  end fingerprintCollisionsShouldBeVeryRare
+
   @TestFactory
   def subsequencesYieldTheSameFingerprintsRegardlessOfTheirOrderInTheContainingSequence()
       : DynamicTests =
