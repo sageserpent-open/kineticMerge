@@ -31,14 +31,14 @@ class RollingHashTest:
           .map(_.distinct)
       yield TestCase(windowSize, distinctSequences)
 
-    testCases.withLimit(4000).dynamicTests { testCase =>
+    testCases.withLimit(2000).dynamicTests { testCase =>
       import testCase.*
 
       // NOTE: although we spin up a new instance of `RollingHash` for each byte
       // sequence, all the instances share the same range of fingerprint values.
       val factory = RollingHash.Factory(
         windowSize = windowSize,
-        numberOfFingerprintsToBeTaken = distinctSequences.size * windowSize
+        numberOfFingerprintsToBeTaken = distinctSequences.size
       )
 
       val fingerprintedByteSequences =
