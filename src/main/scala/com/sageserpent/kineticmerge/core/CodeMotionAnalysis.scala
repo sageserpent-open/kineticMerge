@@ -8,8 +8,6 @@ import com.sageserpent.americium.randomEnrichment.*
 import com.sageserpent.kineticmerge.core.genetic.Evolution
 import de.sciss.fingertree.RangedSeq
 
-
-
 import java.lang.Byte as JavaByte
 import scala.annotation.tailrec
 import scala.collection.immutable.TreeSet
@@ -88,6 +86,8 @@ object CodeMotionAnalysis:
     val fileSizes = base.filesByPath.values.map(_.size) ++
       left.filesByPath.values.map(_.size) ++
       right.filesByPath.values.map(_.size)
+
+    val totalContentSize = fileSizes.sum
 
     val minimumFileSizeAcrossAllFilesOverAllSides = fileSizes.min
 
@@ -715,8 +715,7 @@ object CodeMotionAnalysis:
     given Evolution[Chromosome, Phenotype] with
       private val phenotypeCache: Cache[Chromosome, Phenotype] =
         Caffeine.newBuilder().build()
-      private val rollingHashFactoryCache
-          : Cache[Int, RollingHash.Factory] =
+      private val rollingHashFactoryCache: Cache[Int, RollingHash.Factory] =
         Caffeine.newBuilder().build()
       // TODO: review this one - a) it does not seem to add much of a
       // performance benefit because the previous fingerprinting cache cuts out
@@ -853,7 +852,10 @@ object CodeMotionAnalysis:
                   hashFunction.bits / JavaByte.SIZE
 
                 new RollingHash.Factory(
-                  fixedNumberOfBytesInElementHash * windowSize
+                  // Translate the window size from number of elements to number
+                  // of bytes.
+                  windowSize = fixedNumberOfBytesInElementHash * windowSize,
+                  numberOfFingerprintsToBeTaken = totalContentSize
                 )
               }
             )

@@ -11,6 +11,10 @@ trait RollingHash:
 end RollingHash
 
 object RollingHash:
+  private val magicConstantForBirthdayParadoxAvoidanceAtOnePercentProbabilityOfCollision =
+    // Approximation for `Math.log(Math.pow(1 / (1 - 0.01)), 2)`.
+    Math.log(1 + 2 * 0.01)
+
   private def biasByteAsPositiveBigInt(byte: Byte): BigInt =
     BigInt(byte) - Byte.MinValue
 
@@ -21,25 +25,30 @@ object RollingHash:
     end fingerprint
   end RollingHashContracts
 
-  class Factory(windowSize: Int):
+  class Factory(windowSize: Int, numberOfFingerprintsToBeTaken: Int):
     private val seed = 8458945L
     def apply(): RollingHash =
       val scale = 1 + BigInt(1 + Byte.MaxValue.toInt - Byte.MinValue.toInt)
 
-      val primeModulesMustBeLargerThanThis =
-        BigInt(100000) max (BigInt(windowSize) * windowSize) max scale
+      // Kudos to this article
+      // (https://web.cs.unlv.edu/larmore/Courses/CSC477/F14/Assignments/horners.pdf)
+      // for the awareness that this could be a problem.
+      val numberOfDistinctFingerprintsToAvoidBirthdayParadoxCollision = BigInt(
+        ((numberOfFingerprintsToBeTaken.toDouble * numberOfFingerprintsToBeTaken.toDouble)
+          / magicConstantForBirthdayParadoxAvoidanceAtOnePercentProbabilityOfCollision).ceil.toLong
+      )
+
+      val primeModulusMustBeLargerThanThis =
+        numberOfDistinctFingerprintsToAvoidBirthdayParadoxCollision max scale
+
+      // Clearing `scale` should guarantee this.
+      assume(1 <= primeModulusMustBeLargerThanThis.bitLength)
 
       val primeModulus =
-        if 1 <= primeModulesMustBeLargerThanThis.bitLength then
-          BigInt.probablePrime(
-            1 + primeModulesMustBeLargerThanThis.bitLength,
-            new Random(seed)
-          )
-        else BigInt(3)
-
-      assert(
-        primeModulus > ((BigInt(windowSize) * windowSize) max scale)
-      )
+        BigInt.probablePrime(
+          1 + primeModulusMustBeLargerThanThis.bitLength,
+          new Random(seed)
+        )
 
       val highestScalePower = scale.pow(windowSize - 1)
 
@@ -62,7 +71,7 @@ object RollingHash:
                 byteLeftBehindByWindow
               ) * highestScalePower
 
-              // NOTE: use `mod` and *not* `/` to keep values positive.
+              // NOTE: use `mod` and *not* `%` to keep values positive.
               (polynomialValue - contributionToHashFromOutgoingByte) mod primeModulus
             else
               polynomialLength += 1
@@ -73,7 +82,7 @@ object RollingHash:
           polynomialValue =
             (scale * prefixPolynomialValue + biasByteAsPositiveBigInt(
               byte
-            )) % primeModulus
+            )) mod primeModulus
 
           bytesInRollingWindowAsRingBuffer(ringBufferIndexForNextPush) = byte
 

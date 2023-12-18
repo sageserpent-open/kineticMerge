@@ -34,7 +34,12 @@ class RollingHashTest:
     testCases.withLimit(4000).dynamicTests { testCase =>
       import testCase.*
 
-      val factory = RollingHash.Factory(windowSize)
+      // NOTE: although we spin up a new instance of `RollingHash` for each byte
+      // sequence, all the instances share the same range of fingerprint values.
+      val factory = RollingHash.Factory(
+        windowSize = windowSize,
+        numberOfFingerprintsToBeTaken = distinctSequences.size * windowSize
+      )
 
       val fingerprintedByteSequences =
         SortedMultiDict.from(distinctSequences.iterator.map { byteSequence =>
@@ -90,7 +95,10 @@ class RollingHashTest:
     testCases.withLimit(200).dynamicTests { testCase =>
       import testCase.*
 
-      val factory = RollingHash.Factory(windowSize)
+      val factory = RollingHash.Factory(
+        windowSize = windowSize,
+        numberOfFingerprintsToBeTaken = concatenatedSubsequences.size
+      )
 
       def fingerprints(bigSequence: Vector[Byte]): Vector[BigInt] =
         val rollingHash = factory()
