@@ -199,205 +199,6 @@ object CodeMotionAnalysis:
         end if
       end mutate
 
-      private def nudged(using random: Random) =
-        val numberOfFreeWindowSizes =
-          validWindowSizes.size - windowSizesInDescendingOrder.size
-
-        val numberOfFreeWindowSizesAboveTheCurrentMaximum =
-          validWindowSizes.max - windowSizesInDescendingOrder.head
-
-        val numberOfFreeWindowSizesBelowTheCurrentMaximum =
-          numberOfFreeWindowSizes - numberOfFreeWindowSizesAboveTheCurrentMaximum
-
-        val roomAvailableBeforeTheHighestWindowSize =
-          numberOfFreeWindowSizes > numberOfFreeWindowSizesAboveTheCurrentMaximum
-
-        if roomAvailableBeforeTheHighestWindowSize then
-          // The new window size will either come before the current minimum
-          // or will fit in a gap before the current maximum...
-
-          val newWindowSizeIndex =
-            random.chooseAnyNumberFromZeroToOneLessThan(
-              numberOfFreeWindowSizesBelowTheCurrentMaximum
-            )
-
-          val (outgoingWindowSize, newWindowSize) =
-            val gapBoundaries =
-              LazyList.from(
-                windowSizesInDescendingOrder.incl(
-                  oneBeforeLowestValidWindowSize
-                )
-              )
-
-            // NOTE: gaps are arranged to *descend* down window size, so larger
-            // indices select smaller window sizes...
-
-            val sizeGaps = gapBoundaries.zip(gapBoundaries.tail).filter {
-              case (larger, smaller) => larger > 1 + smaller
-            }
-
-            val onePastIndexOfEachLowestFreeWindowSizePerGap = sizeGaps
-              .scanLeft(0) { case (index, (larger, smaller)) =>
-                val numberOfVacanciesInGap = larger - (1 + smaller)
-                index + numberOfVacanciesInGap
-              }
-              .tail
-
-            val (
-              onePastIndexOfLowestFreeWindowSize,
-              (
-                _,
-                lowerGapBoundary
-              )
-            ) =
-              onePastIndexOfEachLowestFreeWindowSizePerGap
-                .zip(sizeGaps)
-                .dropWhile { case (onePastIndexOfLowestFreeWindowSize, _) =>
-                  onePastIndexOfLowestFreeWindowSize <= newWindowSizeIndex
-                }
-                .head
-
-            lowerGapBoundary -> (lowerGapBoundary + (onePastIndexOfLowestFreeWindowSize - newWindowSizeIndex))
-          end val
-
-          assert(
-            windowSizesInDescendingOrder.contains(
-              outgoingWindowSize
-            ) || outgoingWindowSize == oneBeforeLowestValidWindowSize
-          )
-          assert(!windowSizesInDescendingOrder.contains(newWindowSize))
-          assert(newWindowSize > outgoingWindowSize)
-
-          for successor <- windowSizesInDescendingOrder.maxBefore(
-              outgoingWindowSize
-            )
-          do assert(newWindowSize < successor)
-          end for
-
-          Chromosome(
-            windowSizesInDescendingOrder =
-              windowSizesInDescendingOrder + newWindowSize - outgoingWindowSize,
-            validWindowSizes = validWindowSizes
-          )
-        else
-          // Fall back to growing and contracting, possibly even
-          // round-tripping the chromosome to the same state.
-          grown.contracted
-        end if
-      end nudged
-
-      private def grown(using random: Random) =
-        val numberOfFreeWindowSizes =
-          validWindowSizes.size - windowSizesInDescendingOrder.size
-
-        val whereWillThisLand =
-          random.chooseAnyNumberFromZeroToOneLessThan(numberOfFreeWindowSizes)
-
-        val numberOfFreeWindowSizesAboveTheCurrentMaximum =
-          windowSizesInDescendingOrder.maxOption.fold(ifEmpty =
-            validWindowSizes.size
-          )(validWindowSizes.max - _)
-
-        val numberOfFreeWindowSizesBelowTheCurrentMaximum =
-          numberOfFreeWindowSizes - numberOfFreeWindowSizesAboveTheCurrentMaximum
-
-        val newWindowSize =
-          if numberOfFreeWindowSizesBelowTheCurrentMaximum > whereWillThisLand
-          then
-            // This is subtle: `whereWillThisLand` should be thought of as
-            // choosing an integer from either [0,
-            // `numberOfFreeWindowSizesBelowTheCurrentMaximum`) - so choosing to
-            // fill in a gap - or
-            // [`numberOfFreeWindowSizesBelowTheCurrentMaximum`,
-            // `numberOfFreeWindowSizes`) - so beating the current maximum. One
-            // we decide to fill in a gap, we use the chosen integer as an index
-            // in reversed sense, so zero selects from the highest gap.
-            val newWindowSizeIndex = whereWillThisLand
-
-            // The new window size will either come before the current minimum
-            // or will fit in a gap before the current maximum...
-            val gapBoundaries =
-              LazyList.from(
-                windowSizesInDescendingOrder.incl(
-                  oneBeforeLowestValidWindowSize
-                )
-              )
-
-            // NOTE: gaps are arranged to *descend* down window size, so larger
-            // indices select smaller window sizes...
-
-            val sizeGaps = gapBoundaries.zip(gapBoundaries.tail).filter {
-              case (larger, smaller) => larger > 1 + smaller
-            }
-
-            val onePastIndexOfEachLowestFreeWindowSizePerGap = sizeGaps
-              .scanLeft(0) { case (index, (larger, smaller)) =>
-                val numberOfVacanciesInGap = larger - (1 + smaller)
-                index + numberOfVacanciesInGap
-              }
-              .tail
-
-            val (
-              onePastIndexOfLowestFreeWindowSize,
-              (
-                higherGapBoundary,
-                lowerGapBoundary
-              )
-            ) =
-              onePastIndexOfEachLowestFreeWindowSizePerGap
-                .zip(sizeGaps)
-                .dropWhile { case (onePastIndexOfLowestFreeWindowSize, _) =>
-                  onePastIndexOfLowestFreeWindowSize <= newWindowSizeIndex
-                }
-                .head
-
-            lowerGapBoundary + (onePastIndexOfLowestFreeWindowSize - newWindowSizeIndex)
-          else
-            // Go beyond the maximum window size, but don't be too ambitious...
-            val baselineWindowSize = windowSizesInDescendingOrder.maxOption
-              .fold(ifEmpty = validWindowSizes.min)(1 + _)
-            val geometricMean = Math
-              .sqrt(
-                baselineWindowSize * validWindowSizes.max
-              )
-              .ceil
-              .toInt
-
-            baselineWindowSize + random.chooseAnyNumberFromZeroToOneLessThan(
-              1 + geometricMean - baselineWindowSize
-            )
-          end if
-        end newWindowSize
-
-        assert(!windowSizesInDescendingOrder.contains(newWindowSize))
-
-        for
-          predecessor <- windowSizesInDescendingOrder.minAfter(newWindowSize)
-          successor   <- windowSizesInDescendingOrder.maxBefore(predecessor)
-        do assert(newWindowSize < successor)
-        end for
-
-        Chromosome(
-          windowSizesInDescendingOrder =
-            windowSizesInDescendingOrder + newWindowSize,
-          validWindowSizes = validWindowSizes
-        )
-      end grown
-
-      // NOTE: the following helper is a method because it has a precondition
-      // that there are valid window sizes.
-      private def oneBeforeLowestValidWindowSize = validWindowSizes.min - 1
-
-      private def contracted(using random: Random) =
-        val deletedWindowSize = random.chooseOneOf(windowSizesInDescendingOrder)
-
-        Chromosome(
-          windowSizesInDescendingOrder =
-            windowSizesInDescendingOrder - deletedWindowSize,
-          validWindowSizes = validWindowSizes
-        )
-      end contracted
-
       def breedWith(another: Chromosome)(using random: Random): Chromosome =
         this.trimToSuitDynamicValidWindowSizes.breedWith_(
           another.trimToSuitDynamicValidWindowSizes
@@ -620,6 +421,205 @@ object CodeMotionAnalysis:
           validWindowSizes
         )
       end breedWith_
+
+      private def nudged(using random: Random) =
+        val numberOfFreeWindowSizes =
+          validWindowSizes.size - windowSizesInDescendingOrder.size
+
+        val numberOfFreeWindowSizesAboveTheCurrentMaximum =
+          validWindowSizes.max - windowSizesInDescendingOrder.head
+
+        val numberOfFreeWindowSizesBelowTheCurrentMaximum =
+          numberOfFreeWindowSizes - numberOfFreeWindowSizesAboveTheCurrentMaximum
+
+        val roomAvailableBeforeTheHighestWindowSize =
+          numberOfFreeWindowSizes > numberOfFreeWindowSizesAboveTheCurrentMaximum
+
+        if roomAvailableBeforeTheHighestWindowSize then
+          // The new window size will either come before the current minimum
+          // or will fit in a gap before the current maximum...
+
+          val newWindowSizeIndex =
+            random.chooseAnyNumberFromZeroToOneLessThan(
+              numberOfFreeWindowSizesBelowTheCurrentMaximum
+            )
+
+          val (outgoingWindowSize, newWindowSize) =
+            val gapBoundaries =
+              LazyList.from(
+                windowSizesInDescendingOrder.incl(
+                  oneBeforeLowestValidWindowSize
+                )
+              )
+
+            // NOTE: gaps are arranged to *descend* down window size, so larger
+            // indices select smaller window sizes...
+
+            val sizeGaps = gapBoundaries.zip(gapBoundaries.tail).filter {
+              case (larger, smaller) => larger > 1 + smaller
+            }
+
+            val onePastIndexOfEachLowestFreeWindowSizePerGap = sizeGaps
+              .scanLeft(0) { case (index, (larger, smaller)) =>
+                val numberOfVacanciesInGap = larger - (1 + smaller)
+                index + numberOfVacanciesInGap
+              }
+              .tail
+
+            val (
+              onePastIndexOfLowestFreeWindowSize,
+              (
+                _,
+                lowerGapBoundary
+              )
+            ) =
+              onePastIndexOfEachLowestFreeWindowSizePerGap
+                .zip(sizeGaps)
+                .dropWhile { case (onePastIndexOfLowestFreeWindowSize, _) =>
+                  onePastIndexOfLowestFreeWindowSize <= newWindowSizeIndex
+                }
+                .head
+
+            lowerGapBoundary -> (lowerGapBoundary + (onePastIndexOfLowestFreeWindowSize - newWindowSizeIndex))
+          end val
+
+          assert(
+            windowSizesInDescendingOrder.contains(
+              outgoingWindowSize
+            ) || outgoingWindowSize == oneBeforeLowestValidWindowSize
+          )
+          assert(!windowSizesInDescendingOrder.contains(newWindowSize))
+          assert(newWindowSize > outgoingWindowSize)
+
+          for successor <- windowSizesInDescendingOrder.maxBefore(
+              outgoingWindowSize
+            )
+          do assert(newWindowSize < successor)
+          end for
+
+          Chromosome(
+            windowSizesInDescendingOrder =
+              windowSizesInDescendingOrder + newWindowSize - outgoingWindowSize,
+            validWindowSizes = validWindowSizes
+          )
+        else
+          // Fall back to growing and contracting, possibly even
+          // round-tripping the chromosome to the same state.
+          grown.contracted
+        end if
+      end nudged
+
+      private def grown(using random: Random) =
+        val numberOfFreeWindowSizes =
+          validWindowSizes.size - windowSizesInDescendingOrder.size
+
+        val whereWillThisLand =
+          random.chooseAnyNumberFromZeroToOneLessThan(numberOfFreeWindowSizes)
+
+        val numberOfFreeWindowSizesAboveTheCurrentMaximum =
+          windowSizesInDescendingOrder.maxOption.fold(ifEmpty =
+            validWindowSizes.size
+          )(validWindowSizes.max - _)
+
+        val numberOfFreeWindowSizesBelowTheCurrentMaximum =
+          numberOfFreeWindowSizes - numberOfFreeWindowSizesAboveTheCurrentMaximum
+
+        val newWindowSize =
+          if numberOfFreeWindowSizesBelowTheCurrentMaximum > whereWillThisLand
+          then
+            // This is subtle: `whereWillThisLand` should be thought of as
+            // choosing an integer from either [0,
+            // `numberOfFreeWindowSizesBelowTheCurrentMaximum`) - so choosing to
+            // fill in a gap - or
+            // [`numberOfFreeWindowSizesBelowTheCurrentMaximum`,
+            // `numberOfFreeWindowSizes`) - so beating the current maximum. One
+            // we decide to fill in a gap, we use the chosen integer as an index
+            // in reversed sense, so zero selects from the highest gap.
+            val newWindowSizeIndex = whereWillThisLand
+
+            // The new window size will either come before the current minimum
+            // or will fit in a gap before the current maximum...
+            val gapBoundaries =
+              LazyList.from(
+                windowSizesInDescendingOrder.incl(
+                  oneBeforeLowestValidWindowSize
+                )
+              )
+
+            // NOTE: gaps are arranged to *descend* down window size, so larger
+            // indices select smaller window sizes...
+
+            val sizeGaps = gapBoundaries.zip(gapBoundaries.tail).filter {
+              case (larger, smaller) => larger > 1 + smaller
+            }
+
+            val onePastIndexOfEachLowestFreeWindowSizePerGap = sizeGaps
+              .scanLeft(0) { case (index, (larger, smaller)) =>
+                val numberOfVacanciesInGap = larger - (1 + smaller)
+                index + numberOfVacanciesInGap
+              }
+              .tail
+
+            val (
+              onePastIndexOfLowestFreeWindowSize,
+              (
+                higherGapBoundary,
+                lowerGapBoundary
+              )
+            ) =
+              onePastIndexOfEachLowestFreeWindowSizePerGap
+                .zip(sizeGaps)
+                .dropWhile { case (onePastIndexOfLowestFreeWindowSize, _) =>
+                  onePastIndexOfLowestFreeWindowSize <= newWindowSizeIndex
+                }
+                .head
+
+            lowerGapBoundary + (onePastIndexOfLowestFreeWindowSize - newWindowSizeIndex)
+          else
+            // Go beyond the maximum window size, but don't be too ambitious...
+            val baselineWindowSize = windowSizesInDescendingOrder.maxOption
+              .fold(ifEmpty = validWindowSizes.min)(1 + _)
+            val geometricMean = Math
+              .sqrt(
+                baselineWindowSize * validWindowSizes.max
+              )
+              .ceil
+              .toInt
+
+            baselineWindowSize + random.chooseAnyNumberFromZeroToOneLessThan(
+              1 + geometricMean - baselineWindowSize
+            )
+          end if
+        end newWindowSize
+
+        assert(!windowSizesInDescendingOrder.contains(newWindowSize))
+
+        for
+          predecessor <- windowSizesInDescendingOrder.minAfter(newWindowSize)
+          successor   <- windowSizesInDescendingOrder.maxBefore(predecessor)
+        do assert(newWindowSize < successor)
+        end for
+
+        Chromosome(
+          windowSizesInDescendingOrder =
+            windowSizesInDescendingOrder + newWindowSize,
+          validWindowSizes = validWindowSizes
+        )
+      end grown
+
+      // NOTE: the following helper is a method because it has a precondition
+      // that there are valid window sizes.
+      private def oneBeforeLowestValidWindowSize = validWindowSizes.min - 1
+
+      private def contracted(using random: Random) =
+        val deletedWindowSize = random.chooseOneOf(windowSizesInDescendingOrder)
+
+        Chromosome(
+          windowSizesInDescendingOrder =
+            windowSizesInDescendingOrder - deletedWindowSize,
+          validWindowSizes = validWindowSizes
+        )
+      end contracted
     end Chromosome
 
     case class Phenotype(
@@ -1375,11 +1375,20 @@ object CodeMotionAnalysis:
       given potentialMatchKeyOrder: Order[PotentialMatchKey] =
         given Order[Element] = order
 
-        given Order[Section[Element]] = Order.by(_.content: Seq[Element])
+        // Use an explicit implementation as Cats evaluates tuple ordering
+        // strictly on both parts of the tuple.
+        (x: PotentialMatchKey, y: PotentialMatchKey) =>
+          val firstRankComparison = Order.compare(x.fingerprint, y.fingerprint)
 
-        Order.by { case PotentialMatchKey(fingerprint, impliedContent) =>
-          fingerprint -> impliedContent
-        }
+          if 0 == firstRankComparison then
+            // NOTE: need the pesky type ascriptions because `Order` is
+            // invariant on its type parameter.
+            Order.compare(
+              x.impliedContent.content: Seq[Element],
+              y.impliedContent.content: Seq[Element]
+            )
+          else firstRankComparison
+          end if
       end potentialMatchKeyOrder
 
       case class PotentialMatchKey(
