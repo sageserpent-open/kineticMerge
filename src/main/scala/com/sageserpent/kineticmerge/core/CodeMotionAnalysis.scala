@@ -1,5 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
+import cats.implicits.catsKernelOrderingForOrder
 import cats.instances.seq.*
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
@@ -72,6 +73,7 @@ object CodeMotionAnalysis:
       minimumSizeFractionForMotionDetection: Double
   )(
       equality: Eq[Element],
+      order: Order[Element],
       hashFunction: HashFunction,
       funnel: Funnel[Element]
   ): Either[AmbiguousMatch.type, CodeMotionAnalysis[Path, Element]] =
@@ -196,6 +198,205 @@ object CodeMotionAnalysis:
         else this
         end if
       end mutate
+
+      private def nudged(using random: Random) =
+        val numberOfFreeWindowSizes =
+          validWindowSizes.size - windowSizesInDescendingOrder.size
+
+        val numberOfFreeWindowSizesAboveTheCurrentMaximum =
+          validWindowSizes.max - windowSizesInDescendingOrder.head
+
+        val numberOfFreeWindowSizesBelowTheCurrentMaximum =
+          numberOfFreeWindowSizes - numberOfFreeWindowSizesAboveTheCurrentMaximum
+
+        val roomAvailableBeforeTheHighestWindowSize =
+          numberOfFreeWindowSizes > numberOfFreeWindowSizesAboveTheCurrentMaximum
+
+        if roomAvailableBeforeTheHighestWindowSize then
+          // The new window size will either come before the current minimum
+          // or will fit in a gap before the current maximum...
+
+          val newWindowSizeIndex =
+            random.chooseAnyNumberFromZeroToOneLessThan(
+              numberOfFreeWindowSizesBelowTheCurrentMaximum
+            )
+
+          val (outgoingWindowSize, newWindowSize) =
+            val gapBoundaries =
+              LazyList.from(
+                windowSizesInDescendingOrder.incl(
+                  oneBeforeLowestValidWindowSize
+                )
+              )
+
+            // NOTE: gaps are arranged to *descend* down window size, so larger
+            // indices select smaller window sizes...
+
+            val sizeGaps = gapBoundaries.zip(gapBoundaries.tail).filter {
+              case (larger, smaller) => larger > 1 + smaller
+            }
+
+            val onePastIndexOfEachLowestFreeWindowSizePerGap = sizeGaps
+              .scanLeft(0) { case (index, (larger, smaller)) =>
+                val numberOfVacanciesInGap = larger - (1 + smaller)
+                index + numberOfVacanciesInGap
+              }
+              .tail
+
+            val (
+              onePastIndexOfLowestFreeWindowSize,
+              (
+                _,
+                lowerGapBoundary
+              )
+            ) =
+              onePastIndexOfEachLowestFreeWindowSizePerGap
+                .zip(sizeGaps)
+                .dropWhile { case (onePastIndexOfLowestFreeWindowSize, _) =>
+                  onePastIndexOfLowestFreeWindowSize <= newWindowSizeIndex
+                }
+                .head
+
+            lowerGapBoundary -> (lowerGapBoundary + (onePastIndexOfLowestFreeWindowSize - newWindowSizeIndex))
+          end val
+
+          assert(
+            windowSizesInDescendingOrder.contains(
+              outgoingWindowSize
+            ) || outgoingWindowSize == oneBeforeLowestValidWindowSize
+          )
+          assert(!windowSizesInDescendingOrder.contains(newWindowSize))
+          assert(newWindowSize > outgoingWindowSize)
+
+          for successor <- windowSizesInDescendingOrder.maxBefore(
+              outgoingWindowSize
+            )
+          do assert(newWindowSize < successor)
+          end for
+
+          Chromosome(
+            windowSizesInDescendingOrder =
+              windowSizesInDescendingOrder + newWindowSize - outgoingWindowSize,
+            validWindowSizes = validWindowSizes
+          )
+        else
+          // Fall back to growing and contracting, possibly even
+          // round-tripping the chromosome to the same state.
+          grown.contracted
+        end if
+      end nudged
+
+      private def grown(using random: Random) =
+        val numberOfFreeWindowSizes =
+          validWindowSizes.size - windowSizesInDescendingOrder.size
+
+        val whereWillThisLand =
+          random.chooseAnyNumberFromZeroToOneLessThan(numberOfFreeWindowSizes)
+
+        val numberOfFreeWindowSizesAboveTheCurrentMaximum =
+          windowSizesInDescendingOrder.maxOption.fold(ifEmpty =
+            validWindowSizes.size
+          )(validWindowSizes.max - _)
+
+        val numberOfFreeWindowSizesBelowTheCurrentMaximum =
+          numberOfFreeWindowSizes - numberOfFreeWindowSizesAboveTheCurrentMaximum
+
+        val newWindowSize =
+          if numberOfFreeWindowSizesBelowTheCurrentMaximum > whereWillThisLand
+          then
+            // This is subtle: `whereWillThisLand` should be thought of as
+            // choosing an integer from either [0,
+            // `numberOfFreeWindowSizesBelowTheCurrentMaximum`) - so choosing to
+            // fill in a gap - or
+            // [`numberOfFreeWindowSizesBelowTheCurrentMaximum`,
+            // `numberOfFreeWindowSizes`) - so beating the current maximum. One
+            // we decide to fill in a gap, we use the chosen integer as an index
+            // in reversed sense, so zero selects from the highest gap.
+            val newWindowSizeIndex = whereWillThisLand
+
+            // The new window size will either come before the current minimum
+            // or will fit in a gap before the current maximum...
+            val gapBoundaries =
+              LazyList.from(
+                windowSizesInDescendingOrder.incl(
+                  oneBeforeLowestValidWindowSize
+                )
+              )
+
+            // NOTE: gaps are arranged to *descend* down window size, so larger
+            // indices select smaller window sizes...
+
+            val sizeGaps = gapBoundaries.zip(gapBoundaries.tail).filter {
+              case (larger, smaller) => larger > 1 + smaller
+            }
+
+            val onePastIndexOfEachLowestFreeWindowSizePerGap = sizeGaps
+              .scanLeft(0) { case (index, (larger, smaller)) =>
+                val numberOfVacanciesInGap = larger - (1 + smaller)
+                index + numberOfVacanciesInGap
+              }
+              .tail
+
+            val (
+              onePastIndexOfLowestFreeWindowSize,
+              (
+                higherGapBoundary,
+                lowerGapBoundary
+              )
+            ) =
+              onePastIndexOfEachLowestFreeWindowSizePerGap
+                .zip(sizeGaps)
+                .dropWhile { case (onePastIndexOfLowestFreeWindowSize, _) =>
+                  onePastIndexOfLowestFreeWindowSize <= newWindowSizeIndex
+                }
+                .head
+
+            lowerGapBoundary + (onePastIndexOfLowestFreeWindowSize - newWindowSizeIndex)
+          else
+            // Go beyond the maximum window size, but don't be too ambitious...
+            val baselineWindowSize = windowSizesInDescendingOrder.maxOption
+              .fold(ifEmpty = validWindowSizes.min)(1 + _)
+            val geometricMean = Math
+              .sqrt(
+                baselineWindowSize * validWindowSizes.max
+              )
+              .ceil
+              .toInt
+
+            baselineWindowSize + random.chooseAnyNumberFromZeroToOneLessThan(
+              1 + geometricMean - baselineWindowSize
+            )
+          end if
+        end newWindowSize
+
+        assert(!windowSizesInDescendingOrder.contains(newWindowSize))
+
+        for
+          predecessor <- windowSizesInDescendingOrder.minAfter(newWindowSize)
+          successor   <- windowSizesInDescendingOrder.maxBefore(predecessor)
+        do assert(newWindowSize < successor)
+        end for
+
+        Chromosome(
+          windowSizesInDescendingOrder =
+            windowSizesInDescendingOrder + newWindowSize,
+          validWindowSizes = validWindowSizes
+        )
+      end grown
+
+      // NOTE: the following helper is a method because it has a precondition
+      // that there are valid window sizes.
+      private def oneBeforeLowestValidWindowSize = validWindowSizes.min - 1
+
+      private def contracted(using random: Random) =
+        val deletedWindowSize = random.chooseOneOf(windowSizesInDescendingOrder)
+
+        Chromosome(
+          windowSizesInDescendingOrder =
+            windowSizesInDescendingOrder - deletedWindowSize,
+          validWindowSizes = validWindowSizes
+        )
+      end contracted
 
       def breedWith(another: Chromosome)(using random: Random): Chromosome =
         this.trimToSuitDynamicValidWindowSizes.breedWith_(
@@ -419,205 +620,6 @@ object CodeMotionAnalysis:
           validWindowSizes
         )
       end breedWith_
-
-      private def nudged(using random: Random) =
-        val numberOfFreeWindowSizes =
-          validWindowSizes.size - windowSizesInDescendingOrder.size
-
-        val numberOfFreeWindowSizesAboveTheCurrentMaximum =
-          validWindowSizes.max - windowSizesInDescendingOrder.head
-
-        val numberOfFreeWindowSizesBelowTheCurrentMaximum =
-          numberOfFreeWindowSizes - numberOfFreeWindowSizesAboveTheCurrentMaximum
-
-        val roomAvailableBeforeTheHighestWindowSize =
-          numberOfFreeWindowSizes > numberOfFreeWindowSizesAboveTheCurrentMaximum
-
-        if roomAvailableBeforeTheHighestWindowSize then
-          // The new window size will either come before the current minimum
-          // or will fit in a gap before the current maximum...
-
-          val newWindowSizeIndex =
-            random.chooseAnyNumberFromZeroToOneLessThan(
-              numberOfFreeWindowSizesBelowTheCurrentMaximum
-            )
-
-          val (outgoingWindowSize, newWindowSize) =
-            val gapBoundaries =
-              LazyList.from(
-                windowSizesInDescendingOrder.incl(
-                  oneBeforeLowestValidWindowSize
-                )
-              )
-
-            // NOTE: gaps are arranged to *descend* down window size, so larger
-            // indices select smaller window sizes...
-
-            val sizeGaps = gapBoundaries.zip(gapBoundaries.tail).filter {
-              case (larger, smaller) => larger > 1 + smaller
-            }
-
-            val onePastIndexOfEachLowestFreeWindowSizePerGap = sizeGaps
-              .scanLeft(0) { case (index, (larger, smaller)) =>
-                val numberOfVacanciesInGap = larger - (1 + smaller)
-                index + numberOfVacanciesInGap
-              }
-              .tail
-
-            val (
-              onePastIndexOfLowestFreeWindowSize,
-              (
-                _,
-                lowerGapBoundary
-              )
-            ) =
-              onePastIndexOfEachLowestFreeWindowSizePerGap
-                .zip(sizeGaps)
-                .dropWhile { case (onePastIndexOfLowestFreeWindowSize, _) =>
-                  onePastIndexOfLowestFreeWindowSize <= newWindowSizeIndex
-                }
-                .head
-
-            lowerGapBoundary -> (lowerGapBoundary + (onePastIndexOfLowestFreeWindowSize - newWindowSizeIndex))
-          end val
-
-          assert(
-            windowSizesInDescendingOrder.contains(
-              outgoingWindowSize
-            ) || outgoingWindowSize == oneBeforeLowestValidWindowSize
-          )
-          assert(!windowSizesInDescendingOrder.contains(newWindowSize))
-          assert(newWindowSize > outgoingWindowSize)
-
-          for successor <- windowSizesInDescendingOrder.maxBefore(
-              outgoingWindowSize
-            )
-          do assert(newWindowSize < successor)
-          end for
-
-          Chromosome(
-            windowSizesInDescendingOrder =
-              windowSizesInDescendingOrder + newWindowSize - outgoingWindowSize,
-            validWindowSizes = validWindowSizes
-          )
-        else
-          // Fall back to growing and contracting, possibly even
-          // round-tripping the chromosome to the same state.
-          grown.contracted
-        end if
-      end nudged
-
-      // NOTE: the following helper is a method because it has a precondition
-      // that there are valid window sizes.
-      private def oneBeforeLowestValidWindowSize = validWindowSizes.min - 1
-
-      private def grown(using random: Random) =
-        val numberOfFreeWindowSizes =
-          validWindowSizes.size - windowSizesInDescendingOrder.size
-
-        val whereWillThisLand =
-          random.chooseAnyNumberFromZeroToOneLessThan(numberOfFreeWindowSizes)
-
-        val numberOfFreeWindowSizesAboveTheCurrentMaximum =
-          windowSizesInDescendingOrder.maxOption.fold(ifEmpty =
-            validWindowSizes.size
-          )(validWindowSizes.max - _)
-
-        val numberOfFreeWindowSizesBelowTheCurrentMaximum =
-          numberOfFreeWindowSizes - numberOfFreeWindowSizesAboveTheCurrentMaximum
-
-        val newWindowSize =
-          if numberOfFreeWindowSizesBelowTheCurrentMaximum > whereWillThisLand
-          then
-            // This is subtle: `whereWillThisLand` should be thought of as
-            // choosing an integer from either [0,
-            // `numberOfFreeWindowSizesBelowTheCurrentMaximum`) - so choosing to
-            // fill in a gap - or
-            // [`numberOfFreeWindowSizesBelowTheCurrentMaximum`,
-            // `numberOfFreeWindowSizes`) - so beating the current maximum. One
-            // we decide to fill in a gap, we use the chosen integer as an index
-            // in reversed sense, so zero selects from the highest gap.
-            val newWindowSizeIndex = whereWillThisLand
-
-            // The new window size will either come before the current minimum
-            // or will fit in a gap before the current maximum...
-            val gapBoundaries =
-              LazyList.from(
-                windowSizesInDescendingOrder.incl(
-                  oneBeforeLowestValidWindowSize
-                )
-              )
-
-            // NOTE: gaps are arranged to *descend* down window size, so larger
-            // indices select smaller window sizes...
-
-            val sizeGaps = gapBoundaries.zip(gapBoundaries.tail).filter {
-              case (larger, smaller) => larger > 1 + smaller
-            }
-
-            val onePastIndexOfEachLowestFreeWindowSizePerGap = sizeGaps
-              .scanLeft(0) { case (index, (larger, smaller)) =>
-                val numberOfVacanciesInGap = larger - (1 + smaller)
-                index + numberOfVacanciesInGap
-              }
-              .tail
-
-            val (
-              onePastIndexOfLowestFreeWindowSize,
-              (
-                higherGapBoundary,
-                lowerGapBoundary
-              )
-            ) =
-              onePastIndexOfEachLowestFreeWindowSizePerGap
-                .zip(sizeGaps)
-                .dropWhile { case (onePastIndexOfLowestFreeWindowSize, _) =>
-                  onePastIndexOfLowestFreeWindowSize <= newWindowSizeIndex
-                }
-                .head
-
-            lowerGapBoundary + (onePastIndexOfLowestFreeWindowSize - newWindowSizeIndex)
-          else
-            // Go beyond the maximum window size, but don't be too ambitious...
-            val baselineWindowSize = windowSizesInDescendingOrder.maxOption
-              .fold(ifEmpty = validWindowSizes.min)(1 + _)
-            val geometricMean = Math
-              .sqrt(
-                baselineWindowSize * validWindowSizes.max
-              )
-              .ceil
-              .toInt
-
-            baselineWindowSize + random.chooseAnyNumberFromZeroToOneLessThan(
-              1 + geometricMean - baselineWindowSize
-            )
-          end if
-        end newWindowSize
-
-        assert(!windowSizesInDescendingOrder.contains(newWindowSize))
-
-        for
-          predecessor <- windowSizesInDescendingOrder.minAfter(newWindowSize)
-          successor   <- windowSizesInDescendingOrder.maxBefore(predecessor)
-        do assert(newWindowSize < successor)
-        end for
-
-        Chromosome(
-          windowSizesInDescendingOrder =
-            windowSizesInDescendingOrder + newWindowSize,
-          validWindowSizes = validWindowSizes
-        )
-      end grown
-
-      private def contracted(using random: Random) =
-        val deletedWindowSize = random.chooseOneOf(windowSizesInDescendingOrder)
-
-        Chromosome(
-          windowSizesInDescendingOrder =
-            windowSizesInDescendingOrder - deletedWindowSize,
-          validWindowSizes = validWindowSizes
-        )
-      end contracted
     end Chromosome
 
     case class Phenotype(
@@ -713,6 +715,21 @@ object CodeMotionAnalysis:
     end given
 
     given Evolution[Chromosome, Phenotype] with
+      // NOTE: this is subtle - this type is used as a ordered key to find
+      // matches across sides; fingerprints can and do collide, so we need
+      // the content as a tiebreaker. However, we don't want to have to
+      // freight the content around for keys that will never match across
+      // sides - there are a lot of keys involved in finding matches at low
+      // window sizes, and large window sizes imply large content sizes.
+      //
+      // The solution is to rely on lazy evaluation semantics for ordering
+      // of pairs, and to evaluate the content of the section when it's
+      // really needed to break a tie on fingerprints. However, this means
+      // that when there are multiple matches whose keys collide, then only
+      // one key can represent the matches in a `SortedMultiDict` - so we
+      // expect to see keys whose section is unrelated to some of the
+      // matches it is associated with, but is a legitimate key for them
+      // nonetheless.
       private val phenotypeCache: Cache[Chromosome, Phenotype] =
         Caffeine.newBuilder().build()
       private val rollingHashFactoryCache: Cache[Int, RollingHash.Factory] =
@@ -898,7 +915,7 @@ object CodeMotionAnalysis:
 
           def fingerprintSections(
               sources: Sources[Path, Element]
-          ): SortedMultiDict[BigInt, Section[Element]] =
+          ): SortedMultiDict[PotentialMatchKey, Section[Element]] =
             sources.filesByPath
               .filter { case (_, file) =>
                 val fileSize = file.size
@@ -910,8 +927,12 @@ object CodeMotionAnalysis:
               .map { case (path, file) =>
                 fingerprintStartIndices(file.content).map(
                   (fingerprint, fingerprintStartIndex) =>
-                    fingerprint -> sources
+                    val section = sources
                       .section(path)(fingerprintStartIndex, windowSize)
+                    PotentialMatchKey(
+                      fingerprint,
+                      impliedContent = section
+                    ) -> section
                 )
               }
               // This isn't quite the same as flat-mapping / flattening,
@@ -937,9 +958,9 @@ object CodeMotionAnalysis:
 
           @tailrec
           def matchingFingerprintsAcrossSides(
-              baseFingerprints: Iterable[BigInt],
-              leftFingerprints: Iterable[BigInt],
-              rightFingerprints: Iterable[BigInt],
+              baseFingerprints: Iterable[PotentialMatchKey],
+              leftFingerprints: Iterable[PotentialMatchKey],
+              rightFingerprints: Iterable[PotentialMatchKey],
               matches: Set[Match[Section[Element]]],
               sectionsSeenAcrossSides: SectionsSeenAcrossSides
           ): (SectionsSeenAcrossSides, MatchGroupsInDescendingOrderOfKeys) =
@@ -949,7 +970,10 @@ object CodeMotionAnalysis:
               rightFingerprints.headOption
             ) match
               case (Some(baseHead), Some(leftHead), Some(rightHead))
-                  if baseHead == leftHead && baseHead == rightHead =>
+                  if potentialMatchKeyOrder.eqv(
+                    baseHead,
+                    leftHead
+                  ) && potentialMatchKeyOrder.eqv(baseHead, rightHead) =>
                 // Synchronised the fingerprints across all three sides...
                 val matchesForSynchronisedFingerprint
                     : Set[Match[Section[Element]]] =
@@ -964,15 +988,7 @@ object CodeMotionAnalysis:
                     baseSection  <- baseSections
                     leftSection  <- leftSections
                     rightSection <- rightSections
-                    // Guard against false positives sharing the same
-                    // fingerprint...
-                    if sequenceEquality.eqv(
-                      baseSection.content,
-                      leftSection.content
-                    ) && sequenceEquality.eqv(
-                      baseSection.content,
-                      rightSection.content
-                    )
+
                     baseSubsumed = sectionsSeenAcrossSides
                       .containsBaseSection(
                         baseSection
@@ -1018,7 +1034,13 @@ object CodeMotionAnalysis:
                 )
 
               case (Some(baseHead), Some(leftHead), Some(rightHead))
-                  if baseHead == leftHead && baseHead > rightHead =>
+                  if potentialMatchKeyOrder.eqv(
+                    baseHead,
+                    leftHead
+                  ) && potentialMatchKeyOrder.gt(
+                    baseHead,
+                    rightHead
+                  ) =>
                 // Tentatively synchronised the fingerprints between the base
                 // and left, need to advance the right to resolve ...
                 matchingFingerprintsAcrossSides(
@@ -1030,7 +1052,7 @@ object CodeMotionAnalysis:
                 )
 
               case (Some(baseHead), Some(leftHead), _)
-                  if baseHead == leftHead =>
+                  if potentialMatchKeyOrder.eqv(baseHead, leftHead) =>
                 // Synchronised the fingerprints between the base and left...
                 val matchesForSynchronisedFingerprint
                     : Set[Match[Section[Element]]] =
@@ -1042,12 +1064,7 @@ object CodeMotionAnalysis:
                   (for
                     baseSection <- baseSections
                     leftSection <- leftSections
-                    // Guard against false positives sharing the same
-                    // fingerprint...
-                    if sequenceEquality.eqv(
-                      baseSection.content,
-                      leftSection.content
-                    )
+
                     suppressed = sectionsSeenAcrossSides.containsBaseSection(
                       baseSection
                     ) || sectionsSeenAcrossSides.containsLeftSection(
@@ -1070,7 +1087,13 @@ object CodeMotionAnalysis:
                 )
 
               case (Some(baseHead), Some(leftHead), Some(rightHead))
-                  if baseHead == rightHead && baseHead > leftHead =>
+                  if potentialMatchKeyOrder.eqv(
+                    baseHead,
+                    rightHead
+                  ) && potentialMatchKeyOrder.gt(
+                    baseHead,
+                    leftHead
+                  ) =>
                 // Tentatively synchronised the fingerprints between the base
                 // and right, need to advance the left to resolve ...
                 matchingFingerprintsAcrossSides(
@@ -1082,7 +1105,7 @@ object CodeMotionAnalysis:
                 )
 
               case (Some(baseHead), _, Some(rightHead))
-                  if baseHead == rightHead =>
+                  if potentialMatchKeyOrder.eqv(baseHead, rightHead) =>
                 // Synchronised the fingerprints between the base and right...
                 val matchesForSynchronisedFingerprint
                     : Set[Match[Section[Element]]] =
@@ -1094,12 +1117,7 @@ object CodeMotionAnalysis:
                   (for
                     baseSection  <- baseSections
                     rightSection <- rightSections
-                    // Guard against false positives sharing the same
-                    // fingerprint...
-                    if sequenceEquality.eqv(
-                      baseSection.content,
-                      rightSection.content
-                    )
+
                     suppressed = sectionsSeenAcrossSides.containsBaseSection(
                       baseSection
                     ) || sectionsSeenAcrossSides.containsRightSection(
@@ -1122,7 +1140,13 @@ object CodeMotionAnalysis:
                 )
 
               case (Some(baseHead), Some(leftHead), Some(rightHead))
-                  if leftHead == rightHead && leftHead > baseHead =>
+                  if potentialMatchKeyOrder.eqv(
+                    leftHead,
+                    rightHead
+                  ) && potentialMatchKeyOrder.gt(
+                    leftHead,
+                    baseHead
+                  ) =>
                 // Tentatively synchronised the fingerprints between the left
                 // and right, need to advance the base to resolve ...
                 matchingFingerprintsAcrossSides(
@@ -1134,7 +1158,7 @@ object CodeMotionAnalysis:
                 )
 
               case (_, Some(leftHead), Some(rightHead))
-                  if leftHead == rightHead =>
+                  if potentialMatchKeyOrder.eqv(leftHead, rightHead) =>
                 // Synchronised the fingerprints between the left and right...
                 val matchesForSynchronisedFingerprint
                     : Set[Match[Section[Element]]] =
@@ -1146,12 +1170,7 @@ object CodeMotionAnalysis:
                   (for
                     leftSection  <- leftSections
                     rightSection <- rightSections
-                    // Guard against false positives sharing the same
-                    // fingerprint...
-                    if sequenceEquality.eqv(
-                      leftSection.content,
-                      rightSection.content
-                    )
+
                     suppressed = sectionsSeenAcrossSides.containsLeftSection(
                       leftSection
                     ) || sectionsSeenAcrossSides.containsRightSection(
@@ -1178,9 +1197,18 @@ object CodeMotionAnalysis:
                 // minimum fingerprint to see if it can catch up and
                 // synchronise...
 
-                val minimumFingerprint = baseHead min leftHead min rightHead
+                val minimumFingerprint =
+                  potentialMatchKeyOrder.min(
+                    baseHead,
+                    potentialMatchKeyOrder
+                      .min(leftHead, rightHead)
+                  )
 
-                if leftHead == minimumFingerprint then
+                if potentialMatchKeyOrder.eqv(
+                    leftHead,
+                    minimumFingerprint
+                  )
+                then
                   matchingFingerprintsAcrossSides(
                     baseFingerprints,
                     leftFingerprints.tail,
@@ -1188,7 +1216,11 @@ object CodeMotionAnalysis:
                     matches,
                     sectionsSeenAcrossSides
                   )
-                else if rightHead == minimumFingerprint then
+                else if potentialMatchKeyOrder.eqv(
+                    rightHead,
+                    minimumFingerprint
+                  )
+                then
                   matchingFingerprintsAcrossSides(
                     baseFingerprints,
                     leftFingerprints,
@@ -1210,7 +1242,8 @@ object CodeMotionAnalysis:
                 // The base and left fingerprints disagree, so advance the
                 // side with the minimum fingerprint to see if it can catch up
                 // and synchronise...
-                if baseHead < leftHead then
+                if potentialMatchKeyOrder.lt(baseHead, leftHead)
+                then
                   matchingFingerprintsAcrossSides(
                     baseFingerprints.tail,
                     leftFingerprints,
@@ -1231,7 +1264,8 @@ object CodeMotionAnalysis:
                 // The base and right fingerprints disagree, so advance the
                 // side with the minimum fingerprint to see if it can catch up
                 // and synchronise...
-                if baseHead < rightHead then
+                if potentialMatchKeyOrder.lt(baseHead, rightHead)
+                then
                   matchingFingerprintsAcrossSides(
                     baseFingerprints.tail,
                     leftFingerprints,
@@ -1252,7 +1286,8 @@ object CodeMotionAnalysis:
                 // The left and right fingerprints disagree, so advance the
                 // side with the minimum fingerprint to see if it can catch up
                 // and synchronise...
-                if leftHead < rightHead then
+                if potentialMatchKeyOrder.lt(leftHead, rightHead)
+                then
                   matchingFingerprintsAcrossSides(
                     baseFingerprints,
                     leftFingerprints.tail,
@@ -1337,10 +1372,32 @@ object CodeMotionAnalysis:
         )
       end phenotype_
 
+      given potentialMatchKeyOrder: Order[PotentialMatchKey] =
+        given Order[Element] = order
+
+        given Order[Section[Element]] = Order.by(_.content: Seq[Element])
+
+        Order.by { case PotentialMatchKey(fingerprint, impliedContent) =>
+          fingerprint -> impliedContent
+        }
+      end potentialMatchKeyOrder
+
+      case class PotentialMatchKey(
+          fingerprint: BigInt,
+          impliedContent: Section[Element]
+      )
+
       private case class FingerprintSectionsAcrossSides(
-          baseSectionsByFingerprint: SortedMultiDict[BigInt, Section[Element]],
-          leftSectionsByFingerprint: SortedMultiDict[BigInt, Section[Element]],
-          rightSectionsByFingerprint: SortedMultiDict[BigInt, Section[Element]]
+          baseSectionsByFingerprint: SortedMultiDict[PotentialMatchKey, Section[
+            Element
+          ]],
+          leftSectionsByFingerprint: SortedMultiDict[PotentialMatchKey, Section[
+            Element
+          ]],
+          rightSectionsByFingerprint: SortedMultiDict[
+            PotentialMatchKey,
+            Section[Element]
+          ]
       )
     end given
 

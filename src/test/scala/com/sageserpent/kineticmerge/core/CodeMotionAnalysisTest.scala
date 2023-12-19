@@ -1,5 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
+import cats.kernel.{Eq, Order}
 import com.google.common.hash.{Hashing, PrimitiveSink}
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.java.CasesLimitStrategy
@@ -7,7 +8,7 @@ import com.sageserpent.americium.junit5.*
 import com.sageserpent.americium.{Trials, TrialsApi}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
-import org.junit.jupiter.api.*
+import org.junit.jupiter.api.{Order as _, *}
 
 import java.util.concurrent.TimeUnit
 import scala.concurrent.duration.Duration
@@ -74,7 +75,8 @@ class CodeMotionAnalysisTest:
             CodeMotionAnalysis.of(base, left, right)(
               minimumSizeFraction
             )(
-              equality = _ == _,
+              equality = Eq[Element],
+              order = Order[Element],
               hashFunction = Hashing.murmur3_32_fixed(),
               funnel = funnel
             ): @unchecked
@@ -391,7 +393,8 @@ class CodeMotionAnalysisTest:
               leftSources,
               rightSources
             )(minimumSizeFractionForMotionDetection)(
-              equality = _ == _,
+              equality = Eq[Element],
+              order = Order[Element],
               hashFunction = Hashing.murmur3_32_fixed(),
               funnel = funnel
             ): @unchecked
