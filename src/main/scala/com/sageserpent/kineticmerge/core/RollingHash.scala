@@ -11,8 +11,9 @@ trait RollingHash:
 end RollingHash
 
 object RollingHash:
-  private val magicConstantForBirthdayParadoxAvoidanceAtNinetyPercentProbabilityOfCollision =
-    Math.log(100)
+  private val magicConstantForBirthdayParadoxAvoidanceAtOnePercentProbabilityOfCollision =
+    // Approximation for `Math.log(Math.pow(1 / (1 - 0.01)), 2)`.
+    Math.log(1 + 2 * 0.01)
 
   private def biasByteAsPositiveBigInt(byte: Byte): BigInt =
     BigInt(byte) - Byte.MinValue
@@ -34,7 +35,7 @@ object RollingHash:
       // for the awareness that this could be a problem.
       val numberOfDistinctFingerprintsToAvoidBirthdayParadoxCollision = BigInt(
         ((numberOfFingerprintsToBeTaken.toDouble * numberOfFingerprintsToBeTaken.toDouble)
-          / magicConstantForBirthdayParadoxAvoidanceAtNinetyPercentProbabilityOfCollision).ceil.toLong
+          / magicConstantForBirthdayParadoxAvoidanceAtOnePercentProbabilityOfCollision).ceil.toLong
       )
 
       val primeModulusMustBeLargerThanThis =
