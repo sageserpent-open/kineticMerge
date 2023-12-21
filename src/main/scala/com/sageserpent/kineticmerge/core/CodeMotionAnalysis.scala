@@ -422,6 +422,50 @@ object CodeMotionAnalysis:
         )
       end breedWith_
 
+      private def newWindowSizeInGapOrBeforeLowest(newWindowSizeIndex: Int) =
+        // The new window size will either come before the current minimum
+        // or will fit in a gap before the current maximum...
+        val gapBoundaries =
+          LazyList.from(
+            windowSizesInDescendingOrder.incl(
+              oneBeforeLowestValidWindowSize
+            )
+          )
+
+        // NOTE: gaps are arranged to *descend* down window size, so larger
+        // indices select smaller window sizes...
+
+        val sizeGaps = gapBoundaries.zip(gapBoundaries.tail).filter {
+          case (larger, smaller) => larger > 1 + smaller
+        }
+
+        val onePastIndexOfEachLowestFreeWindowSizePerGap = sizeGaps
+          .scanLeft(0) { case (index, (larger, smaller)) =>
+            val numberOfVacanciesInGap = larger - (1 + smaller)
+            index + numberOfVacanciesInGap
+          }
+          .tail
+
+        val (
+          onePastIndexOfLowestFreeWindowSize,
+          (
+            _,
+            lowerGapBoundary // NOTE: this will be `oneBeforeLowestValidWindowSize` if the new window size comes before the current minimum.
+          )
+        ) =
+          onePastIndexOfEachLowestFreeWindowSizePerGap
+            .zip(sizeGaps)
+            .dropWhile { case (onePastIndexOfLowestFreeWindowSize, _) =>
+              onePastIndexOfLowestFreeWindowSize <= newWindowSizeIndex
+            }
+            .head
+
+        val newWindowSize =
+          lowerGapBoundary + (onePastIndexOfLowestFreeWindowSize - newWindowSizeIndex)
+
+        newWindowSize -> lowerGapBoundary
+      end newWindowSizeInGapOrBeforeLowest
+
       private def nudged(using random: Random) =
         val numberOfFreeWindowSizes =
           validWindowSizes.size - windowSizesInDescendingOrder.size
@@ -436,51 +480,13 @@ object CodeMotionAnalysis:
           numberOfFreeWindowSizes > numberOfFreeWindowSizesAboveTheCurrentMaximum
 
         if roomAvailableBeforeTheHighestWindowSize then
-          // The new window size will either come before the current minimum
-          // or will fit in a gap before the current maximum...
-
           val newWindowSizeIndex =
             random.chooseAnyNumberFromZeroToOneLessThan(
               numberOfFreeWindowSizesBelowTheCurrentMaximum
             )
 
-          val (outgoingWindowSize, newWindowSize) =
-            val gapBoundaries =
-              LazyList.from(
-                windowSizesInDescendingOrder.incl(
-                  oneBeforeLowestValidWindowSize
-                )
-              )
-
-            // NOTE: gaps are arranged to *descend* down window size, so larger
-            // indices select smaller window sizes...
-
-            val sizeGaps = gapBoundaries.zip(gapBoundaries.tail).filter {
-              case (larger, smaller) => larger > 1 + smaller
-            }
-
-            val onePastIndexOfEachLowestFreeWindowSizePerGap = sizeGaps
-              .scanLeft(0) { case (index, (larger, smaller)) =>
-                val numberOfVacanciesInGap = larger - (1 + smaller)
-                index + numberOfVacanciesInGap
-              }
-              .tail
-
-            val (
-              onePastIndexOfLowestFreeWindowSize,
-              (
-                _,
-                lowerGapBoundary
-              )
-            ) =
-              onePastIndexOfEachLowestFreeWindowSizePerGap
-                .zip(sizeGaps)
-                .dropWhile { case (onePastIndexOfLowestFreeWindowSize, _) =>
-                  onePastIndexOfLowestFreeWindowSize <= newWindowSizeIndex
-                }
-                .head
-
-            lowerGapBoundary -> (lowerGapBoundary + (onePastIndexOfLowestFreeWindowSize - newWindowSizeIndex))
+          val (newWindowSize, outgoingWindowSize) =
+            newWindowSizeInGapOrBeforeLowest(newWindowSizeIndex)
           end val
 
           assert(
@@ -537,44 +543,7 @@ object CodeMotionAnalysis:
             // in reversed sense, so zero selects from the highest gap.
             val newWindowSizeIndex = whereWillThisLand
 
-            // The new window size will either come before the current minimum
-            // or will fit in a gap before the current maximum...
-            val gapBoundaries =
-              LazyList.from(
-                windowSizesInDescendingOrder.incl(
-                  oneBeforeLowestValidWindowSize
-                )
-              )
-
-            // NOTE: gaps are arranged to *descend* down window size, so larger
-            // indices select smaller window sizes...
-
-            val sizeGaps = gapBoundaries.zip(gapBoundaries.tail).filter {
-              case (larger, smaller) => larger > 1 + smaller
-            }
-
-            val onePastIndexOfEachLowestFreeWindowSizePerGap = sizeGaps
-              .scanLeft(0) { case (index, (larger, smaller)) =>
-                val numberOfVacanciesInGap = larger - (1 + smaller)
-                index + numberOfVacanciesInGap
-              }
-              .tail
-
-            val (
-              onePastIndexOfLowestFreeWindowSize,
-              (
-                higherGapBoundary,
-                lowerGapBoundary
-              )
-            ) =
-              onePastIndexOfEachLowestFreeWindowSizePerGap
-                .zip(sizeGaps)
-                .dropWhile { case (onePastIndexOfLowestFreeWindowSize, _) =>
-                  onePastIndexOfLowestFreeWindowSize <= newWindowSizeIndex
-                }
-                .head
-
-            lowerGapBoundary + (onePastIndexOfLowestFreeWindowSize - newWindowSizeIndex)
+            newWindowSizeInGapOrBeforeLowest(newWindowSizeIndex)._1
           else
             // Go beyond the maximum window size, but don't be too ambitious...
             val baselineWindowSize = windowSizesInDescendingOrder.maxOption
