@@ -1,7 +1,7 @@
 # kineticMerge
 Merge a heavily refactored codebase and stay sane.
 
-(In **BETA**).
+(In **ALPHA**).
 
 ## Goals
 - Merge two branches of a Git repository *across the entire codebase*.
