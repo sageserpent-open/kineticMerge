@@ -59,7 +59,7 @@ Well, that's the plan. It's no longer vapourware, there is a release, but the co
 
 Be aware that things will be changing in that department as support for code motion is introduced - this has quite a large bearing on the granularity of the merging, which is currently extremely fine grained and will sometimes produce some _surprising_ results.
 
-For now, consider this in **BETA** release. Be brave - or run away.
+For now, consider this in **ALPHA** release. Be brave - or run away.
 
 Bear in mind you can use either `--no-commit` or rollback with `git merge --abort` or `git reset --hard`, but know what you're doing before you use the third technique.
 
