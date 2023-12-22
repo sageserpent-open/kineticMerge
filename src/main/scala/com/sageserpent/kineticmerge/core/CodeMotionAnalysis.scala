@@ -1399,7 +1399,7 @@ object CodeMotionAnalysis:
     end given
 
     val evolvedPhenotype =
-      if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > minimumFileSizeAcrossAllFilesOverAllSides
+      if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > minimumWindowSizeAcrossAllFilesOverAllSides
       then
         println(
           s"Genetic end-game, $minimumFileSizeAcrossAllFilesOverAllSides, $minimumSureFireWindowSizeAcrossAllFilesOverAllSides, starting with: $withAllMatchesOfAtLeastTheSureFireWindowSize"
