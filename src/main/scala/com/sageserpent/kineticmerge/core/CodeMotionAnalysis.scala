@@ -277,7 +277,9 @@ object CodeMotionAnalysis:
     case class MatchCalculationState(
         sectionsSeenAcrossSides: SectionsSeenAcrossSides,
         matchGroupsInDescendingOrderOfKeys: MatchGroupsInDescendingOrderOfKeys,
-        looseExclusiveUpperBoundOnMaximumMatchSize: Int
+        // If `None`, don't bother tracking whether a match was made at a given
+        // window size.
+        looseExclusiveUpperBoundOnMaximumMatchSize: Option[Int]
     ):
       def matchesForWindowSize(
           windowSize: Int
@@ -745,7 +747,10 @@ object CodeMotionAnalysis:
                 MatchCalculationState(
                   sectionsSeenAcrossSides,
                   matchGroupsInDescendingOrderOfKeys,
-                  looseExclusiveUpperBoundOnMaximumMatchSize = windowSize
+                  looseExclusiveUpperBoundOnMaximumMatchSize =
+                    looseExclusiveUpperBoundOnMaximumMatchSize.map(
+                      _ min windowSize
+                    )
                 )
               else
                 val (tripleMatches, pairMatches) = matches.partition {
@@ -784,7 +789,8 @@ object CodeMotionAnalysis:
         withWindowSizes(
           minimumSureFireWindowSizeAcrossAllFilesOverAllSides
         )(
-          minimumWindowSizeAcrossAllFilesOverAllSides until minimumSureFireWindowSizeAcrossAllFilesOverAllSides
+          // TODO - remove temporary hack.
+          minimumWindowSizeAcrossAllFilesOverAllSides to maximumFileSizeAcrossAllFilesOverAllSides /*until minimumSureFireWindowSizeAcrossAllFilesOverAllSides*/
         )
       end initial
 
@@ -1324,10 +1330,7 @@ object CodeMotionAnalysis:
             MatchCalculationState(
               SectionsSeenAcrossSides(),
               matchGroupsInDescendingOrderOfKeys = Seq.empty,
-              // TODO: pick this up from the initial search for window sizes in
-              // descending order that are >=
-              // `minimumSureFireWindowSizeAcrossAllFilesOverAllSides`.
-              looseExclusiveUpperBoundOnMaximumMatchSize = ???
+              looseExclusiveUpperBoundOnMaximumMatchSize = None
             )
           )(_ matchesForWindowSize _)
 
