@@ -1402,7 +1402,7 @@ object CodeMotionAnalysis:
       if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > minimumWindowSizeAcrossAllFilesOverAllSides
       then
         println(
-          s"Genetic end-game, $minimumFileSizeAcrossAllFilesOverAllSides, $minimumSureFireWindowSizeAcrossAllFilesOverAllSides, starting with: $withAllMatchesOfAtLeastTheSureFireWindowSize"
+          s"Genetic end-game, $minimumWindowSizeAcrossAllFilesOverAllSides, $minimumSureFireWindowSizeAcrossAllFilesOverAllSides"
         )
         Evolution.of(
           maximumNumberOfRetries = 3,
@@ -1410,7 +1410,7 @@ object CodeMotionAnalysis:
         )
       else
         println(
-          s"No genetic end-game, $minimumFileSizeAcrossAllFilesOverAllSides, $minimumSureFireWindowSizeAcrossAllFilesOverAllSides, got: $withAllMatchesOfAtLeastTheSureFireWindowSize"
+          s"No genetic end-game, $minimumWindowSizeAcrossAllFilesOverAllSides, $minimumSureFireWindowSizeAcrossAllFilesOverAllSides"
         )
         Phenotype(
           chromosomeSize = 0,
