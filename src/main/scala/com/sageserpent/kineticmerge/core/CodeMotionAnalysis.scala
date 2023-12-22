@@ -107,13 +107,6 @@ object CodeMotionAnalysis:
     val minimumSureFireWindowSizeAcrossAllFilesOverAllSides =
       1 max (maximumFileSizeAcrossAllFilesOverAllSides * minimumSizeFractionForMotionDetection).ceil.toInt
 
-    // TODO: legacy cruft left as an aide-memoire, need to remove this...
-    /* var looseExclusiveUpperBoundOnMaximumMatchSize =
-     * 1 + maximumFileSizeAcrossAllFilesOverAllSides
-     *
-     * def dynamicValidWindowSizes: Range =
-     * minimumWindowSizeAcrossAllFilesOverAllSides until
-     * looseExclusiveUpperBoundOnMaximumMatchSize */
     enum MatchGrade:
       case Triple
       case Pair
@@ -274,6 +267,15 @@ object CodeMotionAnalysis:
     val fingerprintSectionsCache: Cache[Int, FingerprintSectionsAcrossSides] =
       Caffeine.newBuilder().build()
 
+    object MatchCalculationState:
+      lazy val empty = MatchCalculationState(
+        sectionsSeenAcrossSides = SectionsSeenAcrossSides(),
+        matchGroupsInDescendingOrderOfKeys = Seq.empty,
+        looseExclusiveUpperBoundOnMaximumMatchSize =
+          Some(1 + maximumFileSizeAcrossAllFilesOverAllSides)
+      )
+    end MatchCalculationState
+
     case class MatchCalculationState(
         sectionsSeenAcrossSides: SectionsSeenAcrossSides,
         matchGroupsInDescendingOrderOfKeys: MatchGroupsInDescendingOrderOfKeys,
@@ -281,6 +283,54 @@ object CodeMotionAnalysis:
         // window size.
         looseExclusiveUpperBoundOnMaximumMatchSize: Option[Int]
     ):
+      @tailrec
+      final def withAllMatchesOfAtLeastTheSureFireWindowSize(
+          bestMatchSize: Int =
+            minimumSureFireWindowSizeAcrossAllFilesOverAllSides - 1
+      ): MatchCalculationState =
+        // TODO: tidy up the messy treatment of
+        // `looseExclusiveUpperBoundOnMaximumMatchSize`. Could we make
+        // `MatchCalculationState` into a trait?
+        require(looseExclusiveUpperBoundOnMaximumMatchSize.nonEmpty)
+
+        if 1 + bestMatchSize < looseExclusiveUpperBoundOnMaximumMatchSize.get
+        then
+          val candidateWindowSize =
+            (bestMatchSize + looseExclusiveUpperBoundOnMaximumMatchSize.get) / 2
+
+          val stateAfterTryingCandidate @ MatchCalculationState(
+            _,
+            _,
+            Some(possiblyContractedExclusiveUpperBound)
+          ) = this.matchesForWindowSize(candidateWindowSize): @unchecked
+
+          if possiblyContractedExclusiveUpperBound == candidateWindowSize then
+            // Failed to improve the match size, try again with the contracted
+            // upper bound.
+            stateAfterTryingCandidate
+              .withAllMatchesOfAtLeastTheSureFireWindowSize(
+                bestMatchSize
+              )
+          else
+            // We have an improvement, move the lower bound up.
+            this
+              .withAllMatchesOfAtLeastTheSureFireWindowSize(candidateWindowSize)
+          end if
+        else if minimumSureFireWindowSizeAcrossAllFilesOverAllSides == looseExclusiveUpperBoundOnMaximumMatchSize.get
+        then this
+        else
+          (if minimumSureFireWindowSizeAcrossAllFilesOverAllSides <= bestMatchSize
+           then
+             this
+               .matchesForWindowSize(bestMatchSize)
+           else this)
+            .copy(looseExclusiveUpperBoundOnMaximumMatchSize =
+              Some(bestMatchSize)
+            )
+            .withAllMatchesOfAtLeastTheSureFireWindowSize()
+        end if
+      end withAllMatchesOfAtLeastTheSureFireWindowSize
+
       def matchesForWindowSize(
           windowSize: Int
       ): MatchCalculationState =
@@ -787,10 +837,9 @@ object CodeMotionAnalysis:
 
       def initial: Chromosome =
         withWindowSizes(
-          minimumSureFireWindowSizeAcrossAllFilesOverAllSides
+          minimumWindowSizeAcrossAllFilesOverAllSides
         )(
-          // TODO - remove temporary hack.
-          minimumWindowSizeAcrossAllFilesOverAllSides to maximumFileSizeAcrossAllFilesOverAllSides /*until minimumSureFireWindowSizeAcrossAllFilesOverAllSides*/
+          minimumWindowSizeAcrossAllFilesOverAllSides until minimumSureFireWindowSizeAcrossAllFilesOverAllSides
         )
       end initial
 
@@ -1306,6 +1355,18 @@ object CodeMotionAnalysis:
         )
     end given
 
+    val withAllMatchesOfAtLeastTheSureFireWindowSize =
+      // We will be exploring the low window sizes below
+      // `minimumSureFireWindowSizeAcrossAllFilesOverAllSides`; in this
+      // situation, sizes below per-file thresholds lead to no matches,
+      // this leads to gaps in validity as a size exceeds the largest
+      // match it could participate in, but fails to meet the next highest
+      // per-file threshold. Disable tracking of the exclusive upper
+      // bound.
+      MatchCalculationState.empty
+        .withAllMatchesOfAtLeastTheSureFireWindowSize()
+        .copy(looseExclusiveUpperBoundOnMaximumMatchSize = None)
+
     given Evolution[Chromosome, Phenotype] with
       override def mutate(chromosome: Chromosome)(using
           random: Random
@@ -1327,11 +1388,7 @@ object CodeMotionAnalysis:
           _
         ) =
           chromosome.windowSizesInDescendingOrder.foldLeft(
-            MatchCalculationState(
-              SectionsSeenAcrossSides(),
-              matchGroupsInDescendingOrderOfKeys = Seq.empty,
-              looseExclusiveUpperBoundOnMaximumMatchSize = None
-            )
+            withAllMatchesOfAtLeastTheSureFireWindowSize
           )(_ matchesForWindowSize _)
 
         Phenotype(
@@ -1342,10 +1399,24 @@ object CodeMotionAnalysis:
     end given
 
     val evolvedPhenotype =
-      Evolution.of(
-        maximumNumberOfRetries = 3,
-        maximumPopulationSize = 10
-      )
+      if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > minimumFileSizeAcrossAllFilesOverAllSides
+      then
+        println(
+          s"Genetic end-game, $minimumFileSizeAcrossAllFilesOverAllSides, $minimumSureFireWindowSizeAcrossAllFilesOverAllSides, starting with: $withAllMatchesOfAtLeastTheSureFireWindowSize"
+        )
+        Evolution.of(
+          maximumNumberOfRetries = 3,
+          maximumPopulationSize = 10
+        )
+      else
+        println(
+          s"No genetic end-game, $minimumFileSizeAcrossAllFilesOverAllSides, $minimumSureFireWindowSizeAcrossAllFilesOverAllSides, got: $withAllMatchesOfAtLeastTheSureFireWindowSize"
+        )
+        Phenotype(
+          chromosomeSize = 0,
+          matchGroupsInDescendingOrderOfKeys =
+            withAllMatchesOfAtLeastTheSureFireWindowSize.matchGroupsInDescendingOrderOfKeys
+        )
 
     println(s"Finally: -----> $evolvedPhenotype")
 
