@@ -200,7 +200,10 @@ object CodeMotionAnalysis:
           case Some(sections) => Some(sections + section)
           case None =>
             Some(
-              RangedSeq(section)(_.closedOpenInterval, Ordering[Int])
+              // NOTE: don't use `Ordering[Int]` as while that is valid, it will
+              // pull in a Cats `Order[Int]` which round-trips back to an
+              // `Ordering`. That makes profiling difficult.
+              RangedSeq(section)(_.closedOpenInterval, Ordering.Int)
             )
         }
     end SectionsSeenAcrossSides
