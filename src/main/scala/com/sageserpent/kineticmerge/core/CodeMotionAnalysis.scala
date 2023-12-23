@@ -1209,7 +1209,7 @@ object CodeMotionAnalysis:
           random.chooseAnyNumberFromZeroToOneLessThan(numberOfFreeWindowSizes)
 
         val numberOfFreeWindowSizesAboveTheCurrentMaximum =
-          windowSizesInDescendingOrder.maxOption.fold(ifEmpty =
+          windowSizesInDescendingOrder.headOption.fold(ifEmpty =
             validWindowSizes.size
           )(validWindowSizes.max - _)
 
@@ -1232,7 +1232,7 @@ object CodeMotionAnalysis:
             newWindowSizeInGapOrBeforeLowest(newWindowSizeIndex)._1
           else
             // Go beyond the maximum window size, but don't be too ambitious...
-            val baselineWindowSize = windowSizesInDescendingOrder.maxOption
+            val baselineWindowSize = windowSizesInDescendingOrder.headOption
               .fold(ifEmpty = validWindowSizes.min)(1 + _)
             val geometricMean = Math
               .sqrt(
