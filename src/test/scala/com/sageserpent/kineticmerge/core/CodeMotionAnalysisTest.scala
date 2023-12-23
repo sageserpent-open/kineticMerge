@@ -342,7 +342,7 @@ class CodeMotionAnalysisTest:
                     uniqueToBase
                   )
                 (leftSources, adjacentCommonSequencesArePossibleOnLeft) <-
-                  sourcesForASide(label = "base")(
+                  sourcesForASide(label = "left")(
                     commonToAllThreeSides,
                     commonToBaseAndLeft,
                     commonToLeftAndRight,
