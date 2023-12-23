@@ -900,11 +900,6 @@ object CodeMotionAnalysis:
       end mutate
 
       def breedWith(another: Chromosome)(using random: Random): Chromosome =
-        this.breedWith_(another)
-
-      private def breedWith_(another: Chromosome)(using
-          random: Random
-      ): Chromosome =
         // PLAN: walk down the window sizes from both chromosomes, looking for
         // synchronization points where the sizes agree. Between these
         // synchronization points there will be runs of window sizes that belong
@@ -1092,7 +1087,7 @@ object CodeMotionAnalysis:
           bredWindowSizes,
           validWindowSizes
         )
-      end breedWith_
+      end breedWith
 
       // NOTE: the following helper is a method because it has a precondition
       // that there are valid window sizes.
@@ -1231,18 +1226,12 @@ object CodeMotionAnalysis:
 
             newWindowSizeInGapOrBeforeLowest(newWindowSizeIndex)._1
           else
-            // Go beyond the maximum window size, but don't be too ambitious...
+            // Go beyond the maximum window size...
             val baselineWindowSize = windowSizesInDescendingOrder.headOption
               .fold(ifEmpty = validWindowSizes.min)(1 + _)
-            val geometricMean = Math
-              .sqrt(
-                baselineWindowSize * validWindowSizes.max
-              )
-              .ceil
-              .toInt
 
             baselineWindowSize + random.chooseAnyNumberFromZeroToOneLessThan(
-              1 + geometricMean - baselineWindowSize
+              1 + validWindowSizes.max - baselineWindowSize
             )
           end if
         end newWindowSize
