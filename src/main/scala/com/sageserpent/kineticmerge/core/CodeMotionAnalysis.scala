@@ -449,6 +449,8 @@ object CodeMotionAnalysis:
             matches: Set[Match[Section[Element]]],
             sectionsSeenAcrossSides: SectionsSeenAcrossSides
         ): MatchCalculationState =
+          val enoughSectionsForNowThankYou = 4
+
           (
             baseFingerprints.headOption,
             leftFingerprints.headOption,
@@ -470,9 +472,9 @@ object CodeMotionAnalysis:
                   rightSectionsByFingerprint.get(rightHead)
 
                 (for
-                  baseSection  <- baseSections
-                  leftSection  <- leftSections
-                  rightSection <- rightSections
+                  baseSection  <- baseSections.take(enoughSectionsForNowThankYou)
+                  leftSection  <- leftSections.take(enoughSectionsForNowThankYou)
+                  rightSection <- rightSections.take(enoughSectionsForNowThankYou)
 
                   baseSubsumed = sectionsSeenAcrossSides
                     .containsBaseSection(
@@ -547,8 +549,8 @@ object CodeMotionAnalysis:
                   leftSectionsByFingerprint.get(leftHead)
 
                 (for
-                  baseSection <- baseSections
-                  leftSection <- leftSections
+                  baseSection <- baseSections.take(enoughSectionsForNowThankYou)
+                  leftSection <- leftSections.take(enoughSectionsForNowThankYou)
 
                   suppressed = sectionsSeenAcrossSides.containsBaseSection(
                     baseSection
@@ -600,8 +602,8 @@ object CodeMotionAnalysis:
                   rightSectionsByFingerprint.get(rightHead)
 
                 (for
-                  baseSection  <- baseSections
-                  rightSection <- rightSections
+                  baseSection  <- baseSections.take(enoughSectionsForNowThankYou)
+                  rightSection <- rightSections.take(enoughSectionsForNowThankYou)
 
                   suppressed = sectionsSeenAcrossSides.containsBaseSection(
                     baseSection
@@ -653,8 +655,8 @@ object CodeMotionAnalysis:
                   rightSectionsByFingerprint.get(rightHead)
 
                 (for
-                  leftSection  <- leftSections
-                  rightSection <- rightSections
+                  leftSection  <- leftSections.take(enoughSectionsForNowThankYou)
+                  rightSection <- rightSections.take(enoughSectionsForNowThankYou)
 
                   suppressed = sectionsSeenAcrossSides.containsLeftSection(
                     leftSection
