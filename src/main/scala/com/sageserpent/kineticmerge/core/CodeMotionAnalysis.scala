@@ -98,14 +98,14 @@ object CodeMotionAnalysis:
     // This is the minimum window size that would be allowed in *some* file
     // across the sources.
     val minimumWindowSizeAcrossAllFilesOverAllSides =
-      1 max (minimumFileSizeAcrossAllFilesOverAllSides * minimumSizeFractionForMotionDetection).ceil.toInt
+      1 max (minimumFileSizeAcrossAllFilesOverAllSides * minimumSizeFractionForMotionDetection).floor.toInt
 
     val maximumFileSizeAcrossAllFilesOverAllSides = fileSizes.max
 
     // This is the minimum window size that would be allowed in *all* files
     // across the sources.
     val minimumSureFireWindowSizeAcrossAllFilesOverAllSides =
-      1 max (maximumFileSizeAcrossAllFilesOverAllSides * minimumSizeFractionForMotionDetection).ceil.toInt
+      1 max (maximumFileSizeAcrossAllFilesOverAllSides * minimumSizeFractionForMotionDetection).floor.toInt
 
     enum MatchGrade:
       case Triple
@@ -406,7 +406,7 @@ object CodeMotionAnalysis:
             .filter { case (_, file) =>
               val fileSize = file.size
               val minimumWindowSize =
-                (minimumSizeFractionForMotionDetection * fileSize).ceil.toInt
+                (minimumSizeFractionForMotionDetection * fileSize).floor.toInt
 
               minimumWindowSize to fileSize contains windowSize
             }
