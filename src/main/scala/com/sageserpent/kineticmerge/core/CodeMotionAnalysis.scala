@@ -107,6 +107,8 @@ object CodeMotionAnalysis:
     val minimumSureFireWindowSizeAcrossAllFilesOverAllSides =
       1 max (maximumFileSizeAcrossAllFilesOverAllSides * minimumSizeFractionForMotionDetection).floor.toInt
 
+    val maximumNumberOfAmbiguousMatches = 5
+
     enum MatchGrade:
       case Triple
       case Pair
@@ -448,8 +450,6 @@ object CodeMotionAnalysis:
             rightFingerprints: Iterable[PotentialMatchKey],
             matches: Set[Match[Section[Element]]]
         ): MatchCalculationState =
-          val enoughSectionsForNowThankYou = 4
-
           (
             baseFingerprints.headOption,
             leftFingerprints.headOption,
@@ -471,11 +471,9 @@ object CodeMotionAnalysis:
                   rightSectionsByFingerprint.get(rightHead)
 
                 (for
-                  baseSection <- baseSections.take(enoughSectionsForNowThankYou)
-                  leftSection <- leftSections.take(enoughSectionsForNowThankYou)
-                  rightSection <- rightSections.take(
-                    enoughSectionsForNowThankYou
-                  )
+                  baseSection  <- LazyList.from(baseSections)
+                  leftSection  <- LazyList.from(leftSections)
+                  rightSection <- LazyList.from(rightSections)
 
                   baseSubsumed = sectionsSeenAcrossSides
                     .containsBaseSection(
@@ -509,7 +507,7 @@ object CodeMotionAnalysis:
                       leftSection,
                       rightSection
                     )
-                ).toSet
+                ).take(maximumNumberOfAmbiguousMatches).toSet
               end matchesForSynchronisedFingerprint
 
               matchingFingerprintsAcrossSides(
@@ -547,8 +545,8 @@ object CodeMotionAnalysis:
                   leftSectionsByFingerprint.get(leftHead)
 
                 (for
-                  baseSection <- baseSections.take(enoughSectionsForNowThankYou)
-                  leftSection <- leftSections.take(enoughSectionsForNowThankYou)
+                  baseSection <- LazyList.from(baseSections)
+                  leftSection <- LazyList.from(leftSections)
 
                   suppressed = sectionsSeenAcrossSides.containsBaseSection(
                     baseSection
@@ -559,7 +557,7 @@ object CodeMotionAnalysis:
                 yield Match.BaseAndLeft(
                   baseSection,
                   leftSection
-                )).toSet
+                )).take(maximumNumberOfAmbiguousMatches).toSet
               end matchesForSynchronisedFingerprint
 
               matchingFingerprintsAcrossSides(
@@ -597,10 +595,8 @@ object CodeMotionAnalysis:
                   rightSectionsByFingerprint.get(rightHead)
 
                 (for
-                  baseSection <- baseSections.take(enoughSectionsForNowThankYou)
-                  rightSection <- rightSections.take(
-                    enoughSectionsForNowThankYou
-                  )
+                  baseSection  <- LazyList.from(baseSections)
+                  rightSection <- LazyList.from(rightSections)
 
                   suppressed = sectionsSeenAcrossSides.containsBaseSection(
                     baseSection
@@ -611,7 +607,7 @@ object CodeMotionAnalysis:
                 yield Match.BaseAndRight(
                   baseSection,
                   rightSection
-                )).toSet
+                )).take(maximumNumberOfAmbiguousMatches).toSet
               end matchesForSynchronisedFingerprint
 
               matchingFingerprintsAcrossSides(
@@ -649,10 +645,8 @@ object CodeMotionAnalysis:
                   rightSectionsByFingerprint.get(rightHead)
 
                 (for
-                  leftSection <- leftSections.take(enoughSectionsForNowThankYou)
-                  rightSection <- rightSections.take(
-                    enoughSectionsForNowThankYou
-                  )
+                  leftSection  <- LazyList.from(leftSections)
+                  rightSection <- LazyList.from(rightSections)
 
                   suppressed = sectionsSeenAcrossSides.containsLeftSection(
                     leftSection
@@ -663,7 +657,7 @@ object CodeMotionAnalysis:
                 yield Match.LeftAndRight(
                   leftSection,
                   rightSection
-                )).toSet
+                )).take(maximumNumberOfAmbiguousMatches).toSet
               end matchesForSynchronisedFingerprint
 
               matchingFingerprintsAcrossSides(
@@ -791,6 +785,10 @@ object CodeMotionAnalysis:
                     )
                 )
               else
+                println(
+                  s"Matches discovered at window size: $windowSize number: ${matches.size}"
+                )
+
                 val withSectionsFromDiscoveredMatches =
                   sectionsSeenAcrossSides.withSectionsFrom(matches)
 
