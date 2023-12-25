@@ -930,8 +930,7 @@ object CodeMotionAnalysis:
               baseFingerprints: Iterable[PotentialMatchKey],
               leftFingerprints: Iterable[PotentialMatchKey],
               rightFingerprints: Iterable[PotentialMatchKey],
-              matches: Set[Match[Section[Element]]],
-              sectionsSeenAcrossSides: SectionsSeenAcrossSides
+              matches: Set[Match[Section[Element]]]
           ): (SectionsSeenAcrossSides, MatchGroupsInDescendingOrderOfKeys) =
             (
               baseFingerprints.headOption,
@@ -997,9 +996,7 @@ object CodeMotionAnalysis:
                   baseFingerprints.tail,
                   leftFingerprints.tail,
                   rightFingerprints.tail,
-                  matches ++ matchesForSynchronisedFingerprint,
-                  sectionsSeenAcrossSides
-                    .withSectionsFrom(matchesForSynchronisedFingerprint)
+                  matches ++ matchesForSynchronisedFingerprint
                 )
 
               case (Some(baseHead), Some(leftHead), Some(rightHead))
@@ -1016,8 +1013,7 @@ object CodeMotionAnalysis:
                   baseFingerprints,
                   leftFingerprints,
                   rightFingerprints.tail,
-                  matches,
-                  sectionsSeenAcrossSides
+                  matches
                 )
 
               case (Some(baseHead), Some(leftHead), _)
@@ -1050,9 +1046,7 @@ object CodeMotionAnalysis:
                   baseFingerprints.tail,
                   leftFingerprints.tail,
                   rightFingerprints,
-                  matches ++ matchesForSynchronisedFingerprint,
-                  sectionsSeenAcrossSides
-                    .withSectionsFrom(matchesForSynchronisedFingerprint)
+                  matches ++ matchesForSynchronisedFingerprint
                 )
 
               case (Some(baseHead), Some(leftHead), Some(rightHead))
@@ -1069,8 +1063,7 @@ object CodeMotionAnalysis:
                   baseFingerprints,
                   leftFingerprints.tail,
                   rightFingerprints,
-                  matches,
-                  sectionsSeenAcrossSides
+                  matches
                 )
 
               case (Some(baseHead), _, Some(rightHead))
@@ -1103,9 +1096,7 @@ object CodeMotionAnalysis:
                   baseFingerprints.tail,
                   leftFingerprints,
                   rightFingerprints.tail,
-                  matches ++ matchesForSynchronisedFingerprint,
-                  sectionsSeenAcrossSides
-                    .withSectionsFrom(matchesForSynchronisedFingerprint)
+                  matches ++ matchesForSynchronisedFingerprint
                 )
 
               case (Some(baseHead), Some(leftHead), Some(rightHead))
@@ -1122,8 +1113,7 @@ object CodeMotionAnalysis:
                   baseFingerprints.tail,
                   leftFingerprints,
                   rightFingerprints,
-                  matches,
-                  sectionsSeenAcrossSides
+                  matches
                 )
 
               case (_, Some(leftHead), Some(rightHead))
@@ -1156,9 +1146,7 @@ object CodeMotionAnalysis:
                   baseFingerprints,
                   leftFingerprints.tail,
                   rightFingerprints.tail,
-                  matches ++ matchesForSynchronisedFingerprint,
-                  sectionsSeenAcrossSides
-                    .withSectionsFrom(matchesForSynchronisedFingerprint)
+                  matches ++ matchesForSynchronisedFingerprint
                 )
 
               case (Some(baseHead), Some(leftHead), Some(rightHead)) =>
@@ -1182,8 +1170,7 @@ object CodeMotionAnalysis:
                     baseFingerprints,
                     leftFingerprints.tail,
                     rightFingerprints,
-                    matches,
-                    sectionsSeenAcrossSides
+                    matches
                   )
                 else if potentialMatchKeyOrder.eqv(
                     rightHead,
@@ -1194,16 +1181,14 @@ object CodeMotionAnalysis:
                     baseFingerprints,
                     leftFingerprints,
                     rightFingerprints.tail,
-                    matches,
-                    sectionsSeenAcrossSides
+                    matches
                   )
                 else
                   matchingFingerprintsAcrossSides(
                     baseFingerprints.tail,
                     leftFingerprints,
                     rightFingerprints,
-                    matches,
-                    sectionsSeenAcrossSides
+                    matches
                   )
                 end if
 
@@ -1217,16 +1202,14 @@ object CodeMotionAnalysis:
                     baseFingerprints.tail,
                     leftFingerprints,
                     rightFingerprints,
-                    matches,
-                    sectionsSeenAcrossSides
+                    matches
                   )
                 else
                   matchingFingerprintsAcrossSides(
                     baseFingerprints,
                     leftFingerprints.tail,
                     rightFingerprints,
-                    matches,
-                    sectionsSeenAcrossSides
+                    matches
                   )
 
               case (Some(baseHead), None, Some(rightHead)) =>
@@ -1239,16 +1222,14 @@ object CodeMotionAnalysis:
                     baseFingerprints.tail,
                     leftFingerprints,
                     rightFingerprints,
-                    matches,
-                    sectionsSeenAcrossSides
+                    matches
                   )
                 else
                   matchingFingerprintsAcrossSides(
                     baseFingerprints,
                     leftFingerprints,
                     rightFingerprints.tail,
-                    matches,
-                    sectionsSeenAcrossSides
+                    matches
                   )
 
               case (None, Some(leftHead), Some(rightHead)) =>
@@ -1261,37 +1242,42 @@ object CodeMotionAnalysis:
                     baseFingerprints,
                     leftFingerprints.tail,
                     rightFingerprints,
-                    matches,
-                    sectionsSeenAcrossSides
+                    matches
                   )
                 else
                   matchingFingerprintsAcrossSides(
                     baseFingerprints,
                     leftFingerprints,
                     rightFingerprints.tail,
-                    matches,
-                    sectionsSeenAcrossSides
+                    matches
                   )
 
               case _ =>
                 // There are no more opportunities to match a full triple or
-                // just a pair, so this terminates the recursion. Add the
-                // triples first if we have any, then any pairs as we are
-                // adding match groups in descending order of keys.
+                // just a pair, so this terminates the recursion.
+
+                val withSectionsFromDiscoveredMatches =
+                  sectionsSeenAcrossSides.withSectionsFrom(matches)
 
                 if matches.isEmpty
                 then
-                  sectionsSeenAcrossSides -> matchGroupsInDescendingOrderOfKeys
+                  withSectionsFromDiscoveredMatches -> matchGroupsInDescendingOrderOfKeys
                 else
+                  // Add the triples first if we have any, then any pairs as we
+                  // are adding match groups in descending order of keys.
                   val (tripleMatches, pairMatches) = matches.partition {
                     case _: Match.AllThree[Section[Element]] => true
                     case _                                   => false
                   }
 
-                  sectionsSeenAcrossSides -> (matchGroupsInDescendingOrderOfKeys ++ Seq(
-                    (windowSize, MatchGrade.Triple) -> tripleMatches,
-                    (windowSize, MatchGrade.Pair)   -> pairMatches
-                  ).filter { case entry @ (_, matches) => matches.nonEmpty })
+                  val withDiscoveredMatchTriplesAndPairs =
+                    matchGroupsInDescendingOrderOfKeys ++ Seq(
+                      (windowSize, MatchGrade.Triple) -> tripleMatches,
+                      (windowSize, MatchGrade.Pair)   -> pairMatches
+                    ).filter { case entry @ (_, matches) => matches.nonEmpty }
+
+                  withSectionsFromDiscoveredMatches -> withDiscoveredMatchTriplesAndPairs
+                end if
             end match
           end matchingFingerprintsAcrossSides
 
@@ -1299,8 +1285,7 @@ object CodeMotionAnalysis:
             baseSectionsByFingerprint.keySet,
             leftSectionsByFingerprint.keySet,
             rightSectionsByFingerprint.keySet,
-            matches = Set.empty,
-            sectionsSeenAcrossSides
+            matches = Set.empty
           )
 
         end matchesForWindowSize
