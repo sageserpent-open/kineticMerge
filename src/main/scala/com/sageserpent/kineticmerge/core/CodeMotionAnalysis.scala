@@ -810,9 +810,6 @@ object CodeMotionAnalysis:
                   s"Matches discovered at window size: $windowSize number: ${matches.size}"
                 )
 
-                val withSectionsFromDiscoveredMatches =
-                  sectionsSeenAcrossSides.withSectionsFrom(matches)
-
                 // Add the triples first if we have any, then any pairs as we
                 // are adding match groups in descending order of keys.
                 val (tripleMatches, pairMatches) = matches.partition {
@@ -827,7 +824,14 @@ object CodeMotionAnalysis:
                   ).filter { case entry @ (_, matches) => matches.nonEmpty }
 
                 MatchCalculationState(
-                  withSectionsFromDiscoveredMatches,
+                  if 1 < windowSize then
+                    sectionsSeenAcrossSides.withSectionsFrom(matches)
+                  else
+                    // If match is of size 1, then it sections won't overlap any
+                    // others, nor will they subsume any others - so don't
+                    // bother noting them.
+                    sectionsSeenAcrossSides
+                  ,
                   matchGroupsInDescendingOrderOfKeys =
                     withDiscoveredMatchTriplesAndPairs,
                   looseExclusiveUpperBoundOnMaximumMatchSize =
