@@ -196,10 +196,30 @@ object CodeMotionAnalysis:
       )(
           section: Section[Element]
       ): Map[Path, SectionsSeen] =
+        val path = side.pathFor(section)
         sectionsByPath.updatedWith(
-          side.pathFor(section)
+          path
         ) {
-          case Some(sections) => Some(sections + section)
+          case Some(sections) =>
+            // If the section overlaps one or more already present, we may as
+            // well condense them together.
+            val overlaps =
+              sections.filterOverlaps(section.closedOpenInterval).toSeq
+
+            Some(if overlaps.nonEmpty then
+              val minimumStartOffset =
+                overlaps.map(_.startOffset).min min section.startOffset
+              val onePastMaximumEndOffset = overlaps
+                .map(_.onePastEndOffset)
+                .max max section.onePastEndOffset
+
+              val condensedSection = side.section(path)(
+                minimumStartOffset,
+                onePastMaximumEndOffset - minimumStartOffset
+              )
+
+              overlaps.foldLeft(sections)(_ - _) + condensedSection
+            else sections + section)
           case None =>
             Some(
               // NOTE: don't use `Ordering[Int]` as while that is valid, it will
@@ -208,6 +228,7 @@ object CodeMotionAnalysis:
               RangedSeq(section)(_.closedOpenInterval, Ordering.Int)
             )
         }
+      end withSection
     end SectionsSeenAcrossSides
 
     given potentialMatchKeyOrder: Order[PotentialMatchKey] =
