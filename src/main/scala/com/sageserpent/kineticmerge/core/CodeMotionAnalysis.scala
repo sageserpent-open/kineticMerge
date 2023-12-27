@@ -1366,57 +1366,59 @@ object CodeMotionAnalysis:
         )
     end given
 
-    val withAllMatchesOfAtLeastTheSureFireWindowSize =
-      MatchCalculationState.empty.withAllMatchesOfAtLeastTheSureFireWindowSize()
-
-    given Evolution[Chromosome, Phenotype] with
-      override def mutate(chromosome: Chromosome)(using
-          random: Random
-      ): Chromosome = chromosome.mutate
-
-      override def breed(first: Chromosome, second: Chromosome)(using
-          random: Random
-      ): Chromosome = first.breedWith(second)
-
-      override def initialChromosome: Chromosome = Chromosome.initial
-
-      override def phenotype(chromosome: Chromosome): Phenotype =
-        phenotypeCache.get(chromosome, phenotype_)
-
-      private def phenotype_(chromosome: Chromosome): Phenotype =
-        val MatchCalculationState(
-          _,
-          matchGroupsInDescendingOrderOfKeys
-        ) =
-          chromosome.windowSizesInDescendingOrder.foldLeft(
-            withAllMatchesOfAtLeastTheSureFireWindowSize
-          ) { (matchCalculationState, windowSize) =>
-            // We will be exploring the low window sizes below
-            // `minimumSureFireWindowSizeAcrossAllFilesOverAllSides`; in this
-            // situation, sizes below per-file thresholds lead to no matches,
-            // this leads to gaps in validity as a size exceeds the largest
-            // match it could participate in, but fails to meet the next highest
-            // per-file threshold. Consequently, don't bother checking whether
-            // any matches were found.
-            val (result, _) =
-              matchCalculationState.matchesForWindowSize(windowSize)
-
-            result
-          }
-
-        Phenotype(
-          chromosomeSize = chromosome.windowSizesInDescendingOrder.size,
-          matchGroupsInDescendingOrderOfKeys
-        )
-      end phenotype_
-    end given
-
     val evolvedPhenotype =
+      val withAllMatchesOfAtLeastTheSureFireWindowSize =
+        MatchCalculationState.empty
+          .withAllMatchesOfAtLeastTheSureFireWindowSize()
+
       if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > minimumWindowSizeAcrossAllFilesOverAllSides
       then
         println(
           s"Genetic end-game, $minimumWindowSizeAcrossAllFilesOverAllSides, $minimumSureFireWindowSizeAcrossAllFilesOverAllSides"
         )
+
+        given Evolution[Chromosome, Phenotype] with
+          override def mutate(chromosome: Chromosome)(using
+              random: Random
+          ): Chromosome = chromosome.mutate
+
+          override def breed(first: Chromosome, second: Chromosome)(using
+              random: Random
+          ): Chromosome = first.breedWith(second)
+
+          override def initialChromosome: Chromosome = Chromosome.initial
+
+          override def phenotype(chromosome: Chromosome): Phenotype =
+            phenotypeCache.get(chromosome, phenotype_)
+
+          private def phenotype_(chromosome: Chromosome): Phenotype =
+            val MatchCalculationState(
+              _,
+              matchGroupsInDescendingOrderOfKeys
+            ) =
+              chromosome.windowSizesInDescendingOrder.foldLeft(
+                withAllMatchesOfAtLeastTheSureFireWindowSize
+              ) { (matchCalculationState, windowSize) =>
+                // We will be exploring the low window sizes below
+                // `minimumSureFireWindowSizeAcrossAllFilesOverAllSides`; in
+                // this situation, sizes below per-file thresholds lead to no
+                // matches, this leads to gaps in validity as a size exceeds the
+                // largest match it could participate in, but fails to meet the
+                // next highest per-file threshold. Consequently, don't bother
+                // checking whether any matches were found.
+                val (result, _) =
+                  matchCalculationState.matchesForWindowSize(windowSize)
+
+                result
+              }
+
+            Phenotype(
+              chromosomeSize = chromosome.windowSizesInDescendingOrder.size,
+              matchGroupsInDescendingOrderOfKeys
+            )
+          end phenotype_
+        end given
+
         Evolution.of(
           maximumNumberOfRetries = 3,
           maximumPopulationSize = 10,
@@ -1424,13 +1426,20 @@ object CodeMotionAnalysis:
         )
       else
         println(
-          s"No genetic end-game, $minimumWindowSizeAcrossAllFilesOverAllSides, $minimumSureFireWindowSizeAcrossAllFilesOverAllSides"
+          s"No genetic end-game, $minimumWindowSizeAcrossAllFilesOverAllSides"
         )
+
+        // TODO: this is hokey - should make
+        // `MatchGroupsInDescendingOrderOfKeys` into a case class that wraps the
+        // sequence, can then police its invariant there / move the methods in
+        // `Phenotype` there.
         Phenotype(
           chromosomeSize = 0,
           matchGroupsInDescendingOrderOfKeys =
             withAllMatchesOfAtLeastTheSureFireWindowSize.matchGroupsInDescendingOrderOfKeys
         )
+      end if
+    end evolvedPhenotype
 
     println(s"Finally: -----> $evolvedPhenotype")
 
