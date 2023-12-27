@@ -10,9 +10,11 @@ import com.sageserpent.kineticmerge.core.genetic.Evolution
 import de.sciss.fingertree.RangedSeq
 
 import java.lang.Byte as JavaByte
+import java.util.concurrent.TimeUnit
 import scala.annotation.tailrec
 import scala.collection.immutable.TreeSet
 import scala.collection.{SortedMultiDict, mutable}
+import scala.concurrent.duration.FiniteDuration
 import scala.util.Random
 
 trait CodeMotionAnalysis[Path, Element]:
@@ -1426,7 +1428,8 @@ object CodeMotionAnalysis:
         )
         Evolution.of(
           maximumNumberOfRetries = 3,
-          maximumPopulationSize = 10
+          maximumPopulationSize = 10,
+          timeBudget = Some(FiniteDuration(10, TimeUnit.SECONDS))
         )
       else
         println(

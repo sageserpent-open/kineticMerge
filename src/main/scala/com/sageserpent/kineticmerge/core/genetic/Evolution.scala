@@ -3,6 +3,7 @@ package com.sageserpent.kineticmerge.core.genetic
 import cats.Order
 
 import scala.annotation.tailrec
+import scala.concurrent.duration.{Deadline, FiniteDuration}
 import scala.util.Random
 
 trait Evolution[Chromosome, Phenotype]:
@@ -18,7 +19,8 @@ object Evolution:
 
   def of[Chromosome, Phenotype](
       maximumNumberOfRetries: Int,
-      maximumPopulationSize: Int
+      maximumPopulationSize: Int,
+      timeBudget: Option[FiniteDuration] = None
   )(using
       evolution: Evolution[Chromosome, Phenotype],
       ascendingFitnessOrder: Order[Phenotype]
@@ -38,7 +40,8 @@ object Evolution:
         populationChromosomes: IndexedSeq[Chromosome],
         fittestChromosome: Chromosome,
         numberOfRetries: Int,
-        maximumNumberOfRetries: Int
+        maximumNumberOfRetries: Int,
+        deadline: Option[Deadline]
     ): Chromosome =
       val populationSize = populationChromosomes.size
 
@@ -96,7 +99,9 @@ object Evolution:
         fittestChromosome
       )
 
-      if noImprovement && maximumNumberOfRetries == numberOfRetries
+      val outOfTime = deadline.fold(ifEmpty = false)(_.isOverdue())
+
+      if noImprovement && (outOfTime || maximumNumberOfRetries == numberOfRetries)
       then fittestChromosome
       else
         if noImprovement then
@@ -105,13 +110,15 @@ object Evolution:
             populationChromosomes = offspringChromosomes,
             fittestChromosome, // The previous record holder still stands.
             numberOfRetries = 1 + numberOfRetries,
-            maximumNumberOfRetries = maximumNumberOfRetries
+            maximumNumberOfRetries = maximumNumberOfRetries,
+            deadline = deadline
           )
         else
           println(
             s"**** PROGRESSING, fittest: $fittestOffspringChromosome, phenotype: ${evolution
                 .phenotype(fittestOffspringChromosome)}"
           )
+
           lifecycle(
             populationChromosomes = offspringChromosomes,
             fittestChromosome =
@@ -123,6 +130,8 @@ object Evolution:
                 // Increase the maximum number of retries in anticipation of the
                 // next improvement being harder to find.
                 maximumNumberOfRetries + numberOfRetries
+            ,
+            deadline = timeBudget.map(_.fromNow)
           )
         end if
       end if
@@ -136,7 +145,8 @@ object Evolution:
       populationChromosomes = initialPopulationChromosomes,
       fittestChromosome = initialPopulationChromosomes.head,
       numberOfRetries = 0,
-      maximumNumberOfRetries = maximumNumberOfRetries
+      maximumNumberOfRetries = maximumNumberOfRetries,
+      deadline = timeBudget.map(_.fromNow)
     )
 
     evolution.phenotype(fittestChromosome)
