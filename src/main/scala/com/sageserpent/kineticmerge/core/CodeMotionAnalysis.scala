@@ -296,70 +296,83 @@ object CodeMotionAnalysis:
     object MatchCalculationState:
       lazy val empty = MatchCalculationState(
         sectionsSeenAcrossSides = SectionsSeenAcrossSides(),
-        matchGroupsInDescendingOrderOfKeys = Seq.empty,
-        looseExclusiveUpperBoundOnMaximumMatchSize =
-          Some(1 + maximumFileSizeAcrossAllFilesOverAllSides)
+        matchGroupsInDescendingOrderOfKeys = Seq.empty
       )
     end MatchCalculationState
 
     case class MatchCalculationState(
         sectionsSeenAcrossSides: SectionsSeenAcrossSides,
-        matchGroupsInDescendingOrderOfKeys: MatchGroupsInDescendingOrderOfKeys,
-        // If `None`, don't bother tracking whether a match was made at a given
-        // window size.
-        looseExclusiveUpperBoundOnMaximumMatchSize: Option[Int]
+        matchGroupsInDescendingOrderOfKeys: MatchGroupsInDescendingOrderOfKeys
     ):
       @tailrec
       final def withAllMatchesOfAtLeastTheSureFireWindowSize(
-          bestMatchSize: Int =
-            minimumSureFireWindowSizeAcrossAllFilesOverAllSides - 1
+          looseExclusiveUpperBoundOnMaximumMatchSize: Int =
+            1 + maximumFileSizeAcrossAllFilesOverAllSides
       ): MatchCalculationState =
-        // TODO: tidy up the messy treatment of
-        // `looseExclusiveUpperBoundOnMaximumMatchSize`. Could we make
-        // `MatchCalculationState` into a trait?
-        require(looseExclusiveUpperBoundOnMaximumMatchSize.nonEmpty)
+        @tailrec
+        def keepTryingToImproveThis(
+            bestMatchSize: Int,
+            looseExclusiveUpperBoundOnMaximumMatchSize: Int,
+            fallbackImprovedState: MatchCalculationState
+        ): MatchCalculationState =
+          require(bestMatchSize < looseExclusiveUpperBoundOnMaximumMatchSize)
 
-        if 1 + bestMatchSize < looseExclusiveUpperBoundOnMaximumMatchSize.get
-        then
-          val candidateWindowSize =
-            (bestMatchSize + looseExclusiveUpperBoundOnMaximumMatchSize.get) / 2
+          if 1 + bestMatchSize < looseExclusiveUpperBoundOnMaximumMatchSize
+          then
+            // There is at least one candidate window size greater than
+            // `bestMatchSize`...
+            val candidateWindowSize =
+              (bestMatchSize + looseExclusiveUpperBoundOnMaximumMatchSize) / 2
 
-          val stateAfterTryingCandidate @ MatchCalculationState(
-            _,
-            _,
-            Some(possiblyContractedExclusiveUpperBound)
-          ) = this.matchesForWindowSize(candidateWindowSize): @unchecked
+            val (stateAfterTryingCandidate, foundNewMatches) =
+              this.matchesForWindowSize(candidateWindowSize)
 
-          if possiblyContractedExclusiveUpperBound == candidateWindowSize then
-            // Failed to improve the match size, try again with the contracted
-            // upper bound.
-            stateAfterTryingCandidate
-              .withAllMatchesOfAtLeastTheSureFireWindowSize(
-                bestMatchSize
-              )
-          else
-            // We have an improvement, move the lower bound up.
-            this
-              .withAllMatchesOfAtLeastTheSureFireWindowSize(candidateWindowSize)
-          end if
-        else if minimumSureFireWindowSizeAcrossAllFilesOverAllSides == looseExclusiveUpperBoundOnMaximumMatchSize.get
-        then this
-        else
-          (if minimumSureFireWindowSizeAcrossAllFilesOverAllSides <= bestMatchSize
-           then
-             this
-               .matchesForWindowSize(bestMatchSize)
-           else this)
-            .copy(looseExclusiveUpperBoundOnMaximumMatchSize =
-              Some(bestMatchSize)
+            println(
+              s"looseExclusiveUpperBoundOnMaximumMatchSize: $looseExclusiveUpperBoundOnMaximumMatchSize, windowSize: $candidateWindowSize"
             )
-            .withAllMatchesOfAtLeastTheSureFireWindowSize()
-        end if
+
+            if foundNewMatches then
+              // We have an improvement, move the lower bound up and note the
+              // improved state.
+              keepTryingToImproveThis(
+                bestMatchSize = candidateWindowSize,
+                looseExclusiveUpperBoundOnMaximumMatchSize,
+                fallbackImprovedState = stateAfterTryingCandidate
+              )
+            else
+              // Failed to improve the match size, try again with the contracted
+              // upper bound.
+              keepTryingToImproveThis(
+                bestMatchSize,
+                looseExclusiveUpperBoundOnMaximumMatchSize =
+                  candidateWindowSize,
+                fallbackImprovedState
+              )
+            end if
+          else if minimumSureFireWindowSizeAcrossAllFilesOverAllSides == looseExclusiveUpperBoundOnMaximumMatchSize
+          then
+            // There is nowhere left to search.
+            fallbackImprovedState
+          else
+            // The optimal match is in the fallback improved state; try
+            // searching for the next lowest optimal size.
+            fallbackImprovedState.withAllMatchesOfAtLeastTheSureFireWindowSize(
+              looseExclusiveUpperBoundOnMaximumMatchSize = bestMatchSize
+            )
+          end if
+        end keepTryingToImproveThis
+
+        keepTryingToImproveThis(
+          bestMatchSize =
+            minimumSureFireWindowSizeAcrossAllFilesOverAllSides - 1,
+          looseExclusiveUpperBoundOnMaximumMatchSize,
+          fallbackImprovedState = this
+        )
       end withAllMatchesOfAtLeastTheSureFireWindowSize
 
       def matchesForWindowSize(
           windowSize: Int
-      ): MatchCalculationState =
+      ): (MatchCalculationState, Boolean) =
         require(0 < windowSize)
 
         def fingerprintStartIndices(
@@ -370,10 +383,6 @@ object CodeMotionAnalysis:
           val rollingHashFactory = rollingHashFactoryCache.get(
             windowSize,
             { (windowSize: Int) =>
-              println(
-                s"looseExclusiveUpperBoundOnMaximumMatchSize: $looseExclusiveUpperBoundOnMaximumMatchSize, windowSize: $windowSize"
-              )
-
               val fixedNumberOfBytesInElementHash =
                 hashFunction.bits / JavaByte.SIZE
 
@@ -470,7 +479,7 @@ object CodeMotionAnalysis:
             leftFingerprints: Iterable[PotentialMatchKey],
             rightFingerprints: Iterable[PotentialMatchKey],
             matches: Set[Match[Section[Element]]]
-        ): MatchCalculationState =
+        ): (MatchCalculationState, Boolean) =
           (
             baseFingerprints.headOption,
             leftFingerprints.headOption,
@@ -482,14 +491,7 @@ object CodeMotionAnalysis:
               // If we are down amongst the small fry and there are more matches
               // than would be expected by overlapping, consider this as noise
               // and abandon matching for this window size.
-              MatchCalculationState(
-                sectionsSeenAcrossSides,
-                matchGroupsInDescendingOrderOfKeys,
-                looseExclusiveUpperBoundOnMaximumMatchSize =
-                  looseExclusiveUpperBoundOnMaximumMatchSize.map(
-                    _ min windowSize
-                  )
-              )
+              this -> false
             case (Some(baseHead), Some(leftHead), Some(rightHead))
                 if potentialMatchKeyOrder.eqv(
                   baseHead,
@@ -810,15 +812,7 @@ object CodeMotionAnalysis:
               // just a pair, so this terminates the recursion.
 
               if matches.isEmpty
-              then
-                MatchCalculationState(
-                  sectionsSeenAcrossSides,
-                  matchGroupsInDescendingOrderOfKeys,
-                  looseExclusiveUpperBoundOnMaximumMatchSize =
-                    looseExclusiveUpperBoundOnMaximumMatchSize.map(
-                      _ min windowSize
-                    )
-                )
+              then this -> false
               else
                 println(
                   s"Matches discovered at window size: $windowSize number: ${matches.size}"
@@ -831,12 +825,6 @@ object CodeMotionAnalysis:
                   case _                                   => false
                 }
 
-                val withDiscoveredMatchTriplesAndPairs =
-                  matchGroupsInDescendingOrderOfKeys ++ Seq(
-                    (windowSize, MatchGrade.Triple) -> tripleMatches,
-                    (windowSize, MatchGrade.Pair)   -> pairMatches
-                  ).filter { case entry @ (_, matches) => matches.nonEmpty }
-
                 MatchCalculationState(
                   if 1 < windowSize then
                     sectionsSeenAcrossSides.withSectionsFrom(matches)
@@ -847,10 +835,11 @@ object CodeMotionAnalysis:
                     sectionsSeenAcrossSides
                   ,
                   matchGroupsInDescendingOrderOfKeys =
-                    withDiscoveredMatchTriplesAndPairs,
-                  looseExclusiveUpperBoundOnMaximumMatchSize =
-                    looseExclusiveUpperBoundOnMaximumMatchSize
-                )
+                    matchGroupsInDescendingOrderOfKeys ++ Seq(
+                      (windowSize, MatchGrade.Triple) -> tripleMatches,
+                      (windowSize, MatchGrade.Pair)   -> pairMatches
+                    ).filter { case entry @ (_, matches) => matches.nonEmpty }
+                ) -> true
               end if
           end match
         end matchingFingerprintsAcrossSides
@@ -1378,16 +1367,7 @@ object CodeMotionAnalysis:
     end given
 
     val withAllMatchesOfAtLeastTheSureFireWindowSize =
-      // We will be exploring the low window sizes below
-      // `minimumSureFireWindowSizeAcrossAllFilesOverAllSides`; in this
-      // situation, sizes below per-file thresholds lead to no matches,
-      // this leads to gaps in validity as a size exceeds the largest
-      // match it could participate in, but fails to meet the next highest
-      // per-file threshold. Disable tracking of the exclusive upper
-      // bound.
-      MatchCalculationState.empty
-        .withAllMatchesOfAtLeastTheSureFireWindowSize()
-        .copy(looseExclusiveUpperBoundOnMaximumMatchSize = None)
+      MatchCalculationState.empty.withAllMatchesOfAtLeastTheSureFireWindowSize()
 
     given Evolution[Chromosome, Phenotype] with
       override def mutate(chromosome: Chromosome)(using
@@ -1406,12 +1386,23 @@ object CodeMotionAnalysis:
       private def phenotype_(chromosome: Chromosome): Phenotype =
         val MatchCalculationState(
           _,
-          matchGroupsInDescendingOrderOfKeys,
-          _
+          matchGroupsInDescendingOrderOfKeys
         ) =
           chromosome.windowSizesInDescendingOrder.foldLeft(
             withAllMatchesOfAtLeastTheSureFireWindowSize
-          )(_ matchesForWindowSize _)
+          ) { (matchCalculationState, windowSize) =>
+            // We will be exploring the low window sizes below
+            // `minimumSureFireWindowSizeAcrossAllFilesOverAllSides`; in this
+            // situation, sizes below per-file thresholds lead to no matches,
+            // this leads to gaps in validity as a size exceeds the largest
+            // match it could participate in, but fails to meet the next highest
+            // per-file threshold. Consequently, don't bother checking whether
+            // any matches were found.
+            val (result, _) =
+              matchCalculationState.matchesForWindowSize(windowSize)
+
+            result
+          }
 
         Phenotype(
           chromosomeSize = chromosome.windowSizesInDescendingOrder.size,
