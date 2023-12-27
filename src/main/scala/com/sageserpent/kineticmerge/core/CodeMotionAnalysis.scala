@@ -462,20 +462,6 @@ object CodeMotionAnalysis:
             )
         )
 
-        val maximumNumberOfAmbiguousMatches =
-          if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > windowSize
-          then
-            // Assume that we are down amongst the small fry - we don't want
-            // lots of trivial single and double-element ambiguous matches, so
-            // don't collect them. We do want to track interesting matches where
-            // some special element(s) have moved in one match, so leave that as
-            // a possibility.
-            1
-          else
-            // If we are at or above the sure-fire size, then we honour the
-            // user's desire to see *all* matches at that threshold.
-            Int.MaxValue
-
         @tailrec
         def matchingFingerprintsAcrossSides(
             baseFingerprints: Iterable[PotentialMatchKey],
@@ -488,6 +474,20 @@ object CodeMotionAnalysis:
             leftFingerprints.headOption,
             rightFingerprints.headOption
           ) match
+            case _
+                if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > windowSize &&
+                  matches.size >= minimumSureFireWindowSizeAcrossAllFilesOverAllSides =>
+              // If we are down amongst the small fry and there are more matches
+              // than would be expected by overlapping, consider this as noise
+              // and abandon matching for this window size.
+              MatchCalculationState(
+                sectionsSeenAcrossSides,
+                matchGroupsInDescendingOrderOfKeys,
+                looseExclusiveUpperBoundOnMaximumMatchSize =
+                  looseExclusiveUpperBoundOnMaximumMatchSize.map(
+                    _ min windowSize
+                  )
+              )
             case (Some(baseHead), Some(leftHead), Some(rightHead))
                 if potentialMatchKeyOrder.eqv(
                   baseHead,
@@ -540,7 +540,7 @@ object CodeMotionAnalysis:
                       leftSection,
                       rightSection
                     )
-                ).take(maximumNumberOfAmbiguousMatches).toSet
+                ).toSet
               end matchesForSynchronisedFingerprint
 
               matchingFingerprintsAcrossSides(
@@ -590,7 +590,7 @@ object CodeMotionAnalysis:
                 yield Match.BaseAndLeft(
                   baseSection,
                   leftSection
-                )).take(maximumNumberOfAmbiguousMatches).toSet
+                )).toSet
               end matchesForSynchronisedFingerprint
 
               matchingFingerprintsAcrossSides(
@@ -640,7 +640,7 @@ object CodeMotionAnalysis:
                 yield Match.BaseAndRight(
                   baseSection,
                   rightSection
-                )).take(maximumNumberOfAmbiguousMatches).toSet
+                )).toSet
               end matchesForSynchronisedFingerprint
 
               matchingFingerprintsAcrossSides(
@@ -690,7 +690,7 @@ object CodeMotionAnalysis:
                 yield Match.LeftAndRight(
                   leftSection,
                   rightSection
-                )).take(maximumNumberOfAmbiguousMatches).toSet
+                )).toSet
               end matchesForSynchronisedFingerprint
 
               matchingFingerprintsAcrossSides(
