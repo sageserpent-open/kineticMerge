@@ -12,6 +12,7 @@ import de.sciss.fingertree.RangedSeq
 import java.lang.Byte as JavaByte
 import java.util.concurrent.TimeUnit
 import scala.annotation.tailrec
+import scala.collection.decorators.mapDecorator
 import scala.collection.immutable.TreeSet
 import scala.collection.{SortedMultiDict, mutable}
 import scala.concurrent.duration.FiniteDuration
@@ -177,6 +178,20 @@ object CodeMotionAnalysis:
             )
         }
       end withSection
+
+      private def differences(
+          firstSectionsByPath: Map[Path, SectionsSeen],
+          secondSectionsByPath: Map[Path, SectionsSeen]
+      ): Set[Section[Element]] =
+        firstSectionsByPath
+          .rightOuterJoin(secondSectionsByPath)
+          .map { case (_, (possibleFirst, second)) =>
+            possibleFirst.fold(ifEmpty = Set.from(second.iterator))(
+              definiteFirst =>
+                Set.from(second.iterator) -- Set.from(definiteFirst.iterator)
+            )
+          }
+          .foldLeft(Set.empty)(_ union _)
     end SectionsSeenAcrossSides
 
     case class SectionsSeenAcrossSides(
@@ -233,6 +248,21 @@ object CodeMotionAnalysis:
             )
         end match
       end withSectionsFrom
+
+      def estimateOptimalMatchSizeInComparisonTo(
+          previous: SectionsSeenAcrossSides
+      ): Option[Int] =
+        val baseDifferences =
+          differences(previous.baseSectionsByPath, baseSectionsByPath)
+        val leftDifferences =
+          differences(previous.leftSectionsByPath, leftSectionsByPath)
+        val rightDifferences =
+          differences(previous.rightSectionsByPath, rightSectionsByPath)
+
+        (baseDifferences ++ leftDifferences ++ rightDifferences)
+          .map(_.size)
+          .maxOption
+      end estimateOptimalMatchSizeInComparisonTo
     end SectionsSeenAcrossSides
 
     given potentialMatchKeyOrder: Order[PotentialMatchKey] =
@@ -334,18 +364,17 @@ object CodeMotionAnalysis:
                 (bestMatchSize + looseExclusiveUpperBoundOnMaximumMatchSize) / 2
               )
 
-            val (stateAfterTryingCandidate, numberOfMatchesFound) =
+            val (stateAfterTryingCandidate, optimalMatchSizeEstimate) =
               this.matchesForWindowSize(candidateWindowSize)
 
             println(
               s"looseExclusiveUpperBoundOnMaximumMatchSize: $looseExclusiveUpperBoundOnMaximumMatchSize, windowSize: $candidateWindowSize"
             )
 
-            numberOfMatchesFound match
-              case 0 =>
+            optimalMatchSizeEstimate match
+              case None =>
                 // Failed to improve the match size, try again with the
-                // contracted
-                // upper bound.
+                // contracted upper bound.
                 keepTryingToImproveThis(
                   bestMatchSize,
                   looseExclusiveUpperBoundOnMaximumMatchSize =
@@ -353,7 +382,8 @@ object CodeMotionAnalysis:
                   guessAtOptimalMatchSize = None,
                   fallbackImprovedState
                 )
-              case 1 =>
+              case Some(estimate)
+                  if estimate == candidateWindowSize || 1 == stateAfterTryingCandidate.matchGroupsInDescendingOrderOfKeys.last._2.size =>
                 // Found the optimal solution; try searching for the next lowest
                 // optimal size. NOTE: this won't pick up multiple distinct
                 // optimal matches, see below.
@@ -362,16 +392,13 @@ object CodeMotionAnalysis:
                     looseExclusiveUpperBoundOnMaximumMatchSize =
                       candidateWindowSize
                   )
-              case _ =>
+              case Some(estimate) =>
                 // We have an improvement, move the lower bound up and note the
                 // improved state.
-                val guessAtOptimalMatchSize =
-                  numberOfMatchesFound + candidateWindowSize - 1
-
                 keepTryingToImproveThis(
                   bestMatchSize = candidateWindowSize,
                   looseExclusiveUpperBoundOnMaximumMatchSize,
-                  guessAtOptimalMatchSize = Some(guessAtOptimalMatchSize),
+                  guessAtOptimalMatchSize = Some(estimate),
                   fallbackImprovedState = stateAfterTryingCandidate
                 )
             end match
@@ -380,7 +407,7 @@ object CodeMotionAnalysis:
             // There is nowhere left to search.
             fallbackImprovedState
           else
-            // The optimal match is in the fallback improved state; try
+            // The optimal matches are in the fallback improved state; try
             // searching for the next lowest optimal size. This is necessary as
             // we may have *multiple* distinct optimal matches at a given window
             // size.
@@ -401,7 +428,7 @@ object CodeMotionAnalysis:
 
       def matchesForWindowSize(
           windowSize: Int
-      ): (MatchCalculationState, Int) =
+      ): (MatchCalculationState, Option[Int]) =
         require(0 < windowSize)
 
         def fingerprintStartIndices(
@@ -508,7 +535,7 @@ object CodeMotionAnalysis:
             leftFingerprints: Iterable[PotentialMatchKey],
             rightFingerprints: Iterable[PotentialMatchKey],
             matches: Set[Match[Section[Element]]]
-        ): (MatchCalculationState, Int) =
+        ): (MatchCalculationState, Option[Int]) =
           (
             baseFingerprints.headOption,
             leftFingerprints.headOption,
@@ -520,7 +547,7 @@ object CodeMotionAnalysis:
               // If we are down amongst the small fry and there are more matches
               // than would be expected by overlapping, consider this as noise
               // and abandon matching for this window size.
-              this -> 0
+              this -> None
             case (Some(baseHead), Some(leftHead), Some(rightHead))
                 if potentialMatchKeyOrder.eqv(
                   baseHead,
@@ -851,7 +878,7 @@ object CodeMotionAnalysis:
                 case _                                   => false
               }
 
-              MatchCalculationState(
+              val sectionsSeenAcrossSidesWithNewMatches =
                 if 1 < windowSize then
                   sectionsSeenAcrossSides.withSectionsFrom(matches)
                 else
@@ -859,13 +886,22 @@ object CodeMotionAnalysis:
                   // others, nor will they subsume any others - so don't
                   // bother noting them.
                   sectionsSeenAcrossSides
-                ,
+
+              MatchCalculationState(
+                sectionsSeenAcrossSidesWithNewMatches,
                 matchGroupsInDescendingOrderOfKeys =
                   matchGroupsInDescendingOrderOfKeys ++ Seq(
                     (windowSize, MatchGrade.Triple) -> tripleMatches,
                     (windowSize, MatchGrade.Pair)   -> pairMatches
                   ).filter { case entry @ (_, matches) => matches.nonEmpty }
-              ) -> matches.size
+              ) -> Option
+                .unless(matches.isEmpty)(
+                  sectionsSeenAcrossSidesWithNewMatches
+                    .estimateOptimalMatchSizeInComparisonTo(
+                      sectionsSeenAcrossSides
+                    )
+                )
+                .flatten
           end match
         end matchingFingerprintsAcrossSides
 
