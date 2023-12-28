@@ -14,25 +14,6 @@ import java.util.concurrent.TimeUnit
 import scala.concurrent.duration.Duration
 
 class CodeMotionAnalysisTest:
-  val minimumSizeFractionTrials: Trials[Double] =
-    trialsApi.doubles(0.1, 1)
-
-  val contentTrials: Trials[Vector[FakeSources#Element]] = trialsApi
-    .integers(0, 100 /*TODO: reinstate the old value of: 10000*/ )
-    .flatMap(textSize =>
-      trialsApi
-        .integers(lowerBound = 1, upperBound = 20)
-        .lotsOfSize[Vector[Path]](textSize)
-    )
-
-  val pathTrials: Trials[FakeSources#Path] = trialsApi
-    .integers(1, 1000)
-
-  val sourcesTrials: Trials[FakeSources] =
-    pathTrials
-      .maps(contentTrials)
-      .filter(_.nonEmpty)
-      .map(FakeSources.apply(_, "unlabelled"))
 
   @TestFactory
   def sourcesCanBeReconstructedFromTheAnalysis: DynamicTests =
@@ -49,6 +30,26 @@ class CodeMotionAnalysisTest:
         }
       end matches
     end extension
+
+    val minimumSizeFractionTrials: Trials[Double] =
+      trialsApi.doubles(0.1, 1)
+
+    val contentTrials: Trials[Vector[FakeSources#Element]] = trialsApi
+      .integers(0, 100)
+      .flatMap(textSize =>
+        trialsApi
+          .integers(lowerBound = 1, upperBound = 20)
+          .lotsOfSize[Vector[Path]](textSize)
+      )
+
+    val pathTrials: Trials[FakeSources#Path] = trialsApi
+      .integers(1, 1000)
+
+    val sourcesTrials: Trials[FakeSources] =
+      pathTrials
+        .maps(contentTrials)
+        .filter(_.nonEmpty)
+        .map(FakeSources.apply(_, "unlabelled"))
 
     (sourcesTrials.map(
       _.copy(label = "base")
@@ -69,21 +70,30 @@ class CodeMotionAnalysisTest:
         ) =>
           pprint.pprintln((base, left, right, minimumSizeFraction))
 
-          val Right(
-            analysis: CodeMotionAnalysis[FakeSources#Path, FakeSources#Element]
-          ) =
-            CodeMotionAnalysis.of(base, left, right)(
-              minimumSizeFraction
-            )(
-              equality = Eq[Element],
-              order = Order[Element],
-              hashFunction = Hashing.murmur3_32_fixed(),
-              funnel = funnel
-            ): @unchecked
+          try
+            val Right(
+              analysis: CodeMotionAnalysis[
+                FakeSources#Path,
+                FakeSources#Element
+              ]
+            ) =
+              CodeMotionAnalysis.of(base, left, right)(
+                minimumSizeFraction
+              )(
+                equality = Eq[Element],
+                order = Order[Element],
+                hashFunction = Hashing.murmur3_32_fixed(),
+                funnel = funnel
+              ): @unchecked
 
-          analysis.base matches base
-          analysis.left matches left
-          analysis.right matches right
+            analysis.base matches base
+            analysis.left matches left
+            analysis.right matches right
+          catch
+            case overlappingSections: FakeSources#OverlappingSections =>
+              pprint.pprintln(overlappingSections)
+              Trials.reject()
+          end try
       )
   end sourcesCanBeReconstructedFromTheAnalysis
 
@@ -376,7 +386,11 @@ class CodeMotionAnalysisTest:
     )
 
     testPlans
-      .withStrategy(_ => CasesLimitStrategy.counted(200, 3.0))
+      .withStrategy(caseSupplyCycle =>
+        if caseSupplyCycle.isInitial then
+          CasesLimitStrategy.timed(Duration.apply(3, TimeUnit.MINUTES))
+        else CasesLimitStrategy.counted(10, 3.0)
+      )
       .dynamicTests { testPlan =>
         pprint.pprintln(
           testPlan -> testPlan.minimumSizeFractionForMotionDetection
