@@ -315,6 +315,7 @@ object CodeMotionAnalysis:
         def keepTryingToImproveThis(
             bestMatchSize: Int,
             looseExclusiveUpperBoundOnMaximumMatchSize: Int,
+            guessAtOptimalMatchSize: Option[Int],
             fallbackImprovedState: MatchCalculationState
         ): MatchCalculationState =
           require(bestMatchSize < looseExclusiveUpperBoundOnMaximumMatchSize)
@@ -323,8 +324,11 @@ object CodeMotionAnalysis:
           then
             // There is at least one candidate window size greater than
             // `bestMatchSize`...
-            val candidateWindowSize =
-              (bestMatchSize + looseExclusiveUpperBoundOnMaximumMatchSize) / 2
+            val candidateWindowSize = guessAtOptimalMatchSize
+              .filter(_ < looseExclusiveUpperBoundOnMaximumMatchSize)
+              .getOrElse(
+                (bestMatchSize + looseExclusiveUpperBoundOnMaximumMatchSize) / 2
+              )
 
             val (stateAfterTryingCandidate, numberOfMatchesFound) =
               this.matchesForWindowSize(candidateWindowSize)
@@ -333,31 +337,49 @@ object CodeMotionAnalysis:
               s"looseExclusiveUpperBoundOnMaximumMatchSize: $looseExclusiveUpperBoundOnMaximumMatchSize, windowSize: $candidateWindowSize"
             )
 
-            if 0 < numberOfMatchesFound then
-              // We have an improvement, move the lower bound up and note the
-              // improved state.
-              keepTryingToImproveThis(
-                bestMatchSize = candidateWindowSize,
-                looseExclusiveUpperBoundOnMaximumMatchSize,
-                fallbackImprovedState = stateAfterTryingCandidate
-              )
-            else
-              // Failed to improve the match size, try again with the contracted
-              // upper bound.
-              keepTryingToImproveThis(
-                bestMatchSize,
-                looseExclusiveUpperBoundOnMaximumMatchSize =
-                  candidateWindowSize,
-                fallbackImprovedState
-              )
-            end if
+            numberOfMatchesFound match
+              case 0 =>
+                // Failed to improve the match size, try again with the
+                // contracted
+                // upper bound.
+                keepTryingToImproveThis(
+                  bestMatchSize,
+                  looseExclusiveUpperBoundOnMaximumMatchSize =
+                    candidateWindowSize,
+                  guessAtOptimalMatchSize = None,
+                  fallbackImprovedState
+                )
+              case 1 =>
+                // Found the optimal solution; try searching for the next lowest
+                // optimal size. NOTE: this won't pick up multiple distinct
+                // optimal matches, see below.
+                stateAfterTryingCandidate
+                  .withAllMatchesOfAtLeastTheSureFireWindowSize(
+                    looseExclusiveUpperBoundOnMaximumMatchSize =
+                      candidateWindowSize
+                  )
+              case _ =>
+                // We have an improvement, move the lower bound up and note the
+                // improved state.
+                val guessAtOptimalMatchSize =
+                  numberOfMatchesFound + candidateWindowSize - 1
+
+                keepTryingToImproveThis(
+                  bestMatchSize = candidateWindowSize,
+                  looseExclusiveUpperBoundOnMaximumMatchSize,
+                  guessAtOptimalMatchSize = Some(guessAtOptimalMatchSize),
+                  fallbackImprovedState = stateAfterTryingCandidate
+                )
+            end match
           else if minimumSureFireWindowSizeAcrossAllFilesOverAllSides == looseExclusiveUpperBoundOnMaximumMatchSize
           then
             // There is nowhere left to search.
             fallbackImprovedState
           else
             // The optimal match is in the fallback improved state; try
-            // searching for the next lowest optimal size.
+            // searching for the next lowest optimal size. This is necessary as
+            // we may have *multiple* distinct optimal matches at a given window
+            // size.
             fallbackImprovedState.withAllMatchesOfAtLeastTheSureFireWindowSize(
               looseExclusiveUpperBoundOnMaximumMatchSize = bestMatchSize
             )
@@ -368,6 +390,7 @@ object CodeMotionAnalysis:
           bestMatchSize =
             minimumSureFireWindowSizeAcrossAllFilesOverAllSides - 1,
           looseExclusiveUpperBoundOnMaximumMatchSize,
+          guessAtOptimalMatchSize = None,
           fallbackImprovedState = this
         )
       end withAllMatchesOfAtLeastTheSureFireWindowSize
