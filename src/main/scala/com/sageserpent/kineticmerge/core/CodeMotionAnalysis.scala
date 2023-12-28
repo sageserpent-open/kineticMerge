@@ -1483,7 +1483,7 @@ object CodeMotionAnalysis:
         Evolution.of(
           maximumNumberOfRetries = 3,
           maximumPopulationSize = 10,
-          timeBudget = Some(FiniteDuration(10, TimeUnit.SECONDS))
+          timeBudget = Some(FiniteDuration(5, TimeUnit.SECONDS))
         )
       else
         println(
