@@ -1331,56 +1331,63 @@ object CodeMotionAnalysis:
           matchGroup.nonEmpty
       })
 
-      // TODO: why do we need to build a map for each side? Surely sections from
-      // different sides can't be equal?
-
-      def baseSectionsAndTheirMatches
+      def sectionsAndTheirMatches
           : Map[Section[Element], Match[Section[Element]]] =
         matchGroupsInDescendingOrderOfKeys
           .map { case (_, matches) =>
-            matches.view.collect {
-              case aMatch @ Match.AllThree(baseSection, _, _) =>
-                baseSection -> aMatch
-              case aMatch @ Match.BaseAndLeft(baseSection, _) =>
-                baseSection -> aMatch
-              case aMatch @ Match.BaseAndRight(baseSection, _) =>
-                baseSection -> aMatch
+            matches.view.flatMap {
+              case aMatch @ Match.AllThree(
+                    baseSection,
+                    leftSection,
+                    rightSection
+                  ) =>
+                Seq(baseSection, leftSection, rightSection).map(_ -> aMatch)
+              case aMatch @ Match.BaseAndLeft(baseSection, leftSection) =>
+                Seq(baseSection, leftSection).map(_ -> aMatch)
+              case aMatch @ Match.BaseAndRight(baseSection, rightSection) =>
+                Seq(baseSection, rightSection).map(_ -> aMatch)
+              case aMatch @ Match.LeftAndRight(leftSection, rightSection) =>
+                Seq(leftSection, rightSection).map(_ -> aMatch)
             }.toMap
           }
           .reduceOption(_ ++ _)
           .getOrElse(Map.empty)
 
-      def leftSectionsAndTheirMatches
-          : Map[Section[Element], Match[Section[Element]]] =
-        matchGroupsInDescendingOrderOfKeys
-          .map { case (_, matches) =>
-            matches.view.collect {
-              case aMatch @ Match.AllThree(_, leftSection, _) =>
-                leftSection -> aMatch
-              case aMatch @ Match.BaseAndLeft(_, leftSection) =>
-                leftSection -> aMatch
-              case aMatch @ Match.LeftAndRight(leftSection, _) =>
-                leftSection -> aMatch
-            }.toMap
+      def baseSections: Set[Section[Element]] =
+        matchGroupsInDescendingOrderOfKeys.flatMap { case (_, matches) =>
+          matches.view.collect {
+            case Match.AllThree(baseSection, _, _) =>
+              baseSection
+            case Match.BaseAndLeft(baseSection, _) =>
+              baseSection
+            case Match.BaseAndRight(baseSection, _) =>
+              baseSection
           }
-          .reduceOption(_ ++ _)
-          .getOrElse(Map.empty)
+        }.toSet
 
-      def rightSectionsAndTheirMatches
-          : Map[Section[Element], Match[Section[Element]]] =
-        matchGroupsInDescendingOrderOfKeys
-          .map { case (_, matches) =>
-            matches.view.collect {
-              case aMatch @ Match.AllThree(_, _, rightSection) =>
-                rightSection -> aMatch
-              case aMatch @ Match.BaseAndRight(_, rightSection) =>
-                rightSection -> aMatch
-              case aMatch @ Match.LeftAndRight(_, rightSection) =>
-                rightSection -> aMatch
-            }.toMap
+      def leftSections: Set[Section[Element]] =
+        matchGroupsInDescendingOrderOfKeys.flatMap { case (_, matches) =>
+          matches.view.collect {
+            case Match.AllThree(_, leftSection, _) =>
+              leftSection
+            case Match.BaseAndLeft(_, leftSection) =>
+              leftSection
+            case Match.LeftAndRight(leftSection, _) =>
+              leftSection
           }
-          .reduceOption(_ ++ _)
-          .getOrElse(Map.empty)
+        }.toSet
+
+      def rightSections: Set[Section[Element]] =
+        matchGroupsInDescendingOrderOfKeys.flatMap { case (_, matches) =>
+          matches.view.collect {
+            case Match.AllThree(_, _, rightSection) =>
+              rightSection
+            case Match.BaseAndRight(_, rightSection) =>
+              rightSection
+            case Match.LeftAndRight(_, rightSection) =>
+              rightSection
+          }
+        }.toSet
 
     end Phenotype
 
@@ -1494,29 +1501,25 @@ object CodeMotionAnalysis:
 
     println(s"Finally: -----> $evolvedPhenotype")
 
-    val baseSectionsAndTheirMatches =
-      evolvedPhenotype.baseSectionsAndTheirMatches
-    val leftSectionsAndTheirMatches =
-      evolvedPhenotype.leftSectionsAndTheirMatches
-    val rightSectionsAndTheirMatches =
-      evolvedPhenotype.rightSectionsAndTheirMatches
+    val sectionsAndTheirMatches = evolvedPhenotype.sectionsAndTheirMatches
+
+    val baseSections  = evolvedPhenotype.baseSections
+    val leftSections  = evolvedPhenotype.leftSections
+    val rightSections = evolvedPhenotype.rightSections
 
     val baseFilesByPath =
-      base.filesByPathUtilising(baseSectionsAndTheirMatches.keySet)
+      base.filesByPathUtilising(baseSections)
     val leftFilesByPath =
-      left.filesByPathUtilising(leftSectionsAndTheirMatches.keySet)
+      left.filesByPathUtilising(leftSections)
     val rightFilesByPath =
-      right.filesByPathUtilising(rightSectionsAndTheirMatches.keySet)
+      right.filesByPathUtilising(rightSections)
 
     Right(
       new CodeMotionAnalysis[Path, Element]:
         override def matchFor(
             section: Section[Element]
         ): Option[Match[Section[Element]]] =
-          baseSectionsAndTheirMatches
-            .get(section)
-            .orElse(leftSectionsAndTheirMatches.get(section))
-            .orElse(rightSectionsAndTheirMatches.get(section))
+          sectionsAndTheirMatches.get(section)
 
         override def base: Map[Path, File[Element]] = baseFilesByPath
 
