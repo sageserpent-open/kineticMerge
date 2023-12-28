@@ -309,6 +309,8 @@ object CodeMotionAnalysis:
           looseExclusiveUpperBoundOnMaximumMatchSize: Int =
             1 + maximumFileSizeAcrossAllFilesOverAllSides
       ): MatchCalculationState =
+        // Essentially a binary chop algorithm, but using
+        // `fallbackImprovedState` to track the best solution.
         @tailrec
         def keepTryingToImproveThis(
             bestMatchSize: Int,
