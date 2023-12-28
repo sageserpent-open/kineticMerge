@@ -407,7 +407,7 @@ class CodeMotionAnalysisTest:
           val baseMatches: Iterable[Match[Section[FakeSources#Element]]] =
             analysis.base.values
               .flatMap(_.sections)
-              .collect(Function.unlift(analysis.matchForBaseSection))
+              .collect(Function.unlift(analysis.matchFor))
 
           val leftAndRightPairCouldSubsumeAnAllSidesMatch =
             adjacentCommonSequencesArePossibleOnLeft && adjacentCommonSequencesArePossibleOnRight
@@ -490,7 +490,7 @@ class CodeMotionAnalysisTest:
           val leftMatches: Iterable[Match[Section[FakeSources#Element]]] =
             analysis.left.values
               .flatMap(_.sections)
-              .collect(Function.unlift(analysis.matchForLeftSection))
+              .collect(Function.unlift(analysis.matchFor))
 
           if commonToAllThreeSides.nonEmpty || commonToBaseAndLeft.nonEmpty || commonToLeftAndRight.nonEmpty
           then
@@ -565,7 +565,7 @@ class CodeMotionAnalysisTest:
           val rightMatches: Iterable[Match[Section[FakeSources#Element]]] =
             analysis.right.values
               .flatMap(_.sections)
-              .collect(Function.unlift(analysis.matchForRightSection))
+              .collect(Function.unlift(analysis.matchFor))
 
           if commonToAllThreeSides.nonEmpty || commonToBaseAndRight.nonEmpty || commonToLeftAndRight.nonEmpty
           then

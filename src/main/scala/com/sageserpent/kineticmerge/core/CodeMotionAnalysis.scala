@@ -23,17 +23,7 @@ trait CodeMotionAnalysis[Path, Element]:
   def left: Map[Path, File[Element]]
   def right: Map[Path, File[Element]]
 
-  // TODO: why do we need to build a map for each side? Surely sections from
-  // different sides can't be equal?
-  def matchForBaseSection(
-      section: Section[Element]
-  ): Option[Match[Section[Element]]]
-  def matchForLeftSection(
-      section: Section[Element]
-  ): Option[Match[Section[Element]]]
-  def matchForRightSection(
-      section: Section[Element]
-  ): Option[Match[Section[Element]]]
+  def matchFor(section: Section[Element]): Option[Match[Section[Element]]]
 end CodeMotionAnalysis
 
 object CodeMotionAnalysis:
@@ -1520,20 +1510,13 @@ object CodeMotionAnalysis:
 
     Right(
       new CodeMotionAnalysis[Path, Element]:
-        override def matchForBaseSection(
+        override def matchFor(
             section: Section[Element]
         ): Option[Match[Section[Element]]] =
-          baseSectionsAndTheirMatches.get(section)
-
-        override def matchForLeftSection(
-            section: Section[Element]
-        ): Option[Match[Section[Element]]] =
-          leftSectionsAndTheirMatches.get(section)
-
-        override def matchForRightSection(
-            section: Section[Element]
-        ): Option[Match[Section[Element]]] =
-          rightSectionsAndTheirMatches.get(section)
+          baseSectionsAndTheirMatches
+            .get(section)
+            .orElse(leftSectionsAndTheirMatches.get(section))
+            .orElse(rightSectionsAndTheirMatches.get(section))
 
         override def base: Map[Path, File[Element]] = baseFilesByPath
 
