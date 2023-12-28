@@ -127,59 +127,7 @@ object CodeMotionAnalysis:
 
     type SectionsSeen = RangedSeq[Section[Element], Int]
 
-    case class SectionsSeenAcrossSides(
-        baseSectionsByPath: Map[Path, SectionsSeen] = Map.empty,
-        leftSectionsByPath: Map[Path, SectionsSeen] = Map.empty,
-        rightSectionsByPath: Map[Path, SectionsSeen] = Map.empty
-    ):
-      val containsBaseSection: Section[Element] => Boolean =
-        containsSection(base, baseSectionsByPath)
-      val containsLeftSection: Section[Element] => Boolean =
-        containsSection(left, leftSectionsByPath)
-      val containsRightSection: Section[Element] => Boolean =
-        containsSection(right, rightSectionsByPath)
-
-      private val withBaseSection: Section[Element] => Map[Path, SectionsSeen] =
-        withSection(base, baseSectionsByPath)
-      private val withLeftSection: Section[Element] => Map[Path, SectionsSeen] =
-        withSection(left, leftSectionsByPath)
-      private val withRightSection
-          : Section[Element] => Map[Path, SectionsSeen] =
-        withSection(right, rightSectionsByPath)
-
-      def withSectionsFrom(
-          matches: Set[Match[Section[Element]]]
-      ): SectionsSeenAcrossSides =
-        matches.foldLeft(this)(_.withSectionsFrom(_))
-
-      private def withSectionsFrom(
-          aMatch: Match[Section[Element]]
-      ): SectionsSeenAcrossSides =
-        aMatch match
-          case Match.AllThree(baseSection, leftSection, rightSection) =>
-            copy(
-              baseSectionsByPath = withBaseSection(baseSection),
-              leftSectionsByPath = withLeftSection(leftSection),
-              rightSectionsByPath = withRightSection(rightSection)
-            )
-          case Match.BaseAndLeft(baseSection, leftSection) =>
-            copy(
-              baseSectionsByPath = withBaseSection(baseSection),
-              leftSectionsByPath = withLeftSection(leftSection)
-            )
-          case Match.BaseAndRight(baseSection, rightSection) =>
-            copy(
-              baseSectionsByPath = withBaseSection(baseSection),
-              rightSectionsByPath = withRightSection(rightSection)
-            )
-          case Match.LeftAndRight(leftSection, rightSection) =>
-            copy(
-              leftSectionsByPath = withLeftSection(leftSection),
-              rightSectionsByPath = withRightSection(rightSection)
-            )
-        end match
-      end withSectionsFrom
-
+    object SectionsSeenAcrossSides:
       private def containsSection(
           side: Sources[Path, Element],
           sectionsByPath: Map[Path, SectionsSeen]
@@ -229,6 +177,62 @@ object CodeMotionAnalysis:
             )
         }
       end withSection
+    end SectionsSeenAcrossSides
+
+    case class SectionsSeenAcrossSides(
+        baseSectionsByPath: Map[Path, SectionsSeen] = Map.empty,
+        leftSectionsByPath: Map[Path, SectionsSeen] = Map.empty,
+        rightSectionsByPath: Map[Path, SectionsSeen] = Map.empty
+    ):
+      import SectionsSeenAcrossSides.*
+
+      val containsBaseSection: Section[Element] => Boolean =
+        containsSection(base, baseSectionsByPath)
+      val containsLeftSection: Section[Element] => Boolean =
+        containsSection(left, leftSectionsByPath)
+      val containsRightSection: Section[Element] => Boolean =
+        containsSection(right, rightSectionsByPath)
+
+      private val withBaseSection: Section[Element] => Map[Path, SectionsSeen] =
+        withSection(base, baseSectionsByPath)
+      private val withLeftSection: Section[Element] => Map[Path, SectionsSeen] =
+        withSection(left, leftSectionsByPath)
+      private val withRightSection
+          : Section[Element] => Map[Path, SectionsSeen] =
+        withSection(right, rightSectionsByPath)
+
+      def withSectionsFrom(
+          matches: Set[Match[Section[Element]]]
+      ): SectionsSeenAcrossSides =
+        matches.foldLeft(this)(_.withSectionsFrom(_))
+
+      private def withSectionsFrom(
+          aMatch: Match[Section[Element]]
+      ): SectionsSeenAcrossSides =
+        aMatch match
+          case Match.AllThree(baseSection, leftSection, rightSection) =>
+            copy(
+              baseSectionsByPath = withBaseSection(baseSection),
+              leftSectionsByPath = withLeftSection(leftSection),
+              rightSectionsByPath = withRightSection(rightSection)
+            )
+          case Match.BaseAndLeft(baseSection, leftSection) =>
+            copy(
+              baseSectionsByPath = withBaseSection(baseSection),
+              leftSectionsByPath = withLeftSection(leftSection)
+            )
+          case Match.BaseAndRight(baseSection, rightSection) =>
+            copy(
+              baseSectionsByPath = withBaseSection(baseSection),
+              rightSectionsByPath = withRightSection(rightSection)
+            )
+          case Match.LeftAndRight(leftSection, rightSection) =>
+            copy(
+              leftSectionsByPath = withLeftSection(leftSection),
+              rightSectionsByPath = withRightSection(rightSection)
+            )
+        end match
+      end withSectionsFrom
     end SectionsSeenAcrossSides
 
     given potentialMatchKeyOrder: Order[PotentialMatchKey] =
