@@ -326,14 +326,14 @@ object CodeMotionAnalysis:
             val candidateWindowSize =
               (bestMatchSize + looseExclusiveUpperBoundOnMaximumMatchSize) / 2
 
-            val (stateAfterTryingCandidate, foundNewMatches) =
+            val (stateAfterTryingCandidate, numberOfMatchesFound) =
               this.matchesForWindowSize(candidateWindowSize)
 
             println(
               s"looseExclusiveUpperBoundOnMaximumMatchSize: $looseExclusiveUpperBoundOnMaximumMatchSize, windowSize: $candidateWindowSize"
             )
 
-            if foundNewMatches then
+            if 0 < numberOfMatchesFound then
               // We have an improvement, move the lower bound up and note the
               // improved state.
               keepTryingToImproveThis(
@@ -374,7 +374,7 @@ object CodeMotionAnalysis:
 
       def matchesForWindowSize(
           windowSize: Int
-      ): (MatchCalculationState, Boolean) =
+      ): (MatchCalculationState, Int) =
         require(0 < windowSize)
 
         def fingerprintStartIndices(
@@ -481,7 +481,7 @@ object CodeMotionAnalysis:
             leftFingerprints: Iterable[PotentialMatchKey],
             rightFingerprints: Iterable[PotentialMatchKey],
             matches: Set[Match[Section[Element]]]
-        ): (MatchCalculationState, Boolean) =
+        ): (MatchCalculationState, Int) =
           (
             baseFingerprints.headOption,
             leftFingerprints.headOption,
@@ -493,7 +493,7 @@ object CodeMotionAnalysis:
               // If we are down amongst the small fry and there are more matches
               // than would be expected by overlapping, consider this as noise
               // and abandon matching for this window size.
-              this -> false
+              this -> 0
             case (Some(baseHead), Some(leftHead), Some(rightHead))
                 if potentialMatchKeyOrder.eqv(
                   baseHead,
@@ -813,36 +813,32 @@ object CodeMotionAnalysis:
               // There are no more opportunities to match a full triple or
               // just a pair, so this terminates the recursion.
 
-              if matches.isEmpty
-              then this -> false
-              else
-                println(
-                  s"Matches discovered at window size: $windowSize number: ${matches.size}"
-                )
+              println(
+                s"Matches discovered at window size: $windowSize number: ${matches.size}"
+              )
 
-                // Add the triples first if we have any, then any pairs as we
-                // are adding match groups in descending order of keys.
-                val (tripleMatches, pairMatches) = matches.partition {
-                  case _: Match.AllThree[Section[Element]] => true
-                  case _                                   => false
-                }
+              // Add the triples first if we have any, then any pairs as we
+              // are adding match groups in descending order of keys.
+              val (tripleMatches, pairMatches) = matches.partition {
+                case _: Match.AllThree[Section[Element]] => true
+                case _                                   => false
+              }
 
-                MatchCalculationState(
-                  if 1 < windowSize then
-                    sectionsSeenAcrossSides.withSectionsFrom(matches)
-                  else
-                    // If match is of size 1, then it sections won't overlap any
-                    // others, nor will they subsume any others - so don't
-                    // bother noting them.
-                    sectionsSeenAcrossSides
-                  ,
-                  matchGroupsInDescendingOrderOfKeys =
-                    matchGroupsInDescendingOrderOfKeys ++ Seq(
-                      (windowSize, MatchGrade.Triple) -> tripleMatches,
-                      (windowSize, MatchGrade.Pair)   -> pairMatches
-                    ).filter { case entry @ (_, matches) => matches.nonEmpty }
-                ) -> true
-              end if
+              MatchCalculationState(
+                if 1 < windowSize then
+                  sectionsSeenAcrossSides.withSectionsFrom(matches)
+                else
+                  // If match is of size 1, then it sections won't overlap any
+                  // others, nor will they subsume any others - so don't
+                  // bother noting them.
+                  sectionsSeenAcrossSides
+                ,
+                matchGroupsInDescendingOrderOfKeys =
+                  matchGroupsInDescendingOrderOfKeys ++ Seq(
+                    (windowSize, MatchGrade.Triple) -> tripleMatches,
+                    (windowSize, MatchGrade.Pair)   -> pairMatches
+                  ).filter { case entry @ (_, matches) => matches.nonEmpty }
+              ) -> matches.size
           end match
         end matchingFingerprintsAcrossSides
 
