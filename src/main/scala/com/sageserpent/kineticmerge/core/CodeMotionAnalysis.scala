@@ -432,11 +432,13 @@ object CodeMotionAnalysis:
               val fixedNumberOfBytesInElementHash =
                 hashFunction.bits / JavaByte.SIZE
 
+              val windowSizeInBytes =
+                fixedNumberOfBytesInElementHash * windowSize
+
               new RollingHash.Factory(
-                // Translate the window size from number of elements to number
-                // of bytes.
-                windowSize = fixedNumberOfBytesInElementHash * windowSize,
-                numberOfFingerprintsToBeTaken = totalContentSize
+                windowSize = windowSizeInBytes,
+                numberOfFingerprintsToBeTaken =
+                  fixedNumberOfBytesInElementHash * totalContentSize - windowSizeInBytes + 1
               )
             }
           )

@@ -5,19 +5,10 @@ import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest
 import com.sageserpent.kineticmerge.core.PartitionedThreeWayTransform.Input
-import com.sageserpent.kineticmerge.core.PartitionedThreeWayTransformTest.{
-  funnel,
-  partitionedThreeWayTransform,
-  testCases
-}
+import com.sageserpent.kineticmerge.core.PartitionedThreeWayTransformTest.{funnel, partitionedThreeWayTransform, testCases}
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.TestFactory
-import org.rabinfingerprint.polynomial.Polynomial
-import pprint.pprintln
-
-import scala.util.Random
 
 class PartitionedThreeWayTransformTest:
   @TestFactory
@@ -142,9 +133,7 @@ class PartitionedThreeWayTransformTest:
 end PartitionedThreeWayTransformTest
 
 object PartitionedThreeWayTransformTest:
-  private val partitionedThreeWayTransform = new PartitionedThreeWayTransform(
-    Polynomial.createIrreducible(15)
-  )
+  private val partitionedThreeWayTransform = new PartitionedThreeWayTransform
 
   private val testCases =
     for
