@@ -3,10 +3,6 @@ import xerial.sbt.Sonatype.*
 
 import scala.language.postfixOps
 import scala.sys.process.*
-import scala.xml.transform.{RewriteRule, RuleTransformer}
-import scala.xml.{Elem, Node}
-
-enablePlugins(ShadingPlugin)
 
 lazy val javaVersion = "14"
 
@@ -28,28 +24,6 @@ lazy val root = (project in file("."))
     pomIncludeRepository   := { _ => false },
     sonatypeCredentialHost := "s01.oss.sonatype.org",
     publishMavenStyle      := true,
-    pomPostProcess := { node =>
-      val rejectedDependencyArtifact =
-        (rabinFingerprint / Compile / packageBin / artifact).value.name
-
-      object removeRejectedDependencyArtifact extends RewriteRule {
-        override def transform(subtreeNode: Node): Seq[Node] =
-          subtreeNode match {
-            case element: Elem if element.label == "dependency" =>
-              if (
-                element.child
-                  .filter(_.label == "artifactId")
-                  .exists(rejectedDependencyArtifact == _.text)
-              ) Seq.empty
-              else Seq(subtreeNode)
-            case _ => Seq(subtreeNode)
-          }
-      }
-
-      val transformer = new RuleTransformer(removeRejectedDependencyArtifact)
-
-      transformer.transform(node).head
-    },
     licenses += ("MIT", url("https://opensource.org/licenses/MIT")),
     organization     := "com.sageserpent",
     organizationName := "sageserpent",
@@ -137,27 +111,5 @@ lazy val root = (project in file("."))
     libraryDependencies += "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
     Test / fork               := true,
     Test / testForkedParallel := true,
-    Test / javaOptions ++= Seq("-Xms10G", "-Xmx10G"),
-    shadingVerbose := true,
-    shadedJars += (rabinFingerprint / Compile / packageBin).value,
-    shadingRules ++= Seq(
-      ShadingRule.moveUnder("org.rabinfingerprint", "shaded")
-    ),
-    validNamespaces ++= Set("com", "org", "shaded"),
-    validEntries ++= Set("version.txt", "usage.txt"),
-    packageBin := shadedPackageBin.value
+    Test / javaOptions ++= Seq("-Xms10G", "-Xmx10G")
   )
-  // Just an optional dependency - otherwise Coursier will pick this up. It's
-  // enough to allow IntelliJ to both import from SBT and run tests, given that
-  // the Rabin fingerprint code is shaded into Kinetic Merge.
-  .dependsOn(rabinFingerprint % Optional)
-
-lazy val rabinFingerprint = (project in file("rabinfingerprint")).settings(
-  publishMavenStyle                        := false,
-  crossPaths                               := false,
-  packageBin / publishArtifact             := false,
-  packageSrc / publishArtifact             := false,
-  packageDoc / publishArtifact             := false,
-  libraryDependencies += "com.google.guava" % "guava" % "32.1.2-jre",
-  libraryDependencies += "junit"            % "junit" % "4.13.2" % Test
-)

@@ -1,18 +1,9 @@
 package com.sageserpent.kineticmerge.core
 
-import cats.Eq
-import com.google.common.hash.{Hashing, PrimitiveSink}
-import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.*
-import com.sageserpent.kineticmerge.core.PartitionedThreeWayTransform.Input
 import com.sageserpent.kineticmerge.core.Token.tokens
 import com.sageserpent.kineticmerge.core.merge.MergedWithConflicts
 import org.junit.jupiter.api.Test
-import org.rabinfingerprint.polynomial.Polynomial
-import org.rabinfingerprint.polynomial.Polynomial.{Reducibility, createFromBytes}
 import pprint.*
-
-import scala.annotation.tailrec
-import scala.util.Random
 
 class MergeTokensTest extends ProseExamples:
   @Test
