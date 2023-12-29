@@ -17,7 +17,7 @@ class CodeMotionAnalysisTest:
 
   @TestFactory
   def sourcesCanBeReconstructedFromTheAnalysis: DynamicTests =
-    extension (results: Map[FakeSources#Path, File[FakeSources#Element]])
+    extension (results: Map[Path, File[Element]])
       private infix def matches(sources: FakeSources): Unit =
         assert(results.keys == sources.filesByPathUtilising(Set.empty).keys)
 
@@ -34,7 +34,7 @@ class CodeMotionAnalysisTest:
     val minimumSizeFractionTrials: Trials[Double] =
       trialsApi.doubles(0.1, 1)
 
-    val contentTrials: Trials[Vector[FakeSources#Element]] = trialsApi
+    val contentTrials: Trials[Vector[Element]] = trialsApi
       .integers(0, 100)
       .flatMap(textSize =>
         trialsApi
@@ -42,14 +42,20 @@ class CodeMotionAnalysisTest:
           .lotsOfSize[Vector[Path]](textSize)
       )
 
-    val pathTrials: Trials[FakeSources#Path] = trialsApi
+    val pathTrials: Trials[Path] = trialsApi
       .integers(1, 1000)
 
     val sourcesTrials: Trials[FakeSources] =
       pathTrials
         .maps(contentTrials)
         .filter(_.nonEmpty)
-        .map(FakeSources.apply(_, "unlabelled"))
+        .map(
+          new FakeSources(_, "unlabelled")
+            with SourcesContracts[
+              Path,
+              Element
+            ]
+        )
 
     (sourcesTrials.map(
       _.copy(label = "base")
@@ -73,8 +79,8 @@ class CodeMotionAnalysisTest:
           try
             val Right(
               analysis: CodeMotionAnalysis[
-                FakeSources#Path,
-                FakeSources#Element
+                Path,
+                Element
               ]
             ) =
               CodeMotionAnalysis.of(base, left, right)(
@@ -100,13 +106,13 @@ class CodeMotionAnalysisTest:
   @TestFactory
   def matchingSectionsAreFound(): DynamicTests =
     case class TestPlan(
-        commonToAllThreeSides: IndexedSeq[Vector[FakeSources#Element]],
-        commonToBaseAndLeft: IndexedSeq[Vector[FakeSources#Element]],
-        commonToBaseAndRight: IndexedSeq[Vector[FakeSources#Element]],
-        commonToLeftAndRight: IndexedSeq[Vector[FakeSources#Element]],
-        uniqueToBase: IndexedSeq[Vector[FakeSources#Element]],
-        uniqueToLeft: IndexedSeq[Vector[FakeSources#Element]],
-        uniqueToRight: IndexedSeq[Vector[FakeSources#Element]],
+        commonToAllThreeSides: IndexedSeq[Vector[Element]],
+        commonToBaseAndLeft: IndexedSeq[Vector[Element]],
+        commonToBaseAndRight: IndexedSeq[Vector[Element]],
+        commonToLeftAndRight: IndexedSeq[Vector[Element]],
+        uniqueToBase: IndexedSeq[Vector[Element]],
+        uniqueToLeft: IndexedSeq[Vector[Element]],
+        uniqueToRight: IndexedSeq[Vector[Element]],
         baseSources: FakeSources,
         leftSources: FakeSources,
         rightSources: FakeSources,
@@ -147,7 +153,7 @@ class CodeMotionAnalysisTest:
 
       def minimumSizeFractionForMotionDetection: Double =
         def minimumNumberOfElementsCoveredBy(
-            allocations: IndexedSeq[Vector[FakeSources#Element]]*
+            allocations: IndexedSeq[Vector[Element]]*
         ): Int =
           allocations
             .collect(Function.unlift(_.map(_.size).minOption))
@@ -176,14 +182,14 @@ class CodeMotionAnalysisTest:
         .flatMap(sequenceLength =>
           trialsApi
             .choose(alphabet)
-            .lotsOfSize[Vector[FakeSources#Element]](sequenceLength)
+            .lotsOfSize[Vector[Element]](sequenceLength)
         )
 
     val setsOfSequences = trialsApi
       .integers(4, 30)
       .flatMap(numberOfSequences =>
         sequences
-          .lotsOfSize[Set[Vector[FakeSources#Element]]](numberOfSequences)
+          .lotsOfSize[Set[Vector[Element]]](numberOfSequences)
       )
 
     val testPlans: Trials[TestPlan] = setsOfSequences.flatMap(sequences =>
@@ -237,18 +243,18 @@ class CodeMotionAnalysisTest:
             else
               def sourcesForASide(label: String)(
                   commonToAllThreeSides: IndexedSeq[
-                    Vector[FakeSources#Element]
+                    Vector[Element]
                   ],
                   commonToOnePairOfSides: IndexedSeq[
-                    Vector[FakeSources#Element]
+                    Vector[Element]
                   ],
                   commonToTheOtherPairOfSides: IndexedSeq[
-                    Vector[FakeSources#Element]
+                    Vector[Element]
                   ],
-                  sideUniqueSequences: IndexedSeq[Vector[FakeSources#Element]]
+                  sideUniqueSequences: IndexedSeq[Vector[Element]]
               ): Trials[(FakeSources, Boolean)] =
                 val sequenceMixtures: Trials[
-                  (IndexedSeq[Vector[FakeSources#Element]], Boolean)
+                  (IndexedSeq[Vector[Element]], Boolean)
                 ] =
                   if commonToAllThreeSides.nonEmpty || commonToOnePairOfSides.nonEmpty || commonToTheOtherPairOfSides.nonEmpty
                   then
@@ -400,7 +406,7 @@ class CodeMotionAnalysisTest:
 
         try
           val Right(
-            analysis: CodeMotionAnalysis[FakeSources#Path, FakeSources#Element]
+            analysis: CodeMotionAnalysis[Path, Element]
           ) =
             CodeMotionAnalysis.of(
               baseSources,
@@ -418,7 +424,7 @@ class CodeMotionAnalysisTest:
             private def contains(section: Section[Element]) =
               file.sections.contains(section)
 
-          val baseMatches: Iterable[Match[Section[FakeSources#Element]]] =
+          val baseMatches: Iterable[Match[Section[Element]]] =
             analysis.base.values
               .flatMap(_.sections)
               .collect(Function.unlift(analysis.matchFor))
@@ -501,7 +507,7 @@ class CodeMotionAnalysisTest:
 
           end if
 
-          val leftMatches: Iterable[Match[Section[FakeSources#Element]]] =
+          val leftMatches: Iterable[Match[Section[Element]]] =
             analysis.left.values
               .flatMap(_.sections)
               .collect(Function.unlift(analysis.matchFor))
@@ -576,7 +582,7 @@ class CodeMotionAnalysisTest:
             assert(survivorsCommonToLeftAndRight.isEmpty)
           end if
 
-          val rightMatches: Iterable[Match[Section[FakeSources#Element]]] =
+          val rightMatches: Iterable[Match[Section[Element]]] =
             analysis.right.values
               .flatMap(_.sections)
               .collect(Function.unlift(analysis.matchFor))
@@ -661,12 +667,21 @@ class CodeMotionAnalysisTest:
 end CodeMotionAnalysisTest
 
 object CodeMotionAnalysisTest:
-  type Path    = Int
-  type Element = Int
+  type Path        = Int
+  type Element     = Int
+  type FakeSources = MappedContentSources[Path, Element]
 
-  private def funnel(element: Int, primitiveSink: PrimitiveSink): Unit =
-    primitiveSink.putInt(element)
-  end funnel
+  extension (fakeSources: FakeSources)
+    /** Specific to testing, not part of the [[Sources]] API implementation.
+      */
+    def contains(sectionContent: IndexedSeq[Element]): Boolean =
+      fakeSources.contentsByPath.values.exists(_ containsSlice sectionContent)
+
+    /** Specific to testing, not part of the [[Sources]] API implementation.
+      */
+    def maximumContentsSize: Int =
+      fakeSources.contentsByPath.values.map(_.size).maxOption.getOrElse(0)
+  end extension
 
   extension (trialsApi: TrialsApi)
     def nonEmptyPartitioning[Element](
@@ -750,6 +765,10 @@ object CodeMotionAnalysisTest:
     end thingsInChunks
   end extension
 
+  private def funnel(element: Int, primitiveSink: PrimitiveSink): Unit =
+    primitiveSink.putInt(element)
+  end funnel
+
   trait SourcesContracts[Path, Element] extends Sources[Path, Element]:
     abstract override def section(
         path: SourcesContracts.this.Path
@@ -783,111 +802,4 @@ object CodeMotionAnalysisTest:
       result
     end filesByPathUtilising
   end SourcesContracts
-
-  case class FakeSources(
-      contentsByPath: Map[Path, IndexedSeq[Element]],
-      label: String
-  ) extends Sources[Path, Element]:
-    override def filesByPathUtilising(
-        mandatorySections: Set[Section[Element]]
-    ): Map[Path, File[Element]] =
-      val sectionsByPath = mandatorySections.groupBy(pathFor)
-
-      contentsByPath.map { case (path, content) =>
-        val pertinentSections = sectionsByPath.getOrElse(path, Set.empty)
-
-        path -> File(
-          if pertinentSections.nonEmpty then
-            val sectionsInStartOffsetOrder =
-              pertinentSections.toSeq.sortBy(_.startOffset)
-
-            sectionsInStartOffsetOrder
-              .zip(sectionsInStartOffsetOrder.tail)
-              .foreach((first, second) =>
-                if first.onePastEndOffset > second.startOffset then
-                  throw new OverlappingSections(path, first, second)
-              )
-
-            val (onePastLastEndOffset, contiguousSections) =
-              sectionsInStartOffsetOrder.foldLeft(
-                0 -> Vector.empty[Section[Element]]
-              ) { case ((onePastLastEndOffset, partialResult), section) =>
-                section.onePastEndOffset ->
-                  ((if onePastLastEndOffset < section.startOffset then
-                      partialResult :+ this.section(path)(
-                        onePastLastEndOffset,
-                        section.startOffset - onePastLastEndOffset
-                      )
-                    else partialResult) :+ section)
-              }
-
-            if content.size > onePastLastEndOffset then
-              contiguousSections :+ section(path)(
-                onePastLastEndOffset,
-                content.size - onePastLastEndOffset
-              )
-            else contiguousSections
-            end if
-          else
-            Vector(
-              SectionImplementation(
-                path = path,
-                startOffset = 0,
-                size = content.length
-              )
-            )
-        )
-      }
-    end filesByPathUtilising
-
-    override def section(path: Path)(
-        startOffset: CodeMotionAnalysisTest.Path,
-        size: CodeMotionAnalysisTest.Path
-    ): Section[Element] = SectionImplementation(path, startOffset, size)
-
-    override def pathFor(section: Section[Element]): Path =
-      section match
-        // If the section implementation does not come from this `FakeSources`,
-        // then it can't be accepted, it's up to the client to be consistent.
-        case SectionImplementation(path, _, _)
-            if contentsByPath.contains(path) =>
-          path
-
-    override def paths: Set[Path] = contentsByPath.keySet
-
-    /** Specific to testing, not part of the [[Sources]] API implementation.
-      */
-    def contains(sectionContent: IndexedSeq[Element]): Boolean =
-      contentsByPath.values.exists(_ containsSlice sectionContent)
-
-    /** Specific to testing, not part of the [[Sources]] API implementation.
-      */
-    def maximumContentsSize: Int =
-      contentsByPath.values.map(_.size).maxOption.getOrElse(0)
-
-    class OverlappingSections(
-        path: Path,
-        first: Section[Element],
-        second: Section[Element]
-    ) extends RuntimeException({
-          val overlap = section(path)(
-            startOffset = second.startOffset,
-            size = first.onePastEndOffset - second.startOffset
-          )
-
-          s"Overlapping section detected on side: $label at path: $path: $first (content: ${first.content}) overlaps with start of section: $second (content: ${second.content}), overlap content: ${overlap.content}."
-        }):
-
-    end OverlappingSections
-
-    case class SectionImplementation(
-        path: Path,
-        override val startOffset: Int,
-        override val size: Int
-    ) extends Section[Element]:
-      override def content: IndexedSeq[Element] =
-        contentsByPath(path).slice(startOffset, onePastEndOffset)
-    end SectionImplementation
-  end FakeSources
-
 end CodeMotionAnalysisTest
