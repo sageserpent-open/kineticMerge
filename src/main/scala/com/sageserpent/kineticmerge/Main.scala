@@ -4,13 +4,11 @@ import cats.data.{EitherT, WriterT}
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.syntax.traverse.toTraverseOps
-import com.sageserpent.kineticmerge.Main.Tags
-import com.sageserpent.kineticmerge.core.merge.{
-  FullyMerged,
-  MergedWithConflicts,
-  Result
-}
-import com.sageserpent.kineticmerge.core.{Token, mergeTokens}
+import com.google.common.hash.Hashing
+import com.sageserpent.kineticmerge.core.*
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtension.*
+import com.sageserpent.kineticmerge.core.Token.tokens
+import com.sageserpent.kineticmerge.core.merge.{FullyMerged, MergedWithConflicts}
 import com.softwaremill.tagging.*
 import fansi.Str
 import os.{CommandResult, Path, RelPath}
@@ -291,6 +289,20 @@ object Main:
       noCommit: Boolean = false,
       noFastForward: Boolean = false
   )
+
+  enum Change:
+    case Modification(
+        mode: String @@ Tags.Mode,
+        blobId: String @@ Tags.BlobId,
+        content: String @@ Tags.Content
+    )
+    case Addition(
+        mode: String @@ Tags.Mode,
+        blobId: String @@ Tags.BlobId,
+        content: String @@ Tags.Content
+    )
+    case Deletion
+  end Change
 
   private case class InWorkingDirectory(workingDirectory: Path):
     def ourBranchHead(): Workflow[String @@ Main.Tags.CommitOrBranchName] =
@@ -799,6 +811,7 @@ object Main:
               s"Coincidental deletion of file ${underline(path)} on our branch ${underline(ourBranchHead)} and on their branch ${underline(theirBranchHead)}."
             )
       }
+    end indexUpdates
 
     private def indexStateForTwoWayMerge(
         ourBranchHead: String @@ Tags.CommitOrBranchName,
@@ -963,6 +976,14 @@ object Main:
         ourMode: String @@ Tags.Mode,
         ourContent: String @@ Tags.Content
     ): Workflow[IndexState] =
+      def sourcesFrom(path: Path, textContent: String)(
+          label: String
+      ): Sources[Path, Token] =
+        MappedContentSources(
+          contentsByPath = Map(path -> tokens(textContent).get),
+          label = label
+        )
+
       for
         (
           bestAncestorCommitIdMode,
@@ -976,36 +997,47 @@ object Main:
           else if ourMode == theirMode then right(ourMode)
           else
             left(
-              s"Conflicting file modes for file ${underline(path)}; on base ancestor commit ${underline(bestAncestorCommitIdMode)}, on our branch head ${underline(ourMode)} and on their branch head ${underline(theirMode)}."
+              s"Conflicting file modes for file ${underline(path)}; on best ancestor commit ${underline(bestAncestorCommitIdMode)}, on our branch head ${underline(ourMode)} and on their branch head ${underline(theirMode)}."
             )
 
-        bestAncestorTokens <- IO {
-          Token.tokens(bestAncestorCommitIdContent).get
+        bestAncestorSources <- IO {
+          sourcesFrom(path, bestAncestorCommitIdContent)(label =
+            "best ancestor"
+          )
         }.labelExceptionWith(errorMessage =
           s"Failed to tokenize file ${underline(path)} on best ancestor commit ${underline(bestAncestorCommitId)}."
         )
 
-        ourAncestorTokens <- IO {
-          Token.tokens(ourContent).get
-        }
-          .labelExceptionWith(errorMessage =
-            s"Failed to tokenize file ${underline(path)} on our branch head ${underline(ourBranchHead)}."
-          )
+        ourAncestorSources <- IO {
+          sourcesFrom(path, ourContent)(label = "ours")
+        }.labelExceptionWith(errorMessage =
+          s"Failed to tokenize file ${underline(path)} on our branch head ${underline(ourBranchHead)}."
+        )
 
-        theirAncestorTokens <- IO {
-          Token.tokens(theirContent).get
-        }
-          .labelExceptionWith(errorMessage =
-            s"Failed to tokenize file ${underline(path)} on their branch head ${underline(theirBranchHead)}."
-          )
+        theirAncestorSources <- IO {
+          sourcesFrom(path, theirContent)(label = "theirs")
+        }.labelExceptionWith(errorMessage =
+          s"Failed to tokenize file ${underline(path)} on their branch head ${underline(theirBranchHead)}."
+        )
 
-        mergeResult <- EitherT
+        codeMotionAnalysis <- EitherT
           .fromEither[WorkflowLogWriter](
-            mergeTokens(
-              base = bestAncestorTokens,
-              left = ourAncestorTokens,
-              right = theirAncestorTokens
+            CodeMotionAnalysis.of(
+              base = bestAncestorSources,
+              left = ourAncestorSources,
+              right = theirAncestorSources
+            )(minimumSizeFractionForMotionDetection = 0.01)(
+              elementEquality = Token.equality,
+              elementOrder = Token.comparison,
+              elementFunnel = Token.funnel,
+              hashFunction = Hashing.murmur3_32_fixed()
             )
+          )
+          .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
+
+        mergeResult: merge.Result[Token] <- EitherT
+          .fromEither[WorkflowLogWriter](
+            codeMotionAnalysis.mergeAt(path)(equality = Token.equality)
           )
           .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
 
@@ -1099,6 +1131,8 @@ object Main:
               s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
             )
       yield indexState
+      end for
+    end indexStateForThreeWayMerge
 
     private def recordAdditionInIndex(
         path: Path,
@@ -1192,6 +1226,11 @@ object Main:
       )
   end InWorkingDirectory
 
+  private enum IndexState:
+    case OneEntry
+    case ConflictingEntries
+  end IndexState
+
   object Tags:
     trait Mode
     trait BlobId
@@ -1201,24 +1240,5 @@ object Main:
     trait ExitCode
     trait StageIndex
   end Tags
-
-  enum Change:
-    case Modification(
-        mode: String @@ Tags.Mode,
-        blobId: String @@ Tags.BlobId,
-        content: String @@ Tags.Content
-    )
-    case Addition(
-        mode: String @@ Tags.Mode,
-        blobId: String @@ Tags.BlobId,
-        content: String @@ Tags.Content
-    )
-    case Deletion
-  end Change
-
-  private enum IndexState:
-    case OneEntry
-    case ConflictingEntries
-  end IndexState
 
 end Main
