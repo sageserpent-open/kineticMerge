@@ -41,11 +41,23 @@ object Token extends JavaTokenParsers:
   @tailrec
   def equality(lhs: Token, rhs: Token): Boolean =
     lhs -> rhs match
+      // This first case is implied by the following two in combination via
+      // recursion, but it's clearer and more efficient this way.
       case (
             WithTrailingWhitespace(lhsCoreToken, _),
             WithTrailingWhitespace(rhsCoreToken, _)
           ) =>
         equality(lhsCoreToken, rhsCoreToken)
+      case (
+            WithTrailingWhitespace(lhsCoreToken, _),
+            _
+          ) =>
+        equality(lhsCoreToken, rhs)
+      case (
+            _,
+            WithTrailingWhitespace(rhsCoreToken, _)
+          ) =>
+        equality(lhs, rhsCoreToken)
       case _ => lhs == rhs
   end equality
 

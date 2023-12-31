@@ -74,7 +74,7 @@ object CodeMotionAnalysisExtension:
         case MergedWithConflicts(leftElements, rightElements) =>
           MergedWithConflicts(
             leftElements = leftElements.flatMap(elementsOf),
-            rightElements = rightSections.flatMap(elementsOf)
+            rightElements = rightElements.flatMap(elementsOf)
           )
       }
 end CodeMotionAnalysisExtension
