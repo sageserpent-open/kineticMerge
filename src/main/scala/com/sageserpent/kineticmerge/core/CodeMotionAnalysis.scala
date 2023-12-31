@@ -258,20 +258,12 @@ object CodeMotionAnalysis:
     given potentialMatchKeyOrder: Order[PotentialMatchKey] =
       given Order[Element] = elementOrder
 
-      // Use an explicit implementation as Cats evaluates tuple ordering
-      // strictly on both parts of the tuple.
-      (x: PotentialMatchKey, y: PotentialMatchKey) =>
-        val firstRankComparison = Order.compare(x.fingerprint, y.fingerprint)
-
-        if 0 == firstRankComparison then
-          // NOTE: need the pesky type ascriptions because `Order` is
-          // invariant on its type parameter.
-          Order.compare(
-            x.impliedContent.content: Seq[Element],
-            y.impliedContent.content: Seq[Element]
-          )
-        else firstRankComparison
-        end if
+      Order.whenEqual(
+        Order.by(_.fingerprint),
+        // NOTE: need the pesky type ascription because `Order` is invariant on
+        // its type parameter.
+        Order.by(_.impliedContent.content: Seq[Element])
+      )
     end potentialMatchKeyOrder
 
     // NOTE: this is subtle - this type is used as a ordered key to find matches
