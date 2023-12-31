@@ -32,10 +32,10 @@ class PartitionedThreeWayTransform:
     * @param left
     * @param right
     * @param targetCommonPartitionSize
-    * @param equality
+    * @param elementEquality
     * @param hashFunction
     *   Guava hash function producing a byte array of fixed size.
-    * @param funnel
+    * @param elementFunnel
     *   Guava funnel used to adapt Guava hashing to {@code Element}.
     * @param threeWayTransform
     * @param reduction
@@ -49,16 +49,16 @@ class PartitionedThreeWayTransform:
       right: IndexedSeq[Element]
   )(
       targetCommonPartitionSize: Int,
-      equality: Eq[Element],
-      hashFunction: HashFunction,
-      funnel: Funnel[Element]
+      elementEquality: Eq[Element],
+      elementFunnel: Funnel[Element],
+      hashFunction: HashFunction
   )(
       threeWayTransform: Input[Element] => Result,
       reduction: (Result, Result) => Result
   ): Result =
     require(0 <= targetCommonPartitionSize)
 
-    given witness: Eq[Element] = equality
+    given witness: Eq[Element] = elementEquality
 
     val sequenceEquality: Eq[Seq[Element]] = Eq[Seq[Element]]
 
@@ -83,13 +83,16 @@ class PartitionedThreeWayTransform:
     else
       val fixedNumberOfBytesInElementHash = hashFunction.bits / JavaByte.SIZE
 
-      val maximumPotentialCommonPartitionSize = base.size min left.size min right.size
+      val maximumPotentialCommonPartitionSize =
+        base.size min left.size min right.size
 
-      val windowSizeInBytes = fixedNumberOfBytesInElementHash * targetCommonPartitionSize
+      val windowSizeInBytes =
+        fixedNumberOfBytesInElementHash * targetCommonPartitionSize
 
       val rollingHashFactory = new RollingHash.Factory(
         windowSize = windowSizeInBytes,
-        numberOfFingerprintsToBeTaken = fixedNumberOfBytesInElementHash * maximumPotentialCommonPartitionSize - windowSizeInBytes + 1
+        numberOfFingerprintsToBeTaken =
+          fixedNumberOfBytesInElementHash * maximumPotentialCommonPartitionSize - windowSizeInBytes + 1
       )
 
       def transformThroughPartitions(
@@ -111,7 +114,7 @@ class PartitionedThreeWayTransform:
               val elementBytes =
                 hashFunction
                   .newHasher()
-                  .putObject(elements(elementIndex), funnel)
+                  .putObject(elements(elementIndex), elementFunnel)
                   .hash()
                   .asBytes()
 

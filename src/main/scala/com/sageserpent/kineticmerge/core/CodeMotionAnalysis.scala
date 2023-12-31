@@ -67,15 +67,15 @@ object CodeMotionAnalysis:
   )(
       minimumSizeFractionForMotionDetection: Double
   )(
-      equality: Eq[Element],
-      order: Order[Element],
-      hashFunction: HashFunction,
-      funnel: Funnel[Element]
+      elementEquality: Eq[Element],
+      elementOrder: Order[Element],
+      elementFunnel: Funnel[Element],
+      hashFunction: HashFunction
   ): Either[AmbiguousMatch.type, CodeMotionAnalysis[Path, Element]] =
     require(0 <= minimumSizeFractionForMotionDetection)
     require(1 >= minimumSizeFractionForMotionDetection)
 
-    given witness: Eq[Element] = equality
+    given witness: Eq[Element] = elementEquality
 
     val sequenceEquality: Eq[Seq[Element]] = Eq[Seq[Element]]
 
@@ -256,7 +256,7 @@ object CodeMotionAnalysis:
     end SectionsSeenAcrossSides
 
     given potentialMatchKeyOrder: Order[PotentialMatchKey] =
-      given Order[Element] = order
+      given Order[Element] = elementOrder
 
       // Use an explicit implementation as Cats evaluates tuple ordering
       // strictly on both parts of the tuple.
@@ -451,7 +451,7 @@ object CodeMotionAnalysis:
             val elementBytes =
               hashFunction
                 .newHasher()
-                .putObject(elements(elementIndex), funnel)
+                .putObject(elements(elementIndex), elementFunnel)
                 .hash()
                 .asBytes()
 

@@ -86,10 +86,10 @@ class CodeMotionAnalysisTest:
               CodeMotionAnalysis.of(base, left, right)(
                 minimumSizeFraction
               )(
-                equality = Eq[Element],
-                order = Order[Element],
-                hashFunction = Hashing.murmur3_32_fixed(),
-                funnel = funnel
+                elementEquality = Eq[Element],
+                elementOrder = Order[Element],
+                elementFunnel = elementFunnel,
+                hashFunction = Hashing.murmur3_32_fixed()
               ): @unchecked
 
             analysis.base matches base
@@ -413,10 +413,10 @@ class CodeMotionAnalysisTest:
               leftSources,
               rightSources
             )(minimumSizeFractionForMotionDetection)(
-              equality = Eq[Element],
-              order = Order[Element],
-              hashFunction = Hashing.murmur3_32_fixed(),
-              funnel = funnel
+              elementEquality = Eq[Element],
+              elementOrder = Order[Element],
+              elementFunnel = elementFunnel,
+              hashFunction = Hashing.murmur3_32_fixed()
             ): @unchecked
           end val
 
@@ -765,9 +765,9 @@ object CodeMotionAnalysisTest:
     end thingsInChunks
   end extension
 
-  private def funnel(element: Int, primitiveSink: PrimitiveSink): Unit =
+  private def elementFunnel(element: Element, primitiveSink: PrimitiveSink): Unit =
     primitiveSink.putInt(element)
-  end funnel
+  end elementFunnel
 
   trait SourcesContracts[Path, Element] extends Sources[Path, Element]:
     abstract override def section(

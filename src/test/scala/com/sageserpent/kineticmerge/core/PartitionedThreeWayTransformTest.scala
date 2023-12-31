@@ -23,9 +23,9 @@ class PartitionedThreeWayTransformTest:
           val reconstitutedBase =
             partitionedThreeWayTransform(base, left, right)(
               targetCommonPartitionSize,
-              equality = _ == _,
-              hashFunction = Hashing.murmur3_32_fixed(),
-              funnel = funnel
+              elementEquality = _ == _,
+              elementFunnel = funnel,
+              hashFunction = Hashing.murmur3_32_fixed()
             )(_.base, _ ++ _)
 
           assert(reconstitutedBase == base)
@@ -33,9 +33,9 @@ class PartitionedThreeWayTransformTest:
           val reconstitutedLeft =
             partitionedThreeWayTransform(base, left, right)(
               targetCommonPartitionSize,
-              equality = _ == _,
-              hashFunction = Hashing.murmur3_32_fixed(),
-              funnel = funnel
+              elementEquality = _ == _,
+              elementFunnel = funnel,
+              hashFunction = Hashing.murmur3_32_fixed()
             )(_.left, _ ++ _)
 
           assert(reconstitutedLeft == left)
@@ -43,9 +43,9 @@ class PartitionedThreeWayTransformTest:
           val reconstitutedRight =
             partitionedThreeWayTransform(base, left, right)(
               targetCommonPartitionSize,
-              equality = _ == _,
-              hashFunction = Hashing.murmur3_32_fixed(),
-              funnel = funnel
+              elementEquality = _ == _,
+              elementFunnel = funnel,
+              hashFunction = Hashing.murmur3_32_fixed()
             )(_.right, _ ++ _)
 
           assert(reconstitutedRight == right)
@@ -65,9 +65,9 @@ class PartitionedThreeWayTransformTest:
           val commonSubsequenceViaBase =
             partitionedThreeWayTransform(base, left, right)(
               targetCommonPartitionSize,
-              equality = _ == _,
-              hashFunction = Hashing.murmur3_32_fixed(),
-              funnel = funnel
+              elementEquality = _ == _,
+              elementFunnel = funnel,
+              hashFunction = Hashing.murmur3_32_fixed()
             )(
               {
                 case Input(base, _, _, true) => base
@@ -85,9 +85,9 @@ class PartitionedThreeWayTransformTest:
           val commonSubsequenceViaLeft =
             partitionedThreeWayTransform(base, left, right)(
               targetCommonPartitionSize,
-              equality = _ == _,
-              hashFunction = Hashing.murmur3_32_fixed(),
-              funnel = funnel
+              elementEquality = _ == _,
+              elementFunnel = funnel,
+              hashFunction = Hashing.murmur3_32_fixed()
             )(
               {
                 case Input(_, left, _, true) => left
@@ -105,9 +105,9 @@ class PartitionedThreeWayTransformTest:
           val commonSubsequenceViaRight =
             partitionedThreeWayTransform(base, left, right)(
               targetCommonPartitionSize,
-              equality = _ == _,
-              hashFunction = Hashing.murmur3_32_fixed(),
-              funnel = funnel
+              elementEquality = _ == _,
+              elementFunnel = funnel,
+              hashFunction = Hashing.murmur3_32_fixed()
             )(
               {
                 case Input(_, _, right, true) => right

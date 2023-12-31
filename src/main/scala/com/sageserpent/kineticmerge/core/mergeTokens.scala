@@ -22,9 +22,9 @@ object mergeTokens:
 
     partitionedThreeWayTransform(base, left, right)(
       targetCommonPartitionSize = 20,
-      equality = equality,
-      hashFunction = Hashing.murmur3_32_fixed(),
-      funnel = funnel
+      elementEquality = equality,
+      elementFunnel = funnel,
+      hashFunction = Hashing.murmur3_32_fixed()
     )(
       threeWayTransform,
       reduction
