@@ -1,10 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
-import com.google.common.hash.{Hashing, PrimitiveSink}
+import com.google.common.hash.Hashing
 import com.sageserpent.kineticmerge.core.PartitionedThreeWayTransform.Input
-import com.sageserpent.kineticmerge.core.Token.{Significant, Whitespace, WithTrailingWhitespace}
-
-import scala.annotation.tailrec
 
 object mergeTokens:
   private val partitionedThreeWayTransform = new PartitionedThreeWayTransform
@@ -18,38 +15,18 @@ object mergeTokens:
         input: Input[Token]
     ): Either[merge.Divergence.type, merge.Result[Token]] =
       if input.isCommonPartition then Right(merge.FullyMerged(input.left))
-      else merge.of(input.base, input.left, input.right)(equality)
+      else merge.of(input.base, input.left, input.right)(Token.equality)
 
     partitionedThreeWayTransform(base, left, right)(
       targetCommonPartitionSize = 20,
-      elementEquality = equality,
-      elementFunnel = funnel,
+      elementEquality = Token.equality,
+      elementFunnel = Token.funnel,
       hashFunction = Hashing.murmur3_32_fixed()
     )(
       threeWayTransform,
       reduction
     )
   end apply
-
-  @tailrec
-  private def equality(lhs: Token, rhs: Token): Boolean =
-    lhs -> rhs match
-      case (
-            WithTrailingWhitespace(lhsCoreToken, _),
-            WithTrailingWhitespace(rhsCoreToken, _)
-          ) =>
-        equality(lhsCoreToken, rhsCoreToken)
-      case _ => lhs == rhs
-  end equality
-
-  private def funnel(element: Token, primitiveSink: PrimitiveSink): Unit =
-    element match
-      case Whitespace(blanks)   =>
-      case Significant(letters) => letters.foreach(primitiveSink.putChar)
-      case WithTrailingWhitespace(coreToken, _) =>
-        funnel(coreToken, primitiveSink)
-    end match
-  end funnel
 
   private def reduction(
       lhs: Either[merge.Divergence.type, merge.Result[Token]],

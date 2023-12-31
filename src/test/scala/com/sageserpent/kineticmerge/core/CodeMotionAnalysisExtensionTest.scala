@@ -1,26 +1,54 @@
 package com.sageserpent.kineticmerge.core
 
+import com.google.common.hash.Hashing
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtension.*
 import com.sageserpent.kineticmerge.core.Token.tokens
 import com.sageserpent.kineticmerge.core.merge.MergedWithConflicts
 import org.junit.jupiter.api.Test
 import pprint.*
 
-class MergeTokensTest extends ProseExamples:
+class CodeMotionAnalysisExtensionTest extends ProseExamples:
   @Test
   def proseCanBeMerged(): Unit =
+    type FakePath = Int
+
+    val fakePath: FakePath = 1
+
+    def sourcesFrom(
+        textContent: String,
+        label: String
+    ): Sources[FakePath, Token] =
+      MappedContentSources(
+        contentsByPath = Map(fakePath -> tokens(textContent).get),
+        label = label
+      )
+
+    val baseSources  = sourcesFrom(textContent = wordsworth, label = "base")
+    val leftSources  = sourcesFrom(textContent = jobsworth, label = "left")
+    val rightSources = sourcesFrom(textContent = emsworth, label = "right")
+
+    val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+      base = baseSources,
+      left = leftSources,
+      right = rightSources
+    )(minimumSizeFractionForMotionDetection = 0.1)(
+      elementEquality = Token.equality,
+      elementOrder = Token.comparison,
+      elementFunnel = Token.funnel,
+      hashFunction = Hashing.murmur3_32_fixed()
+    ): @unchecked
+
     val Right(
       MergedWithConflicts(leftElements, rightElements)
-    ) = mergeTokens(
-      base = tokens(wordsworth).get,
-      left = tokens(jobsworth).get,
-      right = tokens(emsworth).get
+    ) = codeMotionAnalysis.mergeAt(path = fakePath)(equality =
+      Token.equality
     ): @unchecked
 
     pprintln(leftElements.map(_.text).mkString)
     println("*********************************")
     pprintln(rightElements.map(_.text).mkString)
   end proseCanBeMerged
-end MergeTokensTest
+end CodeMotionAnalysisExtensionTest
 
 trait ProseExamples:
   protected val scalaStuff =
