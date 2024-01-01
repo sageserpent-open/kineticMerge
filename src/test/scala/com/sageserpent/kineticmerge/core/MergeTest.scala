@@ -7,18 +7,47 @@ import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.Match
+import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Contribution
 import com.sageserpent.kineticmerge.core.Merge.Result
 import com.sageserpent.kineticmerge.core.Merge.Result.FullyMerged
 import com.sageserpent.kineticmerge.core.MergeTest.*
 import com.sageserpent.kineticmerge.core.MergeTest.FakeSection.startOffsetCache
 import monocle.syntax.all.*
-import org.junit.jupiter.api.{DynamicTest, Test, TestFactory}
+import org.junit.jupiter.api.{Test, TestFactory}
 import pprint.*
 
 import scala.collection.mutable.Map as MutableMap
 
 class MergeTest:
+  @Test
+  def simpleMergeOfAnEdit(): Unit =
+    val a    = FakeSection(zeroRelativeLabel = 1)
+    val base = Vector(a)
+
+    val b    = FakeSection(zeroRelativeLabel = 2)
+    val c    = FakeSection(zeroRelativeLabel = 3)
+    val left = Vector(b, c)
+
+    val d     = FakeSection(zeroRelativeLabel = 4)
+    val right = Vector(d)
+
+    val ab = Match.BaseAndLeft(baseSection = a, leftSection = b)
+
+    val matchesBySection: Map[Section, Match] = Map(a -> ab, b -> ab)
+
+    // NOTE: we expect a clean merge of the edit of `a` into `d` followed by an
+    // insertion of `c`.
+    val expectedMerge = FullyMerged(sections = Vector(d, c))
+
+    val Right(result) =
+      Merge.of(base, left, right)(
+        matchesBySection.get
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end simpleMergeOfAnEdit
+
   @Test
   def bugReproduction(): Unit =
     val testCase = MergeTestCase(
@@ -501,10 +530,6 @@ object MergeTest:
       moves: IndexedSeq[Move]
   )
 
-  object FakeSection:
-    private val startOffsetCache: MutableMap[Int, Int] = MutableMap.empty
-  end FakeSection
-
   enum Move:
     case LeftInsertion
     case RightInsertion
@@ -521,5 +546,9 @@ object MergeTest:
     case Neutral // Can be followed by anything.
     case CoincidentDeletion // Can only be followed by another coincident deletion or a neutral.
   end MoveBias
+
+  object FakeSection:
+    private val startOffsetCache: MutableMap[Int, Int] = MutableMap.empty
+  end FakeSection
 
 end MergeTest
