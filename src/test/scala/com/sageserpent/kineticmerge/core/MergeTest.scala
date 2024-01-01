@@ -8,7 +8,6 @@ import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.Match
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Contribution
 import com.sageserpent.kineticmerge.core.Merge.Result
 import com.sageserpent.kineticmerge.core.Merge.Result.*
 import com.sageserpent.kineticmerge.core.MergeTest.*
@@ -20,8 +19,52 @@ import pprint.*
 import scala.collection.mutable.Map as MutableMap
 
 class MergeTest:
-  val simpleMergeTestCases: Trials[MergeTestCase] =
-    simpleMergeTestCases()(partialResult = emptyMergeTestCase)
+  private val fullyMergedTestCases: Trials[MergeTestCase] =
+    simpleMergeTestCases(allowConflicts = false)(partialResult =
+      emptyMergeTestCase(allowConflicts = false)
+    )
+
+  private val possiblyConflictedMergeTestCases: Trials[MergeTestCase] =
+    simpleMergeTestCases(allowConflicts = true)(partialResult =
+      emptyMergeTestCase(allowConflicts = true)
+    )
+
+  @Test
+  def conflictedMergeExampleOne(): Unit =
+    val a    = FakeSection(zeroRelativeLabel = 1)
+    val b    = FakeSection(zeroRelativeLabel = 2)
+    val base = Vector(a, b)
+
+    val c    = FakeSection(zeroRelativeLabel = 3)
+    val d    = FakeSection(zeroRelativeLabel = 4)
+    val left = Vector(c, d)
+
+    val e     = FakeSection(zeroRelativeLabel = 5)
+    val f     = FakeSection(zeroRelativeLabel = 6)
+    val right = Vector(e, f)
+
+    val bdf =
+      Match.AllThree(baseSection = b, leftSection = d, rightSection = f)
+    val matchesBySection: Map[Section, Match] = Map(
+      b -> bdf,
+      d -> bdf,
+      f -> bdf
+    )
+
+    // NOTE: we expect a clean merge of `d` after the initial conflict.
+    val expectedMerge =
+      MergedWithConflicts(
+        leftSections = Vector(c, d),
+        rightSections = Vector(e, d)
+      )
+
+    val Right(result) =
+      Merge.of(base, left, right)(
+        matchesBySection.get
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end conflictedMergeExampleOne
 
   @Test
   def simpleMergeOfAnEdit(): Unit =
@@ -52,72 +95,90 @@ class MergeTest:
   end simpleMergeOfAnEdit
 
   @Test
-  def bugReproduction(): Unit =
-    val testCase = MergeTestCase(
-      base = Vector(
-        FakeSection(zeroRelativeLabel = 5),
-        FakeSection(zeroRelativeLabel = 9),
-        FakeSection(zeroRelativeLabel = 12)
-      ),
-      left = Vector(
-        FakeSection(zeroRelativeLabel = 2),
-        FakeSection(zeroRelativeLabel = 6),
-        FakeSection(zeroRelativeLabel = 15)
-      ),
-      right = Vector(
-        FakeSection(zeroRelativeLabel = 16),
-        FakeSection(zeroRelativeLabel = 19)
-      ),
-      matchesBySection = Map(
-        FakeSection(zeroRelativeLabel = 5) -> Match.BaseAndLeft(
-          baseSection = FakeSection(zeroRelativeLabel = 5),
-          leftSection = FakeSection(zeroRelativeLabel = 6)
-        ),
-        FakeSection(zeroRelativeLabel = 6) -> Match.BaseAndLeft(
-          baseSection = FakeSection(zeroRelativeLabel = 5),
-          leftSection = FakeSection(zeroRelativeLabel = 6)
-        ),
-        FakeSection(zeroRelativeLabel = 15) -> Match.LeftAndRight(
-          leftSection = FakeSection(zeroRelativeLabel = 15),
-          rightSection = FakeSection(zeroRelativeLabel = 16)
-        ),
-        FakeSection(zeroRelativeLabel = 16) -> Match.LeftAndRight(
-          leftSection = FakeSection(zeroRelativeLabel = 15),
-          rightSection = FakeSection(zeroRelativeLabel = 16)
-        )
-      ),
-      expectedMerge = Some(
-        FullyMerged(
-          sections = Vector(
-            FakeSection(zeroRelativeLabel = 2),
-            FakeSection(zeroRelativeLabel = 15),
-            FakeSection(zeroRelativeLabel = 19)
-          )
-        )
-      ),
-      moves = Vector(
-        Move.LeftInsertion,
-        Move.RightDeletion,
-        Move.CoincidentDeletion,
-        Move.CoincidentDeletion,
-        Move.CoincidentInsertion,
-        Move.RightInsertion
-      )
+  def conflictedMergeExampleTwo(): Unit =
+    val a    = FakeSection(zeroRelativeLabel = 1)
+    val b    = FakeSection(zeroRelativeLabel = 2)
+    val c    = FakeSection(zeroRelativeLabel = 3)
+    val base = Vector(a, b, c)
+
+    val d    = FakeSection(zeroRelativeLabel = 4)
+    val e    = FakeSection(zeroRelativeLabel = 5)
+    val f    = FakeSection(zeroRelativeLabel = 6)
+    val left = Vector(d, e, f)
+
+    val g     = FakeSection(zeroRelativeLabel = 7)
+    val h     = FakeSection(zeroRelativeLabel = 8)
+    val i     = FakeSection(zeroRelativeLabel = 9)
+    val right = Vector(g, h, i)
+
+    val be  = Match.BaseAndLeft(baseSection = b, leftSection = e)
+    val cfi = Match.AllThree(baseSection = c, leftSection = f, rightSection = i)
+    val matchesBySection: Map[Section, Match] = Map(
+      b -> be,
+      e -> be,
+      c -> cfi,
+      f -> cfi,
+      i -> cfi
     )
 
-    pprint.pprintln(testCase)
+    // NOTE: we expect a clean merge of `g`, `h` and `f` after the initial
+    // conflict.
+    val expectedMerge =
+      MergedWithConflicts(
+        leftSections = Vector(d, g, h, f),
+        rightSections = Vector(g, h, f)
+      )
 
-    val Right(
-      FullyMerged(sections)
-    ) =
-      Merge.of(testCase.base, testCase.left, testCase.right)(
-        testCase.matchesBySection.get
+    val Right(result) =
+      Merge.of(base, left, right)(
+        matchesBySection.get
       ): @unchecked
 
-    assert(
-      FullyMerged(sections) == testCase.expectedMerge
+    assert(result == expectedMerge)
+  end conflictedMergeExampleTwo
+
+  @Test
+  def conflictedMergeExampleThree(): Unit =
+    val a    = FakeSection(zeroRelativeLabel = 1)
+    val b    = FakeSection(zeroRelativeLabel = 2)
+    val c    = FakeSection(zeroRelativeLabel = 3)
+    val base = Vector(a, b, c)
+
+    val d    = FakeSection(zeroRelativeLabel = 4)
+    val e    = FakeSection(zeroRelativeLabel = 5)
+    val f    = FakeSection(zeroRelativeLabel = 6)
+    val left = Vector(d, e, f)
+
+    val g     = FakeSection(zeroRelativeLabel = 7)
+    val h     = FakeSection(zeroRelativeLabel = 8)
+    val i     = FakeSection(zeroRelativeLabel = 9)
+    val right = Vector(g, h, i)
+
+    val bh  = Match.BaseAndRight(baseSection = b, rightSection = h)
+    val cfi = Match.AllThree(baseSection = c, leftSection = f, rightSection = i)
+    val matchesBySection: Map[Section, Match] = Map(
+      b -> bh,
+      h -> bh,
+      c -> cfi,
+      f -> cfi,
+      i -> cfi
     )
-  end bugReproduction
+
+    // NOTE: we expect a clean merge of `d`, `e` and `f` after the initial
+    // conflict.
+    val expectedMerge =
+      MergedWithConflicts(
+        leftSections = Vector(d, e, f),
+        rightSections = Vector(g, d, e, f)
+      )
+
+    val Right(result) =
+      Merge.of(base, left, right)(
+        matchesBySection.get
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end conflictedMergeExampleThree
 
   /* Test ideas:
    * 1. Start with a merged sequence of sections and confabulate base, left and
@@ -163,8 +224,8 @@ class MergeTest:
 
   @TestFactory
   def fullMerge: DynamicTests =
-    simpleMergeTestCases
-      .withLimit(1000)
+    fullyMergedTestCases
+      .withLimit(2000)
       .dynamicTests: testCase =>
         println("*************")
         pprint.pprintln(testCase)
@@ -176,8 +237,27 @@ class MergeTest:
 
         testCase.validate(result)
 
+  @TestFactory
+  def conflictedMerge: DynamicTests =
+    possiblyConflictedMergeTestCases
+      .withLimit(2000)
+      .dynamicTests: testCase =>
+        val Right(result) =
+          Merge.of(testCase.base, testCase.left, testCase.right)(
+            testCase.matchesBySection.get
+          ): @unchecked
+
+        result match
+          case Result.MergedWithConflicts(_, _) =>
+            println("*************")
+            pprint.pprintln(testCase)
+
+            testCase.validate(result)
+          case Result.FullyMerged(_) => Trials.reject()
+        end match
 
   def simpleMergeTestCases(
+      allowConflicts: Boolean,
       predecessorBias: MoveBias = MoveBias.Neutral,
       precedingLeftDeletions: Boolean = false,
       precedingRightDeletions: Boolean = false
@@ -195,6 +275,18 @@ class MergeTest:
       end zeroRelativeSections
 
       val choices = predecessorBias match
+        case _ if allowConflicts =>
+          trialsApi
+            .chooseWithWeights(
+              leftInsertionFrequency(allow = true),
+              rightInsertionFrequency(allow = true),
+              coincidentInsertionFrequency,
+              preservationFrequency,
+              leftDeletionFrequency,
+              rightDeletionFrequency,
+              coincidentDeletionFrequency
+            )
+
         case MoveBias.Left =>
           trialsApi
             .chooseWithWeights(
@@ -236,6 +328,7 @@ class MergeTest:
           for
             leftSection <- zeroRelativeSections
             result <- simpleMergeTestCases(
+              allowConflicts = allowConflicts,
               predecessorBias = MoveBias.Left,
               precedingLeftDeletions = precedingLeftDeletions
             )(
@@ -256,6 +349,7 @@ class MergeTest:
           for
             rightSection <- zeroRelativeSections
             result <- simpleMergeTestCases(
+              allowConflicts = allowConflicts,
               predecessorBias = MoveBias.Right,
               precedingRightDeletions = precedingRightDeletions
             )(
@@ -277,6 +371,7 @@ class MergeTest:
             leftSection  <- zeroRelativeSections
             rightSection <- zeroRelativeSections
             result <- simpleMergeTestCases(
+              allowConflicts = allowConflicts,
               predecessorBias = MoveBias.Neutral
             ):
               val sectionMatch = Match.LeftAndRight(
@@ -308,6 +403,7 @@ class MergeTest:
             leftSection  <- zeroRelativeSections
             rightSection <- zeroRelativeSections
             result <- simpleMergeTestCases(
+              allowConflicts = allowConflicts,
               predecessorBias = MoveBias.Neutral
             ):
               val sectionMatch =
@@ -344,6 +440,7 @@ class MergeTest:
             baseSection  <- zeroRelativeSections
             rightSection <- zeroRelativeSections
             result <- simpleMergeTestCases(
+              allowConflicts = allowConflicts,
               predecessorBias = MoveBias.Neutral,
               precedingLeftDeletions = true,
               precedingRightDeletions = precedingRightDeletions
@@ -372,6 +469,7 @@ class MergeTest:
             baseSection <- zeroRelativeSections
             leftSection <- zeroRelativeSections
             result <- simpleMergeTestCases(
+              allowConflicts = allowConflicts,
               predecessorBias = MoveBias.Neutral,
               precedingLeftDeletions = precedingLeftDeletions,
               precedingRightDeletions = true
@@ -399,6 +497,7 @@ class MergeTest:
           for
             baseSection <- zeroRelativeSections
             result <- simpleMergeTestCases(
+              allowConflicts = allowConflicts,
               predecessorBias = MoveBias.CoincidentDeletion,
               precedingLeftDeletions = precedingLeftDeletions,
               precedingRightDeletions = precedingRightDeletions
@@ -413,15 +512,12 @@ class MergeTest:
 
     end extendedMergeTestCases
 
-    partialResult.expectedMerge match
-      case _ =>
-        trialsApi.complexities.flatMap(complexity =>
-          trialsApi.alternateWithWeights(
-            complexity -> trialsApi.only(partialResult),
-            50         -> extendedMergeTestCases
-          )
-        )
-    end match
+    trialsApi.complexities.flatMap(complexity =>
+      trialsApi.alternateWithWeights(
+        complexity -> trialsApi.only(partialResult),
+        50         -> extendedMergeTestCases
+      )
+    )
 
   end simpleMergeTestCases
 
@@ -432,14 +528,6 @@ object MergeTest:
     override val showLocation: Boolean = true
     override val showTypes: Boolean    = true
   end assert
-  private val emptyMergeTestCase: MergeTestCase = MergeTestCase(
-    base = IndexedSeq.empty,
-    left = IndexedSeq.empty,
-    right = IndexedSeq.empty,
-    matchesBySection = Map.empty,
-    expectedMerge = Some(Result.FullyMerged(sections = IndexedSeq.empty)),
-    moves = IndexedSeq.empty
-  )
   private val leftInsertionFrequency       = 7  -> Move.LeftInsertion
   private val rightInsertionFrequency      = 7  -> Move.RightInsertion
   private val coincidentInsertionFrequency = 4  -> Move.CoincidentInsertion
@@ -447,6 +535,18 @@ object MergeTest:
   private val leftDeletionFrequency        = 7  -> Move.LeftDeletion
   private val rightDeletionFrequency       = 7  -> Move.RightDeletion
   private val coincidentDeletionFrequency  = 4  -> Move.CoincidentDeletion
+
+  private def emptyMergeTestCase(allowConflicts: Boolean): MergeTestCase =
+    MergeTestCase(
+      base = IndexedSeq.empty,
+      left = IndexedSeq.empty,
+      right = IndexedSeq.empty,
+      matchesBySection = Map.empty,
+      expectedMerge = Option.unless(allowConflicts) {
+        Result.FullyMerged(sections = IndexedSeq.empty)
+      },
+      moves = IndexedSeq.empty
+    )
 
   private def leftInsertionFrequency(allow: Boolean) =
     (if allow then 7 else 0) -> Move.LeftInsertion
@@ -496,9 +596,99 @@ object MergeTest:
       moves: IndexedSeq[Move]
   ):
     def validate(result: Result): Unit =
-      expectedMerge match
-        case Some(merge) => assert(result == merge) // TODO: perform an initial self-validation of the expected merge.
-        case None => // TODO: find all the pieces and check they're present and correct.
+      def baseIsPreservedCorrectlyIn(
+          sections: IndexedSeq[Section]
+      ): Set[Section] =
+        val preserved = base.collect(baseSection =>
+          matchesBySection.get(baseSection) match
+            case Some(allThree: Match.AllThree) => allThree.dominantSection
+        )
+
+        val _ = preserved.isSubsequenceOf(sections)
+
+        preserved.toSet
+
+      end baseIsPreservedCorrectlyIn
+
+      def leftAppearsCorrectlyIn(sections: IndexedSeq[Section]): Set[Section] =
+        val appears = left.collect(leftSection =>
+          matchesBySection.get(leftSection) match
+            case Some(allThree: (Match.AllThree | Match.LeftAndRight)) =>
+              allThree.dominantSection
+            case None => leftSection
+        )
+
+        val _ = appears.isSubsequenceOf(sections)
+
+        appears.toSet
+      end leftAppearsCorrectlyIn
+
+      def rightAppearsCorrectlyIn(sections: IndexedSeq[Section]): Set[Section] =
+        val appears = right.collect(rightSection =>
+          matchesBySection.get(rightSection) match
+            case Some(allThree: (Match.AllThree | Match.LeftAndRight)) =>
+              allThree.dominantSection
+            case None => rightSection
+        )
+
+        val _ = appears.isSubsequenceOf(sections)
+
+        appears.toSet
+      end rightAppearsCorrectlyIn
+
+      def allPresentAndCorrectIn(result: Result): Unit =
+        result match
+          case FullyMerged(sections) =>
+            val basePreservations = baseIsPreservedCorrectlyIn(sections)
+            val leftAppearances   = leftAppearsCorrectlyIn(sections)
+            val rightAppearances  = rightAppearsCorrectlyIn(sections)
+
+            assert(
+              (basePreservations union leftAppearances union rightAppearances) == sections.toSet
+            )
+
+          case MergedWithConflicts(leftSections, rightSections) =>
+            val basePreservationsOnLeft = baseIsPreservedCorrectlyIn(
+              leftSections
+            )
+            val basePreservationsOnRight = baseIsPreservedCorrectlyIn(
+              rightSections
+            )
+            val leftAppearances = leftAppearsCorrectlyIn(leftSections)
+            val rightAppearances = rightAppearsCorrectlyIn(
+              rightSections
+            )
+
+            assert(
+              basePreservationsOnLeft == basePreservationsOnRight
+            )
+
+            // NOTE: use a subset rather than an equality check, as it is
+            // possible for right sections that cleanly merged to appear in
+            // `leftSections`.
+            assert(
+              (basePreservationsOnLeft union leftAppearances) subsetOf leftSections.toSet
+            )
+            // NOTE: use a subset rather than an equality check, as it is
+            // possible for left sections that cleanly merged to appear in
+            // `rightSections`.
+            assert(
+              (basePreservationsOnRight union rightAppearances) subsetOf rightSections.toSet
+            )
+
+      allPresentAndCorrectIn(result)
+
+      expectedMerge.foreach(merge =>
+        // Perform a self-check on the expected merge.
+        allPresentAndCorrectIn(result)
+
+        // This assertion is stronger than `allPresentAndCorrectIn` because it
+        // includes the precise merge resolution.
+        assert(
+          result == merge
+        )
+      )
+
     end validate
 
   end MergeTestCase
