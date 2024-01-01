@@ -14,7 +14,7 @@ lazy val packageExecutable =
 
 lazy val root = (project in file("."))
   .settings(
-    scalacOptions ++= List("-rewrite", "-indent"),
+    scalacOptions ++= List.empty,
     name         := "kinetic-merge",
     organization := "com.sageserpent",
     packageExecutable := {
@@ -38,7 +38,14 @@ lazy val root = (project in file("."))
     libraryDependencies += "com.lihaoyi"     %% "pprint"    % "0.8.1"  % Test,
     libraryDependencies += "com.eed3si9n.expecty" %% "expecty" % "0.16.0" % Test,
     libraryDependencies += "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
+    libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "2.3.0" % Test,
     Test / fork               := true,
     Test / testForkedParallel := true,
     Test / javaOptions ++= Seq("-Xms10G", "-Xmx10G")
   )
+  .dependsOn(rabinFingerprint)
+
+lazy val rabinFingerprint = (project in file("rabinfingerprint")).settings(
+  libraryDependencies += "com.google.guava" % "guava" % "32.1.2-jre",
+  libraryDependencies += "junit"            % "junit" % "4.13.2" % Test
+)

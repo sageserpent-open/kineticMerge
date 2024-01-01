@@ -1,8 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.syntax.all.*
-import com.eed3si9n.expecty
-import com.eed3si9n.expecty.Expecty
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
@@ -15,6 +13,8 @@ import org.junit.jupiter.api.{Test, TestFactory}
 import pprint.*
 
 import scala.collection.mutable.Map as MutableMap
+
+import ExpectyFlavouredAssert.assert
 
 class MergeTest:
   private val fullyMergedTestCases: Trials[MergeTestCase] =
@@ -306,7 +306,7 @@ class MergeTest:
       .withLimit(2000)
       .dynamicTests: testCase =>
         println("*************")
-        pprint.pprintln(testCase)
+        pprintln(testCase)
 
         val Right(result) =
           Merge.of(testCase.base, testCase.left, testCase.right)(
@@ -328,7 +328,7 @@ class MergeTest:
         result match
           case Result.MergedWithConflicts(_, _) =>
             println("*************")
-            pprint.pprintln(testCase)
+            pprintln(testCase)
 
             testCase.validate(result)
           case Result.FullyMerged(_) => Trials.reject()
@@ -604,10 +604,6 @@ end MergeTest
 object MergeTest:
   type Element = Int
 
-  val assert: Expecty = new Expecty:
-    override val showLocation: Boolean = true
-    override val showTypes: Boolean    = true
-  end assert
   private val leftInsertionFrequency       = 7  -> Move.LeftInsertion
   private val rightInsertionFrequency      = 7  -> Move.RightInsertion
   private val coincidentInsertionFrequency = 4  -> Move.CoincidentInsertion
