@@ -160,6 +160,37 @@ object Merge:
                 Contribution.CommonToBaseAndRightOnly(baseSection),
                 baseTail*
               ),
+              Seq(Contribution.Difference(leftSection), leftTail*),
+              Seq(
+                Contribution.CommonToBaseAndRightOnly(rightSection),
+                rightTail*
+              )
+            ) => // Left edit.
+          // Invariant - these must all belong to the same match; progress
+          // through common elements is synchronized.
+          val Some(matchForBaseSection) = matchFor(baseSection): @unchecked
+
+          assume(matchFor(rightSection).contains(matchForBaseSection))
+
+          leftTail match
+            case Seq(Contribution.Difference(_), _*) =>
+              // If the following element on the left would also be inserted,
+              // coalesce into a single edit.
+              mergeBetweenRunsOfCommonElements(base, leftTail, right)(
+                addCommon(partialResult, leftSection)
+              )
+
+            case _ =>
+              mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
+                addCommon(partialResult, leftSection)
+              )
+          end match
+
+        case (
+              Seq(
+                Contribution.CommonToBaseAndRightOnly(baseSection),
+                baseTail*
+              ),
               _,
               Seq(
                 Contribution.CommonToBaseAndRightOnly(rightSection),
@@ -175,6 +206,37 @@ object Merge:
           mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
             partialResult
           )
+
+        case (
+              Seq(
+                Contribution.CommonToBaseAndLeftOnly(baseSection),
+                baseTail*
+              ),
+              Seq(
+                Contribution.CommonToBaseAndLeftOnly(leftSection),
+                leftTail*
+              ),
+              Seq(Contribution.Difference(rightSection), rightTail*)
+            ) => // Right edit.
+          // Invariant - these must all belong to the same match; progress
+          // through common elements is synchronized.
+          val Some(matchForBaseSection) = matchFor(baseSection): @unchecked
+
+          assume(matchFor(leftSection).contains(matchForBaseSection))
+
+          rightTail match
+            case Seq(Contribution.Difference(_), _*) =>
+              // If the following element on the right would also be inserted,
+              // coalesce into a single edit.
+              mergeBetweenRunsOfCommonElements(base, left, rightTail)(
+                addCommon(partialResult, rightSection)
+              )
+
+            case _ =>
+              mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
+                addCommon(partialResult, rightSection)
+              )
+          end match
 
         case (
               Seq(
@@ -238,6 +300,50 @@ object Merge:
                 addConflictingEdits(partialResult, leftSection, rightSection)
               )
           end match
+
+        case (
+              Seq(Contribution.Difference(_), _*),
+              Seq(Contribution.Difference(leftSection), leftTail*),
+              Seq(Contribution.CommonToLeftAndRightOnly(_), _*)
+            ) => // Left insertion with pending coincident edit.
+          // Invariant - the left section cannot be part of a match when it is
+          // different.
+          assume(matchFor(leftSection).isEmpty)
+
+          mergeBetweenRunsOfCommonElements(base, leftTail, right)(
+            addCommon(partialResult, leftSection)
+          )
+
+        case (
+              Seq(Contribution.Difference(_), baseTail*),
+              Seq(Contribution.Difference(leftSection), leftTail*),
+              _
+            ) => // Left edit / right deletion conflict.
+          mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
+            addLeftEditConflictingWithRightDeletion(partialResult, leftSection)
+          )
+
+        case (
+              Seq(Contribution.Difference(_), _*),
+              Seq(Contribution.CommonToLeftAndRightOnly(_), _*),
+              Seq(Contribution.Difference(rightSection), rightTail*)
+            ) => // Right insertion with pending left coincident edit.
+          // Invariant - the left section cannot be part of a match when it is
+          // different.
+          assume(matchFor(rightSection).isEmpty)
+
+          mergeBetweenRunsOfCommonElements(base, left, rightTail)(
+            addCommon(partialResult, rightSection)
+          )
+
+        case (
+              Seq(Contribution.Difference(_), baseTail*),
+              _,
+              Seq(Contribution.Difference(rightSection), rightTail*)
+            ) => // Right edit / left deletion conflict.
+          mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
+            addRightEditConflictingWithLeftDeletion(partialResult, rightSection)
+          )
 
         case (
               Seq(Contribution.Difference(_), baseTail*),
