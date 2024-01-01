@@ -30,7 +30,7 @@ object Merge:
             rightSections :+ commonSection
           )
 
-    def addLeftEditConflictingWithRightDelete(
+    def addLeftEditConflictingWithRightDeletion(
         partialResult: Result,
         leftSection: Section
     ): Result =
@@ -43,7 +43,7 @@ object Merge:
         case MergedWithConflicts(leftSections, rightSections) =>
           MergedWithConflicts(leftSections :+ leftSection, rightSections)
 
-    def addRightEditConflictingWithLeftDelete(
+    def addRightEditConflictingWithLeftDeletion(
         partialResult: Result,
         rightSection: Section
     ): Result =
@@ -56,7 +56,7 @@ object Merge:
         case MergedWithConflicts(leftSections, rightSections) =>
           MergedWithConflicts(leftSections, rightSections :+ rightSection)
 
-    def addConflicting(
+    def addConflictingEdits(
         partialResult: Result,
         leftSection: Section,
         rightSection: Section
@@ -275,9 +275,9 @@ object Merge:
             case Seq(
                   Contribution.CommonToBaseAndLeftOnly(_),
                   _*
-                ) => // Left edit / right delete conflict with pending right edit.
+                ) => // Left edit / right deletion conflict with pending right edit.
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
-                addLeftEditConflictingWithRightDelete(
+                addLeftEditConflictingWithRightDeletion(
                   partialResult,
                   leftSection
                 )
@@ -286,9 +286,9 @@ object Merge:
             case Seq(
                   Contribution.CommonToBaseAndRightOnly(_),
                   _*
-                ) => // Right edit / left delete conflict with pending left edit.
+                ) => // Right edit / left deletion conflict with pending left edit.
               mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
-                addRightEditConflictingWithLeftDelete(
+                addRightEditConflictingWithLeftDeletion(
                   partialResult,
                   rightSection
                 )
@@ -297,7 +297,7 @@ object Merge:
             case _ =>
               // Edit conflict.
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                addConflicting(partialResult, leftSection, rightSection)
+                addConflictingEdits(partialResult, leftSection, rightSection)
               )
           end match
 
@@ -318,9 +318,9 @@ object Merge:
               Seq(Contribution.Difference(_), baseTail*),
               Seq(Contribution.Difference(leftSection), leftTail*),
               _
-            ) => // Left edit / right delete conflict.
+            ) => // Left edit / right deletion conflict.
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
-            addLeftEditConflictingWithRightDelete(partialResult, leftSection)
+            addLeftEditConflictingWithRightDeletion(partialResult, leftSection)
           )
 
         case (
@@ -340,9 +340,9 @@ object Merge:
               Seq(Contribution.Difference(_), baseTail*),
               _,
               Seq(Contribution.Difference(rightSection), rightTail*)
-            ) => // Right edit / left delete conflict.
+            ) => // Right edit / left deletion conflict.
           mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
-            addRightEditConflictingWithLeftDelete(partialResult, rightSection)
+            addRightEditConflictingWithLeftDeletion(partialResult, rightSection)
           )
 
         case (
@@ -384,7 +384,7 @@ object Merge:
               Seq(Contribution.Difference(rightSection), rightTail*)
             ) => // Insertion conflict.
           mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
-            addConflicting(partialResult, leftSection, rightSection)
+            addConflictingEdits(partialResult, leftSection, rightSection)
           )
 
         case (
