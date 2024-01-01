@@ -30,7 +30,7 @@ object Merge:
             rightSections :+ commonSection
           )
 
-    def addLeftConflictingWithDelete(
+    def addLeftEditConflictingWithRightDelete(
         partialResult: Result,
         leftSection: Section
     ): Result =
@@ -43,7 +43,7 @@ object Merge:
         case MergedWithConflicts(leftSections, rightSections) =>
           MergedWithConflicts(leftSections :+ leftSection, rightSections)
 
-    def addRightConflictingWithDelete(
+    def addRightEditConflictingWithLeftDelete(
         partialResult: Result,
         rightSection: Section
     ): Result =
@@ -260,6 +260,48 @@ object Merge:
           )
 
         case (
+              Seq(Contribution.Difference(baseSection), baseTail*),
+              Seq(Contribution.Difference(leftSection), leftTail*),
+              Seq(Contribution.Difference(rightSection), rightTail*)
+            ) => // Conflict, multiple possibilities.
+          baseTail match
+            case Seq(Contribution.Difference(_), _*) =>
+              // If the following element in the base would also be edited,
+              // coalesce into a single coincident edit conflict.
+              mergeBetweenRunsOfCommonElements(baseTail, left, right)(
+                partialResult
+              )
+
+            case Seq(
+                  Contribution.CommonToBaseAndLeftOnly(_),
+                  _*
+                ) => // Left edit / right delete conflict with pending right edit.
+              mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
+                addLeftEditConflictingWithRightDelete(
+                  partialResult,
+                  leftSection
+                )
+              )
+
+            case Seq(
+                  Contribution.CommonToBaseAndRightOnly(_),
+                  _*
+                ) => // Right edit / left delete conflict with pending left edit.
+              mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
+                addRightEditConflictingWithLeftDelete(
+                  partialResult,
+                  rightSection
+                )
+              )
+
+            case _ =>
+              // Edit conflict.
+              mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
+                addConflicting(partialResult, leftSection, rightSection)
+              )
+          end match
+
+        case (
               Seq(Contribution.Difference(_), _*),
               Seq(Contribution.Difference(leftSection), leftTail*),
               Seq(Contribution.CommonToLeftAndRightOnly(_), _*)
@@ -276,9 +318,9 @@ object Merge:
               Seq(Contribution.Difference(_), baseTail*),
               Seq(Contribution.Difference(leftSection), leftTail*),
               _
-            ) => // Left edit / delete conflict.
+            ) => // Left edit / right delete conflict.
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
-            addLeftConflictingWithDelete(partialResult, leftSection)
+            addLeftEditConflictingWithRightDelete(partialResult, leftSection)
           )
 
         case (
@@ -298,9 +340,9 @@ object Merge:
               Seq(Contribution.Difference(_), baseTail*),
               _,
               Seq(Contribution.Difference(rightSection), rightTail*)
-            ) => // Right edit / delete conflict.
+            ) => // Right edit / left delete conflict.
           mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
-            addRightConflictingWithDelete(partialResult, rightSection)
+            addRightEditConflictingWithLeftDelete(partialResult, rightSection)
           )
 
         case (
@@ -379,7 +421,9 @@ object Merge:
               Seq(Contribution.Difference(leftSection), leftTail*),
               Seq(Contribution.Difference(rightSection), rightTail*)
             ) => // Insertion conflict.
-          addConflicting(partialResult, leftSection, rightSection)
+          mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
+            addConflicting(partialResult, leftSection, rightSection)
+          )
 
         case (Seq(), Seq(), Seq()) => // Terminating case!
           partialResult
