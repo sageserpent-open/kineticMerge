@@ -69,14 +69,25 @@ object Merge:
           // different.
           assume(matchFor(baseSection).isEmpty)
 
-          mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-            partialResult match
-              case FullyMerged(sections) =>
-                FullyMerged(sections :+ matchForLeftSection.dominantSection)
-              case MergedWithConflicts(leftSections, rightSections) =>
+          baseTail match
+            case Seq(Contribution.Difference(_), _*) =>
+              // If the following element in the base would also be
+              // coincidentally deleted, coalesce into a single coincident
+              // edit.
+              mergeBetweenRunsOfCommonElements(baseTail, left, right)(
                 partialResult
-            // TODO: this is just a placeholder.
-          )
+              )
+
+            case _ =>
+              mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
+                partialResult match
+                  case FullyMerged(sections) =>
+                    FullyMerged(sections :+ matchForLeftSection.dominantSection)
+                  case MergedWithConflicts(leftSections, rightSections) =>
+                    partialResult
+                // TODO: this is just a placeholder.
+              )
+          end match
 
         case (
               _,
