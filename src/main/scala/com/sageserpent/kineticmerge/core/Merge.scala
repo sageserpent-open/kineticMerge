@@ -30,26 +30,6 @@ object Merge:
             rightSections :+ commonSection
           )
 
-    def addLeft(partialResult: Result, leftSection: Section): Result =
-      partialResult match
-        case FullyMerged(sections) =>
-          FullyMerged(sections :+ leftSection)
-        case MergedWithConflicts(leftSections, rightSections) =>
-          MergedWithConflicts(
-            leftSections :+ leftSection,
-            rightSections
-          )
-
-    def addRight(partialResult: Result, rightSection: Section): Result =
-      partialResult match
-        case FullyMerged(sections) =>
-          FullyMerged(sections :+ rightSection)
-        case MergedWithConflicts(leftSections, rightSections) =>
-          MergedWithConflicts(
-            leftSections,
-            rightSections :+ rightSection
-          )
-
     def addLeftConflictingWithDelete(
         partialResult: Result,
         leftSection: Section
@@ -197,12 +177,12 @@ object Merge:
               // If the following element on the left would also be inserted,
               // coalesce into a single edit.
               mergeBetweenRunsOfCommonElements(base, leftTail, right)(
-                addLeft(partialResult, leftSection)
+                addCommon(partialResult, leftSection)
               )
 
             case _ =>
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                addLeft(partialResult, leftSection)
+                addCommon(partialResult, leftSection)
               )
           end match
 
@@ -249,12 +229,12 @@ object Merge:
               // If the following element on the right would also be inserted,
               // coalesce into a single edit.
               mergeBetweenRunsOfCommonElements(base, left, rightTail)(
-                addRight(partialResult, rightSection)
+                addCommon(partialResult, rightSection)
               )
 
             case _ =>
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                addRight(partialResult, rightSection)
+                addCommon(partialResult, rightSection)
               )
           end match
 
@@ -289,7 +269,7 @@ object Merge:
           assume(matchFor(leftSection).isEmpty)
 
           mergeBetweenRunsOfCommonElements(base, leftTail, right)(
-            addLeft(partialResult, leftSection)
+            addCommon(partialResult, leftSection)
           )
 
         case (
@@ -311,7 +291,7 @@ object Merge:
           assume(matchFor(rightSection).isEmpty)
 
           mergeBetweenRunsOfCommonElements(base, left, rightTail)(
-            addRight(partialResult, rightSection)
+            addCommon(partialResult, rightSection)
           )
 
         case (
@@ -340,7 +320,7 @@ object Merge:
           assume(matchFor(leftSection).isEmpty)
 
           mergeBetweenRunsOfCommonElements(base, leftTail, right)(
-            addLeft(partialResult, leftSection)
+            addCommon(partialResult, leftSection)
           )
 
         case (
@@ -353,7 +333,7 @@ object Merge:
           assume(matchFor(rightSection).isEmpty)
 
           mergeBetweenRunsOfCommonElements(base, left, rightTail)(
-            addRight(partialResult, rightSection)
+            addCommon(partialResult, rightSection)
           )
 
         case (
@@ -372,7 +352,7 @@ object Merge:
           assume(matchFor(leftSection).isEmpty)
 
           mergeBetweenRunsOfCommonElements(base, leftTail, right)(
-            addLeft(partialResult, leftSection)
+            addCommon(partialResult, leftSection)
           )
 
         case (
@@ -391,7 +371,7 @@ object Merge:
           assume(matchFor(rightSection).isEmpty)
 
           mergeBetweenRunsOfCommonElements(base, left, rightTail)(
-            addRight(partialResult, rightSection)
+            addCommon(partialResult, rightSection)
           )
 
         case (
