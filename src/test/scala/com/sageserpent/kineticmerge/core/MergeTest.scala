@@ -51,9 +51,12 @@ class MergeTest:
   @Test
   def bugReproduction(): Unit =
     val testCase = MergeTestCase(
-      base = Vector(FakeSection(zeroRelativeLabel = 2)),
-      left = Vector(FakeSection(zeroRelativeLabel = 5)),
-      right = Vector(FakeSection(zeroRelativeLabel = 6), FakeSection(zeroRelativeLabel = 9)),
+      base = Vector(FakeSection(zeroRelativeLabel = 9)),
+      left = Vector(
+        FakeSection(zeroRelativeLabel = 2),
+        FakeSection(zeroRelativeLabel = 5)
+      ),
+      right = Vector(FakeSection(zeroRelativeLabel = 6)),
       matchesBySection = Map(
         FakeSection(zeroRelativeLabel = 5) -> Match.LeftAndRight(
           leftSection = FakeSection(zeroRelativeLabel = 5),
@@ -65,10 +68,18 @@ class MergeTest:
         )
       ),
       expectedMerge = FullyMerged(
-        sections = Vector(FakeSection(zeroRelativeLabel = 5), FakeSection(zeroRelativeLabel = 9))
+        sections = Vector(
+          FakeSection(zeroRelativeLabel = 2),
+          FakeSection(zeroRelativeLabel = 5)
+        )
       ),
-      moves = Vector(Move.CoincidentDeletion, Move.CoincidentInsertion, Move.RightInsertion)
+      moves = Vector(
+        Move.LeftInsertion,
+        Move.CoincidentInsertion,
+        Move.CoincidentDeletion
+      )
     )
+
     pprint.pprintln(testCase)
 
     val Right(
@@ -240,7 +251,8 @@ class MergeTest:
                 .modify:
                   case Result.FullyMerged(sections) =>
                     predecessorBias match
-                      case MoveBias.CoincidentDeletion if !precedingLeftDeletions =>
+                      case MoveBias.CoincidentDeletion
+                          if !precedingLeftDeletions =>
                         Result.MergedWithConflicts(
                           leftSections = sections :+ leftSection,
                           rightSections = sections
@@ -276,7 +288,8 @@ class MergeTest:
                 .modify:
                   case Result.FullyMerged(sections) =>
                     predecessorBias match
-                      case MoveBias.CoincidentDeletion if !precedingRightDeletions =>
+                      case MoveBias.CoincidentDeletion
+                          if !precedingRightDeletions =>
                         Result.MergedWithConflicts(
                           leftSections = sections,
                           rightSections = sections :+ rightSection
