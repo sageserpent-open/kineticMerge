@@ -5,18 +5,11 @@ import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Contribution
 import com.sageserpent.kineticmerge.core.MergeTest.*
-import com.sageserpent.kineticmerge.core.merge.{
-  FullyMerged,
-  MergedWithConflicts,
-  Result
-}
+import com.sageserpent.kineticmerge.core.merge.{FullyMerged, MergedWithConflicts, Result}
 import monocle.syntax.all.*
-import org.junit.jupiter.api.{DynamicTest, Test, TestFactory}
+import org.junit.jupiter.api.{Test, TestFactory}
 import pprint.*
-
-import scala.collection.mutable.Map as MutableMap
 
 class MergeTest:
   private val fullyMergedTestCases: Trials[MergeTestCase] =
@@ -28,6 +21,34 @@ class MergeTest:
     simpleMergeTestCases(allowConflicts = true)(partialResult =
       emptyMergeTestCase(allowConflicts = true)
     )
+
+  @Test
+  def simpleMergeOfAnEdit(): Unit =
+    val a    = 1
+    val base = Vector(a)
+
+    val b    = 2
+    val c    = 3
+    val left = Vector(b, c)
+
+    val d     = 4
+    val right = Vector(d)
+
+    val ab = Match.BaseAndLeft(baseElement = a, leftElement = b)
+
+    val matchesByElement: Map[Element, Match[Element]] = Map(a -> ab, b -> ab)
+
+    // NOTE: we expect a clean merge of the edit of `a` into `d` followed by an
+    // insertion of `c`.
+    val expectedMerge = FullyMerged(elements = Vector(d, c))
+
+    val Right(result) =
+      merge.of(base, left, right)(
+        equivalent(matchesByElement)
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end simpleMergeOfAnEdit
 
   @Test
   def editConflict(): Unit =
