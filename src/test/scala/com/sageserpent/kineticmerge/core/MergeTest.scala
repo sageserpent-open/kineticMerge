@@ -180,6 +180,42 @@ class MergeTest:
     assert(result == expectedMerge)
   end conflictedMergeExampleThree
 
+  @Test
+  def conflictedMergeExampleFour(): Unit =
+    val a    = FakeSection(zeroRelativeLabel = 1)
+    val base = Vector(a)
+
+    val b    = FakeSection(zeroRelativeLabel = 2)
+    val c    = FakeSection(zeroRelativeLabel = 3)
+    val left = Vector(b, c)
+
+    val d     = FakeSection(zeroRelativeLabel = 4)
+    val e     = FakeSection(zeroRelativeLabel = 5)
+    val right = Vector(d, e)
+
+    val ace =
+      Match.AllThree(baseSection = a, leftSection = c, rightSection = e)
+    val matchesBySection: Map[Section, Match] = Map(
+      a -> ace,
+      c -> ace,
+      e -> ace
+    )
+
+    // NOTE: we expect a clean merge of `d` after the initial conflict.
+    val expectedMerge =
+      MergedWithConflicts(
+        leftSections = Vector(b, c),
+        rightSections = Vector(d, c)
+      )
+
+    val Right(result) =
+      Merge.of(base, left, right)(
+        matchesBySection.get
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end conflictedMergeExampleFour
+
   /* Test ideas:
    * 1. Start with a merged sequence of sections and confabulate base, left and
    * right sequences by diverting each section into just the left (a left
