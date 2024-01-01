@@ -37,25 +37,22 @@ object CodeMotionAnalysisExtension:
           .matchFor(section)
           .map(_.dominantElement)
 
-      /** This is most definitely *not* [[Section.equals()]] - we want to
-        * compare the underlying content of the dominant sections, as the
-        * sections are expected to come from *different* sides.
-        * [[Section.equals()]] is expected to consider sections from different
-        * sides as unequal.
+      /** This is most definitely *not* [[Section.equals]] - we want to compare
+        * the underlying content of the dominant sections, as the sections are
+        * expected to come from *different* sides. [[Section.equals]] is
+        * expected to consider sections from different sides as unequal.
         */
-      def sectionEquality(
+      def sectionEqualityViaDominants(
           lhs: Section[Element],
           rhs: Section[Element]
       ): Boolean =
         dominantOf(lhs) -> dominantOf(rhs) match
           case (Some(lhsDominantSection), Some(rhsDominantSection)) =>
-            given Eq[Element] = equality
-            // NOTE: need the pesky type ascriptions because `Eq` is invariant
-            // on its type parameter.
-            Eq.eqv(
-              lhsDominantSection.content: Seq[Element],
-              rhsDominantSection.content: Seq[Element]
-            )
+            // However, it's OK to use the intrinsic equality here once we're
+            // working with the dominant sections - we want to confirm that the
+            // two sections belong to the same match, so they must have dominant
+            // sections that are equal to each other in the intrinsic sense.
+            lhsDominantSection == rhsDominantSection
           case _ => false
 
       val mergedSectionsResult =
@@ -63,7 +60,7 @@ object CodeMotionAnalysisExtension:
           base = baseSections,
           left = leftSections,
           right = rightSections
-        )(equality = sectionEquality)
+        )(equality = sectionEqualityViaDominants)
 
       def elementsOf(section: Section[Element]): IndexedSeq[Element] =
         dominantOf(section).getOrElse(section).content
