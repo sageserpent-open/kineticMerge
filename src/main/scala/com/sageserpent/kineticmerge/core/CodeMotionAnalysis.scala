@@ -1,8 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.Order
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.Match
-
 
 object CodeMotionAnalysis:
 
@@ -64,7 +62,7 @@ object CodeMotionAnalysis:
       new CodeMotionAnalysis[Path]:
         override def matchFor(
             section: Section
-        ): Option[Match] = None
+        ): Option[Match[Section]] = None
 
         override def base: Map[Path, File] = baseSections
 
@@ -73,39 +71,9 @@ object CodeMotionAnalysis:
         override def right: Map[Path, File] = rightSections
     )
   end of
-  
+
   // TODO - what happened?
   case object AmbiguousMatch
-
-  enum Match:
-    /** @return
-     * The dominant section in the match, provided the section is part of some
-     * match. If the difference(s) is/are due to whitespace changes then it
-     * will be from the left (our) contribution, as per Git merge. In addition,
-     * the overall match is also provided.
-     * @note
-     * The notion of dominance does *not* concern itself with the merge
-     * precedence of edits or deletions - that is handled downstream.
-     * @note
-     * Coincident insertions are also matched across the left and right
-     * sources, so these will yield the same dominant section.
-     */
-    def dominantSection: Section = this match
-      case BaseAndLeft(_, leftSection) => leftSection
-      case BaseAndRight(_, rightSection) => rightSection
-      case LeftAndRight(leftSection, _) => leftSection
-      case AllThree(_, leftSection, _) => leftSection
-
-    case BaseAndLeft(baseSection: Section, leftSection: Section)
-    case BaseAndRight(baseSection: Section, rightSection: Section)
-    case LeftAndRight(leftSection: Section, rightSection: Section)
-    case AllThree(
-                   baseSection: Section,
-                   leftSection: Section,
-                   rightSection: Section
-                 )
-  end Match
-
 end CodeMotionAnalysis
 
 trait CodeMotionAnalysis[Path]:
@@ -113,7 +81,5 @@ trait CodeMotionAnalysis[Path]:
   def left: Map[Path, File]
   def right: Map[Path, File]
 
-  def matchFor(section: Section): Option[Match]
+  def matchFor(section: Section): Option[Match[Section]]
 end CodeMotionAnalysis
-
-
