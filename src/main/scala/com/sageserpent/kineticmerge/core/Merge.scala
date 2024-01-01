@@ -20,6 +20,79 @@ object Merge:
         case (Some(lhsMatch), Some(rhsMatch)) =>
           lhsMatch.dominantSection == rhsMatch.dominantSection
 
+    def addCommon(partialResult: Result, commonSection: Section): Result =
+      partialResult match
+        case FullyMerged(sections) =>
+          FullyMerged(sections :+ commonSection)
+        case MergedWithConflicts(leftSections, rightSections) =>
+          MergedWithConflicts(
+            leftSections :+ commonSection,
+            rightSections :+ commonSection
+          )
+
+    def addLeft(partialResult: Result, leftSection: Section): Result =
+      partialResult match
+        case FullyMerged(sections) =>
+          FullyMerged(sections :+ leftSection)
+        case MergedWithConflicts(leftSections, rightSections) =>
+          MergedWithConflicts(
+            leftSections :+ leftSection,
+            rightSections
+          )
+
+    def addRight(partialResult: Result, rightSection: Section): Result =
+      partialResult match
+        case FullyMerged(sections) =>
+          FullyMerged(sections :+ rightSection)
+        case MergedWithConflicts(leftSections, rightSections) =>
+          MergedWithConflicts(
+            leftSections,
+            rightSections :+ rightSection
+          )
+
+    def addLeftConflictingWithDelete(
+        partialResult: Result,
+        leftSection: Section
+    ): Result =
+      partialResult match
+        case FullyMerged(sections) =>
+          MergedWithConflicts(
+            leftSections = sections :+ leftSection,
+            rightSections = sections
+          )
+        case MergedWithConflicts(leftSections, rightSections) =>
+          MergedWithConflicts(leftSections :+ leftSection, rightSections)
+
+    def addRightConflictingWithDelete(
+        partialResult: Result,
+        rightSection: Section
+    ): Result =
+      partialResult match
+        case FullyMerged(sections) =>
+          MergedWithConflicts(
+            leftSections = sections,
+            rightSections = sections :+ rightSection
+          )
+        case MergedWithConflicts(leftSections, rightSections) =>
+          MergedWithConflicts(leftSections, rightSections :+ rightSection)
+
+    def addConflicting(
+        partialResult: Result,
+        leftSection: Section,
+        rightSection: Section
+    ): Result =
+      partialResult match
+        case FullyMerged(sections) =>
+          MergedWithConflicts(
+            sections :+ leftSection,
+            sections :+ rightSection
+          )
+        case MergedWithConflicts(leftSections, rightSections) =>
+          MergedWithConflicts(
+            leftSections :+ leftSection,
+            rightSections :+ rightSection
+          )
+
     @tailrec
     def mergeBetweenRunsOfCommonElements(
         base: Seq[Contribution[Section]],
@@ -40,14 +113,7 @@ object Merge:
           assume(matchFor(rightSection).contains(matchForBaseSection))
 
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-            partialResult match
-              case FullyMerged(sections) =>
-                FullyMerged(sections :+ matchForBaseSection.dominantSection)
-              case MergedWithConflicts(leftSections, rightSections) =>
-                MergedWithConflicts(
-                  leftSections :+ matchForBaseSection.dominantSection,
-                  rightSections :+ matchForBaseSection.dominantSection
-                )
+            addCommon(partialResult, matchForBaseSection.dominantSection)
           )
 
         case (
@@ -82,14 +148,7 @@ object Merge:
 
             case _ =>
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                partialResult match
-                  case FullyMerged(sections) =>
-                    FullyMerged(sections :+ matchForLeftSection.dominantSection)
-                  case MergedWithConflicts(leftSections, rightSections) =>
-                    MergedWithConflicts(
-                      leftSections :+ matchForLeftSection.dominantSection,
-                      rightSections :+ matchForLeftSection.dominantSection
-                    )
+                addCommon(partialResult, matchForLeftSection.dominantSection)
               )
           end match
 
@@ -110,15 +169,10 @@ object Merge:
 
           assume(matchFor(rightSection).contains(matchForLeftSection))
 
+          val dominantSection = matchForLeftSection.dominantSection
+
           mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
-            partialResult match
-              case FullyMerged(sections) =>
-                FullyMerged(sections :+ matchForLeftSection.dominantSection)
-              case MergedWithConflicts(leftSections, rightSections) =>
-                MergedWithConflicts(
-                  leftSections :+ matchForLeftSection.dominantSection,
-                  rightSections :+ matchForLeftSection.dominantSection
-                )
+            addCommon(partialResult, dominantSection)
           )
 
         case (
@@ -143,26 +197,12 @@ object Merge:
               // If the following element on the left would also be inserted,
               // coalesce into a single edit.
               mergeBetweenRunsOfCommonElements(base, leftTail, right)(
-                partialResult match
-                  case FullyMerged(sections) =>
-                    FullyMerged(sections :+ leftSection)
-                  case MergedWithConflicts(leftSections, rightSections) =>
-                    MergedWithConflicts(
-                      leftSections :+ leftSection,
-                      rightSections
-                    )
+                addLeft(partialResult, leftSection)
               )
 
             case _ =>
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                partialResult match
-                  case FullyMerged(sections) =>
-                    FullyMerged(sections :+ leftSection)
-                  case MergedWithConflicts(leftSections, rightSections) =>
-                    MergedWithConflicts(
-                      leftSections :+ leftSection,
-                      rightSections
-                    )
+                addLeft(partialResult, leftSection)
               )
           end match
 
@@ -184,11 +224,7 @@ object Merge:
           assume(matchFor(rightSection).contains(matchForBaseSection))
 
           mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
-            partialResult match
-              case FullyMerged(_) =>
-                partialResult
-              case MergedWithConflicts(leftSections, rightSections) =>
-                partialResult
+            partialResult
           )
 
         case (
@@ -213,26 +249,12 @@ object Merge:
               // If the following element on the right would also be inserted,
               // coalesce into a single edit.
               mergeBetweenRunsOfCommonElements(base, left, rightTail)(
-                partialResult match
-                  case FullyMerged(sections) =>
-                    FullyMerged(sections :+ rightSection)
-                  case MergedWithConflicts(leftSections, rightSections) =>
-                    MergedWithConflicts(
-                      leftSections,
-                      rightSections :+ rightSection
-                    )
+                addRight(partialResult, rightSection)
               )
 
             case _ =>
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                partialResult match
-                  case FullyMerged(sections) =>
-                    FullyMerged(sections :+ rightSection)
-                  case MergedWithConflicts(leftSections, rightSections) =>
-                    MergedWithConflicts(
-                      leftSections,
-                      rightSections :+ rightSection
-                    )
+                addRight(partialResult, rightSection)
               )
           end match
 
@@ -254,11 +276,7 @@ object Merge:
           assume(matchFor(leftSection).contains(matchForBaseSection))
 
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
-            partialResult match
-              case FullyMerged(_) =>
-                partialResult
-              case MergedWithConflicts(leftSections, rightSections) =>
-                partialResult
+            partialResult
           )
 
         case (
@@ -271,11 +289,7 @@ object Merge:
           assume(matchFor(leftSection).isEmpty)
 
           mergeBetweenRunsOfCommonElements(base, leftTail, right)(
-            partialResult match
-              case FullyMerged(sections) =>
-                FullyMerged(sections :+ leftSection)
-              case MergedWithConflicts(leftSections, rightSections) =>
-                MergedWithConflicts(leftSections :+ leftSection, rightSections)
+            addLeft(partialResult, leftSection)
           )
 
         case (
@@ -284,14 +298,7 @@ object Merge:
               _
             ) => // Left edit / delete conflict.
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
-            partialResult match
-              case FullyMerged(sections) =>
-                MergedWithConflicts(
-                  leftSections = sections :+ leftSection,
-                  rightSections = sections
-                )
-              case MergedWithConflicts(leftSections, rightSections) =>
-                MergedWithConflicts(leftSections :+ leftSection, rightSections)
+            addLeftConflictingWithDelete(partialResult, leftSection)
           )
 
         case (
@@ -304,11 +311,7 @@ object Merge:
           assume(matchFor(rightSection).isEmpty)
 
           mergeBetweenRunsOfCommonElements(base, left, rightTail)(
-            partialResult match
-              case FullyMerged(sections) =>
-                FullyMerged(sections :+ rightSection)
-              case MergedWithConflicts(leftSections, rightSections) =>
-                MergedWithConflicts(leftSections, rightSections :+ rightSection)
+            addRight(partialResult, rightSection)
           )
 
         case (
@@ -317,14 +320,7 @@ object Merge:
               Seq(Contribution.Difference(rightSection), rightTail*)
             ) => // Right edit / delete conflict.
           mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
-            partialResult match
-              case FullyMerged(sections) =>
-                MergedWithConflicts(
-                  leftSections = sections,
-                  rightSections = sections :+ rightSection
-                )
-              case MergedWithConflicts(leftSections, rightSections) =>
-                MergedWithConflicts(leftSections, rightSections :+ rightSection)
+            addRightConflictingWithDelete(partialResult, rightSection)
           )
 
         case (
@@ -344,11 +340,7 @@ object Merge:
           assume(matchFor(leftSection).isEmpty)
 
           mergeBetweenRunsOfCommonElements(base, leftTail, right)(
-            partialResult match
-              case FullyMerged(sections) =>
-                FullyMerged(sections :+ leftSection)
-              case MergedWithConflicts(leftSections, rightSections) =>
-                MergedWithConflicts(leftSections :+ leftSection, rightSections)
+            addLeft(partialResult, leftSection)
           )
 
         case (
@@ -361,11 +353,7 @@ object Merge:
           assume(matchFor(rightSection).isEmpty)
 
           mergeBetweenRunsOfCommonElements(base, left, rightTail)(
-            partialResult match
-              case FullyMerged(sections) =>
-                FullyMerged(sections :+ rightSection)
-              case MergedWithConflicts(leftSections, rightSections) =>
-                MergedWithConflicts(leftSections, rightSections :+ rightSection)
+            addRight(partialResult, rightSection)
           )
 
         case (
@@ -384,11 +372,7 @@ object Merge:
           assume(matchFor(leftSection).isEmpty)
 
           mergeBetweenRunsOfCommonElements(base, leftTail, right)(
-            partialResult match
-              case FullyMerged(sections) =>
-                FullyMerged(sections :+ leftSection)
-              case MergedWithConflicts(leftSections, rightSections) =>
-                MergedWithConflicts(leftSections :+ leftSection, rightSections)
+            addLeft(partialResult, leftSection)
           )
 
         case (
@@ -407,11 +391,7 @@ object Merge:
           assume(matchFor(rightSection).isEmpty)
 
           mergeBetweenRunsOfCommonElements(base, left, rightTail)(
-            partialResult match
-              case FullyMerged(sections) =>
-                FullyMerged(sections :+ rightSection)
-              case MergedWithConflicts(leftSections, rightSections) =>
-                MergedWithConflicts(leftSections, rightSections :+ rightSection)
+            addRight(partialResult, rightSection)
           )
 
         case (
@@ -419,17 +399,7 @@ object Merge:
               Seq(Contribution.Difference(leftSection), leftTail*),
               Seq(Contribution.Difference(rightSection), rightTail*)
             ) => // Insertion conflict.
-          partialResult match
-            case FullyMerged(sections) =>
-              MergedWithConflicts(
-                sections :+ leftSection,
-                sections :+ rightSection
-              )
-            case MergedWithConflicts(leftSections, rightSections) =>
-              MergedWithConflicts(
-                leftSections :+ leftSection,
-                rightSections :+ rightSection
-              )
+          addConflicting(partialResult, leftSection, rightSection)
 
         case (Seq(), Seq(), Seq()) => // Terminating case!
           partialResult
