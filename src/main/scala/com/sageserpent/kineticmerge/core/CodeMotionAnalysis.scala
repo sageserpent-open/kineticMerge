@@ -16,7 +16,7 @@ import scala.collection.decorators.mapDecorator
 import scala.collection.immutable.TreeSet
 import scala.collection.{SortedMultiDict, mutable}
 import scala.concurrent.duration.FiniteDuration
-import scala.util.Random
+import scala.util.{Random, Try}
 
 trait CodeMotionAnalysis[Path, Element]:
   def base: Map[Path, File[Element]]
@@ -71,7 +71,7 @@ object CodeMotionAnalysis:
       elementOrder: Order[Element],
       elementFunnel: Funnel[Element],
       hashFunction: HashFunction
-  ): Either[AmbiguousMatch.type, CodeMotionAnalysis[Path, Element]] =
+  ): Either[Throwable, CodeMotionAnalysis[Path, Element]] =
     require(0 <= minimumSizeFractionForMotionDetection)
     require(1 >= minimumSizeFractionForMotionDetection)
 
@@ -1501,14 +1501,14 @@ object CodeMotionAnalysis:
     val leftSections  = evolvedPhenotype.leftSections
     val rightSections = evolvedPhenotype.rightSections
 
-    val baseFilesByPath =
-      base.filesByPathUtilising(baseSections)
-    val leftFilesByPath =
-      left.filesByPathUtilising(leftSections)
-    val rightFilesByPath =
-      right.filesByPathUtilising(rightSections)
+    Try {
+      val baseFilesByPath =
+        base.filesByPathUtilising(baseSections)
+      val leftFilesByPath =
+        left.filesByPathUtilising(leftSections)
+      val rightFilesByPath =
+        right.filesByPathUtilising(rightSections)
 
-    Right(
       new CodeMotionAnalysis[Path, Element]:
         override def matchFor(
             section: Section[Element]
@@ -1520,9 +1520,11 @@ object CodeMotionAnalysis:
         override def left: Map[Path, File[Element]] = leftFilesByPath
 
         override def right: Map[Path, File[Element]] = rightFilesByPath
-    )
+      end new
+
+    }.toEither
   end of
 
   // TODO - what happened?
-  case object AmbiguousMatch
+  case object AmbiguousMatch extends RuntimeException
 end CodeMotionAnalysis
