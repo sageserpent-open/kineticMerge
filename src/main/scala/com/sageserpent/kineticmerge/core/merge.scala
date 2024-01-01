@@ -2,7 +2,6 @@ package com.sageserpent.kineticmerge.core
 
 import cats.Eq
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Contribution
-import com.sageserpent.kineticmerge.core.merge.Result.*
 
 import scala.annotation.tailrec
 
@@ -14,62 +13,6 @@ object merge:
   )(
       equality: Eq[Element]
   ): Either[Divergence.type, Result[Element]] =
-    def addCommon(
-        partialResult: Result[Element],
-        commonElement: Element
-    ): Result[Element] =
-      partialResult match
-        case FullyMerged(sections) =>
-          FullyMerged(sections :+ commonElement)
-        case MergedWithConflicts(leftElements, rightElements) =>
-          MergedWithConflicts(
-            leftElements :+ commonElement,
-            rightElements :+ commonElement
-          )
-
-    def addLeftEditConflictingWithRightDeletion(
-        partialResult: Result[Element],
-        leftElement: Element
-    ): Result[Element] =
-      partialResult match
-        case FullyMerged(sections) =>
-          MergedWithConflicts(
-            leftElements = sections :+ leftElement,
-            rightElements = sections
-          )
-        case MergedWithConflicts(leftElements, rightElements) =>
-          MergedWithConflicts(leftElements :+ leftElement, rightElements)
-
-    def addRightEditConflictingWithLeftDeletion(
-        partialResult: Result[Element],
-        rightElement: Element
-    ): Result[Element] =
-      partialResult match
-        case FullyMerged(sections) =>
-          MergedWithConflicts(
-            leftElements = sections,
-            rightElements = sections :+ rightElement
-          )
-        case MergedWithConflicts(leftElements, rightElements) =>
-          MergedWithConflicts(leftElements, rightElements :+ rightElement)
-
-    def addConflictingEdits(
-        partialResult: Result[Element],
-        leftElement: Element,
-        rightElement: Element
-    ): Result[Element] =
-      partialResult match
-        case FullyMerged(sections) =>
-          MergedWithConflicts(
-            sections :+ leftElement,
-            sections :+ rightElement
-          )
-        case MergedWithConflicts(leftElements, rightElements) =>
-          MergedWithConflicts(
-            leftElements :+ leftElement,
-            rightElements :+ rightElement
-          )
-
     @tailrec
     def mergeBetweenRunsOfCommonElements(
         base: Seq[Contribution[Element]],
@@ -83,7 +26,7 @@ object merge:
               Seq(Contribution.Common(rightElement), rightTail*)
             ) => // Preservation.
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-            addCommon(partialResult, leftElement)
+            partialResult.addCommon(leftElement)
           )
 
         case (
@@ -108,7 +51,7 @@ object merge:
 
             case _ =>
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                addCommon(partialResult, leftElement)
+                partialResult.addCommon(leftElement)
               )
           end match
 
@@ -124,7 +67,7 @@ object merge:
               )
             ) => // Coincident insertion.
           mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
-            addCommon(partialResult, leftElement)
+            partialResult.addCommon(leftElement)
           )
 
         case (
@@ -143,12 +86,12 @@ object merge:
               // If the following element on the left would also be inserted,
               // coalesce into a single edit.
               mergeBetweenRunsOfCommonElements(base, leftTail, right)(
-                addCommon(partialResult, leftSection)
+                partialResult.addCommon(leftSection)
               )
 
             case _ =>
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                addCommon(partialResult, leftSection)
+                partialResult.addCommon(leftSection)
               )
           end match
 
@@ -183,12 +126,12 @@ object merge:
               // If the following element on the right would also be inserted,
               // coalesce into a single edit.
               mergeBetweenRunsOfCommonElements(base, left, rightTail)(
-                addCommon(partialResult, rightSection)
+                partialResult.addCommon(rightSection)
               )
 
             case _ =>
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                addCommon(partialResult, rightSection)
+                partialResult.addCommon(rightSection)
               )
           end match
 
@@ -225,8 +168,7 @@ object merge:
                   _*
                 ) => // Left edit / right deletion conflict with pending right edit.
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
-                addLeftEditConflictingWithRightDeletion(
-                  partialResult,
+                partialResult.addLeftEditConflictingWithRightDeletion(
                   leftElement
                 )
               )
@@ -236,8 +178,7 @@ object merge:
                   _*
                 ) => // Right edit / left deletion conflict with pending left edit.
               mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
-                addRightEditConflictingWithLeftDeletion(
-                  partialResult,
+                partialResult.addRightEditConflictingWithLeftDeletion(
                   rightElement
                 )
               )
@@ -245,7 +186,7 @@ object merge:
             case _ =>
               // Edit conflict.
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                addConflictingEdits(partialResult, leftElement, rightElement)
+                partialResult.addConflictingEdits(leftElement, rightElement)
               )
           end match
 
@@ -255,7 +196,7 @@ object merge:
               Seq(Contribution.CommonToLeftAndRightOnly(_), _*)
             ) => // Left insertion with pending coincident edit.
           mergeBetweenRunsOfCommonElements(base, leftTail, right)(
-            addCommon(partialResult, leftSection)
+            partialResult.addCommon(leftSection)
           )
 
         case (
@@ -264,7 +205,7 @@ object merge:
               _
             ) => // Left edit / right deletion conflict.
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
-            addLeftEditConflictingWithRightDeletion(partialResult, leftSection)
+            partialResult.addLeftEditConflictingWithRightDeletion(leftSection)
           )
 
         case (
@@ -273,7 +214,7 @@ object merge:
               Seq(Contribution.Difference(rightSection), rightTail*)
             ) => // Right insertion with pending left coincident edit.
           mergeBetweenRunsOfCommonElements(base, left, rightTail)(
-            addCommon(partialResult, rightSection)
+            partialResult.addCommon(rightSection)
           )
 
         case (
@@ -282,7 +223,7 @@ object merge:
               Seq(Contribution.Difference(rightSection), rightTail*)
             ) => // Right edit / left deletion conflict.
           mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
-            addRightEditConflictingWithLeftDeletion(partialResult, rightSection)
+            partialResult.addRightEditConflictingWithLeftDeletion(rightSection)
           )
 
         case (
@@ -298,7 +239,7 @@ object merge:
               Seq(Contribution.Difference(_), _*)
             ) => // Left insertion with pending right edit.
           mergeBetweenRunsOfCommonElements(base, leftTail, right)(
-            addCommon(partialResult, leftElement)
+            partialResult.addCommon(leftElement)
           )
 
         case (
@@ -307,7 +248,7 @@ object merge:
               Seq(Contribution.Difference(rightElement), rightTail*)
             ) => // Right insertion with pending left edit.
           mergeBetweenRunsOfCommonElements(base, left, rightTail)(
-            addCommon(partialResult, rightElement)
+            partialResult.addCommon(rightElement)
           )
 
         case (
@@ -316,7 +257,7 @@ object merge:
               Seq(Contribution.Difference(rightElement), rightTail*)
             ) => // Insertion conflict.
           mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
-            addConflictingEdits(partialResult, leftElement, rightElement)
+            partialResult.addConflictingEdits(leftElement, rightElement)
           )
 
         case (
@@ -331,7 +272,7 @@ object merge:
               _
             ) => // Left insertion.
           mergeBetweenRunsOfCommonElements(base, leftTail, right)(
-            addCommon(partialResult, leftElement)
+            partialResult.addCommon(leftElement)
           )
 
         case (
@@ -346,7 +287,7 @@ object merge:
               Seq(Contribution.Difference(rightElement), rightTail*)
             ) => // Right insertion.
           mergeBetweenRunsOfCommonElements(base, left, rightTail)(
-            addCommon(partialResult, rightElement)
+            partialResult.addCommon(rightElement)
           )
 
         case (Seq(), Seq(), Seq()) => // Terminating case!
@@ -370,13 +311,67 @@ object merge:
     )
   end of
 
-  enum Result[Element]:
-    case FullyMerged(elements: IndexedSeq[Element])
-    case MergedWithConflicts(
-        leftElements: IndexedSeq[Element],
-        rightElements: IndexedSeq[Element]
-    )
+  sealed trait Result[Element]:
+    def addCommon(
+        commonElement: Element
+    ): Result[Element] =
+      this match
+        case FullyMerged(elements) =>
+          FullyMerged(elements :+ commonElement)
+        case MergedWithConflicts(leftElements, rightElements) =>
+          MergedWithConflicts(
+            leftElements :+ commonElement,
+            rightElements :+ commonElement
+          )
+
+    def addLeftEditConflictingWithRightDeletion(
+        leftElement: Element
+    ): Result[Element] =
+      this match
+        case FullyMerged(elements) =>
+          MergedWithConflicts(
+            leftElements = elements :+ leftElement,
+            rightElements = elements
+          )
+        case MergedWithConflicts(leftElements, rightElements) =>
+          MergedWithConflicts(leftElements :+ leftElement, rightElements)
+
+    def addRightEditConflictingWithLeftDeletion(
+        rightElement: Element
+    ): Result[Element] =
+      this match
+        case FullyMerged(elements) =>
+          MergedWithConflicts(
+            leftElements = elements,
+            rightElements = elements :+ rightElement
+          )
+        case MergedWithConflicts(leftElements, rightElements) =>
+          MergedWithConflicts(leftElements, rightElements :+ rightElement)
+
+    def addConflictingEdits(
+        leftElement: Element,
+        rightElement: Element
+    ): Result[Element] =
+      this match
+        case FullyMerged(elements) =>
+          MergedWithConflicts(
+            elements :+ leftElement,
+            elements :+ rightElement
+          )
+        case MergedWithConflicts(leftElements, rightElements) =>
+          MergedWithConflicts(
+            leftElements :+ leftElement,
+            rightElements :+ rightElement
+          )
   end Result
+
+  case class FullyMerged[Element](elements: IndexedSeq[Element])
+      extends Result[Element]
+
+  case class MergedWithConflicts[Element](
+      leftElements: IndexedSeq[Element],
+      rightElements: IndexedSeq[Element]
+  ) extends Result[Element]
 
   // TODO: "Something went wrong!" - "What was it?"
   case object Divergence

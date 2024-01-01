@@ -3,27 +3,12 @@ package com.sageserpent.kineticmerge.core
 import cats.Eq
 import com.google.common.hash.{Funnel, HashFunction}
 import com.sageserpent.kineticmerge.core.PartitionedThreeWayTransform.Input
-import org.rabinfingerprint.fingerprint.{
-  RabinFingerprintLong,
-  RabinFingerprintLongWindowed
-}
-import org.rabinfingerprint.polynomial.Polynomial
-import org.rabinfingerprint.polynomial.Polynomial.{
-  Reducibility,
-  createFromBytes
-}
 
 import java.lang.Byte as JavaByte
 import scala.annotation.tailrec
 import scala.collection.{SortedMap, mutable}
-import scala.util.Random
 
-/** @param polynomial
-  *   This must be an irreducible polynomial, preferably chosen at random.
-  */
-class PartitionedThreeWayTransform(polynomial: Polynomial):
-  require(!polynomial.isReducible)
-
+class PartitionedThreeWayTransform:
   /** Partition the sequences {@code base}, {@code left} and {@code right} by a
     * common partition; each of the sequences is split into two (possibly empty)
     * parts before and after the partition.
@@ -47,10 +32,10 @@ class PartitionedThreeWayTransform(polynomial: Polynomial):
     * @param left
     * @param right
     * @param targetCommonPartitionSize
-    * @param equality
+    * @param elementEquality
     * @param hashFunction
     *   Guava hash function producing a byte array of fixed size.
-    * @param funnel
+    * @param elementFunnel
     *   Guava funnel used to adapt Guava hashing to {@code Element}.
     * @param threeWayTransform
     * @param reduction
@@ -64,16 +49,16 @@ class PartitionedThreeWayTransform(polynomial: Polynomial):
       right: IndexedSeq[Element]
   )(
       targetCommonPartitionSize: Int,
-      equality: Eq[Element],
-      hashFunction: HashFunction,
-      funnel: Funnel[Element]
+      elementEquality: Eq[Element],
+      elementFunnel: Funnel[Element],
+      hashFunction: HashFunction
   )(
       threeWayTransform: Input[Element] => Result,
       reduction: (Result, Result) => Result
   ): Result =
     require(0 <= targetCommonPartitionSize)
 
-    given witness: Eq[Element] = equality
+    given witness: Eq[Element] = elementEquality
 
     val sequenceEquality: Eq[Seq[Element]] = Eq[Seq[Element]]
 
@@ -98,38 +83,42 @@ class PartitionedThreeWayTransform(polynomial: Polynomial):
     else
       val fixedNumberOfBytesInElementHash = hashFunction.bits / JavaByte.SIZE
 
-      val fingerprinting =
-        new RabinFingerprintLongWindowed(
-          polynomial,
-          fixedNumberOfBytesInElementHash * targetCommonPartitionSize
-        )
+      val maximumPotentialCommonPartitionSize =
+        base.size min left.size min right.size
+
+      val windowSizeInBytes =
+        fixedNumberOfBytesInElementHash * targetCommonPartitionSize
+
+      val rollingHashFactory = new RollingHash.Factory(
+        windowSize = windowSizeInBytes,
+        numberOfFingerprintsToBeTaken =
+          fixedNumberOfBytesInElementHash * maximumPotentialCommonPartitionSize - windowSizeInBytes + 1
+      )
 
       def transformThroughPartitions(
           base: IndexedSeq[Element],
           left: IndexedSeq[Element],
           right: IndexedSeq[Element]
       ): Result =
-        if targetCommonPartitionSize > (base.size min left.size min right.size)
+        if targetCommonPartitionSize > maximumPotentialCommonPartitionSize
         then terminatingResult(base, left, right)
         else
           def fingerprintStartIndices(
               elements: IndexedSeq[Element]
-          ): SortedMap[Long, Int] =
-            // Fingerprinting is imperative, so go with that style local to this
-            // helper function...
-            fingerprinting.reset()
+          ): SortedMap[BigInt, Int] =
+            val rollingHash = rollingHashFactory()
 
-            val accumulatingResults = mutable.TreeMap.empty[Long, Int]
+            val accumulatingResults = mutable.TreeMap.empty[BigInt, Int]
 
             def updateFingerprint(elementIndex: Int): Unit =
               val elementBytes =
                 hashFunction
                   .newHasher()
-                  .putObject(elements(elementIndex), funnel)
+                  .putObject(elements(elementIndex), elementFunnel)
                   .hash()
                   .asBytes()
 
-              elementBytes.foreach(fingerprinting.pushByte)
+              elementBytes.foreach(rollingHash.pushByte)
             end updateFingerprint
 
             // NOTE: fingerprints are incrementally calculated walking *down*
@@ -147,7 +136,7 @@ class PartitionedThreeWayTransform(polynomial: Polynomial):
             fingerprintingIndices.foreach: fingerprintStartIndex =>
               updateFingerprint(fingerprintStartIndex)
               accumulatingResults.addOne(
-                fingerprinting.getFingerprintLong -> fingerprintStartIndex
+                rollingHash.fingerprint -> fingerprintStartIndex
               )
 
             accumulatingResults
@@ -172,15 +161,15 @@ class PartitionedThreeWayTransform(polynomial: Polynomial):
           end PartitionedSides
 
           def matchingFingerprintAcrossSides(
-              baseFingerprintStartIndices: SortedMap[Long, Int],
-              leftFingerprintStartIndices: SortedMap[Long, Int],
-              rightFingerprintStartIndices: SortedMap[Long, Int]
+              baseFingerprintStartIndices: SortedMap[BigInt, Int],
+              leftFingerprintStartIndices: SortedMap[BigInt, Int],
+              rightFingerprintStartIndices: SortedMap[BigInt, Int]
           ): Option[PartitionedSides] =
             @tailrec
             def matchingFingerprintAcrossSides(
-                baseFingerprints: Iterable[Long],
-                leftFingerprints: Iterable[Long],
-                rightFingerprints: Iterable[Long]
+                baseFingerprints: Iterable[BigInt],
+                leftFingerprints: Iterable[BigInt],
+                rightFingerprints: Iterable[BigInt]
             ): Option[PartitionedSides] =
               if baseFingerprints.isEmpty || leftFingerprints.isEmpty || rightFingerprints.isEmpty
               then None
@@ -226,7 +215,13 @@ class PartitionedThreeWayTransform(polynomial: Polynomial):
                   // Have to perform a check of the common partitions, because
                   // we might have fingerprint collisions either within the same
                   // side or across sides...
-                  if basePartitions.common == leftPartitions.common && basePartitions.common == rightPartitions.common
+                  if sequenceEquality.eqv(
+                      basePartitions.common,
+                      leftPartitions.common
+                    ) && sequenceEquality.eqv(
+                      basePartitions.common,
+                      rightPartitions.common
+                    )
                   then
                     Some(
                       PartitionedSides(

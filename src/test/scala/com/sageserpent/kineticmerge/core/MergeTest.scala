@@ -1,23 +1,14 @@
 package com.sageserpent.kineticmerge.core
 
-import cats.syntax.all.*
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
-import com.sageserpent.kineticmerge.core.merge.Result
-import com.sageserpent.kineticmerge.core.merge.Result.*
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Contribution
-import com.sageserpent.kineticmerge.core.merge.Result
-import com.sageserpent.kineticmerge.core.merge.Result.*
 import com.sageserpent.kineticmerge.core.MergeTest.*
+import com.sageserpent.kineticmerge.core.merge.{FullyMerged, MergedWithConflicts, Result}
 import monocle.syntax.all.*
 import org.junit.jupiter.api.{Test, TestFactory}
 import pprint.*
-
-import scala.collection.mutable.Map as MutableMap
-
-import ExpectyFlavouredAssert.assert
 
 class MergeTest:
   private val fullyMergedTestCases: Trials[MergeTestCase] =
@@ -29,6 +20,34 @@ class MergeTest:
     simpleMergeTestCases(allowConflicts = true)(partialResult =
       emptyMergeTestCase(allowConflicts = true)
     )
+
+  @Test
+  def simpleMergeOfAnEdit(): Unit =
+    val a    = 1
+    val base = Vector(a)
+
+    val b    = 2
+    val c    = 3
+    val left = Vector(b, c)
+
+    val d     = 4
+    val right = Vector(d)
+
+    val ab = Match.BaseAndLeft(baseElement = a, leftElement = b)
+
+    val matchesByElement: Map[Element, Match[Element]] = Map(a -> ab, b -> ab)
+
+    // NOTE: we expect a clean merge of the edit of `a` into `d` followed by an
+    // insertion of `c`.
+    val expectedMerge = FullyMerged(elements = Vector(d, c))
+
+    val Right(result) =
+      merge.of(base, left, right)(
+        equivalent(matchesByElement)
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end simpleMergeOfAnEdit
 
   @Test
   def editConflict(): Unit =
@@ -66,34 +85,6 @@ class MergeTest:
 
     assert(result == expectedMerge)
   end editConflict
-
-  @Test
-  def simpleMergeOfAnEdit(): Unit =
-    val a    = 1
-    val base = Vector(a)
-
-    val b    = 1
-    val c    = 3
-    val left = Vector(b, c)
-
-    val d     = 4
-    val right = Vector(d)
-
-    val ab = Match.BaseAndLeft(baseElement = a, leftElement = b)
-
-    val matchesByElement: Map[Element, Match[Element]] = Map(a -> ab, b -> ab)
-
-    // NOTE: we expect a clean merge of the edit of `a` into `d` followed by an
-    // insertion of `c`.
-    val expectedMerge = FullyMerged(elements = Vector(d, c))
-
-    val Right(result) =
-      merge.of(base, left, right)(
-        equivalent(matchesByElement)
-      ): @unchecked
-
-    assert(result == expectedMerge)
-  end simpleMergeOfAnEdit
 
   @Test
   def leftEditVersusRightDeletionConflictDueToFollowingRightEdit(): Unit =
@@ -329,12 +320,12 @@ class MergeTest:
           ): @unchecked
 
         result match
-          case Result.MergedWithConflicts(_, _) =>
+          case MergedWithConflicts(_, _) =>
             println("*************")
             pprintln(testCase)
 
             testCase.validate(result)
-          case Result.FullyMerged(_) => Trials.reject()
+          case FullyMerged(_) => Trials.reject()
         end match
 
   def simpleMergeTestCases(
@@ -344,16 +335,7 @@ class MergeTest:
       precedingRightDeletions: Boolean = false
   )(partialResult: MergeTestCase): Trials[MergeTestCase] =
     val extendedMergeTestCases =
-      def zeroRelativeElements: Trials[Element] =
-        // Using the complexity provides unique element labels.
-        for
-          complexity <- trialsApi.complexities
-          _ <- trialsApi.choose(
-            Iterable.single(0)
-          ) // NASTY HACK - force an increase in complexity so that successive calls do not yield the same label.
-        yield complexity
-        end for
-      end zeroRelativeElements
+      val zeroRelativeElements: Trials[Element] = trialsApi.uniqueIds
 
       val choices = predecessorBias match
         case _ if allowConflicts =>
@@ -418,8 +400,8 @@ class MergeTest:
                 .modify(_ :+ leftElement)
                 .focus(_.expectedMerge.some)
                 .modify:
-                  case Result.FullyMerged(elements) =>
-                    Result.FullyMerged(elements :+ leftElement)
+                  case FullyMerged(elements) =>
+                    FullyMerged(elements :+ leftElement)
                 .focus(_.moves)
                 .modify(_ :+ Move.LeftInsertion)
             )
@@ -439,8 +421,8 @@ class MergeTest:
                 .modify(_ :+ rightElement)
                 .focus(_.expectedMerge.some)
                 .modify:
-                  case Result.FullyMerged(elements) =>
-                    Result.FullyMerged(elements :+ rightElement)
+                  case FullyMerged(elements) =>
+                    FullyMerged(elements :+ rightElement)
                 .focus(_.moves)
                 .modify(_ :+ Move.RightInsertion)
             )
@@ -471,8 +453,8 @@ class MergeTest:
                 )
                 .focus(_.expectedMerge.some)
                 .modify:
-                  case Result.FullyMerged(elements) =>
-                    Result.FullyMerged(elements :+ elementMatch.dominantElement)
+                  case FullyMerged(elements) =>
+                    FullyMerged(elements :+ elementMatch.dominantElement)
                 .focus(_.moves)
                 .modify(_ :+ Move.CoincidentInsertion)
           yield result
@@ -507,8 +489,8 @@ class MergeTest:
                 )
                 .focus(_.expectedMerge.some)
                 .modify:
-                  case Result.FullyMerged(elements) =>
-                    Result.FullyMerged(
+                  case FullyMerged(elements) =>
+                    FullyMerged(
                       elements :+ elementMatch.dominantElement
                     )
                 .focus(_.moves)
@@ -632,7 +614,7 @@ object MergeTest:
       right = IndexedSeq.empty,
       matchesByElement = Map.empty,
       expectedMerge = Option.unless(allowConflicts) {
-        Result.FullyMerged(elements = IndexedSeq.empty)
+        FullyMerged(elements = IndexedSeq.empty)
       },
       moves = IndexedSeq.empty
     )
@@ -772,9 +754,4 @@ object MergeTest:
     case Neutral // Can be followed by anything.
     case CoincidentDeletion // Can only be followed by another coincident deletion or a neutral.
   end MoveBias
-
-  object FakeSection:
-    private val startOffsetCache: MutableMap[Int, Int] = MutableMap.empty
-  end FakeSection
-
 end MergeTest

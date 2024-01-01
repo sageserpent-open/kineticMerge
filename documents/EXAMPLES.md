@@ -8,6 +8,10 @@
 
 ![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/SimpleCodeMotionWithAConflictedMerge.excalidraw.svg)
 
+## An Edited Section can participate in Code Motion even when another Section Moves Over it.
+
+![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/AnEditedSectionCanParticipateInCodeMotionEvenWhenAnotherSectionMovesOverIt.excalidraw.svg)
+
 ## No Code Motion but differing Splice Points
 
 ![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/NoCodeMotionButDifferingSplicePoints.excalidraw.svg)

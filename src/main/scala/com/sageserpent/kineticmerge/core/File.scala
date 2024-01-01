@@ -6,8 +6,8 @@ package com.sageserpent.kineticmerge.core
   * TODO: some kind of editing that allows sections to be subdivided or merged
   * without breaking the invariant.
   */
-case class File(
-    sections: IndexedSeq[Section]
+case class File[Element](
+    sections: IndexedSeq[Section[Element]]
 ):
   // Invariant - sections are contiguous.
   sections.zip(sections.tail).foreach { case (first, second) =>
@@ -16,5 +16,6 @@ case class File(
 
   def size: Int = sections.foldLeft(0)(_ + _.size)
 
-  def contents: String = sections.foldLeft("")(_ ++ _.contents)
+  def content: IndexedSeq[Element] =
+    sections.foldLeft(IndexedSeq.empty)(_ ++ _.content)
 end File
