@@ -2,11 +2,11 @@ package com.sageserpent.kineticmerge.core
 
 import cats.Eq
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Contribution
-import com.sageserpent.kineticmerge.core.Merge.Result.*
+import com.sageserpent.kineticmerge.core.merge.Result.*
 
 import scala.annotation.tailrec
 
-object Merge:
+object merge:
   def of[Element](
       base: IndexedSeq[Element],
       left: IndexedSeq[Element],
@@ -381,4 +381,4 @@ object Merge:
   // TODO: "Something went wrong!" - "What was it?"
   case object Divergence
 
-end Merge
+end merge
