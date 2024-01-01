@@ -179,7 +179,39 @@ object Merge:
           )
 
         case (
-              Seq(Contribution.Difference(baseSection), baseTail*),
+              Seq(Contribution.Difference(_), baseTail*),
+              Seq(Contribution.Difference(leftSection), leftTail*),
+              _
+            ) => // Left edit / delete conflict.
+          mergeBetweenRunsOfCommonElements(baseTail, left, right)(
+            partialResult match
+              case FullyMerged(sections) =>
+                MergedWithConflicts(
+                  leftSections = sections :+ leftSection,
+                  rightSections = sections
+                )
+              case MergedWithConflicts(leftSections, rightSections) =>
+                partialResult
+          )
+
+        case (
+              Seq(Contribution.Difference(_), baseTail*),
+              _,
+              Seq(Contribution.Difference(rightSection), rightTail*)
+            ) => // Right edit / delete conflict.
+          mergeBetweenRunsOfCommonElements(baseTail, left, right)(
+            partialResult match
+              case FullyMerged(sections) =>
+                MergedWithConflicts(
+                  leftSections = sections,
+                  rightSections = sections :+ rightSection
+                )
+              case MergedWithConflicts(leftSections, rightSections) =>
+                partialResult
+          )
+
+        case (
+              Seq(Contribution.Difference(_), baseTail*),
               _,
               _
             ) => // Coincident deletion.
