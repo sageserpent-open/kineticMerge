@@ -871,9 +871,9 @@ object CodeMotionAnalysis:
                 if 1 < windowSize then
                   sectionsSeenAcrossSides.withSectionsFrom(matches)
                 else
-                  // If match is of size 1, then it sections won't overlap any
-                  // others, nor will they subsume any others - so don't
-                  // bother noting them.
+                  // If match is of size 1, then its sections won't overlap any
+                  // others, nor will they subsume any others - so don't bother
+                  // noting them.
                   sectionsSeenAcrossSides
 
               MatchCalculationState(
