@@ -371,7 +371,10 @@ object CodeMotionAnalysis:
                   fallbackImprovedState
                 )
               case Some(estimate)
-                  if estimate == candidateWindowSize || 1 == stateAfterTryingCandidate.matchGroupsInDescendingOrderOfKeys.last._2.size =>
+                  if estimate == candidateWindowSize || 1 == stateAfterTryingCandidate.matchGroupsInDescendingOrderOfKeys.collect {
+                    case ((size, _), matches) if candidateWindowSize == size =>
+                      matches.size
+                  }.sum =>
                 // Found the optimal solution; try searching for the next lowest
                 // optimal size. NOTE: this won't pick up multiple distinct
                 // optimal matches, see below.
