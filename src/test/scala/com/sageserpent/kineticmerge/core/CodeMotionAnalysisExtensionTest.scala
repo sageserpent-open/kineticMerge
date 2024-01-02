@@ -11,10 +11,10 @@ import pprint.*
 
 class CodeMotionAnalysisExtensionTest extends ProseExamples:
   @TestFactory
-  def proseCanBeMerged(): DynamicTests =
+  def merging(): DynamicTests =
     val thresholds = Trials.api.doubles(0.01, 1)
 
-    thresholds.withLimit(10).dynamicTests { threshold =>
+    thresholds.withLimit(30).dynamicTests { threshold =>
       type FakePath = String
 
       val prosePath: FakePath    = "prose"
@@ -72,7 +72,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       merge(prosePath)
       merge(sbtBuildPath)
     }
-  end proseCanBeMerged
+  end merging
 end CodeMotionAnalysisExtensionTest
 
 trait ProseExamples:
