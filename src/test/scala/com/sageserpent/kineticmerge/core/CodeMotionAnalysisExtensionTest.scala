@@ -12,7 +12,7 @@ import pprint.*
 class CodeMotionAnalysisExtensionTest extends ProseExamples:
   @TestFactory
   def merging(): DynamicTests =
-    val thresholds = Trials.api.doubles(0.01, 1)
+    val thresholds = Trials.api.doubles(0.001, 0.01)
 
     thresholds.withLimit(30).dynamicTests { threshold =>
       type FakePath = String
