@@ -1026,7 +1026,10 @@ object Main:
               base = bestAncestorSources,
               left = ourAncestorSources,
               right = theirAncestorSources
-            )(minimumSizeFractionForMotionDetection = 0.1)(
+            )(
+              minimumSizeFractionForMotionDetection = 0.1,
+              propagateExceptions = false
+            )(
               elementEquality = Token.equality,
               elementOrder = Token.comparison,
               elementFunnel = Token.funnel,

@@ -65,7 +65,8 @@ object CodeMotionAnalysis:
       left: Sources[Path, Element],
       right: Sources[Path, Element]
   )(
-      minimumSizeFractionForMotionDetection: Double
+      minimumSizeFractionForMotionDetection: Double,
+      propagateExceptions: Boolean = true
   )(
       elementEquality: Eq[Element],
       elementOrder: Order[Element],
@@ -1506,7 +1507,7 @@ object CodeMotionAnalysis:
     val leftSections  = evolvedPhenotype.leftSections
     val rightSections = evolvedPhenotype.rightSections
 
-    Try {
+    val attempt = Try {
       val baseFilesByPath =
         base.filesByPathUtilising(baseSections)
       val leftFilesByPath =
@@ -1527,7 +1528,10 @@ object CodeMotionAnalysis:
         override def right: Map[Path, File[Element]] = rightFilesByPath
       end new
 
-    }.toEither
+    }
+
+    if propagateExceptions then Right(attempt.get) else attempt.toEither
+    end if
   end of
 
   // TODO - what happened?
