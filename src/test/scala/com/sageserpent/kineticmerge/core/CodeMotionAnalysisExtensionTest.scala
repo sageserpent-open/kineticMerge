@@ -5,7 +5,7 @@ import com.sageserpent.americium.Trials
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtension.*
 import com.sageserpent.kineticmerge.core.Token.tokens
-import com.sageserpent.kineticmerge.core.merge.MergedWithConflicts
+import com.sageserpent.kineticmerge.core.merge.{FullyMerged, MergedWithConflicts}
 import org.junit.jupiter.api.TestFactory
 import pprint.*
 
@@ -57,16 +57,16 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       ): @unchecked
 
       def merge(path: FakePath): Unit =
-        val Right(
-          MergedWithConflicts(leftElements, rightElements)
-        ) =
-          codeMotionAnalysis
-            .mergeAt(path)(equality = Token.equality): @unchecked
-
-        println(s"**** Merge at path: $path ****")
-        pprintln(leftElements.map(_.text).mkString)
-        println("*********************************")
-        pprintln(rightElements.map(_.text).mkString)
+        codeMotionAnalysis
+          .mergeAt(path)(equality = Token.equality) match
+          case Right(MergedWithConflicts(leftElements, rightElements)) =>
+            println(s"**** Conflicted merge at path: $path ****")
+            pprintln(leftElements.map(_.text).mkString)
+            println("*********************************")
+            pprintln(rightElements.map(_.text).mkString)
+          case Right(FullyMerged(elements)) =>
+            println(s"**** Full merge at path: $path ****")
+            pprintln(elements.map(_.text).mkString)
       end merge
 
       merge(prosePath)

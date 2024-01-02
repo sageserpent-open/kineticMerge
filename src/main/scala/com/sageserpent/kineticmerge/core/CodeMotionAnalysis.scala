@@ -119,14 +119,19 @@ object CodeMotionAnalysis:
     type SectionsSeen = RangedSeq[Section[Element], Int]
 
     object SectionsSeenAcrossSides:
-      private def containsSection(
+      private def suppressesSection(
           side: Sources[Path, Element],
           sectionsByPath: Map[Path, SectionsSeen]
       )(section: Section[Element]): Boolean =
         sectionsByPath
           .get(side.pathFor(section))
-          .fold(ifEmpty = false)(
-            _.includes(section.closedOpenInterval)
+          .fold(ifEmpty = false)(potentiallyIncludingOrOverlapping =>
+            val interval = section.closedOpenInterval
+            potentiallyIncludingOrOverlapping.includes(
+              interval
+            ) || potentiallyIncludingOrOverlapping.overlaps(
+              interval
+            )
           )
 
       private def withSection(
@@ -191,12 +196,12 @@ object CodeMotionAnalysis:
     ):
       import SectionsSeenAcrossSides.*
 
-      val containsBaseSection: Section[Element] => Boolean =
-        containsSection(base, baseSectionsByPath)
-      val containsLeftSection: Section[Element] => Boolean =
-        containsSection(left, leftSectionsByPath)
-      val containsRightSection: Section[Element] => Boolean =
-        containsSection(right, rightSectionsByPath)
+      val suppressesBaseSection: Section[Element] => Boolean =
+        suppressesSection(base, baseSectionsByPath)
+      val suppressesLeftSection: Section[Element] => Boolean =
+        suppressesSection(left, leftSectionsByPath)
+      val suppressesRightSection: Section[Element] => Boolean =
+        suppressesSection(right, rightSectionsByPath)
 
       private val withBaseSection: Section[Element] => Map[Path, SectionsSeen] =
         withSection(base, baseSectionsByPath)
@@ -553,15 +558,15 @@ object CodeMotionAnalysis:
                   rightSection <- LazyList.from(rightSections)
 
                   baseSubsumed = sectionsSeenAcrossSides
-                    .containsBaseSection(
+                    .suppressesBaseSection(
                       baseSection
                     )
                   leftSubsumed = sectionsSeenAcrossSides
-                    .containsLeftSection(
+                    .suppressesLeftSection(
                       leftSection
                     )
                   rightSubsumed = sectionsSeenAcrossSides
-                    .containsRightSection(
+                    .suppressesRightSection(
                       rightSection
                     )
                   suppressed =
@@ -625,9 +630,9 @@ object CodeMotionAnalysis:
                   baseSection <- LazyList.from(baseSections)
                   leftSection <- LazyList.from(leftSections)
 
-                  suppressed = sectionsSeenAcrossSides.containsBaseSection(
+                  suppressed = sectionsSeenAcrossSides.suppressesBaseSection(
                     baseSection
-                  ) || sectionsSeenAcrossSides.containsLeftSection(
+                  ) || sectionsSeenAcrossSides.suppressesLeftSection(
                     leftSection
                   )
                   if !suppressed
@@ -675,9 +680,9 @@ object CodeMotionAnalysis:
                   baseSection  <- LazyList.from(baseSections)
                   rightSection <- LazyList.from(rightSections)
 
-                  suppressed = sectionsSeenAcrossSides.containsBaseSection(
+                  suppressed = sectionsSeenAcrossSides.suppressesBaseSection(
                     baseSection
-                  ) || sectionsSeenAcrossSides.containsRightSection(
+                  ) || sectionsSeenAcrossSides.suppressesRightSection(
                     rightSection
                   )
                   if !suppressed
@@ -725,9 +730,9 @@ object CodeMotionAnalysis:
                   leftSection  <- LazyList.from(leftSections)
                   rightSection <- LazyList.from(rightSections)
 
-                  suppressed = sectionsSeenAcrossSides.containsLeftSection(
+                  suppressed = sectionsSeenAcrossSides.suppressesLeftSection(
                     leftSection
-                  ) || sectionsSeenAcrossSides.containsRightSection(
+                  ) || sectionsSeenAcrossSides.suppressesRightSection(
                     rightSection
                   )
                   if !suppressed

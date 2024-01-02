@@ -394,7 +394,7 @@ class CodeMotionAnalysisTest:
     testPlans
       .withStrategy(caseSupplyCycle =>
         if caseSupplyCycle.isInitial then
-          CasesLimitStrategy.timed(Duration.apply(3, TimeUnit.MINUTES))
+          CasesLimitStrategy.timed(Duration.apply(10, TimeUnit.MINUTES))
         else CasesLimitStrategy.counted(10, 3.0)
       )
       .dynamicTests { testPlan =>
@@ -765,7 +765,10 @@ object CodeMotionAnalysisTest:
     end thingsInChunks
   end extension
 
-  private def elementFunnel(element: Element, primitiveSink: PrimitiveSink): Unit =
+  private def elementFunnel(
+      element: Element,
+      primitiveSink: PrimitiveSink
+  ): Unit =
     primitiveSink.putInt(element)
   end elementFunnel
 
