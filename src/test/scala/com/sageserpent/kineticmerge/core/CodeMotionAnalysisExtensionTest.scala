@@ -1,70 +1,77 @@
 package com.sageserpent.kineticmerge.core
 
 import com.google.common.hash.Hashing
+import com.sageserpent.americium.Trials
+import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtension.*
 import com.sageserpent.kineticmerge.core.Token.tokens
 import com.sageserpent.kineticmerge.core.merge.MergedWithConflicts
-import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.TestFactory
 import pprint.*
 
 class CodeMotionAnalysisExtensionTest extends ProseExamples:
-  @Test
-  def proseCanBeMerged(): Unit =
-    type FakePath = String
+  @TestFactory
+  def proseCanBeMerged(): DynamicTests =
+    val thresholds = Trials.api.doubles(0.01, 1)
 
-    val prosePath: FakePath    = "prose"
-    val sbtBuildPath: FakePath = "sbtBuild"
+    thresholds.withLimit(10).dynamicTests { threshold =>
+      type FakePath = String
 
-    val baseSources =
-      MappedContentSources(
-        contentsByPath = Map(
-          prosePath    -> tokens(wordsworth).get,
-          sbtBuildPath -> tokens(baseSbtBuild).get
-        ),
-        label = "base"
-      )
-    val leftSources =
-      MappedContentSources(
-        contentsByPath = Map(
-          prosePath    -> tokens(jobsworth).get,
-          sbtBuildPath -> tokens(leftSbtBuild).get
-        ),
-        label = "left"
-      )
-    val rightSources =
-      MappedContentSources(
-        contentsByPath = Map(
-          prosePath    -> tokens(emsworth).get,
-          sbtBuildPath -> tokens(rightSbtBuild).get
-        ),
-        label = "right"
-      )
+      val prosePath: FakePath    = "prose"
+      val sbtBuildPath: FakePath = "sbtBuild"
 
-    val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-      base = baseSources,
-      left = leftSources,
-      right = rightSources
-    )(minimumSizeFractionForMotionDetection = 0.1)(
-      elementEquality = Token.equality,
-      elementOrder = Token.comparison,
-      elementFunnel = Token.funnel,
-      hashFunction = Hashing.murmur3_32_fixed()
-    ): @unchecked
+      val baseSources =
+        MappedContentSources(
+          contentsByPath = Map(
+            prosePath    -> tokens(wordsworth).get,
+            sbtBuildPath -> tokens(baseSbtBuild).get
+          ),
+          label = "base"
+        )
+      val leftSources =
+        MappedContentSources(
+          contentsByPath = Map(
+            prosePath    -> tokens(jobsworth).get,
+            sbtBuildPath -> tokens(leftSbtBuild).get
+          ),
+          label = "left"
+        )
+      val rightSources =
+        MappedContentSources(
+          contentsByPath = Map(
+            prosePath    -> tokens(emsworth).get,
+            sbtBuildPath -> tokens(rightSbtBuild).get
+          ),
+          label = "right"
+        )
 
-    def merge(path: FakePath): Unit =
-      val Right(
-        MergedWithConflicts(leftElements, rightElements)
-      ) =
-        codeMotionAnalysis.mergeAt(path)(equality = Token.equality): @unchecked
+      val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+        base = baseSources,
+        left = leftSources,
+        right = rightSources
+      )(minimumSizeFractionForMotionDetection = threshold)(
+        elementEquality = Token.equality,
+        elementOrder = Token.comparison,
+        elementFunnel = Token.funnel,
+        hashFunction = Hashing.murmur3_32_fixed()
+      ): @unchecked
 
-      println(s"**** Merge at path: $path ****")
-      pprintln(leftElements.map(_.text).mkString)
-      println("*********************************")
-      pprintln(rightElements.map(_.text).mkString)
-    end merge
+      def merge(path: FakePath): Unit =
+        val Right(
+          MergedWithConflicts(leftElements, rightElements)
+        ) =
+          codeMotionAnalysis
+            .mergeAt(path)(equality = Token.equality): @unchecked
 
-    merge(prosePath)
-    merge(sbtBuildPath)
+        println(s"**** Merge at path: $path ****")
+        pprintln(leftElements.map(_.text).mkString)
+        println("*********************************")
+        pprintln(rightElements.map(_.text).mkString)
+      end merge
+
+      merge(prosePath)
+      merge(sbtBuildPath)
+    }
   end proseCanBeMerged
 end CodeMotionAnalysisExtensionTest
 
