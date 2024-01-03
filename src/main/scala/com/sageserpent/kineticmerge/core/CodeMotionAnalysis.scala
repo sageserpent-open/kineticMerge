@@ -352,10 +352,6 @@ object CodeMotionAnalysis:
             val (stateAfterTryingCandidate, optimalMatchSizeEstimate) =
               this.matchesForWindowSize(candidateWindowSize)
 
-            println(
-              s"looseExclusiveUpperBoundOnMaximumMatchSize: $looseExclusiveUpperBoundOnMaximumMatchSize, windowSize: $candidateWindowSize"
-            )
-
             optimalMatchSizeEstimate match
               case None =>
                 // Failed to improve the match size, try again with the
@@ -884,9 +880,10 @@ object CodeMotionAnalysis:
               // There are no more opportunities to match a full triple or
               // just a pair, so this terminates the recursion.
 
-              println(
-                s"Matches discovered at window size: $windowSize number: ${matches.size}"
-              )
+              if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > windowSize && matches.nonEmpty then
+                println(
+                  s"Matches discovered at window size: $windowSize number: ${matches.size}"
+                )
 
               // Add the triples first if we have any, then any pairs as we
               // are adding match groups in descending order of keys.
