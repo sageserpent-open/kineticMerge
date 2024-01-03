@@ -813,6 +813,39 @@ object Main:
       }
     end indexUpdates
 
+    private def indexStateForCleanMerge(
+        path: Path,
+        mergedFileMode: String @@ Tags.Mode,
+        elements: IndexedSeq[Token]
+    ): Workflow[IndexState] =
+      val mergedContent =
+        elements.map(_.text).mkString.taggedWith[Tags.Content]
+      for
+        mergedBlobId <- storeBlobFor(path, mergedContent)
+        _ <- recordModificationInIndex(
+          path,
+          mergedFileMode,
+          mergedBlobId
+        )
+        - <- IO {
+          os.proc("git", "cat-file", "blob", mergedBlobId)
+            .call(workingDirectory, stdout = path)
+        }
+          .labelExceptionWith(errorMessage =
+            s"Unexpected error: could not update working directory tree with merged file ${underline(path)}."
+          )
+      yield IndexState.OneEntry
+      end for
+    end indexStateForCleanMerge
+
+    private def sourcesFrom(path: Path, textContent: String)(
+        label: String
+    ): Sources[Path, Token] =
+      MappedContentSources(
+        contentsByPath = Map(path -> tokens(textContent).get),
+        label = label
+      )
+
     private def indexStateForTwoWayMerge(
         ourBranchHead: String @@ Tags.CommitOrBranchName,
         theirBranchHead: String @@ Tags.CommitOrBranchName
@@ -831,27 +864,42 @@ object Main:
               s"Conflicting file modes for file ${underline(path)}; on our branch head ${underline(ourMode)} and on their branch head ${underline(theirMode)}."
             )
 
-        ourAncestorTokens <- IO {
-          Token.tokens(ourContent).get
-        }
-          .labelExceptionWith(errorMessage =
-            s"Failed to tokenize file ${underline(path)} on our branch head ${underline(ourBranchHead)}."
-          )
+        ourAncestorSources <- IO {
+          sourcesFrom(path, ourContent)(label = "ours")
+        }.labelExceptionWith(errorMessage =
+          s"Failed to tokenize file ${underline(path)} on our branch head ${underline(ourBranchHead)}."
+        )
 
-        theirAncestorTokens <- IO {
-          Token.tokens(theirContent).get
-        }
-          .labelExceptionWith(errorMessage =
-            s"Failed to tokenize file ${underline(path)} on their branch head ${underline(theirBranchHead)}."
-          )
+        theirAncestorSources <- IO {
+          sourcesFrom(path, theirContent)(label = "theirs")
+        }.labelExceptionWith(errorMessage =
+          s"Failed to tokenize file ${underline(path)} on their branch head ${underline(theirBranchHead)}."
+        )
 
-        mergeResult <- EitherT
+        codeMotionAnalysis <- EitherT
           .fromEither[WorkflowLogWriter](
-            mergeTokens(
-              base = Vector.empty,
-              left = ourAncestorTokens,
-              right = theirAncestorTokens
+            CodeMotionAnalysis.of(
+              base = MappedContentSources(
+                contentsByPath = Map.empty,
+                label = "Phantom ancestor for two-way merge."
+              ),
+              left = ourAncestorSources,
+              right = theirAncestorSources
+            )(
+              minimumSizeFractionForMotionDetection = 0.1,
+              propagateExceptions = false
+            )(
+              elementEquality = Token.equality,
+              elementOrder = Token.comparison,
+              elementFunnel = Token.funnel,
+              hashFunction = Hashing.murmur3_32_fixed()
             )
+          )
+          .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
+
+        mergeResult: merge.Result[Token] <- EitherT
+          .fromEither[WorkflowLogWriter](
+            codeMotionAnalysis.mergeAt(path)(equality = Token.equality)
           )
           .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
 
@@ -940,31 +988,6 @@ object Main:
             )
       yield indexState
 
-    private def indexStateForCleanMerge(
-        path: Path,
-        mergedFileMode: String @@ Tags.Mode,
-        elements: IndexedSeq[Token]
-    ): Workflow[IndexState] =
-      val mergedContent =
-        elements.map(_.text).mkString.taggedWith[Tags.Content]
-      for
-        mergedBlobId <- storeBlobFor(path, mergedContent)
-        _ <- recordModificationInIndex(
-          path,
-          mergedFileMode,
-          mergedBlobId
-        )
-        - <- IO {
-          os.proc("git", "cat-file", "blob", mergedBlobId)
-            .call(workingDirectory, stdout = path)
-        }
-          .labelExceptionWith(errorMessage =
-            s"Unexpected error: could not update working directory tree with merged file ${underline(path)}."
-          )
-      yield IndexState.OneEntry
-      end for
-    end indexStateForCleanMerge
-
     private def indexStateForThreeWayMerge(
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
         ourBranchHead: String @@ Tags.CommitOrBranchName,
@@ -976,14 +999,6 @@ object Main:
         ourMode: String @@ Tags.Mode,
         ourContent: String @@ Tags.Content
     ): Workflow[IndexState] =
-      def sourcesFrom(path: Path, textContent: String)(
-          label: String
-      ): Sources[Path, Token] =
-        MappedContentSources(
-          contentsByPath = Map(path -> tokens(textContent).get),
-          label = label
-        )
-
       for
         (
           bestAncestorCommitIdMode,
