@@ -6,16 +6,13 @@ import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction}
 import com.sageserpent.americium.randomEnrichment.*
-import com.sageserpent.kineticmerge.core.genetic.Evolution
 import de.sciss.fingertree.RangedSeq
 
 import java.lang.Byte as JavaByte
-import java.util.concurrent.TimeUnit
 import scala.annotation.tailrec
 import scala.collection.decorators.mapDecorator
 import scala.collection.immutable.TreeSet
 import scala.collection.{SortedMultiDict, mutable}
-import scala.concurrent.duration.FiniteDuration
 import scala.util.{Random, Try}
 
 trait CodeMotionAnalysis[Path, Element]:
@@ -416,6 +413,33 @@ object CodeMotionAnalysis:
           fallbackImprovedState = this
         )
       end withAllMatchesOfAtLeastTheSureFireWindowSize
+
+      @tailrec
+      final def withAllSmallFryMatches(
+          candidateWindowSize: Int
+      ): MatchCalculationState =
+        require(
+          minimumSureFireWindowSizeAcrossAllFilesOverAllSides > candidateWindowSize
+        )
+
+        if candidateWindowSize > minimumWindowSizeAcrossAllFilesOverAllSides
+        then
+          // We will be exploring the small-fry window sizes below
+          // `minimumSureFireWindowSizeAcrossAllFilesOverAllSides`; in this
+          // situation, sizes below per-file thresholds lead to no matches, this
+          // leads to gaps in validity as a size exceeds the largest match it
+          // could participate in, but fails to meet the next highest per-file
+          // threshold. Consequently, don't bother checking whether any matches
+          // were found - instead, plod linearly down each window size.
+          val (stateAfterTryingCandidate, _) =
+            this.matchesForWindowSize(candidateWindowSize)
+
+          stateAfterTryingCandidate.withAllSmallFryMatches(
+            candidateWindowSize - 1
+          )
+        else this
+        end if
+      end withAllSmallFryMatches
 
       def matchesForWindowSize(
           windowSize: Int
@@ -1435,59 +1459,25 @@ object CodeMotionAnalysis:
       if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > minimumWindowSizeAcrossAllFilesOverAllSides
       then
         println(
-          s"Genetic end-game, $minimumWindowSizeAcrossAllFilesOverAllSides, $minimumSureFireWindowSizeAcrossAllFilesOverAllSides"
+          s"Small fry, $minimumWindowSizeAcrossAllFilesOverAllSides, $minimumSureFireWindowSizeAcrossAllFilesOverAllSides"
         )
 
-        given Evolution[Chromosome, Phenotype] with
-          override def mutate(chromosome: Chromosome)(using
-              random: Random
-          ): Chromosome = chromosome.mutate
-
-          override def breed(first: Chromosome, second: Chromosome)(using
-              random: Random
-          ): Chromosome = first.breedWith(second)
-
-          override def initialChromosome: Chromosome = Chromosome.initial
-
-          override def phenotype(chromosome: Chromosome): Phenotype =
-            phenotypeCache.get(chromosome, phenotype_)
-
-          private def phenotype_(chromosome: Chromosome): Phenotype =
-            val MatchCalculationState(
-              _,
-              matchGroupsInDescendingOrderOfKeys
-            ) =
-              chromosome.windowSizesInDescendingOrder.foldLeft(
-                withAllMatchesOfAtLeastTheSureFireWindowSize
-              ) { (matchCalculationState, windowSize) =>
-                // We will be exploring the low window sizes below
-                // `minimumSureFireWindowSizeAcrossAllFilesOverAllSides`; in
-                // this situation, sizes below per-file thresholds lead to no
-                // matches, this leads to gaps in validity as a size exceeds the
-                // largest match it could participate in, but fails to meet the
-                // next highest per-file threshold. Consequently, don't bother
-                // checking whether any matches were found.
-                val (result, _) =
-                  matchCalculationState.matchesForWindowSize(windowSize)
-
-                result
-              }
-
-            Phenotype(
-              chromosomeSize = chromosome.windowSizesInDescendingOrder.size,
-              matchGroupsInDescendingOrderOfKeys
-            )
-          end phenotype_
-        end given
-
-        Evolution.of(
-          maximumNumberOfRetries = 3,
-          maximumPopulationSize = 30,
-          timeBudget = Some(FiniteDuration(5, TimeUnit.SECONDS))
+        // TODO: this is hokey - should make
+        // `MatchGroupsInDescendingOrderOfKeys` into a case class that wraps the
+        // sequence, can then police its invariant there / move the methods in
+        // `Phenotype` there.
+        Phenotype(
+          chromosomeSize = 0,
+          matchGroupsInDescendingOrderOfKeys =
+            withAllMatchesOfAtLeastTheSureFireWindowSize
+              .withAllSmallFryMatches(
+                minimumSureFireWindowSizeAcrossAllFilesOverAllSides - 1
+              )
+              .matchGroupsInDescendingOrderOfKeys
         )
       else
         println(
-          s"No genetic end-game, $minimumWindowSizeAcrossAllFilesOverAllSides"
+          s"No small fry, $minimumWindowSizeAcrossAllFilesOverAllSides"
         )
 
         // TODO: this is hokey - should make
