@@ -880,11 +880,6 @@ object CodeMotionAnalysis:
               // There are no more opportunities to match a full triple or
               // just a pair, so this terminates the recursion.
 
-              if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > windowSize && matches.nonEmpty then
-                println(
-                  s"Matches discovered at window size: $windowSize number: ${matches.size}"
-                )
-
               // Add the triples first if we have any, then any pairs as we
               // are adding match groups in descending order of keys.
               val (tripleMatches, pairMatches) = matches.partition {
@@ -1455,10 +1450,6 @@ object CodeMotionAnalysis:
 
       if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > minimumWindowSizeAcrossAllFilesOverAllSides
       then
-        println(
-          s"Small fry, $minimumWindowSizeAcrossAllFilesOverAllSides, $minimumSureFireWindowSizeAcrossAllFilesOverAllSides"
-        )
-
         // TODO: this is hokey - should make
         // `MatchGroupsInDescendingOrderOfKeys` into a case class that wraps the
         // sequence, can then police its invariant there / move the methods in
@@ -1473,10 +1464,6 @@ object CodeMotionAnalysis:
               .matchGroupsInDescendingOrderOfKeys
         )
       else
-        println(
-          s"No small fry, $minimumWindowSizeAcrossAllFilesOverAllSides"
-        )
-
         // TODO: this is hokey - should make
         // `MatchGroupsInDescendingOrderOfKeys` into a case class that wraps the
         // sequence, can then police its invariant there / move the methods in
@@ -1488,8 +1475,6 @@ object CodeMotionAnalysis:
         )
       end if
     end evolvedPhenotype
-
-    println(s"Finally: -----> $evolvedPhenotype")
 
     val sectionsAndTheirMatches = evolvedPhenotype.sectionsAndTheirMatches
 
