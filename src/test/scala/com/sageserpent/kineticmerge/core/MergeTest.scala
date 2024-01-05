@@ -106,7 +106,7 @@ class MergeTest:
   end coincidentDeletionFollowedByAnEdit
 
   @Test
-  def deletionOnOneSideFollowedByAnInsertionOnTheOppositeSideThenAnEditOnTheOriginalSide()
+  def editOnOneSideFollowedByAnInsertionOnTheOppositeSideThenADeletionOnTheOriginalSide()
       : Unit =
     val a    = 1
     val b    = 2
@@ -126,9 +126,11 @@ class MergeTest:
     val matchesByElement: Map[Element, Match[Element]] =
       Map(a -> ac, c -> ac, b -> be, e -> be)
 
-    // NOTE: we expect a clean merge of the deletion of `a` followed by an
-    // insertion of `d` and finally an edit of `b` into `f`.
-    val expectedMerge = FullyMerged(elements = Vector(d, f))
+    // NOTE: we expect a clean merge of the edit of `a` into `f` followed by an
+    // insertion of `d` and finally deletion of `b`. Merging is supposed to look
+    // eagerly for edits, so it is `f` is considered to be an edit of `a` rather
+    // than of `e`.
+    val expectedMerge = FullyMerged(elements = Vector(f, d))
 
     val Right(result) =
       merge.of(base, left, right)(
@@ -136,7 +138,7 @@ class MergeTest:
       ): @unchecked
 
     assert(result == expectedMerge)
-  end deletionOnOneSideFollowedByAnInsertionOnTheOppositeSideThenAnEditOnTheOriginalSide
+  end editOnOneSideFollowedByAnInsertionOnTheOppositeSideThenADeletionOnTheOriginalSide
 
   @Test
   def editConflict(): Unit =
