@@ -1,11 +1,11 @@
 package com.sageserpent.kineticmerge.core
 
-import cats.syntax.all.*
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.MergeTest.*
+import com.sageserpent.kineticmerge.core.MergeTest.Move.*
 import com.sageserpent.kineticmerge.core.merge.{FullyMerged, MergedWithConflicts, Result}
 import monocle.syntax.all.*
 import org.junit.jupiter.api.{Test, TestFactory}
@@ -13,13 +13,14 @@ import pprint.*
 
 class MergeTest:
   private val fullyMergedTestCases: Trials[MergeTestCase] =
-    simpleMergeTestCases(allowConflicts = false)(partialResult =
-      emptyMergeTestCase(allowConflicts = false)
-    )
+    simpleMergeTestCases(
+      allowConflicts = false,
+      predecessorMove = Preservation
+    )(partialResult = emptyMergeTestCase(allowConflicts = false))
 
   private val possiblyConflictedMergeTestCases: Trials[MergeTestCase] =
-    simpleMergeTestCases(allowConflicts = true)(partialResult =
-      emptyMergeTestCase(allowConflicts = true)
+    simpleMergeTestCases(allowConflicts = true, predecessorMove = Preservation)(
+      partialResult = emptyMergeTestCase(allowConflicts = true)
     )
 
   @Test
@@ -253,48 +254,6 @@ class MergeTest:
     assert(result == expectedMerge)
   end editConflictFollowedByCoincidentInsertion
 
-  /* Test ideas:
-   * 1. Start with a merged sequence of elements and confabulate base, left and
-   * right sequences by diverting each element into just the left (a left
-   * insertion), just the right (a right insertion) or both the left and right
-   * (coincident insertion) or all three (preservation). In a similar vein,
-   * additional elements can be added into the base and left (right deletion),
-   * the base and right (left deletion) or just the base (coincident deletion).
-   * Insertions and deletions can be mixed as long as they don't make
-   * overlapping claims in the base / left / right and also do not mix a left or
-   * right insertion with a coincident deletion. That tests a simple, clean
-   * merge without moves.
-   *
-   * 2. Same as #1, only add in combinations of a left or right insertion with a
-   * coincident deletion to create edit / delete conflicts and combinations of
-   * left and right insertions with different elements to create edit conflicts.
-   *
-   * 3. Same as #1, only associate left or right deletions with an insertion
-   * elsewhere of the same element to create a move.
-   *
-   * 4. Same as #1, only combine coincident deletions with left or right
-   * insertions and associate them with an insertion elsewhere of the inserted
-   * element to create an edited move.
-   *
-   * 5. Same as #1, only associate coincident deletions with an insertion
-   * elsewhere of the same element in the same place in the left and right to
-   * create a coincident move. A coincident deletion may be combined with a left
-   * / right or coincident insertion that is *not* treated as an edit of either
-   * move.
-   *
-   * 6. Same as #5, only move to different locations to make divergence. A
-   * coincident deletion may be combined with a left / right or coincident
-   * insertion that is *not* treated as an edit of either move.
-   *
-   * NOTE: have to create a synthetic match for a element that is present in
-   * more than one input, with a dominant element that should appear in the
-   * merged result.
-   *
-   * An easier way to generate the test cases might be to make triples of
-   * optional elements, filtering out (None, None, None). Each element appearing
-   * in a triple can be put into a match if desired, and that match be made to
-   * yield a mocked dominant element that goes into the expected output. */
-
   @TestFactory
   def fullMerge: DynamicTests =
     fullyMergedTestCases
@@ -331,70 +290,97 @@ class MergeTest:
 
   def simpleMergeTestCases(
       allowConflicts: Boolean,
-      predecessorBias: MoveBias = MoveBias.Neutral,
-      precedingLeftDeletions: Boolean = false,
-      precedingRightDeletions: Boolean = false
+      predecessorMove: Move
   )(partialResult: MergeTestCase): Trials[MergeTestCase] =
     val extendedMergeTestCases =
       val zeroRelativeElements: Trials[Element] = trialsApi.uniqueIds
 
-      val choices = predecessorBias match
-        case _ if allowConflicts =>
+      val choices = predecessorMove match
+        case LeftInsertion =>
           trialsApi
             .chooseWithWeights(
-              leftInsertionFrequency(allow = true),
-              rightInsertionFrequency(allow = true),
+              leftInsertionFrequency,
+              rightInsertionFrequency(allow = allowConflicts),
               coincidentInsertionFrequency,
               preservationFrequency,
+              leftEditFrequency,
+              rightEditFrequency,
+              leftDeletionFrequency,
+              rightDeletionFrequency
+            )
+        case RightInsertion =>
+          trialsApi
+            .chooseWithWeights(
+              leftInsertionFrequency(allow = allowConflicts),
+              rightInsertionFrequency,
+              coincidentInsertionFrequency,
+              preservationFrequency,
+              leftEditFrequency,
+              rightEditFrequency,
+              leftDeletionFrequency,
+              rightDeletionFrequency
+            )
+
+        case CoincidentInsertion | Preservation | LeftEdit | RightEdit =>
+          trialsApi
+            .chooseWithWeights(
+              leftInsertionFrequency,
+              rightInsertionFrequency,
+              coincidentInsertionFrequency,
+              preservationFrequency,
+              leftEditFrequency,
+              rightEditFrequency,
               leftDeletionFrequency,
               rightDeletionFrequency,
               coincidentDeletionFrequency
             )
 
-        case MoveBias.Left =>
+        case LeftDeletion =>
           trialsApi
             .chooseWithWeights(
-              leftInsertionFrequency(allow = !precedingRightDeletions),
+              leftInsertionFrequency,
               coincidentInsertionFrequency,
               preservationFrequency,
-              leftDeletionFrequency,
-              rightDeletionFrequency
-            )
-        case MoveBias.Right =>
-          trialsApi
-            .chooseWithWeights(
-              rightInsertionFrequency(allow = !precedingLeftDeletions),
-              coincidentInsertionFrequency,
-              preservationFrequency,
-              leftDeletionFrequency,
-              rightDeletionFrequency
-            )
-        case MoveBias.Neutral =>
-          trialsApi
-            .chooseWithWeights(
-              leftInsertionFrequency(allow = !precedingRightDeletions),
-              rightInsertionFrequency(allow = !precedingLeftDeletions),
-              coincidentInsertionFrequency,
-              preservationFrequency,
+              leftEditFrequency,
+              rightEditFrequency,
               leftDeletionFrequency,
               rightDeletionFrequency,
               coincidentDeletionFrequency
             )
-        case MoveBias.CoincidentDeletion =>
+
+        case RightDeletion =>
           trialsApi
             .chooseWithWeights(
+              leftInsertionFrequency,
               coincidentInsertionFrequency,
               preservationFrequency,
+              leftEditFrequency,
+              rightEditFrequency,
+              leftDeletionFrequency,
+              rightDeletionFrequency,
+              coincidentDeletionFrequency
+            )
+
+        case CoincidentDeletion =>
+          trialsApi
+            .chooseWithWeights(
+              leftInsertionFrequency(allow = allowConflicts),
+              rightInsertionFrequency(allow = allowConflicts),
+              coincidentInsertionFrequency,
+              preservationFrequency,
+              leftEditFrequency,
+              rightEditFrequency,
+              leftDeletionFrequency,
+              rightDeletionFrequency,
               coincidentDeletionFrequency
             )
       choices flatMap:
-        case Move.LeftInsertion =>
+        case LeftInsertion =>
           for
             leftElement <- zeroRelativeElements
             result <- simpleMergeTestCases(
               allowConflicts = allowConflicts,
-              predecessorBias = MoveBias.Left,
-              precedingLeftDeletions = precedingLeftDeletions
+              predecessorMove = LeftInsertion
             )(
               partialResult
                 .focus(_.left)
@@ -404,18 +390,17 @@ class MergeTest:
                   case FullyMerged(elements) =>
                     FullyMerged(elements :+ leftElement)
                 .focus(_.moves)
-                .modify(_ :+ Move.LeftInsertion)
+                .modify(_ :+ LeftInsertion)
             )
           yield result
           end for
 
-        case Move.RightInsertion =>
+        case RightInsertion =>
           for
             rightElement <- zeroRelativeElements
             result <- simpleMergeTestCases(
               allowConflicts = allowConflicts,
-              predecessorBias = MoveBias.Right,
-              precedingRightDeletions = precedingRightDeletions
+              predecessorMove = RightInsertion
             )(
               partialResult
                 .focus(_.right)
@@ -425,18 +410,18 @@ class MergeTest:
                   case FullyMerged(elements) =>
                     FullyMerged(elements :+ rightElement)
                 .focus(_.moves)
-                .modify(_ :+ Move.RightInsertion)
+                .modify(_ :+ RightInsertion)
             )
           yield result
           end for
 
-        case Move.CoincidentInsertion =>
+        case CoincidentInsertion =>
           for
             leftElement  <- zeroRelativeElements
             rightElement <- zeroRelativeElements
             result <- simpleMergeTestCases(
               allowConflicts = allowConflicts,
-              predecessorBias = MoveBias.Neutral
+              predecessorMove = CoincidentInsertion
             ):
               val elementMatch = Match.LeftAndRight(
                 leftElement = leftElement,
@@ -457,18 +442,18 @@ class MergeTest:
                   case FullyMerged(elements) =>
                     FullyMerged(elements :+ elementMatch.dominantElement)
                 .focus(_.moves)
-                .modify(_ :+ Move.CoincidentInsertion)
+                .modify(_ :+ CoincidentInsertion)
           yield result
           end for
 
-        case Move.Preservation =>
+        case Preservation =>
           for
             baseElement  <- zeroRelativeElements
             leftElement  <- zeroRelativeElements
             rightElement <- zeroRelativeElements
             result <- simpleMergeTestCases(
               allowConflicts = allowConflicts,
-              predecessorBias = MoveBias.Neutral
+              predecessorMove = Preservation
             ):
               val elementMatch =
                 Match.AllThree(
@@ -495,19 +480,85 @@ class MergeTest:
                       elements :+ elementMatch.dominantElement
                     )
                 .focus(_.moves)
-                .modify(_ :+ Move.Preservation)
+                .modify(_ :+ Preservation)
           yield result
           end for
 
-        case Move.LeftDeletion =>
+        case LeftEdit =>
+          for
+            baseElement  <- zeroRelativeElements
+            leftElement  <- zeroRelativeElements
+            rightElement <- zeroRelativeElements
+            result <- simpleMergeTestCases(
+              allowConflicts = allowConflicts,
+              predecessorMove = LeftEdit
+            ):
+              val elementMatch = Match.BaseAndRight(
+                baseElement = baseElement,
+                rightElement = rightElement
+              )
+
+              partialResult
+                .focus(_.base)
+                .modify(_ :+ baseElement)
+                .focus(_.left)
+                .modify(_ :+ leftElement)
+                .focus(_.right)
+                .modify(_ :+ rightElement)
+                .focus(_.matchesByElement)
+                .modify(
+                  _ + (baseElement -> elementMatch) + (rightElement -> elementMatch)
+                )
+                .focus(_.expectedMerge.some)
+                .modify:
+                  case FullyMerged(elements) =>
+                    FullyMerged(elements :+ leftElement)
+                .focus(_.moves)
+                .modify(_ :+ LeftEdit)
+          yield result
+          end for
+
+        case RightEdit =>
+          for
+            baseElement  <- zeroRelativeElements
+            leftElement  <- zeroRelativeElements
+            rightElement <- zeroRelativeElements
+            result <- simpleMergeTestCases(
+              allowConflicts = allowConflicts,
+              predecessorMove = RightEdit
+            ):
+              val elementMatch = Match.BaseAndLeft(
+                baseElement = baseElement,
+                leftElement = leftElement
+              )
+
+              partialResult
+                .focus(_.base)
+                .modify(_ :+ baseElement)
+                .focus(_.left)
+                .modify(_ :+ leftElement)
+                .focus(_.right)
+                .modify(_ :+ rightElement)
+                .focus(_.matchesByElement)
+                .modify(
+                  _ + (baseElement -> elementMatch) + (leftElement -> elementMatch)
+                )
+                .focus(_.expectedMerge.some)
+                .modify:
+                  case FullyMerged(elements) =>
+                    FullyMerged(elements :+ rightElement)
+                .focus(_.moves)
+                .modify(_ :+ RightEdit)
+          yield result
+          end for
+
+        case LeftDeletion =>
           for
             baseElement  <- zeroRelativeElements
             rightElement <- zeroRelativeElements
             result <- simpleMergeTestCases(
               allowConflicts = allowConflicts,
-              predecessorBias = MoveBias.Neutral,
-              precedingLeftDeletions = true,
-              precedingRightDeletions = precedingRightDeletions
+              predecessorMove = LeftDeletion
             ):
               val elementMatch = Match.BaseAndRight(
                 baseElement = baseElement,
@@ -524,19 +575,17 @@ class MergeTest:
                   _ + (baseElement -> elementMatch) + (rightElement -> elementMatch)
                 )
                 .focus(_.moves)
-                .modify(_ :+ Move.LeftDeletion)
+                .modify(_ :+ LeftDeletion)
           yield result
           end for
 
-        case Move.RightDeletion =>
+        case RightDeletion =>
           for
             baseElement <- zeroRelativeElements
             leftElement <- zeroRelativeElements
             result <- simpleMergeTestCases(
               allowConflicts = allowConflicts,
-              predecessorBias = MoveBias.Neutral,
-              precedingLeftDeletions = precedingLeftDeletions,
-              precedingRightDeletions = true
+              predecessorMove = RightDeletion
             ):
               val elementMatch = Match.BaseAndLeft(
                 baseElement = baseElement,
@@ -553,24 +602,22 @@ class MergeTest:
                   _ + (baseElement -> elementMatch) + (leftElement -> elementMatch)
                 )
                 .focus(_.moves)
-                .modify(_ :+ Move.RightDeletion)
+                .modify(_ :+ RightDeletion)
           yield result
           end for
 
-        case Move.CoincidentDeletion =>
+        case CoincidentDeletion =>
           for
             baseElement <- zeroRelativeElements
             result <- simpleMergeTestCases(
               allowConflicts = allowConflicts,
-              predecessorBias = MoveBias.CoincidentDeletion,
-              precedingLeftDeletions = precedingLeftDeletions,
-              precedingRightDeletions = precedingRightDeletions
+              predecessorMove = CoincidentDeletion
             ):
               partialResult
                 .focus(_.base)
                 .modify(_ :+ baseElement)
                 .focus(_.moves)
-                .modify(_ :+ Move.CoincidentDeletion)
+                .modify(_ :+ CoincidentDeletion)
           yield result
           end for
 
@@ -590,13 +637,15 @@ end MergeTest
 object MergeTest:
   type Element = Int
 
-  private val leftInsertionFrequency       = 7  -> Move.LeftInsertion
-  private val rightInsertionFrequency      = 7  -> Move.RightInsertion
-  private val coincidentInsertionFrequency = 4  -> Move.CoincidentInsertion
-  private val preservationFrequency        = 10 -> Move.Preservation
-  private val leftDeletionFrequency        = 7  -> Move.LeftDeletion
-  private val rightDeletionFrequency       = 7  -> Move.RightDeletion
-  private val coincidentDeletionFrequency  = 4  -> Move.CoincidentDeletion
+  private val leftInsertionFrequency       = 7  -> LeftInsertion
+  private val rightInsertionFrequency      = 7  -> RightInsertion
+  private val coincidentInsertionFrequency = 4  -> CoincidentInsertion
+  private val preservationFrequency        = 10 -> Preservation
+  private val leftEditFrequency            = 7  -> LeftEdit
+  private val rightEditFrequency           = 7  -> RightEdit
+  private val leftDeletionFrequency        = 7  -> LeftDeletion
+  private val rightDeletionFrequency       = 7  -> RightDeletion
+  private val coincidentDeletionFrequency  = 4  -> CoincidentDeletion
 
   def equivalent(
       matchesByElement: Map[Element, Match[Element]]
@@ -744,6 +793,8 @@ object MergeTest:
     case RightInsertion
     case CoincidentInsertion
     case Preservation
+    case LeftEdit
+    case RightEdit
     case LeftDeletion
     case RightDeletion
     case CoincidentDeletion
@@ -755,5 +806,4 @@ object MergeTest:
     case Neutral // Can be followed by anything.
     case CoincidentDeletion // Can only be followed by another coincident deletion or a neutral.
   end MoveBias
-
 end MergeTest
