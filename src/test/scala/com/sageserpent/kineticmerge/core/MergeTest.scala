@@ -359,7 +359,6 @@ class MergeTest:
               preservationFrequency,
               leftEditFrequency,
               rightEditFrequency,
-              leftDeletionFrequency,
               rightDeletionFrequency
             )
         case RightInsertion =>
@@ -371,8 +370,7 @@ class MergeTest:
               preservationFrequency,
               leftEditFrequency,
               rightEditFrequency,
-              leftDeletionFrequency,
-              rightDeletionFrequency
+              leftDeletionFrequency
             )
 
         case CoincidentInsertion | Preservation | LeftEdit | RightEdit =>
