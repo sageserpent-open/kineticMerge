@@ -201,6 +201,13 @@ object merge:
 
         case (
               Seq(Contribution.Difference(_), baseTail*),
+              Seq(Contribution.Difference(_), _*),
+              Seq(Contribution.CommonToBaseAndRightOnly(_), _*)
+            ) => // Coincident deletion with pending left edit.
+          mergeBetweenRunsOfCommonElements(baseTail, left, right)(partialResult)
+
+        case (
+              Seq(Contribution.Difference(_), baseTail*),
               Seq(Contribution.Difference(leftSection), leftTail*),
               _
             ) => // Left edit / right deletion conflict.
@@ -216,6 +223,13 @@ object merge:
           mergeBetweenRunsOfCommonElements(base, left, rightTail)(
             partialResult.addCommon(rightSection)
           )
+
+        case (
+              Seq(Contribution.Difference(_), baseTail*),
+              Seq(Contribution.CommonToBaseAndLeftOnly(_), _*),
+              Seq(Contribution.Difference(_), _*)
+            ) => // Coincident deletion with pending left edit.
+          mergeBetweenRunsOfCommonElements(baseTail, left, right)(partialResult)
 
         case (
               Seq(Contribution.Difference(_), baseTail*),
