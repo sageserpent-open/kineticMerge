@@ -29,6 +29,32 @@ class MergeTest:
     val base = Vector(a)
 
     val b    = 2
+    val left = Vector(b)
+
+    val c     = 3
+    val right = Vector(c)
+
+    val ab = Match.BaseAndLeft(baseElement = a, leftElement = b)
+
+    val matchesByElement: Map[Element, Match[Element]] = Map(a -> ab, b -> ab)
+
+    // NOTE: we expect a clean merge of the edit of `a` into `c`.
+    val expectedMerge = FullyMerged(elements = Vector(c))
+
+    val Right(result) =
+      merge.of(base, left, right)(
+        equivalent(matchesByElement)
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end simpleMergeOfAnEdit
+
+  @Test
+  def simpleMergeOfAnEditFollowedByAnInsertionOnTheOtherSide(): Unit =
+    val a    = 1
+    val base = Vector(a)
+
+    val b    = 2
     val c    = 3
     val left = Vector(b, c)
 
@@ -49,7 +75,35 @@ class MergeTest:
       ): @unchecked
 
     assert(result == expectedMerge)
-  end simpleMergeOfAnEdit
+  end simpleMergeOfAnEditFollowedByAnInsertionOnTheOtherSide
+
+  @Test
+  def simpleMergeOfAnEditPrecededByACoincidentDeletion(): Unit =
+    val a    = 1
+    val b    = 2
+    val base = Vector(a, b)
+
+    val c    = 3
+    val left = Vector(c)
+
+    val d     = 4
+    val right = Vector(d)
+
+    val bc = Match.BaseAndLeft(baseElement = b, leftElement = c)
+
+    val matchesByElement: Map[Element, Match[Element]] = Map(b -> bc, c -> bc)
+
+    // NOTE: we expect a coincident deletion of `a` followed by a clean merge of
+    // the edit of `b` into `d`
+    val expectedMerge = FullyMerged(elements = Vector(d))
+
+    val Right(result) =
+      merge.of(base, left, right)(
+        equivalent(matchesByElement)
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end simpleMergeOfAnEditPrecededByACoincidentDeletion
 
   @Test
   def editConflict(): Unit =
