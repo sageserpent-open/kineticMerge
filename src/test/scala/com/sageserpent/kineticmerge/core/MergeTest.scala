@@ -24,7 +24,7 @@ class MergeTest:
     )
 
   @Test
-  def simpleMergeOfAnEdit(): Unit =
+  def edit(): Unit =
     val a    = 1
     val base = Vector(a)
 
@@ -47,10 +47,10 @@ class MergeTest:
       ): @unchecked
 
     assert(result == expectedMerge)
-  end simpleMergeOfAnEdit
+  end edit
 
   @Test
-  def simpleMergeOfAnEditFollowedByAnInsertionOnTheOtherSide(): Unit =
+  def editFollowedByAnInsertionOnTheOtherSide(): Unit =
     val a    = 1
     val base = Vector(a)
 
@@ -75,10 +75,10 @@ class MergeTest:
       ): @unchecked
 
     assert(result == expectedMerge)
-  end simpleMergeOfAnEditFollowedByAnInsertionOnTheOtherSide
+  end editFollowedByAnInsertionOnTheOtherSide
 
   @Test
-  def simpleMergeOfAnEditPrecededByACoincidentDeletion(): Unit =
+  def coincidentDeletionFollowedByAnEdit(): Unit =
     val a    = 1
     val b    = 2
     val base = Vector(a, b)
@@ -93,8 +93,8 @@ class MergeTest:
 
     val matchesByElement: Map[Element, Match[Element]] = Map(b -> bc, c -> bc)
 
-    // NOTE: we expect a coincident deletion of `a` followed by a clean merge of
-    // the edit of `b` into `d`
+    // NOTE: we expect a clean merge of the coincident deletion of `a` followed
+    // by the edit of `b` into `d`
     val expectedMerge = FullyMerged(elements = Vector(d))
 
     val Right(result) =
@@ -103,7 +103,40 @@ class MergeTest:
       ): @unchecked
 
     assert(result == expectedMerge)
-  end simpleMergeOfAnEditPrecededByACoincidentDeletion
+  end coincidentDeletionFollowedByAnEdit
+
+  @Test
+  def deletionOnOneSideFollowedByAnInsertionOnTheOppositeSideThenAnEditOnTheOriginalSide()
+      : Unit =
+    val a    = 1
+    val b    = 2
+    val base = Vector(a, b)
+
+    val c    = 3
+    val d    = 4
+    val e    = 5
+    val left = Vector(c, d, e)
+
+    val f     = 6
+    val right = Vector(f)
+
+    val ac = Match.BaseAndLeft(baseElement = a, leftElement = c)
+    val be = Match.BaseAndLeft(baseElement = b, leftElement = e)
+
+    val matchesByElement: Map[Element, Match[Element]] =
+      Map(a -> ac, c -> ac, b -> be, e -> be)
+
+    // NOTE: we expect a clean merge of the deletion of `a` followed by an
+    // insertion of `d` and finally an edit of `b` into `f`.
+    val expectedMerge = FullyMerged(elements = Vector(d, f))
+
+    val Right(result) =
+      merge.of(base, left, right)(
+        equivalent(matchesByElement)
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end deletionOnOneSideFollowedByAnInsertionOnTheOppositeSideThenAnEditOnTheOriginalSide
 
   @Test
   def editConflict(): Unit =
