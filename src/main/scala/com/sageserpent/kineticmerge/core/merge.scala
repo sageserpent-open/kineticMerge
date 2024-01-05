@@ -75,6 +75,31 @@ object merge:
                 Contribution.CommonToBaseAndRightOnly(baseElement),
                 baseTail*
               ),
+              Seq(Contribution.Difference(leftSection), leftTail*),
+              Seq(
+                Contribution.CommonToBaseAndRightOnly(rightSection),
+                rightTail*
+              )
+            ) => // Left edit.
+          leftTail match
+            case Seq(Contribution.Difference(_), _*) =>
+              // If the following element on the left would also be inserted,
+              // coalesce into a single edit.
+              mergeBetweenRunsOfCommonElements(base, leftTail, right)(
+                partialResult.addCommon(leftSection)
+              )
+
+            case _ =>
+              mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
+                partialResult.addCommon(leftSection)
+              )
+          end match
+
+        case (
+              Seq(
+                Contribution.CommonToBaseAndRightOnly(baseSection),
+                baseTail*
+              ),
               _,
               Seq(
                 Contribution.CommonToBaseAndRightOnly(rightElement),
@@ -92,6 +117,31 @@ object merge:
               ),
               Seq(
                 Contribution.CommonToBaseAndLeftOnly(leftElement),
+                leftTail*
+              ),
+              Seq(Contribution.Difference(rightSection), rightTail*)
+            ) => // Right edit.
+          rightTail match
+            case Seq(Contribution.Difference(_), _*) =>
+              // If the following element on the right would also be inserted,
+              // coalesce into a single edit.
+              mergeBetweenRunsOfCommonElements(base, left, rightTail)(
+                partialResult.addCommon(rightSection)
+              )
+
+            case _ =>
+              mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
+                partialResult.addCommon(rightSection)
+              )
+          end match
+
+        case (
+              Seq(
+                Contribution.CommonToBaseAndLeftOnly(baseSection),
+                baseTail*
+              ),
+              Seq(
+                Contribution.CommonToBaseAndLeftOnly(leftSection),
                 leftTail*
               ),
               _
@@ -139,6 +189,42 @@ object merge:
                 partialResult.addConflictingEdits(leftElement, rightElement)
               )
           end match
+
+        case (
+              Seq(Contribution.Difference(_), _*),
+              Seq(Contribution.Difference(leftSection), leftTail*),
+              Seq(Contribution.CommonToLeftAndRightOnly(_), _*)
+            ) => // Left insertion with pending coincident edit.
+          mergeBetweenRunsOfCommonElements(base, leftTail, right)(
+            partialResult.addCommon(leftSection)
+          )
+
+        case (
+              Seq(Contribution.Difference(_), baseTail*),
+              Seq(Contribution.Difference(leftSection), leftTail*),
+              _
+            ) => // Left edit / right deletion conflict.
+          mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
+            partialResult.addLeftEditConflictingWithRightDeletion(leftSection)
+          )
+
+        case (
+              Seq(Contribution.Difference(_), _*),
+              Seq(Contribution.CommonToLeftAndRightOnly(_), _*),
+              Seq(Contribution.Difference(rightSection), rightTail*)
+            ) => // Right insertion with pending left coincident edit.
+          mergeBetweenRunsOfCommonElements(base, left, rightTail)(
+            partialResult.addCommon(rightSection)
+          )
+
+        case (
+              Seq(Contribution.Difference(_), baseTail*),
+              _,
+              Seq(Contribution.Difference(rightSection), rightTail*)
+            ) => // Right edit / left deletion conflict.
+          mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
+            partialResult.addRightEditConflictingWithLeftDeletion(rightSection)
+          )
 
         case (
               Seq(Contribution.Difference(_), baseTail*),
