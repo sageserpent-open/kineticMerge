@@ -19,7 +19,10 @@ class MergeTest:
     )(partialResult = emptyMergeTestCase(allowConflicts = false))
 
   private val possiblyConflictedMergeTestCases: Trials[MergeTestCase] =
-    simpleMergeTestCases(allowConflicts = true, predecessorMove = Preservation)(
+    simpleMergeTestCases(
+      allowConflicts = true,
+      predecessorMove = Preservation
+    )(
       partialResult = emptyMergeTestCase(allowConflicts = true)
     )
 
@@ -106,6 +109,38 @@ class MergeTest:
   end coincidentDeletionFollowedByAnEdit
 
   @Test
+  def editOnOneSideFollowedByADeletionOnTheSameSide(): Unit =
+    val a    = 1
+    val b    = 2
+    val base = Vector(a, b)
+
+    val c    = 3
+    val d    = 4
+    val left = Vector(c, d)
+
+    val e     = 6
+    val right = Vector(e)
+
+    val ac = Match.BaseAndLeft(baseElement = a, leftElement = c)
+    val bd = Match.BaseAndLeft(baseElement = b, leftElement = d)
+
+    val matchesByElement: Map[Element, Match[Element]] =
+      Map(a -> ac, c -> ac, b -> bd, d -> bd)
+
+    // NOTE: we expect a clean merge of the edit of `a` into `e` followed by a
+    // deletion of `b`. Merging is supposed to look eagerly for edits, so `e` is
+    // considered to be an edit of `a` rather than of `b`.
+    val expectedMerge = FullyMerged(elements = Vector(e))
+
+    val Right(result) =
+      merge.of(base, left, right)(
+        equivalent(matchesByElement)
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end editOnOneSideFollowedByADeletionOnTheSameSide
+
+  @Test
   def editOnOneSideFollowedByAnInsertionOnTheOppositeSideThenADeletionOnTheOriginalSide()
       : Unit =
     val a    = 1
@@ -128,8 +163,8 @@ class MergeTest:
 
     // NOTE: we expect a clean merge of the edit of `a` into `f` followed by an
     // insertion of `d` and finally deletion of `b`. Merging is supposed to look
-    // eagerly for edits, so it is `f` is considered to be an edit of `a` rather
-    // than of `e`.
+    // eagerly for edits, so `f` is considered to be an edit of `a` rather than
+    // of `b`.
     val expectedMerge = FullyMerged(elements = Vector(f, d))
 
     val Right(result) =
@@ -379,7 +414,19 @@ class MergeTest:
 
   def simpleMergeTestCases(
       allowConflicts: Boolean,
-      predecessorMove: Move
+      predecessorMove: Move,
+      // The next two parameters express the decision to have the SUT eagerly
+      // pick up edits, so a merged edit can be followed by a merged deletion on
+      // the same side, but not the other way around. The test confabulates the
+      // inputs for the merge based on an expected result, so it has to make
+      // sure that it doesn't start with a result where an edit follows a
+      // deletion. This is only relevant when the edit and deletion are both on
+      // the same side and the only other moves between them are insertions on
+      // the opposite side. All other moves lift the block, as they make the
+      // interpretation as to which is the edit and which the deletion
+      // unambiguous.
+      leftDeleteBlockingLeftEdit: Boolean = false,
+      rightDeleteBlockingRightEdit: Boolean = false
   )(partialResult: MergeTestCase): Trials[MergeTestCase] =
     val extendedMergeTestCases =
       val zeroRelativeElements: Trials[Element] = trialsApi.uniqueIds
@@ -388,35 +435,35 @@ class MergeTest:
         case LeftInsertion =>
           trialsApi
             .chooseWithWeights(
-              leftInsertionFrequency,
+              leftInsertionFrequency(allow = true),
               rightInsertionFrequency(allow = allowConflicts),
               coincidentInsertionFrequency,
               preservationFrequency,
-              leftEditFrequency,
-              rightEditFrequency,
+              leftEditFrequency(allow = !leftDeleteBlockingLeftEdit),
+              rightEditFrequency(allow = !rightDeleteBlockingRightEdit),
               rightDeletionFrequency
             )
         case RightInsertion =>
           trialsApi
             .chooseWithWeights(
               leftInsertionFrequency(allow = allowConflicts),
-              rightInsertionFrequency,
+              rightInsertionFrequency(allow = true),
               coincidentInsertionFrequency,
               preservationFrequency,
-              leftEditFrequency,
-              rightEditFrequency,
+              leftEditFrequency(allow = !leftDeleteBlockingLeftEdit),
+              rightEditFrequency(allow = !rightDeleteBlockingRightEdit),
               leftDeletionFrequency
             )
 
         case CoincidentInsertion | Preservation | LeftEdit | RightEdit =>
           trialsApi
             .chooseWithWeights(
-              leftInsertionFrequency,
-              rightInsertionFrequency,
+              leftInsertionFrequency(allow = true),
+              rightInsertionFrequency(allow = true),
               coincidentInsertionFrequency,
               preservationFrequency,
-              leftEditFrequency,
-              rightEditFrequency,
+              leftEditFrequency(allow = !leftDeleteBlockingLeftEdit),
+              rightEditFrequency(allow = !rightDeleteBlockingRightEdit),
               leftDeletionFrequency,
               rightDeletionFrequency,
               coincidentDeletionFrequency
@@ -425,11 +472,11 @@ class MergeTest:
         case LeftDeletion =>
           trialsApi
             .chooseWithWeights(
-              leftInsertionFrequency,
+              leftInsertionFrequency(allow = true),
               coincidentInsertionFrequency,
               preservationFrequency,
-              leftEditFrequency,
-              rightEditFrequency,
+              leftEditFrequency(allow = !leftDeleteBlockingLeftEdit),
+              rightEditFrequency(allow = !rightDeleteBlockingRightEdit),
               leftDeletionFrequency,
               rightDeletionFrequency,
               coincidentDeletionFrequency
@@ -438,11 +485,11 @@ class MergeTest:
         case RightDeletion =>
           trialsApi
             .chooseWithWeights(
-              leftInsertionFrequency,
+              leftInsertionFrequency(allow = true),
               coincidentInsertionFrequency,
               preservationFrequency,
-              leftEditFrequency,
-              rightEditFrequency,
+              leftEditFrequency(allow = !leftDeleteBlockingLeftEdit),
+              rightEditFrequency(allow = !rightDeleteBlockingRightEdit),
               leftDeletionFrequency,
               rightDeletionFrequency,
               coincidentDeletionFrequency
@@ -455,8 +502,8 @@ class MergeTest:
               rightInsertionFrequency(allow = allowConflicts),
               coincidentInsertionFrequency,
               preservationFrequency,
-              leftEditFrequency,
-              rightEditFrequency,
+              leftEditFrequency(allow = !leftDeleteBlockingLeftEdit),
+              rightEditFrequency(allow = !rightDeleteBlockingRightEdit),
               leftDeletionFrequency,
               rightDeletionFrequency,
               coincidentDeletionFrequency
@@ -467,7 +514,8 @@ class MergeTest:
             leftElement <- zeroRelativeElements
             result <- simpleMergeTestCases(
               allowConflicts = allowConflicts,
-              predecessorMove = LeftInsertion
+              predecessorMove = LeftInsertion,
+              rightDeleteBlockingRightEdit = rightDeleteBlockingRightEdit
             )(
               partialResult
                 .focus(_.left)
@@ -487,7 +535,8 @@ class MergeTest:
             rightElement <- zeroRelativeElements
             result <- simpleMergeTestCases(
               allowConflicts = allowConflicts,
-              predecessorMove = RightInsertion
+              predecessorMove = RightInsertion,
+              leftDeleteBlockingLeftEdit = leftDeleteBlockingLeftEdit
             )(
               partialResult
                 .focus(_.right)
@@ -645,7 +694,8 @@ class MergeTest:
             rightElement <- zeroRelativeElements
             result <- simpleMergeTestCases(
               allowConflicts = allowConflicts,
-              predecessorMove = LeftDeletion
+              predecessorMove = LeftDeletion,
+              leftDeleteBlockingLeftEdit = true
             ):
               val elementMatch = Match.BaseAndRight(
                 baseElement = baseElement,
@@ -672,7 +722,8 @@ class MergeTest:
             leftElement <- zeroRelativeElements
             result <- simpleMergeTestCases(
               allowConflicts = allowConflicts,
-              predecessorMove = RightDeletion
+              predecessorMove = RightDeletion,
+              rightDeleteBlockingRightEdit = true
             ):
               val elementMatch = Match.BaseAndLeft(
                 baseElement = baseElement,
@@ -724,12 +775,8 @@ end MergeTest
 object MergeTest:
   type Element = Int
 
-  private val leftInsertionFrequency       = 7  -> LeftInsertion
-  private val rightInsertionFrequency      = 7  -> RightInsertion
   private val coincidentInsertionFrequency = 4  -> CoincidentInsertion
   private val preservationFrequency        = 10 -> Preservation
-  private val leftEditFrequency            = 7  -> LeftEdit
-  private val rightEditFrequency           = 7  -> RightEdit
   private val leftDeletionFrequency        = 7  -> LeftDeletion
   private val rightDeletionFrequency       = 7  -> RightDeletion
   private val coincidentDeletionFrequency  = 4  -> CoincidentDeletion
@@ -761,6 +808,12 @@ object MergeTest:
 
   private def rightInsertionFrequency(allow: Boolean) =
     (if allow then 7 else 0) -> Move.RightInsertion
+
+  private def leftEditFrequency(allow: Boolean) =
+    (if allow then 7 else 0) -> Move.LeftEdit
+
+  private def rightEditFrequency(allow: Boolean) =
+    (if allow then 7 else 0) -> Move.RightEdit
 
   case class MergeTestCase(
       base: IndexedSeq[Element],
