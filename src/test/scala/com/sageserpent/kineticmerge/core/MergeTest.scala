@@ -176,6 +176,40 @@ class MergeTest:
   end editOnOneSideFollowedByAnInsertionOnTheOppositeSideThenADeletionOnTheOriginalSide
 
   @Test
+  def editOnOneSideFollowedByAnInsertionOnTheOppositeSideThenAnEditOnTheOriginalSide()
+      : Unit =
+    val a    = 1
+    val b    = 2
+    val base = Vector(a, b)
+
+    val c    = 3
+    val d    = 4
+    val e    = 5
+    val left = Vector(c, d, e)
+
+    val f     = 6
+    val g     = 7
+    val right = Vector(f, g)
+
+    val ac = Match.BaseAndLeft(baseElement = a, leftElement = c)
+    val be = Match.BaseAndLeft(baseElement = b, leftElement = e)
+
+    val matchesByElement: Map[Element, Match[Element]] =
+      Map(a -> ac, c -> ac, b -> be, e -> be)
+
+    // NOTE: we expect a clean merge of the edit of `a` into `f` followed by an
+    // insertion of `d` and finally a merge of the edit of `b` into `g`.
+    val expectedMerge = FullyMerged(elements = Vector(f, d, g))
+
+    val Right(result) =
+      merge.of(base, left, right)(
+        equivalent(matchesByElement)
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end editOnOneSideFollowedByAnInsertionOnTheOppositeSideThenAnEditOnTheOriginalSide
+
+  @Test
   def editConflict(): Unit =
     val a    = 1
     val b    = 2
