@@ -81,6 +81,35 @@ class MergeTest:
   end editFollowedByAnInsertionOnTheOtherSide
 
   @Test
+  def insertionFollowedByAnEditOnTheOtherSide(): Unit =
+    val a = 1
+
+    val base = Vector(a)
+
+    val b    = 2
+    val c    = 3
+    val left = Vector(b, c)
+
+    val d     = 4
+    val right = Vector(d)
+
+    val ac = Match.BaseAndLeft(baseElement = a, leftElement = c)
+
+    val matchesByElement: Map[Element, Match[Element]] = Map(a -> ac, c -> ac)
+
+    // NOTE: we expect a clean merge of the insertion of `b` followed by an edit
+    // of `a` into `d`.
+    val expectedMerge = FullyMerged(elements = Vector(b, d))
+
+    val Right(result) =
+      merge.of(base, left, right)(
+        equivalent(matchesByElement)
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end insertionFollowedByAnEditOnTheOtherSide
+
+  @Test
   def coincidentDeletionFollowedByAnEdit(): Unit =
     val a    = 1
     val b    = 2
@@ -306,17 +335,14 @@ class MergeTest:
 
   @Test
   def deletionOnOneSideFollowedByADeletionOnTheOtherSide(): Unit =
-    val a = 1
-    val b = 2
-
+    val a    = 1
+    val b    = 2
     val base = Vector(a, b)
 
-    val c = 3
-
+    val c    = 3
     val left = Vector(c)
 
-    val d = 4
-
+    val d     = 4
     val right = Vector(d)
 
     val ac = Match.BaseAndLeft(baseElement = a, leftElement = c)
