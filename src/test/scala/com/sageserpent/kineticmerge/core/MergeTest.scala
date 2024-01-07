@@ -82,7 +82,7 @@ class MergeTest:
 
   @Test
   def insertionFollowedByADeletionOnTheOtherSide(): Unit =
-    val a = 1
+    val a    = 1
     val base = Vector(a)
 
     val b    = 2
@@ -163,6 +163,64 @@ class MergeTest:
 
     assert(result == expectedMerge)
   end coincidentDeletionFollowedByAnEdit
+
+  @Test
+  def coincidentDeletionWithCoincidentInsertionAndThenASingleSideInsertion()
+      : Unit =
+    val a    = 1
+    val base = Vector(a)
+
+    val b    = 2
+    val left = Vector(b)
+
+    val c     = 3
+    val d     = 4
+    val right = Vector(c, d)
+
+    val bc = Match.LeftAndRight(leftElement = b, rightElement = c)
+
+    val matchesByElement: Map[Element, Match[Element]] = Map(b -> bc, c -> bc)
+
+    // NOTE: we expect a clean merge of the coincident deletion of `a` with a
+    // coincident insertion of `b` followed by insertion of `d`.
+    val expectedMerge = FullyMerged(elements = Vector(b, d))
+
+    val Right(result) =
+      merge.of(base, left, right)(
+        equivalent(matchesByElement)
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end coincidentDeletionWithCoincidentInsertionAndThenASingleSideInsertion
+
+  @Test
+  def singleSideInsertionFollowedByCoincidentDeletionWithCoincidentInsertion()
+      : Unit =
+    val a    = 1
+    val base = Vector(a)
+
+    val b    = 2
+    val left = Vector(b)
+
+    val c     = 3
+    val d     = 4
+    val right = Vector(c, d)
+
+    val bd = Match.LeftAndRight(leftElement = b, rightElement = d)
+
+    val matchesByElement: Map[Element, Match[Element]] = Map(b -> bd, d -> bd)
+
+    // NOTE: we expect a clean merge of the insertion of `c`, followed by a
+    // coincident deletion of `a` with a coincident insertion of `b`.
+    val expectedMerge = FullyMerged(elements = Vector(c, b))
+
+    val Right(result) =
+      merge.of(base, left, right)(
+        equivalent(matchesByElement)
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end singleSideInsertionFollowedByCoincidentDeletionWithCoincidentInsertion
 
   @Test
   def editOnOneSideFollowedByADeletionOnTheSameSide(): Unit =
