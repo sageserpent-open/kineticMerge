@@ -81,8 +81,20 @@ object merge:
                 rightTail*
               )
             ) => // Left edit.
-          leftTail match
-            case Seq(Contribution.Difference(_), _*) =>
+          baseTail -> leftTail match
+            case (
+                  Seq(Contribution.CommonToBaseAndRightOnly(_), _*),
+                  Seq(Contribution.Difference(_), _*)
+                ) =>
+              // There is another pending left edit, so *don't* coalesce the
+              // following element on the left; that then respects any
+              // insertions that may be lurking on the right prior to the
+              // pending left edit claiming the following element on the left.
+              mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
+                partialResult.addCommon(leftSection)
+              )
+
+            case (_, Seq(Contribution.Difference(_), _*)) =>
               // If the following element on the left would also be inserted,
               // coalesce into a single edit.
               mergeBetweenRunsOfCommonElements(base, leftTail, right)(
@@ -121,8 +133,20 @@ object merge:
               ),
               Seq(Contribution.Difference(rightSection), rightTail*)
             ) => // Right edit.
-          rightTail match
-            case Seq(Contribution.Difference(_), _*) =>
+          baseTail -> rightTail match
+            case (
+                  Seq(Contribution.CommonToBaseAndLeftOnly(_), _*),
+                  Seq(Contribution.Difference(_), _*)
+                ) =>
+              // There is another pending right edit, so *don't* coalesce the
+              // following element on the right; that then respects any
+              // insertions that may be lurking on the left prior to the pending
+              // right edit claiming the following element on the right.
+              mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
+                partialResult.addCommon(rightSection)
+              )
+
+            case (_, Seq(Contribution.Difference(_), _*)) =>
               // If the following element on the right would also be inserted,
               // coalesce into a single edit.
               mergeBetweenRunsOfCommonElements(base, left, rightTail)(
