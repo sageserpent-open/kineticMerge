@@ -81,6 +81,33 @@ class MergeTest:
   end editFollowedByAnInsertionOnTheOtherSide
 
   @Test
+  def insertionFollowedByADeletionOnTheOtherSide(): Unit =
+    val a = 1
+    val base = Vector(a)
+
+    val b    = 2
+    val c    = 3
+    val left = Vector(b, c)
+
+    val right = Vector()
+
+    val ac = Match.BaseAndLeft(baseElement = a, leftElement = c)
+
+    val matchesByElement: Map[Element, Match[Element]] = Map(a -> ac, c -> ac)
+
+    // NOTE: we expect a clean merge of the insertion of `b` followed by a
+    // deletion of `a`.
+    val expectedMerge = FullyMerged(elements = Vector(b))
+
+    val Right(result) =
+      merge.of(base, left, right)(
+        equivalent(matchesByElement)
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end insertionFollowedByADeletionOnTheOtherSide
+
+  @Test
   def insertionFollowedByAnEditOnTheOtherSide(): Unit =
     val a = 1
 
@@ -332,6 +359,33 @@ class MergeTest:
 
     assert(result == expectedMerge)
   end editOnOneSideFollowedByAnInsertionOnTheSameSideThenAnInsertionOnTheOppositeSide
+
+  @Test
+  def deletionFollowedByAnInsertionOnTheOtherSide(): Unit =
+    val a    = 1
+    val base = Vector(a)
+
+    val b    = 2
+    val c    = 3
+    val left = Vector(b, c)
+
+    val right = Vector()
+
+    val ab = Match.BaseAndLeft(baseElement = a, leftElement = b)
+
+    val matchesByElement: Map[Element, Match[Element]] = Map(a -> ab, b -> ab)
+
+    // NOTE: we expect a clean merge of the deletion of `a` followed by an
+    // insertion of `c`.
+    val expectedMerge = FullyMerged(elements = Vector(c))
+
+    val Right(result) =
+      merge.of(base, left, right)(
+        equivalent(matchesByElement)
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end deletionFollowedByAnInsertionOnTheOtherSide
 
   @Test
   def deletionOnOneSideFollowedByADeletionOnTheOtherSide(): Unit =
