@@ -730,11 +730,17 @@ class MergeTest:
       priorDeletionOrInsertionBlockingLeftEdit: Boolean = false,
       priorDeletionOrInsertionBlockingRightEdit: Boolean = false,
       // The next two flags stop misleading move sequences from being generated,
-      // where a deletion is followed by an edit on the same side and the only
-      // other moves between them are insertions on the opposite side. Edits
-      // already capture this notion more economically.
+      // where a deletion is followed by an insertion on the same side and the
+      // only other moves between them are insertions on the opposite side.
+      // Edits already capture this notion more economically.
       priorDeletionBlockingLeftInsertion: Boolean = false,
       priorDeletionBlockingRightInsertion: Boolean = false,
+      // The next two flags stop misleading move sequences from being generated,
+      // where an insertion is followed by a deletion on the same side and the
+      // only other moves between them are insertions on the opposite side.
+      // Edits already capture this notion more economically.
+      priorInsertionBlockingLeftDeletion: Boolean = false,
+      priorInsertionBlockingRightDeletion: Boolean = false,
       // The next two flags allow move sequences to pair insertions across sides
       // when there is a prior edit that could coalesce with one of the
       // insertions to avoid a conflict.
@@ -744,20 +750,26 @@ class MergeTest:
     def leftInsertionFrequency(allow: Boolean) =
       (if allow && !priorDeletionBlockingLeftInsertion || priorEditClaimingRightInsertion
        then 7
-       else 0) -> Move.LeftInsertion
+       else 0) -> LeftInsertion
 
     def rightInsertionFrequency(allow: Boolean) =
       (if allow && !priorDeletionBlockingRightInsertion || priorEditClaimingLeftInsertion
        then 7
-       else 0) -> Move.RightInsertion
+       else 0) -> RightInsertion
 
     def leftEditFrequency() =
       (if !priorDeletionOrInsertionBlockingLeftEdit then 7
-       else 0) -> Move.LeftEdit
+       else 0) -> LeftEdit
 
     def rightEditFrequency() =
       (if !priorDeletionOrInsertionBlockingRightEdit then 7
-       else 0) -> Move.RightEdit
+       else 0) -> RightEdit
+
+    def leftDeletionFrequency() =
+      (if !priorInsertionBlockingLeftDeletion then 7 else 0) -> LeftDeletion
+
+    def rightDeletionFrequency() =
+      (if !priorInsertionBlockingRightDeletion then 7 else 0) -> RightDeletion
 
     val extendedMergeTestCases =
       val zeroRelativeElements: Trials[Element] = trialsApi.uniqueIds
@@ -772,7 +784,8 @@ class MergeTest:
               preservationFrequency,
               leftEditFrequency(),
               rightEditFrequency(),
-              rightDeletionFrequency
+              leftDeletionFrequency(),
+              rightDeletionFrequency(),
             )
         case RightInsertion =>
           trialsApi
@@ -783,7 +796,8 @@ class MergeTest:
               preservationFrequency,
               leftEditFrequency(),
               rightEditFrequency(),
-              leftDeletionFrequency
+              leftDeletionFrequency(),
+              rightDeletionFrequency(),
             )
 
         case CoincidentInsertion | Preservation | LeftEdit | RightEdit =>
@@ -795,8 +809,8 @@ class MergeTest:
               preservationFrequency,
               leftEditFrequency(),
               rightEditFrequency(),
-              leftDeletionFrequency,
-              rightDeletionFrequency,
+              leftDeletionFrequency(),
+              rightDeletionFrequency(),
               coincidentDeletionFrequency
             )
 
@@ -808,8 +822,8 @@ class MergeTest:
               preservationFrequency,
               leftEditFrequency(),
               rightEditFrequency(),
-              leftDeletionFrequency,
-              rightDeletionFrequency,
+              leftDeletionFrequency(),
+              rightDeletionFrequency(),
               coincidentDeletionFrequency
             )
 
@@ -821,8 +835,8 @@ class MergeTest:
               preservationFrequency,
               leftEditFrequency(),
               rightEditFrequency(),
-              leftDeletionFrequency,
-              rightDeletionFrequency,
+              leftDeletionFrequency(),
+              rightDeletionFrequency(),
               coincidentDeletionFrequency
             )
 
@@ -835,8 +849,8 @@ class MergeTest:
               preservationFrequency,
               leftEditFrequency(),
               rightEditFrequency(),
-              leftDeletionFrequency,
-              rightDeletionFrequency,
+              leftDeletionFrequency(),
+              rightDeletionFrequency(),
               coincidentDeletionFrequency
             )
       choices flatMap:
@@ -851,6 +865,8 @@ class MergeTest:
                 priorDeletionOrInsertionBlockingRightEdit,
               priorDeletionBlockingRightInsertion =
                 priorDeletionBlockingRightInsertion,
+              priorInsertionBlockingLeftDeletion = true,
+              priorInsertionBlockingRightDeletion = priorInsertionBlockingRightDeletion,
               priorEditClaimingLeftInsertion = priorEditClaimingLeftInsertion,
               priorEditClaimingRightInsertion = priorEditClaimingRightInsertion
             )(
@@ -878,6 +894,8 @@ class MergeTest:
               priorDeletionOrInsertionBlockingRightEdit = true,
               priorDeletionBlockingLeftInsertion =
                 priorDeletionBlockingLeftInsertion,
+              priorInsertionBlockingLeftDeletion = priorInsertionBlockingLeftDeletion,
+              priorInsertionBlockingRightDeletion = true,
               priorEditClaimingLeftInsertion = priorEditClaimingLeftInsertion,
               priorEditClaimingRightInsertion = priorEditClaimingRightInsertion
             )(
@@ -1124,8 +1142,6 @@ object MergeTest:
 
   private val coincidentInsertionFrequency = 4  -> CoincidentInsertion
   private val preservationFrequency        = 10 -> Preservation
-  private val leftDeletionFrequency        = 7  -> LeftDeletion
-  private val rightDeletionFrequency       = 7  -> RightDeletion
   private val coincidentDeletionFrequency  = 4  -> CoincidentDeletion
 
   def equivalent(
