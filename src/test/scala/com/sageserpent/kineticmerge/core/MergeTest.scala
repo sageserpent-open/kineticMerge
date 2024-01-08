@@ -681,7 +681,7 @@ class MergeTest:
   @TestFactory
   def fullMerge: DynamicTests =
     fullyMergedTestCases
-      .withLimit(10000)
+      .withLimit(20000)
       .dynamicTests: testCase =>
         println("*************")
         pprintln(testCase)
