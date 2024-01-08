@@ -6,6 +6,29 @@ import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Contribution
 import scala.annotation.tailrec
 
 object merge:
+  /** Performs a three-way merge.
+    * @param base
+    *   {@code left} and {@code right} are considered modified versions of this
+    *   sequence.
+    * @param left
+    *   A modified version of {@code base}. Where there is a preservation or a
+    *   coincident insertion, then this provides the representative element for
+    *   the merge.
+    * @param right
+    *   The other modified version of {@code base}.
+    * @param equality
+    *   This determines whether elements are considered equal. Because it is not
+    *   necessarily `==` or `eq`, this requires a preference for which of the
+    *   equivalent elements to pick in a preservation of coincident insertion.
+    *   That preference is to take the element from {@code left}.
+    * @tparam Element
+    *   What the sequences contain.
+    * @return
+    *   A [[Result]] representing either a full merge without conflicts or a
+    *   conflicted merge, wrapped in an [[Either]]. Currently the [[Either]] is
+    *   always a [[Right]], as there is no support for code motion and thus no
+    *   possibility of a divergence error.
+    */
   def of[Element](
       base: IndexedSeq[Element],
       left: IndexedSeq[Element],
@@ -462,6 +485,14 @@ object merge:
   case class FullyMerged[Element](elements: IndexedSeq[Element])
       extends Result[Element]
 
+  /** @param leftElements
+    *   The left hand form of the merge. Has all the clean merges, plus the left
+    *   side of the conflicts.
+    * @param rightElements
+    *   The right hand form of the merge. Has all the clean merges, plus the
+    *   right side of the conflicts.
+    * @tparam Element
+    */
   case class MergedWithConflicts[Element](
       leftElements: IndexedSeq[Element],
       rightElements: IndexedSeq[Element]
