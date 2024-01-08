@@ -748,12 +748,12 @@ class MergeTest:
       priorEditClaimingRightInsertion: Boolean = false
   )(partialResult: MergeTestCase): Trials[MergeTestCase] =
     def leftInsertionFrequency(allow: Boolean) =
-      (if allow && !priorDeletionBlockingLeftInsertion || priorEditClaimingRightInsertion
+      (if allow && (!priorDeletionBlockingLeftInsertion || priorEditClaimingRightInsertion)
        then 7
        else 0) -> LeftInsertion
 
     def rightInsertionFrequency(allow: Boolean) =
-      (if allow && !priorDeletionBlockingRightInsertion || priorEditClaimingLeftInsertion
+      (if allow && (!priorDeletionBlockingRightInsertion || priorEditClaimingLeftInsertion)
        then 7
        else 0) -> RightInsertion
 
