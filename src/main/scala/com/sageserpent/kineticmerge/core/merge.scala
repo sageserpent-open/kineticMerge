@@ -85,7 +85,20 @@ object merge:
             case (
                   Seq(Contribution.CommonToBaseAndRightOnly(_), _*),
                   Seq(Contribution.Difference(_), _*)
-                ) =>
+                )
+                // Guard against a coincident insertion prior to the right side
+                // of a pending left edit or deletion; that would maroon the
+                // latter, so we *would* coalesce the following element on the
+                // left.
+                if rightTail
+                  .takeWhile {
+                    case Contribution.CommonToBaseAndRightOnly(_) => false
+                    case _                                        => true
+                  }
+                  .forall {
+                    case Contribution.CommonToLeftAndRightOnly(_) => false
+                    case _                                        => true
+                  } =>
               // There is another pending left edit, so *don't* coalesce the
               // following element on the left; that then respects any
               // insertions that may be lurking on the right prior to the
@@ -137,7 +150,20 @@ object merge:
             case (
                   Seq(Contribution.CommonToBaseAndLeftOnly(_), _*),
                   Seq(Contribution.Difference(_), _*)
-                ) =>
+                )
+                // Guard against a coincident insertion prior to the left side
+                // of a pending right edit or deletion; that would maroon the
+                // latter, so we *would* coalesce the following element on the
+                // right.
+                if leftTail
+                  .takeWhile {
+                    case Contribution.CommonToBaseAndLeftOnly(_) => false
+                    case _                                       => true
+                  }
+                  .forall {
+                    case Contribution.CommonToLeftAndRightOnly(_) => false
+                    case _                                        => true
+                  } =>
               // There is another pending right edit, so *don't* coalesce the
               // following element on the right; that then respects any
               // insertions that may be lurking on the left prior to the pending
