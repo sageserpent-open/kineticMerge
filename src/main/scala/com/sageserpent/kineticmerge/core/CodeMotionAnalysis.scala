@@ -321,6 +321,10 @@ object CodeMotionAnalysis:
         sectionsSeenAcrossSides: SectionsSeenAcrossSides,
         matchGroupsInDescendingOrderOfKeys: MatchGroupsInDescendingOrderOfKeys
     ):
+      require(matchGroupsInDescendingOrderOfKeys.forall {
+        case (_, matchGroup) => matchGroup.nonEmpty
+      })
+
       @tailrec
       final def withAllMatchesOfAtLeastTheSureFireWindowSize(
           looseExclusiveUpperBoundOnMaximumMatchSize: Int =
@@ -919,20 +923,9 @@ object CodeMotionAnalysis:
           matches = Set.empty
         )
       end matchesForWindowSize
-    end MatchCalculationState
-
-    extension (
-        matchGroupsInDescendingOrderOfKeys: MatchGroupsInDescendingOrderOfKeys
-    )
-      def checkInvariant =
-        require(matchGroupsInDescendingOrderOfKeys.forall {
-          case (_, matchGroup) => matchGroup.nonEmpty
-        })
 
       def sectionsAndTheirMatches
           : Map[Section[Element], Match[Section[Element]]] =
-        checkInvariant
-        
         matchGroupsInDescendingOrderOfKeys
           .map { case (_, matches) =>
             matches.view.flatMap {
@@ -955,8 +948,6 @@ object CodeMotionAnalysis:
       end sectionsAndTheirMatches
 
       def baseSections: Set[Section[Element]] =
-        checkInvariant
-
         matchGroupsInDescendingOrderOfKeys.flatMap { case (_, matches) =>
           matches.view.collect {
             case Match.AllThree(baseSection, _, _) =>
@@ -970,8 +961,6 @@ object CodeMotionAnalysis:
       end baseSections
 
       def leftSections: Set[Section[Element]] =
-        checkInvariant
-
         matchGroupsInDescendingOrderOfKeys.flatMap { case (_, matches) =>
           matches.view.collect {
             case Match.AllThree(_, leftSection, _) =>
@@ -985,8 +974,6 @@ object CodeMotionAnalysis:
       end leftSections
 
       def rightSections: Set[Section[Element]] =
-        checkInvariant
-
         matchGroupsInDescendingOrderOfKeys.flatMap { case (_, matches) =>
           matches.view.collect {
             case Match.AllThree(_, _, rightSection) =>
@@ -998,8 +985,7 @@ object CodeMotionAnalysis:
           }
         }.toSet
       end rightSections
-
-    end extension
+    end MatchCalculationState
 
     given Order[MatchGrade] with
       override def compare(x: MatchGrade, y: MatchGrade): Int =
@@ -1011,7 +997,7 @@ object CodeMotionAnalysis:
           case (MatchGrade.Triple, MatchGrade.Triple) => 0
     end given
 
-    val matchGroupsInDescendingOrderOfKeys =
+    val matchCalculationState =
       val withAllMatchesOfAtLeastTheSureFireWindowSize =
         MatchCalculationState.empty
           .withAllMatchesOfAtLeastTheSureFireWindowSize()
@@ -1022,28 +1008,26 @@ object CodeMotionAnalysis:
           .withAllSmallFryMatches(
             minimumSureFireWindowSizeAcrossAllFilesOverAllSides - 1
           )
-          .matchGroupsInDescendingOrderOfKeys
-      else
-        withAllMatchesOfAtLeastTheSureFireWindowSize.matchGroupsInDescendingOrderOfKeys
+      else withAllMatchesOfAtLeastTheSureFireWindowSize
       end if
-    end matchGroupsInDescendingOrderOfKeys
+    end matchCalculationState
 
     val attempt = Try {
       val baseFilesByPath =
         base.filesByPathUtilising(
-          matchGroupsInDescendingOrderOfKeys.baseSections
+          matchCalculationState.baseSections
         )
       val leftFilesByPath =
         left.filesByPathUtilising(
-          matchGroupsInDescendingOrderOfKeys.leftSections
+          matchCalculationState.leftSections
         )
       val rightFilesByPath =
         right.filesByPathUtilising(
-          matchGroupsInDescendingOrderOfKeys.rightSections
+          matchCalculationState.rightSections
         )
 
       val sectionsAndTheirMatches =
-        matchGroupsInDescendingOrderOfKeys.sectionsAndTheirMatches
+        matchCalculationState.sectionsAndTheirMatches
 
       new CodeMotionAnalysis[Path, Element]:
         override def matchFor(
