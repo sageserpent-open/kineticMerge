@@ -722,9 +722,9 @@ class MergeTest:
       // sure that it doesn't start with a result where an edit follows a
       // deletion. This is only relevant when the edit and deletion are both on
       // the same side and the only other moves between them are insertions on
-      // the opposite side. All other moves lift the block, as they make the
-      // interpretation as to which is the edit and which the deletion
-      // unambiguous.
+      // the opposite side, or coincident deletions. All other moves lift the
+      // block, as they make the interpretation as to which is the edit and
+      // which the deletion unambiguous.
       // In a similar vein, insertions also block following edits on the same
       // side, because we expect the SUT to eagerly pick up an edit first.
       priorDeletionOrInsertionBlockingLeftEdit: Boolean = false,
@@ -785,7 +785,7 @@ class MergeTest:
               leftEditFrequency(),
               rightEditFrequency(),
               leftDeletionFrequency(),
-              rightDeletionFrequency(),
+              rightDeletionFrequency()
             )
         case RightInsertion =>
           trialsApi
@@ -797,7 +797,7 @@ class MergeTest:
               leftEditFrequency(),
               rightEditFrequency(),
               leftDeletionFrequency(),
-              rightDeletionFrequency(),
+              rightDeletionFrequency()
             )
 
         case CoincidentInsertion | Preservation | LeftEdit | RightEdit =>
@@ -866,7 +866,8 @@ class MergeTest:
               priorDeletionBlockingRightInsertion =
                 priorDeletionBlockingRightInsertion,
               priorInsertionBlockingLeftDeletion = true,
-              priorInsertionBlockingRightDeletion = priorInsertionBlockingRightDeletion,
+              priorInsertionBlockingRightDeletion =
+                priorInsertionBlockingRightDeletion,
               priorEditClaimingLeftInsertion = priorEditClaimingLeftInsertion,
               priorEditClaimingRightInsertion = priorEditClaimingRightInsertion
             )(
@@ -894,7 +895,8 @@ class MergeTest:
               priorDeletionOrInsertionBlockingRightEdit = true,
               priorDeletionBlockingLeftInsertion =
                 priorDeletionBlockingLeftInsertion,
-              priorInsertionBlockingLeftDeletion = priorInsertionBlockingLeftDeletion,
+              priorInsertionBlockingLeftDeletion =
+                priorInsertionBlockingLeftDeletion,
               priorInsertionBlockingRightDeletion = true,
               priorEditClaimingLeftInsertion = priorEditClaimingLeftInsertion,
               priorEditClaimingRightInsertion = priorEditClaimingRightInsertion
@@ -1114,7 +1116,15 @@ class MergeTest:
             baseElement <- zeroRelativeElements
             result <- simpleMergeTestCases(
               allowConflicts = allowConflicts,
-              predecessorMove = CoincidentDeletion
+              predecessorMove = CoincidentDeletion,
+              priorDeletionOrInsertionBlockingLeftEdit,
+              priorDeletionOrInsertionBlockingRightEdit,
+              priorDeletionBlockingLeftInsertion,
+              priorDeletionBlockingRightInsertion,
+              priorInsertionBlockingLeftDeletion,
+              priorInsertionBlockingRightDeletion,
+              priorEditClaimingLeftInsertion,
+              priorEditClaimingRightInsertion
             ):
               partialResult
                 .focus(_.base)
