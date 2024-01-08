@@ -72,16 +72,31 @@ object merge:
 
         case (
               Seq(
-                Contribution.CommonToBaseAndRightOnly(baseElement),
+                editedBaseElement @ Contribution.CommonToBaseAndRightOnly(_),
                 baseTail*
               ),
-              Seq(Contribution.Difference(leftSection), leftTail*),
+              Seq(Contribution.Difference(leftElement), leftTail*),
               Seq(
-                Contribution.CommonToBaseAndRightOnly(rightSection),
+                Contribution.CommonToBaseAndRightOnly(_),
                 rightTail*
               )
             ) => // Left edit.
           baseTail -> leftTail match
+            case (
+                  Seq(
+                    Contribution.Difference(_),
+                    baseTailAfterCoincidentDeletion*
+                  ),
+                  Seq(Contribution.Difference(_), _*)
+                ) =>
+              // There is a pending coincidental deletion; process it first in
+              // case it hides a subsequent left edit.
+              mergeBetweenRunsOfCommonElements(
+                editedBaseElement +: baseTailAfterCoincidentDeletion,
+                left,
+                right
+              )(partialResult)
+
             case (
                   Seq(Contribution.CommonToBaseAndRightOnly(_), _*),
                   Seq(Contribution.Difference(_), _*)
@@ -104,19 +119,19 @@ object merge:
               // insertions that may be lurking on the right prior to the
               // pending left edit claiming the following element on the left.
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                partialResult.addCommon(leftSection)
+                partialResult.addCommon(leftElement)
               )
 
             case (_, Seq(Contribution.Difference(_), _*)) =>
               // If the following element on the left would also be inserted,
               // coalesce into a single edit.
               mergeBetweenRunsOfCommonElements(base, leftTail, right)(
-                partialResult.addCommon(leftSection)
+                partialResult.addCommon(leftElement)
               )
 
             case _ =>
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                partialResult.addCommon(leftSection)
+                partialResult.addCommon(leftElement)
               )
           end match
 
@@ -137,16 +152,31 @@ object merge:
 
         case (
               Seq(
-                Contribution.CommonToBaseAndLeftOnly(baseElement),
+                editedBaseElement @ Contribution.CommonToBaseAndLeftOnly(_),
                 baseTail*
               ),
               Seq(
-                Contribution.CommonToBaseAndLeftOnly(leftElement),
+                Contribution.CommonToBaseAndLeftOnly(_),
                 leftTail*
               ),
-              Seq(Contribution.Difference(rightSection), rightTail*)
+              Seq(Contribution.Difference(rightElement), rightTail*)
             ) => // Right edit.
           baseTail -> rightTail match
+            case (
+                  Seq(
+                    Contribution.Difference(_),
+                    baseTailAfterCoincidentDeletion*
+                  ),
+                  Seq(Contribution.Difference(_), _*)
+                ) =>
+              // There is a pending coincidental deletion; process it first in
+              // case it hides a subsequent right edit.
+              mergeBetweenRunsOfCommonElements(
+                editedBaseElement +: baseTailAfterCoincidentDeletion,
+                left,
+                right
+              )(partialResult)
+
             case (
                   Seq(Contribution.CommonToBaseAndLeftOnly(_), _*),
                   Seq(Contribution.Difference(_), _*)
@@ -169,19 +199,19 @@ object merge:
               // insertions that may be lurking on the left prior to the pending
               // right edit claiming the following element on the right.
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                partialResult.addCommon(rightSection)
+                partialResult.addCommon(rightElement)
               )
 
             case (_, Seq(Contribution.Difference(_), _*)) =>
               // If the following element on the right would also be inserted,
               // coalesce into a single edit.
               mergeBetweenRunsOfCommonElements(base, left, rightTail)(
-                partialResult.addCommon(rightSection)
+                partialResult.addCommon(rightElement)
               )
 
             case _ =>
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                partialResult.addCommon(rightSection)
+                partialResult.addCommon(rightElement)
               )
           end match
 
