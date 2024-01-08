@@ -39,28 +39,29 @@ object merge:
     *   Rules of the game: If an element is [[Contribution.Common]] to all three
     *   sides, it is preserved in its left form in the merge; the merge uses the
     *   least common subsequence as a backbone to arrange other changes around.
-    *   <p> If an element is [[Contribution.CommonToLeftAndRightOnly]], it is
+    *   <p><p> If an element is [[Contribution.CommonToLeftAndRightOnly]], it is
     *   coincidentally inserted on both the left and right side, so goes in its
-    *   left from into the merge, extending the backbone. <p> If an element is
-    *   either [[Contribution.CommonToBaseAndLeftOnly]] or
+    *   left form into the merge, extending the backbone. <p><p> If an element
+    *   is either [[Contribution.CommonToBaseAndLeftOnly]] or
     *   [[Contribution.CommonToBaseAndRightOnly]], this implies a deletion or an
-    *   edit on the other side, extending the backbone. <p> If an element is a
-    *   [[Contribution.Difference]] in {@code base}, then depending on the
+    *   edit on the other side, extending the backbone. <p><p> If an element is
+    *   a [[Contribution.Difference]] in {@code base}, then depending on the
     *   {@code left} and {@code right} context, it may mean a coincident
     *   deletion of that element, or conflicting edits of that element, or a
-    *   conflict between an edit and an outright deletion of that element. <p>
-    *   If an element is a [[Contribution.Difference]] in {@code left} or in
-    *   {@code right}, then depending on context this may mean an insertion of
-    *   the element on that side, or an edit, or may be one of two conflicting
-    *   elements.<p>Edits are always looked for if they can avoid a conflict; so
-    *   for example, if a [[Contribution.Difference]] in {@code left} is
-    *   available to pair off with a [[Contribution.CommonToBaseAndRightOnly]]
-    *   in {@code base} and {@code right}, it will be taken to be a left-edit.
-    *   This will not conflict with a following [[Contribution.Difference]] in
-    *   {@code right} as that will be taken to be a standalone right-insertion.
-    *   <p>Edits are greedy in that they will eagerly take successive
-    *   [[Contribution.Difference]] elements to make a long edit.<p>However, if
-    *   there is for example a [[Contribution.Difference]] sandwiched between
+    *   conflict between an edit and an outright deletion of that element.
+    *   <p><p> If an element is a [[Contribution.Difference]] in {@code left} or
+    *   in {@code right}, then depending on context this may mean an insertion
+    *   of the element on that side, or an edit, or may be one of two
+    *   conflicting elements.<p><p> Edits are always looked for if they can
+    *   avoid a conflict; so for example, if a [[Contribution.Difference]] in
+    *   {@code left} is available to pair off with a
+    *   [[Contribution.CommonToBaseAndRightOnly]] in both a {@code base} and
+    *   {@code right}, it will be taken to be a left-edit. This will not
+    *   conflict with a following [[Contribution.Difference]] in {@code right}
+    *   as that will be taken to be a standalone right-insertion. <p><p>Edits
+    *   are greedy in that they will eagerly take successive
+    *   [[Contribution.Difference]] elements to make a long edit.<p><p>However,
+    *   if there is for example a [[Contribution.Difference]] sandwiched between
     *   two [[Contribution.CommonToBaseAndRightOnly]] elements in {@code right},
     *   this breaks up the left-edits to preserve the sandwich in edited form in
     *   the merge.
