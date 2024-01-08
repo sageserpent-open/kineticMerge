@@ -13,7 +13,7 @@ import scala.annotation.tailrec
 import scala.collection.decorators.mapDecorator
 import scala.collection.immutable.TreeSet
 import scala.collection.{SortedMultiDict, mutable}
-import scala.util.{Random, Try}
+import scala.util.Try
 
 trait CodeMotionAnalysis[Path, Element]:
   def base: Map[Path, File[Element]]
@@ -921,17 +921,18 @@ object CodeMotionAnalysis:
       end matchesForWindowSize
     end MatchCalculationState
 
-    case class Phenotype(
-        chromosomeSize: Int,
+    extension (
         matchGroupsInDescendingOrderOfKeys: MatchGroupsInDescendingOrderOfKeys
-    ):
-      require(matchGroupsInDescendingOrderOfKeys.forall {
-        case (_, matchGroup) =>
-          matchGroup.nonEmpty
-      })
+    )
+      def checkInvariant =
+        require(matchGroupsInDescendingOrderOfKeys.forall {
+          case (_, matchGroup) => matchGroup.nonEmpty
+        })
 
       def sectionsAndTheirMatches
           : Map[Section[Element], Match[Section[Element]]] =
+        checkInvariant
+        
         matchGroupsInDescendingOrderOfKeys
           .map { case (_, matches) =>
             matches.view.flatMap {
@@ -951,8 +952,11 @@ object CodeMotionAnalysis:
           }
           .reduceOption(_ ++ _)
           .getOrElse(Map.empty)
+      end sectionsAndTheirMatches
 
       def baseSections: Set[Section[Element]] =
+        checkInvariant
+
         matchGroupsInDescendingOrderOfKeys.flatMap { case (_, matches) =>
           matches.view.collect {
             case Match.AllThree(baseSection, _, _) =>
@@ -963,8 +967,11 @@ object CodeMotionAnalysis:
               baseSection
           }
         }.toSet
+      end baseSections
 
       def leftSections: Set[Section[Element]] =
+        checkInvariant
+
         matchGroupsInDescendingOrderOfKeys.flatMap { case (_, matches) =>
           matches.view.collect {
             case Match.AllThree(_, leftSection, _) =>
@@ -975,8 +982,11 @@ object CodeMotionAnalysis:
               leftSection
           }
         }.toSet
+      end leftSections
 
       def rightSections: Set[Section[Element]] =
+        checkInvariant
+
         matchGroupsInDescendingOrderOfKeys.flatMap { case (_, matches) =>
           matches.view.collect {
             case Match.AllThree(_, _, rightSection) =>
@@ -987,8 +997,9 @@ object CodeMotionAnalysis:
               rightSection
           }
         }.toSet
+      end rightSections
 
-    end Phenotype
+    end extension
 
     given Order[MatchGrade] with
       override def compare(x: MatchGrade, y: MatchGrade): Int =
@@ -1000,52 +1011,39 @@ object CodeMotionAnalysis:
           case (MatchGrade.Triple, MatchGrade.Triple) => 0
     end given
 
-    val evolvedPhenotype =
+    val matchGroupsInDescendingOrderOfKeys =
       val withAllMatchesOfAtLeastTheSureFireWindowSize =
         MatchCalculationState.empty
           .withAllMatchesOfAtLeastTheSureFireWindowSize()
 
       if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > minimumWindowSizeAcrossAllFilesOverAllSides
       then
-        // TODO: this is hokey - should make
-        // `MatchGroupsInDescendingOrderOfKeys` into a case class that wraps the
-        // sequence, can then police its invariant there / move the methods in
-        // `Phenotype` there.
-        Phenotype(
-          chromosomeSize = 0,
-          matchGroupsInDescendingOrderOfKeys =
-            withAllMatchesOfAtLeastTheSureFireWindowSize
-              .withAllSmallFryMatches(
-                minimumSureFireWindowSizeAcrossAllFilesOverAllSides - 1
-              )
-              .matchGroupsInDescendingOrderOfKeys
-        )
+        withAllMatchesOfAtLeastTheSureFireWindowSize
+          .withAllSmallFryMatches(
+            minimumSureFireWindowSizeAcrossAllFilesOverAllSides - 1
+          )
+          .matchGroupsInDescendingOrderOfKeys
       else
-        // TODO: this is hokey - should make
-        // `MatchGroupsInDescendingOrderOfKeys` into a case class that wraps the
-        // sequence, can then police its invariant there / move the methods in
-        // `Phenotype` there.
-        Phenotype(
-          chromosomeSize = 0,
-          matchGroupsInDescendingOrderOfKeys =
-            withAllMatchesOfAtLeastTheSureFireWindowSize.matchGroupsInDescendingOrderOfKeys
-        )
+        withAllMatchesOfAtLeastTheSureFireWindowSize.matchGroupsInDescendingOrderOfKeys
       end if
-    end evolvedPhenotype
-
-    val sectionsAndTheirMatches = evolvedPhenotype.sectionsAndTheirMatches
-
-    val baseSections  = evolvedPhenotype.baseSections
-    val leftSections  = evolvedPhenotype.leftSections
-    val rightSections = evolvedPhenotype.rightSections
+    end matchGroupsInDescendingOrderOfKeys
 
     val attempt = Try {
       val baseFilesByPath =
-        base.filesByPathUtilising(baseSections)
+        base.filesByPathUtilising(
+          matchGroupsInDescendingOrderOfKeys.baseSections
+        )
       val leftFilesByPath =
-        left.filesByPathUtilising(leftSections)
+        left.filesByPathUtilising(
+          matchGroupsInDescendingOrderOfKeys.leftSections
+        )
       val rightFilesByPath =
-        right.filesByPathUtilising(rightSections)
+        right.filesByPathUtilising(
+          matchGroupsInDescendingOrderOfKeys.rightSections
+        )
+
+      val sectionsAndTheirMatches =
+        matchGroupsInDescendingOrderOfKeys.sectionsAndTheirMatches
 
       new CodeMotionAnalysis[Path, Element]:
         override def matchFor(
