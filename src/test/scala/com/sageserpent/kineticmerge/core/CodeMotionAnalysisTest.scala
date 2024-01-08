@@ -214,20 +214,35 @@ class CodeMotionAnalysisTest:
               commonToAllThreeSides ++ commonToBaseAndLeft ++ commonToBaseAndRight ++ commonToLeftAndRight
 
             // Sanity check: it is possible to have accidental matches where a
-            // common sequence is *embedded* within a unique sequence...
+            // common sequence is *embedded* within a unique sequence. There are
+            // also the odd pathological cases where two unique sides agree on a
+            // suffix or prefix, thus extending the expected match of the
+            // adjacent common sequence...
             if uniqueToBase.exists(unique =>
                 (commonToAllThreeSides ++ commonToLeftAndRight)
-                  .exists(unique.containsSlice)
+                  .exists(
+                    unique.containsSlice
+                  ) || (uniqueToLeft ++ uniqueToRight).exists(anotherUnique =>
+                  anotherUnique.head == unique.head || anotherUnique.last == unique.last
+                )
               )
             then trialsApi.impossible
             else if uniqueToLeft.exists(unique =>
                 (commonToAllThreeSides ++ commonToBaseAndRight)
-                  .exists(unique.containsSlice)
+                  .exists(
+                    unique.containsSlice
+                  ) || (uniqueToBase ++ uniqueToRight).exists(anotherUnique =>
+                  anotherUnique.head == unique.head || anotherUnique.last == unique.last
+                )
               )
             then trialsApi.impossible
             else if uniqueToRight.exists(unique =>
                 (commonToAllThreeSides ++ commonToBaseAndLeft)
-                  .exists(unique.containsSlice)
+                  .exists(
+                    unique.containsSlice
+                  ) || (uniqueToBase ++ uniqueToLeft).exists(anotherUnique =>
+                  anotherUnique.head == unique.head || anotherUnique.last == unique.last
+                )
               )
             then trialsApi.impossible
             // ... it is also possible to have accidental matches where a common
@@ -394,7 +409,7 @@ class CodeMotionAnalysisTest:
     testPlans
       .withStrategy(caseSupplyCycle =>
         if caseSupplyCycle.isInitial then
-          CasesLimitStrategy.timed(Duration.apply(3, TimeUnit.MINUTES))
+          CasesLimitStrategy.timed(Duration.apply(10, TimeUnit.MINUTES))
         else CasesLimitStrategy.counted(10, 3.0)
       )
       .dynamicTests { testPlan =>
@@ -765,7 +780,10 @@ object CodeMotionAnalysisTest:
     end thingsInChunks
   end extension
 
-  private def elementFunnel(element: Element, primitiveSink: PrimitiveSink): Unit =
+  private def elementFunnel(
+      element: Element,
+      primitiveSink: PrimitiveSink
+  ): Unit =
     primitiveSink.putInt(element)
   end elementFunnel
 

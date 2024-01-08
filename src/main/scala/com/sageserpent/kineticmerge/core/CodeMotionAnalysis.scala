@@ -6,17 +6,14 @@ import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction}
 import com.sageserpent.americium.randomEnrichment.*
-import com.sageserpent.kineticmerge.core.genetic.Evolution
 import de.sciss.fingertree.RangedSeq
 
 import java.lang.Byte as JavaByte
-import java.util.concurrent.TimeUnit
 import scala.annotation.tailrec
 import scala.collection.decorators.mapDecorator
 import scala.collection.immutable.TreeSet
 import scala.collection.{SortedMultiDict, mutable}
-import scala.concurrent.duration.FiniteDuration
-import scala.util.Random
+import scala.util.{Random, Try}
 
 trait CodeMotionAnalysis[Path, Element]:
   def base: Map[Path, File[Element]]
@@ -65,13 +62,14 @@ object CodeMotionAnalysis:
       left: Sources[Path, Element],
       right: Sources[Path, Element]
   )(
-      minimumSizeFractionForMotionDetection: Double
+      minimumSizeFractionForMotionDetection: Double,
+      propagateExceptions: Boolean = true
   )(
       elementEquality: Eq[Element],
       elementOrder: Order[Element],
       elementFunnel: Funnel[Element],
       hashFunction: HashFunction
-  ): Either[AmbiguousMatch.type, CodeMotionAnalysis[Path, Element]] =
+  ): Either[Throwable, CodeMotionAnalysis[Path, Element]] =
     require(0 <= minimumSizeFractionForMotionDetection)
     require(1 >= minimumSizeFractionForMotionDetection)
 
@@ -119,14 +117,19 @@ object CodeMotionAnalysis:
     type SectionsSeen = RangedSeq[Section[Element], Int]
 
     object SectionsSeenAcrossSides:
-      private def containsSection(
+      private def suppressesSection(
           side: Sources[Path, Element],
           sectionsByPath: Map[Path, SectionsSeen]
       )(section: Section[Element]): Boolean =
         sectionsByPath
           .get(side.pathFor(section))
-          .fold(ifEmpty = false)(
-            _.includes(section.closedOpenInterval)
+          .fold(ifEmpty = false)(potentiallyIncludingOrOverlapping =>
+            val interval = section.closedOpenInterval
+            potentiallyIncludingOrOverlapping.includes(
+              interval
+            ) || potentiallyIncludingOrOverlapping.overlaps(
+              interval
+            )
           )
 
       private def withSection(
@@ -191,12 +194,12 @@ object CodeMotionAnalysis:
     ):
       import SectionsSeenAcrossSides.*
 
-      val containsBaseSection: Section[Element] => Boolean =
-        containsSection(base, baseSectionsByPath)
-      val containsLeftSection: Section[Element] => Boolean =
-        containsSection(left, leftSectionsByPath)
-      val containsRightSection: Section[Element] => Boolean =
-        containsSection(right, rightSectionsByPath)
+      val suppressesBaseSection: Section[Element] => Boolean =
+        suppressesSection(base, baseSectionsByPath)
+      val suppressesLeftSection: Section[Element] => Boolean =
+        suppressesSection(left, leftSectionsByPath)
+      val suppressesRightSection: Section[Element] => Boolean =
+        suppressesSection(right, rightSectionsByPath)
 
       private val withBaseSection: Section[Element] => Map[Path, SectionsSeen] =
         withSection(base, baseSectionsByPath)
@@ -297,8 +300,6 @@ object CodeMotionAnalysis:
         ]]
     )
 
-    val phenotypeCache: Cache[Chromosome, Phenotype] =
-      Caffeine.newBuilder().build()
     val rollingHashFactoryCache: Cache[Int, RollingHash.Factory] =
       Caffeine.newBuilder().build()
     // TODO: review this one - a) it does not seem to add much of a
@@ -349,10 +350,6 @@ object CodeMotionAnalysis:
             val (stateAfterTryingCandidate, optimalMatchSizeEstimate) =
               this.matchesForWindowSize(candidateWindowSize)
 
-            println(
-              s"looseExclusiveUpperBoundOnMaximumMatchSize: $looseExclusiveUpperBoundOnMaximumMatchSize, windowSize: $candidateWindowSize"
-            )
-
             optimalMatchSizeEstimate match
               case None =>
                 // Failed to improve the match size, try again with the
@@ -365,7 +362,10 @@ object CodeMotionAnalysis:
                   fallbackImprovedState
                 )
               case Some(estimate)
-                  if estimate == candidateWindowSize || 1 == stateAfterTryingCandidate.matchGroupsInDescendingOrderOfKeys.last._2.size =>
+                  if estimate == candidateWindowSize || 1 == stateAfterTryingCandidate.matchGroupsInDescendingOrderOfKeys.collect {
+                    case ((size, _), matches) if candidateWindowSize == size =>
+                      matches.size
+                  }.sum =>
                 // Found the optimal solution; try searching for the next lowest
                 // optimal size. NOTE: this won't pick up multiple distinct
                 // optimal matches, see below.
@@ -407,6 +407,33 @@ object CodeMotionAnalysis:
           fallbackImprovedState = this
         )
       end withAllMatchesOfAtLeastTheSureFireWindowSize
+
+      @tailrec
+      final def withAllSmallFryMatches(
+          candidateWindowSize: Int
+      ): MatchCalculationState =
+        require(
+          minimumSureFireWindowSizeAcrossAllFilesOverAllSides > candidateWindowSize
+        )
+
+        if candidateWindowSize > minimumWindowSizeAcrossAllFilesOverAllSides
+        then
+          // We will be exploring the small-fry window sizes below
+          // `minimumSureFireWindowSizeAcrossAllFilesOverAllSides`; in this
+          // situation, sizes below per-file thresholds lead to no matches, this
+          // leads to gaps in validity as a size exceeds the largest match it
+          // could participate in, but fails to meet the next highest per-file
+          // threshold. Consequently, don't bother checking whether any matches
+          // were found - instead, plod linearly down each window size.
+          val (stateAfterTryingCandidate, _) =
+            this.matchesForWindowSize(candidateWindowSize)
+
+          stateAfterTryingCandidate.withAllSmallFryMatches(
+            candidateWindowSize - 1
+          )
+        else this
+        end if
+      end withAllSmallFryMatches
 
       def matchesForWindowSize(
           windowSize: Int
@@ -553,15 +580,15 @@ object CodeMotionAnalysis:
                   rightSection <- LazyList.from(rightSections)
 
                   baseSubsumed = sectionsSeenAcrossSides
-                    .containsBaseSection(
+                    .suppressesBaseSection(
                       baseSection
                     )
                   leftSubsumed = sectionsSeenAcrossSides
-                    .containsLeftSection(
+                    .suppressesLeftSection(
                       leftSection
                     )
                   rightSubsumed = sectionsSeenAcrossSides
-                    .containsRightSection(
+                    .suppressesRightSection(
                       rightSection
                     )
                   suppressed =
@@ -625,9 +652,9 @@ object CodeMotionAnalysis:
                   baseSection <- LazyList.from(baseSections)
                   leftSection <- LazyList.from(leftSections)
 
-                  suppressed = sectionsSeenAcrossSides.containsBaseSection(
+                  suppressed = sectionsSeenAcrossSides.suppressesBaseSection(
                     baseSection
-                  ) || sectionsSeenAcrossSides.containsLeftSection(
+                  ) || sectionsSeenAcrossSides.suppressesLeftSection(
                     leftSection
                   )
                   if !suppressed
@@ -675,9 +702,9 @@ object CodeMotionAnalysis:
                   baseSection  <- LazyList.from(baseSections)
                   rightSection <- LazyList.from(rightSections)
 
-                  suppressed = sectionsSeenAcrossSides.containsBaseSection(
+                  suppressed = sectionsSeenAcrossSides.suppressesBaseSection(
                     baseSection
-                  ) || sectionsSeenAcrossSides.containsRightSection(
+                  ) || sectionsSeenAcrossSides.suppressesRightSection(
                     rightSection
                   )
                   if !suppressed
@@ -725,9 +752,9 @@ object CodeMotionAnalysis:
                   leftSection  <- LazyList.from(leftSections)
                   rightSection <- LazyList.from(rightSections)
 
-                  suppressed = sectionsSeenAcrossSides.containsLeftSection(
+                  suppressed = sectionsSeenAcrossSides.suppressesLeftSection(
                     leftSection
-                  ) || sectionsSeenAcrossSides.containsRightSection(
+                  ) || sectionsSeenAcrossSides.suppressesRightSection(
                     rightSection
                   )
                   if !suppressed
@@ -851,10 +878,6 @@ object CodeMotionAnalysis:
               // There are no more opportunities to match a full triple or
               // just a pair, so this terminates the recursion.
 
-              println(
-                s"Matches discovered at window size: $windowSize number: ${matches.size}"
-              )
-
               // Add the triples first if we have any, then any pairs as we
               // are adding match groups in descending order of keys.
               val (tripleMatches, pairMatches) = matches.partition {
@@ -866,9 +889,9 @@ object CodeMotionAnalysis:
                 if 1 < windowSize then
                   sectionsSeenAcrossSides.withSectionsFrom(matches)
                 else
-                  // If match is of size 1, then it sections won't overlap any
-                  // others, nor will they subsume any others - so don't
-                  // bother noting them.
+                  // If match is of size 1, then its sections won't overlap any
+                  // others, nor will they subsume any others - so don't bother
+                  // noting them.
                   sectionsSeenAcrossSides
 
               MatchCalculationState(
@@ -897,424 +920,6 @@ object CodeMotionAnalysis:
         )
       end matchesForWindowSize
     end MatchCalculationState
-
-    object Chromosome:
-      private val descendingWindowSizeOrdering = Ordering[Int].reverse
-      private val noWindowSizes = TreeSet.empty(descendingWindowSizeOrdering)
-
-      def initial: Chromosome =
-        withWindowSizes(
-          minimumWindowSizeAcrossAllFilesOverAllSides
-        )(
-          minimumWindowSizeAcrossAllFilesOverAllSides until minimumSureFireWindowSizeAcrossAllFilesOverAllSides
-        )
-      end initial
-
-      private def withWindowSizes(windowSizes: Int*)(validWindowSizes: Range) =
-        val windowSizesInDescendingOrder =
-          TreeSet(windowSizes*)(descendingWindowSizeOrdering)
-
-        Chromosome(
-          windowSizesInDescendingOrder = windowSizesInDescendingOrder,
-          validWindowSizes = validWindowSizes
-        )
-      end withWindowSizes
-    end Chromosome
-
-    case class Chromosome(
-        windowSizesInDescendingOrder: WindowSizesInDescendingOrder,
-        validWindowSizes: Range
-    ):
-      import Chromosome.*
-
-      if windowSizesInDescendingOrder.nonEmpty then
-        require(validWindowSizes contains windowSizesInDescendingOrder.head)
-        require(validWindowSizes contains windowSizesInDescendingOrder.last)
-      end if
-
-      def mutate(using random: Random): Chromosome =
-        enum Choice:
-          case Grow
-          case Contract
-          case Replace
-        end Choice
-
-        val choices = Choice.values.filter {
-          case Choice.Replace | Choice.Grow
-              if validWindowSizes.size > windowSizesInDescendingOrder.size =>
-            // NOTE: replacement has to find an *unused* window size to swap
-            // in, so it has to have at least one free window size to proceed.
-            true
-          case Choice.Contract if 1 < windowSizesInDescendingOrder.size =>
-            true
-          case _ => false
-        }
-
-        if choices.nonEmpty then
-          random.chooseOneOf(choices) match
-            case Choice.Grow =>
-              grown
-            case Choice.Contract =>
-              contracted
-            case Choice.Replace =>
-              nudged
-          end match
-        else this
-        end if
-      end mutate
-
-      def breedWith(another: Chromosome)(using random: Random): Chromosome =
-        // PLAN: walk down the window sizes from both chromosomes, looking for
-        // synchronization points where the sizes agree. Between these
-        // synchronization points there will be runs of window sizes that belong
-        // to one chromosome or the other; these will either lead directly to
-        // the next synchronization point or will swap chromosomes. Where there
-        // is a swap, choose either the preceding run or the following one.
-        // Where there is just one run leading to a synchronization point,
-        // choose to either include it or omit it. Synchronized window sizes go
-        // through unconditionally, thus making breeding of identical
-        // chromosomes stable.
-
-        enum PickingState:
-          case PickingFirst
-          case SkippingFirst
-          case PickingSecond
-          case SkippingSecond
-          case Synchronized
-        end PickingState
-
-        import PickingState.*
-
-        @tailrec
-        def pickWindowSizes(
-            firstWindowSizesDescending: Iterable[Int],
-            secondWindowSizesDescending: Iterable[Int]
-        )(
-            bredWindowSizes: WindowSizesInDescendingOrder,
-            pickingState: PickingState,
-            mandatoryState: Boolean
-        ): WindowSizesInDescendingOrder =
-          (
-            firstWindowSizesDescending.headOption,
-            secondWindowSizesDescending.headOption
-          ) match
-            case (Some(firstWindowSize), Some(secondWindowSize)) =>
-              if firstWindowSize > secondWindowSize then
-                // The first chromosome leads...
-                pickingState match
-                  case PickingFirst =>
-                    pickWindowSizes(
-                      firstWindowSizesDescending.tail,
-                      secondWindowSizesDescending
-                    )(
-                      bredWindowSizes + firstWindowSize,
-                      pickingState = PickingFirst,
-                      mandatoryState = mandatoryState
-                    )
-                  case SkippingFirst =>
-                    pickWindowSizes(
-                      firstWindowSizesDescending.tail,
-                      secondWindowSizesDescending
-                    )(
-                      bredWindowSizes,
-                      pickingState = SkippingFirst,
-                      mandatoryState = mandatoryState
-                    )
-                  case PickingSecond if !mandatoryState =>
-                    pickWindowSizes(
-                      firstWindowSizesDescending.tail,
-                      secondWindowSizesDescending
-                    )(
-                      bredWindowSizes,
-                      pickingState = SkippingFirst,
-                      mandatoryState = true
-                    )
-                  case SkippingSecond if !mandatoryState =>
-                    pickWindowSizes(
-                      firstWindowSizesDescending.tail,
-                      secondWindowSizesDescending
-                    )(
-                      bredWindowSizes + firstWindowSize,
-                      pickingState = PickingFirst,
-                      mandatoryState = true
-                    )
-                  case Synchronized | PickingSecond | SkippingSecond =>
-                    if random.nextBoolean() then
-                      pickWindowSizes(
-                        firstWindowSizesDescending.tail,
-                        secondWindowSizesDescending
-                      )(
-                        bredWindowSizes + firstWindowSize,
-                        pickingState = PickingFirst,
-                        mandatoryState = false
-                      )
-                    else
-                      pickWindowSizes(
-                        firstWindowSizesDescending.tail,
-                        secondWindowSizesDescending
-                      )(
-                        bredWindowSizes,
-                        pickingState = SkippingFirst,
-                        mandatoryState = false
-                      )
-              else if firstWindowSize < secondWindowSize then
-                // The second chromosome leads...
-                pickingState match
-                  case PickingSecond =>
-                    pickWindowSizes(
-                      firstWindowSizesDescending,
-                      secondWindowSizesDescending.tail
-                    )(
-                      bredWindowSizes + secondWindowSize,
-                      pickingState = PickingSecond,
-                      mandatoryState = mandatoryState
-                    )
-                  case SkippingSecond =>
-                    pickWindowSizes(
-                      firstWindowSizesDescending,
-                      secondWindowSizesDescending.tail
-                    )(
-                      bredWindowSizes,
-                      pickingState = SkippingSecond,
-                      mandatoryState = mandatoryState
-                    )
-                  case PickingFirst if !mandatoryState =>
-                    pickWindowSizes(
-                      firstWindowSizesDescending,
-                      secondWindowSizesDescending.tail
-                    )(
-                      bredWindowSizes,
-                      pickingState = SkippingSecond,
-                      mandatoryState = true
-                    )
-                  case SkippingFirst if !mandatoryState =>
-                    pickWindowSizes(
-                      firstWindowSizesDescending,
-                      secondWindowSizesDescending.tail
-                    )(
-                      bredWindowSizes + secondWindowSize,
-                      pickingState = PickingSecond,
-                      mandatoryState = true
-                    )
-                  case Synchronized | PickingFirst | SkippingFirst =>
-                    if random.nextBoolean() then
-                      pickWindowSizes(
-                        firstWindowSizesDescending,
-                        secondWindowSizesDescending.tail
-                      )(
-                        bredWindowSizes + secondWindowSize,
-                        pickingState = PickingSecond,
-                        mandatoryState = false
-                      )
-                    else
-                      pickWindowSizes(
-                        firstWindowSizesDescending,
-                        secondWindowSizesDescending.tail
-                      )(
-                        bredWindowSizes,
-                        pickingState = SkippingSecond,
-                        mandatoryState = false
-                      )
-              else
-                // Synchronized the two chromosomes...
-                pickWindowSizes(
-                  firstWindowSizesDescending.tail,
-                  secondWindowSizesDescending.tail
-                )(
-                  bredWindowSizes = bredWindowSizes + firstWindowSize,
-                  pickingState = Synchronized,
-                  mandatoryState = false
-                )
-            case (Some(_), None) =>
-              if bredWindowSizes.isEmpty || random.nextBoolean() then
-                bredWindowSizes ++ firstWindowSizesDescending
-              else bredWindowSizes
-            case (None, Some(_)) =>
-              if bredWindowSizes.isEmpty || random.nextBoolean() then
-                bredWindowSizes ++ secondWindowSizesDescending
-              else bredWindowSizes
-            case (None, None) =>
-              bredWindowSizes
-          end match
-        end pickWindowSizes
-
-        val bredWindowSizes = pickWindowSizes(
-          this.windowSizesInDescendingOrder,
-          another.windowSizesInDescendingOrder
-        )(
-          bredWindowSizes = noWindowSizes,
-          pickingState = Synchronized,
-          mandatoryState = false
-        )
-
-        Chromosome(
-          bredWindowSizes,
-          validWindowSizes
-        )
-      end breedWith
-
-      // NOTE: the following helper is a method because it has a precondition
-      // that there are valid window sizes.
-      private def oneBeforeLowestValidWindowSize = validWindowSizes.min - 1
-
-      private def contracted(using random: Random) =
-        val deletedWindowSize = random.chooseOneOf(windowSizesInDescendingOrder)
-
-        Chromosome(
-          windowSizesInDescendingOrder =
-            windowSizesInDescendingOrder - deletedWindowSize,
-          validWindowSizes = validWindowSizes
-        )
-      end contracted
-
-      private def newWindowSizeInGapOrBeforeLowest(newWindowSizeIndex: Int) =
-        // The new window size will either come before the current minimum
-        // or will fit in a gap before the current maximum...
-        val gapBoundaries =
-          LazyList.from(
-            windowSizesInDescendingOrder.incl(
-              oneBeforeLowestValidWindowSize
-            )
-          )
-
-        // NOTE: gaps are arranged to *descend* down window size, so larger
-        // indices select smaller window sizes...
-
-        val sizeGaps = gapBoundaries.zip(gapBoundaries.tail).filter {
-          case (larger, smaller) => larger > 1 + smaller
-        }
-
-        val onePastIndexOfEachLowestFreeWindowSizePerGap = sizeGaps
-          .scanLeft(0) { case (index, (larger, smaller)) =>
-            val numberOfVacanciesInGap = larger - (1 + smaller)
-            index + numberOfVacanciesInGap
-          }
-          .tail
-
-        val (
-          onePastIndexOfLowestFreeWindowSize,
-          (
-            _,
-            lowerGapBoundary // NOTE: this will be `oneBeforeLowestValidWindowSize` if the new window size comes before the current minimum.
-          )
-        ) =
-          onePastIndexOfEachLowestFreeWindowSizePerGap
-            .zip(sizeGaps)
-            .dropWhile { case (onePastIndexOfLowestFreeWindowSize, _) =>
-              onePastIndexOfLowestFreeWindowSize <= newWindowSizeIndex
-            }
-            .head
-
-        val newWindowSize =
-          lowerGapBoundary + (onePastIndexOfLowestFreeWindowSize - newWindowSizeIndex)
-
-        newWindowSize -> lowerGapBoundary
-      end newWindowSizeInGapOrBeforeLowest
-
-      private def nudged(using random: Random) =
-        val numberOfFreeWindowSizes =
-          validWindowSizes.size - windowSizesInDescendingOrder.size
-
-        val numberOfFreeWindowSizesAboveTheCurrentMaximum =
-          validWindowSizes.max - windowSizesInDescendingOrder.head
-
-        val numberOfFreeWindowSizesBelowTheCurrentMaximum =
-          numberOfFreeWindowSizes - numberOfFreeWindowSizesAboveTheCurrentMaximum
-
-        val roomAvailableBeforeTheHighestWindowSize =
-          numberOfFreeWindowSizes > numberOfFreeWindowSizesAboveTheCurrentMaximum
-
-        if roomAvailableBeforeTheHighestWindowSize then
-          val newWindowSizeIndex =
-            random.chooseAnyNumberFromZeroToOneLessThan(
-              numberOfFreeWindowSizesBelowTheCurrentMaximum
-            )
-
-          val (newWindowSize, outgoingWindowSize) =
-            newWindowSizeInGapOrBeforeLowest(newWindowSizeIndex)
-          end val
-
-          assert(
-            windowSizesInDescendingOrder.contains(
-              outgoingWindowSize
-            ) || outgoingWindowSize == oneBeforeLowestValidWindowSize
-          )
-          assert(!windowSizesInDescendingOrder.contains(newWindowSize))
-          assert(newWindowSize > outgoingWindowSize)
-
-          for successor <- windowSizesInDescendingOrder.maxBefore(
-              outgoingWindowSize
-            )
-          do assert(newWindowSize < successor)
-          end for
-
-          Chromosome(
-            windowSizesInDescendingOrder =
-              windowSizesInDescendingOrder + newWindowSize - outgoingWindowSize,
-            validWindowSizes = validWindowSizes
-          )
-        else
-          // Fall back to growing and contracting, possibly even
-          // round-tripping the chromosome to the same state.
-          grown.contracted
-        end if
-      end nudged
-
-      private def grown(using random: Random) =
-        val numberOfFreeWindowSizes =
-          validWindowSizes.size - windowSizesInDescendingOrder.size
-
-        val whereWillThisLand =
-          random.chooseAnyNumberFromZeroToOneLessThan(numberOfFreeWindowSizes)
-
-        val numberOfFreeWindowSizesAboveTheCurrentMaximum =
-          windowSizesInDescendingOrder.headOption.fold(ifEmpty =
-            validWindowSizes.size
-          )(validWindowSizes.max - _)
-
-        val numberOfFreeWindowSizesBelowTheCurrentMaximum =
-          numberOfFreeWindowSizes - numberOfFreeWindowSizesAboveTheCurrentMaximum
-
-        val newWindowSize =
-          if numberOfFreeWindowSizesBelowTheCurrentMaximum > whereWillThisLand
-          then
-            // This is subtle: `whereWillThisLand` should be thought of as
-            // choosing an integer from either [0,
-            // `numberOfFreeWindowSizesBelowTheCurrentMaximum`) - so choosing to
-            // fill in a gap - or
-            // [`numberOfFreeWindowSizesBelowTheCurrentMaximum`,
-            // `numberOfFreeWindowSizes`) - so beating the current maximum. One
-            // we decide to fill in a gap, we use the chosen integer as an index
-            // in reversed sense, so zero selects from the highest gap.
-            val newWindowSizeIndex = whereWillThisLand
-
-            newWindowSizeInGapOrBeforeLowest(newWindowSizeIndex)._1
-          else
-            // Go beyond the maximum window size...
-            val baselineWindowSize = windowSizesInDescendingOrder.headOption
-              .fold(ifEmpty = validWindowSizes.min)(1 + _)
-
-            baselineWindowSize + random.chooseAnyNumberFromZeroToOneLessThan(
-              1 + validWindowSizes.max - baselineWindowSize
-            )
-          end if
-        end newWindowSize
-
-        assert(!windowSizesInDescendingOrder.contains(newWindowSize))
-
-        for
-          predecessor <- windowSizesInDescendingOrder.minAfter(newWindowSize)
-          successor   <- windowSizesInDescendingOrder.maxBefore(predecessor)
-        do assert(newWindowSize < successor)
-        end for
-
-        Chromosome(
-          windowSizesInDescendingOrder =
-            windowSizesInDescendingOrder + newWindowSize,
-          validWindowSizes = validWindowSizes
-        )
-      end grown
-    end Chromosome
 
     case class Phenotype(
         chromosomeSize: Int,
@@ -1395,29 +1000,6 @@ object CodeMotionAnalysis:
           case (MatchGrade.Triple, MatchGrade.Triple) => 0
     end given
 
-    given Order[Phenotype] with
-      override def compare(x: Phenotype, y: Phenotype): Int =
-        // Do a sequential tie-breaker comparison of the group keys paired with
-        // the group sizes, assuming these are in descending order of group
-        // keys. The least chromosome size is the final tiebreaker.
-        Order.compare(
-          (
-            x.matchGroupsInDescendingOrderOfKeys.map {
-              case (matchGroupKey, matches) =>
-                matchGroupKey -> matches.size
-            },
-            -x.chromosomeSize
-          ),
-          (
-            y.matchGroupsInDescendingOrderOfKeys.map {
-              case (matchGroupKey, matches) =>
-                matchGroupKey -> matches.size
-            },
-            -y.chromosomeSize
-          )
-        )
-    end given
-
     val evolvedPhenotype =
       val withAllMatchesOfAtLeastTheSureFireWindowSize =
         MatchCalculationState.empty
@@ -1425,62 +1007,20 @@ object CodeMotionAnalysis:
 
       if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > minimumWindowSizeAcrossAllFilesOverAllSides
       then
-        println(
-          s"Genetic end-game, $minimumWindowSizeAcrossAllFilesOverAllSides, $minimumSureFireWindowSizeAcrossAllFilesOverAllSides"
-        )
-
-        given Evolution[Chromosome, Phenotype] with
-          override def mutate(chromosome: Chromosome)(using
-              random: Random
-          ): Chromosome = chromosome.mutate
-
-          override def breed(first: Chromosome, second: Chromosome)(using
-              random: Random
-          ): Chromosome = first.breedWith(second)
-
-          override def initialChromosome: Chromosome = Chromosome.initial
-
-          override def phenotype(chromosome: Chromosome): Phenotype =
-            phenotypeCache.get(chromosome, phenotype_)
-
-          private def phenotype_(chromosome: Chromosome): Phenotype =
-            val MatchCalculationState(
-              _,
-              matchGroupsInDescendingOrderOfKeys
-            ) =
-              chromosome.windowSizesInDescendingOrder.foldLeft(
-                withAllMatchesOfAtLeastTheSureFireWindowSize
-              ) { (matchCalculationState, windowSize) =>
-                // We will be exploring the low window sizes below
-                // `minimumSureFireWindowSizeAcrossAllFilesOverAllSides`; in
-                // this situation, sizes below per-file thresholds lead to no
-                // matches, this leads to gaps in validity as a size exceeds the
-                // largest match it could participate in, but fails to meet the
-                // next highest per-file threshold. Consequently, don't bother
-                // checking whether any matches were found.
-                val (result, _) =
-                  matchCalculationState.matchesForWindowSize(windowSize)
-
-                result
-              }
-
-            Phenotype(
-              chromosomeSize = chromosome.windowSizesInDescendingOrder.size,
-              matchGroupsInDescendingOrderOfKeys
-            )
-          end phenotype_
-        end given
-
-        Evolution.of(
-          maximumNumberOfRetries = 3,
-          maximumPopulationSize = 10,
-          timeBudget = Some(FiniteDuration(5, TimeUnit.SECONDS))
+        // TODO: this is hokey - should make
+        // `MatchGroupsInDescendingOrderOfKeys` into a case class that wraps the
+        // sequence, can then police its invariant there / move the methods in
+        // `Phenotype` there.
+        Phenotype(
+          chromosomeSize = 0,
+          matchGroupsInDescendingOrderOfKeys =
+            withAllMatchesOfAtLeastTheSureFireWindowSize
+              .withAllSmallFryMatches(
+                minimumSureFireWindowSizeAcrossAllFilesOverAllSides - 1
+              )
+              .matchGroupsInDescendingOrderOfKeys
         )
       else
-        println(
-          s"No genetic end-game, $minimumWindowSizeAcrossAllFilesOverAllSides"
-        )
-
         // TODO: this is hokey - should make
         // `MatchGroupsInDescendingOrderOfKeys` into a case class that wraps the
         // sequence, can then police its invariant there / move the methods in
@@ -1493,22 +1033,20 @@ object CodeMotionAnalysis:
       end if
     end evolvedPhenotype
 
-    println(s"Finally: -----> $evolvedPhenotype")
-
     val sectionsAndTheirMatches = evolvedPhenotype.sectionsAndTheirMatches
 
     val baseSections  = evolvedPhenotype.baseSections
     val leftSections  = evolvedPhenotype.leftSections
     val rightSections = evolvedPhenotype.rightSections
 
-    val baseFilesByPath =
-      base.filesByPathUtilising(baseSections)
-    val leftFilesByPath =
-      left.filesByPathUtilising(leftSections)
-    val rightFilesByPath =
-      right.filesByPathUtilising(rightSections)
+    val attempt = Try {
+      val baseFilesByPath =
+        base.filesByPathUtilising(baseSections)
+      val leftFilesByPath =
+        left.filesByPathUtilising(leftSections)
+      val rightFilesByPath =
+        right.filesByPathUtilising(rightSections)
 
-    Right(
       new CodeMotionAnalysis[Path, Element]:
         override def matchFor(
             section: Section[Element]
@@ -1520,9 +1058,14 @@ object CodeMotionAnalysis:
         override def left: Map[Path, File[Element]] = leftFilesByPath
 
         override def right: Map[Path, File[Element]] = rightFilesByPath
-    )
+      end new
+
+    }
+
+    if propagateExceptions then Right(attempt.get) else attempt.toEither
+    end if
   end of
 
   // TODO - what happened?
-  case object AmbiguousMatch
+  case object AmbiguousMatch extends RuntimeException
 end CodeMotionAnalysis
