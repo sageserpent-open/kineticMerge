@@ -5,7 +5,6 @@ import cats.instances.seq.*
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction}
-import com.sageserpent.americium.randomEnrichment.*
 import de.sciss.fingertree.RangedSeq
 
 import java.lang.Byte as JavaByte
@@ -302,13 +301,6 @@ object CodeMotionAnalysis:
 
     val rollingHashFactoryCache: Cache[Int, RollingHash.Factory] =
       Caffeine.newBuilder().build()
-    // TODO: review this one - a) it does not seem to add much of a
-    // performance benefit because the previous fingerprinting cache cuts out
-    // a much larger overhead and b) if we're going to use this we should
-    // probably lambda-lift the cache population functions to conform to the
-    // caching API's style.
-    val fingerprintSectionsCache: Cache[Int, FingerprintSectionsAcrossSides] =
-      Caffeine.newBuilder().build()
 
     object MatchCalculationState:
       lazy val empty = MatchCalculationState(
@@ -534,14 +526,10 @@ object CodeMotionAnalysis:
           baseSectionsByFingerprint,
           leftSectionsByFingerprint,
           rightSectionsByFingerprint
-        ) = fingerprintSectionsCache.get(
-          windowSize,
-          _ =>
-            FingerprintSectionsAcrossSides(
-              baseSectionsByFingerprint = fingerprintSections(base),
-              leftSectionsByFingerprint = fingerprintSections(left),
-              rightSectionsByFingerprint = fingerprintSections(right)
-            )
+        ) = FingerprintSectionsAcrossSides(
+          baseSectionsByFingerprint = fingerprintSections(base),
+          leftSectionsByFingerprint = fingerprintSections(left),
+          rightSectionsByFingerprint = fingerprintSections(right)
         )
 
         @tailrec
