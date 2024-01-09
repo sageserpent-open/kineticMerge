@@ -53,6 +53,11 @@ object Main:
   private val theirStageIndex: Int @@ Tags.StageIndex =
     3.taggedWith[Tags.StageIndex]
 
+  // NOTE: allow a degree of overlap between the alternate groups, this avoids
+  // doing any downstream disambiguation between a percentage and either an
+  // implied or an explicit fraction in the range [0, 1].
+  private val matchThresholdRegex = raw"(\d{1,3})%|(\d+)|([01]\.\d+)".r.anchored
+
   def main(args: Array[String]): Unit =
     val parser =
       val builder = OParser.builder[CommandLineArguments]
@@ -81,6 +86,43 @@ object Main:
             commandLineArguments.copy(noFastForward = true)
           )
           .text("Prevent fast-forward merge - make a merge commit instead."),
+        opt[String](name = "match-threshold")
+          .validate(matchThreshold =>
+            if matchThresholdRegex.matches(matchThreshold) then success
+            else
+              failure(
+                s"Match threshold ${underline(matchThreshold)} must be a percentage, or digits to the right of the decimal point of a non-negative fraction less than one, or a fraction at least zero and at most one."
+              )
+          )
+          .action { (matchThreshold, commandLineArguments) =>
+            val thresholdSizeFractionForMatching = matchThreshold match
+              case matchThresholdRegex(
+                    percentage,
+                    impliedFraction,
+                    explicitFraction
+                  ) =>
+                (
+                  Option(percentage),
+                  Option(impliedFraction),
+                  Option(explicitFraction)
+                ).match
+                  case (Some(percentage), None, None) =>
+                    // Parse as an integer first.
+                    percentage.toInt.toDouble / 100
+                  case (None, Some(impliedFraction), None) =>
+                    val numberOfDigits = impliedFraction.size
+                    // Push all the digits to the right of the decimal point.
+                    impliedFraction.toInt * Math.pow(10, -numberOfDigits)
+                  case (None, None, Some(explicitFraction)) =>
+                    explicitFraction.toDouble
+
+            commandLineArguments.copy(thresholdSizeFractionForMatching =
+              thresholdSizeFractionForMatching
+            )
+          }
+          .text(
+            "Minimum fraction of a containing file's size for a section of text to qualify for matching."
+          ),
         arg[String](name = "<their branch to merge into ours>")
           .action((theirBranch, commandLineArguments) =>
             commandLineArguments.copy(theirBranchHead =
@@ -89,6 +131,14 @@ object Main:
           )
           .required()
           .maxOccurs(1),
+        checkConfig(commandLineArguments =>
+          if 0 > commandLineArguments.thresholdSizeFractionForMatching || 1 < commandLineArguments.thresholdSizeFractionForMatching
+          then
+            failure(
+              s"Match threshold fraction ${underline(commandLineArguments.thresholdSizeFractionForMatching)} should be at least zero and at most one."
+            )
+          else success
+        ),
         note(
           "Utility to merge another Git branch's changes ('their branch') into the active Git branch in the current working directory ('our branch')."
         ),
@@ -258,11 +308,11 @@ object Main:
       workflow.semiflatTap(_ => WriterT.tell(List(Right(message))))
   end extension
 
-  private def underline(anything: Any): Str =
-    fansi.Underlined.On(anything.toString)
-
   private def right[Payload](payload: Payload): Workflow[Payload] =
     EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
+
+  private def underline(anything: Any): Str =
+    fansi.Underlined.On(anything.toString)
 
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](
