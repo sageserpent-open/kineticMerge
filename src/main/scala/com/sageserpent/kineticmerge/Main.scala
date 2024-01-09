@@ -221,7 +221,8 @@ object Main:
                 bestAncestorCommitId,
                 overallChangesInvolvingTheirs,
                 noCommit,
-                noFastForward
+                noFastForward,
+                thresholdSizeFractionForMatching
               )
           yield exitCode
     yield exitCode
@@ -287,7 +288,8 @@ object Main:
   case class CommandLineArguments(
       theirBranchHead: String @@ Main.Tags.CommitOrBranchName,
       noCommit: Boolean = false,
-      noFastForward: Boolean = false
+      noFastForward: Boolean = false,
+      thresholdSizeFractionForMatching: Double = 0.1
   )
 
   enum Change:
@@ -494,14 +496,16 @@ object Main:
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
         overallChangesInvolvingTheirs: List[(Path, (Change, Option[Change]))],
         noCommit: Boolean,
-        noFastForward: Boolean
+        noFastForward: Boolean,
+        thresholdSizeFractionForMatching: Double
     ): Workflow[Int @@ Tags.ExitCode] =
       val workflow =
         for
           indexUpdates <- indexUpdates(
             bestAncestorCommitId,
             ourBranchHead,
-            theirBranchHead
+            theirBranchHead,
+            thresholdSizeFractionForMatching
           )(overallChangesInvolvingTheirs)
 
           goodForAMergeCommit = indexUpdates.forall {
@@ -615,7 +619,8 @@ object Main:
     private def indexUpdates(
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
         ourBranchHead: String @@ Tags.CommitOrBranchName,
-        theirBranchHead: String @@ Tags.CommitOrBranchName
+        theirBranchHead: String @@ Tags.CommitOrBranchName,
+        thresholdSizeFractionForMatching: Double
     )(
         overallChangesInvolvingTheirs: List[(Path, (Change, Option[Change]))]
     ): Workflow[List[IndexState]] =
@@ -779,7 +784,8 @@ object Main:
             theirMode,
             theirContent,
             ourMode,
-            ourContent
+            ourContent,
+            thresholdSizeFractionForMatching
           )
 
         case (
@@ -798,7 +804,8 @@ object Main:
             theirMode,
             theirContent,
             ourMode,
-            ourContent
+            ourContent,
+            thresholdSizeFractionForMatching
           )
 
         case (path, (Change.Deletion, Some(Change.Deletion))) =>
@@ -854,7 +861,8 @@ object Main:
         theirMode: String @@ Tags.Mode,
         theirContent: String @@ Tags.Content,
         ourMode: String @@ Tags.Mode,
-        ourContent: String @@ Tags.Content
+        ourContent: String @@ Tags.Content,
+        thresholdSizeFractionForMatching: Double
     ): Workflow[IndexState] =
       for
         mergedFileMode <-
@@ -886,7 +894,7 @@ object Main:
               left = ourAncestorSources,
               right = theirAncestorSources
             )(
-              thresholdSizeFractionForMatching = 0.1,
+              thresholdSizeFractionForMatching,
               propagateExceptions = false
             )(
               elementEquality = Token.equality,
@@ -997,7 +1005,8 @@ object Main:
         theirMode: String @@ Tags.Mode,
         theirContent: String @@ Tags.Content,
         ourMode: String @@ Tags.Mode,
-        ourContent: String @@ Tags.Content
+        ourContent: String @@ Tags.Content,
+        thresholdSizeFractionForMatching: Double
     ): Workflow[IndexState] =
       for
         (
@@ -1042,7 +1051,7 @@ object Main:
               left = ourAncestorSources,
               right = theirAncestorSources
             )(
-              thresholdSizeFractionForMatching = 0.1,
+              thresholdSizeFractionForMatching,
               propagateExceptions = false
             )(
               elementEquality = Token.equality,
