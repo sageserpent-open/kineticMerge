@@ -47,9 +47,9 @@ object CodeMotionAnalysis:
     *   'Our' sources, from the Git standpoint...
     * @param right
     *   'Their' sources, from the Git standpoint...
-    * @param minimumSizeFractionForMotionDetection
+    * @param thresholdSizeFractionForMatching
     *   A section's size must be at least this fraction of its containing file's
-    *   size to qualify for motion detection.
+    *   size to qualify for matching.
     * @tparam Path
     * @return
     *   A [[CodeMotionAnalysis]] that contains a breakdown into [[File]]
@@ -61,7 +61,7 @@ object CodeMotionAnalysis:
       left: Sources[Path, Element],
       right: Sources[Path, Element]
   )(
-      minimumSizeFractionForMotionDetection: Double,
+      thresholdSizeFractionForMatching: Double,
       propagateExceptions: Boolean = true
   )(
       elementEquality: Eq[Element],
@@ -69,8 +69,8 @@ object CodeMotionAnalysis:
       elementFunnel: Funnel[Element],
       hashFunction: HashFunction
   ): Either[Throwable, CodeMotionAnalysis[Path, Element]] =
-    require(0 <= minimumSizeFractionForMotionDetection)
-    require(1 >= minimumSizeFractionForMotionDetection)
+    require(0 <= thresholdSizeFractionForMatching)
+    require(1 >= thresholdSizeFractionForMatching)
 
     given witness: Eq[Element] = elementEquality
 
@@ -88,14 +88,14 @@ object CodeMotionAnalysis:
     // This is the minimum window size that would be allowed in *some* file
     // across the sources.
     val minimumWindowSizeAcrossAllFilesOverAllSides =
-      1 max (minimumFileSizeAcrossAllFilesOverAllSides * minimumSizeFractionForMotionDetection).floor.toInt
+      1 max (minimumFileSizeAcrossAllFilesOverAllSides * thresholdSizeFractionForMatching).floor.toInt
 
     val maximumFileSizeAcrossAllFilesOverAllSides = fileSizes.max
 
     // This is the minimum window size that would be allowed in *all* files
     // across the sources.
     val minimumSureFireWindowSizeAcrossAllFilesOverAllSides =
-      1 max (maximumFileSizeAcrossAllFilesOverAllSides * minimumSizeFractionForMotionDetection).floor.toInt
+      1 max (maximumFileSizeAcrossAllFilesOverAllSides * thresholdSizeFractionForMatching).floor.toInt
 
     enum MatchGrade:
       case Triple
@@ -501,7 +501,7 @@ object CodeMotionAnalysis:
             .filter { case (_, file) =>
               val fileSize = file.size
               val minimumWindowSize =
-                (minimumSizeFractionForMotionDetection * fileSize).floor.toInt
+                (thresholdSizeFractionForMatching * fileSize).floor.toInt
 
               minimumWindowSize to fileSize contains windowSize
             }

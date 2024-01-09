@@ -49,7 +49,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         base = baseSources,
         left = leftSources,
         right = rightSources
-      )(minimumSizeFractionForMotionDetection = threshold)(
+      )(thresholdSizeFractionForMatching = threshold)(
         elementEquality = Token.equality,
         elementOrder = Token.comparison,
         elementFunnel = Token.funnel,

@@ -886,7 +886,7 @@ object Main:
               left = ourAncestorSources,
               right = theirAncestorSources
             )(
-              minimumSizeFractionForMotionDetection = 0.1,
+              thresholdSizeFractionForMatching = 0.1,
               propagateExceptions = false
             )(
               elementEquality = Token.equality,
@@ -1042,7 +1042,7 @@ object Main:
               left = ourAncestorSources,
               right = theirAncestorSources
             )(
-              minimumSizeFractionForMotionDetection = 0.1,
+              thresholdSizeFractionForMatching = 0.1,
               propagateExceptions = false
             )(
               elementEquality = Token.equality,
