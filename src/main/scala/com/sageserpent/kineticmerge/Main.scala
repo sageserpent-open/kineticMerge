@@ -644,6 +644,17 @@ object Main:
                   os.write.over(gitDirPath / "MERGE_MSG", commitMessage)
                 }.labelExceptionWith(errorMessage =
                   s"Unexpected error: could not write `MERGE_MSG` to prepare the commit message ${underline(commitMessage)}."
+                )
+                _ <- IO {
+                  // Do this to workaround the issue mentioned here:
+                  // https://stackoverflow.com/questions/51146392/cannot-git-merge-abort-until-git-status,
+                  // this has been observed when `git merge-file` successfully
+                  // writes a non-conflicted file after Kinetic Merge has
+                  // reported a conflict for that file.
+                  os.proc("git", "status")
+                    .call(workingDirectory)
+                }.labelExceptionWith(errorMessage =
+                  s"Unexpected error: could not check the status of the working tree."
                 ).logOperation(
                   if goodForAMergeCommit then
                     "Successful merge, leaving merged changes in the index for review..."
