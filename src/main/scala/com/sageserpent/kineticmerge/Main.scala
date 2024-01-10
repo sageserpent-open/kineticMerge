@@ -914,6 +914,10 @@ object Main:
         label = label
       )
 
+    private def lastMinuteResolutionNotes(lastMinuteResolution: Boolean) = {
+      if lastMinuteResolution then ", but was resolved trivially when creating the conflicted file - leaving it marked as unresolved for now" else ""
+    }
+
     private def indexStateForTwoWayMerge(
         ourBranchHead: String @@ Tags.CommitOrBranchName,
         theirBranchHead: String @@ Tags.CommitOrBranchName
@@ -986,7 +990,7 @@ object Main:
             val rightContent =
               rightElements.map(_.text).mkString.taggedWith[Tags.Content]
 
-            (for
+            for
               fakeBaseTemporaryFile <- temporaryFile(
                 suffix = ".base",
                 content = "".taggedWith[Tags.Content]
@@ -1002,7 +1006,7 @@ object Main:
                 content = rightContent
               )
 
-              _ <-
+              lastMinuteResolution <-
                 val noPriorContentName = "no prior content"
 
                 val exitCode =
@@ -1021,7 +1025,7 @@ object Main:
                   ).call(workingDirectory, check = false)
                     .exitCode
 
-                if 0 <= exitCode then right(())
+                if 0 <= exitCode then right(0 == exitCode)
                 else
                   left(
                     s"Unexpected error: could not generate conflicted file contents on behalf of ${underline(path)} in temporary file ${underline(leftTemporaryFile)}"
@@ -1051,10 +1055,13 @@ object Main:
                 path,
                 theirMode,
                 rightBlob
+              ).logOperation(
+                s"Conflict - file ${underline(path)} was added on our branch ${underline(
+                    ourBranchHead
+                  )} and added on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
               )
-            yield IndexState.ConflictingEntries).logOperation(
-              s"Conflict - file ${underline(path)} was added on our branch ${underline(ourBranchHead)} and added on their branch ${underline(theirBranchHead)}."
-            )
+            yield IndexState.ConflictingEntries
+            end for
       yield indexState
 
     private def indexStateForThreeWayMerge(
@@ -1143,7 +1150,7 @@ object Main:
             val rightContent =
               rightElements.map(_.text).mkString.taggedWith[Tags.Content]
 
-            (for
+            for
               baseTemporaryFile <- temporaryFile(
                 suffix = ".base",
                 content = bestAncestorCommitIdContent
@@ -1159,7 +1166,7 @@ object Main:
                 content = rightContent
               )
 
-              _ <-
+              lastMinuteResolution <-
                 val exitCode =
                   os.proc(
                     "git",
@@ -1176,7 +1183,7 @@ object Main:
                   ).call(workingDirectory, check = false)
                     .exitCode
 
-                if 0 <= exitCode then right(())
+                if 0 <= exitCode then right(0 == exitCode)
                 else
                   left(
                     s"Unexpected error: could not generate conflicted file contents on behalf of ${underline(path)} in temporary file ${underline(leftTemporaryFile)}"
@@ -1214,10 +1221,10 @@ object Main:
                 path,
                 theirMode,
                 rightBlob
+              ).logOperation(
+                s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
               )
-            yield IndexState.ConflictingEntries).logOperation(
-              s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
-            )
+            yield IndexState.ConflictingEntries
       yield indexState
       end for
     end indexStateForThreeWayMerge
