@@ -4,19 +4,83 @@ import com.google.common.hash.Hashing
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtension.*
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtensionTest.FakePath
+import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.Token.tokens
 import com.sageserpent.kineticmerge.core.merge.{FullyMerged, MergedWithConflicts}
-import org.junit.jupiter.api.TestFactory
+import org.junit.jupiter.api.Assertions.fail
+import org.junit.jupiter.api.{Test, TestFactory}
 import pprint.*
 
+import scala.util.Right
+
+object CodeMotionAnalysisExtensionTest:
+  type FakePath = String
+end CodeMotionAnalysisExtensionTest
+
 class CodeMotionAnalysisExtensionTest extends ProseExamples:
+  @Test
+  def issue23BugReproduction(): Unit =
+    val threshold = 0.1
+
+    val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
+
+    val tokenRegex = raw"(SAFE|INTRUDER|FIZZY|BANG|.)+?".r.anchored
+
+    def stuntDoubleTokens(content: String): Vector[Token] = tokenRegex
+      .findAllMatchIn(content)
+      .map(_.group(1))
+      .map(Token.Significant.apply)
+      .toVector
+
+    val baseSources = MappedContentSources(
+      contentsByPath =
+        Map(placeholderPath -> stuntDoubleTokens(issue23BugReproductionBase)),
+      label = "base"
+    )
+    val leftSources = MappedContentSources(
+      contentsByPath =
+        Map(placeholderPath -> stuntDoubleTokens(issue23BugReproductionLeft)),
+      label = "base"
+    )
+    val rightSources = MappedContentSources(
+      contentsByPath =
+        Map(placeholderPath -> stuntDoubleTokens(issue23BugReproductionRight)),
+      label = "base"
+    )
+
+    val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+      base = baseSources,
+      left = leftSources,
+      right = rightSources
+    )(thresholdSizeFractionForMatching = threshold)(
+      elementEquality = Token.equality,
+      elementOrder = Token.comparison,
+      elementFunnel = Token.funnel,
+      hashFunction = Hashing.murmur3_32_fixed()
+    ): @unchecked
+
+    val expected = stuntDoubleTokens(issue23BugReproductionExpectedMerge)
+
+    codeMotionAnalysis.mergeAt(placeholderPath)(equality = Token.equality) match
+      case Right(FullyMerged(result)) => assert(result == expected)
+      case Right(MergedWithConflicts(leftResult, rightResult)) =>
+        println(s"*** Left result...\n")
+        println(leftResult)
+        println()
+        println(s"*** Right result...\n")
+        println(rightResult)
+
+        fail("Should have seen a clean merge.")
+    end match
+
+  end issue23BugReproduction
+
   @TestFactory
   def merging(): DynamicTests =
     val thresholds = Trials.api.doubles(0.001, 0.01)
 
     thresholds.withLimit(30).dynamicTests { threshold =>
-      type FakePath = String
-
       val prosePath: FakePath    = "prose"
       val sbtBuildPath: FakePath = "sbtBuild"
 
@@ -76,6 +140,26 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 end CodeMotionAnalysisExtensionTest
 
 trait ProseExamples:
+  protected val issue23BugReproductionBase =
+    """
+      |chipsSAFEketchupSAFEnoodlesFIZZYsandwichSAFEpudding
+      |""".stripMargin
+
+  protected val issue23BugReproductionLeft =
+    """
+      |chipsSAFEketchupSAFEnoodlesBANGsandwichSAFEpudding
+      |""".stripMargin
+
+  protected val issue23BugReproductionRight =
+    """
+      |chipsINTRUDERketchupINTRUDERnoodlesFIZZYsandwichINTRUDERpudding
+      |""".stripMargin
+
+  protected val issue23BugReproductionExpectedMerge =
+    """
+      |chipsINTRUDERketchupINTRUDERnoodlesBANGsandwichINTRUDERpudding
+      |""".stripMargin
+
   protected val wordsworth =
     """
       |I wandered lonely as a cloud
