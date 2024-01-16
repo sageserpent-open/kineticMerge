@@ -10,7 +10,6 @@ import de.sciss.fingertree.RangedSeq
 import java.lang.Byte as JavaByte
 import scala.annotation.tailrec
 import scala.collection.decorators.mapDecorator
-import scala.collection.immutable.TreeSet
 import scala.collection.{SortedMultiDict, mutable}
 import scala.util.Try
 
@@ -102,8 +101,7 @@ object CodeMotionAnalysis:
       case Pair
     end MatchGrade
 
-    type MatchGroupKey                = (Int, MatchGrade)
-    type WindowSizesInDescendingOrder = TreeSet[Int]
+    type MatchGroupKey = (Int, MatchGrade)
     type MatchGroupsInDescendingOrderOfKeys = Seq[
       (
           MatchGroupKey,
@@ -116,20 +114,21 @@ object CodeMotionAnalysis:
     type SectionsSeen = RangedSeq[Section[Element], Int]
 
     object SectionsSeenAcrossSides:
-      private def suppressesSection(
+      private def subsumesSection(
           side: Sources[Path, Element],
           sectionsByPath: Map[Path, SectionsSeen]
       )(section: Section[Element]): Boolean =
         sectionsByPath
           .get(side.pathFor(section))
-          .fold(ifEmpty = false)(potentiallyIncludingOrOverlapping =>
-            val interval = section.closedOpenInterval
-            potentiallyIncludingOrOverlapping.includes(
-              interval
-            ) || potentiallyIncludingOrOverlapping.overlaps(
-              interval
-            )
-          )
+          .fold(ifEmpty = false)(_.includes(section.closedOpenInterval))
+
+      private def overlapsSection(
+          side: Sources[Path, Element],
+          sectionsByPath: Map[Path, SectionsSeen]
+      )(section: Section[Element]): Boolean =
+        sectionsByPath
+          .get(side.pathFor(section))
+          .fold(ifEmpty = false)(_.overlaps(section.closedOpenInterval))
 
       private def withSection(
           side: Sources[Path, Element],
@@ -193,12 +192,19 @@ object CodeMotionAnalysis:
     ):
       import SectionsSeenAcrossSides.*
 
-      val suppressesBaseSection: Section[Element] => Boolean =
-        suppressesSection(base, baseSectionsByPath)
-      val suppressesLeftSection: Section[Element] => Boolean =
-        suppressesSection(left, leftSectionsByPath)
-      val suppressesRightSection: Section[Element] => Boolean =
-        suppressesSection(right, rightSectionsByPath)
+      val subsumesBaseSection: Section[Element] => Boolean =
+        subsumesSection(base, baseSectionsByPath)
+      val subsumesLeftSection: Section[Element] => Boolean =
+        subsumesSection(left, leftSectionsByPath)
+      val subsumesRightSection: Section[Element] => Boolean =
+        subsumesSection(right, rightSectionsByPath)
+
+      val overlapsBaseSection: Section[Element] => Boolean =
+        overlapsSection(base, baseSectionsByPath)
+      val overlapsLeftSection: Section[Element] => Boolean =
+        overlapsSection(left, leftSectionsByPath)
+      val overlapsRightSection: Section[Element] => Boolean =
+        overlapsSection(right, rightSectionsByPath)
 
       private val withBaseSection: Section[Element] => Map[Path, SectionsSeen] =
         withSection(base, baseSectionsByPath)
@@ -571,25 +577,34 @@ object CodeMotionAnalysis:
                   leftSection  <- LazyList.from(leftSections)
                   rightSection <- LazyList.from(rightSections)
 
+                  overlapped = sectionsSeenAcrossSides.overlapsBaseSection(
+                    baseSection
+                  ) || sectionsSeenAcrossSides.overlapsLeftSection(
+                    leftSection
+                  ) || sectionsSeenAcrossSides.overlapsRightSection(
+                    rightSection
+                  )
+                  if !overlapped
+
                   baseSubsumed = sectionsSeenAcrossSides
-                    .suppressesBaseSection(
+                    .subsumesBaseSection(
                       baseSection
                     )
                   leftSubsumed = sectionsSeenAcrossSides
-                    .suppressesLeftSection(
+                    .subsumesLeftSection(
                       leftSection
                     )
                   rightSubsumed = sectionsSeenAcrossSides
-                    .suppressesRightSection(
+                    .subsumesRightSection(
                       rightSection
                     )
-                  suppressed =
+                  subsumed =
                     // In contrast with the pairwise matches below, we have the
                     // subtlety of a *replacement* of an all-three match with a
                     // pairwise match to consider, so this condition is more
                     // complex than the others...
                     baseSubsumed && leftSubsumed || baseSubsumed && rightSubsumed || leftSubsumed && rightSubsumed
-                  if !suppressed
+                  if !subsumed
                 yield
                   if baseSubsumed then
                     Match.LeftAndRight(leftSection, rightSection)
@@ -644,12 +659,19 @@ object CodeMotionAnalysis:
                   baseSection <- LazyList.from(baseSections)
                   leftSection <- LazyList.from(leftSections)
 
-                  suppressed = sectionsSeenAcrossSides.suppressesBaseSection(
+                  overlapped = sectionsSeenAcrossSides.overlapsBaseSection(
                     baseSection
-                  ) || sectionsSeenAcrossSides.suppressesLeftSection(
+                  ) || sectionsSeenAcrossSides.overlapsLeftSection(
                     leftSection
                   )
-                  if !suppressed
+                  if !overlapped
+
+                  subsumed = sectionsSeenAcrossSides.subsumesBaseSection(
+                    baseSection
+                  ) || sectionsSeenAcrossSides.subsumesLeftSection(
+                    leftSection
+                  )
+                  if !subsumed
                 yield Match.BaseAndLeft(
                   baseSection,
                   leftSection
@@ -694,12 +716,19 @@ object CodeMotionAnalysis:
                   baseSection  <- LazyList.from(baseSections)
                   rightSection <- LazyList.from(rightSections)
 
-                  suppressed = sectionsSeenAcrossSides.suppressesBaseSection(
+                  overlapped = sectionsSeenAcrossSides.overlapsBaseSection(
                     baseSection
-                  ) || sectionsSeenAcrossSides.suppressesRightSection(
+                  ) || sectionsSeenAcrossSides.overlapsRightSection(
                     rightSection
                   )
-                  if !suppressed
+                  if !overlapped
+
+                  subsumed = sectionsSeenAcrossSides.subsumesBaseSection(
+                    baseSection
+                  ) || sectionsSeenAcrossSides.subsumesRightSection(
+                    rightSection
+                  )
+                  if !subsumed
                 yield Match.BaseAndRight(
                   baseSection,
                   rightSection
@@ -744,12 +773,19 @@ object CodeMotionAnalysis:
                   leftSection  <- LazyList.from(leftSections)
                   rightSection <- LazyList.from(rightSections)
 
-                  suppressed = sectionsSeenAcrossSides.suppressesLeftSection(
+                  overlapped = sectionsSeenAcrossSides.overlapsLeftSection(
                     leftSection
-                  ) || sectionsSeenAcrossSides.suppressesRightSection(
+                  ) || sectionsSeenAcrossSides.overlapsRightSection(
                     rightSection
                   )
-                  if !suppressed
+                  if !overlapped
+
+                  subsumed = sectionsSeenAcrossSides.subsumesLeftSection(
+                    leftSection
+                  ) || sectionsSeenAcrossSides.subsumesRightSection(
+                    rightSection
+                  )
+                  if !subsumed
                 yield Match.LeftAndRight(
                   leftSection,
                   rightSection
