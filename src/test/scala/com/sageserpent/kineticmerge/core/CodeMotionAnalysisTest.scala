@@ -791,9 +791,14 @@ object CodeMotionAnalysisTest:
     abstract override def section(
         path: SourcesContracts.this.Path
     )(startOffset: Int, size: Int): Section[SourcesContracts.this.Element] =
+      require(0 <= startOffset)
+      require(0 < size)
+      
       val result = super.section(path)(startOffset, size)
 
       assert(pathFor(result) == path)
+
+      assert(result.size == size)
 
       result
     end section
