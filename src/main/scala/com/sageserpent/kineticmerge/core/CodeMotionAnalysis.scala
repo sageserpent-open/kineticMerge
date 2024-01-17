@@ -101,15 +101,7 @@ object CodeMotionAnalysis:
       case Pair
     end MatchGrade
 
-    type MatchGroupKey = (Int, MatchGrade)
-    type MatchGroupsInDescendingOrderOfKeys = Seq[
-      (
-          MatchGroupKey,
-          Set[
-            Match[Section[Element]]
-          ]
-      )
-    ]
+    type MatchGroupsByWindowSize = Map[Int, Set[Match[Section[Element]]]]
 
     type SectionsSeen = RangedSeq[Section[Element], Int]
 
@@ -321,17 +313,17 @@ object CodeMotionAnalysis:
       lazy val empty = MatchCalculationState(
         matchSectionsSeenAcrossSides = SectionsSeenAcrossSides(),
         allSidesMatchSectionsSeenAcrossSides = SectionsSeenAcrossSides(),
-        matchGroupsInDescendingOrderOfKeys = Seq.empty
+        matchGroupsByWindowSize = Map.empty
       )
     end MatchCalculationState
 
     case class MatchCalculationState(
         matchSectionsSeenAcrossSides: SectionsSeenAcrossSides,
         allSidesMatchSectionsSeenAcrossSides: SectionsSeenAcrossSides,
-        matchGroupsInDescendingOrderOfKeys: MatchGroupsInDescendingOrderOfKeys
+        matchGroupsByWindowSize: MatchGroupsByWindowSize
     ):
-      require(matchGroupsInDescendingOrderOfKeys.forall {
-        case (_, matchGroup) => matchGroup.nonEmpty
+      require(matchGroupsByWindowSize.forall { case (_, matchGroup) =>
+        matchGroup.nonEmpty
       })
 
       @tailrec
@@ -375,10 +367,9 @@ object CodeMotionAnalysis:
                   fallbackImprovedState
                 )
               case Some(estimate)
-                  if estimate == candidateWindowSize || 1 == stateAfterTryingCandidate.matchGroupsInDescendingOrderOfKeys.collect {
-                    case ((size, _), matches) if candidateWindowSize == size =>
-                      matches.size
-                  }.sum =>
+                  if estimate == candidateWindowSize || stateAfterTryingCandidate.matchGroupsByWindowSize
+                    .get(candidateWindowSize)
+                    .fold(ifEmpty = false)(1 == _.size) =>
                 // Found the optimal solution; try searching for the next lowest
                 // optimal size. NOTE: this won't pick up multiple distinct
                 // optimal matches, see below.
@@ -955,18 +946,10 @@ object CodeMotionAnalysis:
               MatchCalculationState(
                 updatedMatchSectionsSeenAcrossSides,
                 updatedAllSidesMatchSectionsSeenAcrossSides,
-                matchGroupsInDescendingOrderOfKeys =
-                  // Add the all-sides matches first if we have any, then any
-                  // pairwise matches as we are adding match groups in
-                  // descending order of keys.
-
-                  // TODO: is it still necessary to split the two categories of
-                  // matches, now that we are using systematic search? Also, why
-                  // not keep them as separate arguments?
-                  matchGroupsInDescendingOrderOfKeys ++ Seq(
-                    (windowSize, MatchGrade.Triple) -> allSidesMatches,
-                    (windowSize, MatchGrade.Pair)   -> pairwiseMatches
-                  ).filter { case entry @ (_, matches) => matches.nonEmpty }
+                matchGroupsByWindowSize =
+                  if matches.nonEmpty then
+                    matchGroupsByWindowSize + (windowSize -> matches)
+                  else matchGroupsByWindowSize
               ) -> Option
                 .unless(matches.isEmpty)(
                   updatedMatchSectionsSeenAcrossSides
@@ -988,7 +971,7 @@ object CodeMotionAnalysis:
 
       def sectionsAndTheirMatches
           : Map[Section[Element], Match[Section[Element]]] =
-        matchGroupsInDescendingOrderOfKeys
+        matchGroupsByWindowSize
           .map { case (_, matches) =>
             matches.view.flatMap {
               case aMatch @ Match.AllThree(
@@ -1010,7 +993,7 @@ object CodeMotionAnalysis:
       end sectionsAndTheirMatches
 
       def baseSections: Set[Section[Element]] =
-        matchGroupsInDescendingOrderOfKeys.flatMap { case (_, matches) =>
+        matchGroupsByWindowSize.flatMap { case (_, matches) =>
           matches.view.collect {
             case Match.AllThree(baseSection, _, _) =>
               baseSection
@@ -1023,7 +1006,7 @@ object CodeMotionAnalysis:
       end baseSections
 
       def leftSections: Set[Section[Element]] =
-        matchGroupsInDescendingOrderOfKeys.flatMap { case (_, matches) =>
+        matchGroupsByWindowSize.flatMap { case (_, matches) =>
           matches.view.collect {
             case Match.AllThree(_, leftSection, _) =>
               leftSection
@@ -1036,7 +1019,7 @@ object CodeMotionAnalysis:
       end leftSections
 
       def rightSections: Set[Section[Element]] =
-        matchGroupsInDescendingOrderOfKeys.flatMap { case (_, matches) =>
+        matchGroupsByWindowSize.flatMap { case (_, matches) =>
           matches.view.collect {
             case Match.AllThree(_, _, rightSection) =>
               rightSection
