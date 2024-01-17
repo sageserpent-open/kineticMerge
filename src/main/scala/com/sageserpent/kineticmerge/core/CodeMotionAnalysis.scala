@@ -128,7 +128,15 @@ object CodeMotionAnalysis:
       )(section: Section[Element]): Boolean =
         sectionsByPath
           .get(side.pathFor(section))
-          .fold(ifEmpty = false)(_.overlaps(section.closedOpenInterval))
+          .fold(ifEmpty = false)(
+            _.filterOverlaps(section.closedOpenInterval)
+              // Subsuming sections are considered to be overlapping by the
+              // implementation of `SectionSeen`, so filter the results.
+              .filter(candidateSection =>
+                candidateSection.startOffset > section.startOffset || candidateSection.onePastEndOffset < section.onePastEndOffset
+              )
+              .nonEmpty
+          )
 
       private def withSection(
           side: Sources[Path, Element],
@@ -183,6 +191,7 @@ object CodeMotionAnalysis:
             )
           }
           .foldLeft(Set.empty)(_ union _)
+      end differences
     end SectionsSeenAcrossSides
 
     case class SectionsSeenAcrossSides(
@@ -310,13 +319,15 @@ object CodeMotionAnalysis:
 
     object MatchCalculationState:
       lazy val empty = MatchCalculationState(
-        sectionsSeenAcrossSides = SectionsSeenAcrossSides(),
+        matchSectionsSeenAcrossSides = SectionsSeenAcrossSides(),
+        allSidesMatchSectionsSeenAcrossSides = SectionsSeenAcrossSides(),
         matchGroupsInDescendingOrderOfKeys = Seq.empty
       )
     end MatchCalculationState
 
     case class MatchCalculationState(
-        sectionsSeenAcrossSides: SectionsSeenAcrossSides,
+        matchSectionsSeenAcrossSides: SectionsSeenAcrossSides,
+        allSidesMatchSectionsSeenAcrossSides: SectionsSeenAcrossSides,
         matchGroupsInDescendingOrderOfKeys: MatchGroupsInDescendingOrderOfKeys
     ):
       require(matchGroupsInDescendingOrderOfKeys.forall {
@@ -577,40 +588,50 @@ object CodeMotionAnalysis:
                   leftSection  <- LazyList.from(leftSections)
                   rightSection <- LazyList.from(rightSections)
 
-                  overlapped = sectionsSeenAcrossSides.overlapsBaseSection(
+                  overlapped = matchSectionsSeenAcrossSides.overlapsBaseSection(
                     baseSection
-                  ) || sectionsSeenAcrossSides.overlapsLeftSection(
+                  ) || matchSectionsSeenAcrossSides.overlapsLeftSection(
                     leftSection
-                  ) || sectionsSeenAcrossSides.overlapsRightSection(
+                  ) || matchSectionsSeenAcrossSides.overlapsRightSection(
                     rightSection
                   )
                   if !overlapped
 
-                  baseSubsumed = sectionsSeenAcrossSides
+                  baseSubsumed = allSidesMatchSectionsSeenAcrossSides
                     .subsumesBaseSection(
                       baseSection
                     )
-                  leftSubsumed = sectionsSeenAcrossSides
+                  leftSubsumed = allSidesMatchSectionsSeenAcrossSides
                     .subsumesLeftSection(
                       leftSection
                     )
-                  rightSubsumed = sectionsSeenAcrossSides
+                  rightSubsumed = allSidesMatchSectionsSeenAcrossSides
                     .subsumesRightSection(
                       rightSection
                     )
                   subsumed =
-                    // In contrast with the pairwise matches below, we have the
-                    // subtlety of a *replacement* of an all-three match with a
-                    // pairwise match to consider, so this condition is more
-                    // complex than the others...
-                    baseSubsumed && leftSubsumed || baseSubsumed && rightSubsumed || leftSubsumed && rightSubsumed
+                    // Only an implied larger *all-sides* match can suppress an
+                    // enclosed all-sides match.
+                    baseSubsumed && leftSubsumed && rightSubsumed
                   if !subsumed
                 yield
-                  if baseSubsumed then
+                  if baseSubsumed && !(leftSubsumed || rightSubsumed) then
+                    // There is a left and right pairwise match that lies
+                    // outside the implied larger match's section, so interpret
+                    // it that way and *not* as a all-sides match suppressed on
+                    // the base side only.
                     Match.LeftAndRight(leftSection, rightSection)
-                  else if leftSubsumed then
+                  else if leftSubsumed && !(baseSubsumed || rightSubsumed) then
+                    // There is a base and right pairwise match that lies
+                    // outside the implied larger match's section, so interpret
+                    // it that way and *not* as a all-sides match suppressed on
+                    // the left side only.
                     Match.BaseAndRight(baseSection, rightSection)
-                  else if rightSubsumed then
+                  else if rightSubsumed && !(baseSubsumed || leftSubsumed) then
+                    // There is a base and left pairwise match that lies
+                    // outside the implied larger match's section, so interpret
+                    // it that way and *not* as a all-sides match suppressed on
+                    // the right side only.
                     Match.BaseAndLeft(baseSection, leftSection)
                   else
                     Match.AllThree(
@@ -659,16 +680,16 @@ object CodeMotionAnalysis:
                   baseSection <- LazyList.from(baseSections)
                   leftSection <- LazyList.from(leftSections)
 
-                  overlapped = sectionsSeenAcrossSides.overlapsBaseSection(
+                  overlapped = matchSectionsSeenAcrossSides.overlapsBaseSection(
                     baseSection
-                  ) || sectionsSeenAcrossSides.overlapsLeftSection(
+                  ) || matchSectionsSeenAcrossSides.overlapsLeftSection(
                     leftSection
                   )
                   if !overlapped
 
-                  subsumed = sectionsSeenAcrossSides.subsumesBaseSection(
+                  subsumed = matchSectionsSeenAcrossSides.subsumesBaseSection(
                     baseSection
-                  ) || sectionsSeenAcrossSides.subsumesLeftSection(
+                  ) || matchSectionsSeenAcrossSides.subsumesLeftSection(
                     leftSection
                   )
                   if !subsumed
@@ -716,16 +737,16 @@ object CodeMotionAnalysis:
                   baseSection  <- LazyList.from(baseSections)
                   rightSection <- LazyList.from(rightSections)
 
-                  overlapped = sectionsSeenAcrossSides.overlapsBaseSection(
+                  overlapped = matchSectionsSeenAcrossSides.overlapsBaseSection(
                     baseSection
-                  ) || sectionsSeenAcrossSides.overlapsRightSection(
+                  ) || matchSectionsSeenAcrossSides.overlapsRightSection(
                     rightSection
                   )
                   if !overlapped
 
-                  subsumed = sectionsSeenAcrossSides.subsumesBaseSection(
+                  subsumed = matchSectionsSeenAcrossSides.subsumesBaseSection(
                     baseSection
-                  ) || sectionsSeenAcrossSides.subsumesRightSection(
+                  ) || matchSectionsSeenAcrossSides.subsumesRightSection(
                     rightSection
                   )
                   if !subsumed
@@ -773,16 +794,16 @@ object CodeMotionAnalysis:
                   leftSection  <- LazyList.from(leftSections)
                   rightSection <- LazyList.from(rightSections)
 
-                  overlapped = sectionsSeenAcrossSides.overlapsLeftSection(
+                  overlapped = matchSectionsSeenAcrossSides.overlapsLeftSection(
                     leftSection
-                  ) || sectionsSeenAcrossSides.overlapsRightSection(
+                  ) || matchSectionsSeenAcrossSides.overlapsRightSection(
                     rightSection
                   )
                   if !overlapped
 
-                  subsumed = sectionsSeenAcrossSides.subsumesLeftSection(
+                  subsumed = matchSectionsSeenAcrossSides.subsumesLeftSection(
                     leftSection
-                  ) || sectionsSeenAcrossSides.subsumesRightSection(
+                  ) || matchSectionsSeenAcrossSides.subsumesRightSection(
                     rightSection
                   )
                   if !subsumed
@@ -906,34 +927,51 @@ object CodeMotionAnalysis:
               // There are no more opportunities to match a full triple or
               // just a pair, so this terminates the recursion.
 
-              // Add the triples first if we have any, then any pairs as we
-              // are adding match groups in descending order of keys.
-              val (tripleMatches, pairMatches) = matches.partition {
+              val (allSidesMatches, pairwiseMatches) = matches.partition {
                 case _: Match.AllThree[Section[Element]] => true
                 case _                                   => false
               }
 
-              val sectionsSeenAcrossSidesWithNewMatches =
+              val (
+                updatedMatchSectionsSeenAcrossSides,
+                updatedAllSidesMatchSectionsSeenAcrossSides
+              ) =
                 if 1 < windowSize then
-                  sectionsSeenAcrossSides.withSectionsFrom(matches)
+                  (
+                    matchSectionsSeenAcrossSides.withSectionsFrom(matches),
+                    allSidesMatchSectionsSeenAcrossSides.withSectionsFrom(
+                      allSidesMatches
+                    )
+                  )
                 else
                   // If match is of size 1, then its sections won't overlap any
                   // others, nor will they subsume any others - so don't bother
                   // noting them.
-                  sectionsSeenAcrossSides
+                  (
+                    matchSectionsSeenAcrossSides,
+                    allSidesMatchSectionsSeenAcrossSides
+                  )
 
               MatchCalculationState(
-                sectionsSeenAcrossSidesWithNewMatches,
+                updatedMatchSectionsSeenAcrossSides,
+                updatedAllSidesMatchSectionsSeenAcrossSides,
                 matchGroupsInDescendingOrderOfKeys =
+                  // Add the all-sides matches first if we have any, then any
+                  // pairwise matches as we are adding match groups in
+                  // descending order of keys.
+
+                  // TODO: is it still necessary to split the two categories of
+                  // matches, now that we are using systematic search? Also, why
+                  // not keep them as separate arguments?
                   matchGroupsInDescendingOrderOfKeys ++ Seq(
-                    (windowSize, MatchGrade.Triple) -> tripleMatches,
-                    (windowSize, MatchGrade.Pair)   -> pairMatches
+                    (windowSize, MatchGrade.Triple) -> allSidesMatches,
+                    (windowSize, MatchGrade.Pair)   -> pairwiseMatches
                   ).filter { case entry @ (_, matches) => matches.nonEmpty }
               ) -> Option
                 .unless(matches.isEmpty)(
-                  sectionsSeenAcrossSidesWithNewMatches
+                  updatedMatchSectionsSeenAcrossSides
                     .estimateOptimalMatchSizeInComparisonTo(
-                      sectionsSeenAcrossSides
+                      matchSectionsSeenAcrossSides
                     )
                 )
                 .flatten
