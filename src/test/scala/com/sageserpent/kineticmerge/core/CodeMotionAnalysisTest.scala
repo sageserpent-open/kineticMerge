@@ -410,7 +410,7 @@ class CodeMotionAnalysisTest:
       .withStrategy(caseSupplyCycle =>
         if caseSupplyCycle.isInitial then
           CasesLimitStrategy.timed(Duration.apply(10, TimeUnit.MINUTES))
-        else CasesLimitStrategy.counted(10, 3.0)
+        else CasesLimitStrategy.counted(200, 3.0)
       )
       .dynamicTests { testPlan =>
         pprint.pprintln(
@@ -793,7 +793,7 @@ object CodeMotionAnalysisTest:
     )(startOffset: Int, size: Int): Section[SourcesContracts.this.Element] =
       require(0 <= startOffset)
       require(0 < size)
-      
+
       val result = super.section(path)(startOffset, size)
 
       assert(pathFor(result) == path)
