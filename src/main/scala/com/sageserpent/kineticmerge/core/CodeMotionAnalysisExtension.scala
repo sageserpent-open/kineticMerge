@@ -40,9 +40,13 @@ object CodeMotionAnalysisExtension:
       /** This is most definitely *not* [[Section.equals]] - we want to compare
         * the underlying content of the dominant sections, as the sections are
         * expected to come from *different* sides. [[Section.equals]] is
-        * expected to consider sections from different sides as unequal.
+        * expected to consider sections from different sides as unequal. <p>If
+        * neither section is involved in a match, fall back to comparing the
+        * contents; this is vital for comparing sections that would have been
+        * part of a larger match if not for that match not achieving the
+        * threshold size.
         */
-      def sectionEqualityViaDominants(
+      def sectionEqualityViaDominantsFallingBackToContentComparison(
           lhs: Section[Element],
           rhs: Section[Element]
       ): Boolean =
@@ -53,6 +57,9 @@ object CodeMotionAnalysisExtension:
             // two sections belong to the same match, so they must have dominant
             // sections that are equal to each other in the intrinsic sense.
             lhsDominantSection == rhsDominantSection
+          case (None, None) =>
+            given Eq[Element] = equality
+            Eq[Seq[Element]].eqv(lhs.content, rhs.content)
           case _ => false
 
       val mergedSectionsResult =
@@ -60,7 +67,7 @@ object CodeMotionAnalysisExtension:
           base = baseSections,
           left = leftSections,
           right = rightSections
-        )(equality = sectionEqualityViaDominants)
+        )(equality = sectionEqualityViaDominantsFallingBackToContentComparison)
 
       def elementsOf(section: Section[Element]): IndexedSeq[Element] =
         dominantOf(section).getOrElse(section).content
