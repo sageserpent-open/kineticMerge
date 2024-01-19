@@ -261,22 +261,23 @@ object CodeMotionAnalysis:
                   )
                 else leftovers
               case BiteEdge.Start(startOffset) :: remainingBiteEdges =>
-                require(mealStartOffset <= startOffset)
                 require(mealOnePastEndOffset > startOffset)
+                val guardedStartOffset = startOffset max mealStartOffset
 
                 this
                   .copy(
-                    mealStartOffset = startOffset,
+                    mealStartOffset = guardedStartOffset,
                     biteDepth = 1 + biteDepth
                   )
                   .apply(
                     remainingBiteEdges,
                     leftovers =
-                      if 0 == biteDepth && startOffset > mealStartOffset then
+                      if 0 == biteDepth && guardedStartOffset > mealStartOffset
+                      then
                         leftovers.appended(
                           side.section(path)(
                             startOffset = mealStartOffset,
-                            size = startOffset - mealStartOffset
+                            size = guardedStartOffset - mealStartOffset
                           )
                         )
                       else leftovers
@@ -285,11 +286,12 @@ object CodeMotionAnalysis:
                 require(0 < biteDepth)
 
                 require(mealStartOffset < onePastEndOffset)
-                require(mealOnePastEndOffset >= onePastEndOffset)
+                val guardedOnePastEndOffset =
+                  onePastEndOffset min mealOnePastEndOffset
 
                 this
                   .copy(
-                    mealStartOffset = onePastEndOffset,
+                    mealStartOffset = guardedOnePastEndOffset,
                     biteDepth = biteDepth - 1
                   )
                   .apply(remainingBiteEdges, leftovers)
@@ -734,27 +736,30 @@ object CodeMotionAnalysis:
                       rightSection
                     )
                   subsumed =
-                    // Only an implied larger *all-sides* match can suppress an
-                    // enclosed all-sides match.
-                    baseSubsumed && leftSubsumed && rightSubsumed
+                    // Subsumption on just one side is interpreted as a pairwise
+                    // match on the other two sides. Subsumption on just two
+                    // sides is interpreted as outright suppression, leaving the
+                    // section on the remaining side orphaned. Subsumption on
+                    // all three sides obviously outright suppression.
+                    baseSubsumed && leftSubsumed || baseSubsumed && rightSubsumed || leftSubsumed && rightSubsumed
                   if !subsumed
                 yield
                   if baseSubsumed && !(leftSubsumed || rightSubsumed) then
                     // There is a left and right pairwise match that lies
                     // outside the implied larger match's section, so interpret
-                    // it that way and *not* as a all-sides match suppressed on
+                    // it that way and *not* as an all-sides match suppressed on
                     // the base side only.
                     Match.LeftAndRight(leftSection, rightSection)
                   else if leftSubsumed && !(baseSubsumed || rightSubsumed) then
                     // There is a base and right pairwise match that lies
                     // outside the implied larger match's section, so interpret
-                    // it that way and *not* as a all-sides match suppressed on
+                    // it that way and *not* as an all-sides match suppressed on
                     // the left side only.
                     Match.BaseAndRight(baseSection, rightSection)
                   else if rightSubsumed && !(baseSubsumed || leftSubsumed) then
                     // There is a base and left pairwise match that lies
                     // outside the implied larger match's section, so interpret
-                    // it that way and *not* as a all-sides match suppressed on
+                    // it that way and *not* as an all-sides match suppressed on
                     // the right side only.
                     Match.BaseAndLeft(baseSection, leftSection)
                   else
@@ -1197,16 +1202,6 @@ object CodeMotionAnalysis:
         }
       end rightSections
     end MatchCalculationState
-
-    given Order[MatchGrade] with
-      override def compare(x: MatchGrade, y: MatchGrade): Int =
-        // A triple beats a pair.
-        (x, y) match
-          case (MatchGrade.Pair, MatchGrade.Pair)     => 0
-          case (MatchGrade.Pair, MatchGrade.Triple)   => -1
-          case (MatchGrade.Triple, MatchGrade.Pair)   => 1
-          case (MatchGrade.Triple, MatchGrade.Triple) => 0
-    end given
 
     val matchCalculationState =
       val withAllMatchesOfAtLeastTheSureFireWindowSize =
