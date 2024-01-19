@@ -723,40 +723,46 @@ object CodeMotionAnalysis:
                   )
                   if !overlapped
 
-                  baseSubsumed = allSidesMatchSectionsSeenAcrossSides
-                    .subsumesBaseSection(
-                      baseSection
-                    )
-                  leftSubsumed = allSidesMatchSectionsSeenAcrossSides
-                    .subsumesLeftSection(
-                      leftSection
-                    )
-                  rightSubsumed = allSidesMatchSectionsSeenAcrossSides
-                    .subsumesRightSection(
-                      rightSection
-                    )
-                  subsumed =
+                  baseSubsumedByAllSidesMatch =
+                    allSidesMatchSectionsSeenAcrossSides
+                      .subsumesBaseSection(
+                        baseSection
+                      )
+                  leftSubsumedByAllSidesMatch =
+                    allSidesMatchSectionsSeenAcrossSides
+                      .subsumesLeftSection(
+                        leftSection
+                      )
+                  rightSubsumedByAllSidesMatch =
+                    allSidesMatchSectionsSeenAcrossSides
+                      .subsumesRightSection(
+                        rightSection
+                      )
+                  subsumedByAllSidesMatch =
                     // Subsumption on just one side is interpreted as a pairwise
                     // match on the other two sides. Subsumption on just two
                     // sides is interpreted as outright suppression, leaving the
                     // section on the remaining side orphaned. Subsumption on
-                    // all three sides obviously outright suppression.
-                    baseSubsumed && leftSubsumed || baseSubsumed && rightSubsumed || leftSubsumed && rightSubsumed
-                  if !subsumed
+                    // all three sides is obviously outright suppression.
+                    baseSubsumedByAllSidesMatch && leftSubsumedByAllSidesMatch || baseSubsumedByAllSidesMatch && rightSubsumedByAllSidesMatch || leftSubsumedByAllSidesMatch && rightSubsumedByAllSidesMatch
+                  if !subsumedByAllSidesMatch
                 yield
-                  if baseSubsumed && !(leftSubsumed || rightSubsumed) then
+                  if baseSubsumedByAllSidesMatch && !(leftSubsumedByAllSidesMatch || rightSubsumedByAllSidesMatch)
+                  then
                     // There is a left and right pairwise match that lies
                     // outside the implied larger match's section, so interpret
                     // it that way and *not* as an all-sides match suppressed on
                     // the base side only.
                     Match.LeftAndRight(leftSection, rightSection)
-                  else if leftSubsumed && !(baseSubsumed || rightSubsumed) then
+                  else if leftSubsumedByAllSidesMatch && !(baseSubsumedByAllSidesMatch || rightSubsumedByAllSidesMatch)
+                  then
                     // There is a base and right pairwise match that lies
                     // outside the implied larger match's section, so interpret
                     // it that way and *not* as an all-sides match suppressed on
                     // the left side only.
                     Match.BaseAndRight(baseSection, rightSection)
-                  else if rightSubsumed && !(baseSubsumed || leftSubsumed) then
+                  else if rightSubsumedByAllSidesMatch && !(baseSubsumedByAllSidesMatch || leftSubsumedByAllSidesMatch)
+                  then
                     // There is a base and left pairwise match that lies
                     // outside the implied larger match's section, so interpret
                     // it that way and *not* as an all-sides match suppressed on
@@ -815,13 +821,6 @@ object CodeMotionAnalysis:
                     leftSection
                   )
                   if !overlapped
-
-                  subsumed = matchSectionsSeenAcrossSides.subsumesBaseSection(
-                    baseSection
-                  ) || matchSectionsSeenAcrossSides.subsumesLeftSection(
-                    leftSection
-                  )
-                  if !subsumed
                 yield Match.BaseAndLeft(
                   baseSection,
                   leftSection
@@ -872,13 +871,6 @@ object CodeMotionAnalysis:
                     rightSection
                   )
                   if !overlapped
-
-                  subsumed = matchSectionsSeenAcrossSides.subsumesBaseSection(
-                    baseSection
-                  ) || matchSectionsSeenAcrossSides.subsumesRightSection(
-                    rightSection
-                  )
-                  if !subsumed
                 yield Match.BaseAndRight(
                   baseSection,
                   rightSection
@@ -929,13 +921,6 @@ object CodeMotionAnalysis:
                     rightSection
                   )
                   if !overlapped
-
-                  subsumed = matchSectionsSeenAcrossSides.subsumesLeftSection(
-                    leftSection
-                  ) || matchSectionsSeenAcrossSides.subsumesRightSection(
-                    rightSection
-                  )
-                  if !subsumed
                 yield Match.LeftAndRight(
                   leftSection,
                   rightSection
@@ -1056,10 +1041,35 @@ object CodeMotionAnalysis:
               // There are no more opportunities to match a full triple or
               // just a pair, so this terminates the recursion.
 
-              val allSidesMatches: Set[Match[Section[Element]]] =
-                matches.collect {
-                  case allSidesMatch: Match.AllThree[Section[Element]] =>
-                    allSidesMatch
+              val (allSidesMatches, pairwiseMatches) =
+                matches.partition {
+                  case _: Match.AllThree[Section[Element]] => true
+                  case _                                   => false
+                }
+
+              val matchesNotSubsumedByLargerMatches =
+                // NOTE: the all-sides matches were already checked for
+                // subsumption by larger *all-sides* matches, but are permitted
+                // to be subsumed by larger pairwise matches.
+                allSidesMatches ++ pairwiseMatches.filterNot {
+                  case Match.BaseAndLeft(baseSection, leftSection) =>
+                    matchSectionsSeenAcrossSides.subsumesBaseSection(
+                      baseSection
+                    ) || matchSectionsSeenAcrossSides.subsumesLeftSection(
+                      leftSection
+                    )
+                  case Match.BaseAndRight(baseSection, rightSection) =>
+                    matchSectionsSeenAcrossSides.subsumesBaseSection(
+                      baseSection
+                    ) || matchSectionsSeenAcrossSides.subsumesRightSection(
+                      rightSection
+                    )
+                  case Match.LeftAndRight(leftSection, rightSection) =>
+                    matchSectionsSeenAcrossSides.subsumesLeftSection(
+                      leftSection
+                    ) || matchSectionsSeenAcrossSides.subsumesRightSection(
+                      rightSection
+                    )
                 }
 
               val (
@@ -1068,7 +1078,9 @@ object CodeMotionAnalysis:
               ) =
                 if 1 < windowSize then
                   (
-                    matchSectionsSeenAcrossSides.withSectionsFrom(matches),
+                    matchSectionsSeenAcrossSides.withSectionsFrom(
+                      matchesNotSubsumedByLargerMatches
+                    ),
                     allSidesMatchSectionsSeenAcrossSides.withSectionsFrom(
                       allSidesMatches
                     )
@@ -1088,11 +1100,12 @@ object CodeMotionAnalysis:
                 matchCalculationState = MatchCalculationState(
                   updatedMatchSectionsSeenAcrossSides,
                   updatedAllSidesMatchSectionsSeenAcrossSides,
-                  matches = this.matches union matches
+                  matches = this.matches union matchesNotSubsumedByLargerMatches
                 ),
-                numberOfMatchesForTheGivenWindowSize = matches.size,
+                numberOfMatchesForTheGivenWindowSize =
+                  matchesNotSubsumedByLargerMatches.size,
                 estimatedWindowSizeForOptimalMatch = Option
-                  .unless(matches.isEmpty)(
+                  .unless(matchesNotSubsumedByLargerMatches.isEmpty)(
                     if 1 < windowSize then
                       updatedMatchSectionsSeenAcrossSides
                         .estimateOptimalMatchSizeInComparisonTo(
@@ -1103,7 +1116,7 @@ object CodeMotionAnalysis:
                       // for single element matches, so we can't use that to
                       // estimate. Assume that all the single element matches
                       // abut for a crude but safe estimate.
-                      Some(matches.size)
+                      Some(matchesNotSubsumedByLargerMatches.size)
                   )
                   .flatten
               )
