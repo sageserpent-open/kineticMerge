@@ -15,12 +15,12 @@ enum Match[+Element]:
     case BaseAndLeft(_, leftElement)   => leftElement
     case BaseAndRight(_, rightElement) => rightElement
     case LeftAndRight(leftElement, _)  => leftElement
-    case AllThree(_, leftElement, _)   => leftElement
+    case AllSides(_, leftElement, _)   => leftElement
 
   case BaseAndLeft(baseElement: Element, leftElement: Element)
   case BaseAndRight(baseElement: Element, rightElement: Element)
   case LeftAndRight(leftElement: Element, rightElement: Element)
-  case AllThree(
+  case AllSides(
       baseElement: Element,
       leftElement: Element,
       rightElement: Element

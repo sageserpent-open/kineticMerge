@@ -490,7 +490,7 @@ class MergeTest:
     val right = Vector(e, f)
 
     val bdf =
-      Match.AllThree(baseElement = b, leftElement = d, rightElement = f)
+      Match.AllSides(baseElement = b, leftElement = d, rightElement = f)
     val matchesByElement: Map[Element, Match[Element]] = Map(
       b -> bdf,
       d -> bdf,
@@ -530,7 +530,7 @@ class MergeTest:
     val right = Vector(g, h, i)
 
     val be  = Match.BaseAndLeft(baseElement = b, leftElement = e)
-    val cfi = Match.AllThree(baseElement = c, leftElement = f, rightElement = i)
+    val cfi = Match.AllSides(baseElement = c, leftElement = f, rightElement = i)
     val matchesByElement: Map[Element, Match[Element]] = Map(
       b -> be,
       e -> be,
@@ -573,7 +573,7 @@ class MergeTest:
     val right = Vector(g, h, i)
 
     val bh  = Match.BaseAndRight(baseElement = b, rightElement = h)
-    val cfi = Match.AllThree(baseElement = c, leftElement = f, rightElement = i)
+    val cfi = Match.AllSides(baseElement = c, leftElement = f, rightElement = i)
     val matchesByElement: Map[Element, Match[Element]] = Map(
       b -> bh,
       h -> bh,
@@ -612,7 +612,7 @@ class MergeTest:
     val right = Vector(d, e)
 
     val ace =
-      Match.AllThree(baseElement = a, leftElement = c, rightElement = e)
+      Match.AllSides(baseElement = a, leftElement = c, rightElement = e)
     val matchesByElement: Map[Element, Match[Element]] = Map(
       a -> ace,
       c -> ace,
@@ -653,7 +653,7 @@ class MergeTest:
     val dg = Match.LeftAndRight(leftElement = d, rightElement = g)
 
     val beh =
-      Match.AllThree(baseElement = b, leftElement = e, rightElement = h)
+      Match.AllSides(baseElement = b, leftElement = e, rightElement = h)
     val matchesByElement: Map[Element, Match[Element]] = Map(
       d -> dg,
       g -> dg,
@@ -955,7 +955,7 @@ class MergeTest:
               predecessorMove = Preservation
             ):
               val elementMatch =
-                Match.AllThree(
+                Match.AllSides(
                   baseElement = baseElement,
                   leftElement = leftElement,
                   rightElement = rightElement
@@ -1190,7 +1190,7 @@ object MergeTest:
       ): Set[Element] =
         val preserved = base.collect(baseElement =>
           matchesByElement.get(baseElement) match
-            case Some(allThree: Match.AllThree[Element]) =>
+            case Some(allThree: Match.AllSides[Element]) =>
               allThree.dominantElement
         )
 
@@ -1204,7 +1204,7 @@ object MergeTest:
         val appears = left.collect(leftElement =>
           matchesByElement.get(leftElement) match
             case Some(
-                  allThree: (Match.AllThree[Element] |
+                  allThree: (Match.AllSides[Element] |
                     Match.LeftAndRight[Element])
                 ) =>
               allThree.dominantElement
@@ -1220,7 +1220,7 @@ object MergeTest:
         val appears = right.collect(rightElement =>
           matchesByElement.get(rightElement) match
             case Some(
-                  allThree: (Match.AllThree[Element] |
+                  allThree: (Match.AllSides[Element] |
                     Match.LeftAndRight[Element])
                 ) =>
               allThree.dominantElement

@@ -350,7 +350,7 @@ object CodeMotionAnalysis:
           aMatch: Match[Section[Element]]
       ): SectionsSeenAcrossSides =
         aMatch match
-          case Match.AllThree(baseSection, leftSection, rightSection) =>
+          case Match.AllSides(baseSection, leftSection, rightSection) =>
             copy(
               baseSectionsByPath = withBaseSection(baseSection),
               leftSectionsByPath = withLeftSection(leftSection),
@@ -769,7 +769,7 @@ object CodeMotionAnalysis:
                     // the right side only.
                     Match.BaseAndLeft(baseSection, leftSection)
                   else
-                    Match.AllThree(
+                    Match.AllSides(
                       baseSection,
                       leftSection,
                       rightSection
@@ -1043,7 +1043,7 @@ object CodeMotionAnalysis:
 
               val (allSidesMatches, pairwiseMatches) =
                 matches.partition {
-                  case _: Match.AllThree[Section[Element]] => true
+                  case _: Match.AllSides[Section[Element]] => true
                   case _                                   => false
                 }
 
@@ -1133,7 +1133,7 @@ object CodeMotionAnalysis:
 
       def withPairwiseMatchesEatenInto: MatchCalculationState =
         this.copy(matches = matches.flatMap {
-          case aMatch: Match.AllThree[Section[Element]] =>
+          case aMatch: Match.AllSides[Section[Element]] =>
             Seq(aMatch)
           case Match.BaseAndLeft(baseSection, leftSection) =>
             allSidesMatchSectionsSeenAcrossSides
@@ -1167,7 +1167,7 @@ object CodeMotionAnalysis:
       def sectionsAndTheirMatches
           : Map[Section[Element], Match[Section[Element]]] =
         matches.flatMap {
-          case aMatch @ Match.AllThree(
+          case aMatch @ Match.AllSides(
                 baseSection,
                 leftSection,
                 rightSection
@@ -1184,7 +1184,7 @@ object CodeMotionAnalysis:
 
       def baseSections: Set[Section[Element]] =
         matches.collect {
-          case Match.AllThree(baseSection, _, _) =>
+          case Match.AllSides(baseSection, _, _) =>
             baseSection
           case Match.BaseAndLeft(baseSection, _) =>
             baseSection
@@ -1195,7 +1195,7 @@ object CodeMotionAnalysis:
 
       def leftSections: Set[Section[Element]] =
         matches.collect {
-          case Match.AllThree(_, leftSection, _) =>
+          case Match.AllSides(_, leftSection, _) =>
             leftSection
           case Match.BaseAndLeft(_, leftSection) =>
             leftSection
@@ -1206,7 +1206,7 @@ object CodeMotionAnalysis:
 
       def rightSections: Set[Section[Element]] =
         matches.collect {
-          case Match.AllThree(_, _, rightSection) =>
+          case Match.AllSides(_, _, rightSection) =>
             rightSection
           case Match.BaseAndRight(_, rightSection) =>
             rightSection

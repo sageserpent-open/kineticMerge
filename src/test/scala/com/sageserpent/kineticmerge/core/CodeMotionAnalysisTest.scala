@@ -467,7 +467,7 @@ class CodeMotionAnalysisTest:
               collection.mutable.Set[IndexedSeq[Element]](commonToBaseAndRight*)
 
             baseMatches.foreach {
-              case Match.AllThree(baseSection, leftSection, rightSection) =>
+              case Match.AllSides(baseSection, leftSection, rightSection) =>
                 assert(analysis.base.values.exists(_ contains baseSection))
                 assert(analysis.left.values.exists(_ contains leftSection))
                 assert(analysis.right.values.exists(_ contains rightSection))
@@ -543,7 +543,7 @@ class CodeMotionAnalysisTest:
               collection.mutable.Set[IndexedSeq[Element]](commonToLeftAndRight*)
 
             leftMatches.foreach {
-              case Match.AllThree(baseSection, leftSection, rightSection) =>
+              case Match.AllSides(baseSection, leftSection, rightSection) =>
                 assert(analysis.base.values.exists(_ contains baseSection))
                 assert(analysis.left.values.exists(_ contains leftSection))
                 assert(analysis.right.values.exists(_ contains rightSection))
@@ -618,7 +618,7 @@ class CodeMotionAnalysisTest:
               collection.mutable.Set[IndexedSeq[Element]](commonToLeftAndRight*)
 
             rightMatches.foreach {
-              case Match.AllThree(baseSection, leftSection, rightSection) =>
+              case Match.AllSides(baseSection, leftSection, rightSection) =>
                 assert(analysis.base.values.exists(_ contains baseSection))
                 assert(analysis.left.values.exists(_ contains leftSection))
                 assert(analysis.right.values.exists(_ contains rightSection))
