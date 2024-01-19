@@ -1075,26 +1075,14 @@ object CodeMotionAnalysis:
               val (
                 updatedMatchSectionsSeenAcrossSides,
                 updatedAllSidesMatchSectionsSeenAcrossSides
-              ) =
-                if 1 < windowSize then
-                  (
-                    matchSectionsSeenAcrossSides.withSectionsFrom(
-                      matchesNotSubsumedByLargerMatches
-                    ),
-                    allSidesMatchSectionsSeenAcrossSides.withSectionsFrom(
-                      allSidesMatches
-                    )
-                  )
-                else
-                  // If match is for single elements, then its sections won't
-                  // overlap any others, nor will they subsume any others - so
-                  // don't bother noting them.
-                  // TODO: so presumably those single-element matches can't eat
-                  // into larger pairwise matches? Hmmm...
-                  (
-                    matchSectionsSeenAcrossSides,
-                    allSidesMatchSectionsSeenAcrossSides
-                  )
+              ) = (
+                matchSectionsSeenAcrossSides.withSectionsFrom(
+                  matchesNotSubsumedByLargerMatches
+                ),
+                allSidesMatchSectionsSeenAcrossSides.withSectionsFrom(
+                  allSidesMatches
+                )
+              )
 
               MatchingResult(
                 matchCalculationState = MatchCalculationState(
@@ -1106,17 +1094,10 @@ object CodeMotionAnalysis:
                   matchesNotSubsumedByLargerMatches.size,
                 estimatedWindowSizeForOptimalMatch = Option
                   .unless(matchesNotSubsumedByLargerMatches.isEmpty)(
-                    if 1 < windowSize then
-                      updatedMatchSectionsSeenAcrossSides
-                        .estimateOptimalMatchSizeInComparisonTo(
-                          matchSectionsSeenAcrossSides
-                        )
-                    else
-                      // Sections aren't added to `matchSectionsSeenAcrossSides`
-                      // for single element matches, so we can't use that to
-                      // estimate. Assume that all the single element matches
-                      // abut for a crude but safe estimate.
-                      Some(matchesNotSubsumedByLargerMatches.size)
+                    updatedMatchSectionsSeenAcrossSides
+                      .estimateOptimalMatchSizeInComparisonTo(
+                        matchSectionsSeenAcrossSides
+                      )
                   )
                   .flatten
               )
