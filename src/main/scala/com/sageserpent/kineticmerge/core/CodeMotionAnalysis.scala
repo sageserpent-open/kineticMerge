@@ -123,11 +123,11 @@ object CodeMotionAnalysis:
           .fold(ifEmpty = false)(
             _.filterOverlaps(section.closedOpenInterval)
               // Subsuming sections are considered to be overlapping by the
-              // implementation of `SectionSeen`, so filter the results.
-              .filter(candidateSection =>
+              // implementation of `SectionSeen`, so use an existence check with
+              // a nuanced predicate.
+              .exists(candidateSection =>
                 candidateSection.startOffset > section.startOffset || candidateSection.onePastEndOffset < section.onePastEndOffset
               )
-              .nonEmpty
           )
 
       private def withSection(
