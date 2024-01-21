@@ -409,7 +409,7 @@ class CodeMotionAnalysisTest:
     testPlans
       .withStrategy(caseSupplyCycle =>
         if caseSupplyCycle.isInitial then
-          CasesLimitStrategy.timed(Duration.apply(10, TimeUnit.MINUTES))
+          CasesLimitStrategy.timed(Duration.apply(15, TimeUnit.MINUTES))
         else CasesLimitStrategy.counted(200, 3.0)
       )
       .dynamicTests { testPlan =>
@@ -444,18 +444,9 @@ class CodeMotionAnalysisTest:
               .flatMap(_.sections)
               .collect(Function.unlift(analysis.matchFor))
 
-          val leftAndRightPairCouldSubsumeAnAllSidesMatch =
-            adjacentCommonSequencesArePossibleOnLeft && adjacentCommonSequencesArePossibleOnRight
-          val baseAndLeftPairCouldSubsumeAnAllSidesMatch =
-            adjacentCommonSequencesArePossibleOnBase && adjacentCommonSequencesArePossibleOnLeft
-          val baseAndRightPairCouldSubsumeAnAllSidesMatch =
-            adjacentCommonSequencesArePossibleOnBase && adjacentCommonSequencesArePossibleOnRight
-
           if commonToAllThreeSides.nonEmpty || commonToBaseAndLeft.nonEmpty || commonToBaseAndRight.nonEmpty
           then
-            if !leftAndRightPairCouldSubsumeAnAllSidesMatch || commonToBaseAndLeft.nonEmpty || commonToBaseAndRight.nonEmpty
-            then assert(baseMatches.nonEmpty)
-            end if
+            assert(baseMatches.nonEmpty)
 
             val survivorsCommonToAllThreeSides =
               collection.mutable.Set[IndexedSeq[Element]](
@@ -489,12 +480,6 @@ class CodeMotionAnalysisTest:
                   !(baseSection.content containsSlice candidate)
                 )
 
-                if baseAndLeftPairCouldSubsumeAnAllSidesMatch then
-                  survivorsCommonToAllThreeSides.filterInPlace(candidate =>
-                    !(baseSection.content containsSlice candidate)
-                  )
-                end if
-
               case Match.BaseAndRight(baseSection, rightSection) =>
                 assert(analysis.base.values.exists(_ contains baseSection))
                 assert(analysis.right.values.exists(_ contains rightSection))
@@ -505,18 +490,10 @@ class CodeMotionAnalysisTest:
                   !(baseSection.content containsSlice candidate)
                 )
 
-                if baseAndRightPairCouldSubsumeAnAllSidesMatch then
-                  survivorsCommonToAllThreeSides.filterInPlace(candidate =>
-                    !(baseSection.content containsSlice candidate)
-                  )
-                end if
-
               case Match.LeftAndRight(leftSection, rightSection) =>
             }
 
-            if !leftAndRightPairCouldSubsumeAnAllSidesMatch then
-              assert(survivorsCommonToAllThreeSides.isEmpty)
-            end if
+            assert(survivorsCommonToAllThreeSides.isEmpty)
             assert(survivorsCommonToBaseAndLeft.isEmpty)
             assert(survivorsCommonToBaseAndRight.isEmpty)
 
@@ -529,9 +506,7 @@ class CodeMotionAnalysisTest:
 
           if commonToAllThreeSides.nonEmpty || commonToBaseAndLeft.nonEmpty || commonToLeftAndRight.nonEmpty
           then
-            if !baseAndRightPairCouldSubsumeAnAllSidesMatch || commonToBaseAndLeft.nonEmpty || commonToLeftAndRight.nonEmpty
-            then assert(leftMatches.nonEmpty)
-            end if
+            assert(leftMatches.nonEmpty)
 
             val survivorsCommonToAllThreeSides =
               collection.mutable.Set[IndexedSeq[Element]](
@@ -565,12 +540,6 @@ class CodeMotionAnalysisTest:
                   !(leftSection.content containsSlice candidate)
                 )
 
-                if baseAndLeftPairCouldSubsumeAnAllSidesMatch then
-                  survivorsCommonToAllThreeSides.filterInPlace(candidate =>
-                    !(leftSection.content containsSlice candidate)
-                  )
-                end if
-
               case Match.BaseAndRight(baseSection, rightSection) =>
 
               case Match.LeftAndRight(leftSection, rightSection) =>
@@ -582,17 +551,9 @@ class CodeMotionAnalysisTest:
                 survivorsCommonToLeftAndRight.filterInPlace(candidate =>
                   !(leftSection.content containsSlice candidate)
                 )
-
-                if leftAndRightPairCouldSubsumeAnAllSidesMatch then
-                  survivorsCommonToAllThreeSides.filterInPlace(candidate =>
-                    !(leftSection.content containsSlice candidate)
-                  )
-                end if
             }
 
-            if !baseAndRightPairCouldSubsumeAnAllSidesMatch then
-              assert(survivorsCommonToAllThreeSides.isEmpty)
-            end if
+            assert(survivorsCommonToAllThreeSides.isEmpty)
             assert(survivorsCommonToBaseAndLeft.isEmpty)
             assert(survivorsCommonToLeftAndRight.isEmpty)
           end if
@@ -604,9 +565,7 @@ class CodeMotionAnalysisTest:
 
           if commonToAllThreeSides.nonEmpty || commonToBaseAndRight.nonEmpty || commonToLeftAndRight.nonEmpty
           then
-            if !baseAndLeftPairCouldSubsumeAnAllSidesMatch || commonToBaseAndRight.nonEmpty || commonToLeftAndRight.nonEmpty
-            then assert(rightMatches.nonEmpty)
-            end if
+            assert(rightMatches.nonEmpty)
 
             val survivorsCommonToAllThreeSides =
               collection.mutable.Set[IndexedSeq[Element]](
@@ -642,12 +601,6 @@ class CodeMotionAnalysisTest:
                   !(rightSection.content containsSlice candidate)
                 )
 
-                if baseAndRightPairCouldSubsumeAnAllSidesMatch then
-                  survivorsCommonToAllThreeSides.filterInPlace(candidate =>
-                    !(rightSection.content containsSlice candidate)
-                  )
-                end if
-
               case Match.LeftAndRight(leftSection, rightSection) =>
                 assert(analysis.left.values.exists(_ contains leftSection))
                 assert(analysis.right.values.exists(_ contains rightSection))
@@ -657,17 +610,9 @@ class CodeMotionAnalysisTest:
                 survivorsCommonToLeftAndRight.filterInPlace(candidate =>
                   !(rightSection.content containsSlice candidate)
                 )
-
-                if leftAndRightPairCouldSubsumeAnAllSidesMatch then
-                  survivorsCommonToAllThreeSides.filterInPlace(candidate =>
-                    !(rightSection.content containsSlice candidate)
-                  )
-                end if
             }
 
-            if !baseAndLeftPairCouldSubsumeAnAllSidesMatch then
-              assert(survivorsCommonToAllThreeSides.isEmpty)
-            end if
+            assert(survivorsCommonToAllThreeSides.isEmpty)
             assert(survivorsCommonToBaseAndRight.isEmpty)
             assert(survivorsCommonToLeftAndRight.isEmpty)
           end if
