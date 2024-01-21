@@ -136,30 +136,13 @@ object CodeMotionAnalysis:
       )(
           section: Section[Element]
       ): Map[Path, SectionsSeen] =
-        val path = side.pathFor(section)
         sectionsByPath.updatedWith(
-          path
+          side.pathFor(section)
         ) {
           case Some(sections) =>
-            // If the section overlaps one or more already present, we may as
-            // well condense them together.
-            val overlaps =
-              sections.filterOverlaps(section.closedOpenInterval).toSeq
-
-            Some(if overlaps.nonEmpty then
-              val minimumStartOffset =
-                overlaps.map(_.startOffset).min min section.startOffset
-              val onePastMaximumEndOffset = overlaps
-                .map(_.onePastEndOffset)
-                .max max section.onePastEndOffset
-
-              val condensedSection = side.section(path)(
-                minimumStartOffset,
-                onePastMaximumEndOffset - minimumStartOffset
-              )
-
-              overlaps.foldLeft(sections)(_ - _) + condensedSection
-            else sections + section)
+            // The implementation of `SectionsSeen` allows multiple entries with
+            // the same interval, so avoid duplication.
+            Some(sections - section + section)
           case None =>
             Some(
               // NOTE: don't use `Ordering[Int]` as while that is valid, it will
@@ -170,20 +153,97 @@ object CodeMotionAnalysis:
         }
       end withSection
 
-      private def differences(
+      private def numberOfDifferencesWithOverlapsCoalesced(
           firstSectionsByPath: Map[Path, SectionsSeen],
           secondSectionsByPath: Map[Path, SectionsSeen]
-      ): Set[Section[Element]] =
-        firstSectionsByPath
+      ): Option[Int] =
+        val maxima = firstSectionsByPath
           .rightOuterJoin(secondSectionsByPath)
-          .map { case (_, (possibleFirst, second)) =>
-            possibleFirst.fold(ifEmpty = Set.from(second.iterator))(
-              definiteFirst =>
-                Set.from(second.iterator) -- Set.from(definiteFirst.iterator)
+          .flatMap { case (_, (possibleFirst, second)) =>
+            val differences = possibleFirst
+              .fold(ifEmpty = second.iterator.toSeq)(
+                second.iterator.toSeq diff _.iterator.toSeq
+              )
+              .sortBy(
+                _.startOffset
+              )
+
+            case class PutativeCoalescence(
+                startOffset: Int,
+                onePastEndOffset: Int
+            )
+
+            @tailrec
+            def maximumSizeOfCoalescedSections(
+                sections: Seq[Section[Element]],
+                putativeCoalescence: Option[PutativeCoalescence],
+                partialResult: Option[Int]
+            ): Option[Int] =
+              if sections.isEmpty then
+                (partialResult ++ putativeCoalescence.map {
+                  case PutativeCoalescence(startOffset, onePastEndIndex) =>
+                    onePastEndIndex - startOffset
+                }).maxOption
+              else
+                val head = sections.head
+
+                putativeCoalescence match
+                  case Some(
+                        PutativeCoalescence(startOffset, onePastEndOffset)
+                      ) =>
+                    assume(head.startOffset >= startOffset)
+
+                    if head.startOffset >= onePastEndOffset then
+                      val size = onePastEndOffset - startOffset
+
+                      maximumSizeOfCoalescedSections(
+                        sections.tail,
+                        putativeCoalescence = Some(
+                          PutativeCoalescence(
+                            head.startOffset,
+                            head.onePastEndOffset
+                          )
+                        ),
+                        partialResult =
+                          partialResult.map(_ max size).orElse(Some(size))
+                      )
+                    else
+                      maximumSizeOfCoalescedSections(
+                        sections.tail,
+                        putativeCoalescence = Some(
+                          PutativeCoalescence(
+                            startOffset,
+                            head.onePastEndOffset max onePastEndOffset
+                          )
+                        ),
+                        partialResult = partialResult
+                      )
+                    end if
+
+                  case None =>
+                    maximumSizeOfCoalescedSections(
+                      sections.tail,
+                      putativeCoalescence = Some(
+                        PutativeCoalescence(
+                          head.startOffset,
+                          head.onePastEndOffset
+                        )
+                      ),
+                      partialResult = partialResult
+                    )
+                end match
+              end if
+            end maximumSizeOfCoalescedSections
+
+            maximumSizeOfCoalescedSections(
+              differences,
+              putativeCoalescence = None,
+              partialResult = None
             )
           }
-          .foldLeft(Set.empty)(_ union _)
-      end differences
+
+        maxima.reduceOption(_ max _)
+      end numberOfDifferencesWithOverlapsCoalesced
 
       private def eatIntoSection(
           side: Sources[Path, Element],
@@ -374,19 +434,32 @@ object CodeMotionAnalysis:
         end match
       end withSectionsFrom
 
+      // TODO: why not simply work in terms of the new matches at the given
+      // window size, given that they are being coalesced?
       def estimateOptimalMatchSizeInComparisonTo(
           previous: SectionsSeenAcrossSides
       ): Option[Int] =
-        val baseDifferences =
-          differences(previous.baseSectionsByPath, baseSectionsByPath)
-        val leftDifferences =
-          differences(previous.leftSectionsByPath, leftSectionsByPath)
-        val rightDifferences =
-          differences(previous.rightSectionsByPath, rightSectionsByPath)
+        val numberOfBaseDifferencesWithOverlapsCoalesced =
+          numberOfDifferencesWithOverlapsCoalesced(
+            previous.baseSectionsByPath,
+            baseSectionsByPath
+          )
+        val numberOfLeftDifferencesWithOverlapsCoalesced =
+          numberOfDifferencesWithOverlapsCoalesced(
+            previous.leftSectionsByPath,
+            leftSectionsByPath
+          )
+        val numberOfRightDifferencesWithOverlapsCoalesced =
+          numberOfDifferencesWithOverlapsCoalesced(
+            previous.rightSectionsByPath,
+            rightSectionsByPath
+          )
 
-        (baseDifferences ++ leftDifferences ++ rightDifferences)
-          .map(_.size)
-          .maxOption
+        Seq(
+          numberOfBaseDifferencesWithOverlapsCoalesced,
+          numberOfLeftDifferencesWithOverlapsCoalesced,
+          numberOfRightDifferencesWithOverlapsCoalesced
+        ).flatten.maxOption
       end estimateOptimalMatchSizeInComparisonTo
     end SectionsSeenAcrossSides
 
@@ -1092,14 +1165,11 @@ object CodeMotionAnalysis:
                 ),
                 numberOfMatchesForTheGivenWindowSize =
                   matchesNotSubsumedByLargerMatches.size,
-                estimatedWindowSizeForOptimalMatch = Option
-                  .unless(matchesNotSubsumedByLargerMatches.isEmpty)(
-                    updatedMatchSectionsSeenAcrossSides
-                      .estimateOptimalMatchSizeInComparisonTo(
-                        matchSectionsSeenAcrossSides
-                      )
-                  )
-                  .flatten
+                estimatedWindowSizeForOptimalMatch =
+                  updatedMatchSectionsSeenAcrossSides
+                    .estimateOptimalMatchSizeInComparisonTo(
+                      matchSectionsSeenAcrossSides
+                    )
               )
           end match
         end matchingFingerprintsAcrossSides
