@@ -193,7 +193,11 @@ object CodeMotionAnalysis:
                       ) =>
                     assume(head.startOffset >= startOffset)
 
-                    if head.startOffset >= onePastEndOffset then
+                    if head.startOffset > onePastEndOffset then
+                      // The head section neither overlaps nor abuts the
+                      // putative coalescence, so tally the size of the now
+                      // finalised coalescence and start a new one that
+                      // encompasses just the head section.
                       val size = onePastEndOffset - startOffset
 
                       maximumSizeOfCoalescedSections(
@@ -208,6 +212,7 @@ object CodeMotionAnalysis:
                           partialResult.map(_ max size).orElse(Some(size))
                       )
                     else
+                      // The head section extends the putative coalescence.
                       maximumSizeOfCoalescedSections(
                         sections.tail,
                         putativeCoalescence = Some(
@@ -221,6 +226,8 @@ object CodeMotionAnalysis:
                     end if
 
                   case None =>
+                    // Start a new putative coalescence that encompasses just
+                    // the head section.
                     maximumSizeOfCoalescedSections(
                       sections.tail,
                       putativeCoalescence = Some(
