@@ -78,7 +78,10 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
   @TestFactory
   def merging(): DynamicTests =
-    val thresholds = Trials.api.doubles(0.001, 0.01)
+    val thresholds = Trials.api.alternate(
+      Trials.api.doubles(0.001, 0.01),
+      Trials.api.only(0.2)
+    )
 
     thresholds.withLimit(30).dynamicTests { threshold =>
       val prosePath: FakePath    = "prose"
