@@ -96,11 +96,6 @@ object CodeMotionAnalysis:
     val minimumSureFireWindowSizeAcrossAllFilesOverAllSides =
       1 max (maximumFileSizeAcrossAllFilesOverAllSides * thresholdSizeFractionForMatching).floor.toInt
 
-    enum MatchGrade:
-      case Triple
-      case Pair
-    end MatchGrade
-
     type Matches = Set[Match[Section[Element]]]
 
     type SectionsSeen = RangedSeq[Section[Element], Int]
