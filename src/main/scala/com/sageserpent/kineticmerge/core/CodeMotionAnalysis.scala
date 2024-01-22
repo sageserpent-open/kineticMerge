@@ -628,25 +628,25 @@ object CodeMotionAnalysis:
           candidateWindowSize: Int
       ): MatchCalculationState =
         require(
-          minimumSureFireWindowSizeAcrossAllFilesOverAllSides > candidateWindowSize
+          minimumWindowSizeAcrossAllFilesOverAllSides until minimumSureFireWindowSizeAcrossAllFilesOverAllSides contains candidateWindowSize
         )
+
+        // We will be exploring the small-fry window sizes below
+        // `minimumSureFireWindowSizeAcrossAllFilesOverAllSides`; in this
+        // situation, sizes below per-file thresholds lead to no matches, this
+        // leads to gaps in validity as a size exceeds the largest match it
+        // could participate in, but fails to meet the next highest per-file
+        // threshold. Consequently, don't bother checking whether any matches
+        // were found - instead, plod linearly down each window size.
+        val MatchingResult(stateAfterTryingCandidate, _, _) =
+          this.matchesForWindowSize(candidateWindowSize)
 
         if candidateWindowSize > minimumWindowSizeAcrossAllFilesOverAllSides
         then
-          // We will be exploring the small-fry window sizes below
-          // `minimumSureFireWindowSizeAcrossAllFilesOverAllSides`; in this
-          // situation, sizes below per-file thresholds lead to no matches, this
-          // leads to gaps in validity as a size exceeds the largest match it
-          // could participate in, but fails to meet the next highest per-file
-          // threshold. Consequently, don't bother checking whether any matches
-          // were found - instead, plod linearly down each window size.
-          val MatchingResult(stateAfterTryingCandidate, _, _) =
-            this.matchesForWindowSize(candidateWindowSize)
-
           stateAfterTryingCandidate.withAllSmallFryMatches(
             candidateWindowSize - 1
           )
-        else this
+        else stateAfterTryingCandidate
         end if
       end withAllSmallFryMatches
 
@@ -763,17 +763,6 @@ object CodeMotionAnalysis:
             leftFingerprints.headOption,
             rightFingerprints.headOption
           ) match
-            case _
-                if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > windowSize &&
-                  matches.size >= minimumSureFireWindowSizeAcrossAllFilesOverAllSides =>
-              // If we are down amongst the small fry and there are more matches
-              // than would be expected by overlapping, consider this as noise
-              // and abandon matching for this window size.
-              MatchingResult(
-                matchCalculationState = this,
-                numberOfMatchesForTheGivenWindowSize = 0,
-                estimatedWindowSizeForOptimalMatch = None
-              )
             case (Some(baseHead), Some(leftHead), Some(rightHead))
                 if potentialMatchKeyOrder.eqv(
                   baseHead,
