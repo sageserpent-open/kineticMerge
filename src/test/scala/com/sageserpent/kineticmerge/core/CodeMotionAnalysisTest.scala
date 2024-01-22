@@ -247,11 +247,17 @@ class CodeMotionAnalysisTest:
             then trialsApi.impossible
             // ... it is also possible to have accidental matches where a common
             // sequence for one match is *embedded* within a common sequence for
-            // another match.
+            // another match. There are also the odd pathological cases where
+            // two unique sides agree on a suffix or prefix, thus extending the
+            // expected match of the adjacent common sequence...
             else if common.exists(commonSequence =>
                 common.exists(anotherCommonSequence =>
-                  anotherCommonSequence != commonSequence && commonSequence
-                    .containsSlice(anotherCommonSequence)
+                  anotherCommonSequence != commonSequence && (commonSequence
+                    .containsSlice(
+                      anotherCommonSequence
+                    )
+                    || commonSequence.head == anotherCommonSequence.head
+                    || commonSequence.last == anotherCommonSequence.last)
                 )
               )
             then trialsApi.impossible
@@ -413,11 +419,20 @@ class CodeMotionAnalysisTest:
         else CasesLimitStrategy.counted(200, 3.0)
       )
       .dynamicTests { testPlan =>
-        pprint.pprintln(
-          testPlan -> testPlan.minimumSizeFractionForMotionDetection
-        )
 
         import testPlan.*
+
+        println(
+          s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
+        )
+        println("Sizes of common to all three sides...")
+        pprint.pprintln(commonToAllThreeSides.map(_.size))
+        println("Sizes of common to base and left...")
+        pprint.pprintln(commonToBaseAndLeft.map(_.size))
+        println("Sizes of common to base and right...")
+        pprint.pprintln(commonToBaseAndRight.map(_.size))
+        println("Sizes of common to left and right...")
+        pprint.pprintln(commonToLeftAndRight.map(_.size))
 
         try
           val Right(
@@ -443,6 +458,10 @@ class CodeMotionAnalysisTest:
             analysis.base.values
               .flatMap(_.sections)
               .collect(Function.unlift(analysis.matchFor))
+
+          println("*** BASE sections and matches...")
+          pprint.pprintln(analysis.base)
+          pprint.pprintln(baseMatches)
 
           if commonToAllThreeSides.nonEmpty || commonToBaseAndLeft.nonEmpty || commonToBaseAndRight.nonEmpty
           then
@@ -504,6 +523,10 @@ class CodeMotionAnalysisTest:
               .flatMap(_.sections)
               .collect(Function.unlift(analysis.matchFor))
 
+          println("*** LEFT sections and matches...")
+          pprint.pprintln(analysis.left)
+          pprint.pprintln(leftMatches)
+
           if commonToAllThreeSides.nonEmpty || commonToBaseAndLeft.nonEmpty || commonToLeftAndRight.nonEmpty
           then
             assert(leftMatches.nonEmpty)
@@ -562,6 +585,10 @@ class CodeMotionAnalysisTest:
             analysis.right.values
               .flatMap(_.sections)
               .collect(Function.unlift(analysis.matchFor))
+
+          println("*** RIGHT sections and matches...")
+          pprint.pprintln(analysis.right)
+          pprint.pprintln(rightMatches)
 
           if commonToAllThreeSides.nonEmpty || commonToBaseAndRight.nonEmpty || commonToLeftAndRight.nonEmpty
           then
