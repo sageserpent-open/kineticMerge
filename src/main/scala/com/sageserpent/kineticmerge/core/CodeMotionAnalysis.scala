@@ -76,8 +76,6 @@ object CodeMotionAnalysis:
 
     given witness: Eq[Element] = elementEquality
 
-    val sequenceEquality: Eq[Seq[Element]] = Eq[Seq[Element]]
-
     // TODO: suppose all the sources are empty? Could this happen?
     val fileSizes = base.filesByPath.values.map(_.size) ++
       left.filesByPath.values.map(_.size) ++
@@ -586,6 +584,37 @@ object CodeMotionAnalysis:
       end withAllSmallFryMatches
 
       def withPairwiseMatchesEatenInto: MatchesAndTheirSections =
+                this.copy(matches = matches.flatMap {
+                  case aMatch: Match.AllSides[Section[Element]] =>
+                    Seq(aMatch)
+                  case Match.BaseAndLeft(baseSection, leftSection) =>
+                    allSidesMatchSectionsSeenAcrossSides
+                      .eatIntoBaseSection(baseSection)
+                      .zip(
+                        allSidesMatchSectionsSeenAcrossSides.eatIntoLeftSection(
+                          leftSection
+                        )
+                      )
+                      .map(Match.BaseAndLeft.apply)
+                  case Match.BaseAndRight(baseSection, rightSection) =>
+                    allSidesMatchSectionsSeenAcrossSides
+                      .eatIntoBaseSection(baseSection)
+                      .zip(
+                        allSidesMatchSectionsSeenAcrossSides.eatIntoRightSection(
+                          rightSection
+                        )
+                      )
+                      .map(Match.BaseAndRight.apply)
+                  case Match.LeftAndRight(leftSection, rightSection) =>
+                    allSidesMatchSectionsSeenAcrossSides
+                      .eatIntoLeftSection(leftSection)
+                      .zip(
+                        allSidesMatchSectionsSeenAcrossSides.eatIntoRightSection(
+                          rightSection
+                        )
+                      )
+                      .map(Match.LeftAndRight.apply)
+                })
         this // TODO....
 
       private def matchFrom(
@@ -1228,38 +1257,6 @@ object CodeMotionAnalysis:
             )
         end match
       end withMatch
-      //        this.copy(matches = matches.flatMap {
-      //          case aMatch: Match.AllSides[Section[Element]] =>
-      //            Seq(aMatch)
-      //          case Match.BaseAndLeft(baseSection, leftSection) =>
-      //            allSidesMatchSectionsSeenAcrossSides
-      //              .eatIntoBaseSection(baseSection)
-      //              .zip(
-      //                allSidesMatchSectionsSeenAcrossSides.eatIntoLeftSection(
-      //                  leftSection
-      //                )
-      //              )
-      //              .map(Match.BaseAndLeft.apply)
-      //          case Match.BaseAndRight(baseSection, rightSection) =>
-      //            allSidesMatchSectionsSeenAcrossSides
-      //              .eatIntoBaseSection(baseSection)
-      //              .zip(
-      //                allSidesMatchSectionsSeenAcrossSides.eatIntoRightSection(
-      //                  rightSection
-      //                )
-      //              )
-      //              .map(Match.BaseAndRight.apply)
-      //          case Match.LeftAndRight(leftSection, rightSection) =>
-      //            allSidesMatchSectionsSeenAcrossSides
-      //              .eatIntoLeftSection(leftSection)
-      //              .zip(
-      //                allSidesMatchSectionsSeenAcrossSides.eatIntoRightSection(
-      //                  rightSection
-      //                )
-      //              )
-      //              .map(Match.LeftAndRight.apply)
-      //        })
-
     end MatchesAndTheirSections
 
     given potentialMatchKeyOrder: Order[PotentialMatchKey] =
