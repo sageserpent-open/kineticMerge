@@ -32,9 +32,11 @@ object CodeMotionAnalysisExtension:
       val leftSections  = codeMotionAnalysis.left(path).sections
       val rightSections = codeMotionAnalysis.right(path).sections
 
-      def dominantOf(section: Section[Element]): Option[Section[Element]] =
+      def dominantsOf(
+          section: Section[Element]
+      ): collection.Set[Section[Element]] =
         codeMotionAnalysis
-          .matchFor(section)
+          .matchesFor(section)
           .map(_.dominantElement)
 
       /** This is most definitely *not* [[Section.equals]] - we want to compare
@@ -50,17 +52,14 @@ object CodeMotionAnalysisExtension:
           lhs: Section[Element],
           rhs: Section[Element]
       ): Boolean =
-        dominantOf(lhs) -> dominantOf(rhs) match
-          case (Some(lhsDominantSection), Some(rhsDominantSection)) =>
-            // However, it's OK to use the intrinsic equality here once we're
-            // working with the dominant sections - we want to confirm that the
-            // two sections belong to the same match, so they must have dominant
-            // sections that are equal to each other in the intrinsic sense.
-            lhsDominantSection == rhsDominantSection
-          case (None, None) =>
-            given Eq[Element] = equality
-            Eq[Seq[Element]].eqv(lhs.content, rhs.content)
-          case _ => false
+        val bothBelongToTheSameMatches =
+          dominantsOf(lhs).intersect(dominantsOf(rhs)).nonEmpty
+
+        bothBelongToTheSameMatches || {
+          given Eq[Element] = equality
+          Eq[Seq[Element]].eqv(lhs.content, rhs.content)
+        }
+      end sectionEqualityViaDominantsFallingBackToContentComparison
 
       val mergedSectionsResult =
         merge.of(
@@ -70,7 +69,16 @@ object CodeMotionAnalysisExtension:
         )(equality = sectionEqualityViaDominantsFallingBackToContentComparison)
 
       def elementsOf(section: Section[Element]): IndexedSeq[Element] =
-        dominantOf(section).getOrElse(section).content
+        val dominants = dominantsOf(section)
+
+        (if dominants.isEmpty then section
+         else
+           // NASTY HACK: this is hokey, but essentially correct - if we have
+           // ambiguous matches leading to multiple dominants, then they're all
+           // just as good in terms of their content. So just choose any one.
+           dominants.head
+        ).content
+      end elementsOf
 
       mergedSectionsResult.map {
         case FullyMerged(elements) =>

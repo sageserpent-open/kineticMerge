@@ -457,7 +457,7 @@ class CodeMotionAnalysisTest:
           val baseMatches: Iterable[Match[Section[Element]]] =
             analysis.base.values
               .flatMap(_.sections)
-              .collect(Function.unlift(analysis.matchFor))
+              .flatMap(analysis.matchesFor)
 
           println("*** BASE sections and matches...")
           pprint.pprintln(analysis.base)
@@ -521,7 +521,7 @@ class CodeMotionAnalysisTest:
           val leftMatches: Iterable[Match[Section[Element]]] =
             analysis.left.values
               .flatMap(_.sections)
-              .collect(Function.unlift(analysis.matchFor))
+              .flatMap(analysis.matchesFor)
 
           println("*** LEFT sections and matches...")
           pprint.pprintln(analysis.left)
@@ -584,7 +584,7 @@ class CodeMotionAnalysisTest:
           val rightMatches: Iterable[Match[Section[Element]]] =
             analysis.right.values
               .flatMap(_.sections)
-              .collect(Function.unlift(analysis.matchFor))
+              .flatMap(analysis.matchesFor)
 
           println("*** RIGHT sections and matches...")
           pprint.pprintln(analysis.right)
