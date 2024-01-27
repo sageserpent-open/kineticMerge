@@ -459,9 +459,27 @@ class CodeMotionAnalysisTest:
               .flatMap(_.sections)
               .flatMap(analysis.matchesFor)
 
+          val leftMatches: Iterable[Match[Section[Element]]] =
+            analysis.left.values
+              .flatMap(_.sections)
+              .flatMap(analysis.matchesFor)
+
+          val rightMatches: Iterable[Match[Section[Element]]] =
+            analysis.right.values
+              .flatMap(_.sections)
+              .flatMap(analysis.matchesFor)
+
           println("*** BASE sections and matches...")
           pprint.pprintln(analysis.base)
           pprint.pprintln(baseMatches)
+
+          println("*** LEFT sections and matches...")
+          pprint.pprintln(analysis.left)
+          pprint.pprintln(leftMatches)
+
+          println("*** RIGHT sections and matches...")
+          pprint.pprintln(analysis.right)
+          pprint.pprintln(rightMatches)
 
           if commonToAllThreeSides.nonEmpty || commonToBaseAndLeft.nonEmpty || commonToBaseAndRight.nonEmpty
           then
@@ -518,15 +536,6 @@ class CodeMotionAnalysisTest:
 
           end if
 
-          val leftMatches: Iterable[Match[Section[Element]]] =
-            analysis.left.values
-              .flatMap(_.sections)
-              .flatMap(analysis.matchesFor)
-
-          println("*** LEFT sections and matches...")
-          pprint.pprintln(analysis.left)
-          pprint.pprintln(leftMatches)
-
           if commonToAllThreeSides.nonEmpty || commonToBaseAndLeft.nonEmpty || commonToLeftAndRight.nonEmpty
           then
             assert(leftMatches.nonEmpty)
@@ -580,15 +589,6 @@ class CodeMotionAnalysisTest:
             assert(survivorsCommonToBaseAndLeft.isEmpty)
             assert(survivorsCommonToLeftAndRight.isEmpty)
           end if
-
-          val rightMatches: Iterable[Match[Section[Element]]] =
-            analysis.right.values
-              .flatMap(_.sections)
-              .flatMap(analysis.matchesFor)
-
-          println("*** RIGHT sections and matches...")
-          pprint.pprintln(analysis.right)
-          pprint.pprintln(rightMatches)
 
           if commonToAllThreeSides.nonEmpty || commonToBaseAndRight.nonEmpty || commonToLeftAndRight.nonEmpty
           then
