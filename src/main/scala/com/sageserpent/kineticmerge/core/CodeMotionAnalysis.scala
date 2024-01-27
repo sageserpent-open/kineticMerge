@@ -86,19 +86,25 @@ object CodeMotionAnalysis:
 
     val totalContentSize = fileSizes.sum
 
+    val absoluteMinimumSizeToConsiderForMatching =
+      // Two and not one for now - otherwise we are bombarded with useless
+      // monograph all-sides matches that eat into useful ambiguous matches,
+      // often creating overlapping sections. Maybe these should be tolerated?
+      2
+
     val minimumFileSizeAcrossAllFilesOverAllSides = fileSizes.min
 
     // This is the minimum window size that would be allowed in *some* file
     // across the sources.
     val minimumWindowSizeAcrossAllFilesOverAllSides =
-      1 max (minimumFileSizeAcrossAllFilesOverAllSides * thresholdSizeFractionForMatching).floor.toInt
+      absoluteMinimumSizeToConsiderForMatching max (minimumFileSizeAcrossAllFilesOverAllSides * thresholdSizeFractionForMatching).floor.toInt
 
     val maximumFileSizeAcrossAllFilesOverAllSides = fileSizes.max
 
     // This is the minimum window size that would be allowed in *all* files
     // across the sources.
     val minimumSureFireWindowSizeAcrossAllFilesOverAllSides =
-      1 max (maximumFileSizeAcrossAllFilesOverAllSides * thresholdSizeFractionForMatching).floor.toInt
+      absoluteMinimumSizeToConsiderForMatching max (maximumFileSizeAcrossAllFilesOverAllSides * thresholdSizeFractionForMatching).floor.toInt
 
     type SectionsSeen = RangedSeq[Section[Element], Int]
 
