@@ -5,7 +5,10 @@ import cats.instances.seq.*
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction}
+import com.sageserpent.kineticmerge.core
+import com.sageserpent.kineticmerge.core.Match.BaseAndLeft
 import de.sciss.fingertree.RangedSeq
+import monocle.syntax.all.*
 
 import java.lang.Byte as JavaByte
 import scala.annotation.tailrec
@@ -102,13 +105,16 @@ object CodeMotionAnalysis:
     type MatchedSections = MultiDict[Section[Element], Match[Section[Element]]]
 
     object MatchesAndTheirSections:
+      type PairwiseMatch = Match.BaseAndLeft[Section[Element]] |
+        Match.BaseAndRight[Section[Element]] |
+        Match.LeftAndRight[Section[Element]]
+
       lazy val empty = MatchesAndTheirSections(
         baseSectionsByPath = Map.empty,
         leftSectionsByPath = Map.empty,
         rightSectionsByPath = Map.empty,
         sectionsAndTheirMatches = MultiDict.empty
       )
-
       private val rollingHashFactoryCache: Cache[Int, RollingHash.Factory] =
         Caffeine.newBuilder().build()
 
@@ -134,6 +140,30 @@ object CodeMotionAnalysis:
               .exists {
                 case _: Match.AllSides[Section[Element]] => true
                 case _                                   => false
+              }
+          )
+
+      private def subsumingPairwiseSections(
+          sectionsAndTheirMatches: MatchedSections
+      )(
+          side: Sources[Path, Element],
+          sectionsByPath: Map[Path, SectionsSeen]
+      )(section: Section[Element]): Set[PairwiseMatch] =
+        sectionsByPath
+          .get(side.pathFor(section))
+          .fold(ifEmpty = Set.empty)(
+            _.filterIncludes(section.closedOpenInterval)
+              .flatMap(sectionsAndTheirMatches.get)
+              // NOTE: convert to a set at this point as we expect sections to
+              // be duplicated when involved in ambiguous matches.
+              .toSet
+              .collect {
+                case baseAndLeft: Match.BaseAndLeft[Section[Element]] =>
+                  baseAndLeft
+                case baseAndRight: Match.BaseAndRight[Section[Element]] =>
+                  baseAndRight
+                case leftAndRight: Match.LeftAndRight[Section[Element]] =>
+                  leftAndRight
               }
           )
 
@@ -163,9 +193,9 @@ object CodeMotionAnalysis:
           side.pathFor(section)
         ) {
           case Some(sections) =>
-            // The implementation of `SectionsSeen` allows multiple entries with
-            // the same interval, so avoid duplication.
-            Some(sections - section + section)
+            // Allow the same section to be added more than once, on behalf of
+            // ambiguous matches.
+            Some(sections + section)
           case None =>
             Some(
               // NOTE: don't use `Ordering[Int]` as while that is valid, it will
@@ -277,27 +307,20 @@ object CodeMotionAnalysis:
 
       private def eatIntoSection(
           side: Sources[Path, Element],
-          sectionsByPath: Map[Path, SectionsSeen]
+          bites: collection.Set[Section[Element]]
       )(
           section: Section[Element]
       ): Seq[Section[Element]] =
         // TODO: can this be made to eliminate overlaps too?
-
-        val path = side.pathFor(section)
-        val bites: List[Section[Element]] = sectionsByPath
-          .get(path)
-          .fold(ifEmpty = Nil)(
-            _.filterOverlaps(section.closedOpenInterval).toList
-          )
 
         enum BiteEdge:
           case Start(startOffset: Int)
           case End(onePastEndOffset: Int)
         end BiteEdge
 
-        val biteEdges: List[BiteEdge] = bites
+        val biteEdges: Seq[BiteEdge] = bites.toSeq
           .flatMap { biteSection =>
-            List(
+            Seq(
               BiteEdge.Start(biteSection.startOffset),
               BiteEdge.End(biteSection.onePastEndOffset)
             )
@@ -333,17 +356,19 @@ object CodeMotionAnalysis:
 
         val mealOnePastEndOffset: Int = section.onePastEndOffset
 
+        val path = side.pathFor(section)
+
         case class State(
             mealStartOffset: Int,
             biteDepth: Int
         ):
           @tailrec
           final def apply(
-              biteEdges: List[BiteEdge],
+              biteEdges: Seq[BiteEdge],
               leftovers: Vector[Section[Element]]
           ): Vector[Section[Element]] =
             biteEdges match
-              case Nil =>
+              case Seq() =>
                 if mealOnePastEndOffset > mealStartOffset then
                   leftovers.appended(
                     side.section(path)(
@@ -352,7 +377,7 @@ object CodeMotionAnalysis:
                     )
                   )
                 else leftovers
-              case BiteEdge.Start(startOffset) :: remainingBiteEdges =>
+              case Seq(BiteEdge.Start(startOffset), remainingBiteEdges*) =>
                 require(mealOnePastEndOffset > startOffset)
                 val guardedStartOffset = startOffset max mealStartOffset
 
@@ -374,7 +399,7 @@ object CodeMotionAnalysis:
                         )
                       else leftovers
                   )
-              case BiteEdge.End(onePastEndOffset) :: remainingBiteEdges =>
+              case Seq(BiteEdge.End(onePastEndOffset), remainingBiteEdges*) =>
                 require(0 < biteDepth)
 
                 require(mealStartOffset < onePastEndOffset)
@@ -443,16 +468,6 @@ object CodeMotionAnalysis:
         overlapsSection(left, leftSectionsByPath)
       private val overlapsRightSection: Section[Element] => Boolean =
         overlapsSection(right, rightSectionsByPath)
-
-      private val eatIntoBaseSection
-          : Section[Element] => Seq[Section[Element]] =
-        eatIntoSection(base, baseSectionsByPath)
-      private val eatIntoLeftSection
-          : Section[Element] => Seq[Section[Element]] =
-        eatIntoSection(left, leftSectionsByPath)
-      private val eatIntoRightSection
-          : Section[Element] => Seq[Section[Element]] =
-        eatIntoSection(right, rightSectionsByPath)
 
       private val withBaseSection: Section[Element] => Map[Path, SectionsSeen] =
         withSection(base, baseSectionsByPath)
@@ -584,38 +599,330 @@ object CodeMotionAnalysis:
       end withAllSmallFryMatches
 
       def withPairwiseMatchesEatenInto: MatchesAndTheirSections =
-                this.copy(matches = matches.flatMap {
-                  case aMatch: Match.AllSides[Section[Element]] =>
-                    Seq(aMatch)
-                  case Match.BaseAndLeft(baseSection, leftSection) =>
-                    allSidesMatchSectionsSeenAcrossSides
-                      .eatIntoBaseSection(baseSection)
-                      .zip(
-                        allSidesMatchSectionsSeenAcrossSides.eatIntoLeftSection(
-                          leftSection
-                        )
-                      )
-                      .map(Match.BaseAndLeft.apply)
-                  case Match.BaseAndRight(baseSection, rightSection) =>
-                    allSidesMatchSectionsSeenAcrossSides
-                      .eatIntoBaseSection(baseSection)
-                      .zip(
-                        allSidesMatchSectionsSeenAcrossSides.eatIntoRightSection(
-                          rightSection
-                        )
-                      )
-                      .map(Match.BaseAndRight.apply)
-                  case Match.LeftAndRight(leftSection, rightSection) =>
-                    allSidesMatchSectionsSeenAcrossSides
-                      .eatIntoLeftSection(leftSection)
-                      .zip(
-                        allSidesMatchSectionsSeenAcrossSides.eatIntoRightSection(
-                          rightSection
-                        )
-                      )
-                      .map(Match.LeftAndRight.apply)
-                })
-        this // TODO....
+        val allSidesMatches = sectionsAndTheirMatches.values.collect {
+          case allSides: Match.AllSides[Section[Element]] => allSides
+        }.toSet
+
+        def pairwiseMatchesSubsumingOnBothSides(
+            allSides: Match.AllSides[Section[Element]]
+        ): Set[PairwiseMatch] =
+          val subsumingOnBase =
+            subsumingPairwiseSections(sectionsAndTheirMatches)(
+              base,
+              baseSectionsByPath
+            )(
+              allSides.baseElement
+            )
+          val subsumingOnLeft =
+            subsumingPairwiseSections(sectionsAndTheirMatches)(
+              left,
+              leftSectionsByPath
+            )(
+              allSides.leftElement
+            )
+          val subsumingOnRight =
+            subsumingPairwiseSections(sectionsAndTheirMatches)(
+              right,
+              rightSectionsByPath
+            )(
+              allSides.rightElement
+            )
+
+          (subsumingOnBase intersect subsumingOnLeft) union (subsumingOnBase intersect subsumingOnRight) union (subsumingOnLeft intersect subsumingOnRight)
+        end pairwiseMatchesSubsumingOnBothSides
+
+        val pairwiseMatchesToBeEaten
+            : MultiDict[PairwiseMatch, Match.AllSides[Section[Element]]] =
+          MultiDict.from(
+            allSidesMatches.flatMap(allSides =>
+              pairwiseMatchesSubsumingOnBothSides(allSides).map(_ -> allSides)
+            )
+          )
+
+        val withoutThosePairwiseMatches: MatchesAndTheirSections =
+          withoutTheseMatches(pairwiseMatchesToBeEaten.keySet)
+
+        val pairwiseMatchesFromLeftovers =
+          pairwiseMatchesToBeEaten.keySet.flatMap[PairwiseMatch] {
+            pairwiseMatch =>
+              val bites = pairwiseMatchesToBeEaten.get(pairwiseMatch)
+
+              pairwiseMatch match
+                case Match.BaseAndLeft(baseSection, leftSection) =>
+                  (eatIntoSection(base, bites.map(_.baseElement))(
+                    baseSection
+                  ) zip eatIntoSection(left, bites.map(_.leftElement))(
+                    leftSection
+                  ))
+                    .map(Match.BaseAndLeft.apply)
+
+                case Match.BaseAndRight(baseSection, rightSection) =>
+                  (eatIntoSection(base, bites.map(_.baseElement))(
+                    baseSection
+                  ) zip eatIntoSection(right, bites.map(_.rightElement))(
+                    rightSection
+                  )).map(Match.BaseAndRight.apply)
+
+                case Match.LeftAndRight(leftSection, rightSection) =>
+                  (eatIntoSection(left, bites.map(_.leftElement))(
+                    leftSection
+                  ) zip eatIntoSection(right, bites.map(_.rightElement))(
+                    rightSection
+                  )).map(Match.LeftAndRight.apply)
+              end match
+          }
+
+        withoutThosePairwiseMatches
+          .withMatches(
+            pairwiseMatchesFromLeftovers
+              .asInstanceOf[collection.Set[Match[Section[Element]]]]
+          )
+          .matchesAndTheirSections
+      end withPairwiseMatchesEatenInto
+
+      private def withoutTheseMatches(
+          matches: Iterable[Match[Section[Element]]]
+      ): MatchesAndTheirSections =
+        matches.foldLeft(this) {
+          case (
+                matches,
+                allSides @ Match.AllSides(
+                  baseSection,
+                  leftSection,
+                  rightSection
+                )
+              ) =>
+            val basePath  = base.pathFor(baseSection)
+            val leftPath  = left.pathFor(leftSection)
+            val rightPath = right.pathFor(rightSection)
+            matches
+              .focus(_.baseSectionsByPath)
+              .modify(_.updatedWith(basePath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - baseSection)
+              })
+              .focus(_.leftSectionsByPath)
+              .modify(_.updatedWith(leftPath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - leftSection)
+              })
+              .focus(_.rightSectionsByPath)
+              .modify(_.updatedWith(rightPath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - rightSection)
+              })
+              .focus(_.sectionsAndTheirMatches)
+              .modify(
+                _.remove(baseSection, allSides)
+                  .remove(leftSection, allSides)
+                  .remove(rightSection, allSides)
+              )
+
+          case (
+                matches,
+                baseAndLeft @ Match.BaseAndLeft(baseSection, leftSection)
+              ) =>
+            val basePath = base.pathFor(baseSection)
+            val leftPath = left.pathFor(leftSection)
+            matches
+              .focus(_.baseSectionsByPath)
+              .modify(_.updatedWith(basePath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - baseSection)
+              })
+              .focus(_.leftSectionsByPath)
+              .modify(_.updatedWith(leftPath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - leftSection)
+              })
+              .focus(_.sectionsAndTheirMatches)
+              .modify(
+                _.remove(baseSection, baseAndLeft)
+                  .remove(leftSection, baseAndLeft)
+              )
+
+          case (
+                matches,
+                baseAndRight @ Match.BaseAndRight(baseSection, rightSection)
+              ) =>
+            val basePath  = base.pathFor(baseSection)
+            val rightPath = right.pathFor(rightSection)
+            matches
+              .focus(_.baseSectionsByPath)
+              .modify(_.updatedWith(basePath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - baseSection)
+              })
+              .focus(_.rightSectionsByPath)
+              .modify(_.updatedWith(rightPath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - rightSection)
+              })
+              .focus(_.sectionsAndTheirMatches)
+              .modify(
+                _.remove(baseSection, baseAndRight)
+                  .remove(rightSection, baseAndRight)
+              )
+
+          case (
+                matches,
+                leftAndRight @ Match.LeftAndRight(leftSection, rightSection)
+              ) =>
+            val leftPath  = left.pathFor(leftSection)
+            val rightPath = right.pathFor(rightSection)
+            matches
+              .focus(_.leftSectionsByPath)
+              .modify(_.updatedWith(leftPath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - leftSection)
+              })
+              .focus(_.rightSectionsByPath)
+              .modify(_.updatedWith(rightPath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - rightSection)
+              })
+              .focus(_.sectionsAndTheirMatches)
+              .modify(
+                _.remove(leftSection, leftAndRight)
+                  .remove(rightSection, leftAndRight)
+              )
+        }
+      end withoutTheseMatches
+
+      private def withMatches(
+          matches: collection.Set[Match[Section[Element]]]
+      ): MatchingResult =
+        val (
+          updatedMatchesAndTheirSections,
+          matchesWithoutRedundantPairwiseMatches
+        ) =
+          matches
+            .foldLeft(this)(_.withMatch(_))
+            .withoutRedundantPairwiseMatchesIn(matches)
+
+        MatchingResult(
+          matchesAndTheirSections = updatedMatchesAndTheirSections,
+          numberOfMatchesForTheGivenWindowSize =
+            matchesWithoutRedundantPairwiseMatches.size,
+          estimatedWindowSizeForOptimalMatch = updatedMatchesAndTheirSections
+            .estimateOptimalMatchSizeInComparisonTo(this)
+        )
+      end withMatches
+
+      private def withoutRedundantPairwiseMatchesIn(
+          matches: collection.Set[Match[Section[Element]]]
+      ): (MatchesAndTheirSections, collection.Set[Match[Section[Element]]]) =
+        val (updatedSectionsAndTheirMatches, updatedMatches) =
+          val isAnAllSidesMatch: Match[Section[Element]] => Boolean = {
+            case _: Match.AllSides[Section[Element]] => true
+            case _                                   => false
+          }
+
+          matches.foldLeft(sectionsAndTheirMatches -> matches) {
+            case (
+                  (sectionsAndTheirMatches, matches),
+                  pairwiseMatch @ Match.BaseAndLeft(baseSection, leftSection)
+                )
+                if sectionsAndTheirMatches
+                  .get(baseSection)
+                  .intersect(sectionsAndTheirMatches.get(leftSection))
+                  .exists(isAnAllSidesMatch) =>
+              (
+                sectionsAndTheirMatches - (baseSection -> pairwiseMatch) - (leftSection -> pairwiseMatch),
+                matches - pairwiseMatch
+              )
+            case (
+                  (sectionsAndTheirMatches, matches),
+                  pairwiseMatch @ Match.BaseAndRight(baseSection, rightSection)
+                )
+                if sectionsAndTheirMatches
+                  .get(baseSection)
+                  .intersect(sectionsAndTheirMatches.get(rightSection))
+                  .exists(isAnAllSidesMatch) =>
+              (
+                sectionsAndTheirMatches - (baseSection -> pairwiseMatch) - (rightSection -> pairwiseMatch),
+                matches - pairwiseMatch
+              )
+            case (
+                  (sectionsAndTheirMatches, matches),
+                  pairwiseMatch @ Match.LeftAndRight(leftSection, rightSection)
+                )
+                if sectionsAndTheirMatches
+                  .get(leftSection)
+                  .intersect(sectionsAndTheirMatches.get(rightSection))
+                  .exists(isAnAllSidesMatch) =>
+              (
+                sectionsAndTheirMatches - (leftSection -> pairwiseMatch) - (rightSection -> pairwiseMatch),
+                matches - pairwiseMatch
+              )
+
+            case (partialResult, _) => partialResult
+          }
+        end val
+
+        // NOTE: don't remove the sections, as by virtue of the pairwise matches
+        // being redundant, there must by all-sides matches that involve those
+        // sections.
+        copy(sectionsAndTheirMatches =
+          updatedSectionsAndTheirMatches
+        ) -> updatedMatches
+      end withoutRedundantPairwiseMatchesIn
+
+      // TODO: it would be nicer to pass in the new matches and get the sections
+      // directly from them, instead of inferring the new sections down in
+      // `maximumSizeOfCoalescedSections`...
+      private def estimateOptimalMatchSizeInComparisonTo(
+          previous: MatchesAndTheirSections
+      ): Option[Int] =
+        val maximumSizeOfCoalescedBaseSections =
+          maximumSizeOfCoalescedSections(
+            previous.baseSectionsByPath,
+            baseSectionsByPath
+          )
+        val maximumSizeOfCoalescedLeftSections =
+          maximumSizeOfCoalescedSections(
+            previous.leftSectionsByPath,
+            leftSectionsByPath
+          )
+        val maximumSizeOfCoalescedRightSections =
+          maximumSizeOfCoalescedSections(
+            previous.rightSectionsByPath,
+            rightSectionsByPath
+          )
+
+        Seq(
+          maximumSizeOfCoalescedBaseSections,
+          maximumSizeOfCoalescedLeftSections,
+          maximumSizeOfCoalescedRightSections
+        ).flatten.maxOption
+      end estimateOptimalMatchSizeInComparisonTo
+
+      private def withMatch(
+          aMatch: Match[Section[Element]]
+      ): MatchesAndTheirSections =
+        aMatch match
+          case Match.AllSides(baseSection, leftSection, rightSection) =>
+            copy(
+              baseSectionsByPath = withBaseSection(baseSection),
+              leftSectionsByPath = withLeftSection(leftSection),
+              rightSectionsByPath = withRightSection(rightSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch) + (rightSection -> aMatch)
+            )
+          case Match.BaseAndLeft(baseSection, leftSection) =>
+            copy(
+              baseSectionsByPath = withBaseSection(baseSection),
+              leftSectionsByPath = withLeftSection(leftSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch)
+            )
+          case Match.BaseAndRight(baseSection, rightSection) =>
+            copy(
+              baseSectionsByPath = withBaseSection(baseSection),
+              rightSectionsByPath = withRightSection(rightSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch)
+            )
+          case Match.LeftAndRight(leftSection, rightSection) =>
+            copy(
+              leftSectionsByPath = withLeftSection(leftSection),
+              rightSectionsByPath = withRightSection(rightSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch)
+            )
+        end match
+      end withMatch
 
       private def matchFrom(
           baseSection: Section[Element],
@@ -708,118 +1015,6 @@ object CodeMotionAnalysis:
           )
         )
       end leftAndRightMatchOf
-
-      private def withMatches(
-          matches: Set[Match[Section[Element]]]
-      ): MatchingResult =
-
-        // TODO: (NOT SURE ABOUT THIS) All-sides matches eating into subsuming
-        // pairwise matches.
-
-        val (
-          updatedMatchesAndTheirSections,
-          matchesWithoutRedundantPairwiseMatches
-        ) =
-          matches
-            .foldLeft(this)(_.withMatch(_))
-            .withoutRedundantPairwiseMatchesIn(matches)
-
-        MatchingResult(
-          matchesAndTheirSections = updatedMatchesAndTheirSections,
-          numberOfMatchesForTheGivenWindowSize =
-            matchesWithoutRedundantPairwiseMatches.size,
-          estimatedWindowSizeForOptimalMatch = updatedMatchesAndTheirSections
-            .estimateOptimalMatchSizeInComparisonTo(this)
-        )
-      end withMatches
-
-      private def withoutRedundantPairwiseMatchesIn(
-          matches: Set[Match[Section[Element]]]
-      ): (MatchesAndTheirSections, Set[Match[Section[Element]]]) =
-        val (updatedSectionsAndTheirMatches, updatedMatches) =
-          val isAnAllSidesMatch: Match[Section[Element]] => Boolean = {
-            case _: Match.AllSides[Section[Element]] => true
-            case _                                   => false
-          }
-
-          matches.foldLeft(sectionsAndTheirMatches -> matches) {
-            case (
-                  (sectionsAndTheirMatches, matches),
-                  pairwiseMatch @ Match.BaseAndLeft(baseSection, leftSection)
-                )
-                if sectionsAndTheirMatches
-                  .get(baseSection)
-                  .intersect(sectionsAndTheirMatches.get(leftSection))
-                  .exists(isAnAllSidesMatch) =>
-              (
-                sectionsAndTheirMatches - (baseSection -> pairwiseMatch) - (leftSection -> pairwiseMatch),
-                matches - pairwiseMatch
-              )
-            case (
-                  (sectionsAndTheirMatches, matches),
-                  pairwiseMatch @ Match.BaseAndRight(baseSection, rightSection)
-                )
-                if sectionsAndTheirMatches
-                  .get(baseSection)
-                  .intersect(sectionsAndTheirMatches.get(rightSection))
-                  .exists(isAnAllSidesMatch) =>
-              (
-                sectionsAndTheirMatches - (baseSection -> pairwiseMatch) - (rightSection -> pairwiseMatch),
-                matches - pairwiseMatch
-              )
-            case (
-                  (sectionsAndTheirMatches, matches),
-                  pairwiseMatch @ Match.LeftAndRight(leftSection, rightSection)
-                )
-                if sectionsAndTheirMatches
-                  .get(leftSection)
-                  .intersect(sectionsAndTheirMatches.get(rightSection))
-                  .exists(isAnAllSidesMatch) =>
-              (
-                sectionsAndTheirMatches - (leftSection -> pairwiseMatch) - (rightSection -> pairwiseMatch),
-                matches - pairwiseMatch
-              )
-
-            case (partialResult, _) => partialResult
-          }
-        end val
-
-        // NOTE: don't remove the sections, as by virtue of the pairwise matches
-        // being redundant, there must by all-sides matches that involve those
-        // sections.
-        copy(sectionsAndTheirMatches =
-          updatedSectionsAndTheirMatches
-        ) -> updatedMatches
-      end withoutRedundantPairwiseMatchesIn
-
-      // TODO: it would be nicer to pass in the new matches and get the sections
-      // directly from them, instead of inferring the new sections down in
-      // `maximumSizeOfCoalescedSections`...
-      private def estimateOptimalMatchSizeInComparisonTo(
-          previous: MatchesAndTheirSections
-      ): Option[Int] =
-        val maximumSizeOfCoalescedBaseSections =
-          maximumSizeOfCoalescedSections(
-            previous.baseSectionsByPath,
-            baseSectionsByPath
-          )
-        val maximumSizeOfCoalescedLeftSections =
-          maximumSizeOfCoalescedSections(
-            previous.leftSectionsByPath,
-            leftSectionsByPath
-          )
-        val maximumSizeOfCoalescedRightSections =
-          maximumSizeOfCoalescedSections(
-            previous.rightSectionsByPath,
-            rightSectionsByPath
-          )
-
-        Seq(
-          maximumSizeOfCoalescedBaseSections,
-          maximumSizeOfCoalescedLeftSections,
-          maximumSizeOfCoalescedRightSections
-        ).flatten.maxOption
-      end estimateOptimalMatchSizeInComparisonTo
 
       private def matchesForWindowSize(
           windowSize: Int
@@ -1221,42 +1416,6 @@ object CodeMotionAnalysis:
           matches = Set.empty
         )
       end matchesForWindowSize
-
-      private def withMatch(
-          aMatch: Match[Section[Element]]
-      ): MatchesAndTheirSections =
-        aMatch match
-          case Match.AllSides(baseSection, leftSection, rightSection) =>
-            copy(
-              baseSectionsByPath = withBaseSection(baseSection),
-              leftSectionsByPath = withLeftSection(leftSection),
-              rightSectionsByPath = withRightSection(rightSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch) + (rightSection -> aMatch)
-            )
-          case Match.BaseAndLeft(baseSection, leftSection) =>
-            copy(
-              baseSectionsByPath = withBaseSection(baseSection),
-              leftSectionsByPath = withLeftSection(leftSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch)
-            )
-          case Match.BaseAndRight(baseSection, rightSection) =>
-            copy(
-              baseSectionsByPath = withBaseSection(baseSection),
-              rightSectionsByPath = withRightSection(rightSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch)
-            )
-          case Match.LeftAndRight(leftSection, rightSection) =>
-            copy(
-              leftSectionsByPath = withLeftSection(leftSection),
-              rightSectionsByPath = withRightSection(rightSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch)
-            )
-        end match
-      end withMatch
     end MatchesAndTheirSections
 
     given potentialMatchKeyOrder: Order[PotentialMatchKey] =
