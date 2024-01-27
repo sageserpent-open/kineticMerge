@@ -130,7 +130,9 @@ object CodeMotionAnalysis:
       )(section: Section[Element]): Boolean =
         sectionsByPath
           .get(side.pathFor(section))
-          .fold(ifEmpty = false)(_.includes(section.closedOpenInterval))
+          .fold(ifEmpty = false)(
+            _.filterIncludes(section.closedOpenInterval).exists(_ != section)
+          )
 
       private def subsumesSectionViaAtLeastOneAllSidesMatch(
           sectionsAndTheirMatches: MatchedSections
@@ -149,7 +151,7 @@ object CodeMotionAnalysis:
               }
           )
 
-      private def subsumingPairwiseSections(
+      private def subsumingPairwiseMatches(
           sectionsAndTheirMatches: MatchedSections
       )(
           side: Sources[Path, Element],
@@ -613,21 +615,21 @@ object CodeMotionAnalysis:
             allSides: Match.AllSides[Section[Element]]
         ): Set[PairwiseMatch] =
           val subsumingOnBase =
-            subsumingPairwiseSections(sectionsAndTheirMatches)(
+            subsumingPairwiseMatches(sectionsAndTheirMatches)(
               base,
               baseSectionsByPath
             )(
               allSides.baseElement
             )
           val subsumingOnLeft =
-            subsumingPairwiseSections(sectionsAndTheirMatches)(
+            subsumingPairwiseMatches(sectionsAndTheirMatches)(
               left,
               leftSectionsByPath
             )(
               allSides.leftElement
             )
           val subsumingOnRight =
-            subsumingPairwiseSections(sectionsAndTheirMatches)(
+            subsumingPairwiseMatches(sectionsAndTheirMatches)(
               right,
               rightSectionsByPath
             )(
@@ -929,6 +931,25 @@ object CodeMotionAnalysis:
             )
         end match
       end withMatch
+
+      def cleanedUp: MatchesAndTheirSections =
+        val subsumedBaseSections = baseSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesBaseSection)
+        val subsumedLeftSections = leftSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesLeftSection)
+        val subsumedRightSections = rightSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesRightSection)
+
+        val matchesToRemove =
+          (subsumedBaseSections ++ subsumedLeftSections ++ subsumedRightSections)
+            .flatMap(sectionsAndTheirMatches.get)
+            .toSet
+
+        this.withoutTheseMatches(matchesToRemove)
+      end cleanedUp
 
       private def matchFrom(
           baseSection: Section[Element],
@@ -1491,7 +1512,7 @@ object CodeMotionAnalysis:
            )
        else
          withAllMatchesOfAtLeastTheSureFireWindowSize
-      ).withPairwiseMatchesEatenInto
+      ).withPairwiseMatchesEatenInto.cleanedUp
     end matchesAndTheirSections
 
     val attempt = Try {
