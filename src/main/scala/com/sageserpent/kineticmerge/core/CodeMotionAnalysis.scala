@@ -950,11 +950,23 @@ object CodeMotionAnalysis:
             case (false, false, false) =>
               Some(Match.AllSides(baseSection, leftSection, rightSection))
             case (false, false, true) =>
-              Some(Match.BaseAndLeft(baseSection, leftSection))
+              Option.unless(
+                subsumesBaseSection(baseSection) || subsumesLeftSection(
+                  leftSection
+                )
+              )(Match.BaseAndLeft(baseSection, leftSection))
             case (false, true, false) =>
-              Some(Match.BaseAndRight(baseSection, rightSection))
+              Option.unless(
+                subsumesBaseSection(baseSection) || subsumesRightSection(
+                  rightSection
+                )
+              )(Match.BaseAndRight(baseSection, rightSection))
             case (true, false, false) =>
-              Some(Match.LeftAndRight(leftSection, rightSection))
+              Option.unless(
+                subsumesLeftSection(leftSection) || subsumesRightSection(
+                  rightSection
+                )
+              )(Match.LeftAndRight(leftSection, rightSection))
             case _ => None
           end match
         }
