@@ -27,7 +27,7 @@ case class MappedContentSources[Path, Element](
               if first.onePastEndOffset > second.startOffset then
                 require(
                   first.onePastEndOffset < second.onePastEndOffset,
-                  s"Section $second is subsumed by section $first."
+                  s"Subsumed section detected on side: $label at path: $path, $second (content: ${second.content}) is subsumed by section: $first (content: ${first.content})."
                 )
                 throw new OverlappingSections(path, first, second)
             )
@@ -88,7 +88,7 @@ case class MappedContentSources[Path, Element](
           size = first.onePastEndOffset - second.startOffset
         )
 
-        s"Overlapping section detected on side: $label at path: $path: $first (content: ${first.content}) overlaps with start of section: $second (content: ${second.content}), overlap content: ${overlap.content}."
+        s"Overlapping section detected on side: $label at path: $path, $first (content: ${first.content}) overlaps with start of section: $second (content: ${second.content}), overlap content: ${overlap.content}."
       }):
 
   end OverlappingSections
