@@ -974,6 +974,12 @@ object CodeMotionAnalysis extends StrictLogging:
             .flatMap(sectionsAndTheirMatches.get)
             .toSet
 
+        if matchesToRemove.nonEmpty then
+          logger.info(
+            s"Removing matches that have subsumed sections: ${pprint(matchesToRemove)} as part of cleanup."
+          )
+        end if
+
         this.withoutTheseMatches(matchesToRemove)
       end cleanedUp
 
