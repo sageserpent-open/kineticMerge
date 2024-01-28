@@ -697,7 +697,7 @@ object CodeMotionAnalysis extends StrictLogging:
             pairwiseMatch =>
               val bites = pairwiseMatchesToBeEaten.get(pairwiseMatch)
 
-              pairwiseMatch match
+              val leftovers: Seq[PairwiseMatch] = pairwiseMatch match
                 case Match.BaseAndLeft(baseSection, leftSection) =>
                   (eatIntoSection(base, bites.map(_.baseElement))(
                     baseSection
@@ -719,7 +719,12 @@ object CodeMotionAnalysis extends StrictLogging:
                   ) zip eatIntoSection(right, bites.map(_.rightElement))(
                     rightSection
                   )).map(Match.LeftAndRight.apply)
-              end match
+
+              logger.info(
+                s"Eating into pairwise match: ${pprint(pairwiseMatch)} on behalf of all-sides matches: ${pprint(bites)}, resulting in matches: ${pprint(leftovers)}."
+              )
+
+              leftovers
           }
 
         withoutThosePairwiseMatches
@@ -750,6 +755,9 @@ object CodeMotionAnalysis extends StrictLogging:
         )
       end withMatches
 
+      // TODO: not removing the sections from the sections seen doesn't make
+      // sense given that we may have duplicate sections. Consider cutting over
+      // to calling `withoutTheseMatches`...
       private def withoutRedundantPairwiseMatchesIn(
           matches: collection.Set[Match[Section[Element]]]
       ): (MatchesAndTheirSections, collection.Set[Match[Section[Element]]]) =
@@ -768,6 +776,9 @@ object CodeMotionAnalysis extends StrictLogging:
                   .get(baseSection)
                   .intersect(sectionsAndTheirMatches.get(leftSection))
                   .exists(isAnAllSidesMatch) =>
+              logger.info(
+                s"Removing redundant base / left match: ${pprint(pairwiseMatch)} in favour of an all-sides match that has the same sections."
+              )
               (
                 sectionsAndTheirMatches - (baseSection -> pairwiseMatch) - (leftSection -> pairwiseMatch),
                 matches - pairwiseMatch
@@ -780,6 +791,9 @@ object CodeMotionAnalysis extends StrictLogging:
                   .get(baseSection)
                   .intersect(sectionsAndTheirMatches.get(rightSection))
                   .exists(isAnAllSidesMatch) =>
+              logger.info(
+                s"Removing redundant base / right match: ${pprint(pairwiseMatch)} in favour of an all-sides match that has the same sections."
+              )
               (
                 sectionsAndTheirMatches - (baseSection -> pairwiseMatch) - (rightSection -> pairwiseMatch),
                 matches - pairwiseMatch
@@ -792,6 +806,9 @@ object CodeMotionAnalysis extends StrictLogging:
                   .get(leftSection)
                   .intersect(sectionsAndTheirMatches.get(rightSection))
                   .exists(isAnAllSidesMatch) =>
+              logger.info(
+                s"Removing redundant left / right match: ${pprint(pairwiseMatch)} in favour of an all-sides match that has the same sections."
+              )
               (
                 sectionsAndTheirMatches - (leftSection -> pairwiseMatch) - (rightSection -> pairwiseMatch),
                 matches - pairwiseMatch
@@ -873,25 +890,6 @@ object CodeMotionAnalysis extends StrictLogging:
             )
         end match
       end withMatch
-
-      def cleanedUp: MatchesAndTheirSections =
-        val subsumedBaseSections = baseSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesBaseSection)
-        val subsumedLeftSections = leftSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesLeftSection)
-        val subsumedRightSections = rightSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesRightSection)
-
-        val matchesToRemove =
-          (subsumedBaseSections ++ subsumedLeftSections ++ subsumedRightSections)
-            .flatMap(sectionsAndTheirMatches.get)
-            .toSet
-
-        this.withoutTheseMatches(matchesToRemove)
-      end cleanedUp
 
       private def withoutTheseMatches(
           matches: Iterable[Match[Section[Element]]]
@@ -992,6 +990,25 @@ object CodeMotionAnalysis extends StrictLogging:
               )
         }
       end withoutTheseMatches
+
+      def cleanedUp: MatchesAndTheirSections =
+        val subsumedBaseSections = baseSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesBaseSection)
+        val subsumedLeftSections = leftSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesLeftSection)
+        val subsumedRightSections = rightSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesRightSection)
+
+        val matchesToRemove =
+          (subsumedBaseSections ++ subsumedLeftSections ++ subsumedRightSections)
+            .flatMap(sectionsAndTheirMatches.get)
+            .toSet
+
+        this.withoutTheseMatches(matchesToRemove)
+      end cleanedUp
 
       private def matchFrom(
           baseSection: Section[Element],
