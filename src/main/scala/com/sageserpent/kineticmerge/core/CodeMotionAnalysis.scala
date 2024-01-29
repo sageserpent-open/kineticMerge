@@ -87,25 +87,19 @@ object CodeMotionAnalysis extends StrictLogging:
 
     val totalContentSize = fileSizes.sum
 
-    val absoluteMinimumSizeToConsiderForMatching =
-      // Two and not one for now - otherwise we are bombarded with useless
-      // monograph all-sides matches that eat into useful ambiguous matches,
-      // often creating overlapping sections. Maybe these should be tolerated?
-      2
-
     val minimumFileSizeAcrossAllFilesOverAllSides = fileSizes.min
 
     // This is the minimum window size that would be allowed in *some* file
     // across the sources.
     val minimumWindowSizeAcrossAllFilesOverAllSides =
-      absoluteMinimumSizeToConsiderForMatching max (minimumFileSizeAcrossAllFilesOverAllSides * thresholdSizeFractionForMatching).floor.toInt
+      1 max (minimumFileSizeAcrossAllFilesOverAllSides * thresholdSizeFractionForMatching).floor.toInt
 
     val maximumFileSizeAcrossAllFilesOverAllSides = fileSizes.max
 
     // This is the minimum window size that would be allowed in *all* files
     // across the sources.
     val minimumSureFireWindowSizeAcrossAllFilesOverAllSides =
-      absoluteMinimumSizeToConsiderForMatching max (maximumFileSizeAcrossAllFilesOverAllSides * thresholdSizeFractionForMatching).floor.toInt
+      1 max (maximumFileSizeAcrossAllFilesOverAllSides * thresholdSizeFractionForMatching).floor.toInt
 
     logger.info(
       s"Minimum match window size across all files over all sides: $minimumWindowSizeAcrossAllFilesOverAllSides"

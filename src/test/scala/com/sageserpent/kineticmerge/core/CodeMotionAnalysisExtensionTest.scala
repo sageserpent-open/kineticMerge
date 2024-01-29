@@ -21,7 +21,7 @@ end CodeMotionAnalysisExtensionTest
 class CodeMotionAnalysisExtensionTest extends ProseExamples:
   @Test
   def issue23BugReproduction(): Unit =
-    val threshold = 0.1
+    val threshold = 0.05
 
     val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
 
