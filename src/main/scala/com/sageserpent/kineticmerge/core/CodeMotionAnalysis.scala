@@ -155,6 +155,7 @@ object CodeMotionAnalysis extends StrictLogging:
           .get(side.pathFor(section))
           .fold(ifEmpty = false)(
             _.filterIncludes(section.closedOpenInterval)
+              .filter(_ != section)
               .flatMap(sectionsAndTheirMatches.get)
               .exists {
                 case _: Match.AllSides[Section[Element]] => true
@@ -172,6 +173,7 @@ object CodeMotionAnalysis extends StrictLogging:
           .get(side.pathFor(section))
           .fold(ifEmpty = Set.empty)(
             _.filterIncludes(section.closedOpenInterval)
+              .filter(_ != section)
               .flatMap(sectionsAndTheirMatches.get)
               // NOTE: convert to a set at this point as we expect sections to
               // be duplicated when involved in ambiguous matches.
