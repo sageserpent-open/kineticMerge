@@ -13,7 +13,6 @@ import monocle.syntax.all.*
 
 import java.lang.Byte as JavaByte
 import scala.annotation.tailrec
-import scala.collection.decorators.mapDecorator
 import scala.collection.immutable.MultiDict
 import scala.collection.{SortedMultiDict, mutable}
 import scala.util.Try
@@ -222,102 +221,89 @@ object CodeMotionAnalysis extends StrictLogging:
       end withSection
 
       private def maximumSizeOfCoalescedSections(
-          firstSectionsByPath: Map[Path, SectionsSeen],
-          secondSectionsByPath: Map[Path, SectionsSeen]
+          sectionsSeen: SectionsSeen
       ): Option[Int] =
-        val maxima = firstSectionsByPath
-          .rightOuterJoin(secondSectionsByPath)
-          .flatMap { case (_, (possibleFirst, second)) =>
-            val differences = possibleFirst
-              .fold(ifEmpty = second.iterator.toSeq)(
-                second.iterator.toSeq diff _.iterator.toSeq
-              )
-              .sortBy(
-                _.startOffset
-              )
+        val sectionsInOrderOfStartOffset = sectionsSeen.iterator.toSeq
 
-            case class PutativeCoalescence(
-                startOffset: Int,
-                onePastEndOffset: Int
-            )
+        case class PutativeCoalescence(
+            startOffset: Int,
+            onePastEndOffset: Int
+        )
 
-            @tailrec
-            def maximumSizeOfCoalescedSections(
-                sections: Seq[Section[Element]],
-                putativeCoalescence: Option[PutativeCoalescence],
-                partialResult: Option[Int]
-            ): Option[Int] =
-              if sections.isEmpty then
-                (partialResult ++ putativeCoalescence.map {
-                  case PutativeCoalescence(startOffset, onePastEndIndex) =>
-                    onePastEndIndex - startOffset
-                }).maxOption
-              else
-                val head = sections.head
+        @tailrec
+        def maximumSizeOfCoalescedSections(
+            sections: Seq[Section[Element]],
+            putativeCoalescence: Option[PutativeCoalescence],
+            partialResult: Option[Int]
+        ): Option[Int] =
+          if sections.isEmpty then
+            (partialResult ++ putativeCoalescence.map {
+              case PutativeCoalescence(startOffset, onePastEndIndex) =>
+                onePastEndIndex - startOffset
+            }).maxOption
+          else
+            val head = sections.head
 
-                putativeCoalescence match
-                  case Some(
-                        PutativeCoalescence(startOffset, onePastEndOffset)
-                      ) =>
-                    assume(head.startOffset >= startOffset)
+            putativeCoalescence match
+              case Some(
+                    PutativeCoalescence(startOffset, onePastEndOffset)
+                  ) =>
+                assume(head.startOffset >= startOffset)
 
-                    if head.startOffset > onePastEndOffset then
-                      // The head section neither overlaps nor abuts the
-                      // putative coalescence, so tally the size of the now
-                      // finalised coalescence and start a new one that
-                      // encompasses just the head section.
-                      val size = onePastEndOffset - startOffset
+                if head.startOffset > onePastEndOffset then
+                  // The head section neither overlaps nor abuts the
+                  // putative coalescence, so tally the size of the now
+                  // finalised coalescence and start a new one that
+                  // encompasses just the head section.
+                  val size = onePastEndOffset - startOffset
 
-                      maximumSizeOfCoalescedSections(
-                        sections.tail,
-                        putativeCoalescence = Some(
-                          PutativeCoalescence(
-                            head.startOffset,
-                            head.onePastEndOffset
-                          )
-                        ),
-                        partialResult =
-                          partialResult.map(_ max size).orElse(Some(size))
+                  maximumSizeOfCoalescedSections(
+                    sections.tail,
+                    putativeCoalescence = Some(
+                      PutativeCoalescence(
+                        head.startOffset,
+                        head.onePastEndOffset
                       )
-                    else
-                      // The head section extends the putative coalescence.
-                      maximumSizeOfCoalescedSections(
-                        sections.tail,
-                        putativeCoalescence = Some(
-                          PutativeCoalescence(
-                            startOffset,
-                            head.onePastEndOffset max onePastEndOffset
-                          )
-                        ),
-                        partialResult = partialResult
+                    ),
+                    partialResult =
+                      partialResult.map(_ max size).orElse(Some(size))
+                  )
+                else
+                  // The head section extends the putative coalescence.
+                  maximumSizeOfCoalescedSections(
+                    sections.tail,
+                    putativeCoalescence = Some(
+                      PutativeCoalescence(
+                        startOffset,
+                        head.onePastEndOffset max onePastEndOffset
                       )
-                    end if
+                    ),
+                    partialResult = partialResult
+                  )
+                end if
 
-                  case None =>
-                    // Start a new putative coalescence that encompasses just
-                    // the head section.
-                    maximumSizeOfCoalescedSections(
-                      sections.tail,
-                      putativeCoalescence = Some(
-                        PutativeCoalescence(
-                          head.startOffset,
-                          head.onePastEndOffset
-                        )
-                      ),
-                      partialResult = partialResult
+              case None =>
+                // Start a new putative coalescence that encompasses just
+                // the head section.
+                maximumSizeOfCoalescedSections(
+                  sections.tail,
+                  putativeCoalescence = Some(
+                    PutativeCoalescence(
+                      head.startOffset,
+                      head.onePastEndOffset
                     )
-                end match
-              end if
-            end maximumSizeOfCoalescedSections
+                  ),
+                  partialResult = partialResult
+                )
+            end match
+          end if
+        end maximumSizeOfCoalescedSections
 
-            maximumSizeOfCoalescedSections(
-              differences,
-              putativeCoalescence = None,
-              partialResult = None
-            )
-          }
-
-        maxima.reduceOption(_ max _)
+        maximumSizeOfCoalescedSections(
+          sectionsInOrderOfStartOffset,
+          putativeCoalescence = None,
+          partialResult = None
+        )
       end maximumSizeOfCoalescedSections
 
       private def eatIntoSection(
@@ -746,7 +732,7 @@ object CodeMotionAnalysis extends StrictLogging:
           numberOfMatchesForTheGivenWindowSize =
             matchesWithoutRedundantPairwiseMatches.size,
           estimatedWindowSizeForOptimalMatch = updatedMatchesAndTheirSections
-            .estimateOptimalMatchSizeInComparisonTo(this)
+            .estimateOptimalMatchSize(matchesWithoutRedundantPairwiseMatches)
         )
       end withMatches
 
@@ -788,34 +774,27 @@ object CodeMotionAnalysis extends StrictLogging:
         withoutTheseMatches(redundantMatches) -> usefulMatches
       end withoutRedundantPairwiseMatchesIn
 
-      // TODO: it would be nicer to pass in the new matches and get the sections
-      // directly from them, instead of inferring the new sections down in
-      // `maximumSizeOfCoalescedSections`...
-      private def estimateOptimalMatchSizeInComparisonTo(
-          previous: MatchesAndTheirSections
+      private def estimateOptimalMatchSize(
+          matches: collection.Set[Match[Section[Element]]]
       ): Option[Int] =
-        val maximumSizeOfCoalescedBaseSections =
-          maximumSizeOfCoalescedSections(
-            previous.baseSectionsByPath,
-            baseSectionsByPath
-          )
-        val maximumSizeOfCoalescedLeftSections =
-          maximumSizeOfCoalescedSections(
-            previous.leftSectionsByPath,
-            leftSectionsByPath
-          )
-        val maximumSizeOfCoalescedRightSections =
-          maximumSizeOfCoalescedSections(
-            previous.rightSectionsByPath,
-            rightSectionsByPath
-          )
+        // Deconstruct a throwaway instance of `MatchesAndTheirSections` made
+        // from just `matches` as a quick-and-dirty way of organising the
+        // matches' sections.
+        val MatchesAndTheirSections(
+          baseSectionsByPath,
+          leftSectionsByPath,
+          rightSectionsByPath,
+          _
+        ) = matches.foldLeft(empty)(_.withMatch(_))
 
-        Seq(
-          maximumSizeOfCoalescedBaseSections,
-          maximumSizeOfCoalescedLeftSections,
-          maximumSizeOfCoalescedRightSections
-        ).flatten.maxOption
-      end estimateOptimalMatchSizeInComparisonTo
+        val sectionsSeenOnAllPathsAcrossAllSides =
+          baseSectionsByPath.values ++ leftSectionsByPath.values ++ rightSectionsByPath.values
+
+        sectionsSeenOnAllPathsAcrossAllSides
+          .map(maximumSizeOfCoalescedSections)
+          .flatten
+          .maxOption
+      end estimateOptimalMatchSize
 
       private def withMatch(
           aMatch: Match[Section[Element]]
