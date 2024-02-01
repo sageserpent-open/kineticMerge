@@ -114,5 +114,11 @@ lazy val root = (project in file("."))
     libraryDependencies += "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
     Test / fork               := true,
     Test / testForkedParallel := true,
-    Test / javaOptions ++= Seq("-Xms10G", "-Xmx10G")
+    // NOTE: have to force SLF4J to output to standard output, *not* standard
+    // error, otherwise SBT will think tests are failing.
+    Test / javaOptions ++= Seq(
+      "-Dorg.slf4j.simpleLogger.logFile=System.out",
+      "-Xms10G",
+      "-Xmx10G"
+    )
   )
