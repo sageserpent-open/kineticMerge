@@ -93,15 +93,14 @@ one.
 
 ## Status
 
-Well, that's the plan. It's no longer vapourware, there is a release, but the code motion aspect isn't supported at all
-yet - it is currently a conventional file-by-file merge tool, although the merge algorithm is I believe novel. Whether
-you like what is currently does is for you to judge, try it out.
+Well, that's the plan. It's no longer vapourware, there is a release, but the code motion aspect ~~isn't supported at
+all yet~~ is not fully implemented end-to-end (although a lot of the heavy lifting in the implementation is complete) -
+it is currently a conventional file-by-file merge tool, although the merge algorithm is I believe novel. Whether you
+like what is currently does is for you to judge, try it out.
 
-Be aware that things will be changing in that department as support for code motion is introduced - this has quite a
-large bearing on the granularity of the merging, which is currently extremely fine grained and will sometimes produce
-some _surprising_ results.
-
-For now, consider this in **ALPHA** release. Be brave - or run away.
+For now, consider this in **ALPHA** release. Be brave - or run away. If you give it a spin, do raise bug tickets,
+see [https://github.com/sageserpent-open/kineticMerge/issues/21](https://github.com/sageserpent-open/kineticMerge/issues/21)
+for guidance.
 
 Bear in mind you can use either `--no-commit` or rollback with `git merge --abort` or `git reset --hard`, but know what
 you're doing before you use the third technique.
