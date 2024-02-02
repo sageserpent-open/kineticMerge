@@ -745,7 +745,7 @@ object CodeMotionAnalysis extends StrictLogging:
 
         if matchesToRemove.nonEmpty then
           logger.debug(
-            s"Removing matches that have subsumed sections: ${pprint(matchesToRemove)} as part of cleanup."
+            s"Removing matches that have subsumed sections:\n${pprint(matchesToRemove)} as part of cleanup."
           )
         end if
 
@@ -908,7 +908,7 @@ object CodeMotionAnalysis extends StrictLogging:
 
         if redundantMatches.nonEmpty then
           logger.debug(
-            s"Removing redundant base / left matches: ${pprint(redundantMatches)} as their sections also belong to all-sides matches."
+            s"Removing redundant base / left matches:\n${pprint(redundantMatches)} as their sections also belong to all-sides matches."
           )
         end if
 
