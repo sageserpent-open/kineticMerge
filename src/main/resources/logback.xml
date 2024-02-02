@@ -11,7 +11,7 @@
         </encoder>
     </appender>
 
-    <root level="OFF">
+    <root level="${logback-root-level:-OFF}">
         <appender-ref ref="STDOUT"/>
     </root>
 </configuration>
