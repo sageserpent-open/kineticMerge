@@ -89,8 +89,10 @@ lazy val root = (project in file("."))
     },
     packageExecutable := (packageExecutable dependsOn publishLocal).value,
     libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.9.4",
-    libraryDependencies += "org.typelevel"    %% "cats-core" % "2.9.0",
-    libraryDependencies += "com.github.scopt" %% "scopt"     % "4.1.0",
+    libraryDependencies += "ch.qos.logback"    % "logback-core"    % "1.4.9",
+    libraryDependencies += "ch.qos.logback"    % "logback-classic" % "1.4.9",
+    libraryDependencies += "org.typelevel"    %% "cats-core"       % "2.9.0",
+    libraryDependencies += "com.github.scopt" %% "scopt"           % "4.1.0",
     libraryDependencies += "org.typelevel" %% "cats-collections-core" % "0.9.6",
     libraryDependencies += "org.typelevel" %% "cats-core"      % "2.10.0",
     libraryDependencies += "org.typelevel" %% "alleycats-core" % "2.10.0",
@@ -109,16 +111,8 @@ lazy val root = (project in file("."))
     libraryDependencies += "de.sciss"        %% "fingertree" % "1.5.5",
     libraryDependencies += "com.sageserpent" %% "americium"  % "1.18.3",
     libraryDependencies += "com.github.ben-manes.caffeine" % "caffeine" % "3.1.8",
-    libraryDependencies += "org.slf4j" % "slf4j-simple" % "2.0.10" % Test,
     libraryDependencies += "com.eed3si9n.expecty" %% "expecty" % "0.16.0" % Test,
     libraryDependencies += "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
     Test / fork               := true,
-    Test / testForkedParallel := true,
-    // NOTE: have to force SLF4J to output to standard output, *not* standard
-    // error, otherwise SBT will think tests are failing.
-    Test / javaOptions ++= Seq(
-      "-Dorg.slf4j.simpleLogger.logFile=System.out",
-      "-Xms10G",
-      "-Xmx10G"
-    )
+    Test / testForkedParallel := true
   )

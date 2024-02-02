@@ -100,13 +100,13 @@ object CodeMotionAnalysis extends StrictLogging:
     val minimumSureFireWindowSizeAcrossAllFilesOverAllSides =
       1 max (maximumFileSizeAcrossAllFilesOverAllSides * thresholdSizeFractionForMatching).floor.toInt
 
-    logger.info(
+    logger.debug(
       s"Minimum match window size across all files over all sides: $minimumWindowSizeAcrossAllFilesOverAllSides"
     )
-    logger.info(
+    logger.debug(
       s"Minimum sure-fire match window size across all files over all sides: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides"
     )
-    logger.info(
+    logger.debug(
       s"Maximum match window size across all files over all sides: $maximumFileSizeAcrossAllFilesOverAllSides"
     )
 
@@ -536,7 +536,7 @@ object CodeMotionAnalysis extends StrictLogging:
                 // Found the optimal solution; try searching for the next lowest
                 // optimal size. NOTE: this won't pick up multiple distinct
                 // optimal matches, see below.
-                logger.info(
+                logger.debug(
                   s"Search has found an optimal match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, restarting search to look for smaller matches."
                 )
                 stateAfterTryingCandidate
@@ -547,7 +547,7 @@ object CodeMotionAnalysis extends StrictLogging:
               case Some(estimate) =>
                 // We have an improvement, move the lower bound up and note the
                 // improved state.
-                logger.info(
+                logger.debug(
                   s"Search has found an improved match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, looking for a more optimal match with estimated window size of: $estimate."
                 )
                 keepTryingToImproveThis(
@@ -560,7 +560,7 @@ object CodeMotionAnalysis extends StrictLogging:
           else if minimumSureFireWindowSizeAcrossAllFilesOverAllSides == looseExclusiveUpperBoundOnMaximumMatchSize
           then
             // There is nowhere left to search.
-            logger.info(
+            logger.debug(
               s"Search for matches whose size is no less than the sure-fire match window size of: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides has terminated; results are:\n${pprint(fallbackImprovedState)}"
             )
             fallbackImprovedState
@@ -569,7 +569,7 @@ object CodeMotionAnalysis extends StrictLogging:
             // searching for the next lowest optimal size. This is necessary as
             // we may have *multiple* distinct optimal matches at a given window
             // size.
-            logger.info(
+            logger.debug(
               s"Search has found optimal matches at window size: $bestMatchSize, restarting search to look for smaller matches."
             )
             fallbackImprovedState.withAllMatchesOfAtLeastTheSureFireWindowSize(
@@ -612,7 +612,7 @@ object CodeMotionAnalysis extends StrictLogging:
         if candidateWindowSize > minimumWindowSizeAcrossAllFilesOverAllSides
         then
           if 0 < numberOfMatchesForTheGivenWindowSize then
-            logger.info(
+            logger.debug(
               s"Search has found a match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, continuing to look for smaller matches."
             )
           end if
@@ -621,11 +621,11 @@ object CodeMotionAnalysis extends StrictLogging:
           )
         else
           if 0 < numberOfMatchesForTheGivenWindowSize then
-            logger.info(
+            logger.debug(
               s"Search has found a match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, search for matches whose size is less than the sure-fire match window size of: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides has terminated at minimum window size: $minimumWindowSizeAcrossAllFilesOverAllSides; results are:\n${pprint(stateAfterTryingCandidate)}"
             )
           else
-            logger.info(
+            logger.debug(
               s"Search for matches whose size is less than the sure-fire match window size of: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides has terminated at minimum window size: $minimumWindowSizeAcrossAllFilesOverAllSides; results are:\n${pprint(stateAfterTryingCandidate)}"
             )
           end if
@@ -709,8 +709,8 @@ object CodeMotionAnalysis extends StrictLogging:
                     rightSection
                   )).map(Match.LeftAndRight.apply)
 
-              logger.info(
-                s"Eating into pairwise match: ${pprint(pairwiseMatch)} on behalf of all-sides matches: ${pprint(bites)}, resulting in matches: ${pprint(leftovers)}."
+              logger.debug(
+                s"Eating into pairwise match:\n${pprint(pairwiseMatch)} on behalf of all-sides matches:\n${pprint(bites)}, resulting in matches:\n${pprint(leftovers)}."
               )
 
               leftovers
@@ -744,7 +744,7 @@ object CodeMotionAnalysis extends StrictLogging:
             .toSet
 
         if matchesToRemove.nonEmpty then
-          logger.info(
+          logger.debug(
             s"Removing matches that have subsumed sections: ${pprint(matchesToRemove)} as part of cleanup."
           )
         end if
@@ -907,7 +907,7 @@ object CodeMotionAnalysis extends StrictLogging:
         end val
 
         if redundantMatches.nonEmpty then
-          logger.info(
+          logger.debug(
             s"Removing redundant base / left matches: ${pprint(redundantMatches)} as their sections also belong to all-sides matches."
           )
         end if
