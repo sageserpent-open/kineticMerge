@@ -908,7 +908,7 @@ object CodeMotionAnalysis extends StrictLogging:
 
         if redundantMatches.nonEmpty then
           logger.debug(
-            s"Removing redundant base / left matches:\n${pprint(redundantMatches)} as their sections also belong to all-sides matches."
+            s"Removing redundant pairwise matches:\n${pprint(redundantMatches)} as their sections also belong to all-sides matches."
           )
         end if
 
