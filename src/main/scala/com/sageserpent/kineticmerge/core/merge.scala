@@ -81,22 +81,22 @@ object merge:
     )(partialResult: Result[Element]): Result[Element] =
       (base, left, right) match
         case (
-              Seq(Contribution.Common(baseElement), baseTail*),
+              Seq(Contribution.Common(_), baseTail*),
               Seq(Contribution.Common(leftElement), leftTail*),
-              Seq(Contribution.Common(rightElement), rightTail*)
+              Seq(Contribution.Common(_), rightTail*)
             ) => // Preservation.
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
             partialResult.addCommon(leftElement)
           )
 
         case (
-              Seq(Contribution.Difference(baseElement), baseTail*),
+              Seq(Contribution.Difference(_), baseTail*),
               Seq(
                 Contribution.CommonToLeftAndRightOnly(leftElement),
                 leftTail*
               ),
               Seq(
-                Contribution.CommonToLeftAndRightOnly(rightElement),
+                Contribution.CommonToLeftAndRightOnly(_),
                 rightTail*
               )
             ) => // Coincident edit.
@@ -122,7 +122,7 @@ object merge:
                 leftTail*
               ),
               Seq(
-                Contribution.CommonToLeftAndRightOnly(rightElement),
+                Contribution.CommonToLeftAndRightOnly(_),
                 rightTail*
               )
             ) => // Coincident insertion.
@@ -197,12 +197,12 @@ object merge:
 
         case (
               Seq(
-                Contribution.CommonToBaseAndRightOnly(baseSection),
+                Contribution.CommonToBaseAndRightOnly(_),
                 baseTail*
               ),
               _,
               Seq(
-                Contribution.CommonToBaseAndRightOnly(rightElement),
+                Contribution.CommonToBaseAndRightOnly(_),
                 rightTail*
               )
             ) => // Left deletion.
@@ -277,11 +277,11 @@ object merge:
 
         case (
               Seq(
-                Contribution.CommonToBaseAndLeftOnly(baseSection),
+                Contribution.CommonToBaseAndLeftOnly(_),
                 baseTail*
               ),
               Seq(
-                Contribution.CommonToBaseAndLeftOnly(leftSection),
+                Contribution.CommonToBaseAndLeftOnly(_),
                 leftTail*
               ),
               _
@@ -291,7 +291,7 @@ object merge:
           )
 
         case (
-              Seq(Contribution.Difference(baseElement), baseTail*),
+              Seq(Contribution.Difference(_), baseTail*),
               Seq(Contribution.Difference(leftElement), leftTail*),
               Seq(Contribution.Difference(rightElement), rightTail*)
             ) => // Conflict, multiple possibilities.
