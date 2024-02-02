@@ -59,6 +59,8 @@ object Main:
   private val matchThresholdRegex = raw"(\d{1,3})%|(\d+)|([01]\.\d+)".r.anchored
 
   def main(args: Array[String]): Unit =
+    val logbackRootLevelLoggingJavaPropertyName = "logback-root-level"
+
     val parser =
       val builder = OParser.builder[CommandLineArguments]
       import builder.*
@@ -153,6 +155,9 @@ object Main:
         ),
         note(
           s"Exits with code $error if Git porcelain or the filesystem experiences an error; any changes are rolled back."
+        ),
+        note(
+          s"Logging is via Logback and is disabled by default - set the root logging level via the Java system property: ${underline(logbackRootLevelLoggingJavaPropertyName)}."
         )
       )
     end parser
@@ -914,9 +919,10 @@ object Main:
         label = label
       )
 
-    private def lastMinuteResolutionNotes(lastMinuteResolution: Boolean) = {
-      if lastMinuteResolution then ", but was resolved trivially when creating the conflicted file - leaving it marked as unresolved for now" else ""
-    }
+    private def lastMinuteResolutionNotes(lastMinuteResolution: Boolean) =
+      if lastMinuteResolution then
+        ", but was resolved trivially when creating the conflicted file - leaving it marked as unresolved for now"
+      else ""
 
     private def indexStateForTwoWayMerge(
         ourBranchHead: String @@ Tags.CommitOrBranchName,
@@ -1225,6 +1231,7 @@ object Main:
                 s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
               )
             yield IndexState.ConflictingEntries
+            end for
       yield indexState
       end for
     end indexStateForThreeWayMerge
