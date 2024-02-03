@@ -344,7 +344,7 @@ object Main:
       theirBranchHead: String @@ Main.Tags.CommitOrBranchName,
       noCommit: Boolean = false,
       noFastForward: Boolean = false,
-      thresholdSizeFractionForMatching: Double = 0.1
+      thresholdSizeFractionForMatching: Double = 0
   )
 
   enum Change:
