@@ -88,6 +88,16 @@ object Main:
             commandLineArguments.copy(noFastForward = true)
           )
           .text("Prevent fast-forward merge - make a merge commit instead."),
+        opt[Int](name = "minimum-match-size")
+          .validate(minimumMatchSize =>
+            if 0 < minimumMatchSize then success
+            else failure(s"Minimum match size must be positive.")
+          )
+          .action((minimumMatchSize, commandLineArguments) =>
+            commandLineArguments
+              .copy(minimumMatchSize = minimumMatchSize)
+          )
+          .text("Minimum number of tokens for a match to be considered."),
         opt[String](name = "match-threshold")
           .validate(matchThreshold =>
             if matchThresholdRegex.matches(matchThreshold) then success
@@ -277,6 +287,7 @@ object Main:
                 overallChangesInvolvingTheirs,
                 noCommit,
                 noFastForward,
+                minimumMatchSize,
                 thresholdSizeFractionForMatching
               )
           yield exitCode
@@ -344,6 +355,12 @@ object Main:
       theirBranchHead: String @@ Main.Tags.CommitOrBranchName,
       noCommit: Boolean = false,
       noFastForward: Boolean = false,
+      minimumMatchSize: Int =
+        // Don't allow monograph matches - these would bombard the merge with
+        // useless all-sides matches that create a *lot* of overhead. In
+        // practice, avoiding small window sizes above one leads to a much
+        // better merge as well.
+        4,
       thresholdSizeFractionForMatching: Double = 0
   )
 
@@ -552,6 +569,7 @@ object Main:
         overallChangesInvolvingTheirs: List[(Path, (Change, Option[Change]))],
         noCommit: Boolean,
         noFastForward: Boolean,
+        minimumMatchSize: Int,
         thresholdSizeFractionForMatching: Double
     ): Workflow[Int @@ Tags.ExitCode] =
       val workflow =
@@ -560,6 +578,7 @@ object Main:
             bestAncestorCommitId,
             ourBranchHead,
             theirBranchHead,
+            minimumMatchSize,
             thresholdSizeFractionForMatching
           )(overallChangesInvolvingTheirs)
 
@@ -686,6 +705,7 @@ object Main:
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
         ourBranchHead: String @@ Tags.CommitOrBranchName,
         theirBranchHead: String @@ Tags.CommitOrBranchName,
+        minimumMatchSize: Int,
         thresholdSizeFractionForMatching: Double
     )(
         overallChangesInvolvingTheirs: List[(Path, (Change, Option[Change]))]
@@ -851,6 +871,7 @@ object Main:
             theirContent,
             ourMode,
             ourContent,
+            minimumMatchSize,
             thresholdSizeFractionForMatching
           )
 
@@ -871,6 +892,7 @@ object Main:
             theirContent,
             ourMode,
             ourContent,
+            minimumMatchSize,
             thresholdSizeFractionForMatching
           )
 
@@ -933,6 +955,7 @@ object Main:
         theirContent: String @@ Tags.Content,
         ourMode: String @@ Tags.Mode,
         ourContent: String @@ Tags.Content,
+        minimumMatchSize: Int,
         thresholdSizeFractionForMatching: Double
     ): Workflow[IndexState] =
       for
@@ -965,6 +988,7 @@ object Main:
               left = ourAncestorSources,
               right = theirAncestorSources
             )(
+              minimumMatchSize,
               thresholdSizeFractionForMatching,
               propagateExceptions = false
             )(
@@ -1080,6 +1104,7 @@ object Main:
         theirContent: String @@ Tags.Content,
         ourMode: String @@ Tags.Mode,
         ourContent: String @@ Tags.Content,
+        minimumMatchSize: Int,
         thresholdSizeFractionForMatching: Double
     ): Workflow[IndexState] =
       for
@@ -1125,6 +1150,7 @@ object Main:
               left = ourAncestorSources,
               right = theirAncestorSources
             )(
+              minimumMatchSize,
               thresholdSizeFractionForMatching,
               propagateExceptions = false
             )(

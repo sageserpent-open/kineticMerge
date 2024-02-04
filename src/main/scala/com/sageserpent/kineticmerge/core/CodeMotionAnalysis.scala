@@ -66,6 +66,7 @@ object CodeMotionAnalysis extends StrictLogging:
       left: Sources[Path, Element],
       right: Sources[Path, Element]
   )(
+      backstopMinimumSizeToConsiderForMatching: Int,
       thresholdSizeFractionForMatching: Double,
       propagateExceptions: Boolean = true
   )(
@@ -86,26 +87,19 @@ object CodeMotionAnalysis extends StrictLogging:
 
     val totalContentSize = fileSizes.sum
 
-    val absoluteMinimumSizeToConsiderForMatching =
-      // Don't allow monograph matches - these would bombard the merge with
-      // useless all-sides matches that create a *lot* of overhead. In practice,
-      // avoiding small window sizes above one leads to a much better merge as
-      // well.
-      4
-
     val minimumFileSizeAcrossAllFilesOverAllSides = fileSizes.min
 
     // This is the minimum window size that would be allowed in *some* file
     // across the sources.
     val minimumWindowSizeAcrossAllFilesOverAllSides =
-      absoluteMinimumSizeToConsiderForMatching max (minimumFileSizeAcrossAllFilesOverAllSides * thresholdSizeFractionForMatching).floor.toInt
+      backstopMinimumSizeToConsiderForMatching max (minimumFileSizeAcrossAllFilesOverAllSides * thresholdSizeFractionForMatching).floor.toInt
 
     val maximumFileSizeAcrossAllFilesOverAllSides = fileSizes.max
 
     // This is the minimum window size that would be allowed in *all* files
     // across the sources.
     val minimumSureFireWindowSizeAcrossAllFilesOverAllSides =
-      absoluteMinimumSizeToConsiderForMatching max (maximumFileSizeAcrossAllFilesOverAllSides * thresholdSizeFractionForMatching).floor.toInt
+      backstopMinimumSizeToConsiderForMatching max (maximumFileSizeAcrossAllFilesOverAllSides * thresholdSizeFractionForMatching).floor.toInt
 
     logger.debug(
       s"Minimum match window size across all files over all sides: $minimumWindowSizeAcrossAllFilesOverAllSides"
@@ -731,6 +725,106 @@ object CodeMotionAnalysis extends StrictLogging:
           .matchesAndTheirSections
       end withPairwiseMatchesEatenInto
 
+      private def withoutTheseMatches(
+          matches: Iterable[Match[Section[Element]]]
+      ): MatchesAndTheirSections =
+        matches.foldLeft(this) {
+          case (
+                matches,
+                allSides @ Match.AllSides(
+                  baseSection,
+                  leftSection,
+                  rightSection
+                )
+              ) =>
+            val basePath  = base.pathFor(baseSection)
+            val leftPath  = left.pathFor(leftSection)
+            val rightPath = right.pathFor(rightSection)
+            matches
+              .focus(_.baseSectionsByPath)
+              .modify(_.updatedWith(basePath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - baseSection)
+              })
+              .focus(_.leftSectionsByPath)
+              .modify(_.updatedWith(leftPath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - leftSection)
+              })
+              .focus(_.rightSectionsByPath)
+              .modify(_.updatedWith(rightPath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - rightSection)
+              })
+              .focus(_.sectionsAndTheirMatches)
+              .modify(
+                _.remove(baseSection, allSides)
+                  .remove(leftSection, allSides)
+                  .remove(rightSection, allSides)
+              )
+
+          case (
+                matches,
+                baseAndLeft @ Match.BaseAndLeft(baseSection, leftSection)
+              ) =>
+            val basePath = base.pathFor(baseSection)
+            val leftPath = left.pathFor(leftSection)
+            matches
+              .focus(_.baseSectionsByPath)
+              .modify(_.updatedWith(basePath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - baseSection)
+              })
+              .focus(_.leftSectionsByPath)
+              .modify(_.updatedWith(leftPath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - leftSection)
+              })
+              .focus(_.sectionsAndTheirMatches)
+              .modify(
+                _.remove(baseSection, baseAndLeft)
+                  .remove(leftSection, baseAndLeft)
+              )
+
+          case (
+                matches,
+                baseAndRight @ Match.BaseAndRight(baseSection, rightSection)
+              ) =>
+            val basePath  = base.pathFor(baseSection)
+            val rightPath = right.pathFor(rightSection)
+            matches
+              .focus(_.baseSectionsByPath)
+              .modify(_.updatedWith(basePath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - baseSection)
+              })
+              .focus(_.rightSectionsByPath)
+              .modify(_.updatedWith(rightPath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - rightSection)
+              })
+              .focus(_.sectionsAndTheirMatches)
+              .modify(
+                _.remove(baseSection, baseAndRight)
+                  .remove(rightSection, baseAndRight)
+              )
+
+          case (
+                matches,
+                leftAndRight @ Match.LeftAndRight(leftSection, rightSection)
+              ) =>
+            val leftPath  = left.pathFor(leftSection)
+            val rightPath = right.pathFor(rightSection)
+            matches
+              .focus(_.leftSectionsByPath)
+              .modify(_.updatedWith(leftPath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - leftSection)
+              })
+              .focus(_.rightSectionsByPath)
+              .modify(_.updatedWith(rightPath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - rightSection)
+              })
+              .focus(_.sectionsAndTheirMatches)
+              .modify(
+                _.remove(leftSection, leftAndRight)
+                  .remove(rightSection, leftAndRight)
+              )
+        }
+      end withoutTheseMatches
+
       private def withMatches(
           matches: collection.Set[Match[Section[Element]]]
       ): MatchingResult =
@@ -883,106 +977,6 @@ object CodeMotionAnalysis extends StrictLogging:
 
         this.withoutTheseMatches(matchesToRemove)
       end cleanedUp
-
-      private def withoutTheseMatches(
-          matches: Iterable[Match[Section[Element]]]
-      ): MatchesAndTheirSections =
-        matches.foldLeft(this) {
-          case (
-                matches,
-                allSides @ Match.AllSides(
-                  baseSection,
-                  leftSection,
-                  rightSection
-                )
-              ) =>
-            val basePath  = base.pathFor(baseSection)
-            val leftPath  = left.pathFor(leftSection)
-            val rightPath = right.pathFor(rightSection)
-            matches
-              .focus(_.baseSectionsByPath)
-              .modify(_.updatedWith(basePath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - baseSection)
-              })
-              .focus(_.leftSectionsByPath)
-              .modify(_.updatedWith(leftPath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - leftSection)
-              })
-              .focus(_.rightSectionsByPath)
-              .modify(_.updatedWith(rightPath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - rightSection)
-              })
-              .focus(_.sectionsAndTheirMatches)
-              .modify(
-                _.remove(baseSection, allSides)
-                  .remove(leftSection, allSides)
-                  .remove(rightSection, allSides)
-              )
-
-          case (
-                matches,
-                baseAndLeft @ Match.BaseAndLeft(baseSection, leftSection)
-              ) =>
-            val basePath = base.pathFor(baseSection)
-            val leftPath = left.pathFor(leftSection)
-            matches
-              .focus(_.baseSectionsByPath)
-              .modify(_.updatedWith(basePath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - baseSection)
-              })
-              .focus(_.leftSectionsByPath)
-              .modify(_.updatedWith(leftPath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - leftSection)
-              })
-              .focus(_.sectionsAndTheirMatches)
-              .modify(
-                _.remove(baseSection, baseAndLeft)
-                  .remove(leftSection, baseAndLeft)
-              )
-
-          case (
-                matches,
-                baseAndRight @ Match.BaseAndRight(baseSection, rightSection)
-              ) =>
-            val basePath  = base.pathFor(baseSection)
-            val rightPath = right.pathFor(rightSection)
-            matches
-              .focus(_.baseSectionsByPath)
-              .modify(_.updatedWith(basePath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - baseSection)
-              })
-              .focus(_.rightSectionsByPath)
-              .modify(_.updatedWith(rightPath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - rightSection)
-              })
-              .focus(_.sectionsAndTheirMatches)
-              .modify(
-                _.remove(baseSection, baseAndRight)
-                  .remove(rightSection, baseAndRight)
-              )
-
-          case (
-                matches,
-                leftAndRight @ Match.LeftAndRight(leftSection, rightSection)
-              ) =>
-            val leftPath  = left.pathFor(leftSection)
-            val rightPath = right.pathFor(rightSection)
-            matches
-              .focus(_.leftSectionsByPath)
-              .modify(_.updatedWith(leftPath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - leftSection)
-              })
-              .focus(_.rightSectionsByPath)
-              .modify(_.updatedWith(rightPath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - rightSection)
-              })
-              .focus(_.sectionsAndTheirMatches)
-              .modify(
-                _.remove(leftSection, leftAndRight)
-                  .remove(rightSection, leftAndRight)
-              )
-        }
-      end withoutTheseMatches
 
       private def pairwiseMatchSubsumesJustOneSideOnly(
           allSides: Match.AllSides[Section[Element]]

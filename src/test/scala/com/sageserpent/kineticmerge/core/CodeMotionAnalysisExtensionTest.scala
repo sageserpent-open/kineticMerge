@@ -21,7 +21,8 @@ end CodeMotionAnalysisExtensionTest
 class CodeMotionAnalysisExtensionTest extends ProseExamples:
   @Test
   def issue23BugReproduction(): Unit =
-    val threshold = 0.1
+    val minimumMatchSize                 = 4
+    val thresholdSizeFractionForMatching = 0.1
 
     val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
 
@@ -53,7 +54,10 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       base = baseSources,
       left = leftSources,
       right = rightSources
-    )(thresholdSizeFractionForMatching = threshold)(
+    )(
+      backstopMinimumSizeToConsiderForMatching = minimumMatchSize,
+      thresholdSizeFractionForMatching = thresholdSizeFractionForMatching
+    )(
       elementEquality = Token.equality,
       elementOrder = Token.comparison,
       elementFunnel = Token.funnel,
@@ -78,12 +82,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
   @TestFactory
   def merging(): DynamicTests =
-    val thresholds = Trials.api.alternate(
-      Trials.api.doubles(0.001, 0.01),
-      Trials.api.only(0.2)
-    )
+    val minimumMatchSizes = Trials.api.integers(2, 10)
 
-    thresholds.withLimit(30).dynamicTests { threshold =>
+    minimumMatchSizes.withLimit(30).dynamicTests { minimumMatchSize =>
       val prosePath: FakePath    = "prose"
       val sbtBuildPath: FakePath = "sbtBuild"
 
@@ -116,7 +117,10 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         base = baseSources,
         left = leftSources,
         right = rightSources
-      )(thresholdSizeFractionForMatching = threshold)(
+      )(
+        backstopMinimumSizeToConsiderForMatching = minimumMatchSize,
+        thresholdSizeFractionForMatching = 0
+      )(
         elementEquality = Token.equality,
         elementOrder = Token.comparison,
         elementFunnel = Token.funnel,
