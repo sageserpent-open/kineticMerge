@@ -66,7 +66,7 @@ object CodeMotionAnalysis extends StrictLogging:
       left: Sources[Path, Element],
       right: Sources[Path, Element]
   )(
-      backstopMinimumSizeToConsiderForMatching: Int,
+      minimumMatchSize: Int,
       thresholdSizeFractionForMatching: Double,
       propagateExceptions: Boolean = true
   )(
@@ -92,14 +92,14 @@ object CodeMotionAnalysis extends StrictLogging:
     // This is the minimum window size that would be allowed in *some* file
     // across the sources.
     val minimumWindowSizeAcrossAllFilesOverAllSides =
-      backstopMinimumSizeToConsiderForMatching max (minimumFileSizeAcrossAllFilesOverAllSides * thresholdSizeFractionForMatching).floor.toInt
+      minimumMatchSize max (minimumFileSizeAcrossAllFilesOverAllSides * thresholdSizeFractionForMatching).floor.toInt
 
     val maximumFileSizeAcrossAllFilesOverAllSides = fileSizes.max
 
     // This is the minimum window size that would be allowed in *all* files
     // across the sources.
     val minimumSureFireWindowSizeAcrossAllFilesOverAllSides =
-      backstopMinimumSizeToConsiderForMatching max (maximumFileSizeAcrossAllFilesOverAllSides * thresholdSizeFractionForMatching).floor.toInt
+      minimumMatchSize max (maximumFileSizeAcrossAllFilesOverAllSides * thresholdSizeFractionForMatching).floor.toInt
 
     logger.debug(
       s"Minimum match window size across all files over all sides: $minimumWindowSizeAcrossAllFilesOverAllSides"

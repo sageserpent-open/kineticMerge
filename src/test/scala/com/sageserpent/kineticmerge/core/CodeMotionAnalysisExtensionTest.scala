@@ -55,7 +55,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       left = leftSources,
       right = rightSources
     )(
-      backstopMinimumSizeToConsiderForMatching = minimumMatchSize,
+      minimumMatchSize = minimumMatchSize,
       thresholdSizeFractionForMatching = thresholdSizeFractionForMatching
     )(
       elementEquality = Token.equality,
@@ -118,7 +118,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         left = leftSources,
         right = rightSources
       )(
-        backstopMinimumSizeToConsiderForMatching = minimumMatchSize,
+        minimumMatchSize = minimumMatchSize,
         thresholdSizeFractionForMatching = 0
       )(
         elementEquality = Token.equality,

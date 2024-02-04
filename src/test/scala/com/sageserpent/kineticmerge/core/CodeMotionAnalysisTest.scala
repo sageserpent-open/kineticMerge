@@ -84,7 +84,7 @@ class CodeMotionAnalysisTest:
               ]
             ) =
               CodeMotionAnalysis.of(base, left, right)(
-                backstopMinimumSizeToConsiderForMatching = 2,
+                minimumMatchSize = 2,
                 thresholdSizeFractionForMatching = minimumSizeFraction
               )(
                 elementEquality = Eq[Element],
@@ -444,7 +444,7 @@ class CodeMotionAnalysisTest:
               leftSources,
               rightSources
             )(
-              backstopMinimumSizeToConsiderForMatching = 2,
+              minimumMatchSize = 2,
               thresholdSizeFractionForMatching =
                 minimumSizeFractionForMotionDetection
             )(
