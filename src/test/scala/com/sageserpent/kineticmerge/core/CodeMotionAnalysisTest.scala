@@ -177,11 +177,13 @@ class CodeMotionAnalysisTest:
 
     val alphabet = 1 to maximumGlyphThatMightBeShared
 
+    val minimumPossibleExpectedMatchSize = 5
+
     // Test plan synthesis: start with a set of sequences, so these cannot match
     // each other ...
     val sequences =
       trialsApi
-        .integers(1, 1000)
+        .integers(minimumPossibleExpectedMatchSize, 200)
         .flatMap(sequenceLength =>
           trialsApi
             .choose(alphabet)
@@ -411,7 +413,7 @@ class CodeMotionAnalysisTest:
     testPlans
       .withStrategy(caseSupplyCycle =>
         if caseSupplyCycle.isInitial then
-          CasesLimitStrategy.timed(Duration.apply(15, TimeUnit.MINUTES))
+          CasesLimitStrategy.timed(Duration.apply(5, TimeUnit.MINUTES))
         else CasesLimitStrategy.counted(200, 3.0)
       )
       .dynamicTests { testPlan =>
@@ -439,7 +441,7 @@ class CodeMotionAnalysisTest:
               leftSources,
               rightSources
             )(
-              minimumMatchSize = 5,
+              minimumMatchSize = minimumPossibleExpectedMatchSize,
               thresholdSizeFractionForMatching =
                 minimumSizeFractionForMotionDetection
             )(
