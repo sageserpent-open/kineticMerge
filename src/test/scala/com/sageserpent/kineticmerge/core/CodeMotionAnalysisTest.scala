@@ -173,7 +173,7 @@ class CodeMotionAnalysisTest:
 
     end TestPlan
 
-    val alphabet = 1 to 20
+    val alphabet = 1 to 100
 
     // Test plan synthesis: start with a set of sequences, so these cannot match
     // each other ...
@@ -191,6 +191,17 @@ class CodeMotionAnalysisTest:
       .flatMap(numberOfSequences =>
         sequences
           .lotsOfSize[Set[Vector[Element]]](numberOfSequences)
+      )
+      // Each sequence has a unique first and last element amongst the set of
+      // sequences; this prevents accidental overrun of the expected matches.
+      .filter(sequences =>
+        sequences.forall(sequence =>
+          sequences
+            .filter(_ != sequence)
+            .forall(anotherSequence =>
+              anotherSequence.head != sequence.head && anotherSequence.last != sequence.last
+            )
+        )
       )
 
     val testPlans: Trials[TestPlan] = setsOfSequences.flatMap(sequences =>
@@ -215,50 +226,29 @@ class CodeMotionAnalysisTest:
               commonToAllThreeSides ++ commonToBaseAndLeft ++ commonToBaseAndRight ++ commonToLeftAndRight
 
             // Sanity check: it is possible to have accidental matches where a
-            // common sequence is *embedded* within a unique sequence. There are
-            // also the odd pathological cases where two unique sides agree on a
-            // suffix or prefix, thus extending the expected match of the
-            // adjacent common sequence...
+            // common sequence is *embedded* within a unique sequence...
             if uniqueToBase.exists(unique =>
                 (commonToAllThreeSides ++ commonToLeftAndRight)
-                  .exists(
-                    unique.containsSlice
-                  ) || (uniqueToLeft ++ uniqueToRight).exists(anotherUnique =>
-                  anotherUnique.head == unique.head || anotherUnique.last == unique.last
-                )
+                  .exists(unique.containsSlice)
               )
             then trialsApi.impossible
             else if uniqueToLeft.exists(unique =>
                 (commonToAllThreeSides ++ commonToBaseAndRight)
-                  .exists(
-                    unique.containsSlice
-                  ) || (uniqueToBase ++ uniqueToRight).exists(anotherUnique =>
-                  anotherUnique.head == unique.head || anotherUnique.last == unique.last
-                )
+                  .exists(unique.containsSlice)
               )
             then trialsApi.impossible
             else if uniqueToRight.exists(unique =>
                 (commonToAllThreeSides ++ commonToBaseAndLeft)
-                  .exists(
-                    unique.containsSlice
-                  ) || (uniqueToBase ++ uniqueToLeft).exists(anotherUnique =>
-                  anotherUnique.head == unique.head || anotherUnique.last == unique.last
-                )
+                  .exists(unique.containsSlice)
               )
             then trialsApi.impossible
             // ... it is also possible to have accidental matches where a common
             // sequence for one match is *embedded* within a common sequence for
-            // another match. There are also the odd pathological cases where
-            // two unique sides agree on a suffix or prefix, thus extending the
-            // expected match of the adjacent common sequence...
+            // another match.
             else if common.exists(commonSequence =>
                 common.exists(anotherCommonSequence =>
-                  anotherCommonSequence != commonSequence && (commonSequence
-                    .containsSlice(
-                      anotherCommonSequence
-                    )
-                    || commonSequence.head == anotherCommonSequence.head
-                    || commonSequence.last == anotherCommonSequence.last)
+                  anotherCommonSequence != commonSequence && commonSequence
+                    .containsSlice(anotherCommonSequence)
                 )
               )
             then trialsApi.impossible
@@ -280,11 +270,13 @@ class CodeMotionAnalysisTest:
                 ] =
                   if commonToAllThreeSides.nonEmpty || commonToOnePairOfSides.nonEmpty || commonToTheOtherPairOfSides.nonEmpty
                   then
-                    // Mix up the three-side and two-side matches....
+                    // Mix up the all-sides and pairwise matches....
                     val sideCommonSequencesRearrangements =
                       trialsApi.pickAlternatelyFrom(
                         shrinkToRoundRobin = false,
-                        commonToAllThreeSides ++ commonToOnePairOfSides ++ commonToTheOtherPairOfSides
+                        commonToAllThreeSides,
+                        commonToOnePairOfSides,
+                        commonToTheOtherPairOfSides
                       )
 
                     if sideUniqueSequences.nonEmpty then
