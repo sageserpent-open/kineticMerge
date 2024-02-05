@@ -1,9 +1,12 @@
 package com.sageserpent.kineticmerge.core
 
+import com.typesafe.scalalogging.StrictLogging
+
 case class MappedContentSources[Path, Element](
     contentsByPath: Map[Path, IndexedSeq[Element]],
     label: String
-) extends Sources[Path, Element]:
+) extends Sources[Path, Element]
+    with StrictLogging:
   override def filesByPathUtilising(
       mandatorySections: Set[Section[Element]]
   ): Map[Path, File[Element]] =
@@ -38,18 +41,31 @@ case class MappedContentSources[Path, Element](
             ) { case ((onePastLastEndOffset, partialResult), section) =>
               section.onePastEndOffset ->
                 ((if onePastLastEndOffset < section.startOffset then
-                    partialResult :+ this.section(path)(
+                    val fillerSection = this.section(path)(
                       onePastLastEndOffset,
                       section.startOffset - onePastLastEndOffset
                     )
-                  else partialResult) :+ section)
+                    // Fill the gap with a new section - this may be a leading
+                    // gap before the first section or between two sections.
+                    logger.debug(
+                      s"Filling gap on side: $label at path: $path prior to following section with: $fillerSection."
+                    )
+                    partialResult :+ fillerSection
+                  else partialResult)
+                :+ section)
             }
 
           if content.size > onePastLastEndOffset then
-            contiguousSections :+ section(path)(
+            // Fill out the final gap with a new section to cover the entire
+            // content.
+            val fillerSection = section(path)(
               onePastLastEndOffset,
               content.size - onePastLastEndOffset
             )
+            logger.debug(
+              s"Filling final gap on side: $label at path: $path with $fillerSection."
+            )
+            contiguousSections :+ fillerSection
           else contiguousSections
           end if
         else
