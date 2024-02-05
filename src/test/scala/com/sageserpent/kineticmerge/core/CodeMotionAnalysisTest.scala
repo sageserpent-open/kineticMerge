@@ -173,7 +173,9 @@ class CodeMotionAnalysisTest:
 
     end TestPlan
 
-    val alphabet = 1 to 100
+    val maximumGlyphThatMightBeShared = 8
+
+    val alphabet = 1 to maximumGlyphThatMightBeShared
 
     // Test plan synthesis: start with a set of sequences, so these cannot match
     // each other ...
@@ -190,18 +192,19 @@ class CodeMotionAnalysisTest:
       .integers(4, 30)
       .flatMap(numberOfSequences =>
         sequences
-          .lotsOfSize[Set[Vector[Element]]](numberOfSequences)
-      )
-      // Each sequence has a unique first and last element amongst the set of
-      // sequences; this prevents accidental overrun of the expected matches.
-      .filter(sequences =>
-        sequences.forall(sequence =>
-          sequences
-            .filter(_ != sequence)
-            .forall(anotherSequence =>
-              anotherSequence.head != sequence.head && anotherSequence.last != sequence.last
-            )
-        )
+          .lotsOfSize[Array[Vector[Element]]](numberOfSequences)
+          .map(
+            _.zipWithIndex
+              .map { case (core, index) =>
+                // Each sequence has a unique first and last element amongst the
+                // set of sequences; this prevents accidental overrun of the
+                // expected matches.
+                core
+                  .prepended(1 + (2 * index) + maximumGlyphThatMightBeShared)
+                  .appended((2 * (1 + index)) + maximumGlyphThatMightBeShared)
+              }
+              .toSet
+          )
       )
 
     val testPlans: Trials[TestPlan] = setsOfSequences.flatMap(sequences =>
@@ -436,7 +439,7 @@ class CodeMotionAnalysisTest:
               leftSources,
               rightSources
             )(
-              minimumMatchSize = 2,
+              minimumMatchSize = 5,
               thresholdSizeFractionForMatching =
                 minimumSizeFractionForMotionDetection
             )(
