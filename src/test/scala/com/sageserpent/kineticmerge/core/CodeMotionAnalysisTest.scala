@@ -673,6 +673,105 @@ class CodeMotionAnalysisTest:
         end try
       }
   end matchingSectionsAreFound
+
+  @Test
+  def anAmbiguousAllSidesMatchSubsumedOnOneSideByALargerAllSidesMatchIsEliminatedCompletely
+      : Unit =
+    val prefix                        = 0 until 10
+    val suffix                        = 30 until 40
+    val smallAmbiguousAllSidesContent = 10 until 20
+    val bigAllSidesContent =
+      prefix ++ smallAmbiguousAllSidesContent ++ suffix
+
+    // We have ambiguous all-sides matches because
+    // `smallAmbiguousAllSidesContent` sits inside `bigAllSidesContent` on all
+    // three sides, followed by another match made of just
+    // `smallAmbiguousAllSidesContent` on all three sides - in addition to all
+    // the other Cartesian product combinations across the sides.
+
+    // This leads amongst other things to there being a partial suppression of
+    // the all-sides match made from the *second* occurrences of
+    // `smallAmbiguousAllSidesContent` on the base and left with the *first*
+    // occurrence on the right, because of the larger all-sides match making
+    // claim on the right.
+
+    // That partial suppression should lead to a redundant pairwise match of the
+    // *second* occurrences of `smallAmbiguousAllSidesContent` on the base and
+    // left; but these are already contained within the obvious all-sides match
+    // of the second occurrences of `smallAmbiguousAllSidesContent` across all
+    // three sides.
+
+    // All of the other ambiguous all-sides matches should be either suppressed
+    // completely or are similarly redundant.
+
+    val baseSources = new FakeSources(
+      Map(
+        1 -> (bigAllSidesContent ++ Vector(8, 4, 6, 7, 8,
+          2) ++ smallAmbiguousAllSidesContent)
+      ),
+      "base"
+    ) with SourcesContracts[Path, Element]
+
+    val leftSources = new FakeSources(
+      Map(
+        1 -> (bigAllSidesContent ++ Vector(2, 5, 9, 6,
+          3) ++ smallAmbiguousAllSidesContent)
+      ),
+      "left"
+    ) with SourcesContracts[Path, Element]
+
+    val rightSources = new FakeSources(
+      Map(
+        1 -> (bigAllSidesContent ++ Vector(0, 3, 4, 5, 6, 6,
+          4) ++ smallAmbiguousAllSidesContent)
+      ),
+      "right"
+    ) with SourcesContracts[Path, Element]
+
+    val Right(
+      analysis: CodeMotionAnalysis[Path, Element]
+    ) =
+      CodeMotionAnalysis.of(
+        baseSources,
+        leftSources,
+        rightSources
+      )(
+        minimumMatchSize = 10,
+        thresholdSizeFractionForMatching = 0
+      )(
+        elementEquality = Eq[Element],
+        elementOrder = Order[Element],
+        elementFunnel = elementFunnel,
+        hashFunction = Hashing.murmur3_32_fixed()
+      ): @unchecked
+    end val
+
+    val matches =
+      (analysis.base.values.flatMap(_.sections) ++ analysis.left.values.flatMap(
+        _.sections
+      ) ++ analysis.right.values.flatMap(_.sections))
+        .map(analysis.matchesFor)
+        .reduce(_ union _)
+
+    // There should be no redundant pairwise matches.
+    assert(matches.forall {
+      case _: Match.AllSides[Section[Element]] => true
+      case _                                   => false
+    })
+
+    // There should only be a big match and a little match.
+    assert(matches.size == 2)
+
+    // The contents should be what we started with.
+    assert(
+      matches.map(_.dominantElement.content) == Set(
+        bigAllSidesContent,
+        smallAmbiguousAllSidesContent
+      )
+    )
+
+  end anAmbiguousAllSidesMatchSubsumedOnOneSideByALargerAllSidesMatchIsEliminatedCompletely
+
 end CodeMotionAnalysisTest
 
 object CodeMotionAnalysisTest:
