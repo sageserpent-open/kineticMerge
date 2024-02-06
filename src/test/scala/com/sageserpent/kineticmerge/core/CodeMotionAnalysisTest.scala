@@ -769,8 +769,112 @@ class CodeMotionAnalysisTest:
         smallAmbiguousAllSidesContent
       )
     )
-
   end anAmbiguousAllSidesMatchSubsumedOnOneSideByALargerAllSidesMatchIsEliminatedCompletely
+
+  @Test
+  def eatenPairwiseMatchesMayBeSuppressedByACompetingAmbiguousPairwiseMatch
+      : Unit =
+    // This is a pathological situation - we have a pairwise match that subsumes
+    // a smaller all-sides match; thus the pairwise match would be eaten into to
+    // yield smaller leftover pairwise matches that would flank the all-sides
+    // match.
+
+    // So far, so good, only the pairwise match is ambiguous with another
+    // pairwise match that only intrudes on the all-sides match on one side;
+    // this means the other pairwise match is not eaten into by that all-sides
+    // match. What would usually happen is that there would be an implied
+    // ambiguous all-sides match that would be subsumed by the second pairwise
+    // match; thus causing that one to be eaten into, and thus additional
+    // leftover pairwise matches ambiguous with the first lot. More complex, but
+    // still OK thus far...
+
+    // The final twist that makes it pathological is that the second ambiguous
+    // pairwise match involves a file on the side not intruding on the all-sides
+    // match that is distinct from the one for the first pairwise match. In
+    // addition, this file is large enough for the matching threshold to forbid
+    // the implied all-sides match.
+
+    // What would result is the first pairwise match being eaten into to make
+    // leftovers along with the all-sides match, but an ambiguous pairwise match
+    // that intrudes on both the leftovers and the all-sides match. Having one
+    // match's section subsume another match's is not tolerated, so the
+    // expectation is for the second ambiguous pairwise match to suppress both
+    // the leftovers and the all-sides match; in addition, the original
+    // ambiguous pairwise match is allowed to stand as-is.
+
+    // TODO: the expectations on this test imply that the original ambiguous
+    // pairwise match is *not* eaten into. So does
+    // `MatchesAndTheirSections.cleanedUp` ever remove a match? Can we write a
+    // test to cover this or should it be removed?
+
+    val prefix               = 0 until 10
+    val suffix               = 30 until 40
+    val smallAllSidesContent = 10 until 20
+    val bigAmbiguousBaseAndLeftContent =
+      prefix ++ smallAllSidesContent ++ suffix
+
+    val baseSources = new FakeSources(
+      Map(
+        1 -> bigAmbiguousBaseAndLeftContent,
+        2 -> (Vector(2, 5, 9, 6, 3, 7, 3, 6, 9, 4, 6, 1, 3, 4, 9, 0,
+          2) ++ bigAmbiguousBaseAndLeftContent)
+      ),
+      "base"
+    ) with SourcesContracts[Path, Element]
+
+    val leftSources = new FakeSources(
+      Map(1 -> bigAmbiguousBaseAndLeftContent),
+      "left"
+    ) with SourcesContracts[Path, Element]
+
+    val rightSources = new FakeSources(
+      Map(1 -> smallAllSidesContent),
+      "right"
+    ) with SourcesContracts[Path, Element]
+
+    val Right(
+      analysis: CodeMotionAnalysis[Path, Element]
+    ) =
+      CodeMotionAnalysis.of(
+        baseSources,
+        leftSources,
+        rightSources
+      )(
+        minimumMatchSize = 10,
+        // Low enough to allow the all-sides match to be considered, except in
+        // path 2 on the base side...
+        thresholdSizeFractionForMatching = 0.3
+      )(
+        elementEquality = Eq[Element],
+        elementOrder = Order[Element],
+        elementFunnel = elementFunnel,
+        hashFunction = Hashing.murmur3_32_fixed()
+      ): @unchecked
+    end val
+
+    val matches =
+      (analysis.base.values.flatMap(_.sections) ++ analysis.left.values.flatMap(
+        _.sections
+      ) ++ analysis.right.values.flatMap(_.sections))
+        .map(analysis.matchesFor)
+        .reduce(_ union _)
+
+    // There only be base and left matches.
+    assert(matches.forall {
+      case _: Match.BaseAndLeft[Section[Element]] => true
+      case _                                      => false
+    })
+
+    // There should be two ambiguous matches.
+    assert(matches.size == 2)
+
+    // The contents should be the same we have ambiguous matches.
+    assert(
+      matches.map(_.dominantElement.content) == Set(
+        bigAmbiguousBaseAndLeftContent
+      )
+    )
+  end eatenPairwiseMatchesMayBeSuppressedByACompetingAmbiguousPairwiseMatch
 
 end CodeMotionAnalysisTest
 
