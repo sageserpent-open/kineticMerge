@@ -12,10 +12,11 @@ import com.sageserpent.kineticmerge.core.merge.{FullyMerged, MergedWithConflicts
 import com.softwaremill.tagging.*
 import fansi.Str
 import os.{CommandResult, Path, RelPath}
-import scopt.OParser
+import scopt.{DefaultOEffectSetup, OParser}
 
 import scala.annotation.varargs
 import scala.io.Source
+import scala.util.Try
 
 object Main:
   // NOTE: the use of Git below is based on spike work on MacOS - the version of
@@ -81,7 +82,7 @@ object Main:
     val logbackRootLevelLoggingJavaPropertyName = "logback-root-level"
 
     val parser =
-      val builder = OParser.builder[CommandLineArguments]
+      val builder = OParser.builder[ApplicationRequest]
       import builder.*
 
       val kineticMergeVersion = Source
@@ -191,21 +192,36 @@ object Main:
       )
     end parser
 
-    OParser
-      .parse(
-        parser,
-        commandLineArguments,
-        CommandLineArguments(theirBranchHead = noBranchProvided)
-      )
-      .fold(ifEmpty = incorrectCommandLine)(
-        mergeTheirBranch(_)(os.pwd)
-      )
+    case class EarlyTermination(exitCode: Int @@ Tags.ExitCode)
+        extends RuntimeException
+
+    val applicationRequest: Try[Option[ApplicationRequest]] = Try {
+      OParser
+        .parse(
+          parser,
+          commandLineArguments,
+          ApplicationRequest(theirBranchHead = noBranchProvided),
+          new DefaultOEffectSetup:
+            // Don't terminate the application, let execution return back to the
+            // caller via a glorified long-jump.
+            override def terminate(exitState: Either[String, Unit]): Unit =
+              throw EarlyTermination(exitState match
+                case Left(_)  => 1.taggedWith[Tags.ExitCode]
+                case Right(_) => 0.taggedWith[Tags.ExitCode]
+              )
+        )
+    }
+
+    applicationRequest.fold(
+      { case EarlyTermination(exitCode) => exitCode },
+      _.fold(ifEmpty = incorrectCommandLine)(mergeTheirBranch(_)(os.pwd))
+    )
   end apply
 
-  def mergeTheirBranch(
-      commandLineArguments: CommandLineArguments
-  )(workingDirectory: Path): Int @@ Main.Tags.ExitCode =
-    import commandLineArguments.*
+  def mergeTheirBranch(applicationRequest: ApplicationRequest)(
+      workingDirectory: Path
+  ): Int @@ Main.Tags.ExitCode =
+    import applicationRequest.*
 
     val workflow = for
       _ <- IO {
@@ -368,7 +384,7 @@ object Main:
       )
     yield temporaryFile
 
-  case class CommandLineArguments(
+  case class ApplicationRequest(
       theirBranchHead: String @@ Main.Tags.CommitOrBranchName,
       noCommit: Boolean = false,
       noFastForward: Boolean = false,

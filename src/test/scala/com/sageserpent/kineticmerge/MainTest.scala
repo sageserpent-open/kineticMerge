@@ -4,8 +4,8 @@ import cats.effect.unsafe.implicits.global
 import cats.effect.{IO, Resource}
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
-import com.sageserpent.americium.junit5.{DynamicTests, *}
-import com.sageserpent.kineticmerge.Main.{CommandLineArguments, Tags}
+import com.sageserpent.americium.junit5.*
+import com.sageserpent.kineticmerge.Main.{ApplicationRequest, Tags}
 import com.sageserpent.kineticmerge.MainTest.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.softwaremill.tagging.*
@@ -276,12 +276,6 @@ object MainTest:
       case Array(postMergeCommit, parents*) => postMergeCommit -> parents
     : @unchecked
 
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
-
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
-
   private def verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit(
       path: Path
   )(
@@ -369,6 +363,12 @@ object MainTest:
     currentStatus(path)
   end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
 
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+
   private def currentCommit(path: Path) =
     os.proc("git", "log", "-1", "--format=tformat:%H")
       .call(path)
@@ -453,7 +453,7 @@ class MainTest:
                   else advancedBranch                          -> masterBranch
 
                 val exitCode = Main.mergeTheirBranch(
-                  CommandLineArguments(
+                  ApplicationRequest(
                     theirBranchHead =
                       theirBranch.taggedWith[Tags.CommitOrBranchName],
                     noCommit = noCommit,
@@ -553,7 +553,7 @@ class MainTest:
                 else masterBranch                  -> newFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                CommandLineArguments(
+                ApplicationRequest(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
                   noCommit = noCommit
@@ -621,7 +621,7 @@ class MainTest:
                 else masterBranch                      -> deletedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                CommandLineArguments(
+                ApplicationRequest(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
                   noCommit = noCommit
@@ -693,7 +693,7 @@ class MainTest:
                 else masterBranch                   -> evilTwinBranch
 
               val exitCode = Main.mergeTheirBranch(
-                CommandLineArguments(theirBranchHead =
+                ApplicationRequest(theirBranchHead =
                   theirBranch.taggedWith[Tags.CommitOrBranchName]
                 )
               )(workingDirectory =
@@ -767,7 +767,7 @@ class MainTest:
                 else masterBranch                      -> deletedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                CommandLineArguments(theirBranchHead =
+                ApplicationRequest(theirBranchHead =
                   theirBranch.taggedWith[Tags.CommitOrBranchName]
                 )
               )(workingDirectory =
@@ -847,7 +847,7 @@ class MainTest:
                 else masterBranch -> concurrentlyModifiedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                CommandLineArguments(theirBranchHead =
+                ApplicationRequest(theirBranchHead =
                   theirBranch.taggedWith[Tags.CommitOrBranchName]
                 )
               )(workingDirectory =
@@ -928,7 +928,7 @@ class MainTest:
                 else masterBranch               -> concurrentlyDeletedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                CommandLineArguments(
+                ApplicationRequest(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
                   noCommit = noCommit
@@ -1006,7 +1006,7 @@ class MainTest:
                 else masterBranch -> concurrentlyModifiedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                CommandLineArguments(
+                ApplicationRequest(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
                   noCommit = noCommit
