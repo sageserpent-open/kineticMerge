@@ -14,6 +14,7 @@ import fansi.Str
 import os.{CommandResult, Path, RelPath}
 import scopt.OParser
 
+import scala.annotation.varargs
 import scala.io.Source
 
 object Main:
@@ -58,7 +59,25 @@ object Main:
   // implied or an explicit fraction in the range [0, 1].
   private val matchThresholdRegex = raw"(\d{1,3})%|(\d+)|([01]\.\d+)".r.anchored
 
-  def main(args: Array[String]): Unit =
+  /** Entry point for the application. In contrast with [[apply]], it will pass
+    * an exit code via [[System.exit]] and thus force a shutdown of the
+    * application.
+    * @param commandLineArguments
+    *   Command line arguments as an array, as per Scala's entry point
+    *   specification.
+    */
+  def main(commandLineArguments: Array[String]): Unit =
+    System.exit(apply(commandLineArguments*))
+  end main
+
+  /** @param commandLineArguments
+    *   Command line arguments as varargs.
+    * @return
+    *   The exit code as a plain integer, suitable for consumption by both Scala
+    *   and Java client code.
+    */
+  @varargs
+  def apply(commandLineArguments: String*): Int =
     val logbackRootLevelLoggingJavaPropertyName = "logback-root-level"
 
     val parser =
@@ -172,18 +191,16 @@ object Main:
       )
     end parser
 
-    val exitCode = OParser
+    OParser
       .parse(
         parser,
-        args,
+        commandLineArguments,
         CommandLineArguments(theirBranchHead = noBranchProvided)
       )
       .fold(ifEmpty = incorrectCommandLine)(
         mergeTheirBranch(_)(os.pwd)
       )
-
-    System.exit(exitCode)
-  end main
+  end apply
 
   def mergeTheirBranch(
       commandLineArguments: CommandLineArguments
