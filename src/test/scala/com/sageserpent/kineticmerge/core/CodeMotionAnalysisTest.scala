@@ -802,11 +802,6 @@ class CodeMotionAnalysisTest:
     // the leftovers and the all-sides match; in addition, the original
     // ambiguous pairwise match is allowed to stand as-is.
 
-    // TODO: the expectations on this test imply that the original ambiguous
-    // pairwise match is *not* eaten into. So does
-    // `MatchesAndTheirSections.cleanedUp` ever remove a match? Can we write a
-    // test to cover this or should it be removed?
-
     val prefix               = 0 until 10
     val suffix               = 30 until 40
     val smallAllSidesContent = 10 until 20
@@ -868,13 +863,105 @@ class CodeMotionAnalysisTest:
     // There should be two ambiguous matches.
     assert(matches.size == 2)
 
-    // The contents should be the same we have ambiguous matches.
+    // The contents should be the same; we have ambiguous matches.
     assert(
       matches.map(_.dominantElement.content) == Set(
         bigAmbiguousBaseAndLeftContent
       )
     )
   end eatenPairwiseMatchesMayBeSuppressedByACompetingAmbiguousPairwiseMatch
+
+  @Test
+  def eatenPairwiseMatchesMayBeSuppressedByACompetingOverlappingAllSidesMatch
+      : Unit =
+    // This is a even more pathological situation - we have overlapping matches
+    // of the same size, one of which is a pairwise match and the other an
+    // all-sides match. This in itself is permitted (but will result in an
+    // admissible downstream exception due to the overlap when
+    // `CodeMotionAnalysis.of` builds up its files from the matches).
+
+    // The twist is when there is another smaller all-sides that is subsumed by
+    // the pairwise match but does *not* overlap with the larger all-sides
+    // match, and thus does not interfere with the overlap between the pairwise
+    // match and the larger all-sides match on the relevant sides.
+
+    // Consequently, the smaller all-sides match will eat into the larger
+    // pairwise match to cleave off a *smaller* pairwise match that is now
+    // subsumed (and not just overlapped) by the larger all-sides match. It's OK
+    // to have the smaller all-sides match because it doesn't overlap with the
+    // larger all-sides match, but the leftover pairwise match should be
+    // suppressed.
+
+    val prefix                    = 0 until 10
+    val suffix                    = 30 until 40
+    val overlap                   = 10 until 20
+    val bigAllSidesContent        = prefix ++ overlap
+    val equallyBigPairwiseContent = overlap ++ suffix
+    val smallAllSidesContent      = suffix
+
+    val baseSources = new FakeSources(
+      Map(1 -> (prefix ++ overlap ++ suffix)),
+      "base"
+    ) with SourcesContracts[Path, Element]
+
+    val leftSources = new FakeSources(
+      Map(
+        1 -> (equallyBigPairwiseContent ++ Vector(8, 7, 3, 4, 7, 8, 4, 5, 3, 8,
+          7, 3, 4) ++ bigAllSidesContent)
+      ),
+      "left"
+    ) with SourcesContracts[Path, Element]
+
+    val rightSources = new FakeSources(
+      Map(
+        1 -> (smallAllSidesContent ++ Vector(2, 1, 5, 6, 5, 6,
+          2) ++ bigAllSidesContent)
+      ),
+      "right"
+    ) with SourcesContracts[Path, Element]
+
+    val Right(
+      analysis: CodeMotionAnalysis[Path, Element]
+    ) =
+      CodeMotionAnalysis.of(
+        baseSources,
+        leftSources,
+        rightSources
+      )(
+        minimumMatchSize = 10,
+        thresholdSizeFractionForMatching = 0
+      )(
+        elementEquality = Eq[Element],
+        elementOrder = Order[Element],
+        elementFunnel = elementFunnel,
+        hashFunction = Hashing.murmur3_32_fixed()
+      ): @unchecked
+    end val
+
+    val matches =
+      (analysis.base.values.flatMap(_.sections) ++ analysis.left.values.flatMap(
+        _.sections
+      ) ++ analysis.right.values.flatMap(_.sections))
+        .map(analysis.matchesFor)
+        .reduce(_ union _)
+
+    // There only be all-sides matches.
+    assert(matches.forall {
+      case _: Match.AllSides[Section[Element]] => true
+      case _                                   => false
+    })
+
+    // There should be two matches.
+    assert(matches.size == 2)
+
+    // The contents should be that of the two all-sides matches
+    assert(
+      matches.map(_.dominantElement.content) == Set(
+        bigAllSidesContent,
+        smallAllSidesContent
+      )
+    )
+  end eatenPairwiseMatchesMayBeSuppressedByACompetingOverlappingAllSidesMatch
 
 end CodeMotionAnalysisTest
 
