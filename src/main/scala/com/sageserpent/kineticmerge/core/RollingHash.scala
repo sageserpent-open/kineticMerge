@@ -50,7 +50,7 @@ object RollingHash:
           new Random(seed)
         )
 
-      val highestScalePower = scale.pow(windowSize - 1)
+      val highestScalePower = scale.pow(windowSize - 1) mod primeModulus
 
       trait RollingHashImplementation extends RollingHash:
         private val bytesInRollingWindowAsRingBuffer =
