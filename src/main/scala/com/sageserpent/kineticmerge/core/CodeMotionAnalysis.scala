@@ -725,6 +725,34 @@ object CodeMotionAnalysis extends StrictLogging:
           .matchesAndTheirSections
       end withPairwiseMatchesEatenInto
 
+      // Eating into pairwise matches can create smaller pairwise matches that
+      // are partially subsumed by other larger pairwise matches. Prefer keeping
+      // the larger matches and remove the subsumed ones.
+      def cleanedUp: MatchesAndTheirSections =
+        val subsumedBaseSections = baseSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesBaseSection)
+        val subsumedLeftSections = leftSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesLeftSection)
+        val subsumedRightSections = rightSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesRightSection)
+
+        val matchesToRemove =
+          (subsumedBaseSections ++ subsumedLeftSections ++ subsumedRightSections)
+            .flatMap(sectionsAndTheirMatches.get)
+            .toSet
+
+        if matchesToRemove.nonEmpty then
+          logger.debug(
+            s"Removing matches that have subsumed sections:\n${pprint(matchesToRemove)} as part of cleanup."
+          )
+        end if
+
+        this.withoutTheseMatches(matchesToRemove)
+      end cleanedUp
+
       private def withoutTheseMatches(
           matches: Iterable[Match[Section[Element]]]
       ): MatchesAndTheirSections =
@@ -949,34 +977,6 @@ object CodeMotionAnalysis extends StrictLogging:
             )
         end match
       end withMatch
-
-      // Eating into pairwise matches can create smaller pairwise matches that
-      // are partially subsumed by other larger pairwise matches. Prefer keeping
-      // the larger matches and remove the subsumed ones.
-      def cleanedUp: MatchesAndTheirSections =
-        val subsumedBaseSections = baseSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesBaseSection)
-        val subsumedLeftSections = leftSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesLeftSection)
-        val subsumedRightSections = rightSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesRightSection)
-
-        val matchesToRemove =
-          (subsumedBaseSections ++ subsumedLeftSections ++ subsumedRightSections)
-            .flatMap(sectionsAndTheirMatches.get)
-            .toSet
-
-        if matchesToRemove.nonEmpty then
-          logger.debug(
-            s"Removing matches that have subsumed sections:\n${pprint(matchesToRemove)} as part of cleanup."
-          )
-        end if
-
-        this.withoutTheseMatches(matchesToRemove)
-      end cleanedUp
 
       private def pairwiseMatchSubsumesJustOneSideOnly(
           allSides: Match.AllSides[Section[Element]]
@@ -1441,10 +1441,10 @@ object CodeMotionAnalysis extends StrictLogging:
                     .min(leftHead, rightHead)
                 )
 
-              if potentialMatchKeyOrder.eqv(
-                  leftHead,
-                  minimumFingerprint
-                )
+              // NOTE: just use `==` as we have already looked inside the
+              // `PotentialMatchKey` instances - we just want to know which one
+              // was the minimum.
+              if leftHead == minimumFingerprint
               then
                 matchingFingerprintsAcrossSides(
                   baseFingerprints,
@@ -1452,10 +1452,10 @@ object CodeMotionAnalysis extends StrictLogging:
                   rightFingerprints,
                   matches
                 )
-              else if potentialMatchKeyOrder.eqv(
-                  rightHead,
-                  minimumFingerprint
-                )
+              // NOTE: just use `==` as we have already looked inside the
+              // `PotentialMatchKey` instances - we just want to know which one
+              // was the minimum.
+              else if rightHead == minimumFingerprint
               then
                 matchingFingerprintsAcrossSides(
                   baseFingerprints,
