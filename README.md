@@ -120,3 +120,31 @@ project: [rabinfingerprint](https://github.com/themadcreator/rabinfingerprint).
 The price paid by Kinetic Merge for dropping this was the appearance of a bug due to the higher probability of
 collisions using rolling polynomial hashing; that has been since fixed. The fact that the bug was latent in the code for
 so long is a testament to the collision resistance of Rabin fingerprinting!
+
+## Do you use these libraries yet?
+
+Direct dependencies in `build.sbt` and why they are used...
+
+- `scala-logging` and `logback-*`. Duh, of course. Lots of documentation, does what it says on the tin.
+- `cats-*`. For all those slightly high-church functional programming idioms that you don't want to write and test from
+  scratch, not to mention keep maintaining. Again, *documentation*.
+- `alleycats-core`. For when you need the Devil to accompany you to mass in the high-church.
+- `scopt`. No-nonsense, robust command line parsing. Small and gets the job done.
+- `scala-collection-contrib`. `MultiDict`, and in the past for `MapDecorator`. Move on from `MultiMap`!
+- `monocle`. Try rewriting the code without lenses and you'll see why.
+- `scala-parser-combinators`. No-nonsense, robust tokenization in a pure functional manner.
+- `os-lib`. Stop using the various messy Java and Scala APIs for paths, files and processes and just use this for a
+  well-documented, coherent, one-stop-shop experience.
+- `fansi`. I like <ins>underlined</ins> text in my application messages for things that vary.
+- `pprint`. *Readable* debugging output.
+- `tagging`. Stop your code from being both *stringly-typed* and looking like 1970s C with all those integers.
+- `guava`. Hashing, hashing and yet more hashing.
+- `fingertree`. A performant and robust way of dealing with interval testing, as well as nice example of a
+  pure-functional core fingertree implementation with various front-end APIs. At time of writing, the APIs are a bit
+  rough-and-ready, but it does the job well.
+- `caffeine`. If you want a well-documented, one-stop-shop Java caching API that plugs into everything and is endlessly
+  configurable, here it is.
+- `americium`. Possibly the world's best parameterised test support framework. Your scribe is of course completely
+  unbiased. If you want tests that automatically shrink down failing test cases, you're in the right place.
+- `expecty`. The world's most minimal and yet most effective assertion framework. Less is more!
+- `jupiter-interface`. Yes, use *JUnit5 for your Scala tests*. Works a treat in concert with `americium` and `expecty`. 
