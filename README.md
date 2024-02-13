@@ -146,5 +146,5 @@ Direct dependencies in `build.sbt` and why they are used...
   configurable, here it is.
 - `americium`. Possibly the world's best parameterised test support framework. Your scribe is of course completely
   unbiased. If you want tests that automatically shrink down failing test cases, you're in the right place.
-- `expecty`. The world's most minimal and yet most effective assertion framework. Less is more!
+- `expecty`. Scala's most minimal and yet most effective assertion framework. Less is more!
 - `jupiter-interface`. Yes, use *JUnit5 for your Scala tests*. Works a treat in concert with `americium` and `expecty`. 
