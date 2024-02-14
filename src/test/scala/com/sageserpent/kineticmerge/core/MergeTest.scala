@@ -599,6 +599,93 @@ class MergeTest:
   end rightEditVersusLeftDeletionConflictDueToFollowingLeftEdit
 
   @Test
+  def leftInsertionWithFollowingLeftInsertionVersusRightInsertionConflict()
+      : Unit =
+    val a    = 1
+    val b    = 2
+    val base = Vector(a, b)
+
+    val c    = 3
+    val d    = 4
+    val e    = 5
+    val f    = 6
+    val left = Vector(c, d, e, f)
+
+    val g     = 7
+    val h     = 8
+    val i     = 9
+    val right = Vector(g, h, i)
+
+    val acg = Match.AllSides(baseElement = a, leftElement = c, rightElement = g)
+    val bfi = Match.AllSides(baseElement = b, leftElement = f, rightElement = i)
+    val matchesByElement: Map[Element, Match[Element]] = Map(
+      a -> acg,
+      c -> acg,
+      g -> acg,
+      b -> bfi,
+      f -> bfi,
+      i -> bfi
+    )
+
+    // NOTE: we expect a clean merge of `f` after the conflict.
+    val expectedMerge =
+      MergedWithConflicts(
+        leftElements = Vector(c, d, e, f),
+        rightElements = Vector(c, h, f)
+      )
+
+    val Right(result) =
+      merge.of(base, left, right)(
+        equivalent(matchesByElement)
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end leftInsertionWithFollowingLeftInsertionVersusRightInsertionConflict
+
+  @Test
+  def leftEditWithFollowingLeftInsertionVersusRightDeletionConflict(): Unit =
+    val a    = 1
+    val b    = 2
+    val c    = 3
+    val base = Vector(a, b, c)
+
+    val d    = 4
+    val e    = 5
+    val f    = 6
+    val g    = 7
+    val left = Vector(d, e, f, g)
+
+    val h     = 8
+    val i     = 9
+    val right = Vector(h, i)
+
+    val adh = Match.AllSides(baseElement = a, leftElement = d, rightElement = h)
+    val cgi = Match.AllSides(baseElement = c, leftElement = g, rightElement = i)
+    val matchesByElement: Map[Element, Match[Element]] = Map(
+      a -> adh,
+      d -> adh,
+      h -> adh,
+      c -> cgi,
+      g -> cgi,
+      i -> cgi
+    )
+
+    // NOTE: we expect a clean merge of `g` after the conflict.
+    val expectedMerge =
+      MergedWithConflicts(
+        leftElements = Vector(d, e, f, g),
+        rightElements = Vector(d, g)
+      )
+
+    val Right(result) =
+      merge.of(base, left, right)(
+        equivalent(matchesByElement)
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end leftEditWithFollowingLeftInsertionVersusRightDeletionConflict
+
+  @Test
   def insertionConflict(): Unit =
     val a    = 1
     val base = Vector(a)
