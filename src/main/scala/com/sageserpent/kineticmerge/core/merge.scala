@@ -349,7 +349,7 @@ object merge extends StrictLogging:
                 s"Conflict between right deletion of $editedBaseElement and its edit on the left into $leftElement with following right edit."
               )
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
-                partialResult.addLeftEditConflictingWithRightDeletion(
+                partialResult.addLeftSideOfConflict(
                   leftElement
                 )
               )
@@ -362,7 +362,7 @@ object merge extends StrictLogging:
                 s"Conflict between left deletion of $editedBaseElement and its edit on the right into $rightElement with following left edit."
               )
               mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
-                partialResult.addRightEditConflictingWithLeftDeletion(
+                partialResult.addRightSideOfConflict(
                   rightElement
                 )
               )
@@ -373,7 +373,7 @@ object merge extends StrictLogging:
                 s"Edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right."
               )
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                partialResult.addConflictingEdits(leftElement, rightElement)
+                partialResult.addBothSidesOfConflict(leftElement, rightElement)
               )
           end match
 
@@ -408,7 +408,7 @@ object merge extends StrictLogging:
             s"Conflict between right deletion of $editedBaseElement and its edit on the left into $leftElement."
           )
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
-            partialResult.addLeftEditConflictingWithRightDeletion(leftElement)
+            partialResult.addLeftSideOfConflict(leftElement)
           )
 
         case (
@@ -442,7 +442,7 @@ object merge extends StrictLogging:
             s"Conflict between left deletion of $editedBaseElement and its edit on the right into $rightElement."
           )
           mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
-            partialResult.addRightEditConflictingWithLeftDeletion(rightElement)
+            partialResult.addRightSideOfConflict(rightElement)
           )
 
         case (
@@ -486,7 +486,7 @@ object merge extends StrictLogging:
             s"Conflict between left insertion of $leftElement and right insertion of $rightElement."
           )
           mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
-            partialResult.addConflictingEdits(leftElement, rightElement)
+            partialResult.addBothSidesOfConflict(leftElement, rightElement)
           )
 
         case (
@@ -556,7 +556,7 @@ object merge extends StrictLogging:
             rightElements :+ commonElement
           )
 
-    def addLeftEditConflictingWithRightDeletion(
+    def addLeftSideOfConflict(
         leftElement: Element
     ): Result[Element] =
       this match
@@ -568,7 +568,7 @@ object merge extends StrictLogging:
         case MergedWithConflicts(leftElements, rightElements) =>
           MergedWithConflicts(leftElements :+ leftElement, rightElements)
 
-    def addRightEditConflictingWithLeftDeletion(
+    def addRightSideOfConflict(
         rightElement: Element
     ): Result[Element] =
       this match
@@ -580,7 +580,7 @@ object merge extends StrictLogging:
         case MergedWithConflicts(leftElements, rightElements) =>
           MergedWithConflicts(leftElements, rightElements :+ rightElement)
 
-    def addConflictingEdits(
+    def addBothSidesOfConflict(
         leftElement: Element,
         rightElement: Element
     ): Result[Element] =
