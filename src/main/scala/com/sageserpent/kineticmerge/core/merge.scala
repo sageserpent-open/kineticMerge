@@ -90,7 +90,7 @@ object merge extends StrictLogging:
             s"Preservation of $leftElement as it is common to all three sides."
           )
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-            partialResult.addCommon(leftElement)
+            partialResult.addCommonOrEdit(leftElement)
           )
 
         case (
@@ -121,7 +121,7 @@ object merge extends StrictLogging:
                 s"Coincident edit of $baseElement into $leftElement."
               )
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                partialResult.addCommon(leftElement)
+                partialResult.addCommonOrEdit(leftElement)
               )
           end match
 
@@ -140,7 +140,7 @@ object merge extends StrictLogging:
             s"Coincident insertion on left and right side of $leftElement."
           )
           mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
-            partialResult.addCommon(leftElement)
+            partialResult.addCommonOrEdit(leftElement)
           )
 
         case (
@@ -196,7 +196,7 @@ object merge extends StrictLogging:
                 s"Left edit of ${editedBaseElement.element} into $leftElement, not coalescing with following left edit due to prior coincident insertion."
               )
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                partialResult.addCommon(leftElement)
+                partialResult.addCommonOrEdit(leftElement)
               )
 
             case (_, Seq(Contribution.Difference(followingLeftElement), _*)) =>
@@ -206,7 +206,7 @@ object merge extends StrictLogging:
                 s"Coalescing left edit of ${editedBaseElement.element} into $leftElement with following insertion of $followingLeftElement on the left."
               )
               mergeBetweenRunsOfCommonElements(base, leftTail, right)(
-                partialResult.addCommon(leftElement)
+                partialResult.addCommonOrEdit(leftElement)
               )
 
             case _ =>
@@ -214,7 +214,7 @@ object merge extends StrictLogging:
                 s"Left edit of ${editedBaseElement.element} into $leftElement."
               )
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                partialResult.addCommon(leftElement)
+                partialResult.addCommonOrEdit(leftElement)
               )
           end match
 
@@ -287,7 +287,7 @@ object merge extends StrictLogging:
                 s"Right edit of ${editedBaseElement.element} into $rightElement, not coalescing with following right edit due to prior coincident insertion."
               )
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                partialResult.addCommon(rightElement)
+                partialResult.addCommonOrEdit(rightElement)
               )
 
             case (_, Seq(Contribution.Difference(followingRightElement), _*)) =>
@@ -297,7 +297,7 @@ object merge extends StrictLogging:
                 s"Coalescing right edit of ${editedBaseElement.element} into $rightElement with following insertion of $followingRightElement on the right."
               )
               mergeBetweenRunsOfCommonElements(base, left, rightTail)(
-                partialResult.addCommon(rightElement)
+                partialResult.addCommonOrEdit(rightElement)
               )
 
             case _ =>
@@ -305,7 +305,7 @@ object merge extends StrictLogging:
                 s"Right edit of ${editedBaseElement.element} into $rightElement."
               )
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                partialResult.addCommon(rightElement)
+                partialResult.addCommonOrEdit(rightElement)
               )
           end match
 
@@ -386,7 +386,7 @@ object merge extends StrictLogging:
             s"Left insertion of $leftElement with following coincident edit."
           )
           mergeBetweenRunsOfCommonElements(base, leftTail, right)(
-            partialResult.addCommon(leftElement)
+            partialResult.addFromLeft(leftElement)
           )
 
         case (
@@ -420,7 +420,7 @@ object merge extends StrictLogging:
             s"Right insertion of $rightElement with following coincident edit."
           )
           mergeBetweenRunsOfCommonElements(base, left, rightTail)(
-            partialResult.addCommon(rightElement)
+            partialResult.addFromRight(rightElement)
           )
 
         case (
@@ -462,7 +462,7 @@ object merge extends StrictLogging:
             s"Left insertion of $leftElement with following right edit."
           )
           mergeBetweenRunsOfCommonElements(base, leftTail, right)(
-            partialResult.addCommon(leftElement)
+            partialResult.addFromLeft(leftElement)
           )
 
         case (
@@ -474,7 +474,7 @@ object merge extends StrictLogging:
             s"Right insertion of $rightElement with following left edit."
           )
           mergeBetweenRunsOfCommonElements(base, left, rightTail)(
-            partialResult.addCommon(rightElement)
+            partialResult.addFromRight(rightElement)
           )
 
         case (
@@ -502,7 +502,7 @@ object merge extends StrictLogging:
             ) => // Left insertion.
           logger.debug(s"Left insertion of $leftElement.")
           mergeBetweenRunsOfCommonElements(base, leftTail, right)(
-            partialResult.addCommon(leftElement)
+            partialResult.addFromLeft(leftElement)
           )
 
         case (
@@ -518,7 +518,7 @@ object merge extends StrictLogging:
             ) => // Right insertion.
           logger.debug(s"Right insertion of $rightElement.")
           mergeBetweenRunsOfCommonElements(base, left, rightTail)(
-            partialResult.addCommon(rightElement)
+            partialResult.addFromRight(rightElement)
           )
 
         case (Seq(), Seq(), Seq()) => // Terminating case!
@@ -544,7 +544,7 @@ object merge extends StrictLogging:
   end of
 
   sealed trait Result[Element]:
-    def addCommon(
+    def addCommonOrEdit(
         commonElement: Element
     ): Result[Element] =
       this match
@@ -554,6 +554,30 @@ object merge extends StrictLogging:
           MergedWithConflicts(
             leftElements :+ commonElement,
             rightElements :+ commonElement
+          )
+
+    def addFromLeft(
+        leftElement: Element
+    ): Result[Element] =
+      this match
+        case FullyMerged(elements) =>
+          FullyMerged(elements :+ leftElement)
+        case MergedWithConflicts(leftElements, rightElements) =>
+          MergedWithConflicts(
+            leftElements :+ leftElement,
+            rightElements
+          )
+
+    def addFromRight(
+        rightElement: Element
+    ): Result[Element] =
+      this match
+        case FullyMerged(elements) =>
+          FullyMerged(elements :+ rightElement)
+        case MergedWithConflicts(leftElements, rightElements) =>
+          MergedWithConflicts(
+            leftElements,
+            rightElements :+ rightElement
           )
 
     def addLeftSideOfConflict(
