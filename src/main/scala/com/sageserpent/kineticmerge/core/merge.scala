@@ -110,13 +110,12 @@ object merge extends StrictLogging:
               )
             ) => // Coincident edit.
           baseTail match
-            case Seq(Contribution.Difference(followingBaseElement), _*) =>
+            case Seq(Contribution.Difference(_), _*) =>
               // If the following element in the base would also be
-              // coincidentally deleted, coalesce into a single coincident
-              // edit.
-              // TODO - AHEM!
+              // coincidentally deleted, defer the coincident edit and treat
+              // this as a coincident deletion.
               logger.debug(
-                s"Coalescing coincident edit of $baseElement into $leftElement with following coincident deletion of $followingBaseElement."
+                s"Coincident deletion of $baseElement with following coincident edit."
               )
               mergeBetweenRunsOfCommonElements(baseTail, left, right)(
                 mergeAlgebra.coincidentDeletion(
