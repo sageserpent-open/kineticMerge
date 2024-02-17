@@ -65,7 +65,9 @@ object merge extends StrictLogging:
     *   if there is for example a [[Contribution.Difference]] sandwiched between
     *   two [[Contribution.CommonToBaseAndRightOnly]] elements in {@code right},
     *   this breaks up the left-edits to preserve the sandwich in edited form in
-    *   the merge.
+    *   the merge.<p><p>Similarly, successive edits on the same side will be
+    *   treated as isolated edits rather than allowing the first to greedily
+    *   capture all the [[Contribution.Difference]] elements.
     */
   def of[Element](
       base: IndexedSeq[Element],
@@ -193,7 +195,7 @@ object merge extends StrictLogging:
               // insertions that may be lurking on the right prior to the
               // pending left edit claiming the following element on the left.
               logger.debug(
-                s"Left edit of ${editedBaseElement.element} into $leftElement, not coalescing with following left edit due to prior coincident insertion."
+                s"Left edit of ${editedBaseElement.element} into $leftElement, not coalescing with following left edit."
               )
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
                 partialResult.addCommonOrEdit(leftElement)
@@ -284,7 +286,7 @@ object merge extends StrictLogging:
               // insertions that may be lurking on the left prior to the pending
               // right edit claiming the following element on the right.
               logger.debug(
-                s"Right edit of ${editedBaseElement.element} into $rightElement, not coalescing with following right edit due to prior coincident insertion."
+                s"Right edit of ${editedBaseElement.element} into $rightElement, not coalescing with following right edit."
               )
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
                 partialResult.addCommonOrEdit(rightElement)
