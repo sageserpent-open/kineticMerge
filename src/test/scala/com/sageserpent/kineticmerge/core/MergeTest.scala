@@ -6,7 +6,7 @@ import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.MergeTest.*
 import com.sageserpent.kineticmerge.core.MergeTest.Move.*
-import com.sageserpent.kineticmerge.core.merge.{FullyMerged, MergedWithConflicts, Result}
+import com.sageserpent.kineticmerge.core.merge.{ConcreteMergeAlgebra, FullyMerged, MergedWithConflicts, Result}
 import monocle.syntax.all.*
 import org.junit.jupiter.api.{Test, TestFactory}
 import pprint.*
@@ -45,7 +45,7 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(c))
 
     val Right(result) =
-      merge.of(base, left, right)(
+      merge.of(mergeAlgebra = new ConcreteMergeAlgebra)(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -73,7 +73,7 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(d, c))
 
     val Right(result) =
-      merge.of(base, left, right)(
+      merge.of(mergeAlgebra = new ConcreteMergeAlgebra)(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -100,7 +100,7 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(b))
 
     val Right(result) =
-      merge.of(base, left, right)(
+      merge.of(mergeAlgebra = new ConcreteMergeAlgebra)(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -129,7 +129,7 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(b, d))
 
     val Right(result) =
-      merge.of(base, left, right)(
+      merge.of(mergeAlgebra = new ConcreteMergeAlgebra)(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -157,7 +157,7 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(d))
 
     val Right(result) =
-      merge.of(base, left, right)(
+      merge.of(mergeAlgebra = new ConcreteMergeAlgebra)(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -186,7 +186,7 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(b, d))
 
     val Right(result) =
-      merge.of(base, left, right)(
+      merge.of(mergeAlgebra = new ConcreteMergeAlgebra)(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -215,7 +215,7 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(c, b))
 
     val Right(result) =
-      merge.of(base, left, right)(
+      merge.of(mergeAlgebra = new ConcreteMergeAlgebra)(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -247,7 +247,7 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(e))
 
     val Right(result) =
-      merge.of(base, left, right)(
+      merge.of(mergeAlgebra = new ConcreteMergeAlgebra)(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -282,7 +282,7 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(f, e))
 
     val Right(result) =
-      merge.of(base, left, right)(
+      merge.of(mergeAlgebra = new ConcreteMergeAlgebra)(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -317,7 +317,7 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(f, d))
 
     val Right(result) =
-      merge.of(base, left, right)(
+      merge.of(mergeAlgebra = new ConcreteMergeAlgebra)(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -351,7 +351,7 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(f, d, g))
 
     val Right(result) =
-      merge.of(base, left, right)(
+      merge.of(mergeAlgebra = new ConcreteMergeAlgebra)(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -380,7 +380,7 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(c, d))
 
     val Right(result) =
-      merge.of(base, left, right)(
+      merge.of(mergeAlgebra = new ConcreteMergeAlgebra)(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -411,7 +411,7 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(d, e, c))
 
     val Right(result) =
-      merge.of(base, left, right)(
+      merge.of(mergeAlgebra = new ConcreteMergeAlgebra)(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -438,7 +438,7 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(c))
 
     val Right(result) =
-      merge.of(base, left, right)(
+      merge.of(mergeAlgebra = new ConcreteMergeAlgebra)(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -468,7 +468,7 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector())
 
     val Right(result) =
-      merge.of(base, left, right)(
+      merge.of(mergeAlgebra = new ConcreteMergeAlgebra)(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -505,7 +505,7 @@ class MergeTest:
       )
 
     val Right(result) =
-      merge.of(base, left, right)(
+      merge.of(mergeAlgebra = new ConcreteMergeAlgebra)(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -548,7 +548,7 @@ class MergeTest:
       )
 
     val Right(result) =
-      merge.of(base, left, right)(
+      merge.of(mergeAlgebra = new ConcreteMergeAlgebra)(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -591,7 +591,7 @@ class MergeTest:
       )
 
     val Right(result) =
-      merge.of(base, left, right)(
+      merge.of(mergeAlgebra = new ConcreteMergeAlgebra)(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -635,7 +635,7 @@ class MergeTest:
       )
 
     val Right(result) =
-      merge.of(base, left, right)(
+      merge.of(mergeAlgebra = new ConcreteMergeAlgebra)(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -678,7 +678,7 @@ class MergeTest:
       )
 
     val Right(result) =
-      merge.of(base, left, right)(
+      merge.of(mergeAlgebra = new ConcreteMergeAlgebra)(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -714,7 +714,7 @@ class MergeTest:
       )
 
     val Right(result) =
-      merge.of(base, left, right)(
+      merge.of(mergeAlgebra = new ConcreteMergeAlgebra)(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -758,7 +758,7 @@ class MergeTest:
       )
 
     val Right(result) =
-      merge.of(base, left, right)(
+      merge.of(mergeAlgebra = new ConcreteMergeAlgebra)(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -774,7 +774,11 @@ class MergeTest:
         pprintln(testCase)
 
         val Right(result) =
-          merge.of(testCase.base, testCase.left, testCase.right)(
+          merge.of(mergeAlgebra = new ConcreteMergeAlgebra)(
+            testCase.base,
+            testCase.left,
+            testCase.right
+          )(
             equivalent(testCase.matchesByElement)
           ): @unchecked
 
@@ -786,7 +790,11 @@ class MergeTest:
       .withLimit(2000)
       .dynamicTests: testCase =>
         val Right(result) =
-          merge.of(testCase.base, testCase.left, testCase.right)(
+          merge.of(mergeAlgebra = new ConcreteMergeAlgebra)(
+            testCase.base,
+            testCase.left,
+            testCase.right
+          )(
             equivalent(testCase.matchesByElement)
           ): @unchecked
 

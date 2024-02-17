@@ -1,7 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.Eq
-import com.sageserpent.kineticmerge.core.merge.{Divergence, FullyMerged, MergedWithConflicts, Result}
+import com.sageserpent.kineticmerge.core.merge.*
 
 object CodeMotionAnalysisExtension:
   /** Add merging capability to a [[CodeMotionAnalysis]].
@@ -62,7 +62,7 @@ object CodeMotionAnalysisExtension:
       end sectionEqualityViaDominantsFallingBackToContentComparison
 
       val mergedSectionsResult =
-        merge.of(
+        merge.of(mergeAlgebra = new ConcreteMergeAlgebra)(
           base = baseSections,
           left = leftSections,
           right = rightSections
