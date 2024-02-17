@@ -158,18 +158,18 @@ object merge extends StrictLogging:
             case (
                   Seq(
                     Contribution.Difference(followingBaseElement),
-                    baseTailAfterCoincidentDeletion*
+                    _*
                   ),
                   Seq(Contribution.Difference(_), _*)
                 ) =>
-              // There is a pending coincident deletion; process it first in
-              // case it hides a subsequent left edit.
-              logger.debug(s"Coincident deletion of $followingBaseElement.")
-              mergeBetweenRunsOfCommonElements(
-                editedBaseElement +: baseTailAfterCoincidentDeletion,
-                left,
-                right
-              )(partialResult)
+              // There is a pending coincident deletion; handle this left edit
+              // in isolation without coalescing any following left insertion.
+              logger.debug(
+                s"Left edit of ${editedBaseElement.element} into $leftElement with following coincident deletion of $followingBaseElement."
+              )
+              mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
+                partialResult.addCommonOrEdit(leftElement)
+              )
 
             case (
                   Seq(Contribution.CommonToBaseAndRightOnly(_), _*),
@@ -249,18 +249,18 @@ object merge extends StrictLogging:
             case (
                   Seq(
                     Contribution.Difference(followingBaseElement),
-                    baseTailAfterCoincidentDeletion*
+                    _*
                   ),
                   Seq(Contribution.Difference(_), _*)
                 ) =>
-              // There is a pending coincident deletion; process it first in
-              // case it hides a subsequent right edit.
-              logger.debug(s"Coincident deletion of $followingBaseElement.")
-              mergeBetweenRunsOfCommonElements(
-                editedBaseElement +: baseTailAfterCoincidentDeletion,
-                left,
-                right
-              )(partialResult)
+              // There is a pending coincident deletion; handle this right edit
+              // in isolation without coalescing any following right insertion.
+              logger.debug(
+                s"Right edit of ${editedBaseElement.element} into $rightElement with following coincident deletion of $followingBaseElement."
+              )
+              mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
+                partialResult.addCommonOrEdit(rightElement)
+              )
 
             case (
                   Seq(Contribution.CommonToBaseAndLeftOnly(_), _*),
