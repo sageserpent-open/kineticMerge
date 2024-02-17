@@ -65,7 +65,9 @@ object merge extends StrictLogging:
     *   if there is for example a [[Contribution.Difference]] sandwiched between
     *   two [[Contribution.CommonToBaseAndRightOnly]] elements in {@code right},
     *   this breaks up the left-edits to preserve the sandwich in edited form in
-    *   the merge.
+    *   the merge. <p><p>Similarly, successive edits on the same side will be
+    *   treated as isolated edits rather than allowing the first to greedily
+    *   capture all the [[Contribution.Difference]] elements.
     */
   def of[Result[_], Element](mergeAlgebra: MergeAlgebra[Result, Element])(
       base: IndexedSeq[Element],
@@ -172,22 +174,20 @@ object merge extends StrictLogging:
             case (
                   Seq(
                     Contribution.Difference(followingBaseElement),
-                    baseTailAfterCoincidentDeletion*
+                    _*
                   ),
                   Seq(Contribution.Difference(_), _*)
                 ) =>
-              // There is a pending coincident deletion; process it first in
-              // case it hides a subsequent left edit.
-              // TODO - AHEM!!!!
-              logger.debug(s"Coincident deletion of $followingBaseElement.")
-              mergeBetweenRunsOfCommonElements(
-                editedBaseElement +: baseTailAfterCoincidentDeletion,
-                left,
-                right
-              )(
-                mergeAlgebra.coincidentDeletion(
+              // There is a pending coincident deletion; handle this left edit
+              // in isolation without coalescing any following left insertion.
+              logger.debug(
+                s"Left edit of ${editedBaseElement.element} into $leftElement with following coincident deletion of $followingBaseElement."
+              )
+              mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
+                mergeAlgebra.leftEdit(
                   partialResult,
-                  baseElement = followingBaseElement
+                  baseElement = Some(editedBaseElement.element),
+                  leftElement = leftElement
                 )
               )
 
@@ -213,7 +213,7 @@ object merge extends StrictLogging:
               // insertions that may be lurking on the right prior to the
               // pending left edit claiming the following element on the left.
               logger.debug(
-                s"Left edit of ${editedBaseElement.element} into $leftElement, not coalescing with following left edit due to prior coincident insertion."
+                s"Left edit of ${editedBaseElement.element} into $leftElement, not coalescing with following left edit."
               )
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
                 mergeAlgebra.leftEdit(
@@ -284,22 +284,20 @@ object merge extends StrictLogging:
             case (
                   Seq(
                     Contribution.Difference(followingBaseElement),
-                    baseTailAfterCoincidentDeletion*
+                    _*
                   ),
                   Seq(Contribution.Difference(_), _*)
                 ) =>
-              // There is a pending coincident deletion; process it first in
-              // case it hides a subsequent right edit.
-              // TODO - AHEM!!!!
-              logger.debug(s"Coincident deletion of $followingBaseElement.")
-              mergeBetweenRunsOfCommonElements(
-                editedBaseElement +: baseTailAfterCoincidentDeletion,
-                left,
-                right
-              )(
-                mergeAlgebra.coincidentDeletion(
+              // There is a pending coincident deletion; handle this right edit
+              // in isolation without coalescing any following right insertion.
+              logger.debug(
+                s"Right edit of ${editedBaseElement.element} into $rightElement with following coincident deletion of $followingBaseElement."
+              )
+              mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
+                mergeAlgebra.rightEdit(
                   partialResult,
-                  baseElement = followingBaseElement
+                  baseElement = Some(editedBaseElement.element),
+                  rightElement = rightElement
                 )
               )
 
@@ -325,7 +323,7 @@ object merge extends StrictLogging:
               // insertions that may be lurking on the left prior to the pending
               // right edit claiming the following element on the right.
               logger.debug(
-                s"Right edit of ${editedBaseElement.element} into $rightElement, not coalescing with following right edit due to prior coincident insertion."
+                s"Right edit of ${editedBaseElement.element} into $rightElement, not coalescing with following right edit."
               )
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
                 mergeAlgebra.rightEdit(
