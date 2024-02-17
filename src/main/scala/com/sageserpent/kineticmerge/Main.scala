@@ -5,10 +5,9 @@ import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.syntax.traverse.toTraverseOps
 import com.google.common.hash.Hashing
-import com.sageserpent.kineticmerge.core.*
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtension.*
 import com.sageserpent.kineticmerge.core.Token.tokens
-import com.sageserpent.kineticmerge.core.merge.{FullyMerged, MergedWithConflicts}
+import com.sageserpent.kineticmerge.core.*
 import com.softwaremill.tagging.*
 import fansi.Str
 import os.{CommandResult, Path, RelPath}
@@ -1033,7 +1032,7 @@ object Main:
           )
           .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
 
-        mergeResult: merge.Result[Token] <- EitherT
+        mergeResult: MergeResult[Token] <- EitherT
           .fromEither[WorkflowLogWriter](
             codeMotionAnalysis.mergeAt(path)(equality = Token.equality)
           )
@@ -1195,7 +1194,7 @@ object Main:
           )
           .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
 
-        mergeResult: merge.Result[Token] <- EitherT
+        mergeResult: MergeResult[Token] <- EitherT
           .fromEither[WorkflowLogWriter](
             codeMotionAnalysis.mergeAt(path)(equality = Token.equality)
           )

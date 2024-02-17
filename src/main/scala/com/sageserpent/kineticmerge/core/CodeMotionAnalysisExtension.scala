@@ -15,7 +15,7 @@ object CodeMotionAnalysisExtension:
   )
     def mergeAt(path: Path)(
         equality: Eq[Element]
-    ): Either[Divergence.type, Result[Element]] =
+    ): Either[Divergence.type, MergeResult[Element]] =
       // TODO: amongst other things, need to convert the sections to underlying
       // content, but irrespective of what side contributed the section. What
       // about using the match to get the dominant section?
@@ -62,7 +62,7 @@ object CodeMotionAnalysisExtension:
       end sectionEqualityViaDominantsFallingBackToContentComparison
 
       val mergedSectionsResult =
-        merge.of(mergeAlgebra = new ConcreteMergeAlgebra)(
+        merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(
           base = baseSections,
           left = leftSections,
           right = rightSections

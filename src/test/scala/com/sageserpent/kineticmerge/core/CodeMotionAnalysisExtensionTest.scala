@@ -7,7 +7,6 @@ import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtension.*
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtensionTest.FakePath
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.Token.tokens
-import com.sageserpent.kineticmerge.core.merge.{FullyMerged, MergedWithConflicts}
 import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.{Test, TestFactory}
 import pprint.*
