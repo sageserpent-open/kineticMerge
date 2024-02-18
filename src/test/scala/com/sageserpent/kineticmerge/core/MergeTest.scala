@@ -809,7 +809,7 @@ class MergeTest:
       val zeroRelativeElements: Trials[Element] = trialsApi.uniqueIds
 
       val choices = moveConstraints.choices
-      
+
       choices flatMap:
         case LeftInsertion =>
           for
@@ -970,6 +970,37 @@ class MergeTest:
           yield result
           end for
 
+        case CoincidentEdit =>
+          for
+            baseElement  <- zeroRelativeElements
+            leftElement  <- zeroRelativeElements
+            rightElement <- zeroRelativeElements
+            result <- simpleMergeTestCases(moveConstraints.coincidentEdit):
+              val elementMatch = Match.LeftAndRight(
+                leftElement = leftElement,
+                rightElement = rightElement
+              )
+
+              partialResult
+                .focus(_.base)
+                .modify(_ :+ baseElement)
+                .focus(_.left)
+                .modify(_ :+ leftElement)
+                .focus(_.right)
+                .modify(_ :+ rightElement)
+                .focus(_.matchesByElement)
+                .modify(
+                  _ + (leftElement -> elementMatch) + (rightElement -> elementMatch)
+                )
+                .focus(_.expectedMerge.some)
+                .modify:
+                  case FullyMerged(elements) =>
+                    FullyMerged(elements :+ leftElement)
+                .focus(_.moves)
+                .modify(_ :+ CoincidentEdit)
+          yield result
+          end for
+
         case LeftDeletion =>
           for
             baseElement  <- zeroRelativeElements
@@ -1045,10 +1076,6 @@ end MergeTest
 
 object MergeTest:
   type Element = Int
-
-  private val coincidentInsertionFrequency = 4  -> CoincidentInsertion
-  private val preservationFrequency        = 10 -> Preservation
-  private val coincidentDeletionFrequency  = 4  -> CoincidentDeletion
 
   def equivalent(
       matchesByElement: Map[Element, Match[Element]]
@@ -1202,114 +1229,100 @@ object MergeTest:
       // side, because we expect the SUT to eagerly pick up an edit first.
       priorDeletionOrInsertionBlockingLeftEdit: Boolean = false,
       priorDeletionOrInsertionBlockingRightEdit: Boolean = false,
+      priorDeletionOrInsertionBlockingCoincidentEdit: Boolean = false,
       // The next two flags stop misleading move sequences from being generated,
       // where a deletion is followed by an insertion on the same side and the
       // only other moves between them are insertions on the opposite side.
       // Edits already capture this notion more economically.
       priorDeletionBlockingLeftInsertion: Boolean = false,
       priorDeletionBlockingRightInsertion: Boolean = false,
+      priorDeletionBlockingCoincidentInsertion: Boolean = false,
       // The next two flags stop misleading move sequences from being generated,
       // where an insertion is followed by a deletion on the same side and the
       // only other moves between them are insertions on the opposite side.
       // Edits already capture this notion more economically.
       priorInsertionBlockingLeftDeletion: Boolean = false,
       priorInsertionBlockingRightDeletion: Boolean = false,
+      priorInsertionBlockingCoincidentDeletion: Boolean = false,
       // The next two flags allow move sequences to pair insertions across sides
       // when there is a prior edit that could coalesce with one of the
       // insertions to avoid a conflict.
       priorEditClaimingLeftInsertion: Boolean = false,
       priorEditClaimingRightInsertion: Boolean = false
   ):
-    private def leftInsertionFrequency(allow: Boolean) =
-      (if allow && (!priorDeletionBlockingLeftInsertion || priorEditClaimingRightInsertion)
-      then 7
-      else 0) -> LeftInsertion
+    import MoveConstraints.*
 
-    private def rightInsertionFrequency(allow: Boolean) =
-      (if allow && (!priorDeletionBlockingRightInsertion || priorEditClaimingLeftInsertion)
-      then 7
-      else 0) -> RightInsertion
-
-    private def leftEditFrequency() =
-      (if !priorDeletionOrInsertionBlockingLeftEdit then 7
-      else 0) -> LeftEdit
-
-    private def rightEditFrequency() =
-      (if !priorDeletionOrInsertionBlockingRightEdit then 7
-      else 0) -> RightEdit
-
-    private def leftDeletionFrequency() =
-      (if !priorInsertionBlockingLeftDeletion then 7
-      else 0) -> LeftDeletion
-
-    private def rightDeletionFrequency() =
-      (if !priorInsertionBlockingRightDeletion then 7
-      else 0) -> RightDeletion
-      
     def choices: Trials[Move] = predecessorMove match
       case LeftInsertion =>
         trialsApi
           .chooseWithWeights(
             leftInsertionFrequency(allow = true),
             rightInsertionFrequency(allow = allowConflicts),
-            coincidentInsertionFrequency,
-            preservationFrequency,
+            coincidentInsertionFrequency(),
+            preservationFrequency(),
             leftEditFrequency(),
             rightEditFrequency(),
+            coincidentEditFrequency(),
             leftDeletionFrequency(),
             rightDeletionFrequency()
           )
+
       case RightInsertion =>
         trialsApi
           .chooseWithWeights(
             leftInsertionFrequency(allow = allowConflicts),
             rightInsertionFrequency(allow = true),
-            coincidentInsertionFrequency,
-            preservationFrequency,
+            coincidentInsertionFrequency(),
+            preservationFrequency(),
             leftEditFrequency(),
             rightEditFrequency(),
+            coincidentEditFrequency(),
             leftDeletionFrequency(),
             rightDeletionFrequency()
           )
 
-      case CoincidentInsertion | Preservation | LeftEdit | RightEdit =>
+      case CoincidentInsertion | Preservation | LeftEdit | RightEdit |
+          CoincidentEdit =>
         trialsApi
           .chooseWithWeights(
             leftInsertionFrequency(allow = true),
             rightInsertionFrequency(allow = true),
-            coincidentInsertionFrequency,
-            preservationFrequency,
+            coincidentInsertionFrequency(),
+            preservationFrequency(),
             leftEditFrequency(),
             rightEditFrequency(),
+            coincidentEditFrequency(),
             leftDeletionFrequency(),
             rightDeletionFrequency(),
-            coincidentDeletionFrequency
+            coincidentDeletionFrequency()
           )
 
       case LeftDeletion =>
         trialsApi
           .chooseWithWeights(
             leftInsertionFrequency(allow = true),
-            coincidentInsertionFrequency,
-            preservationFrequency,
+            coincidentInsertionFrequency(),
+            preservationFrequency(),
             leftEditFrequency(),
             rightEditFrequency(),
+            coincidentEditFrequency(),
             leftDeletionFrequency(),
             rightDeletionFrequency(),
-            coincidentDeletionFrequency
+            coincidentDeletionFrequency()
           )
 
       case RightDeletion =>
         trialsApi
           .chooseWithWeights(
             leftInsertionFrequency(allow = true),
-            coincidentInsertionFrequency,
-            preservationFrequency,
+            coincidentInsertionFrequency(),
+            preservationFrequency(),
             leftEditFrequency(),
             rightEditFrequency(),
+            coincidentEditFrequency(),
             leftDeletionFrequency(),
             rightDeletionFrequency(),
-            coincidentDeletionFrequency
+            coincidentDeletionFrequency()
           )
 
       case CoincidentDeletion =>
@@ -1317,15 +1330,56 @@ object MergeTest:
           .chooseWithWeights(
             leftInsertionFrequency(allow = allowConflicts),
             rightInsertionFrequency(allow = allowConflicts),
-            coincidentInsertionFrequency,
-            preservationFrequency,
+            coincidentInsertionFrequency(),
+            preservationFrequency(),
             leftEditFrequency(),
             rightEditFrequency(),
+            coincidentEditFrequency(),
             leftDeletionFrequency(),
             rightDeletionFrequency(),
-            coincidentDeletionFrequency
+            coincidentDeletionFrequency()
           )
-    
+
+    private def leftInsertionFrequency(allow: Boolean) =
+      (if allow && (!priorDeletionBlockingLeftInsertion || priorEditClaimingRightInsertion)
+       then 7
+       else 0) -> LeftInsertion
+
+    private def rightInsertionFrequency(allow: Boolean) =
+      (if allow && (!priorDeletionBlockingRightInsertion || priorEditClaimingLeftInsertion)
+       then 7
+       else 0) -> RightInsertion
+
+    private def coincidentInsertionFrequency() =
+      (if !priorDeletionBlockingCoincidentInsertion then 4
+       else 0) -> CoincidentInsertion
+
+    private def preservationFrequency() = 10 -> Preservation
+
+    private def leftEditFrequency() =
+      (if !priorDeletionOrInsertionBlockingLeftEdit then 7
+       else 0) -> LeftEdit
+
+    private def rightEditFrequency() =
+      (if !priorDeletionOrInsertionBlockingRightEdit then 7
+       else 0) -> RightEdit
+
+    private def coincidentEditFrequency() =
+      (if !priorDeletionOrInsertionBlockingCoincidentEdit then 4
+       else 0) -> CoincidentEdit
+
+    private def leftDeletionFrequency() =
+      (if !priorInsertionBlockingLeftDeletion then 7
+       else 0) -> LeftDeletion
+
+    private def rightDeletionFrequency() =
+      (if !priorInsertionBlockingRightDeletion then 7
+       else 0) -> RightDeletion
+
+    private def coincidentDeletionFrequency() =
+      (if !priorInsertionBlockingCoincidentDeletion then 4
+       else 0) -> CoincidentDeletion
+
     def leftInsertion: MoveConstraints =
       copy(
         predecessorMove = LeftInsertion,
@@ -1342,10 +1396,13 @@ object MergeTest:
         priorInsertionBlockingRightDeletion = true
       )
 
-    def coincidentInsertion: MoveConstraints = MoveConstraints(
-      allowConflicts = allowConflicts,
-      predecessorMove = CoincidentInsertion
-    )
+    def coincidentInsertion: MoveConstraints =
+      MoveConstraints(
+        allowConflicts = allowConflicts,
+        predecessorMove = CoincidentInsertion,
+        priorDeletionOrInsertionBlockingCoincidentEdit = true,
+        priorInsertionBlockingCoincidentDeletion = true
+      )
 
     def preservation: MoveConstraints = MoveConstraints(
       allowConflicts = allowConflicts,
@@ -1364,6 +1421,11 @@ object MergeTest:
       priorEditClaimingRightInsertion = true
     )
 
+    def coincidentEdit: MoveConstraints = MoveConstraints(
+      allowConflicts = allowConflicts,
+      predecessorMove = CoincidentEdit
+    )
+
     def leftDeletion: MoveConstraints = MoveConstraints(
       allowConflicts = allowConflicts,
       predecessorMove = LeftDeletion,
@@ -1379,7 +1441,11 @@ object MergeTest:
     )
 
     def coincidentDeletion: MoveConstraints =
-      copy(predecessorMove = CoincidentDeletion)
+      copy(
+        predecessorMove = CoincidentDeletion,
+        priorDeletionOrInsertionBlockingCoincidentEdit = true,
+        priorDeletionBlockingCoincidentInsertion = true
+      )
   end MoveConstraints
 
   enum Move:
@@ -1389,6 +1455,7 @@ object MergeTest:
     case Preservation
     case LeftEdit
     case RightEdit
+    case CoincidentEdit
     case LeftDeletion
     case RightDeletion
     case CoincidentDeletion
