@@ -508,6 +508,47 @@ class MergeTest:
   end editConflict
 
   @Test
+  def editConflictFollowedByAnotherEditConflict(): Unit =
+    val a    = 1
+    val b    = 2
+    val c    = 3
+    val base = Vector(a, b, c)
+
+    val d    = 4
+    val e    = 5
+    val f    = 6
+    val left = Vector(d, e, f)
+
+    val g     = 7
+    val h     = 8
+    val i     = 9
+    val right = Vector(g, h, i)
+
+    val cfi =
+      Match.AllSides(baseElement = c, leftElement = f, rightElement = i)
+    val matchesByElement: Map[Element, Match[Element]] = Map(
+      c -> cfi,
+      f -> cfi,
+      i -> cfi
+    )
+
+    // NOTE: we expect a clean merge of `f` after the two separate edit
+    // conflicts.
+    val expectedMerge =
+      MergedWithConflicts(
+        leftElements = Vector(d, e, f),
+        rightElements = Vector(g, h, f)
+      )
+
+    val Right(result) =
+      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+        equivalent(matchesByElement)
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end editConflictFollowedByAnotherEditConflict
+
+  @Test
   def leftEditVersusRightDeletionConflictDueToFollowingRightEdit(): Unit =
     val a    = 1
     val b    = 2
