@@ -782,7 +782,7 @@ class MergeTest:
   @TestFactory
   def conflictedMerge: DynamicTests =
     possiblyConflictedMergeTestCases
-      .withLimit(2000)
+      .withLimit(4000)
       .dynamicTests: testCase =>
         val Right(result) =
           merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(
@@ -1066,7 +1066,8 @@ class MergeTest:
     trialsApi.complexities.flatMap(complexity =>
       trialsApi.alternateWithWeights(
         complexity -> trialsApi.only(partialResult),
-        50         -> extendedMergeTestCases
+        (if moveConstraints.allowConflicts then 500
+         else 50) -> extendedMergeTestCases
       )
     )
 
@@ -1300,7 +1301,7 @@ object MergeTest:
       case LeftDeletion =>
         trialsApi
           .chooseWithWeights(
-            leftInsertionFrequency(allow = true),
+            rightInsertionFrequency(allow = true),
             coincidentInsertionFrequency(),
             preservationFrequency(),
             leftEditFrequency(),

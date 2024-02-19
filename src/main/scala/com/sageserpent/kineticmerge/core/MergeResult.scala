@@ -30,7 +30,7 @@ object MergeResult:
           case MergedWithConflicts(leftElements, rightElements) =>
             MergedWithConflicts(
               leftElements :+ insertedElement,
-              rightElements
+              rightElements :+ insertedElement
             )
 
       override def rightInsertion(
@@ -42,7 +42,7 @@ object MergeResult:
             FullyMerged(elements :+ insertedElement)
           case MergedWithConflicts(leftElements, rightElements) =>
             MergedWithConflicts(
-              leftElements,
+              leftElements :+ insertedElement,
               rightElements :+ insertedElement
             )
 
@@ -154,30 +154,30 @@ object MergeResult:
       override def leftEditConflictingWithRightDeletion(
           result: MergeResult[Element],
           editedOrDeletedElement: Element,
-          editElement: Element
+          editElements: IndexedSeq[Element]
       ): MergeResult[Element] =
         result match
           case FullyMerged(elements) =>
             MergedWithConflicts(
-              leftElements = elements :+ editElement,
+              leftElements = elements ++ editElements,
               rightElements = elements
             )
           case MergedWithConflicts(leftElements, rightElements) =>
-            MergedWithConflicts(leftElements :+ editElement, rightElements)
+            MergedWithConflicts(leftElements ++ editElements, rightElements)
 
       override def rightEditConflictingWithLeftDeletion(
           result: MergeResult[Element],
           editedOrDeletedElement: Element,
-          editElement: Element
+          editElements: IndexedSeq[Element]
       ): MergeResult[Element] =
         result match
           case FullyMerged(elements) =>
             MergedWithConflicts(
               leftElements = elements,
-              rightElements = elements :+ editElement
+              rightElements = elements ++ editElements
             )
           case MergedWithConflicts(leftElements, rightElements) =>
-            MergedWithConflicts(leftElements, rightElements :+ editElement)
+            MergedWithConflicts(leftElements, rightElements ++ editElements)
 
 end MergeResult
 

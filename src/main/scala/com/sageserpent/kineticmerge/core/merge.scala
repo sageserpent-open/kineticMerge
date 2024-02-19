@@ -404,6 +404,8 @@ object merge extends StrictLogging:
               logger.debug(
                 s"Coalescing edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right with following coincident deletion of $followingBaseElement."
               )
+              // TODO: this feels hokey ... better to handle the edit conflict
+              // first and then do a clean coincident deletion?
               mergeBetweenRunsOfCommonElements(baseTail, left, right)(
                 mergeAlgebra.coincidentDeletion(
                   partialResult,
@@ -423,9 +425,9 @@ object merge extends StrictLogging:
                 mergeAlgebra.leftEditConflictingWithRightDeletion(
                   partialResult,
                   editedOrDeletedElement = editedBaseElement,
-                  editElement = leftElement
+                  editElements = deferredEdits :+ leftElement
                 ),
-                deferredEdits
+                deferredEdits = Vector.empty
               )
 
             case Seq(
@@ -439,9 +441,9 @@ object merge extends StrictLogging:
                 mergeAlgebra.rightEditConflictingWithLeftDeletion(
                   partialResult,
                   editedOrDeletedElement = editedBaseElement,
-                  editElement = rightElement
+                  editElements = deferredEdits :+ rightElement
                 ),
-                deferredEdits
+                deferredEdits = Vector.empty
               )
 
             case _ =>
@@ -499,17 +501,44 @@ object merge extends StrictLogging:
               Seq(Contribution.Difference(leftElement), leftTail*),
               _
             ) => // Left edit / right deletion conflict.
-          logger.debug(
-            s"Conflict between right deletion of $editedBaseElement and its edit on the left into $leftElement."
-          )
-          mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
-            mergeAlgebra.leftEditConflictingWithRightDeletion(
-              partialResult,
-              editedOrDeletedElement = editedBaseElement,
-              editElement = leftElement
-            ),
-            deferredEdits
-          )
+          baseTail -> leftTail match
+            case (
+                  Seq(Contribution.Difference(_), _*),
+                  Seq(Contribution.Difference(_), _*)
+                ) =>
+              logger.debug(
+                s"Conflict between right deletion of $editedBaseElement and its edit on the left into $leftElement, not coalescing with following right deletion and left edit conflict."
+              )
+              mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
+                mergeAlgebra.leftEditConflictingWithRightDeletion(
+                  partialResult,
+                  editedOrDeletedElement = editedBaseElement,
+                  editElements = deferredEdits :+ leftElement
+                ),
+                deferredEdits = Vector.empty
+              )
+
+            case (_, Seq(Contribution.Difference(followingLeftElement), _*)) =>
+              logger.debug(
+                s"Coalescing conflict between right deletion of $editedBaseElement and its edit on the left into $leftElement, with following insertion of $followingLeftElement on the left."
+              )
+              mergeBetweenRunsOfCommonElements(base, leftTail, right)(
+                partialResult,
+                deferredEdits = deferredEdits :+ leftElement
+              )
+
+            case _ =>
+              logger.debug(
+                s"Conflict between right deletion of $editedBaseElement and its edit on the left into $leftElement."
+              )
+              mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
+                mergeAlgebra.leftEditConflictingWithRightDeletion(
+                  partialResult,
+                  editedOrDeletedElement = editedBaseElement,
+                  editElements = deferredEdits :+ leftElement
+                ),
+                deferredEdits = Vector.empty
+              )
 
         case (
               Seq(Contribution.Difference(_), _*),
@@ -550,17 +579,44 @@ object merge extends StrictLogging:
               _,
               Seq(Contribution.Difference(rightElement), rightTail*)
             ) => // Right edit / left deletion conflict.
-          logger.debug(
-            s"Conflict between left deletion of $editedBaseElement and its edit on the right into $rightElement."
-          )
-          mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
-            mergeAlgebra.rightEditConflictingWithLeftDeletion(
-              partialResult,
-              editedOrDeletedElement = editedBaseElement,
-              editElement = rightElement
-            ),
-            deferredEdits
-          )
+          baseTail -> rightTail match
+            case (
+                  Seq(Contribution.Difference(_), _*),
+                  Seq(Contribution.Difference(_), _*)
+                ) =>
+              logger.debug(
+                s"Conflict between left deletion of $editedBaseElement and its edit on the right into $rightElement, not coalescing with following left deletion and right edit conflict."
+              )
+              mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
+                mergeAlgebra.rightEditConflictingWithLeftDeletion(
+                  partialResult,
+                  editedOrDeletedElement = editedBaseElement,
+                  editElements = deferredEdits :+ rightElement
+                ),
+                deferredEdits = Vector.empty
+              )
+
+            case (_, Seq(Contribution.Difference(followingRightElement), _*)) =>
+              logger.debug(
+                s"Coalescing conflict between left deletion of $editedBaseElement and its edit on the right into $rightElement, with following insertion of $followingRightElement on the right."
+              )
+              mergeBetweenRunsOfCommonElements(base, left, rightTail)(
+                partialResult,
+                deferredEdits = deferredEdits :+ rightElement
+              )
+
+            case _ =>
+              logger.debug(
+                s"Conflict between left deletion of $editedBaseElement and its edit on the right into $rightElement."
+              )
+              mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
+                mergeAlgebra.rightEditConflictingWithLeftDeletion(
+                  partialResult,
+                  editedOrDeletedElement = editedBaseElement,
+                  editElements = deferredEdits :+ rightElement
+                ),
+                deferredEdits = Vector.empty
+              )
 
         case (
               Seq(Contribution.Difference(deletedBaseElement), baseTail*),
@@ -749,6 +805,7 @@ object merge extends StrictLogging:
         editedElement: Element,
         editElement: Element
     ): Result[Element]
+    // TODO: generalise for coalesced edits on both sides...
     def leftEditConflictingWithRightEdit(
         result: Result[Element],
         editedElement: Element,
@@ -758,12 +815,12 @@ object merge extends StrictLogging:
     def leftEditConflictingWithRightDeletion(
         result: Result[Element],
         editedOrDeletedElement: Element,
-        editElement: Element
+        editElements: IndexedSeq[Element]
     ): Result[Element]
     def rightEditConflictingWithLeftDeletion(
         result: Result[Element],
         editedOrDeletedElement: Element,
-        editElement: Element
+        editElements: IndexedSeq[Element]
     ): Result[Element]
   end MergeAlgebra
 
