@@ -83,7 +83,8 @@ object merge extends StrictLogging:
         right: Seq[Contribution[Element]]
     )(
         partialResult: Result[Element],
-        deferredEdits: IndexedSeq[Element]
+        deferredLeftEdits: IndexedSeq[Element],
+        deferredRightEdits: IndexedSeq[Element]
     ): Result[Element] =
       (base, left, right) match
         case (
@@ -91,7 +92,7 @@ object merge extends StrictLogging:
               Seq(Contribution.Common(leftElement), leftTail*),
               Seq(Contribution.Common(_), rightTail*)
             ) => // Preservation.
-          require(deferredEdits.isEmpty)
+          require(deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty)
           logger.debug(
             s"Preservation of $leftElement as it is common to all three sides."
           )
@@ -100,7 +101,7 @@ object merge extends StrictLogging:
               partialResult,
               preservedElement = leftElement
             ),
-            deferredEdits
+            deferredLeftEdits, deferredRightEdits
           )
 
         case (
@@ -114,7 +115,7 @@ object merge extends StrictLogging:
                 rightTail*
               )
             ) => // Coincident edit.
-          require(deferredEdits.isEmpty)
+          require(deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty)
           baseTail match
             case Seq(Contribution.Difference(_), _*) =>
               // If the following element in the base would also be
@@ -128,7 +129,7 @@ object merge extends StrictLogging:
                   partialResult,
                   deletedElement = baseElement
                 ),
-                deferredEdits
+                deferredLeftEdits, deferredRightEdits
               )
 
             case _ =>
@@ -141,7 +142,7 @@ object merge extends StrictLogging:
                   editedElement = baseElement,
                   editElement = leftElement
                 ),
-                deferredEdits
+                deferredLeftEdits, deferredRightEdits
               )
           end match
 
@@ -156,7 +157,7 @@ object merge extends StrictLogging:
                 rightTail*
               )
             ) => // Coincident insertion.
-          require(deferredEdits.isEmpty)
+          require(deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty)
           logger.debug(
             s"Coincident insertion on left and right side of $leftElement."
           )
@@ -165,7 +166,7 @@ object merge extends StrictLogging:
               partialResult,
               insertedElement = leftElement
             ),
-            deferredEdits
+            deferredLeftEdits, deferredRightEdits
           )
 
         case (
@@ -196,9 +197,10 @@ object merge extends StrictLogging:
                 mergeAlgebra.leftEdit(
                   partialResult,
                   editedElement = editedBaseElement,
-                  editElements = deferredEdits :+ leftElement
+                  editElements = deferredLeftEdits :+ leftElement
                 ),
-                deferredEdits = Vector.empty
+                deferredLeftEdits = Vector.empty,
+                deferredRightEdits = deferredRightEdits
               )
 
             case (
@@ -229,9 +231,10 @@ object merge extends StrictLogging:
                 mergeAlgebra.leftEdit(
                   partialResult,
                   editedElement = editedBaseElement,
-                  editElements = deferredEdits :+ leftElement
+                  editElements = deferredLeftEdits :+ leftElement
                 ),
-                deferredEdits = Vector.empty
+                deferredLeftEdits = Vector.empty,
+                deferredRightEdits = deferredRightEdits
               )
 
             case (_, Seq(Contribution.Difference(followingLeftElement), _*)) =>
@@ -242,7 +245,8 @@ object merge extends StrictLogging:
               )
               mergeBetweenRunsOfCommonElements(base, leftTail, right)(
                 partialResult,
-                deferredEdits = deferredEdits :+ leftElement
+                deferredLeftEdits = deferredLeftEdits :+ leftElement,
+                deferredRightEdits = deferredRightEdits
               )
 
             case _ =>
@@ -253,9 +257,10 @@ object merge extends StrictLogging:
                 mergeAlgebra.leftEdit(
                   partialResult,
                   editedElement = editedBaseElement,
-                  editElements = deferredEdits :+ leftElement
+                  editElements = deferredLeftEdits :+ leftElement
                 ),
-                deferredEdits = Vector.empty
+                deferredLeftEdits = Vector.empty,
+                deferredRightEdits = deferredRightEdits
               )
           end match
 
@@ -270,14 +275,14 @@ object merge extends StrictLogging:
                 rightTail*
               )
             ) => // Left deletion.
-          require(deferredEdits.isEmpty)
+          require(deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty)
           logger.debug(s"Left deletion of $deletedBaseElement.")
           mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
             mergeAlgebra.leftDeletion(
               partialResult,
               deletedElement = deletedBaseElement
             ),
-            deferredEdits
+            deferredLeftEdits, deferredRightEdits
           )
 
         case (
@@ -308,9 +313,10 @@ object merge extends StrictLogging:
                 mergeAlgebra.rightEdit(
                   partialResult,
                   editedElement = editedBaseElement,
-                  editElements = deferredEdits :+ rightElement
+                  editElements = deferredRightEdits :+ rightElement
                 ),
-                deferredEdits = Vector.empty
+                deferredLeftEdits = deferredLeftEdits,
+                deferredRightEdits = Vector.empty
               )
 
             case (
@@ -341,9 +347,10 @@ object merge extends StrictLogging:
                 mergeAlgebra.rightEdit(
                   partialResult,
                   editedElement = editedBaseElement,
-                  editElements = deferredEdits :+ rightElement
+                  editElements = deferredRightEdits :+ rightElement
                 ),
-                deferredEdits = Vector.empty
+                deferredLeftEdits = deferredLeftEdits,
+                deferredRightEdits = Vector.empty
               )
 
             case (_, Seq(Contribution.Difference(followingRightElement), _*)) =>
@@ -354,7 +361,8 @@ object merge extends StrictLogging:
               )
               mergeBetweenRunsOfCommonElements(base, left, rightTail)(
                 partialResult,
-                deferredEdits = deferredEdits :+ rightElement
+                deferredLeftEdits = deferredLeftEdits,
+                deferredRightEdits = deferredRightEdits :+ rightElement
               )
 
             case _ =>
@@ -365,9 +373,10 @@ object merge extends StrictLogging:
                 mergeAlgebra.rightEdit(
                   partialResult,
                   editedElement = editedBaseElement,
-                  editElements = deferredEdits :+ rightElement
+                  editElements = deferredRightEdits :+ rightElement
                 ),
-                deferredEdits = Vector.empty
+                deferredLeftEdits = deferredLeftEdits,
+                deferredRightEdits = Vector.empty
               )
           end match
 
@@ -382,14 +391,14 @@ object merge extends StrictLogging:
               ),
               _
             ) => // Right deletion.
-          require(deferredEdits.isEmpty)
+          require(deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty)
           logger.debug(s"Right deletion of $deletedBaseElement.")
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
             mergeAlgebra.rightDeletion(
               partialResult,
               deletedElement = deletedBaseElement
             ),
-            deferredEdits
+            deferredLeftEdits, deferredRightEdits
           )
 
         case (
@@ -411,7 +420,7 @@ object merge extends StrictLogging:
                   partialResult,
                   deletedElement = editedBaseElement
                 ),
-                deferredEdits
+                deferredLeftEdits, deferredRightEdits
               )
 
             case Seq(
@@ -425,9 +434,10 @@ object merge extends StrictLogging:
                 mergeAlgebra.leftEditConflictingWithRightDeletion(
                   partialResult,
                   editedOrDeletedElement = editedBaseElement,
-                  editElements = deferredEdits :+ leftElement
+                  editElements = deferredLeftEdits :+ leftElement
                 ),
-                deferredEdits = Vector.empty
+                deferredLeftEdits = Vector.empty,
+                deferredRightEdits = deferredRightEdits
               )
 
             case Seq(
@@ -441,9 +451,10 @@ object merge extends StrictLogging:
                 mergeAlgebra.rightEditConflictingWithLeftDeletion(
                   partialResult,
                   editedOrDeletedElement = editedBaseElement,
-                  editElements = deferredEdits :+ rightElement
+                  editElements = deferredRightEdits :+ rightElement
                 ),
-                deferredEdits = Vector.empty
+                deferredLeftEdits = deferredLeftEdits,
+                deferredRightEdits = Vector.empty
               )
 
             case _ =>
@@ -455,10 +466,11 @@ object merge extends StrictLogging:
                 mergeAlgebra.leftEditConflictingWithRightEdit(
                   partialResult,
                   editedElement = editedBaseElement,
-                  leftEditElement = leftElement,
-                  rightEditElement = rightElement
+                  leftEditElements = deferredLeftEdits :+ leftElement,
+                  rightEditElements = deferredRightEdits :+ rightElement
                 ),
-                deferredEdits
+                deferredLeftEdits = Vector.empty,
+                deferredRightEdits = Vector.empty
               )
           end match
 
@@ -467,7 +479,7 @@ object merge extends StrictLogging:
               Seq(Contribution.Difference(leftElement), leftTail*),
               Seq(Contribution.CommonToLeftAndRightOnly(_), _*)
             ) => // Left insertion with pending coincident edit.
-          require(deferredEdits.isEmpty)
+          require(deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty)
           logger.debug(
             s"Left insertion of $leftElement with following coincident edit."
           )
@@ -476,7 +488,7 @@ object merge extends StrictLogging:
               partialResult,
               insertedElement = leftElement
             ),
-            deferredEdits
+            deferredLeftEdits, deferredRightEdits
           )
 
         case (
@@ -484,7 +496,7 @@ object merge extends StrictLogging:
               Seq(Contribution.Difference(_), _*),
               Seq(Contribution.CommonToBaseAndRightOnly(_), _*)
             ) => // Coincident deletion with pending left edit.
-          require(deferredEdits.isEmpty)
+          require(deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty)
           logger.debug(
             s"Coincident deletion of $deletedBaseElement with following left edit."
           )
@@ -493,7 +505,7 @@ object merge extends StrictLogging:
               partialResult,
               deletedElement = deletedBaseElement
             ),
-            deferredEdits
+            deferredLeftEdits, deferredRightEdits
           )
 
         case (
@@ -513,9 +525,10 @@ object merge extends StrictLogging:
                 mergeAlgebra.leftEditConflictingWithRightDeletion(
                   partialResult,
                   editedOrDeletedElement = editedBaseElement,
-                  editElements = deferredEdits :+ leftElement
+                  editElements = deferredLeftEdits :+ leftElement
                 ),
-                deferredEdits = Vector.empty
+                deferredLeftEdits = Vector.empty,
+                deferredRightEdits = deferredRightEdits
               )
 
             case (_, Seq(Contribution.Difference(followingLeftElement), _*)) =>
@@ -524,7 +537,8 @@ object merge extends StrictLogging:
               )
               mergeBetweenRunsOfCommonElements(base, leftTail, right)(
                 partialResult,
-                deferredEdits = deferredEdits :+ leftElement
+                deferredLeftEdits = deferredLeftEdits :+ leftElement,
+                deferredRightEdits
               )
 
             case _ =>
@@ -535,9 +549,10 @@ object merge extends StrictLogging:
                 mergeAlgebra.leftEditConflictingWithRightDeletion(
                   partialResult,
                   editedOrDeletedElement = editedBaseElement,
-                  editElements = deferredEdits :+ leftElement
+                  editElements = deferredLeftEdits :+ leftElement
                 ),
-                deferredEdits = Vector.empty
+                deferredLeftEdits = Vector.empty,
+                deferredRightEdits = deferredRightEdits
               )
 
         case (
@@ -545,7 +560,7 @@ object merge extends StrictLogging:
               Seq(Contribution.CommonToLeftAndRightOnly(_), _*),
               Seq(Contribution.Difference(rightElement), rightTail*)
             ) => // Right insertion with pending coincident edit.
-          require(deferredEdits.isEmpty)
+          require(deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty)
           logger.debug(
             s"Right insertion of $rightElement with following coincident edit."
           )
@@ -554,7 +569,7 @@ object merge extends StrictLogging:
               partialResult,
               insertedElement = rightElement
             ),
-            deferredEdits
+            deferredLeftEdits, deferredRightEdits
           )
 
         case (
@@ -562,7 +577,7 @@ object merge extends StrictLogging:
               Seq(Contribution.CommonToBaseAndLeftOnly(_), _*),
               Seq(Contribution.Difference(_), _*)
             ) => // Coincident deletion with pending right edit.
-          require(deferredEdits.isEmpty)
+          require(deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty)
           logger.debug(
             s"Coincident deletion of $deletedBaseElement with following right edit."
           )
@@ -571,7 +586,7 @@ object merge extends StrictLogging:
               partialResult,
               deletedElement = deletedBaseElement
             ),
-            deferredEdits
+            deferredLeftEdits, deferredRightEdits
           )
 
         case (
@@ -591,9 +606,10 @@ object merge extends StrictLogging:
                 mergeAlgebra.rightEditConflictingWithLeftDeletion(
                   partialResult,
                   editedOrDeletedElement = editedBaseElement,
-                  editElements = deferredEdits :+ rightElement
+                  editElements = deferredRightEdits :+ rightElement
                 ),
-                deferredEdits = Vector.empty
+                deferredLeftEdits = deferredLeftEdits,
+                deferredRightEdits = Vector.empty
               )
 
             case (_, Seq(Contribution.Difference(followingRightElement), _*)) =>
@@ -602,7 +618,8 @@ object merge extends StrictLogging:
               )
               mergeBetweenRunsOfCommonElements(base, left, rightTail)(
                 partialResult,
-                deferredEdits = deferredEdits :+ rightElement
+                deferredLeftEdits = deferredLeftEdits,
+                deferredRightEdits = deferredRightEdits :+ rightElement
               )
 
             case _ =>
@@ -613,9 +630,10 @@ object merge extends StrictLogging:
                 mergeAlgebra.rightEditConflictingWithLeftDeletion(
                   partialResult,
                   editedOrDeletedElement = editedBaseElement,
-                  editElements = deferredEdits :+ rightElement
+                  editElements = deferredRightEdits :+ rightElement
                 ),
-                deferredEdits = Vector.empty
+                deferredLeftEdits = deferredLeftEdits,
+                deferredRightEdits = Vector.empty
               )
 
         case (
@@ -623,14 +641,14 @@ object merge extends StrictLogging:
               _,
               _
             ) => // Coincident deletion.
-          require(deferredEdits.isEmpty)
+          require(deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty)
           logger.debug(s"Coincident deletion of $deletedBaseElement.")
           mergeBetweenRunsOfCommonElements(baseTail, left, right)(
             mergeAlgebra.coincidentDeletion(
               partialResult,
               deletedElement = deletedBaseElement
             ),
-            deferredEdits
+            deferredLeftEdits, deferredRightEdits
           )
 
         case (
@@ -638,7 +656,7 @@ object merge extends StrictLogging:
               Seq(Contribution.Difference(leftElement), leftTail*),
               Seq(Contribution.Difference(_), _*)
             ) => // Left insertion with pending right edit.
-          require(deferredEdits.isEmpty)
+          require(deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty)
           logger.debug(
             s"Left insertion of $leftElement with following right edit."
           )
@@ -647,7 +665,7 @@ object merge extends StrictLogging:
               partialResult,
               insertedElement = leftElement
             ),
-            deferredEdits
+            deferredLeftEdits, deferredRightEdits
           )
 
         case (
@@ -655,7 +673,7 @@ object merge extends StrictLogging:
               Seq(Contribution.Difference(_), _*),
               Seq(Contribution.Difference(rightElement), rightTail*)
             ) => // Right insertion with pending left edit.
-          require(deferredEdits.isEmpty)
+          require(deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty)
           logger.debug(
             s"Right insertion of $rightElement with following left edit."
           )
@@ -664,7 +682,7 @@ object merge extends StrictLogging:
               partialResult,
               insertedElement = rightElement
             ),
-            deferredEdits
+            deferredLeftEdits, deferredRightEdits
           )
 
         case (
@@ -672,7 +690,7 @@ object merge extends StrictLogging:
               Seq(Contribution.Difference(leftElement), leftTail*),
               Seq(Contribution.Difference(rightElement), rightTail*)
             ) => // Insertion conflict.
-          require(deferredEdits.isEmpty)
+          require(deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty)
           logger.debug(
             s"Conflict between left insertion of $leftElement and right insertion of $rightElement."
           )
@@ -682,7 +700,7 @@ object merge extends StrictLogging:
               leftInsertedElement = leftElement,
               rightInsertedElement = rightElement
             ),
-            deferredEdits
+            deferredLeftEdits, deferredRightEdits
           )
 
         case (
@@ -696,14 +714,14 @@ object merge extends StrictLogging:
               Seq(Contribution.Difference(leftElement), leftTail*),
               _
             ) => // Left insertion.
-          require(deferredEdits.isEmpty)
+          require(deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty)
           logger.debug(s"Left insertion of $leftElement.")
           mergeBetweenRunsOfCommonElements(base, leftTail, right)(
             mergeAlgebra.leftInsertion(
               partialResult,
               insertedElement = leftElement
             ),
-            deferredEdits
+            deferredLeftEdits, deferredRightEdits
           )
 
         case (
@@ -717,18 +735,18 @@ object merge extends StrictLogging:
               _,
               Seq(Contribution.Difference(rightElement), rightTail*)
             ) => // Right insertion.
-          require(deferredEdits.isEmpty)
+          require(deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty)
           logger.debug(s"Right insertion of $rightElement.")
           mergeBetweenRunsOfCommonElements(base, left, rightTail)(
             mergeAlgebra.rightInsertion(
               partialResult,
               insertedElement = rightElement
             ),
-            deferredEdits
+            deferredLeftEdits, deferredRightEdits
           )
 
         case (Seq(), Seq(), Seq()) => // Terminating case!
-          require(deferredEdits.isEmpty)
+          require(deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty)
           logger.debug(s"Merge yielded:\n${pprint(partialResult)}")
           partialResult
       end match
@@ -744,7 +762,7 @@ object merge extends StrictLogging:
         longestCommonSubsequence.base,
         longestCommonSubsequence.left,
         longestCommonSubsequence.right
-      )(partialResult = mergeAlgebra.empty, deferredEdits = IndexedSeq.empty)
+      )(partialResult = mergeAlgebra.empty, deferredLeftEdits = IndexedSeq.empty, deferredRightEdits = IndexedSeq.empty)
     )
   end of
 
@@ -808,12 +826,11 @@ object merge extends StrictLogging:
         editedElement: Element,
         editElement: Element
     ): Result[Element]
-    // TODO: generalise for coalesced edits on both sides...
     def leftEditConflictingWithRightEdit(
         result: Result[Element],
         editedElement: Element,
-        leftEditElement: Element,
-        rightEditElement: Element
+        leftEditElements: IndexedSeq[Element],
+        rightEditElements: IndexedSeq[Element]
     ): Result[Element]
     def leftEditConflictingWithRightDeletion(
         result: Result[Element],

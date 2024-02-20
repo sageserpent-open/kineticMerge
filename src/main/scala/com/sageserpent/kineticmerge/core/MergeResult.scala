@@ -136,19 +136,19 @@ object MergeResult:
       override def leftEditConflictingWithRightEdit(
           result: MergeResult[Element],
           editedElement: Element,
-          leftEditElement: Element,
-          rightEditElement: Element
+          leftEditElements: IndexedSeq[Element],
+          rightEditElements: IndexedSeq[Element]
       ): MergeResult[Element] =
         result match
           case FullyMerged(elements) =>
             MergedWithConflicts(
-              elements :+ leftEditElement,
-              elements :+ rightEditElement
+              elements ++ leftEditElements,
+              elements ++ rightEditElements
             )
           case MergedWithConflicts(leftElements, rightElements) =>
             MergedWithConflicts(
-              leftElements :+ leftEditElement,
-              rightElements :+ rightEditElement
+              leftElements ++ leftEditElements,
+              rightElements ++ rightEditElements
             )
 
       override def leftEditConflictingWithRightDeletion(
