@@ -766,6 +766,9 @@ object merge extends StrictLogging:
         result: Result[Element],
         insertedElement: Element
     ): Result[Element]
+    // NOTE: for now, keep this analogous to left-, right- and
+    // coincident-insertions; don't coalesce pure insertion conflicts, and don't
+    // coalesce following left-, right- and coincident-insertions.
     def leftInsertionConflictingWithRightInsertion(
         result: Result[Element],
         leftInsertedElement: Element,

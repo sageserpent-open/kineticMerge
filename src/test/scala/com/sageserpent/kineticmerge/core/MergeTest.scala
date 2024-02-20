@@ -663,11 +663,12 @@ class MergeTest:
       i -> bfi
     )
 
-    // NOTE: we expect a clean merge of `f` after the conflict.
+    // NOTE: we expect a clean left-insertion of `e` followed by a merge of `f`
+    // after the conflict.
     val expectedMerge =
       MergedWithConflicts(
         leftElements = Vector(c, d, e, f),
-        rightElements = Vector(c, h, f)
+        rightElements = Vector(c, h, e, f)
       )
 
     val Right(result) =
@@ -742,7 +743,7 @@ class MergeTest:
       e -> ace
     )
 
-    // NOTE: we expect a clean merge of `d` after the initial conflict.
+    // NOTE: we expect a clean merge of `c` after the initial conflict.
     val expectedMerge =
       MergedWithConflicts(
         leftElements = Vector(b, c),
@@ -756,6 +757,45 @@ class MergeTest:
 
     assert(result == expectedMerge)
   end insertionConflict
+
+  @Test
+  def insertionConflictFollowedByAnotherInsertionConflict(): Unit =
+    val a    = 1
+    val base = Vector(a)
+
+    val b    = 2
+    val c    = 3
+    val d    = 4
+    val left = Vector(b, c, d)
+
+    val e     = 5
+    val f     = 6
+    val g     = 7
+    val right = Vector(e, f, g)
+
+    val adg =
+      Match.AllSides(baseElement = a, leftElement = d, rightElement = g)
+    val matchesByElement: Map[Element, Match[Element]] = Map(
+      a -> adg,
+      d -> adg,
+      g -> adg
+    )
+
+    // NOTE: we expect a clean merge of `d` after the two separate insertion
+    // conflicts.
+    val expectedMerge =
+      MergedWithConflicts(
+        leftElements = Vector(b, c, d),
+        rightElements = Vector(e, f, d)
+      )
+
+    val Right(result) =
+      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+        equivalent(matchesByElement)
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end insertionConflictFollowedByAnotherInsertionConflict
 
   @Test
   def editConflictFollowedByCoincidentInsertion(): Unit =
