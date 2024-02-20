@@ -437,8 +437,62 @@ object merge extends StrictLogging:
               Seq(Contribution.Difference(leftElement), leftTail*),
               Seq(Contribution.Difference(rightElement), rightTail*)
             ) => // Conflict, multiple possibilities.
-          baseTail match
-            case Seq(Contribution.Difference(followingBaseElement), _*) =>
+          (baseTail, leftTail, rightTail) match
+            case (
+                  Seq(Contribution.Difference(_), _*),
+                  Seq(Contribution.Difference(_), _*),
+                  Seq(Contribution.Difference(_), _*)
+                ) =>
+              // Edit conflict with another pending edit conflict.
+              logger.debug(
+                s"Coalescing edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right with following edit conflict."
+              )
+              mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
+                partialResult,
+                deferredEdited = deferredEdited :+ editedBaseElement,
+                deferredLeftEdits = deferredLeftEdits :+ leftElement,
+                deferredRightEdits = deferredRightEdits :+ rightElement
+              )
+
+            case (
+                  Seq(Contribution.Difference(_), _*),
+                  Seq(Contribution.Difference(_), _*),
+                  _
+                ) =>
+              // Edit conflict with a pending left edit versus right deletion
+              // conflict.
+              logger.debug(
+                s"Coalescing edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right with following left edit versus right deletion conflict."
+              )
+              mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
+                partialResult,
+                deferredEdited = deferredEdited :+ editedBaseElement,
+                deferredLeftEdits = deferredLeftEdits :+ leftElement,
+                deferredRightEdits = deferredRightEdits
+              )
+
+            case (
+                  Seq(Contribution.Difference(_), _*),
+                  _,
+                  Seq(Contribution.Difference(_), _*)
+                ) =>
+              // Edit conflict with a pending right edit versus left deletion
+              // conflict.
+              logger.debug(
+                s"Coalescing edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right with following right edit versus left deletion conflict."
+              )
+              mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
+                partialResult,
+                deferredEdited = deferredEdited :+ editedBaseElement,
+                deferredLeftEdits = deferredLeftEdits,
+                deferredRightEdits = deferredRightEdits :+ rightElement
+              )
+
+            case (
+                  Seq(Contribution.Difference(followingBaseElement), _*),
+                  _,
+                  _
+                ) =>
               // If the following element in the base would also be deleted on
               // both sides, coalesce into a single coincident edit conflict.
               logger.debug(
@@ -451,9 +505,13 @@ object merge extends StrictLogging:
                 deferredRightEdits
               )
 
-            case Seq(
-                  Contribution.CommonToBaseAndLeftOnly(_),
-                  _*
+            case (
+                  Seq(
+                    Contribution.CommonToBaseAndLeftOnly(_),
+                    _*
+                  ),
+                  _,
+                  _
                 ) => // Left edit / right deletion conflict with pending right edit.
               logger.debug(
                 s"Conflict between right deletion of $editedBaseElement and its edit on the left into $leftElement with following right edit."
@@ -470,9 +528,13 @@ object merge extends StrictLogging:
                 deferredRightEdits = Vector.empty
               )
 
-            case Seq(
-                  Contribution.CommonToBaseAndRightOnly(_),
-                  _*
+            case (
+                  Seq(
+                    Contribution.CommonToBaseAndRightOnly(_),
+                    _*
+                  ),
+                  _,
+                  _
                 ) => // Right edit / left deletion conflict with pending left edit.
               logger.debug(
                 s"Conflict between left deletion of $editedBaseElement and its edit on the right into $rightElement with following left edit."
