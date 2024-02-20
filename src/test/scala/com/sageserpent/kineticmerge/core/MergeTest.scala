@@ -663,12 +663,11 @@ class MergeTest:
       i -> bfi
     )
 
-    // NOTE: we expect a clean left-insertion of `e` followed by a merge of `f`
-    // after the conflict.
+    // NOTE: we expect a clean merge of `f` after the conflict.
     val expectedMerge =
       MergedWithConflicts(
         leftElements = Vector(c, d, e, f),
-        rightElements = Vector(c, h, e, f)
+        rightElements = Vector(c, h, f)
       )
 
     val Right(result) =

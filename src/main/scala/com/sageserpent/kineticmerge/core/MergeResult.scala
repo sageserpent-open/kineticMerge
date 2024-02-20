@@ -59,23 +59,6 @@ object MergeResult:
               rightElements :+ insertedElement
             )
 
-      override def leftInsertionConflictingWithRightInsertion(
-          result: MergeResult[Element],
-          leftInsertedElement: Element,
-          rightInsertedElement: Element
-      ): MergeResult[Element] =
-        result match
-          case FullyMerged(elements) =>
-            MergedWithConflicts(
-              elements :+ leftInsertedElement,
-              elements :+ rightInsertedElement
-            )
-          case MergedWithConflicts(leftElements, rightElements) =>
-            MergedWithConflicts(
-              leftElements :+ leftInsertedElement,
-              rightElements :+ rightInsertedElement
-            )
-
       override def leftDeletion(
           result: MergeResult[Element],
           deletedElement: Element
@@ -151,8 +134,6 @@ object MergeResult:
               rightElements ++ rightEditElements
             )
 end MergeResult
-
-// TODO: contracts! Can't have empty sequences in some places, shouldn't have edits equivalent or subsetting edited sequences. Perhaps we don't care?
 
 sealed trait MergeResult[Element]
 

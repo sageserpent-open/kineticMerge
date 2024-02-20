@@ -756,22 +756,58 @@ object merge extends StrictLogging:
               Seq(Contribution.Difference(leftElement), leftTail*),
               Seq(Contribution.Difference(rightElement), rightTail*)
             ) => // Insertion conflict.
-          require(
-            deferredEdited.isEmpty && deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty
-          )
-          logger.debug(
-            s"Conflict between left insertion of $leftElement and right insertion of $rightElement."
-          )
-          mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
-            mergeAlgebra.leftInsertionConflictingWithRightInsertion(
-              partialResult,
-              leftInsertedElement = leftElement,
-              rightInsertedElement = rightElement
-            ),
-            deferredEdited,
-            deferredLeftEdits,
-            deferredRightEdits
-          )
+          leftTail -> rightTail match
+            case (
+                  Seq(Contribution.Difference(_), _*),
+                  Seq(Contribution.Difference(_), _*)
+                ) =>
+              logger.debug(
+                s"Coalescing conflict between left insertion of $leftElement and right insertion of $rightElement with following left insertion and right insertion conflict."
+              )
+              mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
+                partialResult,
+                deferredEdited,
+                deferredLeftEdits = deferredLeftEdits :+ leftElement,
+                deferredRightEdits = deferredRightEdits :+ rightElement
+              )
+
+            case (Seq(Contribution.Difference(_), _*), _) =>
+              logger.debug(
+                s"Coalescing conflict between left insertion of $leftElement and right insertion of $rightElement with following left insertion."
+              )
+              mergeBetweenRunsOfCommonElements(base, leftTail, right)(
+                partialResult,
+                deferredEdited,
+                deferredLeftEdits = deferredLeftEdits :+ leftElement,
+                deferredRightEdits = deferredRightEdits
+              )
+
+            case (_, Seq(Contribution.Difference(_), _*)) =>
+              logger.debug(
+                s"Coalescing conflict between left insertion of $leftElement and right insertion of $rightElement with following right insertion."
+              )
+              mergeBetweenRunsOfCommonElements(base, left, rightTail)(
+                partialResult,
+                deferredEdited,
+                deferredLeftEdits = deferredLeftEdits,
+                deferredRightEdits = deferredRightEdits :+ rightElement
+              )
+
+            case _ =>
+              logger.debug(
+                s"Conflict between left insertion of $leftElement and right insertion of $rightElement."
+              )
+              mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
+                mergeAlgebra.leftEditConflictingWithRightEdit(
+                  partialResult,
+                  editedElements = deferredEdited,
+                  leftEditElements = deferredLeftEdits :+ leftElement,
+                  rightEditElements = deferredRightEdits :+ rightElement
+                ),
+                deferredEdited = Vector.empty,
+                deferredLeftEdits = Vector.empty,
+                deferredRightEdits = Vector.empty
+              )
 
         case (
               Seq(
@@ -857,48 +893,49 @@ object merge extends StrictLogging:
         result: Result[Element],
         preservedElement: Element
     ): Result[Element]
+
     def leftInsertion(
         result: Result[Element],
         insertedElement: Element
     ): Result[Element]
+
     def rightInsertion(
         result: Result[Element],
         insertedElement: Element
     ): Result[Element]
+
     def coincidentInsertion(
         result: Result[Element],
         insertedElement: Element
     ): Result[Element]
-    // NOTE: for now, keep this analogous to left-, right- and
-    // coincident-insertions; don't coalesce pure insertion conflicts, and don't
-    // coalesce following left-, right- and coincident-insertions.
-    def leftInsertionConflictingWithRightInsertion(
-        result: Result[Element],
-        leftInsertedElement: Element,
-        rightInsertedElement: Element
-    ): Result[Element]
+
     def leftDeletion(
         result: Result[Element],
         deletedElement: Element
     ): Result[Element]
+
     def rightDeletion(
         result: Result[Element],
         deletedElement: Element
     ): Result[Element]
+
     def coincidentDeletion(
         result: Result[Element],
         deletedElement: Element
     ): Result[Element]
+
     def leftEdit(
         result: Result[Element],
         editedElement: Element,
         editElements: IndexedSeq[Element]
     ): Result[Element]
+
     def rightEdit(
         result: Result[Element],
         editedElement: Element,
         editElements: IndexedSeq[Element]
     ): Result[Element]
+
     // TODO: not sure if coincident edits need the same ceremony as left- and
     // right-edits. If they do, then maybe `MergeTest.Move` needs to add a
     // enumeration case to model them? For now, don't bother to coalesce
@@ -911,6 +948,12 @@ object merge extends StrictLogging:
         editedElement: Element,
         editElement: Element
     ): Result[Element]
+
+    // TODO: this could in theory model all of the other operations in the merge
+    // algebra, but for now we'll keep it distinct to make our intent clear.
+    // Even coincident deletions are treated separately as they aren't
+    // conflicts. It does mean we should probably have some contract checking to
+    // make sure a call really does represent a conflict.
     def leftEditConflictingWithRightEdit(
         result: Result[Element],
         editedElements: IndexedSeq[Element],
