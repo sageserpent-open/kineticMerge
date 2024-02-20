@@ -439,19 +439,14 @@ object merge extends StrictLogging:
             ) => // Conflict, multiple possibilities.
           baseTail match
             case Seq(Contribution.Difference(followingBaseElement), _*) =>
-              // If the following element in the base would also be edited,
-              // coalesce into a single coincident edit conflict.
+              // If the following element in the base would also be deleted on
+              // both sides, coalesce into a single coincident edit conflict.
               logger.debug(
                 s"Coalescing edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right with following coincident deletion of $followingBaseElement."
               )
-              // TODO: this feels hokey ... better to handle the edit conflict
-              // first and then do a clean coincident deletion?
               mergeBetweenRunsOfCommonElements(baseTail, left, right)(
-                mergeAlgebra.coincidentDeletion(
-                  partialResult,
-                  deletedElement = editedBaseElement
-                ),
-                deferredEdited,
+                partialResult,
+                deferredEdited = deferredEdited :+ editedBaseElement,
                 deferredLeftEdits,
                 deferredRightEdits
               )

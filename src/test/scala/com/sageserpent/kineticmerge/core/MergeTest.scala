@@ -824,7 +824,7 @@ class MergeTest:
       h -> beh
     )
 
-    // NOTE: we expect a clean merge of `d` and `g` after the initial edit
+    // NOTE: we expect a clean merge of `d` and `e` after the initial edit
     // conflict.
     val expectedMerge =
       MergedWithConflicts(
@@ -839,6 +839,45 @@ class MergeTest:
 
     assert(result == expectedMerge)
   end editConflictFollowedByCoincidentInsertion
+
+  @Test
+  def editConflictFollowedByCoincidentDeletion(): Unit =
+    val a    = 1
+    val b    = 2
+    val c    = 3
+    val base = Vector(a, b, c)
+
+    val d    = 4
+    val e    = 5
+    val left = Vector(d, e)
+
+    val f     = 6
+    val g     = 7
+    val right = Vector(f, g)
+
+    val ceg =
+      Match.AllSides(baseElement = c, leftElement = e, rightElement = g)
+    val matchesByElement: Map[Element, Match[Element]] = Map(
+      c -> ceg,
+      e -> ceg,
+      g -> ceg
+    )
+
+    // NOTE: we expect a clean merge of `e` after the initial edit
+    // conflict coalesces with the coincident deletion of `b`.
+    val expectedMerge =
+      MergedWithConflicts(
+        leftElements = Vector(d, e),
+        rightElements = Vector(f, e)
+      )
+
+    val Right(result) =
+      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+        equivalent(matchesByElement)
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end editConflictFollowedByCoincidentDeletion
 
   @TestFactory
   def fullMerge: DynamicTests =
