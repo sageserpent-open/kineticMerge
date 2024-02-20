@@ -135,7 +135,7 @@ object MergeResult:
 
       override def leftEditConflictingWithRightEdit(
           result: MergeResult[Element],
-          editedElement: Element,
+          editedElements: IndexedSeq[Element],
           leftEditElements: IndexedSeq[Element],
           rightEditElements: IndexedSeq[Element]
       ): MergeResult[Element] =
@@ -150,36 +150,9 @@ object MergeResult:
               leftElements ++ leftEditElements,
               rightElements ++ rightEditElements
             )
-
-      override def leftEditConflictingWithRightDeletion(
-          result: MergeResult[Element],
-          editedOrDeletedElement: Element,
-          editElements: IndexedSeq[Element]
-      ): MergeResult[Element] =
-        result match
-          case FullyMerged(elements) =>
-            MergedWithConflicts(
-              leftElements = elements ++ editElements,
-              rightElements = elements
-            )
-          case MergedWithConflicts(leftElements, rightElements) =>
-            MergedWithConflicts(leftElements ++ editElements, rightElements)
-
-      override def rightEditConflictingWithLeftDeletion(
-          result: MergeResult[Element],
-          editedOrDeletedElement: Element,
-          editElements: IndexedSeq[Element]
-      ): MergeResult[Element] =
-        result match
-          case FullyMerged(elements) =>
-            MergedWithConflicts(
-              leftElements = elements,
-              rightElements = elements ++ editElements
-            )
-          case MergedWithConflicts(leftElements, rightElements) =>
-            MergedWithConflicts(leftElements, rightElements ++ editElements)
-
 end MergeResult
+
+// TODO: contracts! Can't have empty sequences in some places, shouldn't have edits equivalent or subsetting edited sequences. Perhaps we don't care?
 
 sealed trait MergeResult[Element]
 
