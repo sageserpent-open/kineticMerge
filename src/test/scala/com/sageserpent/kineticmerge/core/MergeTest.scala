@@ -5,6 +5,8 @@ import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.MergeTest.*
+import com.sageserpent.kineticmerge.core.MergeTest.DelegatingMergeAlgebraWithContracts.State.{Conflict, NoConflict}
+import com.sageserpent.kineticmerge.core.MergeTest.DelegatingMergeAlgebraWithContracts.{AugmentedMergeResult, State}
 import com.sageserpent.kineticmerge.core.MergeTest.Move.*
 import monocle.syntax.all.*
 import org.junit.jupiter.api.{Test, TestFactory}
@@ -39,8 +41,10 @@ class MergeTest:
     // NOTE: we expect a clean merge of the edit of `a` into `c`.
     val expectedMerge = FullyMerged(elements = Vector(c))
 
-    val Right(result) =
-      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -67,8 +71,10 @@ class MergeTest:
     // insertion of `c`.
     val expectedMerge = FullyMerged(elements = Vector(d, c))
 
-    val Right(result) =
-      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -94,8 +100,10 @@ class MergeTest:
     // deletion of `a`.
     val expectedMerge = FullyMerged(elements = Vector(b))
 
-    val Right(result) =
-      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -123,8 +131,10 @@ class MergeTest:
     // of `a` into `d`.
     val expectedMerge = FullyMerged(elements = Vector(b, d))
 
-    val Right(result) =
-      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -151,8 +161,10 @@ class MergeTest:
     // by the edit of `b` into `d`
     val expectedMerge = FullyMerged(elements = Vector(d))
 
-    val Right(result) =
-      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -180,8 +192,10 @@ class MergeTest:
     // coincident insertion of `b` followed by insertion of `d`.
     val expectedMerge = FullyMerged(elements = Vector(b, d))
 
-    val Right(result) =
-      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -209,8 +223,10 @@ class MergeTest:
     // coincident deletion of `a` with a coincident insertion of `b`.
     val expectedMerge = FullyMerged(elements = Vector(c, b))
 
-    val Right(result) =
-      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -241,8 +257,10 @@ class MergeTest:
     // considered to be an edit of `a` rather than of `b`.
     val expectedMerge = FullyMerged(elements = Vector(e))
 
-    val Right(result) =
-      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -276,8 +294,10 @@ class MergeTest:
     // of `b`.
     val expectedMerge = FullyMerged(elements = Vector(f, e))
 
-    val Right(result) =
-      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -311,8 +331,10 @@ class MergeTest:
     // of `b`.
     val expectedMerge = FullyMerged(elements = Vector(f, d))
 
-    val Right(result) =
-      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -345,8 +367,10 @@ class MergeTest:
     // insertion of `d` and finally a merge of the edit of `b` into `g`.
     val expectedMerge = FullyMerged(elements = Vector(f, d, g))
 
-    val Right(result) =
-      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -374,8 +398,10 @@ class MergeTest:
     // an insertion of `d`.
     val expectedMerge = FullyMerged(elements = Vector(c, d))
 
-    val Right(result) =
-      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -405,8 +431,10 @@ class MergeTest:
     // an insertion of `e` followed by an insertion of `c`.
     val expectedMerge = FullyMerged(elements = Vector(d, e, c))
 
-    val Right(result) =
-      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -432,8 +460,10 @@ class MergeTest:
     // insertion of `c`.
     val expectedMerge = FullyMerged(elements = Vector(c))
 
-    val Right(result) =
-      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -462,8 +492,10 @@ class MergeTest:
     // deletion of `b`.
     val expectedMerge = FullyMerged(elements = Vector())
 
-    val Right(result) =
-      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -499,8 +531,10 @@ class MergeTest:
         rightElements = Vector(e, d)
       )
 
-    val Right(result) =
-      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -540,8 +574,10 @@ class MergeTest:
         rightElements = Vector(g, h, f)
       )
 
-    val Right(result) =
-      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -583,8 +619,10 @@ class MergeTest:
         rightElements = Vector(g, h, f)
       )
 
-    val Right(result) =
-      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -626,8 +664,10 @@ class MergeTest:
         rightElements = Vector(g, d, e, f)
       )
 
-    val Right(result) =
-      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -670,8 +710,10 @@ class MergeTest:
         rightElements = Vector(c, h, f)
       )
 
-    val Right(result) =
-      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -713,8 +755,10 @@ class MergeTest:
         rightElements = Vector(d, g)
       )
 
-    val Right(result) =
-      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -749,8 +793,10 @@ class MergeTest:
         rightElements = Vector(d, c)
       )
 
-    val Right(result) =
-      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -788,8 +834,10 @@ class MergeTest:
         rightElements = Vector(e, f, d)
       )
 
-    val Right(result) =
-      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -832,8 +880,10 @@ class MergeTest:
         rightElements = Vector(f, d, e)
       )
 
-    val Right(result) =
-      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
@@ -871,13 +921,49 @@ class MergeTest:
         rightElements = Vector(f, e)
       )
 
-    val Right(result) =
-      merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(base, left, right)(
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
         equivalent(matchesByElement)
       ): @unchecked
 
     assert(result == expectedMerge)
   end editConflictFollowedByCoincidentDeletion
+
+  @Test
+  def editConflictFollowedByALeftInsertionConflictingWithARightInsertion()
+      : Unit =
+    val a    = 1
+    val base = Vector(a)
+
+    val b    = 2
+    val c    = 3
+    val left = Vector(b, c)
+
+    val d     = 4
+    val e     = 5
+    val right = Vector(d, e)
+
+    val matchesByElement: Map[Element, Match[Element]] = Map.empty
+
+    // NOTE: we expect the initial edit conflict to coalesce with the following
+    // insertion conflict.
+    val expectedMerge =
+      MergedWithConflicts(
+        leftElements = Vector(b, c),
+        rightElements = Vector(d, e)
+      )
+
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
+        equivalent(matchesByElement)
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end editConflictFollowedByALeftInsertionConflictingWithARightInsertion
 
   @TestFactory
   def fullMerge: DynamicTests =
@@ -887,8 +973,10 @@ class MergeTest:
         println("*************")
         pprintln(testCase)
 
-        val Right(result) =
-          merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(
+        val Right(AugmentedMergeResult(_, result)) =
+          merge.of(mergeAlgebra =
+            DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+          )(
             testCase.base,
             testCase.left,
             testCase.right
@@ -903,8 +991,10 @@ class MergeTest:
     possiblyConflictedMergeTestCases
       .withLimit(4000)
       .dynamicTests: testCase =>
-        val Right(result) =
-          merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(
+        val Right(AugmentedMergeResult(_, result)) =
+          merge.of(mergeAlgebra =
+            DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+          )(
             testCase.base,
             testCase.left,
             testCase.right
@@ -1581,10 +1671,165 @@ object MergeTest:
     case CoincidentDeletion
   end Move
 
+  class DelegatingMergeAlgebraWithContracts(
+      coreMergeAlgebra: merge.MergeAlgebra[MergeResult, Element]
+  ) extends merge.MergeAlgebra[AugmentedMergeResult, Element]:
+    override def empty: AugmentedMergeResult[Element] =
+      AugmentedMergeResult(state = NoConflict, coreMergeAlgebra.empty)
+
+    override def preservation(
+        result: AugmentedMergeResult[Element],
+        preservedElement: Element
+    ): AugmentedMergeResult[Element] =
+      AugmentedMergeResult(
+        state = State.NoConflict,
+        coreMergeResult = coreMergeAlgebra.preservation(
+          result.coreMergeResult,
+          preservedElement
+        )
+      )
+
+    override def leftInsertion(
+        result: AugmentedMergeResult[Element],
+        insertedElement: Element
+    ): AugmentedMergeResult[Element] = AugmentedMergeResult(
+      state = State.NoConflict,
+      coreMergeResult =
+        coreMergeAlgebra.leftInsertion(result.coreMergeResult, insertedElement)
+    )
+
+    override def rightInsertion(
+        result: AugmentedMergeResult[Element],
+        insertedElement: Element
+    ): AugmentedMergeResult[Element] = AugmentedMergeResult(
+      state = State.NoConflict,
+      coreMergeResult =
+        coreMergeAlgebra.rightInsertion(result.coreMergeResult, insertedElement)
+    )
+
+    override def coincidentInsertion(
+        result: AugmentedMergeResult[Element],
+        insertedElement: Element
+    ): AugmentedMergeResult[Element] = AugmentedMergeResult(
+      state = State.NoConflict,
+      coreMergeResult = coreMergeAlgebra.coincidentInsertion(
+        result.coreMergeResult,
+        insertedElement
+      )
+    )
+
+    override def leftDeletion(
+        result: AugmentedMergeResult[Element],
+        deletedElement: Element
+    ): AugmentedMergeResult[Element] = AugmentedMergeResult(
+      state = State.NoConflict,
+      coreMergeResult =
+        coreMergeAlgebra.leftDeletion(result.coreMergeResult, deletedElement)
+    )
+
+    override def rightDeletion(
+        result: AugmentedMergeResult[Element],
+        deletedElement: Element
+    ): AugmentedMergeResult[Element] = AugmentedMergeResult(
+      state = State.NoConflict,
+      coreMergeResult =
+        coreMergeAlgebra.rightDeletion(result.coreMergeResult, deletedElement)
+    )
+
+    override def coincidentDeletion(
+        result: AugmentedMergeResult[Element],
+        deletedElement: Element
+    ): AugmentedMergeResult[Element] = AugmentedMergeResult(
+      state = State.NoConflict,
+      coreMergeResult = coreMergeAlgebra.coincidentDeletion(
+        result.coreMergeResult,
+        deletedElement
+      )
+    )
+
+    override def leftEdit(
+        result: AugmentedMergeResult[Element],
+        editedElement: Element,
+        editElements: IndexedSeq[Element]
+    ): AugmentedMergeResult[Element] =
+      AugmentedMergeResult(
+        state = State.NoConflict,
+        coreMergeResult = coreMergeAlgebra.leftEdit(
+          result.coreMergeResult,
+          editedElement,
+          editElements
+        )
+      )
+    end leftEdit
+
+    override def rightEdit(
+        result: AugmentedMergeResult[Element],
+        editedElement: Element,
+        editElements: IndexedSeq[Element]
+    ): AugmentedMergeResult[Element] = AugmentedMergeResult(
+      state = State.NoConflict,
+      coreMergeResult = coreMergeAlgebra.rightEdit(
+        result.coreMergeResult,
+        editedElement,
+        editElements
+      )
+    )
+
+    override def coincidentEdit(
+        result: AugmentedMergeResult[Element],
+        editedElement: Element,
+        editElement: Element
+    ): AugmentedMergeResult[Element] = AugmentedMergeResult(
+      state = State.NoConflict,
+      coreMergeResult = coreMergeAlgebra.coincidentEdit(
+        result.coreMergeResult,
+        editedElement,
+        editElement
+      )
+    )
+
+    override def leftEditConflictingWithRightEdit(
+        result: AugmentedMergeResult[Element],
+        editedElements: IndexedSeq[Element],
+        leftEditElements: IndexedSeq[Element],
+        rightEditElements: IndexedSeq[Element]
+    ): AugmentedMergeResult[Element] =
+      // Should not follow a conflict directly with another conflict - they
+      // should be coalesced instead.
+      require(State.Conflict != result.state)
+
+      AugmentedMergeResult(
+        state = State.Conflict,
+        coreMergeResult = coreMergeAlgebra.leftEditConflictingWithRightEdit(
+          result.coreMergeResult,
+          editedElements,
+          leftEditElements,
+          rightEditElements
+        )
+      )
+    end leftEditConflictingWithRightEdit
+  end DelegatingMergeAlgebraWithContracts
+
+  object DelegatingMergeAlgebraWithContracts:
+    // Leave this as an enumeration rather than as a Boolean as left- and
+    // right-edits might need to be checked later, too.
+    enum State:
+      case NoConflict
+      case Conflict
+    end State
+
+    case class AugmentedMergeResult[Element](
+        state: State,
+        coreMergeResult: MergeResult[Element]
+    ) extends MergeResult[Element]
+
+  end DelegatingMergeAlgebraWithContracts
+
   object MoveConstraints:
     def empty(allowConflicts: Boolean): MoveConstraints = MoveConstraints(
       allowConflicts = allowConflicts,
       predecessorMove = Preservation
     )
   end MoveConstraints
+
 end MergeTest

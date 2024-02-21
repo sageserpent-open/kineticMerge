@@ -135,7 +135,7 @@ object MergeResult:
             )
 end MergeResult
 
-sealed trait MergeResult[Element]
+trait MergeResult[Element]
 
 case class FullyMerged[Element](elements: IndexedSeq[Element])
     extends MergeResult[Element]
