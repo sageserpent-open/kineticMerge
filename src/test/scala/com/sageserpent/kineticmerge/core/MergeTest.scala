@@ -679,7 +679,7 @@ class MergeTest:
   end leftInsertionWithFollowingLeftInsertionVersusRightInsertionConflict
 
   @Test
-  def leftEditWithFollowingLeftInsertionVersusRightDeletionConflict(): Unit =
+  def leftEditVersusRightDeletionConflictWithFollowingLeftInsertion(): Unit =
     val a    = 1
     val b    = 2
     val c    = 3
@@ -706,7 +706,7 @@ class MergeTest:
       i -> cgi
     )
 
-    // NOTE: we expect a clean merge of `g` after the conflict.
+    // NOTE: we expect a clean merge of `g` after the coalesced conflict.
     val expectedMerge =
       MergedWithConflicts(
         leftElements = Vector(d, e, f, g),
@@ -719,7 +719,7 @@ class MergeTest:
       ): @unchecked
 
     assert(result == expectedMerge)
-  end leftEditWithFollowingLeftInsertionVersusRightDeletionConflict
+  end leftEditVersusRightDeletionConflictWithFollowingLeftInsertion
 
   @Test
   def insertionConflict(): Unit =
