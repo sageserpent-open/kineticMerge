@@ -489,6 +489,23 @@ object merge extends StrictLogging:
               )
 
             case (
+                  _,
+                  Seq(Contribution.Difference(_), _*),
+                  Seq(Contribution.Difference(_), _*)
+                ) =>
+              // Edit conflict with a pending left insertion versus right
+              // insertion conflict.
+              logger.debug(
+                s"Coalescing edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right with following left insertion versus right insertion conflict."
+              )
+              mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
+                partialResult,
+                deferredEdited = deferredEdited,
+                deferredLeftEdits = deferredLeftEdits :+ leftElement,
+                deferredRightEdits = deferredRightEdits :+ rightElement
+              )
+
+            case (
                   Seq(Contribution.Difference(followingBaseElement), _*),
                   _,
                   _
