@@ -442,6 +442,43 @@ class MergeTest:
   end editOnOneSideFollowedByAnInsertionOnTheSameSideThenAnInsertionOnTheOppositeSide
 
   @Test
+  def editOnOneSideFollowedByAnInsertionOnTheSameSideThenACoincidentEdit()
+      : Unit =
+    val a    = 1
+    val b    = 2
+    val base = Vector(a, b)
+
+    val c    = 3
+    val d    = 4
+    val e    = 5
+    val left = Vector(c, d, e)
+
+    val f     = 6
+    val g     = 7
+    val right = Vector(f, g)
+
+    val af = Match.BaseAndRight(baseElement = a, rightElement = f)
+    val eg = Match.LeftAndRight(leftElement = e, rightElement = g)
+
+    val matchesByElement: Map[Element, Match[Element]] =
+      Map(a -> af, f -> af, e -> eg, g -> eg)
+
+    // NOTE: we expect a clean merge of the left edit of `a` into `c` coalesced
+    // with the left insertion of `d` and finally a coincident edit of `b` into
+    // `e`.
+    val expectedMerge = FullyMerged(elements = Vector(c, d, e))
+
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
+        equivalent(matchesByElement)
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end editOnOneSideFollowedByAnInsertionOnTheSameSideThenACoincidentEdit
+
+  @Test
   def deletionFollowedByAnInsertionOnTheOtherSide(): Unit =
     val a    = 1
     val base = Vector(a)
@@ -1692,20 +1729,26 @@ object MergeTest:
     override def leftInsertion(
         result: AugmentedMergeResult[Element],
         insertedElement: Element
-    ): AugmentedMergeResult[Element] = AugmentedMergeResult(
-      state = State.NoConflict,
-      coreMergeResult =
+    ): AugmentedMergeResult[Element] =
+      require(
+        State.NoConflict == result.state || State.RightEdit == result.state
+      )
+      result.copy(coreMergeResult =
         coreMergeAlgebra.leftInsertion(result.coreMergeResult, insertedElement)
-    )
+      )
+    end leftInsertion
 
     override def rightInsertion(
         result: AugmentedMergeResult[Element],
         insertedElement: Element
-    ): AugmentedMergeResult[Element] = AugmentedMergeResult(
-      state = State.NoConflict,
-      coreMergeResult =
+    ): AugmentedMergeResult[Element] =
+      require(
+        State.NoConflict == result.state || State.LeftEdit == result.state
+      )
+      result.copy(coreMergeResult =
         coreMergeAlgebra.rightInsertion(result.coreMergeResult, insertedElement)
-    )
+      )
+    end rightInsertion
 
     override def coincidentInsertion(
         result: AugmentedMergeResult[Element],
@@ -1753,7 +1796,7 @@ object MergeTest:
         editElements: IndexedSeq[Element]
     ): AugmentedMergeResult[Element] =
       AugmentedMergeResult(
-        state = State.NoConflict,
+        state = State.LeftEdit,
         coreMergeResult = coreMergeAlgebra.leftEdit(
           result.coreMergeResult,
           editedElement,
@@ -1767,7 +1810,7 @@ object MergeTest:
         editedElement: Element,
         editElements: IndexedSeq[Element]
     ): AugmentedMergeResult[Element] = AugmentedMergeResult(
-      state = State.NoConflict,
+      state = State.RightEdit,
       coreMergeResult = coreMergeAlgebra.rightEdit(
         result.coreMergeResult,
         editedElement,
@@ -1816,6 +1859,8 @@ object MergeTest:
     enum State:
       case NoConflict
       case Conflict
+      case LeftEdit
+      case RightEdit
     end State
 
     case class AugmentedMergeResult[Element](
