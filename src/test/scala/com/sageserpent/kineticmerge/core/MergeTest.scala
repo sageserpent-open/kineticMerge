@@ -9,7 +9,7 @@ import com.sageserpent.kineticmerge.core.MergeTest.DelegatingMergeAlgebraWithCon
 import com.sageserpent.kineticmerge.core.MergeTest.DelegatingMergeAlgebraWithContracts.{AugmentedMergeResult, State}
 import com.sageserpent.kineticmerge.core.MergeTest.Move.*
 import monocle.syntax.all.*
-import org.junit.jupiter.api.{Test, TestFactory}
+import org.junit.jupiter.api.{Assertions, Test, TestFactory}
 import pprint.*
 
 class MergeTest:
@@ -1806,9 +1806,10 @@ object MergeTest:
         result: AugmentedMergeResult[Element],
         insertedElement: Element
     ): AugmentedMergeResult[Element] =
-      require(
-        State.NoConflict == result.state || State.RightEdit == result.state
-      )
+      result.state match
+        case State.NoConflict | State.RightEdit | State.CoincidentEdit =>
+        case _ => Assertions.fail()
+      end match
       result.copy(coreMergeResult =
         coreMergeAlgebra.leftInsertion(result.coreMergeResult, insertedElement)
       )
@@ -1818,9 +1819,10 @@ object MergeTest:
         result: AugmentedMergeResult[Element],
         insertedElement: Element
     ): AugmentedMergeResult[Element] =
-      require(
-        State.NoConflict == result.state || State.LeftEdit == result.state
-      )
+      result.state match
+        case State.NoConflict | State.LeftEdit | State.CoincidentEdit =>
+        case _ => Assertions.fail()
+      end match
       result.copy(coreMergeResult =
         coreMergeAlgebra.rightInsertion(result.coreMergeResult, insertedElement)
       )
@@ -1829,13 +1831,20 @@ object MergeTest:
     override def coincidentInsertion(
         result: AugmentedMergeResult[Element],
         insertedElement: Element
-    ): AugmentedMergeResult[Element] = AugmentedMergeResult(
-      state = State.NoConflict,
-      coreMergeResult = coreMergeAlgebra.coincidentInsertion(
-        result.coreMergeResult,
-        insertedElement
+    ): AugmentedMergeResult[Element] =
+      result.state match
+        case State.Conflict | State.NoConflict | State.LeftEdit |
+            State.RightEdit =>
+        case _ => Assertions.fail()
+      end match
+      AugmentedMergeResult(
+        state = State.NoConflict,
+        coreMergeResult = coreMergeAlgebra.coincidentInsertion(
+          result.coreMergeResult,
+          insertedElement
+        )
       )
-    )
+    end coincidentInsertion
 
     override def leftDeletion(
         result: AugmentedMergeResult[Element],
@@ -1899,7 +1908,7 @@ object MergeTest:
         editedElement: Element,
         editElements: IndexedSeq[Element]
     ): AugmentedMergeResult[Element] = AugmentedMergeResult(
-      state = State.NoConflict,
+      state = State.CoincidentEdit,
       coreMergeResult = coreMergeAlgebra.coincidentEdit(
         result.coreMergeResult,
         editedElement,
@@ -1937,6 +1946,7 @@ object MergeTest:
       case Conflict
       case LeftEdit
       case RightEdit
+      case CoincidentEdit
     end State
 
     case class AugmentedMergeResult[Element](
