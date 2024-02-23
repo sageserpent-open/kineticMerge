@@ -105,15 +105,15 @@ object MergeResult:
       override def coincidentEdit(
           result: MergeResult[Element],
           editedElement: Element,
-          editElement: Element
+          editElements: IndexedSeq[Element]
       ): MergeResult[Element] =
         result match
           case FullyMerged(elements) =>
-            FullyMerged(elements :+ editElement)
+            FullyMerged(elements ++ editElements)
           case MergedWithConflicts(leftElements, rightElements) =>
             MergedWithConflicts(
-              leftElements :+ editElement,
-              rightElements :+ editElement
+              leftElements ++ editElements,
+              rightElements ++ editElements
             )
 
       override def leftEditConflictingWithRightEdit(

@@ -179,7 +179,8 @@ object merge extends StrictLogging:
                 mergeAlgebra.coincidentEdit(
                   partialResult,
                   editedElement = baseElement,
-                  editElement = leftElement
+                  // TODO: accumulate the edited elements...
+                  editElements = IndexedSeq(leftElement)
                 ),
                 deferredEdited,
                 deferredLeftEdits,
@@ -1091,17 +1092,10 @@ object merge extends StrictLogging:
         editElements: IndexedSeq[Element]
     ): Result[Element]
 
-    // TODO: not sure if coincident edits need the same ceremony as left- and
-    // right-edits. If they do, then maybe `MergeTest.Move` needs to add a
-    // enumeration case to model them? For now, don't bother to coalesce
-    // coincident insertions with coincident edits in the manner of left- and
-    // right-insertions and corresponding edits. Leave this for now, but either
-    // go forwards with the full experience or maybe remove coincident edits
-    // completely.
     def coincidentEdit(
         result: Result[Element],
         editedElement: Element,
-        editElement: Element
+        editElements: IndexedSeq[Element]
     ): Result[Element]
 
     // TODO: this could in theory model all of the other operations in the merge
