@@ -153,40 +153,20 @@ object merge extends StrictLogging:
           require(
             deferredEdited.isEmpty && deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty
           )
-          baseTail match
-            case Seq(Contribution.Difference(_), _*) =>
-              // If the following element in the base would also be
-              // coincidentally deleted, defer the coincident edit and treat
-              // this as a coincident deletion.
-              logger.debug(
-                s"Coincident deletion of $baseElement with following coincident edit."
-              )
-              mergeBetweenRunsOfCommonElements(baseTail, left, right)(
-                mergeAlgebra.coincidentDeletion(
-                  partialResult,
-                  deletedElement = baseElement
-                ),
-                deferredEdited,
-                deferredLeftEdits,
-                deferredRightEdits
-              )
-
-            case _ =>
-              logger.debug(
-                s"Coincident edit of $baseElement into $leftElement."
-              )
-              mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                mergeAlgebra.coincidentEdit(
-                  partialResult,
-                  editedElement = baseElement,
-                  // TODO: accumulate the edited elements...
-                  editElements = IndexedSeq(leftElement)
-                ),
-                deferredEdited,
-                deferredLeftEdits,
-                deferredRightEdits
-              )
-          end match
+          logger.debug(
+            s"Coincident edit of $baseElement into $leftElement."
+          )
+          mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
+            mergeAlgebra.coincidentEdit(
+              partialResult,
+              editedElement = baseElement,
+              // TODO: accumulate the edited elements...
+              editElements = IndexedSeq(leftElement)
+            ),
+            deferredEdited,
+            deferredLeftEdits,
+            deferredRightEdits
+          )
 
         case (
               _,
