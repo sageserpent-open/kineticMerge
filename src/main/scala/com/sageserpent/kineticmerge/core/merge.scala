@@ -76,6 +76,36 @@ object merge extends StrictLogging:
   )(
       equality: Eq[Element]
   ): Either[Divergence.type, Result[Element]] =
+    def rightEditNotMarooned(leftTail: Seq[Contribution[Element]]) =
+      // Guard against a coincident insertion prior to the left side
+      // of a pending right edit or deletion; that would maroon the
+      // latter, so we *would* coalesce the following element on the
+      // right.
+      leftTail
+        .takeWhile {
+          case Contribution.CommonToBaseAndLeftOnly(_) => false
+          case _                                       => true
+        }
+        .forall {
+          case Contribution.CommonToLeftAndRightOnly(_) => false
+          case _                                        => true
+        }
+
+    def leftEditNotMarooned(rightTail: Seq[Contribution[Element]]) =
+      // Guard against a coincident insertion prior to the right side
+      // of a pending left edit or deletion; that would maroon the
+      // latter, so we *would* coalesce the following element on the
+      // left.
+      rightTail
+        .takeWhile {
+          case Contribution.CommonToBaseAndRightOnly(_) => false
+          case _                                        => true
+        }
+        .forall {
+          case Contribution.CommonToLeftAndRightOnly(_) => false
+          case _                                        => true
+        }
+
     @tailrec
     def mergeBetweenRunsOfCommonElements(
         base: Seq[Contribution[Element]],
@@ -202,20 +232,7 @@ object merge extends StrictLogging:
                     _*
                   ),
                   _
-                )
-                // Guard against a coincident insertion prior to the right side
-                // of a pending left edit or deletion; that would maroon the
-                // latter, so we *would* coalesce the following element on the
-                // left.
-                if rightTail
-                  .takeWhile {
-                    case Contribution.CommonToBaseAndRightOnly(_) => false
-                    case _                                        => true
-                  }
-                  .forall {
-                    case Contribution.CommonToLeftAndRightOnly(_) => false
-                    case _                                        => true
-                  } =>
+                ) if leftEditNotMarooned(rightTail) =>
               // There is a pending coincident deletion; handle this left edit
               // in isolation without coalescing any following left insertion.
               logger.debug(
@@ -235,20 +252,7 @@ object merge extends StrictLogging:
             case (
                   Seq(Contribution.CommonToBaseAndRightOnly(_), _*),
                   Seq(Contribution.Difference(_), _*)
-                )
-                // Guard against a coincident insertion prior to the right side
-                // of a pending left edit or deletion; that would maroon the
-                // latter, so we *would* coalesce the following element on the
-                // left.
-                if rightTail
-                  .takeWhile {
-                    case Contribution.CommonToBaseAndRightOnly(_) => false
-                    case _                                        => true
-                  }
-                  .forall {
-                    case Contribution.CommonToLeftAndRightOnly(_) => false
-                    case _                                        => true
-                  } =>
+                ) if leftEditNotMarooned(rightTail) =>
               // There is another pending left edit, but *don't* coalesce the
               // following element on the left; that then respects any
               // insertions that may be lurking on the right prior to the
@@ -339,20 +343,7 @@ object merge extends StrictLogging:
                     _*
                   ),
                   _
-                )
-                // Guard against a coincident insertion prior to the left side
-                // of a pending right edit or deletion; that would maroon the
-                // latter, so we *would* coalesce the following element on the
-                // right.
-                if leftTail
-                  .takeWhile {
-                    case Contribution.CommonToBaseAndLeftOnly(_) => false
-                    case _                                       => true
-                  }
-                  .forall {
-                    case Contribution.CommonToLeftAndRightOnly(_) => false
-                    case _                                        => true
-                  } =>
+                ) if rightEditNotMarooned(leftTail) =>
               // There is a pending coincident deletion; handle this right edit
               // in isolation without coalescing any following right insertion.
               logger.debug(
@@ -372,20 +363,7 @@ object merge extends StrictLogging:
             case (
                   Seq(Contribution.CommonToBaseAndLeftOnly(_), _*),
                   Seq(Contribution.Difference(_), _*)
-                )
-                // Guard against a coincident insertion prior to the left side
-                // of a pending right edit or deletion; that would maroon the
-                // latter, so we *would* coalesce the following element on the
-                // right.
-                if leftTail
-                  .takeWhile {
-                    case Contribution.CommonToBaseAndLeftOnly(_) => false
-                    case _                                       => true
-                  }
-                  .forall {
-                    case Contribution.CommonToLeftAndRightOnly(_) => false
-                    case _                                        => true
-                  } =>
+                ) if rightEditNotMarooned(leftTail) =>
               // There is another pending right edit, but *don't* coalesce the
               // following element on the right; that then respects any
               // insertions that may be lurking on the left prior to the pending
@@ -553,22 +531,32 @@ object merge extends StrictLogging:
                     Contribution.CommonToBaseAndLeftOnly(_),
                     _*
                   ),
+                  Seq(
+                    Contribution.Difference(followingLeftElement),
+                    _*
+                  ),
+                  _
+                ) if rightEditNotMarooned(leftTail) =>
+              // Left edit / right deletion conflict with pending left insertion
+              // and pending right edit.
+              logger.debug(
+                s"Coalescing conflict between right deletion of $editedBaseElement and its edit on the left into $leftElement, with following insertion of $followingLeftElement on the left."
+              )
+              mergeBetweenRunsOfCommonElements(base, leftTail, right)(
+                partialResult,
+                deferredEdited = deferredEdited,
+                deferredLeftEdits = deferredLeftEdits :+ leftElement,
+                deferredRightEdits = deferredRightEdits
+              )
+
+            case (
+                  Seq(
+                    Contribution.CommonToBaseAndLeftOnly(_),
+                    _*
+                  ),
                   _,
                   _
-                )
-                // Guard against a coincident insertion prior to the left side
-                // of a pending right edit or deletion; that would maroon the
-                // latter, so we *would* coalesce the following element on the
-                // right.
-                if leftTail
-                  .takeWhile {
-                    case Contribution.CommonToBaseAndLeftOnly(_) => false
-                    case _                                       => true
-                  }
-                  .forall {
-                    case Contribution.CommonToLeftAndRightOnly(_) => false
-                    case _                                        => true
-                  } =>
+                ) if rightEditNotMarooned(leftTail) =>
               // Left edit / right deletion conflict with pending right edit.
               logger.debug(
                 s"Conflict between right deletion of $editedBaseElement and its edit on the left into $leftElement with following right edit."
@@ -607,21 +595,28 @@ object merge extends StrictLogging:
                     _*
                   ),
                   _,
+                  Seq(Contribution.Difference(followingRightElement), _*)
+                ) if leftEditNotMarooned(rightTail) =>
+              // Right edit / left deletion conflict with pending right
+              // insertion and pending left edit.
+              logger.debug(
+                s"Coalescing conflict between left deletion of $editedBaseElement and its edit on the right into $rightElement, with following insertion of $followingRightElement on the right."
+              )
+              mergeBetweenRunsOfCommonElements(base, left, rightTail)(
+                partialResult,
+                deferredEdited = deferredEdited,
+                deferredLeftEdits = deferredLeftEdits,
+                deferredRightEdits = deferredRightEdits :+ rightElement
+              )
+
+            case (
+                  Seq(
+                    Contribution.CommonToBaseAndRightOnly(_),
+                    _*
+                  ),
+                  _,
                   _
-                )
-                // Guard against a coincident insertion prior to the right side
-                // of a pending left edit or deletion; that would maroon the
-                // latter, so we *would* coalesce the following element on the
-                // left.
-                if rightTail
-                  .takeWhile {
-                    case Contribution.CommonToBaseAndRightOnly(_) => false
-                    case _                                        => true
-                  }
-                  .forall {
-                    case Contribution.CommonToLeftAndRightOnly(_) => false
-                    case _                                        => true
-                  } =>
+                ) if leftEditNotMarooned(rightTail) =>
               // Right edit / left deletion conflict with pending left edit.
               logger.debug(
                 s"Conflict between left deletion of $editedBaseElement and its edit on the right into $rightElement with following left edit."
