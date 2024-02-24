@@ -5,7 +5,6 @@ import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.MergeTest.*
-import com.sageserpent.kineticmerge.core.MergeTest.DelegatingMergeAlgebraWithContracts.State.{Conflict, NoConflict}
 import com.sageserpent.kineticmerge.core.MergeTest.DelegatingMergeAlgebraWithContracts.{AugmentedMergeResult, State}
 import com.sageserpent.kineticmerge.core.MergeTest.Move.*
 import monocle.syntax.all.*
@@ -1788,14 +1787,14 @@ object MergeTest:
       coreMergeAlgebra: merge.MergeAlgebra[MergeResult, Element]
   ) extends merge.MergeAlgebra[AugmentedMergeResult, Element]:
     override def empty: AugmentedMergeResult[Element] =
-      AugmentedMergeResult(state = NoConflict, coreMergeAlgebra.empty)
+      AugmentedMergeResult(state = State.Neutral, coreMergeAlgebra.empty)
 
     override def preservation(
         result: AugmentedMergeResult[Element],
         preservedElement: Element
     ): AugmentedMergeResult[Element] =
       AugmentedMergeResult(
-        state = State.NoConflict,
+        state = State.Neutral,
         coreMergeResult = coreMergeAlgebra.preservation(
           result.coreMergeResult,
           preservedElement
@@ -1807,10 +1806,16 @@ object MergeTest:
         insertedElement: Element
     ): AugmentedMergeResult[Element] =
       require(
-        State.NoConflict == result.state || State.RightEdit == result.state
+        State.Neutral == result.state || State.RightEdit == result.state
       )
-      result.copy(coreMergeResult =
-        coreMergeAlgebra.leftInsertion(result.coreMergeResult, insertedElement)
+      AugmentedMergeResult(
+        state =
+          if State.RightEdit == result.state then result.state
+          else State.Neutral,
+        coreMergeResult = coreMergeAlgebra.leftInsertion(
+          result.coreMergeResult,
+          insertedElement
+        )
       )
     end leftInsertion
 
@@ -1819,10 +1824,16 @@ object MergeTest:
         insertedElement: Element
     ): AugmentedMergeResult[Element] =
       require(
-        State.NoConflict == result.state || State.LeftEdit == result.state
+        State.Neutral == result.state || State.LeftEdit == result.state
       )
-      result.copy(coreMergeResult =
-        coreMergeAlgebra.rightInsertion(result.coreMergeResult, insertedElement)
+      AugmentedMergeResult(
+        state =
+          if State.LeftEdit == result.state then result.state
+          else State.Neutral,
+        coreMergeResult = coreMergeAlgebra.rightInsertion(
+          result.coreMergeResult,
+          insertedElement
+        )
       )
     end rightInsertion
 
@@ -1830,7 +1841,7 @@ object MergeTest:
         result: AugmentedMergeResult[Element],
         insertedElement: Element
     ): AugmentedMergeResult[Element] = AugmentedMergeResult(
-      state = State.NoConflict,
+      state = State.Neutral,
       coreMergeResult = coreMergeAlgebra.coincidentInsertion(
         result.coreMergeResult,
         insertedElement
@@ -1841,7 +1852,7 @@ object MergeTest:
         result: AugmentedMergeResult[Element],
         deletedElement: Element
     ): AugmentedMergeResult[Element] = AugmentedMergeResult(
-      state = State.NoConflict,
+      state = State.Neutral,
       coreMergeResult =
         coreMergeAlgebra.leftDeletion(result.coreMergeResult, deletedElement)
     )
@@ -1850,7 +1861,7 @@ object MergeTest:
         result: AugmentedMergeResult[Element],
         deletedElement: Element
     ): AugmentedMergeResult[Element] = AugmentedMergeResult(
-      state = State.NoConflict,
+      state = State.Neutral,
       coreMergeResult =
         coreMergeAlgebra.rightDeletion(result.coreMergeResult, deletedElement)
     )
@@ -1859,7 +1870,7 @@ object MergeTest:
         result: AugmentedMergeResult[Element],
         deletedElement: Element
     ): AugmentedMergeResult[Element] = AugmentedMergeResult(
-      state = State.NoConflict,
+      state = State.Neutral,
       coreMergeResult = coreMergeAlgebra.coincidentDeletion(
         result.coreMergeResult,
         deletedElement
@@ -1899,7 +1910,7 @@ object MergeTest:
         editedElement: Element,
         editElements: IndexedSeq[Element]
     ): AugmentedMergeResult[Element] = AugmentedMergeResult(
-      state = State.NoConflict,
+      state = State.Neutral,
       coreMergeResult = coreMergeAlgebra.coincidentEdit(
         result.coreMergeResult,
         editedElement,
@@ -1933,7 +1944,7 @@ object MergeTest:
     // Leave this as an enumeration rather than as a Boolean as left- and
     // right-edits might need to be checked later, too.
     enum State:
-      case NoConflict
+      case Neutral
       case Conflict
       case LeftEdit
       case RightEdit
