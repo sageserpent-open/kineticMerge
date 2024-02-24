@@ -115,7 +115,8 @@ object merge extends StrictLogging:
         partialResult: Result[Element],
         deferredEdited: IndexedSeq[Element],
         deferredLeftEdits: IndexedSeq[Element],
-        deferredRightEdits: IndexedSeq[Element]
+        deferredRightEdits: IndexedSeq[Element],
+        deferredCoincidentEdits: IndexedSeq[Element]
     ): Result[Element] =
       (base, left, right) match
         case (
@@ -136,11 +137,12 @@ object merge extends StrictLogging:
             ),
             deferredEdited,
             deferredLeftEdits,
-            deferredRightEdits
+            deferredRightEdits,
+            deferredCoincidentEdits
           )
 
         case (
-              Seq(Contribution.Difference(baseElement), baseTail*),
+              Seq(Contribution.Difference(editedBaseElement), baseTail*),
               Seq(
                 Contribution.CommonToLeftAndRightOnly(leftElement),
                 leftTail*
@@ -153,20 +155,62 @@ object merge extends StrictLogging:
           require(
             deferredEdited.isEmpty && deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty
           )
-          logger.debug(
-            s"Coincident edit of $baseElement into $leftElement."
-          )
-          mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-            mergeAlgebra.coincidentEdit(
-              partialResult,
-              editedElement = baseElement,
-              // TODO: accumulate the edited elements...
-              editElements = IndexedSeq(leftElement)
-            ),
-            deferredEdited,
-            deferredLeftEdits,
-            deferredRightEdits
-          )
+          (baseTail, leftTail, rightTail) match
+            case (
+                  Seq(Contribution.Difference(_), _*),
+                  Seq(Contribution.CommonToLeftAndRightOnly(_), _*),
+                  Seq(Contribution.CommonToLeftAndRightOnly(_), _*)
+                ) =>
+              logger.debug(
+                s"Coincident edit of $editedBaseElement into $leftElement, not coalescing with following coincident edit."
+              )
+              mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
+                mergeAlgebra.coincidentEdit(
+                  partialResult,
+                  editedElement = editedBaseElement,
+                  editElements = deferredCoincidentEdits :+ leftElement
+                ),
+                deferredEdited,
+                deferredLeftEdits,
+                deferredRightEdits,
+                deferredCoincidentEdits = Vector.empty
+              )
+
+            case (
+                  _,
+                  Seq(
+                    Contribution.CommonToLeftAndRightOnly(followingLeftElement),
+                    _*
+                  ),
+                  Seq(Contribution.CommonToLeftAndRightOnly(_), _*)
+                ) =>
+              logger.debug(
+                s"Coalescing coincident edit of $editedBaseElement into $leftElement with following coincident insertion of $followingLeftElement."
+              )
+              mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
+                partialResult,
+                deferredEdited,
+                deferredLeftEdits,
+                deferredRightEdits,
+                deferredCoincidentEdits = deferredCoincidentEdits :+ leftElement
+              )
+
+            case _ =>
+              logger.debug(
+                s"Coincident edit of $editedBaseElement into $leftElement."
+              )
+              mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
+                mergeAlgebra.coincidentEdit(
+                  partialResult,
+                  editedElement = editedBaseElement,
+                  editElements = deferredCoincidentEdits :+ leftElement
+                ),
+                deferredEdited,
+                deferredLeftEdits,
+                deferredRightEdits,
+                deferredCoincidentEdits = Vector.empty
+              )
+          end match
 
         case (
               _,
@@ -180,7 +224,7 @@ object merge extends StrictLogging:
               )
             ) => // Coincident insertion.
           require(
-            deferredEdited.isEmpty && deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty
+            deferredEdited.isEmpty && deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty && deferredCoincidentEdits.isEmpty
           )
           logger.debug(
             s"Coincident insertion on left and right side of $leftElement."
@@ -192,7 +236,8 @@ object merge extends StrictLogging:
             ),
             deferredEdited,
             deferredLeftEdits,
-            deferredRightEdits
+            deferredRightEdits,
+            deferredCoincidentEdits
           )
 
         case (
@@ -227,7 +272,8 @@ object merge extends StrictLogging:
                 ),
                 deferredEdited = deferredEdited,
                 deferredLeftEdits = Vector.empty,
-                deferredRightEdits = deferredRightEdits
+                deferredRightEdits = deferredRightEdits,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
             case (
@@ -249,7 +295,8 @@ object merge extends StrictLogging:
                 ),
                 deferredEdited = deferredEdited,
                 deferredLeftEdits = Vector.empty,
-                deferredRightEdits = deferredRightEdits
+                deferredRightEdits = deferredRightEdits,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
             case (_, Seq(Contribution.Difference(followingLeftElement), _*)) =>
@@ -262,7 +309,8 @@ object merge extends StrictLogging:
                 partialResult,
                 deferredEdited = deferredEdited,
                 deferredLeftEdits = deferredLeftEdits :+ leftElement,
-                deferredRightEdits = deferredRightEdits
+                deferredRightEdits = deferredRightEdits,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
             case _ =>
@@ -277,7 +325,8 @@ object merge extends StrictLogging:
                 ),
                 deferredEdited = deferredEdited,
                 deferredLeftEdits = Vector.empty,
-                deferredRightEdits = deferredRightEdits
+                deferredRightEdits = deferredRightEdits,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
           end match
 
@@ -303,7 +352,8 @@ object merge extends StrictLogging:
             ),
             deferredEdited,
             deferredLeftEdits,
-            deferredRightEdits
+            deferredRightEdits,
+            deferredCoincidentEdits
           )
 
         case (
@@ -338,7 +388,8 @@ object merge extends StrictLogging:
                 ),
                 deferredEdited = deferredEdited,
                 deferredLeftEdits = deferredLeftEdits,
-                deferredRightEdits = Vector.empty
+                deferredRightEdits = Vector.empty,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
             case (
@@ -360,7 +411,8 @@ object merge extends StrictLogging:
                 ),
                 deferredEdited = deferredEdited,
                 deferredLeftEdits = deferredLeftEdits,
-                deferredRightEdits = Vector.empty
+                deferredRightEdits = Vector.empty,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
             case (_, Seq(Contribution.Difference(followingRightElement), _*)) =>
@@ -373,7 +425,8 @@ object merge extends StrictLogging:
                 partialResult,
                 deferredEdited = deferredEdited,
                 deferredLeftEdits = deferredLeftEdits,
-                deferredRightEdits = deferredRightEdits :+ rightElement
+                deferredRightEdits = deferredRightEdits :+ rightElement,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
             case _ =>
@@ -388,7 +441,8 @@ object merge extends StrictLogging:
                 ),
                 deferredEdited = deferredEdited,
                 deferredLeftEdits = deferredLeftEdits,
-                deferredRightEdits = Vector.empty
+                deferredRightEdits = Vector.empty,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
           end match
 
@@ -414,7 +468,8 @@ object merge extends StrictLogging:
             ),
             deferredEdited,
             deferredLeftEdits,
-            deferredRightEdits
+            deferredRightEdits,
+            deferredCoincidentEdits
           )
 
         case (
@@ -436,7 +491,8 @@ object merge extends StrictLogging:
                 partialResult,
                 deferredEdited = deferredEdited :+ editedBaseElement,
                 deferredLeftEdits = deferredLeftEdits :+ leftElement,
-                deferredRightEdits = deferredRightEdits :+ rightElement
+                deferredRightEdits = deferredRightEdits :+ rightElement,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
             case (
@@ -453,7 +509,8 @@ object merge extends StrictLogging:
                 partialResult,
                 deferredEdited = deferredEdited :+ editedBaseElement,
                 deferredLeftEdits = deferredLeftEdits :+ leftElement,
-                deferredRightEdits = deferredRightEdits
+                deferredRightEdits = deferredRightEdits,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
             case (
@@ -470,7 +527,8 @@ object merge extends StrictLogging:
                 partialResult,
                 deferredEdited = deferredEdited :+ editedBaseElement,
                 deferredLeftEdits = deferredLeftEdits,
-                deferredRightEdits = deferredRightEdits :+ rightElement
+                deferredRightEdits = deferredRightEdits :+ rightElement,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
             case (
@@ -487,7 +545,8 @@ object merge extends StrictLogging:
                 partialResult,
                 deferredEdited = deferredEdited,
                 deferredLeftEdits = deferredLeftEdits :+ leftElement,
-                deferredRightEdits = deferredRightEdits :+ rightElement
+                deferredRightEdits = deferredRightEdits :+ rightElement,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
             case (
@@ -503,8 +562,9 @@ object merge extends StrictLogging:
               mergeBetweenRunsOfCommonElements(baseTail, left, right)(
                 partialResult,
                 deferredEdited = deferredEdited :+ editedBaseElement,
-                deferredLeftEdits,
-                deferredRightEdits
+                deferredLeftEdits = deferredLeftEdits,
+                deferredRightEdits = deferredRightEdits,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
             case (
@@ -527,7 +587,8 @@ object merge extends StrictLogging:
                 partialResult,
                 deferredEdited = deferredEdited,
                 deferredLeftEdits = deferredLeftEdits :+ leftElement,
-                deferredRightEdits = deferredRightEdits
+                deferredRightEdits = deferredRightEdits,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
             case (
@@ -551,7 +612,8 @@ object merge extends StrictLogging:
                 ),
                 deferredEdited = Vector.empty,
                 deferredLeftEdits = Vector.empty,
-                deferredRightEdits = Vector.empty
+                deferredRightEdits = Vector.empty,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
             case (
@@ -566,8 +628,9 @@ object merge extends StrictLogging:
               mergeBetweenRunsOfCommonElements(base, left, rightTail)(
                 partialResult,
                 deferredEdited = deferredEdited,
-                deferredLeftEdits,
-                deferredRightEdits :+ rightElement
+                deferredLeftEdits = deferredLeftEdits,
+                deferredRightEdits = deferredRightEdits :+ rightElement,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
             case (
@@ -587,7 +650,8 @@ object merge extends StrictLogging:
                 partialResult,
                 deferredEdited = deferredEdited,
                 deferredLeftEdits = deferredLeftEdits,
-                deferredRightEdits = deferredRightEdits :+ rightElement
+                deferredRightEdits = deferredRightEdits :+ rightElement,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
             case (
@@ -611,7 +675,8 @@ object merge extends StrictLogging:
                 ),
                 deferredEdited = Vector.empty,
                 deferredLeftEdits = Vector.empty,
-                deferredRightEdits = Vector.empty
+                deferredRightEdits = Vector.empty,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
             case (
@@ -626,8 +691,9 @@ object merge extends StrictLogging:
               mergeBetweenRunsOfCommonElements(base, leftTail, right)(
                 partialResult,
                 deferredEdited = deferredEdited,
-                deferredLeftEdits :+ leftElement,
-                deferredRightEdits
+                deferredLeftEdits = deferredLeftEdits :+ leftElement,
+                deferredRightEdits = deferredRightEdits,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
             case _ =>
@@ -644,7 +710,8 @@ object merge extends StrictLogging:
                 ),
                 deferredEdited = Vector.empty,
                 deferredLeftEdits = Vector.empty,
-                deferredRightEdits = Vector.empty
+                deferredRightEdits = Vector.empty,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
           end match
 
@@ -666,7 +733,8 @@ object merge extends StrictLogging:
             ),
             deferredEdited,
             deferredLeftEdits,
-            deferredRightEdits
+            deferredRightEdits,
+            deferredCoincidentEdits
           )
 
         case (
@@ -675,7 +743,7 @@ object merge extends StrictLogging:
               Seq(Contribution.CommonToBaseAndRightOnly(_), _*)
             ) => // Coincident deletion with pending left edit.
           require(
-            deferredEdited.isEmpty && deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty
+            deferredEdited.isEmpty && deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty && deferredCoincidentEdits.isEmpty
           )
           logger.debug(
             s"Coincident deletion of $deletedBaseElement with following left edit."
@@ -687,7 +755,8 @@ object merge extends StrictLogging:
             ),
             deferredEdited,
             deferredLeftEdits,
-            deferredRightEdits
+            deferredRightEdits,
+            deferredCoincidentEdits
           )
 
         case (
@@ -707,7 +776,8 @@ object merge extends StrictLogging:
                 partialResult,
                 deferredEdited = deferredEdited :+ editedBaseElement,
                 deferredLeftEdits = deferredLeftEdits :+ leftElement,
-                deferredRightEdits = deferredRightEdits
+                deferredRightEdits = deferredRightEdits,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
             case (_, Seq(Contribution.Difference(followingLeftElement), _*)) =>
@@ -718,7 +788,8 @@ object merge extends StrictLogging:
                 partialResult,
                 deferredEdited = deferredEdited,
                 deferredLeftEdits = deferredLeftEdits :+ leftElement,
-                deferredRightEdits = deferredRightEdits
+                deferredRightEdits = deferredRightEdits,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
             case _ =>
@@ -734,7 +805,8 @@ object merge extends StrictLogging:
                 ),
                 deferredEdited = Vector.empty,
                 deferredLeftEdits = Vector.empty,
-                deferredRightEdits = Vector.empty
+                deferredRightEdits = Vector.empty,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
         case (
@@ -755,7 +827,8 @@ object merge extends StrictLogging:
             ),
             deferredEdited,
             deferredLeftEdits,
-            deferredRightEdits
+            deferredRightEdits,
+            deferredCoincidentEdits
           )
 
         case (
@@ -764,7 +837,7 @@ object merge extends StrictLogging:
               Seq(Contribution.Difference(_), _*)
             ) => // Coincident deletion with pending right edit.
           require(
-            deferredEdited.isEmpty && deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty
+            deferredEdited.isEmpty && deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty && deferredCoincidentEdits.isEmpty
           )
           logger.debug(
             s"Coincident deletion of $deletedBaseElement with following right edit."
@@ -776,7 +849,8 @@ object merge extends StrictLogging:
             ),
             deferredEdited,
             deferredLeftEdits,
-            deferredRightEdits
+            deferredRightEdits,
+            deferredCoincidentEdits
           )
 
         case (
@@ -796,7 +870,8 @@ object merge extends StrictLogging:
                 partialResult,
                 deferredEdited = deferredEdited :+ editedBaseElement,
                 deferredLeftEdits = deferredLeftEdits,
-                deferredRightEdits = deferredRightEdits :+ rightElement
+                deferredRightEdits = deferredRightEdits :+ rightElement,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
             case (_, Seq(Contribution.Difference(followingRightElement), _*)) =>
@@ -807,7 +882,8 @@ object merge extends StrictLogging:
                 partialResult,
                 deferredEdited = deferredEdited,
                 deferredLeftEdits = deferredLeftEdits,
-                deferredRightEdits = deferredRightEdits :+ rightElement
+                deferredRightEdits = deferredRightEdits :+ rightElement,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
             case _ =>
@@ -823,7 +899,8 @@ object merge extends StrictLogging:
                 ),
                 deferredEdited = Vector.empty,
                 deferredLeftEdits = Vector.empty,
-                deferredRightEdits = Vector.empty
+                deferredRightEdits = Vector.empty,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
         case (
@@ -832,7 +909,7 @@ object merge extends StrictLogging:
               _
             ) => // Coincident deletion.
           require(
-            deferredEdited.isEmpty && deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty
+            deferredEdited.isEmpty && deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty && deferredCoincidentEdits.isEmpty
           )
           logger.debug(s"Coincident deletion of $deletedBaseElement.")
           mergeBetweenRunsOfCommonElements(baseTail, left, right)(
@@ -842,7 +919,8 @@ object merge extends StrictLogging:
             ),
             deferredEdited,
             deferredLeftEdits,
-            deferredRightEdits
+            deferredRightEdits,
+            deferredCoincidentEdits
           )
 
         case (
@@ -863,7 +941,8 @@ object merge extends StrictLogging:
             ),
             deferredEdited,
             deferredLeftEdits,
-            deferredRightEdits
+            deferredRightEdits,
+            deferredCoincidentEdits
           )
 
         case (
@@ -884,7 +963,8 @@ object merge extends StrictLogging:
             ),
             deferredEdited,
             deferredLeftEdits,
-            deferredRightEdits
+            deferredRightEdits,
+            deferredCoincidentEdits
           )
 
         case (
@@ -904,7 +984,8 @@ object merge extends StrictLogging:
                 partialResult,
                 deferredEdited,
                 deferredLeftEdits = deferredLeftEdits :+ leftElement,
-                deferredRightEdits = deferredRightEdits :+ rightElement
+                deferredRightEdits = deferredRightEdits :+ rightElement,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
             case (Seq(Contribution.Difference(_), _*), _) =>
@@ -915,7 +996,8 @@ object merge extends StrictLogging:
                 partialResult,
                 deferredEdited,
                 deferredLeftEdits = deferredLeftEdits :+ leftElement,
-                deferredRightEdits = deferredRightEdits
+                deferredRightEdits = deferredRightEdits,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
             case (_, Seq(Contribution.Difference(_), _*)) =>
@@ -926,7 +1008,8 @@ object merge extends StrictLogging:
                 partialResult,
                 deferredEdited,
                 deferredLeftEdits = deferredLeftEdits,
-                deferredRightEdits = deferredRightEdits :+ rightElement
+                deferredRightEdits = deferredRightEdits :+ rightElement,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
             case _ =>
@@ -942,7 +1025,8 @@ object merge extends StrictLogging:
                 ),
                 deferredEdited = Vector.empty,
                 deferredLeftEdits = Vector.empty,
-                deferredRightEdits = Vector.empty
+                deferredRightEdits = Vector.empty,
+                deferredCoincidentEdits = deferredCoincidentEdits
               )
 
         case (
@@ -967,7 +1051,8 @@ object merge extends StrictLogging:
             ),
             deferredEdited,
             deferredLeftEdits,
-            deferredRightEdits
+            deferredRightEdits,
+            deferredCoincidentEdits
           )
 
         case (
@@ -992,7 +1077,8 @@ object merge extends StrictLogging:
             ),
             deferredEdited,
             deferredLeftEdits,
-            deferredRightEdits
+            deferredRightEdits,
+            deferredCoincidentEdits
           )
 
         case (Seq(), Seq(), Seq()) => // Terminating case!
@@ -1018,7 +1104,8 @@ object merge extends StrictLogging:
         partialResult = mergeAlgebra.empty,
         deferredEdited = IndexedSeq.empty,
         deferredLeftEdits = IndexedSeq.empty,
-        deferredRightEdits = IndexedSeq.empty
+        deferredRightEdits = IndexedSeq.empty,
+        deferredCoincidentEdits = IndexedSeq.empty
       )
     )
   end of
