@@ -1078,6 +1078,43 @@ class MergeTest:
     assert(result == expectedMerge)
   end leftEditVersusRightDeletionConflictWithFollowingLeftInsertionAndThenRightEdit
 
+  @Test
+  def coincidentEditFollowedByACoincidentInsertion(): Unit =
+    val a    = 1
+    val base = Vector(a)
+
+    val b    = 2
+    val c    = 3
+    val left = Vector(b, c)
+
+    val d     = 4
+    val e     = 5
+    val right = Vector(d, e)
+
+    val bd = Match.LeftAndRight(leftElement = b, rightElement = d)
+    val ce = Match.LeftAndRight(leftElement = c, rightElement = e)
+    val matchesByElement: Map[Element, Match[Element]] = Map(
+      b -> bd,
+      d -> bd,
+      c -> ce,
+      e -> ce
+    )
+
+    // NOTE: we expect a a clean merge of a coincident edit coalesced with the
+    // following coincident insertion, editing `a` into `b` and `c`.
+    val expectedMerge =
+      FullyMerged(elements = Vector(b, c))
+
+    val Right(AugmentedMergeResult(_, result)) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
+        equivalent(matchesByElement)
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end coincidentEditFollowedByACoincidentInsertion
+
   @TestFactory
   def fullMerge: DynamicTests =
     fullyMergedTestCases
