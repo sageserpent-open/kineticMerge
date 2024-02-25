@@ -116,7 +116,7 @@ object MergeResult:
               rightElements ++ editElements
             )
 
-      override def leftEditConflictingWithRightEdit(
+      override def conflict(
           result: MergeResult[Element],
           editedElements: IndexedSeq[Element],
           leftEditElements: IndexedSeq[Element],

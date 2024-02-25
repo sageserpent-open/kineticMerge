@@ -3,6 +3,7 @@ package com.sageserpent.kineticmerge.core
 import cats.Eq
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Contribution
 import com.typesafe.scalalogging.StrictLogging
+import monocle.syntax.all.*
 
 import scala.annotation.tailrec
 
@@ -106,6 +107,164 @@ object merge extends StrictLogging:
           case _                                        => true
         }
 
+    trait LeftEditOperations:
+      def coalesceLeftInsertion(insertedElement: Element): LeftEdit
+      def finalLeftEdit(
+          result: Result[Element],
+          editedElement: Element,
+          insertedElement: Element
+      ): Result[Element]
+    end LeftEditOperations
+
+    trait RightEditOperations:
+      def coalesceRightInsertion(insertedElement: Element): RightEdit
+      def finalRightEdit(
+          result: Result[Element],
+          editedElement: Element,
+          insertedElement: Element
+      ): Result[Element]
+    end RightEditOperations
+
+    trait CoincidentEditOperations:
+      def coalesceCoincidentInsertion(
+          insertedElement: Element
+      ): CoincidentEdit
+      def finalCoincidentEdit(
+          result: Result[Element],
+          editedElement: Element,
+          insertedElement: Element
+      ): Result[Element]
+    end CoincidentEditOperations
+
+    trait ConflictOperations:
+      def coalesceConflict(
+          editedBaseElement: Option[Element],
+          leftElement: Option[Element],
+          rightElement: Option[Element]
+      ): Conflict
+      def finalConflict(
+          result: Result[Element],
+          editedElement: Option[Element],
+          leftElement: Option[Element],
+          rightElement: Option[Element]
+      ): Result[Element]
+    end ConflictOperations
+
+    trait Coalescence:
+    end Coalescence
+    object NoCoalescence
+        extends Coalescence
+        with LeftEditOperations
+        with RightEditOperations
+        with CoincidentEditOperations
+        with ConflictOperations:
+      private val leftEdit = LeftEdit(
+        deferredLeftEdits = IndexedSeq.empty
+      )
+      private val rightEdit = RightEdit(
+        deferredRightEdits = IndexedSeq.empty
+      )
+      private val coincidentEdit = CoincidentEdit(
+        deferredCoincidentEdits = IndexedSeq.empty
+      )
+      private val conflict = Conflict(
+        deferredEdited = IndexedSeq.empty,
+        deferredLeftEdits = IndexedSeq.empty,
+        deferredRightEdits = IndexedSeq.empty
+      )
+
+      // Export the union of the various APIs...
+      export leftEdit.{coalesceLeftInsertion, finalLeftEdit}
+      export rightEdit.{coalesceRightInsertion, finalRightEdit}
+      export coincidentEdit.{coalesceCoincidentInsertion, finalCoincidentEdit}
+      export conflict.{coalesceConflict, finalConflict}
+    end NoCoalescence
+
+    case class LeftEdit(
+        deferredLeftEdits: IndexedSeq[Element]
+    ) extends Coalescence
+        with LeftEditOperations:
+      override def coalesceLeftInsertion(insertedElement: Element): LeftEdit =
+        this.focus(_.deferredLeftEdits).modify(_ :+ insertedElement)
+      override def finalLeftEdit(
+          result: Result[Element],
+          editedElement: Element,
+          insertedElement: Element
+      ): Result[Element] = mergeAlgebra.leftEdit(
+        result,
+        editedElement,
+        deferredLeftEdits :+ insertedElement
+      )
+    end LeftEdit
+
+    case class RightEdit(
+        deferredRightEdits: IndexedSeq[Element]
+    ) extends Coalescence
+        with RightEditOperations:
+      override def coalesceRightInsertion(insertedElement: Element): RightEdit =
+        this.focus(_.deferredRightEdits).modify(_ :+ insertedElement)
+
+      override def finalRightEdit(
+          result: Result[Element],
+          editedElement: Element,
+          insertedElement: Element
+      ): Result[Element] = mergeAlgebra.rightEdit(
+        result,
+        editedElement,
+        editElements = deferredRightEdits :+ insertedElement
+      )
+    end RightEdit
+
+    case class CoincidentEdit(
+        deferredCoincidentEdits: IndexedSeq[Element]
+    ) extends Coalescence
+        with CoincidentEditOperations:
+      override def coalesceCoincidentInsertion(
+          insertedElement: Element
+      ): CoincidentEdit =
+        this.focus(_.deferredCoincidentEdits).modify(_ :+ insertedElement)
+      override def finalCoincidentEdit(
+          result: Result[Element],
+          editedElement: Element,
+          insertedElement: Element
+      ): Result[Element] = mergeAlgebra.coincidentEdit(
+        result,
+        editedElement,
+        editElements = deferredCoincidentEdits :+ insertedElement
+      )
+    end CoincidentEdit
+
+    case class Conflict(
+        deferredEdited: IndexedSeq[Element],
+        deferredLeftEdits: IndexedSeq[Element],
+        deferredRightEdits: IndexedSeq[Element]
+    ) extends Coalescence
+        with ConflictOperations:
+      override def coalesceConflict(
+          editedBaseElement: Option[Element],
+          leftElement: Option[Element],
+          rightElement: Option[Element]
+      ): Conflict = this
+        .focus(_.deferredEdited)
+        .modify(_ ++ editedBaseElement)
+        .focus(_.deferredLeftEdits)
+        .modify(_ ++ leftElement)
+        .focus(_.deferredRightEdits)
+        .modify(_ ++ rightElement)
+
+      override def finalConflict(
+          result: Result[Element],
+          editedElement: Option[Element],
+          leftElement: Option[Element],
+          rightElement: Option[Element]
+      ): Result[Element] = mergeAlgebra.conflict(
+        result,
+        editedElements = deferredEdited ++ editedElement,
+        leftEditElements = deferredLeftEdits ++ leftElement,
+        rightEditElements = deferredRightEdits ++ rightElement
+      )
+    end Conflict
+
     @tailrec
     def mergeBetweenRunsOfCommonElements(
         base: Seq[Contribution[Element]],
@@ -113,35 +272,28 @@ object merge extends StrictLogging:
         right: Seq[Contribution[Element]]
     )(
         partialResult: Result[Element],
-        deferredEdited: IndexedSeq[Element],
-        deferredLeftEdits: IndexedSeq[Element],
-        deferredRightEdits: IndexedSeq[Element],
-        deferredCoincidentEdits: IndexedSeq[Element]
+        coalescence: Coalescence
     ): Result[Element] =
-      (base, left, right) match
+      (coalescence, base, left, right) match
         case (
+              NoCoalescence,
               Seq(Contribution.Common(_), baseTail*),
               Seq(Contribution.Common(leftElement), leftTail*),
               Seq(Contribution.Common(_), rightTail*)
             ) => // Preservation.
-          require(
-            deferredEdited.isEmpty && deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty
-          )
           logger.debug(
             s"Preservation of $leftElement as it is common to all three sides."
           )
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-            mergeAlgebra.preservation(
+            partialResult = mergeAlgebra.preservation(
               partialResult,
               preservedElement = leftElement
             ),
-            deferredEdited,
-            deferredLeftEdits,
-            deferredRightEdits,
-            deferredCoincidentEdits
+            coalescence = NoCoalescence
           )
 
         case (
+              coincidentEditOperations: CoincidentEditOperations,
               Seq(Contribution.Difference(editedBaseElement), baseTail*),
               Seq(
                 Contribution.CommonToLeftAndRightOnly(leftElement),
@@ -152,9 +304,6 @@ object merge extends StrictLogging:
                 rightTail*
               )
             ) => // Coincident edit.
-          require(
-            deferredEdited.isEmpty && deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty
-          )
           (baseTail, leftTail, rightTail) match
             case (
                   Seq(Contribution.Difference(_), _*),
@@ -165,15 +314,12 @@ object merge extends StrictLogging:
                 s"Coincident edit of $editedBaseElement into $leftElement, not coalescing with following coincident edit."
               )
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                mergeAlgebra.coincidentEdit(
+                partialResult = coincidentEditOperations.finalCoincidentEdit(
                   partialResult,
-                  editedElement = editedBaseElement,
-                  editElements = deferredCoincidentEdits :+ leftElement
+                  editedBaseElement,
+                  leftElement
                 ),
-                deferredEdited,
-                deferredLeftEdits,
-                deferredRightEdits,
-                deferredCoincidentEdits = Vector.empty
+                coalescence = NoCoalescence
               )
 
             case (
@@ -185,14 +331,14 @@ object merge extends StrictLogging:
                   Seq(Contribution.CommonToLeftAndRightOnly(_), _*)
                 ) =>
               logger.debug(
-                s"Coalescing coincident edit of $editedBaseElement into $leftElement with following coincident insertion of $followingLeftElement."
+                s"Coincident edit of $editedBaseElement into $leftElement, coalescing with following coincident insertion of $followingLeftElement."
               )
               mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
                 partialResult,
-                deferredEdited,
-                deferredLeftEdits,
-                deferredRightEdits,
-                deferredCoincidentEdits = deferredCoincidentEdits :+ leftElement
+                coalescence =
+                  coincidentEditOperations.coalesceCoincidentInsertion(
+                    leftElement
+                  )
               )
 
             case _ =>
@@ -200,19 +346,17 @@ object merge extends StrictLogging:
                 s"Coincident edit of $editedBaseElement into $leftElement."
               )
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                mergeAlgebra.coincidentEdit(
+                coincidentEditOperations.finalCoincidentEdit(
                   partialResult,
-                  editedElement = editedBaseElement,
-                  editElements = deferredCoincidentEdits :+ leftElement
+                  editedBaseElement,
+                  leftElement
                 ),
-                deferredEdited,
-                deferredLeftEdits,
-                deferredRightEdits,
-                deferredCoincidentEdits = Vector.empty
+                coalescence = NoCoalescence
               )
           end match
 
         case (
+              NoCoalescence,
               _,
               Seq(
                 Contribution.CommonToLeftAndRightOnly(leftElement),
@@ -223,24 +367,19 @@ object merge extends StrictLogging:
                 rightTail*
               )
             ) => // Coincident insertion.
-          require(
-            deferredEdited.isEmpty && deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty && deferredCoincidentEdits.isEmpty
-          )
           logger.debug(
             s"Coincident insertion on left and right side of $leftElement."
           )
           mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
-            mergeAlgebra.coincidentInsertion(
+            partialResult = mergeAlgebra.coincidentInsertion(
               partialResult,
               insertedElement = leftElement
             ),
-            deferredEdited,
-            deferredLeftEdits,
-            deferredRightEdits,
-            deferredCoincidentEdits
+            coalescence = NoCoalescence
           )
 
         case (
+              leftEditOperations: LeftEditOperations,
               Seq(
                 Contribution.CommonToBaseAndRightOnly(editedBaseElement),
                 baseTail*
@@ -265,15 +404,9 @@ object merge extends StrictLogging:
                 s"Left edit of $editedBaseElement into $leftElement with following coincident deletion of $followingBaseElement."
               )
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                mergeAlgebra.leftEdit(
-                  partialResult,
-                  editedElement = editedBaseElement,
-                  editElements = deferredLeftEdits :+ leftElement
-                ),
-                deferredEdited = deferredEdited,
-                deferredLeftEdits = Vector.empty,
-                deferredRightEdits = deferredRightEdits,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                partialResult = leftEditOperations
+                  .finalLeftEdit(partialResult, editedBaseElement, leftElement),
+                coalescence = NoCoalescence
               )
 
             case (
@@ -288,29 +421,21 @@ object merge extends StrictLogging:
                 s"Left edit of $editedBaseElement into $leftElement, not coalescing with following left edit."
               )
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                mergeAlgebra.leftEdit(
-                  partialResult,
-                  editedElement = editedBaseElement,
-                  editElements = deferredLeftEdits :+ leftElement
-                ),
-                deferredEdited = deferredEdited,
-                deferredLeftEdits = Vector.empty,
-                deferredRightEdits = deferredRightEdits,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                partialResult = leftEditOperations
+                  .finalLeftEdit(partialResult, editedBaseElement, leftElement),
+                coalescence = NoCoalescence
               )
 
             case (_, Seq(Contribution.Difference(followingLeftElement), _*)) =>
               // If the following element on the left would also be inserted,
               // coalesce into a single edit.
               logger.debug(
-                s"Coalescing left edit of $editedBaseElement into $leftElement with following insertion of $followingLeftElement on the left."
+                s"Left edit of $editedBaseElement into $left, coalescing with following insertion of $followingLeftElement on the left."
               )
               mergeBetweenRunsOfCommonElements(base, leftTail, right)(
                 partialResult,
-                deferredEdited = deferredEdited,
-                deferredLeftEdits = deferredLeftEdits :+ leftElement,
-                deferredRightEdits = deferredRightEdits,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                coalescence =
+                  leftEditOperations.coalesceLeftInsertion(leftElement)
               )
 
             case _ =>
@@ -318,19 +443,14 @@ object merge extends StrictLogging:
                 s"Left edit of $editedBaseElement into $leftElement."
               )
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                mergeAlgebra.leftEdit(
-                  partialResult,
-                  editedElement = editedBaseElement,
-                  editElements = deferredLeftEdits :+ leftElement
-                ),
-                deferredEdited = deferredEdited,
-                deferredLeftEdits = Vector.empty,
-                deferredRightEdits = deferredRightEdits,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                partialResult = leftEditOperations
+                  .finalLeftEdit(partialResult, editedBaseElement, leftElement),
+                coalescence = NoCoalescence
               )
           end match
 
         case (
+              NoCoalescence,
               Seq(
                 Contribution.CommonToBaseAndRightOnly(deletedBaseElement),
                 baseTail*
@@ -341,22 +461,17 @@ object merge extends StrictLogging:
                 rightTail*
               )
             ) => // Left deletion.
-          require(
-            deferredEdited.isEmpty && deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty
-          )
           logger.debug(s"Left deletion of $deletedBaseElement.")
           mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
             mergeAlgebra.leftDeletion(
               partialResult,
               deletedElement = deletedBaseElement
             ),
-            deferredEdited,
-            deferredLeftEdits,
-            deferredRightEdits,
-            deferredCoincidentEdits
+            coalescence = NoCoalescence
           )
 
         case (
+              rightEditOperations: RightEditOperations,
               Seq(
                 Contribution.CommonToBaseAndLeftOnly(editedBaseElement),
                 baseTail*
@@ -381,15 +496,12 @@ object merge extends StrictLogging:
                 s"Right edit of $editedBaseElement into $rightElement with following coincident deletion of $followingBaseElement."
               )
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                mergeAlgebra.rightEdit(
+                partialResult = rightEditOperations.finalRightEdit(
                   partialResult,
-                  editedElement = editedBaseElement,
-                  editElements = deferredRightEdits :+ rightElement
+                  editedBaseElement,
+                  rightElement
                 ),
-                deferredEdited = deferredEdited,
-                deferredLeftEdits = deferredLeftEdits,
-                deferredRightEdits = Vector.empty,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                coalescence = NoCoalescence
               )
 
             case (
@@ -404,29 +516,24 @@ object merge extends StrictLogging:
                 s"Right edit of $editedBaseElement into $rightElement, not coalescing with following right edit."
               )
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                mergeAlgebra.rightEdit(
+                partialResult = rightEditOperations.finalRightEdit(
                   partialResult,
-                  editedElement = editedBaseElement,
-                  editElements = deferredRightEdits :+ rightElement
+                  editedBaseElement,
+                  rightElement
                 ),
-                deferredEdited = deferredEdited,
-                deferredLeftEdits = deferredLeftEdits,
-                deferredRightEdits = Vector.empty,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                coalescence = NoCoalescence
               )
 
             case (_, Seq(Contribution.Difference(followingRightElement), _*)) =>
               // If the following element on the right would also be inserted,
               // coalesce into a single edit.
               logger.debug(
-                s"Coalescing right edit of $editedBaseElement into $rightElement with following insertion of $followingRightElement on the right."
+                s"Right edit of $editedBaseElement into $rightElement, coalescing with following insertion of $followingRightElement on the right."
               )
               mergeBetweenRunsOfCommonElements(base, left, rightTail)(
                 partialResult,
-                deferredEdited = deferredEdited,
-                deferredLeftEdits = deferredLeftEdits,
-                deferredRightEdits = deferredRightEdits :+ rightElement,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                coalescence =
+                  rightEditOperations.coalesceRightInsertion(rightElement)
               )
 
             case _ =>
@@ -434,19 +541,17 @@ object merge extends StrictLogging:
                 s"Right edit of $editedBaseElement into $rightElement."
               )
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                mergeAlgebra.rightEdit(
+                rightEditOperations.finalRightEdit(
                   partialResult,
-                  editedElement = editedBaseElement,
-                  editElements = deferredRightEdits :+ rightElement
+                  editedBaseElement,
+                  rightElement
                 ),
-                deferredEdited = deferredEdited,
-                deferredLeftEdits = deferredLeftEdits,
-                deferredRightEdits = Vector.empty,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                coalescence = NoCoalescence
               )
           end match
 
         case (
+              NoCoalescence,
               Seq(
                 Contribution.CommonToBaseAndLeftOnly(deletedBaseElement),
                 baseTail*
@@ -457,22 +562,17 @@ object merge extends StrictLogging:
               ),
               _
             ) => // Right deletion.
-          require(
-            deferredEdited.isEmpty && deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty
-          )
           logger.debug(s"Right deletion of $deletedBaseElement.")
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
             mergeAlgebra.rightDeletion(
               partialResult,
               deletedElement = deletedBaseElement
             ),
-            deferredEdited,
-            deferredLeftEdits,
-            deferredRightEdits,
-            deferredCoincidentEdits
+            coalescence = NoCoalescence
           )
 
         case (
+              conflictOperations: ConflictOperations,
               Seq(Contribution.Difference(editedBaseElement), baseTail*),
               Seq(Contribution.Difference(leftElement), leftTail*),
               Seq(Contribution.Difference(rightElement), rightTail*)
@@ -485,14 +585,15 @@ object merge extends StrictLogging:
                 ) =>
               // Edit conflict with another pending edit conflict.
               logger.debug(
-                s"Coalescing edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right with following edit conflict."
+                s"Edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right, coalescing with following edit conflict."
               )
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
                 partialResult,
-                deferredEdited = deferredEdited :+ editedBaseElement,
-                deferredLeftEdits = deferredLeftEdits :+ leftElement,
-                deferredRightEdits = deferredRightEdits :+ rightElement,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                coalescence = conflictOperations.coalesceConflict(
+                  Some(editedBaseElement),
+                  Some(leftElement),
+                  Some(rightElement)
+                )
               )
 
             case (
@@ -503,14 +604,15 @@ object merge extends StrictLogging:
               // Edit conflict with a pending left edit versus right deletion
               // conflict.
               logger.debug(
-                s"Coalescing edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right with following left edit versus right deletion conflict."
+                s"Edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right, coalescing with following left edit versus right deletion conflict."
               )
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
                 partialResult,
-                deferredEdited = deferredEdited :+ editedBaseElement,
-                deferredLeftEdits = deferredLeftEdits :+ leftElement,
-                deferredRightEdits = deferredRightEdits,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                coalescence = conflictOperations.coalesceConflict(
+                  Some(editedBaseElement),
+                  Some(leftElement),
+                  None
+                )
               )
 
             case (
@@ -521,14 +623,15 @@ object merge extends StrictLogging:
               // Edit conflict with a pending right edit versus left deletion
               // conflict.
               logger.debug(
-                s"Coalescing edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right with following right edit versus left deletion conflict."
+                s"Edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right, coalescing with following right edit versus left deletion conflict."
               )
               mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
                 partialResult,
-                deferredEdited = deferredEdited :+ editedBaseElement,
-                deferredLeftEdits = deferredLeftEdits,
-                deferredRightEdits = deferredRightEdits :+ rightElement,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                coalescence = conflictOperations.coalesceConflict(
+                  Some(editedBaseElement),
+                  None,
+                  Some(rightElement)
+                )
               )
 
             case (
@@ -539,14 +642,15 @@ object merge extends StrictLogging:
               // Edit conflict with a pending left insertion versus right
               // insertion conflict.
               logger.debug(
-                s"Coalescing edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right with following left insertion versus right insertion conflict."
+                s"Edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right, coalescing with following left insertion versus right insertion conflict."
               )
               mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
                 partialResult,
-                deferredEdited = deferredEdited,
-                deferredLeftEdits = deferredLeftEdits :+ leftElement,
-                deferredRightEdits = deferredRightEdits :+ rightElement,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                coalescence = conflictOperations.coalesceConflict(
+                  None,
+                  Some(leftElement),
+                  Some(rightElement)
+                )
               )
 
             case (
@@ -557,14 +661,15 @@ object merge extends StrictLogging:
               // If the following element in the base would also be deleted on
               // both sides, coalesce into a single coincident edit conflict.
               logger.debug(
-                s"Coalescing edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right with following coincident deletion of $followingBaseElement."
+                s"Edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right, coalescing with following coincident deletion of $followingBaseElement."
               )
               mergeBetweenRunsOfCommonElements(baseTail, left, right)(
                 partialResult,
-                deferredEdited = deferredEdited :+ editedBaseElement,
-                deferredLeftEdits = deferredLeftEdits,
-                deferredRightEdits = deferredRightEdits,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                coalescence = conflictOperations.coalesceConflict(
+                  Some(editedBaseElement),
+                  None,
+                  None
+                )
               )
 
             case (
@@ -581,14 +686,15 @@ object merge extends StrictLogging:
               // Left edit / right deletion conflict with pending left insertion
               // and pending right edit.
               logger.debug(
-                s"Coalescing conflict between right deletion of $editedBaseElement and its edit on the left into $leftElement, with following insertion of $followingLeftElement on the left."
+                s"Conflict between right deletion of $editedBaseElement and its edit on the left into $leftElement, coalescing with following insertion of $followingLeftElement on the left."
               )
               mergeBetweenRunsOfCommonElements(base, leftTail, right)(
                 partialResult,
-                deferredEdited = deferredEdited,
-                deferredLeftEdits = deferredLeftEdits :+ leftElement,
-                deferredRightEdits = deferredRightEdits,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                coalescence = conflictOperations.coalesceConflict(
+                  None,
+                  Some(leftElement),
+                  None
+                )
               )
 
             case (
@@ -604,16 +710,13 @@ object merge extends StrictLogging:
                 s"Conflict between right deletion of $editedBaseElement and its edit on the left into $leftElement with following right edit."
               )
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
-                mergeAlgebra.leftEditConflictingWithRightEdit(
+                partialResult = conflictOperations.finalConflict(
                   partialResult,
-                  editedElements = deferredEdited :+ editedBaseElement,
-                  leftEditElements = deferredLeftEdits :+ leftElement,
-                  rightEditElements = deferredRightEdits
+                  Some(editedBaseElement),
+                  Some(leftElement),
+                  None
                 ),
-                deferredEdited = Vector.empty,
-                deferredLeftEdits = Vector.empty,
-                deferredRightEdits = Vector.empty,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                coalescence = NoCoalescence
               )
 
             case (
@@ -623,14 +726,15 @@ object merge extends StrictLogging:
                 ) =>
               // Edit conflict with a pending right insertion.
               logger.debug(
-                s"Coalescing edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right with following right insertion of $followingRightElement."
+                s"Edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right, coalescing with following right insertion of $followingRightElement."
               )
               mergeBetweenRunsOfCommonElements(base, left, rightTail)(
                 partialResult,
-                deferredEdited = deferredEdited,
-                deferredLeftEdits = deferredLeftEdits,
-                deferredRightEdits = deferredRightEdits :+ rightElement,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                coalescence = conflictOperations.coalesceConflict(
+                  None,
+                  None,
+                  Some(rightElement)
+                )
               )
 
             case (
@@ -644,14 +748,17 @@ object merge extends StrictLogging:
               // Right edit / left deletion conflict with pending right
               // insertion and pending left edit.
               logger.debug(
-                s"Coalescing conflict between left deletion of $editedBaseElement and its edit on the right into $rightElement, with following insertion of $followingRightElement on the right."
+                s"Conflict between left deletion of $editedBaseElement and its edit on the right into $rightElement, coalescing with following insertion of $followingRightElement on the right."
               )
               mergeBetweenRunsOfCommonElements(base, left, rightTail)(
-                partialResult,
-                deferredEdited = deferredEdited,
-                deferredLeftEdits = deferredLeftEdits,
-                deferredRightEdits = deferredRightEdits :+ rightElement,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                partialResult = conflictOperations
+                  .finalConflict(
+                    partialResult,
+                    None,
+                    None,
+                    Some(rightElement)
+                  ),
+                coalescence = NoCoalescence
               )
 
             case (
@@ -667,16 +774,13 @@ object merge extends StrictLogging:
                 s"Conflict between left deletion of $editedBaseElement and its edit on the right into $rightElement with following left edit."
               )
               mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
-                mergeAlgebra.leftEditConflictingWithRightEdit(
+                partialResult = conflictOperations.finalConflict(
                   partialResult,
-                  editedElements = deferredEdited :+ editedBaseElement,
-                  leftEditElements = deferredLeftEdits,
-                  rightEditElements = deferredRightEdits :+ rightElement
+                  Some(editedBaseElement),
+                  None,
+                  Some(rightElement)
                 ),
-                deferredEdited = Vector.empty,
-                deferredLeftEdits = Vector.empty,
-                deferredRightEdits = Vector.empty,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                coalescence = NoCoalescence
               )
 
             case (
@@ -686,14 +790,15 @@ object merge extends StrictLogging:
                 ) =>
               // Edit conflict with a pending left insertion.
               logger.debug(
-                s"Coalescing edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right with following left insertion of $followingLeftElement."
+                s"Edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right, coalescing with following left insertion of $followingLeftElement."
               )
               mergeBetweenRunsOfCommonElements(base, leftTail, right)(
                 partialResult,
-                deferredEdited = deferredEdited,
-                deferredLeftEdits = deferredLeftEdits :+ leftElement,
-                deferredRightEdits = deferredRightEdits,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                coalescence = conflictOperations.coalesceConflict(
+                  None,
+                  Some(leftElement),
+                  None
+                )
               )
 
             case _ =>
@@ -702,27 +807,22 @@ object merge extends StrictLogging:
                 s"Edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right."
               )
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
-                mergeAlgebra.leftEditConflictingWithRightEdit(
+                partialResult = conflictOperations.finalConflict(
                   partialResult,
-                  editedElements = deferredEdited :+ editedBaseElement,
-                  leftEditElements = deferredLeftEdits :+ leftElement,
-                  rightEditElements = deferredRightEdits :+ rightElement
+                  Some(editedBaseElement),
+                  Some(leftElement),
+                  Some(rightElement)
                 ),
-                deferredEdited = Vector.empty,
-                deferredLeftEdits = Vector.empty,
-                deferredRightEdits = Vector.empty,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                coalescence = NoCoalescence
               )
           end match
 
         case (
+              NoCoalescence,
               Seq(Contribution.Difference(_), _*),
               Seq(Contribution.Difference(leftElement), leftTail*),
               Seq(Contribution.CommonToLeftAndRightOnly(_), _*)
             ) => // Left insertion with pending coincident edit.
-          require(
-            deferredEdited.isEmpty && deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty
-          )
           logger.debug(
             s"Left insertion of $leftElement with following coincident edit."
           )
@@ -731,20 +831,15 @@ object merge extends StrictLogging:
               partialResult,
               insertedElement = leftElement
             ),
-            deferredEdited,
-            deferredLeftEdits,
-            deferredRightEdits,
-            deferredCoincidentEdits
+            coalescence = NoCoalescence
           )
 
         case (
+              NoCoalescence,
               Seq(Contribution.Difference(deletedBaseElement), baseTail*),
               Seq(Contribution.Difference(_), _*),
               Seq(Contribution.CommonToBaseAndRightOnly(_), _*)
             ) => // Coincident deletion with pending left edit.
-          require(
-            deferredEdited.isEmpty && deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty && deferredCoincidentEdits.isEmpty
-          )
           logger.debug(
             s"Coincident deletion of $deletedBaseElement with following left edit."
           )
@@ -753,13 +848,11 @@ object merge extends StrictLogging:
               partialResult,
               deletedElement = deletedBaseElement
             ),
-            deferredEdited,
-            deferredLeftEdits,
-            deferredRightEdits,
-            deferredCoincidentEdits
+            coalescence = NoCoalescence
           )
 
         case (
+              conflictOperations: ConflictOperations,
               Seq(Contribution.Difference(editedBaseElement), baseTail*),
               Seq(Contribution.Difference(leftElement), leftTail*),
               _
@@ -774,22 +867,24 @@ object merge extends StrictLogging:
               )
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
                 partialResult,
-                deferredEdited = deferredEdited :+ editedBaseElement,
-                deferredLeftEdits = deferredLeftEdits :+ leftElement,
-                deferredRightEdits = deferredRightEdits,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                coalescence = conflictOperations.coalesceConflict(
+                  Some(editedBaseElement),
+                  Some(leftElement),
+                  None
+                )
               )
 
             case (_, Seq(Contribution.Difference(followingLeftElement), _*)) =>
               logger.debug(
-                s"Coalescing conflict between right deletion of $editedBaseElement and its edit on the left into $leftElement, with following insertion of $followingLeftElement on the left."
+                s"Conflict between right deletion of $editedBaseElement and its edit on the left into $leftElement, coalescing with following insertion of $followingLeftElement on the left."
               )
               mergeBetweenRunsOfCommonElements(base, leftTail, right)(
                 partialResult,
-                deferredEdited = deferredEdited,
-                deferredLeftEdits = deferredLeftEdits :+ leftElement,
-                deferredRightEdits = deferredRightEdits,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                coalescence = conflictOperations.coalesceConflict(
+                  None,
+                  Some(leftElement),
+                  None
+                )
               )
 
             case _ =>
@@ -797,26 +892,21 @@ object merge extends StrictLogging:
                 s"Conflict between right deletion of $editedBaseElement and its edit on the left into $leftElement."
               )
               mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
-                mergeAlgebra.leftEditConflictingWithRightEdit(
+                partialResult = conflictOperations.finalConflict(
                   partialResult,
-                  editedElements = deferredEdited :+ editedBaseElement,
-                  leftEditElements = deferredLeftEdits :+ leftElement,
-                  rightEditElements = deferredRightEdits
+                  Some(editedBaseElement),
+                  Some(leftElement),
+                  None
                 ),
-                deferredEdited = Vector.empty,
-                deferredLeftEdits = Vector.empty,
-                deferredRightEdits = Vector.empty,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                coalescence = NoCoalescence
               )
 
         case (
+              NoCoalescence,
               Seq(Contribution.Difference(_), _*),
               Seq(Contribution.CommonToLeftAndRightOnly(_), _*),
               Seq(Contribution.Difference(rightElement), rightTail*)
             ) => // Right insertion with pending coincident edit.
-          require(
-            deferredEdited.isEmpty && deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty
-          )
           logger.debug(
             s"Right insertion of $rightElement with following coincident edit."
           )
@@ -825,20 +915,15 @@ object merge extends StrictLogging:
               partialResult,
               insertedElement = rightElement
             ),
-            deferredEdited,
-            deferredLeftEdits,
-            deferredRightEdits,
-            deferredCoincidentEdits
+            coalescence = NoCoalescence
           )
 
         case (
+              NoCoalescence,
               Seq(Contribution.Difference(deletedBaseElement), baseTail*),
               Seq(Contribution.CommonToBaseAndLeftOnly(_), _*),
               Seq(Contribution.Difference(_), _*)
             ) => // Coincident deletion with pending right edit.
-          require(
-            deferredEdited.isEmpty && deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty && deferredCoincidentEdits.isEmpty
-          )
           logger.debug(
             s"Coincident deletion of $deletedBaseElement with following right edit."
           )
@@ -847,13 +932,11 @@ object merge extends StrictLogging:
               partialResult,
               deletedElement = deletedBaseElement
             ),
-            deferredEdited,
-            deferredLeftEdits,
-            deferredRightEdits,
-            deferredCoincidentEdits
+            coalescence = NoCoalescence
           )
 
         case (
+              conflictOperations: ConflictOperations,
               Seq(Contribution.Difference(editedBaseElement), baseTail*),
               _,
               Seq(Contribution.Difference(rightElement), rightTail*)
@@ -868,22 +951,24 @@ object merge extends StrictLogging:
               )
               mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
                 partialResult,
-                deferredEdited = deferredEdited :+ editedBaseElement,
-                deferredLeftEdits = deferredLeftEdits,
-                deferredRightEdits = deferredRightEdits :+ rightElement,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                coalescence = conflictOperations.coalesceConflict(
+                  Some(editedBaseElement),
+                  None,
+                  Some(rightElement)
+                )
               )
 
             case (_, Seq(Contribution.Difference(followingRightElement), _*)) =>
               logger.debug(
-                s"Coalescing conflict between left deletion of $editedBaseElement and its edit on the right into $rightElement, with following insertion of $followingRightElement on the right."
+                s"Conflict between left deletion of $editedBaseElement and its edit on the right into $rightElement, coalescing with following insertion of $followingRightElement on the right."
               )
               mergeBetweenRunsOfCommonElements(base, left, rightTail)(
                 partialResult,
-                deferredEdited = deferredEdited,
-                deferredLeftEdits = deferredLeftEdits,
-                deferredRightEdits = deferredRightEdits :+ rightElement,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                coalescence = conflictOperations.coalesceConflict(
+                  None,
+                  None,
+                  Some(rightElement)
+                )
               )
 
             case _ =>
@@ -891,46 +976,36 @@ object merge extends StrictLogging:
                 s"Conflict between left deletion of $editedBaseElement and its edit on the right into $rightElement."
               )
               mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
-                mergeAlgebra.leftEditConflictingWithRightEdit(
+                partialResult = conflictOperations.finalConflict(
                   partialResult,
-                  editedElements = deferredEdited :+ editedBaseElement,
-                  leftEditElements = deferredLeftEdits,
-                  rightEditElements = deferredRightEdits :+ rightElement
+                  Some(editedBaseElement),
+                  None,
+                  Some(rightElement)
                 ),
-                deferredEdited = Vector.empty,
-                deferredLeftEdits = Vector.empty,
-                deferredRightEdits = Vector.empty,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                coalescence = NoCoalescence
               )
 
         case (
+              NoCoalescence,
               Seq(Contribution.Difference(deletedBaseElement), baseTail*),
               _,
               _
             ) => // Coincident deletion.
-          require(
-            deferredEdited.isEmpty && deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty && deferredCoincidentEdits.isEmpty
-          )
           logger.debug(s"Coincident deletion of $deletedBaseElement.")
           mergeBetweenRunsOfCommonElements(baseTail, left, right)(
             mergeAlgebra.coincidentDeletion(
               partialResult,
               deletedElement = deletedBaseElement
             ),
-            deferredEdited,
-            deferredLeftEdits,
-            deferredRightEdits,
-            deferredCoincidentEdits
+            coalescence = NoCoalescence
           )
 
         case (
+              NoCoalescence,
               Seq(Contribution.CommonToBaseAndLeftOnly(_), _*),
               Seq(Contribution.Difference(leftElement), leftTail*),
               Seq(Contribution.Difference(_), _*)
             ) => // Left insertion with pending right edit.
-          require(
-            deferredEdited.isEmpty && deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty
-          )
           logger.debug(
             s"Left insertion of $leftElement with following right edit."
           )
@@ -939,20 +1014,15 @@ object merge extends StrictLogging:
               partialResult,
               insertedElement = leftElement
             ),
-            deferredEdited,
-            deferredLeftEdits,
-            deferredRightEdits,
-            deferredCoincidentEdits
+            coalescence = NoCoalescence
           )
 
         case (
+              NoCoalescence,
               Seq(Contribution.CommonToBaseAndRightOnly(_), _*),
               Seq(Contribution.Difference(_), _*),
               Seq(Contribution.Difference(rightElement), rightTail*)
             ) => // Right insertion with pending left edit.
-          require(
-            deferredEdited.isEmpty && deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty
-          )
           logger.debug(
             s"Right insertion of $rightElement with following left edit."
           )
@@ -961,13 +1031,11 @@ object merge extends StrictLogging:
               partialResult,
               insertedElement = rightElement
             ),
-            deferredEdited,
-            deferredLeftEdits,
-            deferredRightEdits,
-            deferredCoincidentEdits
+            coalescence = NoCoalescence
           )
 
         case (
+              conflictOperations: ConflictOperations,
               _,
               Seq(Contribution.Difference(leftElement), leftTail*),
               Seq(Contribution.Difference(rightElement), rightTail*)
@@ -978,38 +1046,41 @@ object merge extends StrictLogging:
                   Seq(Contribution.Difference(_), _*)
                 ) =>
               logger.debug(
-                s"Coalescing conflict between left insertion of $leftElement and right insertion of $rightElement with following left insertion and right insertion conflict."
+                s"Conflict between left insertion of $leftElement and right insertion of $rightElement, coalescing with following left insertion and right insertion conflict."
               )
               mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
                 partialResult,
-                deferredEdited,
-                deferredLeftEdits = deferredLeftEdits :+ leftElement,
-                deferredRightEdits = deferredRightEdits :+ rightElement,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                coalescence = conflictOperations.coalesceConflict(
+                  None,
+                  Some(leftElement),
+                  Some(rightElement)
+                )
               )
 
             case (Seq(Contribution.Difference(_), _*), _) =>
               logger.debug(
-                s"Coalescing conflict between left insertion of $leftElement and right insertion of $rightElement with following left insertion."
+                s"Conflict between left insertion of $leftElement and right insertion of $rightElement, coalescing with following left insertion."
               )
               mergeBetweenRunsOfCommonElements(base, leftTail, right)(
                 partialResult,
-                deferredEdited,
-                deferredLeftEdits = deferredLeftEdits :+ leftElement,
-                deferredRightEdits = deferredRightEdits,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                coalescence = conflictOperations.coalesceConflict(
+                  None,
+                  Some(leftElement),
+                  None
+                )
               )
 
             case (_, Seq(Contribution.Difference(_), _*)) =>
               logger.debug(
-                s"Coalescing conflict between left insertion of $leftElement and right insertion of $rightElement with following right insertion."
+                s"Conflict between left insertion of $leftElement and right insertion of $rightElement, coalescing with following right insertion."
               )
               mergeBetweenRunsOfCommonElements(base, left, rightTail)(
                 partialResult,
-                deferredEdited,
-                deferredLeftEdits = deferredLeftEdits,
-                deferredRightEdits = deferredRightEdits :+ rightElement,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                coalescence = conflictOperations.coalesceConflict(
+                  None,
+                  None,
+                  Some(rightElement)
+                )
               )
 
             case _ =>
@@ -1017,19 +1088,17 @@ object merge extends StrictLogging:
                 s"Conflict between left insertion of $leftElement and right insertion of $rightElement."
               )
               mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
-                mergeAlgebra.leftEditConflictingWithRightEdit(
+                partialResult = conflictOperations.finalConflict(
                   partialResult,
-                  editedElements = deferredEdited,
-                  leftEditElements = deferredLeftEdits :+ leftElement,
-                  rightEditElements = deferredRightEdits :+ rightElement
+                  None,
+                  Some(leftElement),
+                  Some(rightElement)
                 ),
-                deferredEdited = Vector.empty,
-                deferredLeftEdits = Vector.empty,
-                deferredRightEdits = Vector.empty,
-                deferredCoincidentEdits = deferredCoincidentEdits
+                coalescence = NoCoalescence
               )
 
         case (
+              NoCoalescence,
               Seq(
                 Contribution.Common(_) |
                 Contribution.CommonToBaseAndLeftOnly(_) |
@@ -1040,22 +1109,17 @@ object merge extends StrictLogging:
               Seq(Contribution.Difference(leftElement), leftTail*),
               _
             ) => // Left insertion.
-          require(
-            deferredEdited.isEmpty && deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty
-          )
           logger.debug(s"Left insertion of $leftElement.")
           mergeBetweenRunsOfCommonElements(base, leftTail, right)(
             mergeAlgebra.leftInsertion(
               partialResult,
               insertedElement = leftElement
             ),
-            deferredEdited,
-            deferredLeftEdits,
-            deferredRightEdits,
-            deferredCoincidentEdits
+            coalescence = NoCoalescence
           )
 
         case (
+              NoCoalescence,
               Seq(
                 Contribution.Common(_) |
                 Contribution.CommonToBaseAndRightOnly(_) |
@@ -1066,25 +1130,16 @@ object merge extends StrictLogging:
               _,
               Seq(Contribution.Difference(rightElement), rightTail*)
             ) => // Right insertion.
-          require(
-            deferredEdited.isEmpty && deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty
-          )
           logger.debug(s"Right insertion of $rightElement.")
           mergeBetweenRunsOfCommonElements(base, left, rightTail)(
             mergeAlgebra.rightInsertion(
               partialResult,
               insertedElement = rightElement
             ),
-            deferredEdited,
-            deferredLeftEdits,
-            deferredRightEdits,
-            deferredCoincidentEdits
+            coalescence = NoCoalescence
           )
 
-        case (Seq(), Seq(), Seq()) => // Terminating case!
-          require(
-            deferredEdited.isEmpty && deferredLeftEdits.isEmpty && deferredRightEdits.isEmpty
-          )
+        case (NoCoalescence, Seq(), Seq(), Seq()) => // Terminating case!
           logger.debug(s"Merge yielded:\n${pprint(partialResult)}")
           partialResult
       end match
@@ -1102,10 +1157,7 @@ object merge extends StrictLogging:
         longestCommonSubsequence.right
       )(
         partialResult = mergeAlgebra.empty,
-        deferredEdited = IndexedSeq.empty,
-        deferredLeftEdits = IndexedSeq.empty,
-        deferredRightEdits = IndexedSeq.empty,
-        deferredCoincidentEdits = IndexedSeq.empty
+        coalescence = NoCoalescence
       )
     )
   end of
@@ -1170,8 +1222,9 @@ object merge extends StrictLogging:
     // Even coincident deletions are treated separately as they aren't
     // conflicts. It does mean we should probably have some contract checking to
     // make sure a call really does represent a conflict.
-    def leftEditConflictingWithRightEdit(
+    def conflict(
         result: Result[Element],
+        // If this is empty, it represents an insertion conflict.
         editedElements: IndexedSeq[Element],
         // If this is empty, it represents a left-deletion rather than a
         // left-edit.

@@ -1964,7 +1964,7 @@ object MergeTest:
       )
     )
 
-    override def leftEditConflictingWithRightEdit(
+    override def conflict(
         result: AugmentedMergeResult[Element],
         editedElements: IndexedSeq[Element],
         leftEditElements: IndexedSeq[Element],
@@ -1976,14 +1976,14 @@ object MergeTest:
 
       AugmentedMergeResult(
         state = State.Conflict,
-        coreMergeResult = coreMergeAlgebra.leftEditConflictingWithRightEdit(
+        coreMergeResult = coreMergeAlgebra.conflict(
           result.coreMergeResult,
           editedElements,
           leftEditElements,
           rightEditElements
         )
       )
-    end leftEditConflictingWithRightEdit
+    end conflict
   end DelegatingMergeAlgebraWithContracts
 
   object DelegatingMergeAlgebraWithContracts:
