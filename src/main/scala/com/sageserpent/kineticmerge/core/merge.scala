@@ -720,24 +720,6 @@ object merge extends StrictLogging:
               )
 
             case (
-                  _,
-                  _,
-                  Seq(Contribution.Difference(followingRightElement), _*)
-                ) =>
-              // Edit conflict with a pending right insertion.
-              logger.debug(
-                s"Edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right, coalescing with following right insertion of $followingRightElement."
-              )
-              mergeBetweenRunsOfCommonElements(base, left, rightTail)(
-                partialResult,
-                coalescence = conflictOperations.coalesceConflict(
-                  None,
-                  None,
-                  Some(rightElement)
-                )
-              )
-
-            case (
                   Seq(
                     Contribution.CommonToBaseAndRightOnly(_),
                     _*
@@ -751,14 +733,12 @@ object merge extends StrictLogging:
                 s"Conflict between left deletion of $editedBaseElement and its edit on the right into $rightElement, coalescing with following insertion of $followingRightElement on the right."
               )
               mergeBetweenRunsOfCommonElements(base, left, rightTail)(
-                partialResult = conflictOperations
-                  .finalConflict(
-                    partialResult,
-                    None,
-                    None,
-                    Some(rightElement)
-                  ),
-                coalescence = NoCoalescence
+                partialResult,
+                coalescence = conflictOperations.coalesceConflict(
+                  None,
+                  None,
+                  Some(rightElement)
+                )
               )
 
             case (
@@ -798,6 +778,24 @@ object merge extends StrictLogging:
                   None,
                   Some(leftElement),
                   None
+                )
+              )
+
+            case (
+                  _,
+                  _,
+                  Seq(Contribution.Difference(followingRightElement), _*)
+                ) =>
+              // Edit conflict with a pending right insertion.
+              logger.debug(
+                s"Edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right, coalescing with following right insertion of $followingRightElement."
+              )
+              mergeBetweenRunsOfCommonElements(base, left, rightTail)(
+                partialResult,
+                coalescence = conflictOperations.coalesceConflict(
+                  None,
+                  None,
+                  Some(rightElement)
                 )
               )
 
