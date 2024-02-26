@@ -275,7 +275,7 @@ object merge extends StrictLogging:
       )
     end Conflict
 
-    def insertionConflict(
+    inline def insertionConflict(
         base: Seq[Contribution[Element]],
         left: Seq[Contribution[Element]],
         right: Seq[Contribution[Element]],
@@ -343,7 +343,7 @@ object merge extends StrictLogging:
             coalescence = NoCoalescence
           )
 
-    def rightEditLeftDeletionConflict(
+    inline def rightEditLeftDeletionConflict(
         base: Seq[Contribution[Element]],
         partialResult: Result[Element],
         editedBaseElement: Element,
@@ -398,7 +398,7 @@ object merge extends StrictLogging:
             coalescence = NoCoalescence
           )
 
-    def leftEditRightDeletionConflict(
+    inline def leftEditRightDeletionConflict(
         base: Seq[Contribution[Element]],
         partialResult: Result[Element],
         editedBaseElement: Element,
@@ -453,7 +453,7 @@ object merge extends StrictLogging:
             coalescence = NoCoalescence
           )
 
-    def conflict(
+    inline def conflict(
         base: Seq[Contribution[Element]],
         left: Seq[Contribution[Element]],
         right: Seq[Contribution[Element]],
@@ -724,7 +724,7 @@ object merge extends StrictLogging:
       end match
     end conflict
 
-    def leftEdit(
+    inline def leftEdit(
         base: Seq[Contribution[Element]],
         partialResult: Result[Element],
         editedBaseElement: Element,
@@ -795,7 +795,7 @@ object merge extends StrictLogging:
       end match
     end leftEdit
 
-    def rightEdit(
+    inline def rightEdit(
         base: Seq[Contribution[Element]],
         partialResult: Result[Element],
         editedBaseElement: Element,
@@ -876,7 +876,7 @@ object merge extends StrictLogging:
       end match
     end rightEdit
 
-    def coincidentEdit(
+    inline def coincidentEdit(
         base: Seq[Contribution[Element]],
         partialResult: Result[Element],
         editedBaseElement: Element,
