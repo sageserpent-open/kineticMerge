@@ -5,9 +5,9 @@ import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.syntax.traverse.toTraverseOps
 import com.google.common.hash.Hashing
+import com.sageserpent.kineticmerge.core.*
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtension.*
 import com.sageserpent.kineticmerge.core.Token.tokens
-import com.sageserpent.kineticmerge.core.*
 import com.softwaremill.tagging.*
 import fansi.Str
 import os.{CommandResult, Path, RelPath}
@@ -177,7 +177,7 @@ object Main:
           s"Exits with code $successfulMerge on completed successful merge."
         ),
         note(
-          s"Exits with code $conflictedMerge on completed successful merge."
+          s"Exits with code $conflictedMerge on completed merge with conflicts."
         ),
         note(
           s"Exits with code $incorrectCommandLine if command line is incorrect."
