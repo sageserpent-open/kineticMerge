@@ -664,25 +664,6 @@ object merge extends StrictLogging:
               )
 
             case (
-                  Seq(Contribution.Difference(followingBaseElement), _*),
-                  _,
-                  _
-                ) =>
-              // If the following element in the base would also be deleted on
-              // both sides, coalesce into a single coincident edit conflict.
-              logger.debug(
-                s"Edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right, coalescing with following coincident deletion of $followingBaseElement."
-              )
-              mergeBetweenRunsOfCommonElements(baseTail, left, right)(
-                partialResult,
-                coalescence = conflictOperations.coalesceConflict(
-                  Some(editedBaseElement),
-                  None,
-                  None
-                )
-              )
-
-            case (
                   Seq(
                     Contribution.CommonToBaseAndLeftOnly(_),
                     _*
@@ -771,6 +752,44 @@ object merge extends StrictLogging:
                   Some(rightElement)
                 ),
                 coalescence = NoCoalescence
+              )
+
+            case (
+                  Seq(Contribution.Difference(followingBaseElement), _*),
+                  Seq(Contribution.CommonToLeftAndRightOnly(_), _*),
+                  Seq(Contribution.CommonToLeftAndRightOnly(_), _*)
+                ) =>
+              // Edit conflict with a pending coincident edit.
+              logger.debug(
+                s"Edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right with following coincident edit of $followingBaseElement."
+              )
+              mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
+                partialResult = conflictOperations.finalConflict(
+                  partialResult,
+                  Some(editedBaseElement),
+                  Some(leftElement),
+                  Some(rightElement)
+                ),
+                coalescence = NoCoalescence
+              )
+
+            case (
+                  Seq(Contribution.Difference(followingBaseElement), _*),
+                  _,
+                  _
+                ) =>
+              // If the following element in the base would also be deleted on
+              // both sides, coalesce into a single edit conflict.
+              logger.debug(
+                s"Edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right, coalescing with following coincident deletion of $followingBaseElement."
+              )
+              mergeBetweenRunsOfCommonElements(baseTail, left, right)(
+                partialResult,
+                coalescence = conflictOperations.coalesceConflict(
+                  Some(editedBaseElement),
+                  None,
+                  None
+                )
               )
 
             case (
