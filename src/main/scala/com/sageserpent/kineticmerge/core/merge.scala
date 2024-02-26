@@ -1207,18 +1207,33 @@ object merge extends StrictLogging:
         deletedElement: Element
     ): Result[Element]
 
+    /** @note
+      *   Edits will coalesce with following *insertions*, but each edited
+      *   element from the base side retains its own edit, in contrast with a
+      *   conflict.
+      */
     def leftEdit(
         result: Result[Element],
         editedElement: Element,
         editElements: IndexedSeq[Element]
     ): Result[Element]
 
+    /** @note
+      *   Edits will coalesce with following *insertions*, but each edited
+      *   element from the base side retains its own edit, in contrast with a
+      *   conflict.
+      */
     def rightEdit(
         result: Result[Element],
         editedElement: Element,
         editElements: IndexedSeq[Element]
     ): Result[Element]
 
+    /** @note
+      *   Edits will coalesce with following *insertions*, but each edited
+      *   element from the base side retains its own edit, in contrast with a
+      *   conflict.
+      */
     def coincidentEdit(
         result: Result[Element],
         editedElement: Element,
@@ -1230,6 +1245,14 @@ object merge extends StrictLogging:
     // Even coincident deletions are treated separately as they aren't
     // conflicts. It does mean we should probably have some contract checking to
     // make sure a call really does represent a conflict.
+
+    /** @note
+      *   In contrast with edits, conflicts will coalesce on all three sides.
+      *   This is intended for client code to assign edits on one side of a
+      *   conflict to moved sections on the other side.<p></p>Edits have a
+      *   simpler treatment of moved sections, thus they isolate their edited
+      *   elements.
+      */
     def conflict(
         result: Result[Element],
         // If this is empty, it represents an insertion conflict.
