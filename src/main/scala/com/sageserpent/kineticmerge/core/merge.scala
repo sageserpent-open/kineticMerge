@@ -9,6 +9,7 @@ import scala.annotation.tailrec
 
 object merge extends StrictLogging:
   /** Performs a three-way merge.
+    *
     * @param base
     *   {@code left} and {@code right} are considered modified versions of this
     *   sequence.
@@ -36,7 +37,6 @@ object merge extends StrictLogging:
     *   [[LongestCommonSubsequence]], or at least conform to the implied
     *   postcondition of calling [[LongestCommonSubsequence.of]]. Failure to
     *   meet this may result in some unspecified exception being thrown.
-    *
     * @note
     *   Rules of the game: If an element is [[Contribution.Common]] to all three
     *   sides, it is preserved in its left form in the merge; the merge uses the
@@ -68,7 +68,17 @@ object merge extends StrictLogging:
     *   this breaks up the left-edits to preserve the sandwich in edited form in
     *   the merge. <p><p>Similarly, successive edits on the same side will be
     *   treated as isolated edits rather than allowing the first to greedily
-    *   capture all the [[Contribution.Difference]] elements.
+    *   capture all the [[Contribution.Difference]] elements.<p></p>Conflicts
+    *   are also greedy, taking successive left- and right-insertions to make a
+    *   longer conflict. This occurs even if following insertions could be made
+    *   in isolation without causing a conflict. However, as mentioned above,
+    *   edits are preferred over conflicts, so an edit will win out over a
+    *   conflict in taking insertions.<p></p>Coincident edits, where an element
+    *   is a [[Contribution.Difference]] in {@code base} that is edited into a
+    *   [[Contribution.CommonToLeftAndRightOnly]] in both the {@code left} and
+    *   {@code right} are also greedy and will take successive
+    *   [[Contribution.CommonToLeftAndRightOnly]] elements to make a long
+    *   coincident edit.
     */
   def of[Result[_], Element](mergeAlgebra: MergeAlgebra[Result, Element])(
       base: IndexedSeq[Element],
