@@ -1240,12 +1240,6 @@ object merge extends StrictLogging:
         editElements: IndexedSeq[Element]
     ): Result[Element]
 
-    // TODO: this could in theory model all of the other operations in the merge
-    // algebra, but for now we'll keep it distinct to make our intent clear.
-    // Even coincident deletions are treated separately as they aren't
-    // conflicts. It does mean we should probably have some contract checking to
-    // make sure a call really does represent a conflict.
-
     /** @note
       *   In contrast with edits, conflicts will coalesce on all three sides.
       *   This is intended for client code to assign edits on one side of a

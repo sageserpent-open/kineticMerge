@@ -2012,6 +2012,18 @@ object MergeTest:
       // Should not follow a conflict directly with another conflict - they
       // should be coalesced instead.
       require(State.Conflict != result.state)
+      // This is a conflict, so we can't just have one side with different
+      // elements.
+      require(
+        // Left edit versus right edit...
+        editedElements.nonEmpty && leftEditElements.nonEmpty && rightEditElements.nonEmpty ||
+          // Left edit versus right deletion...
+          editedElements.nonEmpty && leftEditElements.nonEmpty ||
+          // Right edit versus left deletion...
+          editedElements.nonEmpty && rightEditElements.nonEmpty ||
+          // Left insertion versus right insertion...
+          leftEditElements.nonEmpty && rightEditElements.nonEmpty
+      )
 
       AugmentedMergeResult(
         state = State.Conflict,
