@@ -285,6 +285,7 @@ object merge extends StrictLogging:
         coalescence: Coalescence
     ): Result[Element] =
       (coalescence, base, left, right) match
+        // SYMMETRIC...
         case (
               NoCoalescence,
               Seq(Contribution.Common(_), baseTail*),
@@ -302,6 +303,7 @@ object merge extends StrictLogging:
             coalescence = NoCoalescence
           )
 
+        // SYMMETRIC...
         case (
               coincidentEditOperations: CoincidentEditOperations,
               Seq(Contribution.Difference(editedBaseElement), baseTail*),
@@ -364,7 +366,8 @@ object merge extends StrictLogging:
                 coalescence = NoCoalescence
               )
           end match
-
+        //
+        // SYMMETRIC...
         case (
               NoCoalescence,
               _,
@@ -388,6 +391,7 @@ object merge extends StrictLogging:
             coalescence = NoCoalescence
           )
 
+        // LEFT...
         case (
               leftEditOperations: LeftEditOperations,
               Seq(
@@ -458,28 +462,8 @@ object merge extends StrictLogging:
                 coalescence = NoCoalescence
               )
           end match
-
-        case (
-              NoCoalescence,
-              Seq(
-                Contribution.CommonToBaseAndRightOnly(deletedBaseElement),
-                baseTail*
-              ),
-              _,
-              Seq(
-                Contribution.CommonToBaseAndRightOnly(_),
-                rightTail*
-              )
-            ) => // Left deletion.
-          logger.debug(s"Left deletion of $deletedBaseElement.")
-          mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
-            mergeAlgebra.leftDeletion(
-              partialResult,
-              deletedElement = deletedBaseElement
-            ),
-            coalescence = NoCoalescence
-          )
-
+        //
+        // RIGHT...
         case (
               rightEditOperations: RightEditOperations,
               Seq(
@@ -559,7 +543,30 @@ object merge extends StrictLogging:
                 coalescence = NoCoalescence
               )
           end match
+        //
+        // LEFT...
+        case (
+              NoCoalescence,
+              Seq(
+                Contribution.CommonToBaseAndRightOnly(deletedBaseElement),
+                baseTail*
+              ),
+              _,
+              Seq(
+                Contribution.CommonToBaseAndRightOnly(_),
+                rightTail*
+              )
+            ) => // Left deletion.
+          logger.debug(s"Left deletion of $deletedBaseElement.")
+          mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
+            mergeAlgebra.leftDeletion(
+              partialResult,
+              deletedElement = deletedBaseElement
+            ),
+            coalescence = NoCoalescence
+          )
 
+        // RIGHT...
         case (
               NoCoalescence,
               Seq(
@@ -581,6 +588,7 @@ object merge extends StrictLogging:
             coalescence = NoCoalescence
           )
 
+        // SYMMETRIC...
         case (
               conflictOperations: ConflictOperations,
               Seq(Contribution.Difference(editedBaseElement), baseTail*),
@@ -843,7 +851,8 @@ object merge extends StrictLogging:
                 coalescence = NoCoalescence
               )
           end match
-
+        //
+        // LEFT...
         case (
               NoCoalescence,
               Seq(Contribution.Difference(_), _*),
@@ -861,6 +870,25 @@ object merge extends StrictLogging:
             coalescence = NoCoalescence
           )
 
+        // RIGHT...
+        case (
+              NoCoalescence,
+              Seq(Contribution.Difference(_), _*),
+              Seq(Contribution.CommonToLeftAndRightOnly(_), _*),
+              Seq(Contribution.Difference(rightElement), rightTail*)
+            ) => // Right insertion with pending coincident edit.
+          logger.debug(
+            s"Right insertion of $rightElement with following coincident edit."
+          )
+          mergeBetweenRunsOfCommonElements(base, left, rightTail)(
+            mergeAlgebra.rightInsertion(
+              partialResult,
+              insertedElement = rightElement
+            ),
+            coalescence = NoCoalescence
+          )
+
+        // LEFT...
         case (
               NoCoalescence,
               Seq(Contribution.Difference(deletedBaseElement), baseTail*),
@@ -878,6 +906,25 @@ object merge extends StrictLogging:
             coalescence = NoCoalescence
           )
 
+        // RIGHT...
+        case (
+              NoCoalescence,
+              Seq(Contribution.Difference(deletedBaseElement), baseTail*),
+              Seq(Contribution.CommonToBaseAndLeftOnly(_), _*),
+              Seq(Contribution.Difference(_), _*)
+            ) => // Coincident deletion with pending right edit.
+          logger.debug(
+            s"Coincident deletion of $deletedBaseElement with following right edit."
+          )
+          mergeBetweenRunsOfCommonElements(baseTail, left, right)(
+            mergeAlgebra.coincidentDeletion(
+              partialResult,
+              deletedElement = deletedBaseElement
+            ),
+            coalescence = NoCoalescence
+          )
+
+        // LEFT...
         case (
               conflictOperations: ConflictOperations,
               Seq(Contribution.Difference(editedBaseElement), baseTail*),
@@ -928,40 +975,7 @@ object merge extends StrictLogging:
                 coalescence = NoCoalescence
               )
 
-        case (
-              NoCoalescence,
-              Seq(Contribution.Difference(_), _*),
-              Seq(Contribution.CommonToLeftAndRightOnly(_), _*),
-              Seq(Contribution.Difference(rightElement), rightTail*)
-            ) => // Right insertion with pending coincident edit.
-          logger.debug(
-            s"Right insertion of $rightElement with following coincident edit."
-          )
-          mergeBetweenRunsOfCommonElements(base, left, rightTail)(
-            mergeAlgebra.rightInsertion(
-              partialResult,
-              insertedElement = rightElement
-            ),
-            coalescence = NoCoalescence
-          )
-
-        case (
-              NoCoalescence,
-              Seq(Contribution.Difference(deletedBaseElement), baseTail*),
-              Seq(Contribution.CommonToBaseAndLeftOnly(_), _*),
-              Seq(Contribution.Difference(_), _*)
-            ) => // Coincident deletion with pending right edit.
-          logger.debug(
-            s"Coincident deletion of $deletedBaseElement with following right edit."
-          )
-          mergeBetweenRunsOfCommonElements(baseTail, left, right)(
-            mergeAlgebra.coincidentDeletion(
-              partialResult,
-              deletedElement = deletedBaseElement
-            ),
-            coalescence = NoCoalescence
-          )
-
+        // RIGHT...
         case (
               conflictOperations: ConflictOperations,
               Seq(Contribution.Difference(editedBaseElement), baseTail*),
@@ -1012,6 +1026,7 @@ object merge extends StrictLogging:
                 coalescence = NoCoalescence
               )
 
+        // SYMMETRIC...
         case (
               NoCoalescence,
               Seq(Contribution.Difference(deletedBaseElement), baseTail*),
@@ -1027,6 +1042,7 @@ object merge extends StrictLogging:
             coalescence = NoCoalescence
           )
 
+        // LEFT...
         case (
               NoCoalescence,
               Seq(Contribution.CommonToBaseAndLeftOnly(_), _*),
@@ -1044,6 +1060,7 @@ object merge extends StrictLogging:
             coalescence = NoCoalescence
           )
 
+        // RIGHT...
         case (
               NoCoalescence,
               Seq(Contribution.CommonToBaseAndRightOnly(_), _*),
@@ -1061,6 +1078,7 @@ object merge extends StrictLogging:
             coalescence = NoCoalescence
           )
 
+        // SYMMETRIC...
         case (
               conflictOperations: ConflictOperations,
               _,
@@ -1124,6 +1142,7 @@ object merge extends StrictLogging:
                 coalescence = NoCoalescence
               )
 
+        // **** LEFT...
         case (
               NoCoalescence,
               Seq(
@@ -1145,6 +1164,7 @@ object merge extends StrictLogging:
             coalescence = NoCoalescence
           )
 
+        // **** RIGHT...
         case (
               NoCoalescence,
               Seq(
@@ -1166,6 +1186,7 @@ object merge extends StrictLogging:
             coalescence = NoCoalescence
           )
 
+        // SYMMETRIC...
         case (NoCoalescence, Seq(), Seq(), Seq()) => // Terminating case!
           logger.debug(s"Merge yielded:\n${pprint(partialResult)}")
           partialResult
