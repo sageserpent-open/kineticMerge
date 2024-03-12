@@ -5,11 +5,10 @@ import monocle.syntax.all.*
 
 object MergeResultDetectingMotion:
   def mergeAlgebra[Element](
-      matchesFor: Element => collection.Set[Match[Element]]
+      matchesFor: Element => collection.Set[Match[Element]],
+      coreMergeAlgebra: merge.MergeAlgebra[MergeResult, Element]
   ): MergeAlgebra[MergeResultDetectingMotion, Element] =
     new MergeAlgebra[MergeResultDetectingMotion, Element]:
-      private val coreMergeAlgebra = MergeResult.mergeAlgebra[Element]
-
       override def empty: MergeResultDetectingMotion[Element] =
         MergeResultDetectingMotion(
           coreMergeResult = coreMergeAlgebra.empty,
