@@ -13,7 +13,7 @@ object MergeResultDetectingMotion:
       override def empty: MergeResultDetectingMotion[Element] =
         MergeResultDetectingMotion(
           coreMergeResult = coreMergeAlgebra.empty,
-          edits = Map.empty
+          changesPropagatedThroughMotion = Map.empty
         )
 
       override def preservation(
@@ -104,6 +104,8 @@ end MergeResultDetectingMotion
 
 case class MergeResultDetectingMotion[Element](
     coreMergeResult: MergeResult[Element],
-    edits: Map[Element, Element]
+    // Use `Option[Element]` to model the difference between an edit and an
+    // outright deletion.
+    changesPropagatedThroughMotion: Map[Element, Option[Element]]
 ):
 end MergeResultDetectingMotion
