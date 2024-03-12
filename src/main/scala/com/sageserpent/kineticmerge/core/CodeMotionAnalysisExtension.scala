@@ -61,7 +61,8 @@ object CodeMotionAnalysisExtension:
         }
       end sectionEqualityViaDominantsFallingBackToContentComparison
 
-      val mergedSectionsResult =
+      val mergedSectionsResult
+          : Either[merge.Divergence.type, MergeResult[Section[Element]]] =
         merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(
           base = baseSections,
           left = leftSections,
