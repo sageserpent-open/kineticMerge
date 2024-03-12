@@ -1,5 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
+import com.sageserpent.kineticmerge.core.Match.BaseAndLeft
 import com.sageserpent.kineticmerge.core.merge.MergeAlgebra
 import monocle.syntax.all.*
 
@@ -60,9 +61,22 @@ object MergeResultDetectingMotion:
       override def coincidentDeletion(
           result: MergeResultDetectingMotion[Element],
           deletedElement: Element
-      ): MergeResultDetectingMotion[Element] = result
-        .focus(_.coreMergeResult)
-        .modify(coreMergeAlgebra.coincidentDeletion(_, deletedElement))
+      ): MergeResultDetectingMotion[Element] =
+        matchesFor(deletedElement).toSeq match
+          case Seq(BaseAndLeft(_, leftElement)) =>
+            result
+              .focus(_.coreMergeResult)
+              .modify(coreMergeAlgebra.leftDeletion(_, deletedElement))
+              .focus(_.changesPropagatedThroughMotion)
+              .modify(_ + (leftElement -> None))
+          case Seq() =>
+            result
+              .focus(_.coreMergeResult)
+              .modify(coreMergeAlgebra.coincidentDeletion(_, deletedElement))
+          case _ =>
+            // TODO: is this divergence? Perhaps we could do hit the core merge
+            // algebra and propagate changes for each match?
+            ???
 
       override def leftEdit(
           result: MergeResultDetectingMotion[Element],
