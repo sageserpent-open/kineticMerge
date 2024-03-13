@@ -1,6 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
-import com.sageserpent.kineticmerge.core.Match.BaseAndLeft
+import com.sageserpent.kineticmerge.core.Match.*
 import com.sageserpent.kineticmerge.core.merge.MergeAlgebra
 import monocle.syntax.all.*
 
@@ -69,6 +69,12 @@ object MergeResultDetectingMotion:
               .modify(coreMergeAlgebra.leftDeletion(_, deletedElement))
               .focus(_.changesPropagatedThroughMotion)
               .modify(_ + (leftElement -> None))
+          case Seq(BaseAndRight(_, rightElement)) =>
+            result
+              .focus(_.coreMergeResult)
+              .modify(coreMergeAlgebra.rightDeletion(_, deletedElement))
+              .focus(_.changesPropagatedThroughMotion)
+              .modify(_ + (rightElement -> None))
           case Seq() =>
             result
               .focus(_.coreMergeResult)

@@ -24,7 +24,7 @@ class MergeResultDetectingMotionTest:
       val baseElement: Element    = 1
       val ourSideElement: Element = 2
 
-      val baseAndLeft =
+      val baseAndOurSidePairwiseMatch =
         if mirrorImage then
           Match
             .BaseAndRight(
@@ -39,7 +39,10 @@ class MergeResultDetectingMotionTest:
             )
 
       val matchesByElement =
-        Map(baseElement -> baseAndLeft, ourSideElement -> baseAndLeft)
+        Map(
+          baseElement    -> baseAndOurSidePairwiseMatch,
+          ourSideElement -> baseAndOurSidePairwiseMatch
+        )
 
       def matchesFor(element: Element): Set[Match[Element]] = matchesByElement
         .get(element)
