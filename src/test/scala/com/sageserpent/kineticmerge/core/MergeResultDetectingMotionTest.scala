@@ -1,8 +1,10 @@
 package com.sageserpent.kineticmerge.core
 
+import com.sageserpent.americium.Trials
+import com.sageserpent.americium.junit5.{DynamicTests, given}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.MergeResultDetectingMotionTest.Element
-import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.TestFactory
 import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.ArgumentMatchers
 import org.mockito.ArgumentMatchers.any
@@ -15,33 +17,55 @@ end MergeResultDetectingMotionTest
 
 @ExtendWith(Array(classOf[MockitoExtension]))
 class MergeResultDetectingMotionTest:
-  @Test
-  def baseAndLeftMatchWhenMergeDoesNotAlignTheTwoMatchingSections: Unit =
-    val baseElement: Element = 1
-    val leftElement: Element = 2
+  @TestFactory
+  def pairwiseMatchWhenMergeDoesNotAlignTheTwoMatchingSections: DynamicTests =
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
 
-    val baseAndLeft = Match.BaseAndLeft(baseElement, leftElement)
+      val baseElement: Element    = 1
+      val ourSideElement: Element = 2
 
-    val matchesByElement =
-      Map(baseElement -> baseAndLeft, leftElement -> baseAndLeft)
+      val baseAndLeft =
+        if mirrorImage then
+          Match
+            .BaseAndRight(
+              baseElement = baseElement,
+              rightElement = ourSideElement
+            )
+        else
+          Match
+            .BaseAndLeft(
+              baseElement = baseElement,
+              leftElement = ourSideElement
+            )
 
-    def matchesFor(element: Element): Set[Match[Element]] = matchesByElement
-      .get(element)
-      .fold(ifEmpty = Set.empty[Match[Element]])(Set(_))
+      val matchesByElement =
+        Map(baseElement -> baseAndLeft, ourSideElement -> baseAndLeft)
 
-    val coreMergeAlgebra = spy(MergeResult.mergeAlgebra[Element])
+      def matchesFor(element: Element): Set[Match[Element]] = matchesByElement
+        .get(element)
+        .fold(ifEmpty = Set.empty[Match[Element]])(Set(_))
 
-    val mergeAlgebra =
-      MergeResultDetectingMotion.mergeAlgebra(matchesFor, coreMergeAlgebra)
+      val coreMergeAlgebra = spy(MergeResult.mergeAlgebra[Element])
 
-    val mergeResult =
-      mergeAlgebra.coincidentDeletion(mergeAlgebra.empty, baseElement)
+      val mergeAlgebra =
+        MergeResultDetectingMotion.mergeAlgebra(matchesFor, coreMergeAlgebra)
 
-    verify(coreMergeAlgebra).leftDeletion(
-      any(),
-      ArgumentMatchers.eq(baseElement)
-    )
+      val mergeResult =
+        mergeAlgebra.coincidentDeletion(mergeAlgebra.empty, baseElement)
 
-    assert(None == mergeResult.changesPropagatedThroughMotion(leftElement))
-  end baseAndLeftMatchWhenMergeDoesNotAlignTheTwoMatchingSections
+      if mirrorImage then
+        verify(coreMergeAlgebra).rightDeletion(
+          any(),
+          ArgumentMatchers.eq(baseElement)
+        )
+      else
+        verify(coreMergeAlgebra).leftDeletion(
+          any(),
+          ArgumentMatchers.eq(baseElement)
+        )
+      end if
+
+      assert(None == mergeResult.changesPropagatedThroughMotion(ourSideElement))
+    }
+  end pairwiseMatchWhenMergeDoesNotAlignTheTwoMatchingSections
 end MergeResultDetectingMotionTest
