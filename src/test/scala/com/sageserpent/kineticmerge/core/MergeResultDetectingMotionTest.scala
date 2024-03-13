@@ -20,7 +20,6 @@ class MergeResultDetectingMotionTest:
   @TestFactory
   def pairwiseMatchWhenMergeDoesNotAlignTheTwoMatchingSections: DynamicTests =
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
-
       val baseElement: Element    = 1
       val ourSideElement: Element = 2
 
@@ -56,17 +55,10 @@ class MergeResultDetectingMotionTest:
       val mergeResult =
         mergeAlgebra.coincidentDeletion(mergeAlgebra.empty, baseElement)
 
-      if mirrorImage then
-        verify(coreMergeAlgebra).rightDeletion(
-          any(),
-          ArgumentMatchers.eq(baseElement)
-        )
-      else
-        verify(coreMergeAlgebra).leftDeletion(
-          any(),
-          ArgumentMatchers.eq(baseElement)
-        )
-      end if
+      verify(coreMergeAlgebra).coincidentDeletion(
+        any(),
+        ArgumentMatchers.eq(baseElement)
+      )
 
       assert(None == mergeResult.changesPropagatedThroughMotion(ourSideElement))
     }

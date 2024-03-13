@@ -66,13 +66,13 @@ object MergeResultDetectingMotion:
           case Seq(BaseAndLeft(_, leftElement)) =>
             result
               .focus(_.coreMergeResult)
-              .modify(coreMergeAlgebra.leftDeletion(_, deletedElement))
+              .modify(coreMergeAlgebra.coincidentDeletion(_, deletedElement))
               .focus(_.changesPropagatedThroughMotion)
               .modify(_ + (leftElement -> None))
           case Seq(BaseAndRight(_, rightElement)) =>
             result
               .focus(_.coreMergeResult)
-              .modify(coreMergeAlgebra.rightDeletion(_, deletedElement))
+              .modify(coreMergeAlgebra.coincidentDeletion(_, deletedElement))
               .focus(_.changesPropagatedThroughMotion)
               .modify(_ + (rightElement -> None))
           case Seq() =>
