@@ -3,16 +3,23 @@ package com.sageserpent.kineticmerge.core
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.junit5.{DynamicTests, given}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
-import com.sageserpent.kineticmerge.core.MergeResultDetectingMotionTest.Element
+import com.sageserpent.kineticmerge.core.MergeResultDetectingMotionTest.{Element, mockCoreMergeAlgebra}
 import org.junit.jupiter.api.TestFactory
 import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.ArgumentMatchers
 import org.mockito.ArgumentMatchers.any
-import org.mockito.Mockito.{spy, verify}
+import org.mockito.Mockito.{RETURNS_SELF, mock, verify}
 import org.mockito.junit.jupiter.MockitoExtension
 
 object MergeResultDetectingMotionTest:
   type Element = Int
+
+  // NOTE: yes, this is imperative mocking in a pure-functional context, but try
+  // writing an auditing merge algebra and getting it to plug into
+  // `MergeResultDetectingMotion`. Then cut over the test suite and decide
+  // whether it was worth it...
+  def mockCoreMergeAlgebra() =
+    mock(classOf[merge.MergeAlgebra[MergeResult, Element]], RETURNS_SELF)
 end MergeResultDetectingMotionTest
 
 @ExtendWith(Array(classOf[MockitoExtension]))
@@ -47,7 +54,7 @@ class MergeResultDetectingMotionTest:
         .get(element)
         .fold(ifEmpty = Set.empty[Match[Element]])(Set(_))
 
-      val coreMergeAlgebra = spy(MergeResult.mergeAlgebra[Element])
+      val coreMergeAlgebra = mockCoreMergeAlgebra()
 
       val mergeAlgebra =
         MergeResultDetectingMotion.mergeAlgebra(matchesFor, coreMergeAlgebra)
