@@ -69,18 +69,18 @@ object MergeResultDetectingMotion:
           deletedElement: Element
       ): ConfiguredMergeResultDetectingMotion[Element] =
         matchesFor(deletedElement).toSeq match
-          case Seq(BaseAndLeft(_, leftElement)) =>
+          case Seq(BaseAndLeft(_, leftElementAtMoveDestination)) =>
             result
               .focus(_.coreMergeResult)
               .modify(coreMergeAlgebra.coincidentDeletion(_, deletedElement))
               .focus(_.changesPropagatedThroughMotion)
-              .modify(_ + (leftElement -> None))
-          case Seq(BaseAndRight(_, rightElement)) =>
+              .modify(_ + (leftElementAtMoveDestination -> None))
+          case Seq(BaseAndRight(_, rightElementAtMoveDestination)) =>
             result
               .focus(_.coreMergeResult)
               .modify(coreMergeAlgebra.coincidentDeletion(_, deletedElement))
               .focus(_.changesPropagatedThroughMotion)
-              .modify(_ + (rightElement -> None))
+              .modify(_ + (rightElementAtMoveDestination -> None))
           case Seq() =>
             result
               .focus(_.coreMergeResult)
@@ -119,12 +119,49 @@ object MergeResultDetectingMotion:
           editedElements: IndexedSeq[Element],
           leftEditElements: IndexedSeq[Element],
           rightEditElements: IndexedSeq[Element]
-      ): ConfiguredMergeResultDetectingMotion[Element] = result
-        .focus(_.coreMergeResult)
-        .modify(
-          coreMergeAlgebra
-            .conflict(_, editedElements, leftEditElements, rightEditElements)
-        )
+      ): ConfiguredMergeResultDetectingMotion[Element] =
+        def default =
+          result
+            .focus(_.coreMergeResult)
+            .modify(
+              coreMergeAlgebra.conflict(
+                _,
+                editedElements,
+                leftEditElements,
+                rightEditElements
+              )
+            )
+
+        (editedElements, leftEditElements, rightEditElements) match
+          case (Seq(baseElement), Seq(leftElement), Seq()) =>
+            matchesFor(baseElement).toSeq match
+              case Seq(BaseAndRight(_, rightElementAtMoveDestination)) =>
+                result
+                  .focus(_.coreMergeResult)
+                  .modify(coreMergeAlgebra.coincidentDeletion(_, baseElement))
+                  .focus(_.changesPropagatedThroughMotion)
+                  .modify(
+                    _ + (rightElementAtMoveDestination -> Some(leftElement))
+                  )
+
+              case _ => default
+
+          case (Seq(baseElement), Seq(), Seq(rightElement)) =>
+            matchesFor(baseElement).toSeq match
+              case Seq(BaseAndLeft(_, leftElementAtMoveDestination)) =>
+                result
+                  .focus(_.coreMergeResult)
+                  .modify(coreMergeAlgebra.coincidentDeletion(_, baseElement))
+                  .focus(_.changesPropagatedThroughMotion)
+                  .modify(
+                    _ + (leftElementAtMoveDestination -> Some(rightElement))
+                  )
+
+              case _ => default
+          case _ =>
+            default
+        end match
+      end conflict
     end new
   end mergeAlgebra
 end MergeResultDetectingMotion
