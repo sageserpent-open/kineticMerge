@@ -70,6 +70,11 @@ object CodeMotionAnalysisExtension:
         )(equality = sectionEqualityViaDominantsFallingBackToContentComparison)
 
       def elementsOf(section: Section[Element]): IndexedSeq[Element] =
+        // NOTE: here is probably where the mapping from section to edit or
+        // deletion should be applied. If a deletion is applied, obviously a
+        // dominant doesn't need to be found, and an edit should be a
+        // non-matched section, so again, don't bother looking for a dominant of
+        // the edit. Otherwise, fallback to the following code...
         val dominants = dominantsOf(section)
 
         (if dominants.isEmpty then section
