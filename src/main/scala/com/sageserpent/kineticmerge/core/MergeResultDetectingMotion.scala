@@ -5,69 +5,69 @@ import com.sageserpent.kineticmerge.core.merge.MergeAlgebra
 import monocle.syntax.all.*
 
 object MergeResultDetectingMotion:
-  type MergeResultDetectingMotionType[CoreResult[_]] =
+  private type MergeResultDetectingMotionType[CoreResult[_]] =
     [Element] =>> MergeResultDetectingMotion[CoreResult, Element]
 
   def mergeAlgebra[CoreResult[_], Element](
       matchesFor: Element => collection.Set[Match[Element]],
       coreMergeAlgebra: merge.MergeAlgebra[CoreResult, Element]
   ): MergeAlgebra[MergeResultDetectingMotionType[CoreResult], Element] =
-    type ConfiguredMergeResultDetectingMotion =
+    type ConfiguredMergeResultDetectingMotion[Element] =
       MergeResultDetectingMotionType[CoreResult][Element]
 
     new MergeAlgebra[MergeResultDetectingMotionType[CoreResult], Element]:
-      override def empty: ConfiguredMergeResultDetectingMotion =
+      override def empty: ConfiguredMergeResultDetectingMotion[Element] =
         MergeResultDetectingMotion(
           coreMergeResult = coreMergeAlgebra.empty,
           changesPropagatedThroughMotion = Map.empty
         )
 
       override def preservation(
-          result: ConfiguredMergeResultDetectingMotion,
+          result: ConfiguredMergeResultDetectingMotion[Element],
           preservedElement: Element
-      ): ConfiguredMergeResultDetectingMotion = result
+      ): ConfiguredMergeResultDetectingMotion[Element] = result
         .focus(_.coreMergeResult)
         .modify(coreMergeAlgebra.preservation(_, preservedElement))
 
       override def leftInsertion(
-          result: ConfiguredMergeResultDetectingMotion,
+          result: ConfiguredMergeResultDetectingMotion[Element],
           insertedElement: Element
-      ): ConfiguredMergeResultDetectingMotion = result
+      ): ConfiguredMergeResultDetectingMotion[Element] = result
         .focus(_.coreMergeResult)
         .modify(coreMergeAlgebra.leftInsertion(_, insertedElement))
 
       override def rightInsertion(
-          result: ConfiguredMergeResultDetectingMotion,
+          result: ConfiguredMergeResultDetectingMotion[Element],
           insertedElement: Element
-      ): ConfiguredMergeResultDetectingMotion = result
+      ): ConfiguredMergeResultDetectingMotion[Element] = result
         .focus(_.coreMergeResult)
         .modify(coreMergeAlgebra.rightInsertion(_, insertedElement))
 
       override def coincidentInsertion(
-          result: ConfiguredMergeResultDetectingMotion,
+          result: ConfiguredMergeResultDetectingMotion[Element],
           insertedElement: Element
-      ): ConfiguredMergeResultDetectingMotion = result
+      ): ConfiguredMergeResultDetectingMotion[Element] = result
         .focus(_.coreMergeResult)
         .modify(coreMergeAlgebra.coincidentInsertion(_, insertedElement))
 
       override def leftDeletion(
-          result: ConfiguredMergeResultDetectingMotion,
+          result: ConfiguredMergeResultDetectingMotion[Element],
           deletedElement: Element
-      ): ConfiguredMergeResultDetectingMotion = result
+      ): ConfiguredMergeResultDetectingMotion[Element] = result
         .focus(_.coreMergeResult)
         .modify(coreMergeAlgebra.leftDeletion(_, deletedElement))
 
       override def rightDeletion(
-          result: ConfiguredMergeResultDetectingMotion,
+          result: ConfiguredMergeResultDetectingMotion[Element],
           deletedElement: Element
-      ): ConfiguredMergeResultDetectingMotion = result
+      ): ConfiguredMergeResultDetectingMotion[Element] = result
         .focus(_.coreMergeResult)
         .modify(coreMergeAlgebra.rightDeletion(_, deletedElement))
 
       override def coincidentDeletion(
-          result: ConfiguredMergeResultDetectingMotion,
+          result: ConfiguredMergeResultDetectingMotion[Element],
           deletedElement: Element
-      ): ConfiguredMergeResultDetectingMotion =
+      ): ConfiguredMergeResultDetectingMotion[Element] =
         matchesFor(deletedElement).toSeq match
           case Seq(BaseAndLeft(_, leftElement)) =>
             result
@@ -91,35 +91,35 @@ object MergeResultDetectingMotion:
             ???
 
       override def leftEdit(
-          result: ConfiguredMergeResultDetectingMotion,
+          result: ConfiguredMergeResultDetectingMotion[Element],
           editedElement: Element,
           editElements: IndexedSeq[Element]
-      ): ConfiguredMergeResultDetectingMotion = result
+      ): ConfiguredMergeResultDetectingMotion[Element] = result
         .focus(_.coreMergeResult)
         .modify(coreMergeAlgebra.leftEdit(_, editedElement, editElements))
 
       override def rightEdit(
-          result: ConfiguredMergeResultDetectingMotion,
+          result: ConfiguredMergeResultDetectingMotion[Element],
           editedElement: Element,
           editElements: IndexedSeq[Element]
-      ): ConfiguredMergeResultDetectingMotion = result
+      ): ConfiguredMergeResultDetectingMotion[Element] = result
         .focus(_.coreMergeResult)
         .modify(coreMergeAlgebra.rightEdit(_, editedElement, editElements))
 
       override def coincidentEdit(
-          result: ConfiguredMergeResultDetectingMotion,
+          result: ConfiguredMergeResultDetectingMotion[Element],
           editedElement: Element,
           editElements: IndexedSeq[Element]
-      ): ConfiguredMergeResultDetectingMotion = result
+      ): ConfiguredMergeResultDetectingMotion[Element] = result
         .focus(_.coreMergeResult)
         .modify(coreMergeAlgebra.coincidentEdit(_, editedElement, editElements))
 
       override def conflict(
-          result: ConfiguredMergeResultDetectingMotion,
+          result: ConfiguredMergeResultDetectingMotion[Element],
           editedElements: IndexedSeq[Element],
           leftEditElements: IndexedSeq[Element],
           rightEditElements: IndexedSeq[Element]
-      ): ConfiguredMergeResultDetectingMotion = result
+      ): ConfiguredMergeResultDetectingMotion[Element] = result
         .focus(_.coreMergeResult)
         .modify(
           coreMergeAlgebra
