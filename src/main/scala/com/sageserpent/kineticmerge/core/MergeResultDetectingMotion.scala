@@ -110,9 +110,30 @@ object MergeResultDetectingMotion:
           result: ConfiguredMergeResultDetectingMotion[Element],
           editedElement: Element,
           editElements: IndexedSeq[Element]
-      ): ConfiguredMergeResultDetectingMotion[Element] = result
-        .focus(_.coreMergeResult)
-        .modify(coreMergeAlgebra.coincidentEdit(_, editedElement, editElements))
+      ): ConfiguredMergeResultDetectingMotion[Element] =
+        def default = result
+          .focus(_.coreMergeResult)
+          .modify(
+            coreMergeAlgebra.coincidentEdit(_, editedElement, editElements)
+          )
+
+        matchesFor(editedElement).toSeq match
+          case Seq(BaseAndLeft(_, leftElementAtMoveDestination)) =>
+            default
+              .focus(_.changesPropagatedThroughMotion)
+              .modify(
+                _ + (leftElementAtMoveDestination -> None)
+              )
+          case Seq(BaseAndRight(_, rightElementAtMoveDestination)) =>
+            default
+              .focus(_.changesPropagatedThroughMotion)
+              .modify(
+                _ + (rightElementAtMoveDestination -> None)
+              )
+          case _ =>
+            default
+        end match
+      end coincidentEdit
 
       override def conflict(
           result: ConfiguredMergeResultDetectingMotion[Element],
