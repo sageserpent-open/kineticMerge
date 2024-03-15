@@ -149,7 +149,12 @@ object MergeResultDetectingMotion:
                   .focus(_.coreMergeResult)
                   .modify(
                     coreMergeAlgebra
-                      .leftEdit(_, baseElement, IndexedSeq(leftElement))
+                      .coincidentDeletion(_, baseElement)
+                  )
+                  .focus(_.coreMergeResult)
+                  .modify(
+                    coreMergeAlgebra
+                      .leftInsertion(_, leftElement)
                   )
                   .focus(_.changesPropagatedThroughMotion)
                   .modify(
@@ -174,7 +179,12 @@ object MergeResultDetectingMotion:
                   .focus(_.coreMergeResult)
                   .modify(
                     coreMergeAlgebra
-                      .rightEdit(_, baseElement, IndexedSeq(rightElement))
+                      .coincidentDeletion(_, baseElement)
+                  )
+                  .focus(_.coreMergeResult)
+                  .modify(
+                    coreMergeAlgebra
+                      .rightInsertion(_, rightElement)
                   )
                   .focus(_.changesPropagatedThroughMotion)
                   .modify(
