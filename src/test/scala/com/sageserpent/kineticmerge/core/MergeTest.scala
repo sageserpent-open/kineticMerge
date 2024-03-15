@@ -1597,7 +1597,7 @@ object MergeTest:
 
       expectedMerge.foreach(merge =>
         // Perform a self-check on the expected merge.
-        allPresentAndCorrectIn(result)
+        allPresentAndCorrectIn(merge)
 
         // This assertion is stronger than `allPresentAndCorrectIn` because it
         // includes the precise merge resolution.
