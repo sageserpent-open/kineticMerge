@@ -192,6 +192,44 @@ object MergeResultDetectingMotion:
                   )
 
               case _ => default
+
+          case (Seq(baseElement), Seq(leftElement), Seq(rightElement)) =>
+            matchesFor(baseElement).toSeq match
+              case Seq(BaseAndLeft(_, leftElementAtMoveDestination)) =>
+                result
+                  .focus(_.coreMergeResult)
+                  .modify(
+                    coreMergeAlgebra
+                      .coincidentDeletion(_, baseElement)
+                  )
+                  .focus(_.coreMergeResult)
+                  .modify(
+                    coreMergeAlgebra
+                      .leftInsertion(_, leftElement)
+                  )
+                  .focus(_.changesPropagatedThroughMotion)
+                  .modify(
+                    _ + (leftElementAtMoveDestination -> Some(rightElement))
+                  )
+
+              case Seq(BaseAndRight(_, rightElementAtMoveDestination)) =>
+                result
+                  .focus(_.coreMergeResult)
+                  .modify(
+                    coreMergeAlgebra
+                      .coincidentDeletion(_, baseElement)
+                  )
+                  .focus(_.coreMergeResult)
+                  .modify(
+                    coreMergeAlgebra
+                      .rightInsertion(_, rightElement)
+                  )
+                  .focus(_.changesPropagatedThroughMotion)
+                  .modify(
+                    _ + (rightElementAtMoveDestination -> Some(leftElement))
+                  )
+
+              case _ => default
           case _ =>
             default
         end match
