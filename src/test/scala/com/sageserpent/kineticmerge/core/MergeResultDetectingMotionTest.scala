@@ -362,4 +362,62 @@ class MergeResultDetectingMotionTest:
     }
   end ourEditVersusTheirEditConflictWhereBaseHasMovedAwayOnOurSide
 
+  @TestFactory
+  def coincidentEditWhereBaseHasMovedAwayOnOurSide: DynamicTests =
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val baseElement: Element           = 1
+      val ourSideMovedElement: Element   = 2
+      val coincidentEditElement: Element = 3
+
+      val baseAndOurSidePairwiseMatch =
+        if mirrorImage then
+          Match
+            .BaseAndRight(
+              baseElement = baseElement,
+              rightElement = ourSideMovedElement
+            )
+        else
+          Match
+            .BaseAndLeft(
+              baseElement = baseElement,
+              leftElement = ourSideMovedElement
+            )
+
+      val matchesByElement =
+        Map(
+          baseElement         -> baseAndOurSidePairwiseMatch,
+          ourSideMovedElement -> baseAndOurSidePairwiseMatch
+        )
+
+      def matchesFor(element: Element): Set[Match[Element]] = matchesByElement
+        .get(element)
+        .fold(ifEmpty = Set.empty[Match[Element]])(Set(_))
+
+      val mergeAlgebra =
+        MergeResultDetectingMotion
+          .mergeAlgebra(matchesFor, auditingCoreMergeAlgebra)
+
+      val mergeResult =
+        mergeAlgebra.coincidentEdit(
+          mergeAlgebra.empty,
+          baseElement,
+          IndexedSeq(coincidentEditElement)
+        )
+
+      // The reasoning here is that a coincident edit, regardless of whether it
+      // is part of a match or not, should stand as it is and not have one side
+      // considered as an edit of the moved element.
+      assert(
+        Vector(
+          CoincidentEdit(baseElement, IndexedSeq(coincidentEditElement))
+        ) == mergeResult.coreMergeResult
+      )
+
+      assert(
+        None == mergeResult
+          .changesPropagatedThroughMotion(ourSideMovedElement)
+      )
+    }
+  end coincidentEditWhereBaseHasMovedAwayOnOurSide
+
 end MergeResultDetectingMotionTest
