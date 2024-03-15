@@ -249,16 +249,25 @@ class MergeResultDetectingMotionTest:
             rightEditElements = IndexedSeq.empty
           )
 
+      // NOTE: when a merge algebra is driven by `merge.of`, the following
+      // sequences of operations would not be permitted. It's OK in this
+      // situation though - the front end algebra should be driven correctly,
+      // and the core algebra is expected to have its operations translated to
+      // take motion into account. We could translate to a right- or left-edit,
+      // but this feels wrong - there never was an element on the opposite side
+      // of the edit, that was moved out of the way instead.
       if mirrorImage then
         assert(
           Vector(
-            RightEdit(baseElement, IndexedSeq(ourSideEditElement))
+            CoincidentDeletion(baseElement),
+            RightInsertion(ourSideEditElement)
           ) == mergeResult.coreMergeResult
         )
       else
         assert(
           Vector(
-            LeftEdit(baseElement, IndexedSeq(ourSideEditElement))
+            CoincidentDeletion(baseElement),
+            LeftInsertion(ourSideEditElement)
           ) == mergeResult.coreMergeResult
         )
       end if
