@@ -470,4 +470,68 @@ class MergeResultDetectingMotionTest:
     }
   end ourSideDeletionWhereBaseHasMovedAwayOnOurSide
 
+  @TestFactory
+  def ourSideEditWhereBaseHasMovedAwayOnOurSide: DynamicTests =
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val baseElement: Element         = 1
+      val ourSideMovedElement: Element = 2
+      val ourSideEditElement: Element  = 3
+      val theirSideElement: Element    = 4
+
+      val allSidesMatch = Match.AllSides(
+        baseElement = baseElement,
+        leftElement = ourSideMovedElement,
+        rightElement = theirSideElement
+      )
+
+      val matchesByElement =
+        Map(
+          baseElement         -> allSidesMatch,
+          ourSideMovedElement -> allSidesMatch,
+          theirSideElement    -> allSidesMatch
+        )
+
+      def matchesFor(element: Element): Set[Match[Element]] = matchesByElement
+        .get(element)
+        .fold(ifEmpty = Set.empty[Match[Element]])(Set(_))
+
+      val mergeAlgebra =
+        MergeResultDetectingMotion
+          .mergeAlgebra(matchesFor, auditingCoreMergeAlgebra)
+
+      val mergeResult =
+        if mirrorImage then
+          mergeAlgebra.rightEdit(
+            mergeAlgebra.empty,
+            baseElement,
+            IndexedSeq(ourSideEditElement)
+          )
+        else
+          mergeAlgebra.leftEdit(
+            mergeAlgebra.empty,
+            baseElement,
+            IndexedSeq(ourSideEditElement)
+          )
+
+      if mirrorImage then
+        assert(
+          Vector(
+            RightEdit(baseElement, IndexedSeq(ourSideEditElement))
+          ) == mergeResult.coreMergeResult
+        )
+      else
+        assert(
+          Vector(
+            LeftEdit(baseElement, IndexedSeq(ourSideEditElement))
+          ) == mergeResult.coreMergeResult
+        )
+      end if
+
+      assert(
+        !mergeResult.changesPropagatedThroughMotion
+          .contains(ourSideMovedElement)
+      )
+    }
+  end ourSideEditWhereBaseHasMovedAwayOnOurSide
+
 end MergeResultDetectingMotionTest
