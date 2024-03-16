@@ -41,12 +41,12 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val leftSources = MappedContentSources(
       contentsByPath =
         Map(placeholderPath -> stuntDoubleTokens(issue23BugReproductionLeft)),
-      label = "base"
+      label = "left"
     )
     val rightSources = MappedContentSources(
       contentsByPath =
         Map(placeholderPath -> stuntDoubleTokens(issue23BugReproductionRight)),
-      label = "base"
+      label = "right"
     )
 
     val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
@@ -78,6 +78,59 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     end match
 
   end issue23BugReproduction
+
+  @Test
+  def codeMotion(): Unit =
+    val minimumMatchSize                 = 4
+    val thresholdSizeFractionForMatching = 0.1
+
+    val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
+
+    val baseSources = MappedContentSources(
+      contentsByPath =
+        Map(placeholderPath -> tokens(codeMotionExampleBase).get),
+      label = "base"
+    )
+    val leftSources = MappedContentSources(
+      contentsByPath =
+        Map(placeholderPath -> tokens(codeMotionExampleLeft).get),
+      label = "left"
+    )
+    val rightSources = MappedContentSources(
+      contentsByPath =
+        Map(placeholderPath -> tokens(codeMotionExampleRight).get),
+      label = "right"
+    )
+
+    val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+      base = baseSources,
+      left = leftSources,
+      right = rightSources
+    )(
+      minimumMatchSize = minimumMatchSize,
+      thresholdSizeFractionForMatching = thresholdSizeFractionForMatching
+    )(
+      elementEquality = Token.equality,
+      elementOrder = Token.comparison,
+      elementFunnel = Token.funnel,
+      hashFunction = Hashing.murmur3_32_fixed()
+    ): @unchecked
+
+    val expected = tokens(codeMotionExampleExpectedMerge).get
+
+    codeMotionAnalysis.mergeAt(placeholderPath)(equality = Token.equality) match
+      case Right(FullyMerged(result)) => assert(result == expected)
+      case Right(MergedWithConflicts(leftResult, rightResult)) =>
+        println(s"*** Left result...\n")
+        println(leftResult)
+        println()
+        println(s"*** Right result...\n")
+        println(rightResult)
+
+        fail("Should have seen a clean merge.")
+    end match
+
+  end codeMotion
 
   @TestFactory
   def merging(): DynamicTests =
@@ -146,27 +199,27 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 end CodeMotionAnalysisExtensionTest
 
 trait ProseExamples:
-  protected val issue23BugReproductionBase =
+  protected val issue23BugReproductionBase: String =
     """
       |chipsSAFEketchupSAFEnoodlesFIZZYsandwichSAFEpudding
       |""".stripMargin
 
-  protected val issue23BugReproductionLeft =
+  protected val issue23BugReproductionLeft: String =
     """
       |chipsSAFEketchupSAFEnoodlesBANGsandwichSAFEpudding
       |""".stripMargin
 
-  protected val issue23BugReproductionRight =
+  protected val issue23BugReproductionRight: String =
     """
       |chipsINTRUDERketchupINTRUDERnoodlesFIZZYsandwichINTRUDERpudding
       |""".stripMargin
 
-  protected val issue23BugReproductionExpectedMerge =
+  protected val issue23BugReproductionExpectedMerge: String =
     """
       |chipsINTRUDERketchupINTRUDERnoodlesBANGsandwichINTRUDERpudding
       |""".stripMargin
 
-  protected val wordsworth =
+  protected val wordsworth: String =
     """
       |I wandered lonely as a cloud
       |That floats on high o'er vales and hills,
@@ -197,7 +250,7 @@ trait ProseExamples:
       |And dances with the daffodils.
       |""".stripMargin
 
-  protected val jobsworth =
+  protected val jobsworth: String =
     """
       |I wandered lonely as a cloud
       |That floats on high o'er vales and hills,
@@ -223,7 +276,7 @@ trait ProseExamples:
       |And sends an email to human resources.
       |""".stripMargin
 
-  protected val emsworth =
+  protected val emsworth: String =
     """
       |I wandered lonely as a cloud
       |That floats on high o'er vales and hills,
@@ -253,7 +306,7 @@ trait ProseExamples:
       |And sashays with the fishing boats.
       |""".stripMargin
 
-  protected val baseSbtBuild =
+  protected val baseSbtBuild: String =
     """
       |import scala.sys.process.*
       |import scala.language.postfixOps
@@ -322,7 +375,7 @@ trait ProseExamples:
       |    })
       |""".stripMargin
 
-  protected val leftSbtBuild =
+  protected val leftSbtBuild: String =
     """
       |import scala.sys.process.*
       |import scala.language.postfixOps
@@ -440,7 +493,7 @@ trait ProseExamples:
       |    })
       |""".stripMargin
 
-  protected val rightSbtBuild =
+  protected val rightSbtBuild: String =
     """
       |import scala.sys.process.*
       |import scala.language.postfixOps
@@ -507,5 +560,66 @@ trait ProseExamples:
       |
       |      name.value
       |    })
+      |""".stripMargin
+
+  protected val codeMotionExampleBase: String =
+    """
+      |package com.sageserpent.kineticmerge.core
+      |
+      |import com.eed3si9n.expecty.Expecty
+      |
+      |object ExpectyFlavouredAssert:
+      |  val assert: Expecty = new Expecty:
+      |    override val showLocation: Boolean = true
+      |    override val showTypes: Boolean    = true
+      |  end assert
+      |end ExpectyFlavouredAssert
+      |""".stripMargin
+
+  protected val codeMotionExampleLeft: String =
+    """
+      |package com.sageserpent.kineticmerge.core
+      |
+      |import com.eed3si9n.expecty.Expecty
+      |
+      |object ExpectyFlavouredAssert:
+      |  val assert: Expecty = new Expecty:
+      |    // Swapped the next two lines around...
+      |    override val showTypes: Boolean    = true
+      |    override val showLocation: Boolean = true
+      |
+      |  end assert
+      |end ExpectyFlavouredAssert
+      |""".stripMargin
+
+  protected val codeMotionExampleRight: String =
+    """
+      |package com.sageserpent.kineticmerge.core
+      |
+      |import com.eed3si9n.expecty.Expecty
+      |
+      |object ExpectyFlavouredAssert:
+      |  val assert: Expecty = new Expecty:
+      |    override val showLocation: Boolean = true
+      |    override val showTypes: Boolean    = false // This edit should propagate.
+      |  end assert
+      |end ExpectyFlavouredAssert
+      |""".stripMargin
+
+  protected val codeMotionExampleExpectedMerge: String =
+    """
+      |package com.sageserpent.kineticmerge.core
+      |
+      |import com.eed3si9n.expecty.Expecty
+      |
+      |object ExpectyFlavouredAssert:
+      |  val assert: Expecty = new Expecty:
+      |    // Swapped the next two lines around...
+      |    override val showTypes: Boolean    = false // This edit should propagate.
+      |    override val showLocation: Boolean = true
+      |
+      |  end assert
+      |end ExpectyFlavouredAssert
+      |
       |""".stripMargin
 end ProseExamples
