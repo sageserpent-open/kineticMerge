@@ -427,11 +427,19 @@ class MergeResultDetectingMotionTest:
       val ourSideMovedElement: Element = 2
       val theirSideElement: Element    = 3
 
-      val allSidesMatch = Match.AllSides(
-        baseElement = baseElement,
-        leftElement = ourSideMovedElement,
-        rightElement = theirSideElement
-      )
+      val allSidesMatch =
+        if mirrorImage then
+          Match.AllSides(
+            baseElement = baseElement,
+            leftElement = theirSideElement,
+            rightElement = ourSideMovedElement
+          )
+        else
+          Match.AllSides(
+            baseElement = baseElement,
+            leftElement = ourSideMovedElement,
+            rightElement = theirSideElement
+          )
 
       val matchesByElement =
         Map(
@@ -478,11 +486,19 @@ class MergeResultDetectingMotionTest:
       val ourSideEditElement: Element  = 3
       val theirSideElement: Element    = 4
 
-      val allSidesMatch = Match.AllSides(
-        baseElement = baseElement,
-        leftElement = ourSideMovedElement,
-        rightElement = theirSideElement
-      )
+      val allSidesMatch =
+        if mirrorImage then
+          Match.AllSides(
+            baseElement = baseElement,
+            leftElement = theirSideElement,
+            rightElement = ourSideMovedElement
+          )
+        else
+          Match.AllSides(
+            baseElement = baseElement,
+            leftElement = ourSideMovedElement,
+            rightElement = theirSideElement
+          )
 
       val matchesByElement =
         Map(
@@ -533,5 +549,58 @@ class MergeResultDetectingMotionTest:
       )
     }
   end ourSideEditWhereBaseHasMovedAwayOnOurSide
+
+  @TestFactory
+  def coincidentDeletionWhereBaseHasMovedAwayOnBothSides: DynamicTests =
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val baseElement: Element           = 1
+      val ourSideMovedElement: Element   = 2
+      val theirSideMovedElement: Element = 3
+
+      val allSidesMatch =
+        if mirrorImage then
+          Match.AllSides(
+            baseElement = baseElement,
+            leftElement = theirSideMovedElement,
+            rightElement = ourSideMovedElement
+          )
+        else
+          Match.AllSides(
+            baseElement = baseElement,
+            leftElement = ourSideMovedElement,
+            rightElement = theirSideMovedElement
+          )
+
+      val matchesByElement =
+        Map(
+          baseElement           -> allSidesMatch,
+          ourSideMovedElement   -> allSidesMatch,
+          theirSideMovedElement -> allSidesMatch
+        )
+
+      def matchesFor(element: Element): Set[Match[Element]] = matchesByElement
+        .get(element)
+        .fold(ifEmpty = Set.empty[Match[Element]])(Set(_))
+
+      val mergeAlgebra =
+        MergeResultDetectingMotion
+          .mergeAlgebra(matchesFor, auditingCoreMergeAlgebra)
+
+      val mergeResult =
+        mergeAlgebra.coincidentDeletion(mergeAlgebra.empty, baseElement)
+
+      assert(
+        Vector(CoincidentDeletion(baseElement)) == mergeResult.coreMergeResult
+      )
+
+      assert(
+        None == mergeResult.changesPropagatedThroughMotion(ourSideMovedElement)
+      )
+      assert(
+        None == mergeResult
+          .changesPropagatedThroughMotion(theirSideMovedElement)
+      )
+    }
+  end coincidentDeletionWhereBaseHasMovedAwayOnBothSides
 
 end MergeResultDetectingMotionTest
