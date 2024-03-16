@@ -61,38 +61,76 @@ object CodeMotionAnalysisExtension:
         }
       end sectionEqualityViaDominantsFallingBackToContentComparison
 
-      val mergedSectionsResult
-          : Either[merge.Divergence.type, MergeResult[Section[Element]]] =
-        merge.of(mergeAlgebra = MergeResult.mergeAlgebra)(
+      val mergedSectionsResult: Either[
+        merge.Divergence.type,
+        MergeResultDetectingMotion[MergeResult, Section[Element]]
+      ] =
+        merge.of(mergeAlgebra =
+          MergeResultDetectingMotion.mergeAlgebra(
+            matchesFor = codeMotionAnalysis.matchesFor,
+            coreMergeAlgebra = MergeResult.mergeAlgebra
+          )
+        )(
           base = baseSections,
           left = leftSections,
           right = rightSections
         )(equality = sectionEqualityViaDominantsFallingBackToContentComparison)
 
-      def elementsOf(section: Section[Element]): IndexedSeq[Element] =
-        // NOTE: here is probably where the mapping from section to edit or
-        // deletion should be applied. If a deletion is applied, obviously a
-        // dominant doesn't need to be found, and an edit should be a
-        // non-matched section, so again, don't bother looking for a dominant of
-        // the edit. Otherwise, fallback to the following code...
-        val dominants = dominantsOf(section)
+      def elementsOf(
+          changesPropagatedThroughMotion: Map[Section[Element], Option[
+            Section[Element]
+          ]]
+      )(section: Section[Element]): IndexedSeq[Element] =
+        val propagatedChange: Option[Option[Section[Element]]] =
+          changesPropagatedThroughMotion.get(section)
 
-        (if dominants.isEmpty then section
-         else
-           // NASTY HACK: this is hokey, but essentially correct - if we have
-           // ambiguous matches leading to multiple dominants, then they're all
-           // just as good in terms of their content. So just choose any one.
-           dominants.head
-        ).content
+        // If we do have a propagated change, then there is no need to look for
+        // the dominant - either the section was deleted or edited; matched
+        // sections are not considered as edit candidates.
+        propagatedChange.fold {
+          val dominants = dominantsOf(section)
+
+          (if dominants.isEmpty then section
+           else
+             // NASTY HACK: this is hokey, but essentially correct - if we have
+             // ambiguous matches leading to multiple dominants, then they're
+             // all just as good in terms of their content. So just choose any
+             // one.
+             dominants.head
+          ).content
+        }(
+          _.fold(
+            // Moved section was deleted...
+            ifEmpty = IndexedSeq.empty
+          )(
+            // Moved section was edited...
+            _.content
+          )
+        )
       end elementsOf
 
-      mergedSectionsResult.map {
-        case FullyMerged(elements) =>
-          FullyMerged(elements = elements.flatMap(elementsOf))
-        case MergedWithConflicts(leftElements, rightElements) =>
-          MergedWithConflicts(
-            leftElements = leftElements.flatMap(elementsOf),
-            rightElements = rightElements.flatMap(elementsOf)
-          )
-      }
+      mergedSectionsResult.map(mergeResultDetectingMotion =>
+        mergeResultDetectingMotion.coreMergeResult match
+          case FullyMerged(elements) =>
+            FullyMerged(elements =
+              elements.flatMap(
+                elementsOf(
+                  mergeResultDetectingMotion.changesPropagatedThroughMotion
+                )
+              )
+            )
+          case MergedWithConflicts(leftElements, rightElements) =>
+            MergedWithConflicts(
+              leftElements = leftElements.flatMap(
+                elementsOf(
+                  mergeResultDetectingMotion.changesPropagatedThroughMotion
+                )
+              ),
+              rightElements = rightElements.flatMap(
+                elementsOf(
+                  mergeResultDetectingMotion.changesPropagatedThroughMotion
+                )
+              )
+            )
+      )
 end CodeMotionAnalysisExtension
