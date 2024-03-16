@@ -170,6 +170,28 @@ object MergeResultDetectingMotion:
         (editedElements, leftEditElements, rightEditElements) match
           case (Seq(baseElement), Seq(leftElement), Seq()) =>
             matchesFor(baseElement).toSeq match
+              case Seq(
+                    AllSides(
+                      _,
+                      leftElementAtMoveDestination,
+                      rightElementAtMoveDestination
+                    )
+                  ) =>
+                result
+                  .focus(_.coreMergeResult)
+                  .modify(
+                    coreMergeAlgebra
+                      .coincidentDeletion(_, baseElement)
+                  )
+                  .focus(_.coreMergeResult)
+                  .modify(
+                    coreMergeAlgebra
+                      .leftInsertion(_, leftElement)
+                  )
+                  .focus(_.changesPropagatedThroughMotion)
+                  .modify(
+                    _ + (rightElementAtMoveDestination -> Some(leftElement))
+                  )
               case Seq(BaseAndRight(_, rightElementAtMoveDestination)) =>
                 result
                   .focus(_.coreMergeResult)
@@ -200,6 +222,28 @@ object MergeResultDetectingMotion:
 
           case (Seq(baseElement), Seq(), Seq(rightElement)) =>
             matchesFor(baseElement).toSeq match
+              case Seq(
+                    AllSides(
+                      _,
+                      leftElementAtMoveDestination,
+                      rightElementAtMoveDestination
+                    )
+                  ) =>
+                result
+                  .focus(_.coreMergeResult)
+                  .modify(
+                    coreMergeAlgebra
+                      .coincidentDeletion(_, baseElement)
+                  )
+                  .focus(_.coreMergeResult)
+                  .modify(
+                    coreMergeAlgebra
+                      .rightInsertion(_, rightElement)
+                  )
+                  .focus(_.changesPropagatedThroughMotion)
+                  .modify(
+                    _ + (leftElementAtMoveDestination -> Some(rightElement))
+                  )
               case Seq(BaseAndLeft(_, leftElementAtMoveDestination)) =>
                 result
                   .focus(_.coreMergeResult)
