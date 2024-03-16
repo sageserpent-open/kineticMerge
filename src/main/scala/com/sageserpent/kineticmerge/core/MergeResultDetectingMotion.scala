@@ -173,7 +173,7 @@ object MergeResultDetectingMotion:
               case Seq(
                     AllSides(
                       _,
-                      leftElementAtMoveDestination,
+                      _,
                       rightElementAtMoveDestination
                     )
                   ) =>
@@ -226,7 +226,7 @@ object MergeResultDetectingMotion:
                     AllSides(
                       _,
                       leftElementAtMoveDestination,
-                      rightElementAtMoveDestination
+                      _
                     )
                   ) =>
                 result
@@ -274,6 +274,22 @@ object MergeResultDetectingMotion:
 
           case (Seq(baseElement), Seq(leftElement), Seq(rightElement)) =>
             matchesFor(baseElement).toSeq match
+              case Seq(
+                    AllSides(
+                      _,
+                      leftElementAtMoveDestination,
+                      rightElementAtMoveDestination
+                    )
+                  ) =>
+                default
+                  .focus(_.changesPropagatedThroughMotion)
+                  .modify(
+                    _ + (leftElementAtMoveDestination -> Some(rightElement))
+                  )
+                  .focus(_.changesPropagatedThroughMotion)
+                  .modify(
+                    _ + (rightElementAtMoveDestination -> Some(leftElement))
+                  )
               case Seq(BaseAndLeft(_, leftElementAtMoveDestination)) =>
                 result
                   .focus(_.coreMergeResult)
