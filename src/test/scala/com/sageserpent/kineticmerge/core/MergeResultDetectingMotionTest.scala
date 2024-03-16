@@ -778,4 +778,78 @@ class MergeResultDetectingMotionTest:
       )
     }
   end ourEditVersusTheirEditConflictWhereBaseHasMovedAwayOnBothSides
+
+  @TestFactory
+  def coincidentInsertionOfMovesOnBothSides: DynamicTests =
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val baseElement: Element           = 1
+      val ourSideMovedElement: Element   = 2
+      val theirSideMovedElement: Element = 3
+
+      val allSidesMatch =
+        if mirrorImage then
+          Match.AllSides(
+            baseElement = baseElement,
+            leftElement = theirSideMovedElement,
+            rightElement = ourSideMovedElement
+          )
+        else
+          Match.AllSides(
+            baseElement = baseElement,
+            leftElement = ourSideMovedElement,
+            rightElement = theirSideMovedElement
+          )
+
+      val matchesByElement =
+        Map(
+          baseElement           -> allSidesMatch,
+          ourSideMovedElement   -> allSidesMatch,
+          theirSideMovedElement -> allSidesMatch
+        )
+
+      def matchesFor(element: Element): Set[Match[Element]] = matchesByElement
+        .get(element)
+        .fold(ifEmpty = Set.empty[Match[Element]])(Set(_))
+
+      val mergeAlgebra =
+        MergeResultDetectingMotion
+          .mergeAlgebra(matchesFor, auditingCoreMergeAlgebra)
+
+      val mergeResult =
+        if mirrorImage then
+          mergeAlgebra.coincidentInsertion(
+            mergeAlgebra.empty,
+            theirSideMovedElement
+          )
+        else
+          mergeAlgebra.coincidentInsertion(
+            mergeAlgebra.empty,
+            ourSideMovedElement
+          )
+
+      if mirrorImage then
+        assert(
+          Vector(
+            CoincidentInsertion(theirSideMovedElement)
+          ) == mergeResult.coreMergeResult
+        )
+      else
+        assert(
+          Vector(
+            CoincidentInsertion(ourSideMovedElement)
+          ) == mergeResult.coreMergeResult
+        )
+      end if
+
+      assert(
+        !mergeResult.changesPropagatedThroughMotion
+          .contains(ourSideMovedElement)
+      )
+      assert(
+        !mergeResult.changesPropagatedThroughMotion
+          .contains(theirSideMovedElement)
+      )
+    }
+  end coincidentInsertionOfMovesOnBothSides
+
 end MergeResultDetectingMotionTest
