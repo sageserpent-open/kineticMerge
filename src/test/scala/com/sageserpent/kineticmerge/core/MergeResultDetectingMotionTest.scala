@@ -690,4 +690,92 @@ class MergeResultDetectingMotionTest:
       )
     }
   end ourEditVersusTheirDeletionConflictWhereBaseHasMovedAwayOnBothSides
+
+  @TestFactory
+  def ourEditVersusTheirEditConflictWhereBaseHasMovedAwayOnBothSides
+      : DynamicTests =
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val baseElement: Element           = 1
+      val ourSideMovedElement: Element   = 2
+      val theirSideMovedElement: Element = 3
+      val ourSideEditElement: Element    = 4
+      val theirSideEditElement: Element  = 5
+
+      val allSidesMatch =
+        if mirrorImage then
+          Match.AllSides(
+            baseElement = baseElement,
+            leftElement = theirSideMovedElement,
+            rightElement = ourSideMovedElement
+          )
+        else
+          Match.AllSides(
+            baseElement = baseElement,
+            leftElement = ourSideMovedElement,
+            rightElement = theirSideMovedElement
+          )
+
+      val matchesByElement =
+        Map(
+          baseElement           -> allSidesMatch,
+          ourSideMovedElement   -> allSidesMatch,
+          theirSideMovedElement -> allSidesMatch
+        )
+
+      def matchesFor(element: Element): Set[Match[Element]] = matchesByElement
+        .get(element)
+        .fold(ifEmpty = Set.empty[Match[Element]])(Set(_))
+
+      val mergeAlgebra =
+        MergeResultDetectingMotion
+          .mergeAlgebra(matchesFor, auditingCoreMergeAlgebra)
+
+      val mergeResult =
+        if mirrorImage then
+          mergeAlgebra.conflict(
+            mergeAlgebra.empty,
+            editedElements = IndexedSeq(baseElement),
+            leftEditElements = IndexedSeq(theirSideEditElement),
+            rightEditElements = IndexedSeq(ourSideEditElement)
+          )
+        else
+          mergeAlgebra.conflict(
+            mergeAlgebra.empty,
+            editedElements = IndexedSeq(baseElement),
+            leftEditElements = IndexedSeq(ourSideEditElement),
+            rightEditElements = IndexedSeq(theirSideEditElement)
+          )
+
+      if mirrorImage then
+        assert(
+          Vector(
+            Conflict(
+              IndexedSeq(baseElement),
+              IndexedSeq(theirSideEditElement),
+              IndexedSeq(ourSideEditElement)
+            )
+          ) == mergeResult.coreMergeResult
+        )
+      else
+        assert(
+          Vector(
+            Conflict(
+              IndexedSeq(baseElement),
+              IndexedSeq(ourSideEditElement),
+              IndexedSeq(theirSideEditElement)
+            )
+          ) == mergeResult.coreMergeResult
+        )
+      end if
+
+      assert(
+        Some(theirSideEditElement) == mergeResult
+          .changesPropagatedThroughMotion(ourSideMovedElement)
+      )
+      assert(
+        Some(ourSideEditElement) == mergeResult
+          .changesPropagatedThroughMotion(theirSideMovedElement)
+      )
+    }
+  end ourEditVersusTheirEditConflictWhereBaseHasMovedAwayOnBothSides
 end MergeResultDetectingMotionTest
