@@ -69,6 +69,20 @@ object MergeResultDetectingMotion:
           deletedElement: Element
       ): ConfiguredMergeResultDetectingMotion[Element] =
         matchesFor(deletedElement).toSeq match
+          case Seq(
+                AllSides(
+                  _,
+                  leftElementAtMoveDestination,
+                  rightElementAtMoveDestination
+                )
+              ) =>
+            result
+              .focus(_.coreMergeResult)
+              .modify(coreMergeAlgebra.coincidentDeletion(_, deletedElement))
+              .focus(_.changesPropagatedThroughMotion)
+              .modify(
+                _ + (leftElementAtMoveDestination -> None) + (rightElementAtMoveDestination -> None)
+              )
           case Seq(BaseAndLeft(_, leftElementAtMoveDestination)) =>
             result
               .focus(_.coreMergeResult)
