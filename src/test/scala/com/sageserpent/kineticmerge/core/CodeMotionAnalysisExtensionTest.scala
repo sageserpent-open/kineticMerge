@@ -82,7 +82,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
   @Test
   def codeMotion(): Unit =
     val minimumMatchSize                 = 4
-    val thresholdSizeFractionForMatching = 0.1
+    val thresholdSizeFractionForMatching = 0
 
     val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
 
