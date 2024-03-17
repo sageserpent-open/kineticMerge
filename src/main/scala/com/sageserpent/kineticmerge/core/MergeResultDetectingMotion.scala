@@ -195,6 +195,9 @@ object MergeResultDetectingMotion extends StrictLogging:
                       rightElementAtMoveDestination
                     )
                   ) =>
+                logger.debug(
+                  s"Conflict and divergent moves resolved as a coincident deletion of $baseElement, a left insertion of $leftElement and propagation of the left edit of $leftElement to right move destination $rightElementAtMoveDestination."
+                )
                 result
                   .focus(_.coreMergeResult)
                   .modify(
@@ -211,6 +214,9 @@ object MergeResultDetectingMotion extends StrictLogging:
                     _ + (rightElementAtMoveDestination -> Some(leftElement))
                   )
               case Seq(BaseAndRight(_, rightElementAtMoveDestination)) =>
+                logger.debug(
+                  s"Conflict and move on the right resolved as a coincident deletion of $baseElement and propagation of the left edit of $leftElement to right move destination $rightElementAtMoveDestination."
+                )
                 result
                   .focus(_.coreMergeResult)
                   .modify(coreMergeAlgebra.coincidentDeletion(_, baseElement))
@@ -220,6 +226,9 @@ object MergeResultDetectingMotion extends StrictLogging:
                   )
 
               case Seq(BaseAndLeft(_, leftElementAtMoveDestination)) =>
+                logger.debug(
+                  s"Conflict and move on the left resolved as a coincident deletion of $baseElement, a left insertion of $leftElement and propagation of the right deletion to left move destination $leftElementAtMoveDestination."
+                )
                 result
                   .focus(_.coreMergeResult)
                   .modify(
@@ -247,6 +256,9 @@ object MergeResultDetectingMotion extends StrictLogging:
                       _
                     )
                   ) =>
+                logger.debug(
+                  s"Conflict and divergent moves resolved as a coincident deletion of $baseElement, a right insertion of $rightElement and propagation of the right edit of $rightElement to left move destination $leftElementAtMoveDestination."
+                )
                 result
                   .focus(_.coreMergeResult)
                   .modify(
@@ -263,6 +275,9 @@ object MergeResultDetectingMotion extends StrictLogging:
                     _ + (leftElementAtMoveDestination -> Some(rightElement))
                   )
               case Seq(BaseAndLeft(_, leftElementAtMoveDestination)) =>
+                logger.debug(
+                  s"Conflict and move on the left resolved as a coincident deletion of $baseElement and propagation of the right edit of $rightElement to left move destination $leftElementAtMoveDestination."
+                )
                 result
                   .focus(_.coreMergeResult)
                   .modify(coreMergeAlgebra.coincidentDeletion(_, baseElement))
@@ -272,6 +287,9 @@ object MergeResultDetectingMotion extends StrictLogging:
                   )
 
               case Seq(BaseAndRight(_, rightElementAtMoveDestination)) =>
+                logger.debug(
+                  s"Conflict and move on the right resolved as a coincident deletion of $baseElement, a right insertion of $rightElement and propagation of the left deletion to right move destination $rightElementAtMoveDestination."
+                )
                 result
                   .focus(_.coreMergeResult)
                   .modify(
