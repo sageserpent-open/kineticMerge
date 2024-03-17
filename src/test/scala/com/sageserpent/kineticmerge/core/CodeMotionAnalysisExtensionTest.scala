@@ -66,7 +66,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val expected = stuntDoubleTokens(issue23BugReproductionExpectedMerge)
 
     codeMotionAnalysis.mergeAt(placeholderPath)(equality = Token.equality) match
-      case Right(FullyMerged(result)) => assert(result == expected)
+      case Right(FullyMerged(result)) =>
+        assert(result.corresponds(expected)(Token.equality))
       case Right(MergedWithConflicts(leftResult, rightResult)) =>
         println(s"*** Left result...\n")
         println(leftResult)
@@ -119,7 +120,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val expected = tokens(codeMotionExampleExpectedMerge).get
 
     codeMotionAnalysis.mergeAt(placeholderPath)(equality = Token.equality) match
-      case Right(FullyMerged(result)) => assert(result == expected)
+      case Right(FullyMerged(result)) =>
+        assert(result.corresponds(expected)(Token.equality))
       case Right(MergedWithConflicts(leftResult, rightResult)) =>
         println(s"*** Left result...\n")
         println(leftResult)
