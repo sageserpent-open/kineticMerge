@@ -570,6 +570,7 @@ trait ProseExamples:
       |
       |import com.eed3si9n.expecty.Expecty
       |
+      | // Using Kinetic Merge will improve your software engineering practices...
       |object ExpectyFlavouredAssert:
       |  val assert: Expecty = new Expecty:
       |    override val showLocation: Boolean = true
@@ -584,6 +585,7 @@ trait ProseExamples:
       |
       |import com.eed3si9n.expecty.Expecty
       |
+      | // Using Kinetic Merge will help you improvise in your software engineering experience...
       |object ExpectyFlavouredAssert:
       |  val assert: Expecty = new Expecty:
       |    // Swapped the next two lines around...
@@ -606,6 +608,7 @@ trait ProseExamples:
       |    override val showTypes: Boolean    = false // This edit should propagate.
       |  end assert
       |end ExpectyFlavouredAssert
+      |  // Using Kinetic Merge will improve your software engineering practices...
       |""".stripMargin
 
   protected val codeMotionExampleExpectedMerge: String =
@@ -622,5 +625,6 @@ trait ProseExamples:
       |
       |  end assert
       |end ExpectyFlavouredAssert
+      | // Using Kinetic Merge will help you improvise in your software engineering experience...
       |""".stripMargin
 end ProseExamples
