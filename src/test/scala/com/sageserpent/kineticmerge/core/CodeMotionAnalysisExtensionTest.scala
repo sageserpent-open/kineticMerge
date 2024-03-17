@@ -620,6 +620,5 @@ trait ProseExamples:
       |
       |  end assert
       |end ExpectyFlavouredAssert
-      |
       |""".stripMargin
 end ProseExamples
