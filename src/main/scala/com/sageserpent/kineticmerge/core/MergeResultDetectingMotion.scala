@@ -142,8 +142,9 @@ object MergeResultDetectingMotion extends StrictLogging:
           )
 
         matchesFor(editedElement).toSeq match
-          // TODO: we're missing the all-sides case - there should be a test for
-          // this too!
+          // NOTE: we're not missing the all-sides case below - the default
+          // handles it perfectly well, as the left and right contributions to
+          // the match are *incoming* moves, so there is nothing to propagate.
           case Seq(BaseAndLeft(_, leftElementAtMoveDestination)) =>
             logger.debug(
               s"Propagating coincident edit of $editedElement to $editedElement to left move destination $leftElementAtMoveDestination."
