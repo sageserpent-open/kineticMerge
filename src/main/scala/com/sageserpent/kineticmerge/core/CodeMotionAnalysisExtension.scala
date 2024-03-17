@@ -2,8 +2,9 @@ package com.sageserpent.kineticmerge.core
 
 import cats.Eq
 import com.sageserpent.kineticmerge.core.merge.*
+import com.typesafe.scalalogging.StrictLogging
 
-object CodeMotionAnalysisExtension:
+object CodeMotionAnalysisExtension extends StrictLogging:
   /** Add merging capability to a [[CodeMotionAnalysis]].
     *
     * Not sure exactly where this capability should be implemented - is it
@@ -101,10 +102,19 @@ object CodeMotionAnalysisExtension:
         }(
           _.fold(
             // Moved section was deleted...
-            ifEmpty = IndexedSeq.empty
+            ifEmpty =
+              logger.debug(
+                s"Applying propagated deletion to move destination: $section."
+              )
+              IndexedSeq.empty
           )(
             // Moved section was edited...
-            _.content
+            { edit =>
+              logger.debug(
+                s"Applying propagated edit into $edit to move destination: $section."
+              )
+              edit.content
+            }
           )
         )
       end elementsOf

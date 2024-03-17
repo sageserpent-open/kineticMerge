@@ -2,9 +2,10 @@ package com.sageserpent.kineticmerge.core
 
 import com.sageserpent.kineticmerge.core.Match.*
 import com.sageserpent.kineticmerge.core.merge.MergeAlgebra
+import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
 
-object MergeResultDetectingMotion:
+object MergeResultDetectingMotion extends StrictLogging:
   private type MergeResultDetectingMotionType[CoreResult[_]] =
     [Element] =>> MergeResultDetectingMotion[CoreResult, Element]
 
@@ -76,6 +77,9 @@ object MergeResultDetectingMotion:
                   rightElementAtMoveDestination
                 )
               ) =>
+            logger.debug(
+              s"Propagating coincident deletion of $deletedElement to left move destination $leftElementAtMoveDestination and right move destination $rightElementAtMoveDestination."
+            )
             result
               .focus(_.coreMergeResult)
               .modify(coreMergeAlgebra.coincidentDeletion(_, deletedElement))
@@ -84,12 +88,18 @@ object MergeResultDetectingMotion:
                 _ + (leftElementAtMoveDestination -> None) + (rightElementAtMoveDestination -> None)
               )
           case Seq(BaseAndLeft(_, leftElementAtMoveDestination)) =>
+            logger.debug(
+              s"Propagating coincident deletion of $deletedElement to left move destination $leftElementAtMoveDestination."
+            )
             result
               .focus(_.coreMergeResult)
               .modify(coreMergeAlgebra.coincidentDeletion(_, deletedElement))
               .focus(_.changesPropagatedThroughMotion)
               .modify(_ + (leftElementAtMoveDestination -> None))
           case Seq(BaseAndRight(_, rightElementAtMoveDestination)) =>
+            logger.debug(
+              s"Propagating coincident deletion of $deletedElement to right move destination $rightElementAtMoveDestination."
+            )
             result
               .focus(_.coreMergeResult)
               .modify(coreMergeAlgebra.coincidentDeletion(_, deletedElement))
@@ -132,13 +142,21 @@ object MergeResultDetectingMotion:
           )
 
         matchesFor(editedElement).toSeq match
+          // TODO: we're missing the all-sides case - there should be a test for
+          // this too!
           case Seq(BaseAndLeft(_, leftElementAtMoveDestination)) =>
+            logger.debug(
+              s"Propagating coincident edit of $editedElement to $editedElement to left move destination $leftElementAtMoveDestination."
+            )
             default
               .focus(_.changesPropagatedThroughMotion)
               .modify(
                 _ + (leftElementAtMoveDestination -> None)
               )
           case Seq(BaseAndRight(_, rightElementAtMoveDestination)) =>
+            logger.debug(
+              s"Propagating coincident edit of $editedElement to $editedElement to right move destination $rightElementAtMoveDestination."
+            )
             default
               .focus(_.changesPropagatedThroughMotion)
               .modify(
