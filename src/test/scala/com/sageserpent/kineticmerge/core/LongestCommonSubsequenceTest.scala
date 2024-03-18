@@ -5,7 +5,7 @@ import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Contribution
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{Contribution, defaultElementSize}
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.{Element, TestCase, testCases}
 import org.junit.jupiter.api.TestInstance.Lifecycle
 import org.junit.jupiter.api.{DynamicTest, Test, TestFactory, TestInstance}
@@ -24,7 +24,8 @@ class LongestCommonSubsequenceTest:
           val LongestCommonSubsequence(base, left, right, _, _, _, _) =
             LongestCommonSubsequence
               .of(testCase.base, testCase.left, testCase.right)(
-                _ == _
+                equality = _ == _,
+                elementSize = defaultElementSize
               )
 
           assert(base.map(_.element) == testCase.base)
@@ -164,7 +165,8 @@ class LongestCommonSubsequenceTest:
           val LongestCommonSubsequence(base, left, right, commonSubsequenceSize, _, _, _) =
             LongestCommonSubsequence
               .of(testCase.base, testCase.left, testCase.right)(
-                _ == _
+                equality = _ == _,
+                elementSize = defaultElementSize
               )
 
           // NOTE: the common subsequence aspect is checked against the

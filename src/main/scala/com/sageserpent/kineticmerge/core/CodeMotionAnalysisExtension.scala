@@ -75,7 +75,10 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           base = baseSections,
           left = leftSections,
           right = rightSections
-        )(equality = sectionEqualityViaDominantsFallingBackToContentComparison)
+        )(
+          equality = sectionEqualityViaDominantsFallingBackToContentComparison,
+          elementSize = _.size
+        )
 
       def elementsOf(
           changesPropagatedThroughMotion: Map[Section[Element], Option[

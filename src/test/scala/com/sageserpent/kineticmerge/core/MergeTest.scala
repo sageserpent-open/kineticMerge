@@ -4,6 +4,7 @@ import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.defaultElementSize
 import com.sageserpent.kineticmerge.core.MergeTest.*
 import com.sageserpent.kineticmerge.core.MergeTest.DelegatingMergeAlgebraWithContracts.{AugmentedMergeResult, State}
 import com.sageserpent.kineticmerge.core.MergeTest.Move.*
@@ -44,7 +45,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equality = equivalent(matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -74,7 +76,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -103,7 +106,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equality = equivalent(matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -134,7 +138,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -164,7 +169,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -195,7 +201,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -226,7 +233,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -260,7 +268,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -297,7 +306,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -334,7 +344,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -370,7 +381,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -401,7 +413,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -434,7 +447,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -471,7 +485,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -500,7 +515,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -532,7 +548,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -571,7 +588,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -614,7 +632,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -659,7 +678,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -704,7 +724,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -750,7 +771,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -795,7 +817,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -833,7 +856,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -874,7 +898,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -920,7 +945,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -961,7 +987,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -995,7 +1022,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -1032,7 +1060,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -1071,7 +1100,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -1110,7 +1140,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -1147,7 +1178,8 @@ class MergeTest:
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
       )(base, left, right)(
-        equivalent(matchesByElement)
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
       ): @unchecked
 
     assert(result == expectedMerge)
@@ -1169,7 +1201,8 @@ class MergeTest:
             testCase.left,
             testCase.right
           )(
-            equivalent(testCase.matchesByElement)
+            equality = equivalent(testCase.matchesByElement),
+            elementSize = defaultElementSize
           ): @unchecked
 
         testCase.validate(result)
@@ -1187,7 +1220,8 @@ class MergeTest:
             testCase.left,
             testCase.right
           )(
-            equivalent(testCase.matchesByElement)
+            equality = equivalent(testCase.matchesByElement),
+            elementSize = defaultElementSize
           ): @unchecked
 
         result match

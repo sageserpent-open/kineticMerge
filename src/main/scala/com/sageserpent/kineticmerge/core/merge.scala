@@ -85,7 +85,8 @@ object merge extends StrictLogging:
       left: IndexedSeq[Element],
       right: IndexedSeq[Element]
   )(
-      equality: Eq[Element]
+      equality: Eq[Element],
+      elementSize: Element => Int
   ): Either[Divergence.type, Result[Element]] =
     def rightEditNotMarooned(leftTail: Seq[Contribution[Element]]) =
       // Guard against a coincident insertion prior to the left side
@@ -1350,7 +1351,7 @@ object merge extends StrictLogging:
     end mergeBetweenRunsOfCommonElements
 
     val longestCommonSubsequence =
-      LongestCommonSubsequence.of(base, left, right)(equality)
+      LongestCommonSubsequence.of(base, left, right)(equality, elementSize)
 
     // TODO: for now, failure is not tolerated, but obviously that will have to
     // be accommodated - both merge conflicts and later divergences.

@@ -104,13 +104,16 @@ end LongestCommonSubsequence
 object LongestCommonSubsequence:
   private val sentinelIndexForExhaustion = -1
 
-  // TODO - there could be more than one solution - could something be done to
-  // choose between them? Should we yield a set instead?
+  def defaultElementSize[Element](irrelevant: Element): Int = 1
+
   def of[Element](
       base: IndexedSeq[Element],
       left: IndexedSeq[Element],
       right: IndexedSeq[Element]
-  )(equality: Eq[Element]): LongestCommonSubsequence[Element] =
+  )(
+      equality: Eq[Element],
+      elementSize: Element => Int
+  ): LongestCommonSubsequence[Element] =
     val orderBySize =
       Ordering[(Int, Int)].on[LongestCommonSubsequence[Element]](_.size)
 
