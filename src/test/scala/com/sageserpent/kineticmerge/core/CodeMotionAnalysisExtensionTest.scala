@@ -574,7 +574,7 @@ trait ProseExamples:
       |object ExpectyFlavouredAssert:
       |  val assert: Expecty = new Expecty:
       |    override val showLocation: Boolean = true
-      |    override val showTypes: Boolean    = true
+      |    override val showTypes: Boolean    = /* TODO - remove this comment, it's here to force propagation of the edit on the right. */ true
       |  end assert
       |end ExpectyFlavouredAssert
       |""".stripMargin
@@ -589,7 +589,7 @@ trait ProseExamples:
       |object ExpectyFlavouredAssert:
       |  val assert: Expecty = new Expecty:
       |    // Swapped the next two lines around...
-      |    override val showTypes: Boolean    = true
+      |    override val showTypes: Boolean    = /* TODO - remove this comment, it's here to force propagation of the edit on the right. */ true
       |    override val showLocation: Boolean = true
       |
       |  end assert
