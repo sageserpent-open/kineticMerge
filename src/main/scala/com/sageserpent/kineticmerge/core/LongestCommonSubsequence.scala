@@ -37,7 +37,7 @@ case class LongestCommonSubsequence[Element] private (
   def addCommonBaseAndLeft(
       baseElement: Element,
       leftElement: Element
-  ): LongestCommonSubsequence[Element] =
+  )(elementSize: Element => Int): LongestCommonSubsequence[Element] =
     this
       .focus(_.base)
       .modify(
@@ -48,12 +48,12 @@ case class LongestCommonSubsequence[Element] private (
         _ :+ Contribution.CommonToBaseAndLeftOnly(leftElement)
       )
       .focus(_.commonToBaseAndLeftOnlySize)
-      .modify(1 + _)
+      .modify((elementSize(baseElement) max elementSize(leftElement)) + _)
 
   def addCommonBaseAndRight(
       baseElement: Element,
       rightElement: Element
-  ): LongestCommonSubsequence[Element] =
+  )(elementSize: Element => Int): LongestCommonSubsequence[Element] =
     this
       .focus(_.base)
       .modify(
@@ -64,12 +64,12 @@ case class LongestCommonSubsequence[Element] private (
         _ :+ Contribution.CommonToBaseAndRightOnly(rightElement)
       )
       .focus(_.commonToBaseAndRightOnlySize)
-      .modify(1 + _)
+      .modify((elementSize(baseElement) max elementSize(rightElement)) + _)
 
   def addCommonLeftAndRight(
       leftElement: Element,
       rightElement: Element
-  ): LongestCommonSubsequence[Element] =
+  )(elementSize: Element => Int): LongestCommonSubsequence[Element] =
     this
       .focus(_.left)
       .modify(
@@ -80,13 +80,13 @@ case class LongestCommonSubsequence[Element] private (
         _ :+ Contribution.CommonToLeftAndRightOnly(rightElement)
       )
       .focus(_.commonToLeftAndRightOnlySize)
-      .modify(1 + _)
+      .modify((elementSize(leftElement) max elementSize(rightElement)) + _)
 
   def addCommon(
       baseElement: Element,
       leftElement: Element,
       rightElement: Element
-  ): LongestCommonSubsequence[Element] =
+  )(elementSize: Element => Int): LongestCommonSubsequence[Element] =
     this
       .focus(_.base)
       .modify(_ :+ Contribution.Common(baseElement))
@@ -95,7 +95,11 @@ case class LongestCommonSubsequence[Element] private (
       .focus(_.right)
       .modify(_ :+ Contribution.Common(rightElement))
       .focus(_.commonSubsequenceSize)
-      .modify(1 + _)
+      .modify(
+        (elementSize(baseElement) max elementSize(leftElement) max elementSize(
+          rightElement
+        )) + _
+      )
 
   def size: (Int, Int) =
     commonSubsequenceSize -> (commonToLeftAndRightOnlySize + commonToBaseAndLeftOnlySize + commonToBaseAndRightOnlySize)
@@ -168,7 +172,9 @@ object LongestCommonSubsequence:
 
                 if leftEqualsRight then
                   of(onePastBaseIndex = 0, leftIndex, rightIndex)
-                    .addCommonLeftAndRight(leftElement, rightElement)
+                    .addCommonLeftAndRight(leftElement, rightElement)(
+                      elementSize
+                    )
                 else
                   val resultDroppingTheEndOfTheLeft =
                     of(onePastBaseIndex = 0, leftIndex, onePastRightIndex)
@@ -198,7 +204,9 @@ object LongestCommonSubsequence:
 
                 if baseEqualsRight then
                   of(baseIndex, onePastLeftIndex = 0, rightIndex)
-                    .addCommonBaseAndRight(baseElement, rightElement)
+                    .addCommonBaseAndRight(baseElement, rightElement)(
+                      elementSize
+                    )
                 else
                   val resultDroppingTheEndOfTheBase =
                     of(baseIndex, onePastLeftIndex = 0, onePastRightIndex)
@@ -228,7 +236,7 @@ object LongestCommonSubsequence:
 
                 if baseEqualsLeft then
                   of(baseIndex, leftIndex, onePastRightIndex = 0)
-                    .addCommonBaseAndLeft(baseElement, leftElement)
+                    .addCommonBaseAndLeft(baseElement, leftElement)(elementSize)
                 else
                   val resultDroppingTheEndOfTheBase =
                     of(baseIndex, onePastLeftIndex, onePastRightIndex = 0)
@@ -262,7 +270,9 @@ object LongestCommonSubsequence:
                 if baseEqualsLeft && baseEqualsRight
                 then
                   of(baseIndex, leftIndex, rightIndex)
-                    .addCommon(baseElement, leftElement, rightElement)
+                    .addCommon(baseElement, leftElement, rightElement)(
+                      elementSize
+                    )
                 else
                   lazy val resultDroppingTheEndOfTheBase =
                     of(baseIndex, onePastLeftIndex, onePastRightIndex)
@@ -279,7 +289,9 @@ object LongestCommonSubsequence:
                   val resultDroppingTheBaseAndLeft =
                     if baseEqualsLeft then
                       of(baseIndex, leftIndex, onePastRightIndex)
-                        .addCommonBaseAndLeft(baseElement, leftElement)
+                        .addCommonBaseAndLeft(baseElement, leftElement)(
+                          elementSize
+                        )
                     else
                       orderBySize.max(
                         resultDroppingTheEndOfTheBase,
@@ -291,7 +303,9 @@ object LongestCommonSubsequence:
                   val resultDroppingTheBaseAndRight =
                     if baseEqualsRight then
                       of(baseIndex, onePastLeftIndex, rightIndex)
-                        .addCommonBaseAndRight(baseElement, rightElement)
+                        .addCommonBaseAndRight(baseElement, rightElement)(
+                          elementSize
+                        )
                     else
                       orderBySize.max(
                         resultDroppingTheEndOfTheBase,
@@ -305,7 +319,9 @@ object LongestCommonSubsequence:
                   val resultDroppingTheLeftAndRight =
                     if leftEqualsRight then
                       of(onePastBaseIndex, leftIndex, rightIndex)
-                        .addCommonLeftAndRight(leftElement, rightElement)
+                        .addCommonLeftAndRight(leftElement, rightElement)(
+                          elementSize
+                        )
                     else
                       orderBySize.max(
                         resultDroppingTheEndOfTheLeft,
