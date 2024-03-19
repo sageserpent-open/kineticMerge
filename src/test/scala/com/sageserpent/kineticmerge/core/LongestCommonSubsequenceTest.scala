@@ -213,17 +213,26 @@ class LongestCommonSubsequenceTest:
       def commonParts(sequence: IndexedSeq[Contribution[Element]]): IndexedSeq[Element] =
         sequence.collect{case Contribution.Common[Element](element) => element}
 
+      val baseCommonParts = commonParts(base)
+      val leftCommonParts = commonParts(left)
+      val rightCommonParts = commonParts(right)
 
       val upperCaseSequence = testCase.core
+
+      if baseCommonParts.size > upperCaseSequence.size ||
+        leftCommonParts.size > upperCaseSequence.size ||
+        rightCommonParts.size > upperCaseSequence.size then Trials.reject()
 
       // We expect the longest common subsequence to contain at least the
       // upper case sequence because it can beat both the lower case sequence
       // and any mixture of contributions from the two, barring when the
       // mixture includes all of the upper case sequence anyway.
-      upperCaseSequence isSubsequenceOf commonParts(base)
-      upperCaseSequence isSubsequenceOf commonParts(left)
-      upperCaseSequence isSubsequenceOf commonParts(right)
+
+      upperCaseSequence isSubsequenceOf baseCommonParts
+      upperCaseSequence isSubsequenceOf leftCommonParts
+      upperCaseSequence isSubsequenceOf rightCommonParts
     }
+  end theLargestElementSizeSumIsTheTiebreakForLongestCommonSubsequencesOfTheSameLength
 end LongestCommonSubsequenceTest
 
 object LongestCommonSubsequenceTest:
