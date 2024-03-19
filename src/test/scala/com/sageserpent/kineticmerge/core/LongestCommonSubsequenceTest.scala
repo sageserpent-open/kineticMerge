@@ -2,6 +2,7 @@ package com.sageserpent.kineticmerge.core
 
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
+import com.sageserpent.americium.java.CasesLimitStrategy
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{CommonSubsequenceSize, Contribution, defaultElementSize}
@@ -187,17 +188,24 @@ class LongestCommonSubsequenceTest:
 
   @TestFactory
   def theLargestElementSizeSumIsTheTiebreakForLongestCommonSubsequencesOfTheSameLength(): DynamicTests =
-    val testCases: Trials[TestCase] = for
+    enum MissingSide:
+      case None
+      case Base
+      case Left
+      case Right
+
+    val testCases = for
       size <- trialsApi.integers(1, maximumSize)
       lowerCaseSequence <- trialsApi.choose('a' to 'z').lotsOfSize[Vector[Element]](size)
       upperCaseSequence <- trialsApi.choose('A' to 'Z').lotsOfSize[Vector[Element]](size)
-      baseSequence <- trialsApi.pickAlternatelyFrom(shrinkToRoundRobin = true, lowerCaseSequence, upperCaseSequence)
-      leftSequence <- trialsApi.pickAlternatelyFrom(shrinkToRoundRobin = true, lowerCaseSequence, upperCaseSequence)
-      rightSequence <- trialsApi.pickAlternatelyFrom(shrinkToRoundRobin = true, lowerCaseSequence, upperCaseSequence)
+      missingSide <- trialsApi.choose(MissingSide.values)
+      baseSequence <- if missingSide == MissingSide.Base then trialsApi.only(Vector.empty) else trialsApi.pickAlternatelyFrom(shrinkToRoundRobin = true, lowerCaseSequence, upperCaseSequence)
+      leftSequence <- if missingSide == MissingSide.Left then trialsApi.only(Vector.empty) else trialsApi.pickAlternatelyFrom(shrinkToRoundRobin = true, lowerCaseSequence, upperCaseSequence)
+      rightSequence <- if missingSide == MissingSide.Right then trialsApi.only(Vector.empty) else trialsApi.pickAlternatelyFrom(shrinkToRoundRobin = true, lowerCaseSequence, upperCaseSequence)
       if baseSequence != leftSequence || baseSequence != rightSequence || leftSequence != baseSequence
-    yield TestCase(core = upperCaseSequence, base = baseSequence, left = leftSequence, right = rightSequence)
+    yield TestCase(core = upperCaseSequence, base = baseSequence, left = leftSequence, right = rightSequence) -> missingSide
 
-    testCases.withLimit(20).dynamicTests{(testCase: TestCase) =>
+    testCases.withStrategy(_ => CasesLimitStrategy.counted(30, 50)).dynamicTests{(testCase, missingSide) =>
       val guaranteeUpperCaseElementSumWins = 1 + 'z' - 'a'
 
       def elementSize(element: Element): Int =
@@ -211,7 +219,12 @@ class LongestCommonSubsequenceTest:
             )
         
       def commonParts(sequence: IndexedSeq[Contribution[Element]]): IndexedSeq[Element] =
-        sequence.collect{case Contribution.Common[Element](element) => element}
+        sequence.collect{
+          case Contribution.Common[Element](element) => element
+          case Contribution.CommonToBaseAndLeftOnly[Element](element) => element
+          case Contribution.CommonToBaseAndRightOnly[Element](element) => element
+          case Contribution.CommonToLeftAndRightOnly[Element](element) => element
+        }
 
       val baseCommonParts = commonParts(base)
       val leftCommonParts = commonParts(left)
@@ -228,9 +241,15 @@ class LongestCommonSubsequenceTest:
       // and any mixture of contributions from the two, barring when the
       // mixture includes all of the upper case sequence anyway.
 
-      upperCaseSequence isSubsequenceOf baseCommonParts
-      upperCaseSequence isSubsequenceOf leftCommonParts
-      upperCaseSequence isSubsequenceOf rightCommonParts
+      if missingSide != MissingSide.Base
+      then upperCaseSequence isSubsequenceOf baseCommonParts
+      end if
+      if missingSide != MissingSide.Left
+      then upperCaseSequence isSubsequenceOf leftCommonParts
+      end if
+      if missingSide != MissingSide.Right
+      then upperCaseSequence isSubsequenceOf rightCommonParts
+      end if
     }
   end theLargestElementSizeSumIsTheTiebreakForLongestCommonSubsequencesOfTheSameLength
 end LongestCommonSubsequenceTest
