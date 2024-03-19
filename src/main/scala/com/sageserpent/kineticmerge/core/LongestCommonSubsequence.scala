@@ -1,7 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.Eq
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Contribution
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{CommonSubsequenceSize, Contribution}
 import monocle.syntax.all.*
 
 import scala.collection.mutable
@@ -10,10 +10,10 @@ case class LongestCommonSubsequence[Element] private (
     base: IndexedSeq[Contribution[Element]],
     left: IndexedSeq[Contribution[Element]],
     right: IndexedSeq[Contribution[Element]],
-    commonSubsequenceSize: Int,
-    commonToLeftAndRightOnlySize: Int,
-    commonToBaseAndLeftOnlySize: Int,
-    commonToBaseAndRightOnlySize: Int
+    commonSubsequenceSize: CommonSubsequenceSize,
+    commonToLeftAndRightOnlySize: CommonSubsequenceSize,
+    commonToBaseAndLeftOnlySize: CommonSubsequenceSize,
+    commonToBaseAndRightOnlySize: CommonSubsequenceSize
 ):
   def addBaseDifference(
       baseElement: Element
@@ -48,7 +48,11 @@ case class LongestCommonSubsequence[Element] private (
         _ :+ Contribution.CommonToBaseAndLeftOnly(leftElement)
       )
       .focus(_.commonToBaseAndLeftOnlySize)
-      .modify((elementSize(baseElement) max elementSize(leftElement)) + _)
+      .modify(
+        _.addCostOfASingleContribution(
+          elementSize(baseElement) max elementSize(leftElement)
+        )
+      )
 
   def addCommonBaseAndRight(
       baseElement: Element,
@@ -64,7 +68,11 @@ case class LongestCommonSubsequence[Element] private (
         _ :+ Contribution.CommonToBaseAndRightOnly(rightElement)
       )
       .focus(_.commonToBaseAndRightOnlySize)
-      .modify((elementSize(baseElement) max elementSize(rightElement)) + _)
+      .modify(
+        _.addCostOfASingleContribution(
+          elementSize(baseElement) max elementSize(rightElement)
+        )
+      )
 
   def addCommonLeftAndRight(
       leftElement: Element,
@@ -80,7 +88,11 @@ case class LongestCommonSubsequence[Element] private (
         _ :+ Contribution.CommonToLeftAndRightOnly(rightElement)
       )
       .focus(_.commonToLeftAndRightOnlySize)
-      .modify((elementSize(leftElement) max elementSize(rightElement)) + _)
+      .modify(
+        _.addCostOfASingleContribution(
+          elementSize(leftElement) max elementSize(rightElement)
+        )
+      )
 
   def addCommon(
       baseElement: Element,
@@ -96,13 +108,15 @@ case class LongestCommonSubsequence[Element] private (
       .modify(_ :+ Contribution.Common(rightElement))
       .focus(_.commonSubsequenceSize)
       .modify(
-        (elementSize(baseElement) max elementSize(leftElement) max elementSize(
-          rightElement
-        )) + _
+        _.addCostOfASingleContribution(
+          elementSize(baseElement) max elementSize(leftElement) max elementSize(
+            rightElement
+          )
+        )
       )
 
-  def size: (Int, Int) =
-    commonSubsequenceSize -> (commonToLeftAndRightOnlySize + commonToBaseAndLeftOnlySize + commonToBaseAndRightOnlySize)
+  def size: (CommonSubsequenceSize, CommonSubsequenceSize) =
+    commonSubsequenceSize -> (commonToLeftAndRightOnlySize plus commonToBaseAndLeftOnlySize plus commonToBaseAndRightOnlySize)
 end LongestCommonSubsequence
 
 object LongestCommonSubsequence:
@@ -118,8 +132,12 @@ object LongestCommonSubsequence:
       equality: Eq[Element],
       elementSize: Element => Int
   ): LongestCommonSubsequence[Element] =
-    val orderBySize =
-      Ordering[(Int, Int)].on[LongestCommonSubsequence[Element]](_.size)
+    given orderBySize: Ordering[LongestCommonSubsequence[Element]] =
+      given Ordering[CommonSubsequenceSize] =
+        Ordering.by(size => size.length -> size.elementSizeSumTiebreaker)
+
+      Ordering.by(_.size)
+    end orderBySize
 
     val partialResultsCache
         : mutable.Map[(Int, Int, Int), LongestCommonSubsequence[Element]] =
@@ -153,10 +171,10 @@ object LongestCommonSubsequence:
             right = Vector.tabulate(onePastRightIndex)(index =>
               Contribution.Difference(right(index))
             ),
-            commonSubsequenceSize = 0,
-            commonToLeftAndRightOnlySize = 0,
-            commonToBaseAndLeftOnlySize = 0,
-            commonToBaseAndRightOnlySize = 0
+            commonSubsequenceSize = CommonSubsequenceSize.zero,
+            commonToLeftAndRightOnlySize = CommonSubsequenceSize.zero,
+            commonToBaseAndLeftOnlySize = CommonSubsequenceSize.zero,
+            commonToBaseAndRightOnlySize = CommonSubsequenceSize.zero
           )
         case 2 | 3 =>
           if baseIsExhausted then
@@ -334,7 +352,7 @@ object LongestCommonSubsequence:
                     resultDroppingTheBaseAndLeft,
                     resultDroppingTheBaseAndRight,
                     resultDroppingTheLeftAndRight
-                  ).maxBy(_.size)
+                  ).max(orderBySize)
                 end if
               }
             )
@@ -349,6 +367,21 @@ object LongestCommonSubsequence:
     )
 
   end of
+
+  case class CommonSubsequenceSize(length: Int, elementSizeSumTiebreaker: Int):
+    def addCostOfASingleContribution(size: Int): CommonSubsequenceSize = this
+      .focus(_.length)
+      .modify(1 + _)
+      .focus(_.elementSizeSumTiebreaker)
+      .modify(size + _)
+
+    def plus(that: CommonSubsequenceSize): CommonSubsequenceSize =
+      CommonSubsequenceSize(
+        length = this.length + that.length,
+        elementSizeSumTiebreaker =
+          this.elementSizeSumTiebreaker + that.elementSizeSumTiebreaker
+      )
+  end CommonSubsequenceSize
 
   enum Contribution[Element]:
     case Common(
@@ -369,4 +402,8 @@ object LongestCommonSubsequence:
 
     def element: Element
   end Contribution
+
+  object CommonSubsequenceSize:
+    val zero = CommonSubsequenceSize(length = 0, elementSizeSumTiebreaker = 0)
+  end CommonSubsequenceSize
 end LongestCommonSubsequence

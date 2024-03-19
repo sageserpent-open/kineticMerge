@@ -4,7 +4,7 @@ import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{Contribution, defaultElementSize}
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{CommonSubsequenceSize, Contribution, defaultElementSize}
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.{Element, TestCase, maximumSize, testCases}
 import org.junit.jupiter.api.TestFactory
 
@@ -158,7 +158,7 @@ class LongestCommonSubsequenceTest:
               }
           end extension
 
-          val LongestCommonSubsequence(base, left, right, commonSubsequenceSize, _, _, _) =
+          val LongestCommonSubsequence(base, left, right, CommonSubsequenceSize(commonSubsequenceLength, _), _, _, _) =
             LongestCommonSubsequence
               .of(testCase.base, testCase.left, testCase.right)(
                 equality = _ == _,
@@ -173,15 +173,15 @@ class LongestCommonSubsequenceTest:
           // same size. All the core sequence does is to guarantee that there
           // will be *some* common subsequence.
           // NASTY HACK: placate IntelliJ with these underscore bindings.
-          val _ = base.verifyLongestCommonSubsequence(testCase.base, commonSubsequenceSize)
-          val _ = left.verifyLongestCommonSubsequence(testCase.left, commonSubsequenceSize)
-          val _ = right verifyLongestCommonSubsequence(testCase.right, commonSubsequenceSize)
+          val _ = base.verifyLongestCommonSubsequence(testCase.base, commonSubsequenceLength)
+          val _ = left.verifyLongestCommonSubsequence(testCase.left, commonSubsequenceLength)
+          val _ = right verifyLongestCommonSubsequence(testCase.right, commonSubsequenceLength)
 
           // NOTE: The reason for the lower bound on size (rather than strict
           // equality) is because the interleaves for the base, left and right
           // sequences may either augment the core sequence by coincidence, or
           // form an alternative one that is longer.
-          assert(commonSubsequenceSize >= coreSize)
+          assert(commonSubsequenceLength >= coreSize)
       )
   end theLongestCommonSubsequenceUnderpinsAllThreeResults
 
