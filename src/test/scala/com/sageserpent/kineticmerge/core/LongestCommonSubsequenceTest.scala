@@ -1,16 +1,12 @@
 package com.sageserpent.kineticmerge.core
 
-import cats.data.{EitherT, OptionT, Writer}
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{Contribution, defaultElementSize}
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.{Element, TestCase, testCases}
-import org.junit.jupiter.api.TestInstance.Lifecycle
-import org.junit.jupiter.api.{DynamicTest, Test, TestFactory, TestInstance}
-
-import scala.util.Try
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.{Element, TestCase, maximumSize, testCases}
+import org.junit.jupiter.api.TestFactory
 
 class LongestCommonSubsequenceTest:
   @TestFactory
@@ -189,21 +185,60 @@ class LongestCommonSubsequenceTest:
       )
   end theLongestCommonSubsequenceUnderpinsAllThreeResults
 
+  @TestFactory
+  def theLargestElementSizeSumIsTheTiebreakForLongestCommonSubsequencesOfTheSameLength(): DynamicTests =
+    val testCases: Trials[TestCase] = for
+      size <- trialsApi.integers(1, maximumSize)
+      lowerCaseSequence <- trialsApi.choose('a' to 'z').lotsOfSize[Vector[Element]](size)
+      upperCaseSequence <- trialsApi.choose('A' to 'Z').lotsOfSize[Vector[Element]](size)
+      baseSequence <- trialsApi.pickAlternatelyFrom(shrinkToRoundRobin = true, lowerCaseSequence, upperCaseSequence)
+      leftSequence <- trialsApi.pickAlternatelyFrom(shrinkToRoundRobin = true, lowerCaseSequence, upperCaseSequence)
+      rightSequence <- trialsApi.pickAlternatelyFrom(shrinkToRoundRobin = true, lowerCaseSequence, upperCaseSequence)
+      if baseSequence != leftSequence || baseSequence != rightSequence || leftSequence != baseSequence
+    yield TestCase(core = upperCaseSequence, base = baseSequence, left = leftSequence, right = rightSequence)
+
+    testCases.withLimit(20).dynamicTests{(testCase: TestCase) =>
+      val guaranteeUpperCaseElementSumWins = 1 + 'z' - 'a'
+
+      def elementSize(element: Element): Int =
+        if element.isUpper then guaranteeUpperCaseElementSumWins + element - 'A' else element - 'a'
+
+      val LongestCommonSubsequence(base, left, right, _, _, _, _) =
+        LongestCommonSubsequence
+          .of(testCase.base, testCase.left, testCase.right)(
+              equality = _ == _,
+              elementSize = elementSize
+            )
+        
+      def commonParts(sequence: IndexedSeq[Contribution[Element]]): IndexedSeq[Element] =
+        sequence.collect{case Contribution.Common[Element](element) => element}
+
+
+      val upperCaseSequence = testCase.core
+
+      // We expect the longest common subsequence to contain at least the
+      // upper case sequence because it can beat both the lower case sequence
+      // and any mixture of contributions from the two, barring when the
+      // mixture includes all of the upper case sequence anyway.
+      upperCaseSequence isSubsequenceOf commonParts(base)
+      upperCaseSequence isSubsequenceOf commonParts(left)
+      upperCaseSequence isSubsequenceOf commonParts(right)
+    }
 end LongestCommonSubsequenceTest
 
 object LongestCommonSubsequenceTest:
   type Element = Char
 
-  val coreValues: Trials[Element] = trialsApi.choose('a' to 'z')
-  val additionalValues: Trials[Element] = trialsApi.choose('A' to 'Z')
+  val coreElements: Trials[Element] = trialsApi.choose('a' to 'z')
+  val additionalElements: Trials[Element] = trialsApi.choose('A' to 'Z')
   val maximumSize = 30
   val testCases: Trials[TestCase] = for
     core <- sizes(maximumSize)
       .filter(2 < _)
-      .flatMap(coreValues.lotsOfSize[Vector[Element]])
+      .flatMap(coreElements.lotsOfSize[Vector[Element]])
 
     interleaveForBase <- sizes(maximumSize).flatMap(
-      additionalValues.lotsOfSize[Vector[Element]]
+      additionalElements.lotsOfSize[Vector[Element]]
     )
     base <- trialsApi.pickAlternatelyFrom(
       shrinkToRoundRobin = true,
@@ -211,7 +246,7 @@ object LongestCommonSubsequenceTest:
       interleaveForBase
     )
     interleaveForLeft <- sizes(maximumSize).flatMap(
-      additionalValues.lotsOfSize[Vector[Element]]
+      additionalElements.lotsOfSize[Vector[Element]]
     )
     left <- trialsApi.pickAlternatelyFrom(
       shrinkToRoundRobin = true,
@@ -219,7 +254,7 @@ object LongestCommonSubsequenceTest:
       interleaveForLeft
     )
     interleaveForRight <- sizes(maximumSize).flatMap(
-      additionalValues.lotsOfSize[Vector[Element]]
+      additionalElements.lotsOfSize[Vector[Element]]
     )
     right <- trialsApi.pickAlternatelyFrom(
       shrinkToRoundRobin = true,
