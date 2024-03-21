@@ -41,7 +41,7 @@ If you're on Windows, instead of `kinetic-merge` use the companion download *`ki
 Stuck in a firewalled corporate environment and can't just download anything you feel like?
 
 Try the instructions here [if you have Coursier](https://github.com/sageserpent-open/kineticMerge/issues/21#issuecomment-1933956129)
-or [here if you don't](https://github.com/sageserpent-open/kineticMerge/issues/21#issuecomment-1932619838).
+or [here if you have a corporate mirror of Maven](https://github.com/sageserpent-open/kineticMerge/issues/21#issuecomment-1932619838).
 
 ## Running it ##
 
