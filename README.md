@@ -1,8 +1,10 @@
 # kineticMerge
 
+[![Maven Central](https://index.scala-lang.org/sageserpent-open/kineticmerge/kinetic-merge/latest-by-scala-version.svg?color=2465cd&style=flat)](https://index.scala-lang.org/sageserpent-open/kineticmerge/kinetic-merge)
+
 Merge a heavily refactored codebase and stay sane.
 
-(In **ALPHA**).
+(In **BETA**).
 
 ## Goals
 
