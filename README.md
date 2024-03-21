@@ -95,12 +95,14 @@ one.
 
 ## Status
 
-Well, that's the plan. It's no longer vapourware, there is a release, but the code motion aspect ~~isn't supported at
-all yet~~ is not fully implemented end-to-end (although a lot of the heavy lifting in the implementation is complete) -
-it is currently a conventional file-by-file merge tool, although the merge algorithm is I believe novel. Whether you
-like what is currently does is for you to judge, try it out.
+Well, that's the plan. It's no longer vapourware, there is a release; the code motion aspect is implemented end-to-end.
 
-For now, consider this in **ALPHA** release. Be brave - or run away. If you give it a spin, do raise bug tickets,
+The caveat as of version 1.0.0 is that code motion is only tracked **intra-file**, not *inter-file*. So you can rearrange
+code as much as you like inside a file and any edits to that code on another branch will be propagated when you merge, but
+this won't work if code jumps from one file to another. Yet. There is a
+[ticket for this](https://github.com/sageserpent-open/kineticMerge/issues/26), it is coming soon...
+
+For now, consider this in **BETA** release. If you give it a spin, do raise bug tickets,
 see [https://github.com/sageserpent-open/kineticMerge/issues/21](https://github.com/sageserpent-open/kineticMerge/issues/21)
 for guidance.
 
