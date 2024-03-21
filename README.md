@@ -6,6 +6,10 @@ Merge a heavily refactored codebase and stay sane.
 
 (In **BETA**).
 
+<video src='https://github.com/sageserpent-open/kineticMerge/blob/main/movies/Kinetic%20Merge%20in%20action%20-%20part%201%20-%20editing%20the%20code.mov'><video/>
+<video src='https://github.com/sageserpent-open/kineticMerge/blob/main/movies/Kinetic%20Merge%20in%20action%20-%20part%202%20-%20refactoring%20the%20code.mov'><video/>
+<video src='https://github.com/sageserpent-open/kineticMerge/blob/main/movies/Kinetic%20Merge%20in%20action%20-%20part%203%20-%20merging%20the%20branches.mov'><video/>
+
 ## Goals
 
 - Merge two branches of a Git repository *across the entire codebase*.
