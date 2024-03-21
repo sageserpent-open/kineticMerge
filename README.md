@@ -6,9 +6,11 @@ Merge a heavily refactored codebase and stay sane.
 
 (In **BETA**).
 
-<video src='https://github.com/sageserpent-open/kineticMerge/blob/main/movies/Kinetic%20Merge%20in%20action%20-%20part%201%20-%20editing%20the%20code.mov'><video/>
-<video src='https://github.com/sageserpent-open/kineticMerge/assets/1765601/783172ef-7688-45ab-83ab-2e0aa633ce01'><video/>
-<video src='https://github.com/sageserpent-open/kineticMerge/assets/1765601/370ddbce-98c7-42d2-8c81-f5c2756d051d'><video/>
+<video src="https://github.com/sageserpent-open/kineticMerge/assets/1765601/2d676e20-dce0-441a-b4a2-fcbaa8aff35d"><video/>
+
+<video src="https://github.com/sageserpent-open/kineticMerge/assets/1765601/783172ef-7688-45ab-83ab-2e0aa633ce01"><video/>
+
+<video src="https://github.com/sageserpent-open/kineticMerge/assets/1765601/370ddbce-98c7-42d2-8c81-f5c2756d051d"><video/>
 
 ## Goals
 
