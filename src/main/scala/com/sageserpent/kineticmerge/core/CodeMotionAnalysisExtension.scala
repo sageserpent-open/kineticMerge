@@ -17,10 +17,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
     def mergeAt(path: Path)(
         equality: Eq[Element]
     ): Either[Divergence.type, MergeResult[Element]] =
-      // TODO: amongst other things, need to convert the sections to underlying
-      // content, but irrespective of what side contributed the section. What
-      // about using the match to get the dominant section?
-
       // The base contribution is optional.
       val baseSections: IndexedSeq[Section[Element]] =
         codeMotionAnalysis.base
