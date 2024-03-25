@@ -1,7 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.Eq
-import com.sageserpent.kineticmerge.core.merge.*
+import com.sageserpent.kineticmerge.core.merge.of as mergeOf
 import com.typesafe.scalalogging.StrictLogging
 
 object CodeMotionAnalysisExtension extends StrictLogging:
@@ -14,7 +14,24 @@ object CodeMotionAnalysisExtension extends StrictLogging:
   extension [Path, Element](
       codeMotionAnalysis: CodeMotionAnalysis[Path, Element]
   )
+    def merge(
+        equality: Eq[Element]
+    ): Map[Path, MergeResult[Element]] =
+      val paths =
+        codeMotionAnalysis.base.keySet ++ codeMotionAnalysis.left.keySet ++ codeMotionAnalysis.right.keySet
+
+      paths.map(path => path -> temporaryHelperForMergeAt(path, equality)).toMap
+    end merge
+
+    // TODO: remove this method and cut over the tests to use `mergeOverPaths`.
+    @deprecated
     def mergeAt(path: Path)(
+        equality: Eq[Element]
+    ): MergeResult[Element] =
+      merge(equality)(path)
+
+    private def temporaryHelperForMergeAt(
+        path: Path,
         equality: Eq[Element]
     ): MergeResult[Element] =
       // The base contribution is optional.
@@ -54,13 +71,14 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
         bothBelongToTheSameMatches || {
           given Eq[Element] = equality
+
           Eq[Seq[Element]].eqv(lhs.content, rhs.content)
         }
       end sectionEqualityViaDominantsFallingBackToContentComparison
 
       val mergedSectionsResult
           : MergeResultDetectingMotion[MergeResult, Section[Element]] =
-        merge.of(mergeAlgebra =
+        mergeOf(mergeAlgebra =
           MergeResultDetectingMotion.mergeAlgebra(
             matchesFor = codeMotionAnalysis.matchesFor,
             coreMergeAlgebra = MergeResult.mergeAlgebra
@@ -139,4 +157,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             )
           )
       end match
+    end temporaryHelperForMergeAt
+  end extension
 end CodeMotionAnalysisExtension
