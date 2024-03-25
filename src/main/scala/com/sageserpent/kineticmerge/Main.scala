@@ -1032,11 +1032,8 @@ object Main:
           )
           .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
 
-        mergeResult: MergeResult[Token] <- EitherT
-          .fromEither[WorkflowLogWriter](
-            codeMotionAnalysis.mergeAt(path)(equality = Token.equality)
-          )
-          .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
+        mergeResult: MergeResult[Token] = codeMotionAnalysis
+          .mergeAt(path)(equality = Token.equality)
 
         indexState <- mergeResult match
           case FullyMerged(elements) =>
@@ -1194,11 +1191,8 @@ object Main:
           )
           .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
 
-        mergeResult: MergeResult[Token] <- EitherT
-          .fromEither[WorkflowLogWriter](
-            codeMotionAnalysis.mergeAt(path)(equality = Token.equality)
-          )
-          .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
+        mergeResult: MergeResult[Token] = codeMotionAnalysis
+          .mergeAt(path)(equality = Token.equality)
 
         indexState <- mergeResult match
           case FullyMerged(elements) =>

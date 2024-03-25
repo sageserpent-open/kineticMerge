@@ -16,7 +16,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
   )
     def mergeAt(path: Path)(
         equality: Eq[Element]
-    ): Either[Divergence.type, MergeResult[Element]] =
+    ): MergeResult[Element] =
       // The base contribution is optional.
       val baseSections: IndexedSeq[Section[Element]] =
         codeMotionAnalysis.base
@@ -58,10 +58,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         }
       end sectionEqualityViaDominantsFallingBackToContentComparison
 
-      val mergedSectionsResult: Either[
-        merge.Divergence.type,
-        MergeResultDetectingMotion[MergeResult, Section[Element]]
-      ] =
+      val mergedSectionsResult
+          : MergeResultDetectingMotion[MergeResult, Section[Element]] =
         merge.of(mergeAlgebra =
           MergeResultDetectingMotion.mergeAlgebra(
             matchesFor = codeMotionAnalysis.matchesFor,
@@ -118,28 +116,27 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         )
       end elementsOf
 
-      mergedSectionsResult.map(mergeResultDetectingMotion =>
-        mergeResultDetectingMotion.coreMergeResult match
-          case FullyMerged(elements) =>
-            FullyMerged(elements =
-              elements.flatMap(
-                elementsOf(
-                  mergeResultDetectingMotion.changesPropagatedThroughMotion
-                )
+      mergedSectionsResult.coreMergeResult match
+        case FullyMerged(elements) =>
+          FullyMerged(elements =
+            elements.flatMap(
+              elementsOf(
+                mergedSectionsResult.changesPropagatedThroughMotion
               )
             )
-          case MergedWithConflicts(leftElements, rightElements) =>
-            MergedWithConflicts(
-              leftElements = leftElements.flatMap(
-                elementsOf(
-                  mergeResultDetectingMotion.changesPropagatedThroughMotion
-                )
-              ),
-              rightElements = rightElements.flatMap(
-                elementsOf(
-                  mergeResultDetectingMotion.changesPropagatedThroughMotion
-                )
+          )
+        case MergedWithConflicts(leftElements, rightElements) =>
+          MergedWithConflicts(
+            leftElements = leftElements.flatMap(
+              elementsOf(
+                mergedSectionsResult.changesPropagatedThroughMotion
+              )
+            ),
+            rightElements = rightElements.flatMap(
+              elementsOf(
+                mergedSectionsResult.changesPropagatedThroughMotion
               )
             )
-      )
+          )
+      end match
 end CodeMotionAnalysisExtension

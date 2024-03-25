@@ -66,9 +66,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val expected = stuntDoubleTokens(issue23BugReproductionExpectedMerge)
 
     codeMotionAnalysis.mergeAt(placeholderPath)(equality = Token.equality) match
-      case Right(FullyMerged(result)) =>
+      case FullyMerged(result) =>
         assert(result.corresponds(expected)(Token.equality))
-      case Right(MergedWithConflicts(leftResult, rightResult)) =>
+      case MergedWithConflicts(leftResult, rightResult) =>
         println(s"*** Left result...\n")
         println(leftResult)
         println()
@@ -120,9 +120,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val expected = tokens(codeMotionExampleExpectedMerge).get
 
     codeMotionAnalysis.mergeAt(placeholderPath)(equality = Token.equality) match
-      case Right(FullyMerged(result)) =>
+      case FullyMerged(result) =>
         assert(result.corresponds(expected)(Token.equality))
-      case Right(MergedWithConflicts(leftResult, rightResult)) =>
+      case MergedWithConflicts(leftResult, rightResult) =>
         println(s"*** Left result...\n")
         println(leftResult)
         println()
@@ -184,12 +184,12 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       def merge(path: FakePath): Unit =
         codeMotionAnalysis
           .mergeAt(path)(equality = Token.equality) match
-          case Right(MergedWithConflicts(leftElements, rightElements)) =>
+          case MergedWithConflicts(leftElements, rightElements) =>
             println(s"**** Conflicted merge at path: $path ****")
             pprintln(leftElements.map(_.text).mkString)
             println("*********************************")
             pprintln(rightElements.map(_.text).mkString)
-          case Right(FullyMerged(elements)) =>
+          case FullyMerged(elements) =>
             println(s"**** Full merge at path: $path ****")
             pprintln(elements.map(_.text).mkString)
       end merge
