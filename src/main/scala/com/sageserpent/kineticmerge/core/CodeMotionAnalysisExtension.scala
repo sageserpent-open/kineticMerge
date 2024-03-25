@@ -17,35 +17,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
     def merge(
         equality: Eq[Element]
     ): Map[Path, MergeResult[Element]] =
-      val paths =
-        codeMotionAnalysis.base.keySet ++ codeMotionAnalysis.left.keySet ++ codeMotionAnalysis.right.keySet
-
-      paths.map(path => path -> temporaryHelperForMergeAt(path, equality)).toMap
-    end merge
-
-    // TODO: remove this method and cut over the tests to use `mergeOverPaths`.
-    @deprecated
-    def mergeAt(path: Path)(
-        equality: Eq[Element]
-    ): MergeResult[Element] =
-      merge(equality)(path)
-
-    private def temporaryHelperForMergeAt(
-        path: Path,
-        equality: Eq[Element]
-    ): MergeResult[Element] =
-      // The base contribution is optional.
-      val baseSections: IndexedSeq[Section[Element]] =
-        codeMotionAnalysis.base
-          .get(path)
-          .fold(ifEmpty = Vector.empty)(_.sections)
-
-      // For now, the left and right contributions are mandatory - we are
-      // merging changes made in parallel on the same path, not handling
-      // addition or deletion.
-      val leftSections  = codeMotionAnalysis.left(path).sections
-      val rightSections = codeMotionAnalysis.right(path).sections
-
       def dominantsOf(
           section: Section[Element]
       ): collection.Set[Section[Element]] =
@@ -76,87 +47,137 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         }
       end sectionEqualityViaDominantsFallingBackToContentComparison
 
-      val mergedSectionsResult
-          : MergeResultDetectingMotion[MergeResult, Section[Element]] =
-        mergeOf(mergeAlgebra =
-          MergeResultDetectingMotion.mergeAlgebra(
-            matchesFor = codeMotionAnalysis.matchesFor,
-            coreMergeAlgebra = MergeResult.mergeAlgebra
-          )
-        )(
-          base = baseSections,
-          left = leftSections,
-          right = rightSections
-        )(
-          equality = sectionEqualityViaDominantsFallingBackToContentComparison,
-          elementSize = _.size
-        )
+      val paths =
+        codeMotionAnalysis.base.keySet ++ codeMotionAnalysis.left.keySet ++ codeMotionAnalysis.right.keySet
 
-      def elementsOf(
-          changesPropagatedThroughMotion: Map[Section[Element], Option[
+      val (
+        mergeResultsByPath,
+        changesPropagatedThroughMotion
+      ) =
+        paths.foldLeft(
+          Map.empty[Path, MergeResult[Section[Element]]],
+          Map.empty[Section[Element], Option[
             Section[Element]
           ]]
-      )(section: Section[Element]): IndexedSeq[Element] =
-        val propagatedChange: Option[Option[Section[Element]]] =
-          changesPropagatedThroughMotion.get(section)
+        ) { case ((mergeResultsByPath, changesPropagatedThroughMotion), path) =>
+          val base  = codeMotionAnalysis.base.get(path).map(_.sections)
+          val left  = codeMotionAnalysis.left.get(path).map(_.sections)
+          val right = codeMotionAnalysis.right.get(path).map(_.sections)
 
-        // If we do have a propagated change, then there is no need to look for
-        // the dominant - either the section was deleted or edited; matched
-        // sections are not considered as edit candidates.
-        propagatedChange.fold {
-          val dominants = dominantsOf(section)
+          (base, left, right) match
+            case (None, Some(leftSections), None) =>
+              // File added or modified only on the left, so pass through...
+              (mergeResultsByPath + (path -> FullyMerged(
+                leftSections
+              ))) -> changesPropagatedThroughMotion
+            case (None, None, Some(rightSections)) =>
+              // File added or modified only the right, so pass through...
+              (mergeResultsByPath + (path -> FullyMerged(
+                rightSections
+              ))) -> changesPropagatedThroughMotion
+            case (
+                  optionalBaseSections,
+                  optionalLeftSections,
+                  optionalRightSections
+                ) =>
+              // Mix of possibilities - the file may have been added on both
+              // sides, or modified on both sides, or deleted on one side and
+              // modified on the other, or deleted on both sides. There is also
+              // an extraneous case where there is no file on any of the sides.
+              // Whichever is the case, merge...
+              val mergedSectionsResult
+                  : MergeResultDetectingMotion[MergeResult, Section[Element]] =
+                mergeOf(mergeAlgebra =
+                  MergeResultDetectingMotion.mergeAlgebra(
+                    matchesFor = codeMotionAnalysis.matchesFor,
+                    coreMergeAlgebra = MergeResult.mergeAlgebra
+                  )
+                )(
+                  base = optionalBaseSections.getOrElse(IndexedSeq.empty),
+                  left = optionalLeftSections.getOrElse(IndexedSeq.empty),
+                  right = optionalRightSections.getOrElse(IndexedSeq.empty)
+                )(
+                  equality =
+                    sectionEqualityViaDominantsFallingBackToContentComparison,
+                  elementSize = _.size
+                )
 
-          (if dominants.isEmpty then section
-           else
-             // NASTY HACK: this is hokey, but essentially correct - if we have
-             // ambiguous matches leading to multiple dominants, then they're
-             // all just as good in terms of their content. So just choose any
-             // one.
-             dominants.head
-          ).content
-        }(
-          _.fold(
-            // Moved section was deleted...
-            ifEmpty =
-              logger.debug(
-                s"Applying propagated deletion to move destination: $section."
-              )
-              IndexedSeq.empty
-          )(
-            // Moved section was edited...
-            { edit =>
-              logger.debug(
-                s"Applying propagated edit into $edit to move destination: $section."
-              )
-              edit.content
-            }
+              (mergeResultsByPath + (path -> mergedSectionsResult.coreMergeResult)) ->
+                (changesPropagatedThroughMotion ++ mergedSectionsResult.changesPropagatedThroughMotion)
+          end match
+        }
+
+      def applyPropagatedChanges(
+          path: Path,
+          mergeResult: MergeResult[Section[Element]]
+      ): (Path, MergeResult[Element]) =
+        def elementsOf(section: Section[Element]): IndexedSeq[Element] =
+          val propagatedChange: Option[Option[Section[Element]]] =
+            changesPropagatedThroughMotion.get(section)
+
+          // If we do have a propagated change, then there is no need to look
+          // for the dominant - either the section was deleted or edited;
+          // matched sections are not considered as edit candidates.
+          propagatedChange.fold {
+            val dominants = dominantsOf(section)
+
+            (if dominants.isEmpty then section
+             else
+               // NASTY HACK: this is hokey, but essentially correct - if we
+               // have ambiguous matches leading to multiple dominants, then
+               // they're all just as good in terms of their content. So just
+               // choose any one.
+               dominants.head
+            ).content
+          }(
+            _.fold(
+              // Moved section was deleted...
+              ifEmpty =
+                logger.debug(
+                  s"Applying propagated deletion to move destination: $section."
+                )
+                IndexedSeq.empty
+            )(
+              // Moved section was edited...
+              { edit =>
+                logger.debug(
+                  s"Applying propagated edit into $edit to move destination: $section."
+                )
+                edit.content
+              }
+            )
           )
+
+        end elementsOf
+
+        path -> (mergeResult match
+          case FullyMerged(elements) =>
+            FullyMerged(elements =
+              elements.flatMap(
+                elementsOf
+              )
+            )
+          case MergedWithConflicts(leftElements, rightElements) =>
+            MergedWithConflicts(
+              leftElements = leftElements.flatMap(
+                elementsOf
+              ),
+              rightElements = rightElements.flatMap(
+                elementsOf
+              )
+            )
         )
-      end elementsOf
+      end applyPropagatedChanges
 
-      mergedSectionsResult.coreMergeResult match
-        case FullyMerged(elements) =>
-          FullyMerged(elements =
-            elements.flatMap(
-              elementsOf(
-                mergedSectionsResult.changesPropagatedThroughMotion
-              )
-            )
-          )
-        case MergedWithConflicts(leftElements, rightElements) =>
-          MergedWithConflicts(
-            leftElements = leftElements.flatMap(
-              elementsOf(
-                mergedSectionsResult.changesPropagatedThroughMotion
-              )
-            ),
-            rightElements = rightElements.flatMap(
-              elementsOf(
-                mergedSectionsResult.changesPropagatedThroughMotion
-              )
-            )
-          )
-      end match
-    end temporaryHelperForMergeAt
+      mergeResultsByPath.map(applyPropagatedChanges)
+    end merge
+
+    // TODO: remove this method and cut over the tests to use `mergeOverPaths`.
+    @deprecated
+    def mergeAt(path: Path)(
+        equality: Eq[Element]
+    ): MergeResult[Element] =
+      merge(equality)(path)
+
   end extension
 end CodeMotionAnalysisExtension
