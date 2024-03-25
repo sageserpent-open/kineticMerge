@@ -136,7 +136,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
   @Test
   def codeMotionWithSplit(): Unit =
-    val minimumMatchSize                 = 4
+    val minimumMatchSize                 = 7
     val thresholdSizeFractionForMatching = 0
 
     val originalPath: FakePath = "*** ORIGINAL ***"
@@ -719,7 +719,7 @@ trait ProseExamples:
       |            Instant deadline = Instant.MAX;
       |
       |            @Override
-      |            public boolean moreToDo() {
+      |            public boolean /* AHEM */ moreToDo() {
       |                if (deadline.equals(Instant.MAX)) {
       |                    deadline = Instant.now().plus(timeBudget);
       |                }
@@ -746,7 +746,7 @@ trait ProseExamples:
       |            }
       |
       |            @Override
-      |            public boolean moreToDo() {
+      |            public boolean /* COUGH */ moreToDo() {
       |                return maximumNumberOfCases > numberOfCasesEmitted &&
       |                       starvationCount <=
       |                       maximumNumberOfCases * maximumStarvationRatio;
@@ -766,7 +766,7 @@ trait ProseExamples:
       |            Instant deadline = null; // This edit should propagate.
       |
       |            @Override
-      |            public boolean moreCasesToDo() {
+      |            public boolean /* AHEM */ moreCasesToDo() {
       |                if (null == deadline /* This edit should propagate. */) {
       |                    deadline = Instant.now().plus(timeBudget);
       |                }
@@ -793,7 +793,7 @@ trait ProseExamples:
       |            }
       |
       |            @Override
-      |            public boolean moreCasesToDo() {
+      |            public boolean /* COUGH */ moreCasesToDo() {
       |                return maximumNumberOfCases > numberOfCasesEmitted &&
       |                       starvationCount <=
       |                       maximumNumberOfCases * maximumStarvationRatio;
@@ -820,7 +820,7 @@ trait ProseExamples:
       |            Instant deadline = Instant.MAX;
       |
       |            @Override
-      |            public boolean moreToDo() {
+      |            public boolean /* AHEM */ moreToDo() {
       |                if (deadline.equals(Instant.MAX)) {
       |                    deadline = Instant.now().plus(timeBudget);
       |                }
@@ -847,7 +847,7 @@ trait ProseExamples:
       |            }
       |
       |            @Override
-      |            public boolean moreToDo() {
+      |            public boolean /* COUGH */ moreToDo() {
       |                return maximumNumberOfCases > numberOfCasesEmitted &&
       |                       starvationCount <=
       |                       maximumNumberOfCases * maximumStarvationRatio;
@@ -874,7 +874,7 @@ trait ProseExamples:
       |            Instant deadline = null; // This edit should propagate.
       |
       |            @Override
-      |            public boolean moreCasesToDo() {
+      |            public boolean /* AHEM */ moreCasesToDo() {
       |                if (null == deadline /* This edit should propagate. */) {
       |                    deadline = Instant.now().plus(timeBudget);
       |                }
@@ -901,7 +901,7 @@ trait ProseExamples:
       |            }
       |
       |            @Override
-      |            public boolean moreCasesToDo() {
+      |            public boolean /* COUGH */ moreCasesToDo() {
       |                return maximumNumberOfCases > numberOfCasesEmitted &&
       |                       starvationCount <=
       |                       maximumNumberOfCases * maximumStarvationRatio;
