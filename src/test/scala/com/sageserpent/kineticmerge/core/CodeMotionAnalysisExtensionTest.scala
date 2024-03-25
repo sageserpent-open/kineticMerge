@@ -183,12 +183,12 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
     val mergeResultsByPath = codeMotionAnalysis.merge(equality = Token.equality)
 
-    mergeResultsByPath(originalPath) match
+    mergeResultsByPath(hivedOffPath) match
       case FullyMerged(result) =>
-        println(expectedForOriginal.map(_.text).reduce(_ ++ _))
+        println(expectedForHivedOff.map(_.text).reduce(_ ++ _))
         println("-----------------------------")
         println(result.map(_.text).reduce(_ ++ _))
-        assert(result.corresponds(expectedForOriginal)(Token.equality))
+        assert(result.corresponds(expectedForHivedOff)(Token.equality))
       case MergedWithConflicts(leftResult, rightResult) =>
         println(s"*** Left result...\n")
         println(leftResult)
@@ -199,12 +199,12 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         fail("Should have seen a clean merge.")
     end match
 
-    mergeResultsByPath(hivedOffPath) match
+    mergeResultsByPath(originalPath) match
       case FullyMerged(result) =>
-        println(expectedForHivedOff.map(_.text).reduce(_ ++ _))
+        println(expectedForOriginal.map(_.text).reduce(_ ++ _))
         println("-----------------------------")
         println(result.map(_.text).reduce(_ ++ _))
-        assert(result.corresponds(expectedForHivedOff)(Token.equality))
+        assert(result.corresponds(expectedForOriginal)(Token.equality))
       case MergedWithConflicts(leftResult, rightResult) =>
         println(s"*** Left result...\n")
         println(leftResult)
