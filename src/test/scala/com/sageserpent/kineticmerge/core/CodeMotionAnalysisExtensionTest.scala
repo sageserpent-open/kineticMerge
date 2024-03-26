@@ -776,7 +776,7 @@ trait ProseExamples:
       |        };
       |    }
       |
-      |    boolean moreToDo();
+      |    boolean /* UGH */ moreToDo();
       |}
       |""".stripMargin
 
@@ -823,14 +823,14 @@ trait ProseExamples:
       |        };
       |    }
       |
-      |    boolean moreCasesToDo(); // This rename should propagate.
+      |    boolean /* UGH */ moreCasesToDo(); // This rename should propagate.
       |}
       |""".stripMargin
 
   protected val codeMotionExampleWithSplitOriginalRight: String =
     """
       |public interface CasesLimitStrategy {
-      |    boolean moreToDo();
+      |    boolean /* UGH */ moreToDo();
       |}
       |""".stripMargin
 
@@ -884,7 +884,7 @@ trait ProseExamples:
   protected val codeMotionExampleWithSplitOriginalExpectedMerge: String =
     """
       |public interface CasesLimitStrategy {
-      |    boolean moreCasesToDo(); // This rename should propagate.
+      |    boolean /* UGH */ moreCasesToDo(); // This rename should propagate.
       |}
       |""".stripMargin
 
