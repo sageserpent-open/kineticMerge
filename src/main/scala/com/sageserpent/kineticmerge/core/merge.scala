@@ -1218,7 +1218,7 @@ object merge extends StrictLogging:
               Seq(Contribution.Difference(deletedBaseElement), baseTail*),
               Seq(Contribution.CommonToBaseAndLeftOnly(_), _*),
               Seq(Contribution.Difference(_), _*)
-            ) => // Coincident deletion with pending right edit.
+            ) if rightEditNotMaroonedByPriorLeftDeletion(baseTail) => // Coincident deletion with pending right edit.
           logger.debug(
             s"Coincident deletion of $deletedBaseElement with following right edit."
           )
