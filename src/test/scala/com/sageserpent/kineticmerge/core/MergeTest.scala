@@ -1136,7 +1136,7 @@ class MergeTest:
   end leftEditVersusRightDeletionConflictWithFollowingLeftInsertionThenACoincidentInsertion
 
   @Test
-  def leftEditVersusRightDeletionConflictDueToFollowingRightDeletionAndThenRightEdit()
+  def leftEditVersusRightDeletionConflictDueToFollowingRightDeletionAndThenLeftEdit()
       : Unit =
     val a    = 1
     val b    = 2
@@ -1177,7 +1177,7 @@ class MergeTest:
       ): @unchecked
 
     assert(result == expectedMerge)
-  end leftEditVersusRightDeletionConflictDueToFollowingRightDeletionAndThenRightEdit
+  end leftEditVersusRightDeletionConflictDueToFollowingRightDeletionAndThenLeftEdit
 
   @Test
   def leftEditVersusRightDeletionConflictWithFollowingLeftInsertionAndThenRightEdit()
