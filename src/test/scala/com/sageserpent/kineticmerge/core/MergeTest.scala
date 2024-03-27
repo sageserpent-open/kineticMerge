@@ -1220,6 +1220,50 @@ class MergeTest:
   end leftEditVersusRightDeletionConflictWithFollowingLeftInsertionAndThenRightEdit
 
   @Test
+  def rightEditVersusLeftDeletionConflictDueToFollowingLeftDeletionAndThenRightEdit()
+      : Unit =
+    val a    = 1
+    val b    = 2
+    val c    = 3
+    val base = Vector(a, b, c)
+
+    val d    = 4
+    val left = Vector(d)
+
+    val e     = 5
+    val f     = 6
+    val g     = 7
+    val right = Vector(e, f, g)
+
+    val bf = Match.BaseAndRight(baseElement = b, rightElement = f)
+    val cd = Match.BaseAndLeft(baseElement = c, leftElement = d)
+    val matchesByElement: Map[Element, Match[Element]] = Map(
+      b -> bf,
+      f -> bf,
+      c -> cd,
+      d -> cd
+    )
+
+    // NOTE: we expect a clean merge of the deletion of 'b' and the edit of 'c'
+    // into 'g' after the initial left edit versus right deletion conflict.
+    val expectedMerge =
+      MergedWithConflicts(
+        leftElements = Vector(g),
+        rightElements = Vector(e, g)
+      )
+
+    val AugmentedMergeResult(_, result) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
+      )(base, left, right)(
+        equivalent(matchesByElement = matchesByElement),
+        elementSize = defaultElementSize
+      ): @unchecked
+
+    assert(result == expectedMerge)
+  end rightEditVersusLeftDeletionConflictDueToFollowingLeftDeletionAndThenRightEdit
+
+  @Test
   def rightEditVersusLeftDeletionConflictWithFollowingRightInsertionAndThenLeftEdit()
       : Unit =
     val a    = 1
