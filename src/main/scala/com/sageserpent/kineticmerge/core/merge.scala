@@ -88,7 +88,9 @@ object merge extends StrictLogging:
       equality: Eq[Element],
       elementSize: Element => Int
   ): Result[Element] =
-    def rightEditNotMarooned(leftTail: Seq[Contribution[Element]]) =
+    def rightEditNotMaroonedByPriorCoincidentInsertion(
+        leftTail: Seq[Contribution[Element]]
+    ) =
       // Guard against a coincident insertion prior to the left side
       // of a pending right edit or deletion; that would maroon the
       // latter, so we *would* coalesce the following element on the
@@ -103,7 +105,9 @@ object merge extends StrictLogging:
           case _                                        => true
         }
 
-    def leftEditNotMarooned(rightTail: Seq[Contribution[Element]]) =
+    def leftEditNotMaroonedByPriorCoincidentInsertion(
+        rightTail: Seq[Contribution[Element]]
+    ) =
       // Guard against a coincident insertion prior to the right side
       // of a pending left edit or deletion; that would maroon the
       // latter, so we *would* coalesce the following element on the
@@ -116,6 +120,32 @@ object merge extends StrictLogging:
         .forall {
           case Contribution.CommonToLeftAndRightOnly(_) => false
           case _                                        => true
+        }
+
+    def rightEditNotMaroonedByPriorLeftDeletion(
+        baseTail: Seq[Contribution[Element]]
+    ) =
+      baseTail
+        .takeWhile {
+          case Contribution.CommonToBaseAndLeftOnly(_) => false
+          case _                                       => true
+        }
+        .forall {
+          case Contribution.CommonToBaseAndRightOnly(_) => false
+          case _                                        => true
+        }
+
+    def leftEditNotMaroonedByPriorRightDeletion(
+        baseTail: Seq[Contribution[Element]]
+    ) =
+      baseTail
+        .takeWhile {
+          case Contribution.CommonToBaseAndRightOnly(_) => false
+          case _                                        => true
+        }
+        .forall {
+          case Contribution.CommonToBaseAndLeftOnly(_) => false
+          case _                                       => true
         }
 
     trait LeftEditOperations:
@@ -553,7 +583,7 @@ object merge extends StrictLogging:
                 _*
               ),
               _
-            ) if rightEditNotMarooned(leftTail) =>
+            ) if rightEditNotMaroonedByPriorCoincidentInsertion(leftTail) =>
           // Left edit / right deletion conflict with pending left insertion
           // and pending right edit.
           logger.debug(
@@ -575,7 +605,7 @@ object merge extends StrictLogging:
               ),
               _,
               _
-            ) if rightEditNotMarooned(leftTail) =>
+            ) if rightEditNotMaroonedByPriorCoincidentInsertion(leftTail) =>
           // Left edit / right deletion conflict with pending right edit.
           logger.debug(
             s"Conflict between right deletion of $editedBaseElement and its edit on the left into $leftElement with following right edit."
@@ -597,7 +627,7 @@ object merge extends StrictLogging:
               ),
               _,
               Seq(Contribution.Difference(followingRightElement), _*)
-            ) if leftEditNotMarooned(rightTail) =>
+            ) if leftEditNotMaroonedByPriorCoincidentInsertion(rightTail) =>
           // Right edit / left deletion conflict with pending right
           // insertion and pending left edit.
           logger.debug(
@@ -619,7 +649,7 @@ object merge extends StrictLogging:
               ),
               _,
               _
-            ) if leftEditNotMarooned(rightTail) =>
+            ) if leftEditNotMaroonedByPriorCoincidentInsertion(rightTail) =>
           // Right edit / left deletion conflict with pending left edit.
           logger.debug(
             s"Conflict between left deletion of $editedBaseElement and its edit on the right into $rightElement with following left edit."
@@ -744,7 +774,7 @@ object merge extends StrictLogging:
                 _*
               ),
               _
-            ) if leftEditNotMarooned(rightTail) =>
+            ) if leftEditNotMaroonedByPriorCoincidentInsertion(rightTail) =>
           // There is a pending coincident deletion; handle this left edit
           // in isolation without coalescing any following left insertion.
           logger.debug(
@@ -759,7 +789,7 @@ object merge extends StrictLogging:
         case (
               Seq(Contribution.CommonToBaseAndRightOnly(_), _*),
               Seq(Contribution.Difference(_), _*)
-            ) if leftEditNotMarooned(rightTail) =>
+            ) if leftEditNotMaroonedByPriorCoincidentInsertion(rightTail) =>
           // There is another pending left edit, but *don't* coalesce the
           // following element on the left; that then respects any
           // insertions that may be lurking on the right prior to the
@@ -815,7 +845,7 @@ object merge extends StrictLogging:
                 _*
               ),
               _
-            ) if rightEditNotMarooned(leftTail) =>
+            ) if rightEditNotMaroonedByPriorCoincidentInsertion(leftTail) =>
           // There is a pending coincident deletion; handle this right edit
           // in isolation without coalescing any following right insertion.
           logger.debug(
@@ -833,7 +863,7 @@ object merge extends StrictLogging:
         case (
               Seq(Contribution.CommonToBaseAndLeftOnly(_), _*),
               Seq(Contribution.Difference(_), _*)
-            ) if rightEditNotMarooned(leftTail) =>
+            ) if rightEditNotMaroonedByPriorCoincidentInsertion(leftTail) =>
           // There is another pending right edit, but *don't* coalesce the
           // following element on the right; that then respects any
           // insertions that may be lurking on the left prior to the pending
@@ -1170,7 +1200,7 @@ object merge extends StrictLogging:
               Seq(Contribution.Difference(deletedBaseElement), baseTail*),
               Seq(Contribution.Difference(_), _*),
               Seq(Contribution.CommonToBaseAndRightOnly(_), _*)
-            ) => // Coincident deletion with pending left edit.
+            ) if leftEditNotMaroonedByPriorRightDeletion(baseTail) => // Coincident deletion with pending left edit.
           logger.debug(
             s"Coincident deletion of $deletedBaseElement with following left edit."
           )
@@ -1188,7 +1218,7 @@ object merge extends StrictLogging:
               Seq(Contribution.Difference(deletedBaseElement), baseTail*),
               Seq(Contribution.CommonToBaseAndLeftOnly(_), _*),
               Seq(Contribution.Difference(_), _*)
-            ) => // Coincident deletion with pending right edit.
+            ) if rightEditNotMaroonedByPriorLeftDeletion(baseTail) => // Coincident deletion with pending right edit.
           logger.debug(
             s"Coincident deletion of $deletedBaseElement with following right edit."
           )
@@ -1352,7 +1382,6 @@ object merge extends StrictLogging:
 
     val longestCommonSubsequence =
       LongestCommonSubsequence.of(base, left, right)(equality, elementSize)
-
 
     mergeBetweenRunsOfCommonElements(
       longestCommonSubsequence.base,
