@@ -1365,7 +1365,8 @@ trait ProseExamples:
       |public interface CasesLimitStrategies {
       |    /**
       |     * Limits test case emission using a time budget that starts when the
-      |     * strategy is first consulted via {@link CasesLimitStrategy#moreCasesToDo()}.
+      |     * strategy is first consulted via
+      |     * {@link CasesLimitStrategy#moreCasesToDo()}.
       |     *
       |     * @param timeBudget How long to allow a testing cycle to continue to
       |     *                   emit cases.
@@ -1404,7 +1405,8 @@ trait ProseExamples:
       |
       |    /**
       |     * Limits test case emission using a time budget that starts when the
-      |     * strategy is first consulted via {@link CasesLimitStrategy#moreCasesToDo()}.
+      |     * strategy is first consulted via
+      |     * {@link CasesLimitStrategy#moreCasesToDo()}.
       |     *
       |     * @param timeBudget How long to allow a testing cycle to continue to
       |     *                   emit cases.
