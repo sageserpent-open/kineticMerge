@@ -66,12 +66,16 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
           (base, left, right) match
             case (None, Some(leftSections), None) =>
-              // File added or modified only on the left, so pass through...
+              // File added or modified only on the left; pass through as there
+              // is neither anything to merge nor any sources of edits or
+              // deletions...
               (mergeResultsByPath + (path -> FullyMerged(
                 leftSections
               ))) -> changesPropagatedThroughMotion
             case (None, None, Some(rightSections)) =>
-              // File added or modified only the right, so pass through...
+              // File added or modified only the right; pass through as there is
+              // neither anything to merge nor any sources of edits or
+              // deletions...
               (mergeResultsByPath + (path -> FullyMerged(
                 rightSections
               ))) -> changesPropagatedThroughMotion
@@ -82,8 +86,11 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 ) =>
               // Mix of possibilities - the file may have been added on both
               // sides, or modified on both sides, or deleted on one side and
-              // modified on the other, or deleted on both sides. There is also
-              // an extraneous case where there is no file on any of the sides.
+              // modified on the other, or deleted on one or both sides. There
+              // is also an extraneous case where there is no file on any of the
+              // sides, and another extraneous case where the file is on all
+              // three sides but hasn't changed.
+
               // Whichever is the case, merge...
               val mergedSectionsResult
                   : MergeResultDetectingMotion[MergeResult, Section[Element]] =
