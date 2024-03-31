@@ -414,8 +414,14 @@ object Main extends StrictLogging:
   end Change
 
   enum MergeInput:
-    case JustOurModification(ourModification: Change.Modification)
-    case JustTheirModification(theirModification: Change.Modification)
+    case JustOurModification(
+        ourModification: Change.Modification,
+        bestAncestorCommitIdContent: String @@ Tags.Content
+    )
+    case JustTheirModification(
+        theirModification: Change.Modification,
+        bestAncestorCommitIdContent: String @@ Tags.Content
+    )
     case JustOurAddition(ourAddition: Change.Addition)
     case JustTheirAddition(theirAddition: Change.Addition)
     case JustOurDeletion(bestAncestorCommitIdContent: String @@ Tags.Content)
@@ -658,13 +664,29 @@ object Main extends StrictLogging:
                 path,
                 (Some(ourModification: Change.Modification), None)
               ) =>
-            right(path -> JustOurModification(ourModification))
+            for (
+                _,
+                _,
+                bestAncestorCommitIdContent
+              ) <- blobAndContentFor(bestAncestorCommitId)(path)
+            yield path -> JustOurModification(
+              ourModification,
+              bestAncestorCommitIdContent
+            )
 
           case (
                 path,
                 (None, Some(theirModification: Change.Modification))
               ) =>
-            right(path -> JustTheirModification(theirModification))
+            for (
+                _,
+                _,
+                bestAncestorCommitIdContent
+              ) <- blobAndContentFor(bestAncestorCommitId)(path)
+            yield path -> JustTheirModification(
+              theirModification,
+              bestAncestorCommitIdContent
+            )
 
           case (
                 path,
@@ -983,10 +1005,15 @@ object Main extends StrictLogging:
                   (path, mergeInput)
                 ) =>
               mergeInput match
-                case JustOurModification(ourModification) =>
+                case JustOurModification(
+                      ourModification,
+                      bestAncestorCommitIdContent
+                    ) =>
                   right(
                     (
-                      baseContentsByPath,
+                      baseContentsByPath + (path -> tokens(
+                        bestAncestorCommitIdContent
+                      ).get),
                       leftContentsByPath + (path -> tokens(
                         ourModification.content
                       ).get),
@@ -994,10 +1021,15 @@ object Main extends StrictLogging:
                     )
                   )
 
-                case JustTheirModification(theirModification) =>
+                case JustTheirModification(
+                      theirModification,
+                      bestAncestorCommitIdContent
+                    ) =>
                   right(
                     (
-                      baseContentsByPath,
+                      baseContentsByPath + (path -> tokens(
+                        bestAncestorCommitIdContent
+                      ).get),
                       leftContentsByPath,
                       rightContentsByPath + (path -> tokens(
                         theirModification.content
@@ -1160,7 +1192,7 @@ object Main extends StrictLogging:
         indexStates: List[Option[IndexState]] <-
           mergeInputs.traverse { case (path, mergeInput) =>
             mergeInput match
-              case JustOurModification(ourModification) =>
+              case JustOurModification(ourModification, _) =>
                 val FullyMerged(tokens) = mergeResultsByPath(path): @unchecked
 
                 val mergedFileContent = reconstituteTextFrom(tokens)
@@ -1177,7 +1209,7 @@ object Main extends StrictLogging:
                 else right(None)
                 end if
 
-              case JustTheirModification(theirModification) =>
+              case JustTheirModification(theirModification, _) =>
                 val FullyMerged(tokens) = mergeResultsByPath(path): @unchecked
 
                 val mergedFileContent = reconstituteTextFrom(tokens)
@@ -1537,8 +1569,6 @@ object Main extends StrictLogging:
                 yield indexState).map(Some.apply)
 
               case BothContributeADeletion(_) =>
-                // TODO: quick think about propagated edits and deletions?
-
                 // We already have the deletion in our branch, so no need to
                 // update the index. We do yield a result so that there is still
                 // a merge commit if this is the only change, though - this
