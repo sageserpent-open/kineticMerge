@@ -792,6 +792,9 @@ trait ProseExamples:
       |            public void noteStarvation() {
       |
       |            }
+      |
+      |            @Override
+      |            public boolean legacyMethod(int whatIsThisFor){ return true; }
       |        };
       |    }
       |
@@ -857,6 +860,9 @@ trait ProseExamples:
       |            public void noteStarvation() {
       |                starvationCount += 1;
       |            }
+      |
+      |            @Override
+      |            public boolean legacyMethod(int whatIsThisFor){ return true; }
       |        };
       |    }
       |
@@ -909,6 +915,8 @@ trait ProseExamples:
       |     * that is handled by {@link CasesLimitStrategy#noteRejectionOfCase}.
       |     */
       |    void noteStarvation();
+      |
+      |    boolean legacyMethod(int whatIsThisFor);
       |}
       |""".stripMargin
 
@@ -1157,6 +1165,8 @@ trait ProseExamples:
       |     * that is handled by {@link CasesLimitStrategy#noteRejectionOfCase}.
       |     */
       |    void noteStarvation();
+      |
+      |    boolean legacyMethod(int whatIsThisFor);
       |}
       |""".stripMargin
 
@@ -1208,6 +1218,9 @@ trait ProseExamples:
       |            public void noteStarvation() {
       |
       |            }
+      |
+      |            @Override
+      |            public boolean legacyMethod(int whatIsThisFor){ return true; }
       |        };
       |    }
       |
@@ -1273,6 +1286,9 @@ trait ProseExamples:
       |            public void noteStarvation() {
       |                starvationCount += 1;
       |            }
+      |
+      |            @Override
+      |            public boolean legacyMethod(int whatIsThisFor){ return true; }
       |        };
       |    }
       |
