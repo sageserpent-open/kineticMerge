@@ -17,7 +17,7 @@ import os.{CommandResult, Path, RelPath}
 import scopt.{DefaultOEffectSetup, OParser}
 
 import scala.annotation.varargs
-import scala.collection.decorators.mapDecorator
+import scala.collection.BuildFrom
 import scala.io.Source
 import scala.util.Try
 
@@ -634,9 +634,13 @@ object Main extends StrictLogging:
         ourChanges: Map[Path, Change],
         theirChanges: Map[Path, Change]
     ): Workflow[List[(Path, MergeInput)]] =
-      ourChanges
-        .mergeByKey(theirChanges)
-        .toList
+
+      // TODO: use `ourChanges.mergeByKey(theirChanges)` if
+      // https://github.com/scala/scala-collection-contrib/issues/239 leads to a
+      // bug-fix.
+      val outerJoin = ourChanges.mergeByKey(theirChanges)
+
+      outerJoin.toList
         .traverse {
           case (
                 path,
@@ -1714,6 +1718,41 @@ object Main extends StrictLogging:
         contentsByPath = Map(path -> tokens(textContent).get),
         label = label
       )
+
+    // TODO: remove this and use the functionality from
+    // `MapDecorator` instead...
+    extension (thisMap: Map[Path, Change])
+      // Adapted from
+      // https://github.com/scala/scala-collection-contrib/blob/7dbb2494ddb4e1e4ded532df25ea31a65206c3cc/src/main/scala/scala/collection/decorators/MapDecorator.scala#L60
+      // as a temporary workaround.
+      def mergeByKey(
+          other: Map[Path, Change]
+      )(implicit
+          bf: BuildFrom[
+            Map[Path, Change],
+            (Path, (Option[Change], Option[Change])),
+            Map[Path, (Option[Change], Option[Change])]
+          ]
+      ): Map[Path, (Option[Change], Option[Change])] =
+        import scala.collection.mutable
+
+        val b         = bf.newBuilder(thisMap)
+        val traversed = mutable.Set.empty[Path]
+        for
+          (k, v) <- thisMap
+          x = other
+            .get(k)
+            .fold[(Option[Change], Option[Change])]((Some(v), None)) { w =>
+              traversed += k; (Some(v), Some(w))
+            }
+        do b += k -> x
+        end for
+        for
+          (k, w) <- other if !traversed(k)
+          x = (None, Some(w))
+        do b += k -> x
+        end for
+        b.result()
   end InWorkingDirectory
 
   private enum IndexState:
