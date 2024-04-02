@@ -1711,14 +1711,6 @@ object Main extends StrictLogging:
       )
     end recordAdditionInIndex
 
-    private def sourcesFrom(path: Path, textContent: String)(
-        label: String
-    ): Sources[Path, Token] =
-      MappedContentSources(
-        contentsByPath = Map(path -> tokens(textContent).get),
-        label = label
-      )
-
     // TODO: remove this and use the functionality from
     // `MapDecorator` instead...
     extension (thisMap: Map[Path, Change])
