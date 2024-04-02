@@ -8,11 +8,12 @@ import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.Main.{ApplicationRequest, Tags}
 import com.sageserpent.kineticmerge.MainTest.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
+import com.sageserpent.kineticmerge.core.ProseExamples
 import com.softwaremill.tagging.*
 import org.junit.jupiter.api.TestFactory
 import os.{Path, RelPath}
 
-object MainTest:
+object MainTest extends ProseExamples:
   private type ImperativeResource[Payload] = Resource[IO, Payload]
 
   private val masterBranch = "master"
@@ -22,6 +23,13 @@ object MainTest:
   private val sandra = RelPath("pathPrefix1") / "pathPrefix2" / "sandra.txt"
 
   private val tyson = RelPath("pathPrefix1") / "pathPrefix2" / "tyson.txt"
+
+  private val casesLimitStrategy =
+    RelPath("pathPrefix1") / "CasesLimitStrategy.java"
+  private val movedCasesLimitStrategy =
+    RelPath("pathPrefix1") / "pathPrefix2" / "CasesLimitStrategy.java"
+  private val excisedCasesLimitStrategies =
+    RelPath("pathPrefix1") / "CasesLimitStrategies.java"
 
   private val arthurFirstVariation  = "chap"
   private val arthurSecondVariation = "boy"
@@ -197,6 +205,55 @@ object MainTest:
 
   private def sandraIsMarkedAsDeletedInTheIndex(status: String): Unit =
     assert(s"D\\s+$sandra".r.findFirstIn(status).isDefined)
+
+  private def introducingCasesLimitStrategy(path: Path): Unit =
+    os.write(
+      path / casesLimitStrategy,
+      codeMotionExampleWithSplitOriginalBase,
+      createFolders = true
+    )
+    println(os.proc("git", "add", casesLimitStrategy).call(path).out.text())
+    println(
+      os.proc("git", "commit", "-m", "'Introducing `CasesLimitStrategy`.'")
+        .call(path)
+        .out
+        .text()
+    )
+  end introducingCasesLimitStrategy
+
+  private def editingCasesLimitStrategy(path: Path): Unit =
+    os.write.over(
+      path / casesLimitStrategy,
+      codeMotionExampleWithSplitOriginalLeft,
+      createFolders = true
+    )
+    println(os.proc("git", "add", casesLimitStrategy).call(path).out.text())
+    println(
+      os.proc("git", "commit", "-am", "'Editing `CasesLimitStrategy`.'")
+        .call(path)
+        .out
+        .text()
+    )
+  end editingCasesLimitStrategy
+
+  private def moveCasesLimitStrategy(path: Path): Unit =
+    os.move(
+      path / casesLimitStrategy,
+      path / movedCasesLimitStrategy,
+      createFolders = true
+    )
+
+    println(os.proc("git", "rm", casesLimitStrategy).call(path).out.text())
+    println(
+      os.proc("git", "add", movedCasesLimitStrategy).call(path).out.text()
+    )
+    println(
+      os.proc("git", "commit", "-m", "'Moving `CasesLimitStrategy`.'")
+        .call(path)
+        .out
+        .text()
+    )
+  end moveCasesLimitStrategy
 
   private def verifyTrivialMergeMovesToTheMostAdvancedCommitWithACleanIndex(
       path: Path
@@ -1038,4 +1095,74 @@ class MainTest:
           .unsafeRunSync()
       }
   end cleanMergeOfAFileModifiedInBothBranches
+
+  @TestFactory
+  def anEditAndADeletionPropagatingThroughAFileMove(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches, noCommit) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingCasesLimitStrategy(path)
+
+              val movedFileBranch = "movedFileBranch"
+
+              makeNewBranch(path)(movedFileBranch)
+
+              moveCasesLimitStrategy(path)
+
+              val commitOfMovedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              editingCasesLimitStrategy(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then checkoutBranch(path)(movedFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then movedFileBranch -> masterBranch
+                else masterBranch                    -> movedFileBranch
+
+              val exitCode = Main.mergeTheirBranch(
+                ApplicationRequest(
+                  theirBranchHead =
+                    theirBranch.taggedWith[Tags.CommitOrBranchName],
+                  noCommit = noCommit,
+                  minimumMatchSize =
+                    5 // TODO: go back to using the default when https://github.com/sageserpent-open/kineticMerge/issues/31 is delivered.
+                )
+              )(workingDirectory =
+                optionalSubdirectory.fold(ifEmpty = path)(path / _)
+              )
+
+              if noCommit then
+                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                  path
+                )(
+                  flipBranches,
+                  commitOfMovedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              else
+                verifyMergeMakesANewCommitWithACleanIndex(path)(
+                  commitOfMovedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              end if
+            }
+          )
+          .unsafeRunSync()
+      }
+  end anEditAndADeletionPropagatingThroughAFileMove
 end MainTest
