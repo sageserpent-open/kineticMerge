@@ -1343,21 +1343,29 @@ object Main extends StrictLogging:
                     bestAncestorCommitIdMode,
                     bestAncestorCommitIdBlobId
                   )
-                  - <-
+                  conflicted <-
                     if ourModificationWasTweakedByTheMerge then
-                      storeBlobFor(path, mergedFileContent).flatMap { blobId =>
-                        restoreFileFromBlobId(
-                          path,
-                          blobId
-                        ) >> recordConflictModificationInIndex(
-                          stageIndex = ourStageIndex
-                        )(
-                          ourBranchHead,
-                          path,
-                          ourModification.mode,
-                          blobId
-                        )
-                      }
+                      if mergedFileContent.nonEmpty then
+                        storeBlobFor(path, mergedFileContent).flatMap {
+                          blobId =>
+                            restoreFileFromBlobId(
+                              path,
+                              blobId
+                            ) >> recordConflictModificationInIndex(
+                              stageIndex = ourStageIndex
+                            )(
+                              ourBranchHead,
+                              path,
+                              ourModification.mode,
+                              blobId
+                            )
+                        } >> right(true)
+                      else
+                        recordDeletionInIndex(path) >> IO {
+                          os.remove(path)
+                        }.labelExceptionWith(errorMessage =
+                          s"Unexpected error: could not update working directory tree by deleting file ${underline(path)}."
+                        ) >> right(false)
                     else
                       // The modified file would have been present on our
                       // branch; given that we started with a clean working
@@ -1370,11 +1378,14 @@ object Main extends StrictLogging:
                         path,
                         ourModification.mode,
                         ourModification.blobId
+                      ) >> right(true)
+                  indexState <-
+                    if conflicted then
+                      right(IndexState.ConflictingEntries).logOperation(
+                        s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and deleted on their branch ${underline(theirBranchHead)}."
                       )
-                yield IndexState.ConflictingEntries)
-                  .logOperation(
-                    s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and deleted on their branch ${underline(theirBranchHead)}."
-                  )
+                    else right(IndexState.OneEntry)
+                yield indexState)
                   .map(Some.apply)
 
               case TheirModificationAndOurDeletion(
