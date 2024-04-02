@@ -3,6 +3,7 @@ package com.sageserpent.kineticmerge
 import cats.data.{EitherT, WriterT}
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
+import cats.implicits.catsSyntaxFlatMapOps
 import cats.syntax.foldable.toFoldableOps
 import cats.syntax.traverse.toTraverseOps
 import com.google.common.hash.Hashing
@@ -1206,9 +1207,16 @@ object Main extends StrictLogging:
 
                 if ourModificationWasTweakedByTheMerge then
                   storeBlobFor(path, mergedFileContent)
-                    .flatMap(
-                      indexStateForCleanMerge(path, ourModification.mode, _)
-                    )
+                    .flatMap { blobId =>
+                      restoreFileFromBlobId(
+                        path,
+                        blobId
+                      ) >> indexStateForCleanMerge(
+                        path,
+                        ourModification.mode,
+                        blobId
+                      )
+                    }
                     .map(Some.apply)
                 else right(None)
                 end if
@@ -1223,11 +1231,21 @@ object Main extends StrictLogging:
 
                 (if theirModificationWasTweakedByTheMerge then
                    storeBlobFor(path, mergedFileContent)
-                     .flatMap(
-                       indexStateForCleanMerge(path, theirModification.mode, _)
-                     )
+                     .flatMap { blobId =>
+                       restoreFileFromBlobId(
+                         path,
+                         blobId
+                       ) >> indexStateForCleanMerge(
+                         path,
+                         theirModification.mode,
+                         blobId
+                       )
+                     }
                  else
-                   indexStateForCleanMerge(
+                   restoreFileFromBlobId(
+                     path,
+                     theirModification.blobId
+                   ) >> indexStateForCleanMerge(
                      path,
                      theirModification.mode,
                      theirModification.blobId
@@ -1244,9 +1262,16 @@ object Main extends StrictLogging:
 
                 if ourAdditionWasTweakedByTheMerge then
                   storeBlobFor(path, mergedFileContent)
-                    .flatMap(
-                      indexStateForCleanMerge(path, ourAddition.mode, _)
-                    )
+                    .flatMap { blobId =>
+                      restoreFileFromBlobId(
+                        path,
+                        blobId
+                      ) >> indexStateForCleanMerge(
+                        path,
+                        ourAddition.mode,
+                        blobId
+                      )
+                    }
                     .map(Some.apply)
                 else right(None)
                 end if
@@ -1259,39 +1284,28 @@ object Main extends StrictLogging:
                 val theirAdditionWasTweakedByTheMerge =
                   mergedFileContent != theirAddition.content
 
-                (for
-                  _ <-
+                (for _ <-
                     if theirAdditionWasTweakedByTheMerge then
                       storeBlobFor(path, mergedFileContent)
-                        .flatMap(
-                          recordAdditionInIndex(
+                        .flatMap { blobId =>
+                          restoreFileFromBlobId(
+                            path,
+                            blobId
+                          ) >> recordAdditionInIndex(
                             path,
                             theirAddition.mode,
-                            _
+                            blobId
                           )
-                        )
+                        }
                     else
-                      recordAdditionInIndex(
+                      restoreFileFromBlobId(
+                        path,
+                        theirAddition.blobId
+                      ) >> recordAdditionInIndex(
                         path,
                         theirAddition.mode,
                         theirAddition.blobId
                       )
-                  - <- IO {
-                    os.write.over(
-                      path,
-                      os.proc(
-                        "git",
-                        "cat-file",
-                        "blob",
-                        theirAddition.blobId
-                      ).spawn(workingDirectory)
-                        .stdout,
-                      createFolders = true
-                    )
-                  }
-                    .labelExceptionWith(errorMessage =
-                      s"Unexpected error: could not update working directory tree with added file ${underline(path)}."
-                    )
                 yield IndexState.OneEntry).map(Some.apply)
 
               case JustOurDeletion(_) =>
@@ -1331,17 +1345,24 @@ object Main extends StrictLogging:
                   )
                   - <-
                     if ourModificationWasTweakedByTheMerge then
-                      storeBlobFor(path, mergedFileContent).flatMap(
-                        recordConflictModificationInIndex(
+                      storeBlobFor(path, mergedFileContent).flatMap { blobId =>
+                        restoreFileFromBlobId(
+                          path,
+                          blobId
+                        ) >> recordConflictModificationInIndex(
                           stageIndex = ourStageIndex
                         )(
                           ourBranchHead,
                           path,
                           ourModification.mode,
-                          _
+                          blobId
                         )
-                      )
+                      }
                     else
+                      // The modified file would have been present on our
+                      // branch; given that we started with a clean working
+                      // directory tree, we just leave it there to match what
+                      // Git merge does.
                       recordConflictModificationInIndex(
                         stageIndex = ourStageIndex
                       )(
@@ -1350,9 +1371,6 @@ object Main extends StrictLogging:
                         ourModification.mode,
                         ourModification.blobId
                       )
-                // The modified file would have been present on our branch;
-                // given that we started with a clean working directory tree, we
-                // just leave it there to match what Git merge does.
                 yield IndexState.ConflictingEntries)
                   .logOperation(
                     s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and deleted on their branch ${underline(theirBranchHead)}."
@@ -1365,7 +1383,11 @@ object Main extends StrictLogging:
                     bestAncestorCommitIdBlobId,
                     _
                   ) =>
-                // TODO: suppose their modification needs to be tweaked?
+                val FullyMerged(tokens) = mergeResultsByPath(path): @unchecked
+                val mergedFileContent   = reconstituteTextFrom(tokens)
+                val theirModificationWasTweakedByTheMerge =
+                  mergedFileContent != theirModification.content
+
                 (for
                   _ <- recordDeletionInIndex(path)
                   _ <- recordConflictModificationInIndex(
@@ -1376,29 +1398,38 @@ object Main extends StrictLogging:
                     bestAncestorCommitIdMode,
                     bestAncestorCommitIdBlobId
                   )
-                  - <- recordConflictModificationInIndex(
-                    stageIndex = theirStageIndex
-                  )(
-                    theirBranchHead,
-                    path,
-                    theirModification.mode,
-                    theirModification.blobId
-                  )
-                  _ <-
+                  - <-
                     // Git's merge updates the working directory tree with
                     // *their* modified file which wouldn't have been present on
                     // our branch prior to the merge. So that's what we do too.
-                    IO {
-                      os.proc(
-                        "git",
-                        "cat-file",
-                        "blob",
+                    if theirModificationWasTweakedByTheMerge then
+                      storeBlobFor(path, mergedFileContent).flatMap { blobId =>
+                        restoreFileFromBlobId(
+                          path,
+                          blobId
+                        ) >> recordConflictModificationInIndex(
+                          stageIndex = theirStageIndex
+                        )(
+                          theirBranchHead,
+                          path,
+                          theirModification.mode,
+                          blobId
+                        )
+                      }
+                    else
+                      restoreFileFromBlobId(
+                        path,
                         theirModification.blobId
-                      ).call(workingDirectory, stdout = path)
-                    }
-                      .labelExceptionWith(errorMessage =
-                        s"Unexpected error: could not update working directory tree with conflicted merge file ${underline(path)}"
+                      ) >> recordConflictModificationInIndex(
+                        stageIndex = theirStageIndex
+                      )(
+                        theirBranchHead,
+                        path,
+                        theirModification.mode,
+                        theirModification.blobId
                       )
+                  _ <-
+                    restoreFileFromBlobId(path, theirModification.blobId)
                 yield IndexState.ConflictingEntries)
                   .logOperation(
                     s"Conflict - file ${underline(path)} was deleted on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
@@ -1607,6 +1638,26 @@ object Main extends StrictLogging:
           }
       yield indexStates.flatten
     end indexUpdates
+
+    private def restoreFileFromBlobId(
+        path: Path,
+        blobId: String @@ Main.Tags.BlobId
+    ) =
+      IO {
+        os.write.over(
+          path,
+          os.proc(
+            "git",
+            "cat-file",
+            "blob",
+            blobId
+          ).spawn(workingDirectory)
+            .stdout,
+          createFolders = true
+        )
+      }.labelExceptionWith(errorMessage =
+        s"Unexpected error: could not update working directory tree with added file ${underline(path)}."
+      )
 
     private def reconstituteTextFrom(
         tokens: IndexedSeq[Token]
