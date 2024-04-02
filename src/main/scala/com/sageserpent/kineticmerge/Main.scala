@@ -1385,8 +1385,7 @@ object Main extends StrictLogging:
                         s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and deleted on their branch ${underline(theirBranchHead)}."
                       )
                     else right(IndexState.OneEntry)
-                yield indexState)
-                  .map(Some.apply)
+                yield indexState).map(Some.apply)
 
               case TheirModificationAndOurDeletion(
                     theirModification,
@@ -1409,24 +1408,32 @@ object Main extends StrictLogging:
                     bestAncestorCommitIdMode,
                     bestAncestorCommitIdBlobId
                   )
-                  - <-
+                  conflicted <-
                     // Git's merge updates the working directory tree with
                     // *their* modified file which wouldn't have been present on
                     // our branch prior to the merge. So that's what we do too.
                     if theirModificationWasTweakedByTheMerge then
-                      storeBlobFor(path, mergedFileContent).flatMap { blobId =>
-                        restoreFileFromBlobId(
-                          path,
-                          blobId
-                        ) >> recordConflictModificationInIndex(
-                          stageIndex = theirStageIndex
-                        )(
-                          theirBranchHead,
-                          path,
-                          theirModification.mode,
-                          blobId
-                        )
-                      }
+                      if mergedFileContent.nonEmpty then
+                        storeBlobFor(path, mergedFileContent).flatMap {
+                          blobId =>
+                            restoreFileFromBlobId(
+                              path,
+                              blobId
+                            ) >> recordConflictModificationInIndex(
+                              stageIndex = theirStageIndex
+                            )(
+                              theirBranchHead,
+                              path,
+                              theirModification.mode,
+                              blobId
+                            ) >> right(true)
+                        }
+                      else
+                        recordDeletionInIndex(path) >> IO {
+                          os.remove(path)
+                        }.labelExceptionWith(errorMessage =
+                          s"Unexpected error: could not update working directory tree by deleting file ${underline(path)}."
+                        ) >> right(false)
                     else
                       restoreFileFromBlobId(
                         path,
@@ -1438,14 +1445,14 @@ object Main extends StrictLogging:
                         path,
                         theirModification.mode,
                         theirModification.blobId
+                      ) >> right(true)
+                  indexState <-
+                    if conflicted then
+                      right(IndexState.ConflictingEntries).logOperation(
+                        s"Conflict - file ${underline(path)} was deleted on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
                       )
-                  _ <-
-                    restoreFileFromBlobId(path, theirModification.blobId)
-                yield IndexState.ConflictingEntries)
-                  .logOperation(
-                    s"Conflict - file ${underline(path)} was deleted on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
-                  )
-                  .map(Some.apply)
+                    else right(IndexState.OneEntry)
+                yield indexState).map(Some.apply)
 
               case BothContributeAnAddition(_, _, mergedFileMode) =>
                 (mergeResultsByPath(path) match
