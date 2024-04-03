@@ -32,7 +32,7 @@ object MainTest extends ProseExamples:
   private val excisedCasesLimitStrategies =
     RelPath("pathPrefix1") / "CasesLimitStrategies.java"
   private val expectyFlavouredAssert =
-    RelPath("pathPrefix1") / "pathPrefix2" / "ExpectyFlavouredAssert"
+    RelPath("pathPrefix1") / "pathPrefix2" / "ExpectyFlavouredAssert.java"
 
   private val arthurFirstVariation  = "chap"
   private val arthurSecondVariation = "boy"
@@ -371,19 +371,6 @@ object MainTest extends ProseExamples:
     assert(currentStatus(path).isEmpty)
   end verifyTrivialMergeMovesToTheMostAdvancedCommitWithACleanIndex
 
-  private def currentCommit(path: Path) =
-    os.proc("git", "log", "-1", "--format=tformat:%H")
-      .call(path)
-      .out
-      .text()
-      .strip
-
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
-
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
-
   private def verifyMergeMakesANewCommitWithACleanIndex(path: Path)(
       commitOfOneBranch: String,
       commitOfTheOtherBranch: String,
@@ -496,12 +483,6 @@ object MainTest extends ProseExamples:
     assert(currentStatus(path).nonEmpty)
   end verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit
 
-  private def mergeHead(path: Path) =
-    os.read(mergeHeadPath(path)).strip()
-
-  private def mergeHeadPath(path: Path) =
-    path / ".git" / "MERGE_HEAD"
-
   private def verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
       path: Path
   )(
@@ -533,6 +514,25 @@ object MainTest extends ProseExamples:
 
     currentStatus(path)
   end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
+
+  private def currentCommit(path: Path) =
+    os.proc("git", "log", "-1", "--format=tformat:%H")
+      .call(path)
+      .out
+      .text()
+      .strip
+
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+
+  private def mergeHead(path: Path) =
+    os.read(mergeHeadPath(path)).strip()
+
+  private def mergeHeadPath(path: Path) =
+    path / ".git" / "MERGE_HEAD"
 
   private def gitRepository(): ImperativeResource[Path] =
     for
@@ -1295,7 +1295,7 @@ class MainTest:
 
               splittingCasesLimitStrategy(path)
 
-              val commitOfMovedFileBranch = currentCommit(path)
+              val commitOfSplitFileBranch = currentCommit(path)
 
               checkoutBranch(path)(masterBranch)
 
@@ -1327,14 +1327,14 @@ class MainTest:
                   path
                 )(
                   flipBranches,
-                  commitOfMovedFileBranch,
+                  commitOfSplitFileBranch,
                   commitOfMasterBranch,
                   ourBranch,
                   exitCode
                 )
               else
                 verifyMergeMakesANewCommitWithACleanIndex(path)(
-                  commitOfMovedFileBranch,
+                  commitOfSplitFileBranch,
                   commitOfMasterBranch,
                   ourBranch,
                   exitCode
@@ -1379,7 +1379,7 @@ class MainTest:
 
               swapTheTwoFiles(path)
 
-              val commitOfMovedFileBranch = currentCommit(path)
+              val commitOfSwappedFilesBranch = currentCommit(path)
 
               checkoutBranch(path)(masterBranch)
 
@@ -1412,14 +1412,14 @@ class MainTest:
                   path
                 )(
                   flipBranches,
-                  commitOfMovedFileBranch,
+                  commitOfSwappedFilesBranch,
                   commitOfMasterBranch,
                   ourBranch,
                   exitCode
                 )
               else
                 verifyMergeMakesANewCommitWithACleanIndex(path)(
-                  commitOfMovedFileBranch,
+                  commitOfSwappedFilesBranch,
                   commitOfMasterBranch,
                   ourBranch,
                   exitCode
