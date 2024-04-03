@@ -1320,11 +1320,7 @@ object Main extends StrictLogging:
               case JustTheirDeletion(_) =>
                 for
                   _ <- recordDeletionInIndex(path)
-                  _ <- IO {
-                    os.remove(path)
-                  }.labelExceptionWith(errorMessage =
-                    s"Unexpected error: could not update working directory tree by deleting file ${underline(path)}."
-                  )
+                  _ <- deleteFile(path)
                 yield Some(IndexState.OneEntry)
 
               case OurModificationAndTheirDeletion(
@@ -1371,11 +1367,7 @@ object Main extends StrictLogging:
                       else
                         for
                           _ <- recordDeletionInIndex(path)
-                          _ <- IO {
-                            os.remove(path)
-                          }.labelExceptionWith(errorMessage =
-                            s"Unexpected error: could not update working directory tree by deleting file ${underline(path)}."
-                          )
+                          _ <- deleteFile(path)
                         yield IndexState.OneEntry
                     else
                       // The modified file would have been present on our
@@ -1443,11 +1435,7 @@ object Main extends StrictLogging:
                       else
                         for
                           _ <- recordDeletionInIndex(path)
-                          _ <- IO {
-                            os.remove(path)
-                          }.labelExceptionWith(errorMessage =
-                            s"Unexpected error: could not update working directory tree by deleting file ${underline(path)}."
-                          )
+                          _ <- deleteFile(path)
                         yield IndexState.OneEntry
                     else
                       for
@@ -1688,6 +1676,12 @@ object Main extends StrictLogging:
           }
       yield indexStates.flatten
     end indexUpdates
+
+    private def deleteFile(path: Path): Workflow[Unit] = IO {
+      os.remove(path): Unit
+    }.labelExceptionWith(errorMessage =
+      s"Unexpected error: could not update working directory tree by deleting file ${underline(path)}."
+    )
 
     private def restoreFileFromBlobId(
         path: Path,
