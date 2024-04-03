@@ -1657,9 +1657,9 @@ object Main extends StrictLogging:
                         mergedFileMode,
                         rightBlob
                       ).logOperation(
-                        s"Conflict - file ${underline(path)} was added on our branch ${underline(
+                        s"Conflict - file ${underline(path)} was modified on our branch ${underline(
                             ourBranchHead
-                          )} and added on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
+                          )} and modified on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
                       )
                     yield Some(IndexState.ConflictingEntries)
                     end for
