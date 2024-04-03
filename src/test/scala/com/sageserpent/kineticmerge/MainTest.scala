@@ -9,6 +9,7 @@ import com.sageserpent.kineticmerge.Main.{ApplicationRequest, Tags}
 import com.sageserpent.kineticmerge.MainTest.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.ProseExamples
+import com.sageserpent.kineticmerge.core.Token.{tokens, equality as tokenEquality}
 import com.softwaremill.tagging.*
 import org.junit.jupiter.api.TestFactory
 import os.{Path, RelPath}
@@ -39,6 +40,11 @@ object MainTest extends ProseExamples:
 
   private val optionalSubdirectories: Trials[Option[RelPath]] =
     trialsApi.only("runMergeInHere").map(RelPath.apply).options
+
+  private val baseCasesLimitStrategyContent =
+    codeMotionExampleWithSplitOriginalBase
+  private val editedCasesLimitStrategyContent =
+    codeMotionExampleWithSplitOriginalLeft
 
   private def introducingArthur(path: Path): Unit =
     os.write(path / arthur, "Hello, my old mucker!\n", createFolders = true)
@@ -209,7 +215,7 @@ object MainTest extends ProseExamples:
   private def introducingCasesLimitStrategy(path: Path): Unit =
     os.write(
       path / casesLimitStrategy,
-      codeMotionExampleWithSplitOriginalBase,
+      baseCasesLimitStrategyContent,
       createFolders = true
     )
     println(os.proc("git", "add", casesLimitStrategy).call(path).out.text())
@@ -224,7 +230,7 @@ object MainTest extends ProseExamples:
   private def editingCasesLimitStrategy(path: Path): Unit =
     os.write.over(
       path / casesLimitStrategy,
-      codeMotionExampleWithSplitOriginalLeft,
+      editedCasesLimitStrategyContent,
       createFolders = true
     )
     println(os.proc("git", "add", casesLimitStrategy).call(path).out.text())
@@ -275,6 +281,13 @@ object MainTest extends ProseExamples:
 
     assert(currentStatus(path).isEmpty)
   end verifyTrivialMergeMovesToTheMostAdvancedCommitWithACleanIndex
+
+  private def currentCommit(path: Path) =
+    os.proc("git", "log", "-1", "--format=tformat:%H")
+      .call(path)
+      .out
+      .text()
+      .strip
 
   private def verifyMergeMakesANewCommitWithACleanIndex(path: Path)(
       commitOfOneBranch: String,
@@ -333,6 +346,12 @@ object MainTest extends ProseExamples:
       case Array(postMergeCommit, parents*) => postMergeCommit -> parents
     : @unchecked
 
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+
   private def verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit(
       path: Path
   )(
@@ -359,6 +378,9 @@ object MainTest extends ProseExamples:
 
     assert(status.isEmpty)
   end verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit
+
+  private def mergeHeadPath(path: Path) =
+    path / ".git" / "MERGE_HEAD"
 
   private def verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit(
       path: Path
@@ -420,24 +442,8 @@ object MainTest extends ProseExamples:
     currentStatus(path)
   end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
 
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
-
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
-
-  private def currentCommit(path: Path) =
-    os.proc("git", "log", "-1", "--format=tformat:%H")
-      .call(path)
-      .out
-      .text()
-      .strip
-
   private def mergeHead(path: Path) =
     os.read(mergeHeadPath(path)).strip()
-
-  private def mergeHeadPath(path: Path) =
-    path / ".git" / "MERGE_HEAD"
 
   private def gitRepository(): ImperativeResource[Path] =
     for
@@ -469,6 +475,13 @@ object MainTest extends ProseExamples:
         .out
         .text()
     )
+
+  private def fileHasExpectedContent(file: Path, content: String) =
+    tokens(os.read(file)).get.corresponds(
+      tokens(
+        content
+      ).get
+    )(tokenEquality)
 end MainTest
 
 class MainTest:
@@ -1160,6 +1173,14 @@ class MainTest:
                   exitCode
                 )
               end if
+
+              assert(
+                fileHasExpectedContent(
+                  path / movedCasesLimitStrategy,
+                  editedCasesLimitStrategyContent
+                )
+              )
+              assert(!os.exists(path / casesLimitStrategy))
             }
           )
           .unsafeRunSync()
