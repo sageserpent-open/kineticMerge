@@ -31,6 +31,8 @@ object MainTest extends ProseExamples:
     RelPath("pathPrefix1") / "pathPrefix2" / "CasesLimitStrategy.java"
   private val excisedCasesLimitStrategies =
     RelPath("pathPrefix1") / "CasesLimitStrategies.java"
+  private val expectyFlavouredAssert =
+    RelPath("pathPrefix1") / "pathPrefix2" / "ExpectyFlavouredAssert"
 
   private val arthurFirstVariation  = "chap"
   private val arthurSecondVariation = "boy"
@@ -53,6 +55,8 @@ object MainTest extends ProseExamples:
     codeMotionExampleWithSplitOriginalExpectedMerge
   private val excisedCasesLimitStrategiesExpectedContent =
     codeMotionExampleWithSplitHivedOffExpectedMerge
+  private val baseExpectyFlavouredAssertContent   = codeMotionExampleBase
+  private val editedExpectyFlavouredAssertContent = codeMotionExampleRight
 
   private def introducingArthur(path: Path): Unit =
     os.write(path / arthur, "Hello, my old mucker!\n", createFolders = true)
@@ -264,8 +268,12 @@ object MainTest extends ProseExamples:
       os.proc("git", "add", excisedCasesLimitStrategies).call(path).out.text()
     )
     println(
-      os.proc("git", "commit", "-am", "'Editing `CasesLimitStrategy`.'")
-        .call(path)
+      os.proc(
+        "git",
+        "commit",
+        "-am",
+        "'Excising `CasesLimitStrategies` from `CasesLimitStrategy`.'"
+      ).call(path)
         .out
         .text()
     )
@@ -289,6 +297,58 @@ object MainTest extends ProseExamples:
         .text()
     )
   end moveCasesLimitStrategy
+
+  private def introducingExpectyFlavouredAssert(path: Path): Unit =
+    os.write(
+      path / expectyFlavouredAssert,
+      baseExpectyFlavouredAssertContent,
+      createFolders = true
+    )
+    println(os.proc("git", "add", expectyFlavouredAssert).call(path).out.text())
+    println(
+      os.proc("git", "commit", "-m", "'Introducing `ExpectyFlavouredAssert`.'")
+        .call(path)
+        .out
+        .text()
+    )
+  end introducingExpectyFlavouredAssert
+
+  private def editingExpectyFlavouredAssert(path: Path): Unit =
+    os.write.over(
+      path / expectyFlavouredAssert,
+      editedExpectyFlavouredAssertContent,
+      createFolders = true
+    )
+    println(
+      os.proc("git", "commit", "-am", "'Editing `ExpectyFlavouredAssert`.'")
+        .call(path)
+        .out
+        .text()
+    )
+  end editingExpectyFlavouredAssert
+
+  private def swapTheTwoFiles(path: Path): Unit =
+    os.write.over(
+      path / casesLimitStrategy,
+      baseExpectyFlavouredAssertContent,
+      createFolders = true
+    )
+    os.write.over(
+      path / expectyFlavouredAssert,
+      baseCasesLimitStrategyContent,
+      createFolders = true
+    )
+    println(
+      os.proc(
+        "git",
+        "commit",
+        "-am",
+        "'Swapping the contents of `CasesLimitStrategy` and `ExpectyFlavouredAssert`.'"
+      ).call(path)
+        .out
+        .text()
+    )
+  end swapTheTwoFiles
 
   private def verifyTrivialMergeMovesToTheMostAdvancedCommitWithACleanIndex(
       path: Path
@@ -408,9 +468,6 @@ object MainTest extends ProseExamples:
     assert(status.isEmpty)
   end verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit
 
-  private def mergeHeadPath(path: Path) =
-    path / ".git" / "MERGE_HEAD"
-
   private def verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit(
       path: Path
   )(
@@ -438,6 +495,12 @@ object MainTest extends ProseExamples:
 
     assert(currentStatus(path).nonEmpty)
   end verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit
+
+  private def mergeHead(path: Path) =
+    os.read(mergeHeadPath(path)).strip()
+
+  private def mergeHeadPath(path: Path) =
+    path / ".git" / "MERGE_HEAD"
 
   private def verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
       path: Path
@@ -470,9 +533,6 @@ object MainTest extends ProseExamples:
 
     currentStatus(path)
   end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
-
-  private def mergeHead(path: Path) =
-    os.read(mergeHeadPath(path)).strip()
 
   private def gitRepository(): ImperativeResource[Path] =
     for
@@ -1229,9 +1289,9 @@ class MainTest:
 
               introducingCasesLimitStrategy(path)
 
-              val splittingFileBranch = "splitFileBranch"
+              val splitFileBranch = "splitFileBranch"
 
-              makeNewBranch(path)(splittingFileBranch)
+              makeNewBranch(path)(splitFileBranch)
 
               splittingCasesLimitStrategy(path)
 
@@ -1243,12 +1303,12 @@ class MainTest:
 
               val commitOfMasterBranch = currentCommit(path)
 
-              if flipBranches then checkoutBranch(path)(splittingFileBranch)
+              if flipBranches then checkoutBranch(path)(splitFileBranch)
               end if
 
               val (ourBranch, theirBranch) =
-                if flipBranches then splittingFileBranch -> masterBranch
-                else masterBranch                        -> splittingFileBranch
+                if flipBranches then splitFileBranch -> masterBranch
+                else masterBranch                    -> splitFileBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest(
@@ -1298,4 +1358,90 @@ class MainTest:
           .unsafeRunSync()
       }
   end anEditAndADeletionPropagatingThroughAFileSplit
+
+  @TestFactory
+  def twoFilesSwappingAroundWithModificationsToBoth(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches, noCommit) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingCasesLimitStrategy(path)
+              introducingExpectyFlavouredAssert(path)
+
+              val swappedFilesBranch = "swappedFileBranch"
+
+              makeNewBranch(path)(swappedFilesBranch)
+
+              swapTheTwoFiles(path)
+
+              val commitOfMovedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              editingCasesLimitStrategy(path)
+              editingExpectyFlavouredAssert(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then checkoutBranch(path)(swappedFilesBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then swappedFilesBranch -> masterBranch
+                else masterBranch                       -> swappedFilesBranch
+
+              val exitCode = Main.mergeTheirBranch(
+                ApplicationRequest(
+                  theirBranchHead =
+                    theirBranch.taggedWith[Tags.CommitOrBranchName],
+                  noCommit = noCommit,
+                  minimumMatchSize =
+                    5 // TODO: go back to using the default when https://github.com/sageserpent-open/kineticMerge/issues/31 is delivered.
+                )
+              )(workingDirectory =
+                optionalSubdirectory.fold(ifEmpty = path)(path / _)
+              )
+
+              if noCommit then
+                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                  path
+                )(
+                  flipBranches,
+                  commitOfMovedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              else
+                verifyMergeMakesANewCommitWithACleanIndex(path)(
+                  commitOfMovedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              end if
+
+              assert(
+                fileHasExpectedContent(
+                  path / casesLimitStrategy,
+                  editedExpectyFlavouredAssertContent
+                )
+              )
+              assert(
+                fileHasExpectedContent(
+                  path / expectyFlavouredAssert,
+                  editedCasesLimitStrategyContent
+                )
+              )
+            }
+          )
+          .unsafeRunSync()
+      }
+  end twoFilesSwappingAroundWithModificationsToBoth
+
 end MainTest
