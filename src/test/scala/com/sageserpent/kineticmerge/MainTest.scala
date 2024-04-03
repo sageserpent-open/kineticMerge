@@ -45,6 +45,14 @@ object MainTest extends ProseExamples:
     codeMotionExampleWithSplitOriginalBase
   private val editedCasesLimitStrategyContent =
     codeMotionExampleWithSplitOriginalLeft
+  private val justTheInterfaceForCasesLimitStrategyContent =
+    codeMotionExampleWithSplitOriginalRight
+  private val excisedCasesLimitStrategiesContent =
+    codeMotionExampleWithSplitHivedOffRight
+  private val justTheInterfaceForCasesLimitStrategyExpectedContent =
+    codeMotionExampleWithSplitOriginalExpectedMerge
+  private val excisedCasesLimitStrategiesExpectedContent =
+    codeMotionExampleWithSplitHivedOffExpectedMerge
 
   private def introducingArthur(path: Path): Unit =
     os.write(path / arthur, "Hello, my old mucker!\n", createFolders = true)
@@ -233,7 +241,6 @@ object MainTest extends ProseExamples:
       editedCasesLimitStrategyContent,
       createFolders = true
     )
-    println(os.proc("git", "add", casesLimitStrategy).call(path).out.text())
     println(
       os.proc("git", "commit", "-am", "'Editing `CasesLimitStrategy`.'")
         .call(path)
@@ -241,6 +248,28 @@ object MainTest extends ProseExamples:
         .text()
     )
   end editingCasesLimitStrategy
+
+  private def splittingCasesLimitStrategy(path: Path): Unit =
+    os.write.over(
+      path / casesLimitStrategy,
+      justTheInterfaceForCasesLimitStrategyContent,
+      createFolders = true
+    )
+    os.write(
+      path / excisedCasesLimitStrategies,
+      excisedCasesLimitStrategiesContent,
+      createFolders = true
+    )
+    println(
+      os.proc("git", "add", excisedCasesLimitStrategies).call(path).out.text()
+    )
+    println(
+      os.proc("git", "commit", "-am", "'Editing `CasesLimitStrategy`.'")
+        .call(path)
+        .out
+        .text()
+    )
+  end splittingCasesLimitStrategy
 
   private def moveCasesLimitStrategy(path: Path): Unit =
     os.move(
@@ -288,6 +317,12 @@ object MainTest extends ProseExamples:
       .out
       .text()
       .strip
+
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
 
   private def verifyMergeMakesANewCommitWithACleanIndex(path: Path)(
       commitOfOneBranch: String,
@@ -345,12 +380,6 @@ object MainTest extends ProseExamples:
       .split("\\s+") match
       case Array(postMergeCommit, parents*) => postMergeCommit -> parents
     : @unchecked
-
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
-
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
 
   private def verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit(
       path: Path
@@ -1186,4 +1215,87 @@ class MainTest:
           .unsafeRunSync()
       }
   end anEditAndADeletionPropagatingThroughAFileMove
+
+  @TestFactory
+  def anEditAndADeletionPropagatingThroughAFileSplit(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches, noCommit) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingCasesLimitStrategy(path)
+
+              val splittingFileBranch = "splitFileBranch"
+
+              makeNewBranch(path)(splittingFileBranch)
+
+              splittingCasesLimitStrategy(path)
+
+              val commitOfMovedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              editingCasesLimitStrategy(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then checkoutBranch(path)(splittingFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then splittingFileBranch -> masterBranch
+                else masterBranch                        -> splittingFileBranch
+
+              val exitCode = Main.mergeTheirBranch(
+                ApplicationRequest(
+                  theirBranchHead =
+                    theirBranch.taggedWith[Tags.CommitOrBranchName],
+                  noCommit = noCommit,
+                  minimumMatchSize =
+                    5 // TODO: go back to using the default when https://github.com/sageserpent-open/kineticMerge/issues/31 is delivered.
+                )
+              )(workingDirectory =
+                optionalSubdirectory.fold(ifEmpty = path)(path / _)
+              )
+
+              if noCommit then
+                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                  path
+                )(
+                  flipBranches,
+                  commitOfMovedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              else
+                verifyMergeMakesANewCommitWithACleanIndex(path)(
+                  commitOfMovedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              end if
+
+              assert(
+                fileHasExpectedContent(
+                  path / casesLimitStrategy,
+                  justTheInterfaceForCasesLimitStrategyExpectedContent
+                )
+              )
+              assert(
+                fileHasExpectedContent(
+                  path / excisedCasesLimitStrategies,
+                  excisedCasesLimitStrategiesExpectedContent
+                )
+              )
+            }
+          )
+          .unsafeRunSync()
+      }
+  end anEditAndADeletionPropagatingThroughAFileSplit
 end MainTest
