@@ -515,15 +515,15 @@ object MainTest extends ProseExamples:
     currentStatus(path)
   end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
 
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
   private def currentCommit(path: Path) =
     os.proc("git", "log", "-1", "--format=tformat:%H")
       .call(path)
       .out
       .text()
       .strip
-
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
 
   private def currentBranch(path: Path) =
     os.proc("git", "branch", "--show-current").call(path).out.text().strip()
@@ -1358,6 +1358,90 @@ class MainTest:
           .unsafeRunSync()
       }
   end anEditAndADeletionPropagatingThroughAFileSplit
+
+  @TestFactory
+  def twoFilesSwappingAroundWithModificationOfOne(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches, noCommit) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingCasesLimitStrategy(path)
+              introducingExpectyFlavouredAssert(path)
+
+              val swappedFilesBranch = "swappedFileBranch"
+
+              makeNewBranch(path)(swappedFilesBranch)
+
+              swapTheTwoFiles(path)
+
+              val commitOfSwappedFilesBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              editingExpectyFlavouredAssert(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then checkoutBranch(path)(swappedFilesBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then swappedFilesBranch -> masterBranch
+                else masterBranch                       -> swappedFilesBranch
+
+              val exitCode = Main.mergeTheirBranch(
+                ApplicationRequest(
+                  theirBranchHead =
+                    theirBranch.taggedWith[Tags.CommitOrBranchName],
+                  noCommit = noCommit,
+                  minimumMatchSize =
+                    5 // TODO: go back to using the default when https://github.com/sageserpent-open/kineticMerge/issues/31 is delivered.
+                )
+              )(workingDirectory =
+                optionalSubdirectory.fold(ifEmpty = path)(path / _)
+              )
+
+              if noCommit then
+                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                  path
+                )(
+                  flipBranches,
+                  commitOfSwappedFilesBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              else
+                verifyMergeMakesANewCommitWithACleanIndex(path)(
+                  commitOfSwappedFilesBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              end if
+
+              assert(
+                fileHasExpectedContent(
+                  path / casesLimitStrategy,
+                  editedExpectyFlavouredAssertContent
+                )
+              )
+              assert(
+                fileHasExpectedContent(
+                  path / expectyFlavouredAssert,
+                  baseCasesLimitStrategyContent
+                )
+              )
+            }
+          )
+          .unsafeRunSync()
+      }
+  end twoFilesSwappingAroundWithModificationOfOne
 
   @TestFactory
   def twoFilesSwappingAroundWithModificationsToBoth(): DynamicTests =
