@@ -1459,9 +1459,12 @@ object Main extends StrictLogging:
                   case FullyMerged(tokens) =>
                     val mergedFileContent = reconstituteTextFrom(tokens)
 
-                    storeBlobFor(path, mergedFileContent).flatMap(
-                      indexStateForCleanMerge(path, mergedFileMode, _)
-                    )
+                    storeBlobFor(path, mergedFileContent).flatMap { blobId =>
+                      restoreFileFromBlobId(
+                        path,
+                        blobId
+                      ) >> indexStateForCleanMerge(path, mergedFileMode, blobId)
+                    }
 
                   case MergedWithConflicts(leftTokens, rightTokens) =>
                     val leftContent  = reconstituteTextFrom(leftTokens)
@@ -1553,9 +1556,12 @@ object Main extends StrictLogging:
                   case FullyMerged(tokens) =>
                     val mergedFileContent = reconstituteTextFrom(tokens)
 
-                    storeBlobFor(path, mergedFileContent).flatMap(
-                      indexStateForCleanMerge(path, mergedFileMode, _)
-                    )
+                    storeBlobFor(path, mergedFileContent).flatMap { blobId =>
+                      restoreFileFromBlobId(
+                        path,
+                        blobId
+                      ) >> indexStateForCleanMerge(path, mergedFileMode, blobId)
+                    }
 
                   case MergedWithConflicts(leftTokens, rightTokens) =>
                     val leftContent  = reconstituteTextFrom(leftTokens)
@@ -1674,7 +1680,7 @@ object Main extends StrictLogging:
           createFolders = true
         )
       }.labelExceptionWith(errorMessage =
-        s"Unexpected error: could not update working directory tree with added file ${underline(path)}."
+        s"Unexpected error: could not update working directory tree with file ${underline(path)}."
       )
 
     private def reconstituteTextFrom(
@@ -1691,19 +1697,11 @@ object Main extends StrictLogging:
         mergedFileMode: String @@ Tags.Mode,
         mergedBlobId: String @@ Tags.BlobId
     ): Workflow[IndexState] =
-      for
-        _ <- recordModificationInIndex(
+      for _ <- recordModificationInIndex(
           path,
           mergedFileMode,
           mergedBlobId
         )
-        - <- IO {
-          os.proc("git", "cat-file", "blob", mergedBlobId)
-            .call(workingDirectory, stdout = path)
-        }
-          .labelExceptionWith(errorMessage =
-            s"Unexpected error: could not update working directory tree with merged file ${underline(path)}."
-          )
       yield IndexState.OneEntry
       end for
     end indexStateForCleanMerge
