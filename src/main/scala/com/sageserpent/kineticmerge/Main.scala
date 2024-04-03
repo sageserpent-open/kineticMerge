@@ -3,7 +3,6 @@ package com.sageserpent.kineticmerge
 import cats.data.{EitherT, WriterT}
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
-import cats.implicits.catsSyntaxFlatMapOps
 import cats.syntax.foldable.toFoldableOps
 import cats.syntax.traverse.toTraverseOps
 import com.google.common.hash.Hashing
@@ -1206,18 +1205,18 @@ object Main extends StrictLogging:
                   mergedFileContent != ourModification.content
 
                 if ourModificationWasTweakedByTheMerge then
-                  storeBlobFor(path, mergedFileContent)
-                    .flatMap { blobId =>
-                      restoreFileFromBlobId(
-                        path,
-                        blobId
-                      ) >> indexStateForCleanMerge(
-                        path,
-                        ourModification.mode,
-                        blobId
-                      )
-                    }
-                    .map(Some.apply)
+                  for
+                    blobId <- storeBlobFor(path, mergedFileContent)
+                    _ <- restoreFileFromBlobId(
+                      path,
+                      blobId
+                    )
+                    _ <- recordModificationInIndex(
+                      path,
+                      ourModification.mode,
+                      blobId
+                    )
+                  yield Some(IndexState.OneEntry)
                 else right(None)
                 end if
 
@@ -1229,28 +1228,32 @@ object Main extends StrictLogging:
                 val theirModificationWasTweakedByTheMerge =
                   mergedFileContent != theirModification.content
 
-                (if theirModificationWasTweakedByTheMerge then
-                   storeBlobFor(path, mergedFileContent)
-                     .flatMap { blobId =>
-                       restoreFileFromBlobId(
-                         path,
-                         blobId
-                       ) >> indexStateForCleanMerge(
-                         path,
-                         theirModification.mode,
-                         blobId
-                       )
-                     }
-                 else
-                   restoreFileFromBlobId(
-                     path,
-                     theirModification.blobId
-                   ) >> indexStateForCleanMerge(
-                     path,
-                     theirModification.mode,
-                     theirModification.blobId
-                   )
-                ).map(Some.apply)
+                if theirModificationWasTweakedByTheMerge then
+                  for
+                    blobId <- storeBlobFor(path, mergedFileContent)
+                    _ <- restoreFileFromBlobId(
+                      path,
+                      blobId
+                    )
+                    _ <- recordModificationInIndex(
+                      path,
+                      theirModification.mode,
+                      blobId
+                    )
+                  yield Some(IndexState.OneEntry)
+                else
+                  for
+                    _ <- restoreFileFromBlobId(
+                      path,
+                      theirModification.blobId
+                    )
+                    _ <- recordModificationInIndex(
+                      path,
+                      theirModification.mode,
+                      theirModification.blobId
+                    )
+                  yield Some(IndexState.OneEntry)
+                end if
 
               case JustOurAddition(ourAddition) =>
                 val FullyMerged(tokens) = mergeResultsByPath(path): @unchecked
@@ -1261,18 +1264,18 @@ object Main extends StrictLogging:
                   mergedFileContent != ourAddition.content
 
                 if ourAdditionWasTweakedByTheMerge then
-                  storeBlobFor(path, mergedFileContent)
-                    .flatMap { blobId =>
-                      restoreFileFromBlobId(
-                        path,
-                        blobId
-                      ) >> indexStateForCleanMerge(
-                        path,
-                        ourAddition.mode,
-                        blobId
-                      )
-                    }
-                    .map(Some.apply)
+                  for
+                    blobId <- storeBlobFor(path, mergedFileContent)
+                    _ <- restoreFileFromBlobId(
+                      path,
+                      blobId
+                    )
+                    _ <- recordModificationInIndex(
+                      path,
+                      ourAddition.mode,
+                      blobId
+                    )
+                  yield Some(IndexState.OneEntry)
                 else right(None)
                 end if
 
@@ -1284,29 +1287,32 @@ object Main extends StrictLogging:
                 val theirAdditionWasTweakedByTheMerge =
                   mergedFileContent != theirAddition.content
 
-                (for _ <-
-                    if theirAdditionWasTweakedByTheMerge then
-                      storeBlobFor(path, mergedFileContent)
-                        .flatMap { blobId =>
-                          restoreFileFromBlobId(
-                            path,
-                            blobId
-                          ) >> recordAdditionInIndex(
-                            path,
-                            theirAddition.mode,
-                            blobId
-                          )
-                        }
-                    else
-                      restoreFileFromBlobId(
-                        path,
-                        theirAddition.blobId
-                      ) >> recordAdditionInIndex(
-                        path,
-                        theirAddition.mode,
-                        theirAddition.blobId
-                      )
-                yield IndexState.OneEntry).map(Some.apply)
+                if theirAdditionWasTweakedByTheMerge then
+                  for
+                    blobId <- storeBlobFor(path, mergedFileContent)
+                    _ <- restoreFileFromBlobId(
+                      path,
+                      blobId
+                    )
+                    _ <- recordAdditionInIndex(
+                      path,
+                      theirAddition.mode,
+                      blobId
+                    )
+                  yield Some(IndexState.OneEntry)
+                else
+                  for
+                    _ <- restoreFileFromBlobId(
+                      path,
+                      theirAddition.blobId
+                    )
+                    _ <- recordAdditionInIndex(
+                      path,
+                      theirAddition.mode,
+                      theirAddition.blobId
+                    )
+                  yield Some(IndexState.OneEntry)
+                end if
 
               case JustOurDeletion(_) =>
                 right(None)
@@ -1316,10 +1322,9 @@ object Main extends StrictLogging:
                   _ <- recordDeletionInIndex(path)
                   _ <- IO {
                     os.remove(path)
-                  }
-                    .labelExceptionWith(errorMessage =
-                      s"Unexpected error: could not update working directory tree by deleting file ${underline(path)}."
-                    )
+                  }.labelExceptionWith(errorMessage =
+                    s"Unexpected error: could not update working directory tree by deleting file ${underline(path)}."
+                  )
                 yield Some(IndexState.OneEntry)
 
               case OurModificationAndTheirDeletion(
@@ -1333,7 +1338,7 @@ object Main extends StrictLogging:
                 val ourModificationWasTweakedByTheMerge =
                   mergedFileContent != ourModification.content
 
-                (for
+                for
                   - <- recordDeletionInIndex(path)
                   - <- recordConflictModificationInIndex(
                     stageIndex = bestCommonAncestorStageIndex
@@ -1343,49 +1348,53 @@ object Main extends StrictLogging:
                     bestAncestorCommitIdMode,
                     bestAncestorCommitIdBlobId
                   )
-                  conflicted <-
+                  indexState <-
                     if ourModificationWasTweakedByTheMerge then
                       if mergedFileContent.nonEmpty then
-                        storeBlobFor(path, mergedFileContent).flatMap {
-                          blobId =>
-                            restoreFileFromBlobId(
-                              path,
-                              blobId
-                            ) >> recordConflictModificationInIndex(
-                              stageIndex = ourStageIndex
-                            )(
-                              ourBranchHead,
-                              path,
-                              ourModification.mode,
-                              blobId
-                            )
-                        } >> right(true)
+                        for
+                          blobId <- storeBlobFor(path, mergedFileContent)
+                          _ <- restoreFileFromBlobId(
+                            path,
+                            blobId
+                          )
+                          _ <- recordConflictModificationInIndex(
+                            stageIndex = ourStageIndex
+                          )(
+                            ourBranchHead,
+                            path,
+                            ourModification.mode,
+                            blobId
+                          ).logOperation(
+                            s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and deleted on their branch ${underline(theirBranchHead)}."
+                          )
+                        yield IndexState.ConflictingEntries
                       else
-                        recordDeletionInIndex(path) >> IO {
-                          os.remove(path)
-                        }.labelExceptionWith(errorMessage =
-                          s"Unexpected error: could not update working directory tree by deleting file ${underline(path)}."
-                        ) >> right(false)
+                        for
+                          _ <- recordDeletionInIndex(path)
+                          _ <- IO {
+                            os.remove(path)
+                          }.labelExceptionWith(errorMessage =
+                            s"Unexpected error: could not update working directory tree by deleting file ${underline(path)}."
+                          )
+                        yield IndexState.OneEntry
                     else
                       // The modified file would have been present on our
                       // branch; given that we started with a clean working
                       // directory tree, we just leave it there to match what
                       // Git merge does.
-                      recordConflictModificationInIndex(
-                        stageIndex = ourStageIndex
-                      )(
-                        ourBranchHead,
-                        path,
-                        ourModification.mode,
-                        ourModification.blobId
-                      ) >> right(true)
-                  indexState <-
-                    if conflicted then
-                      right(IndexState.ConflictingEntries).logOperation(
-                        s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and deleted on their branch ${underline(theirBranchHead)}."
-                      )
-                    else right(IndexState.OneEntry)
-                yield indexState).map(Some.apply)
+                      for _ <- recordConflictModificationInIndex(
+                          stageIndex = ourStageIndex
+                        )(
+                          ourBranchHead,
+                          path,
+                          ourModification.mode,
+                          ourModification.blobId
+                        ).logOperation(
+                          s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and deleted on their branch ${underline(theirBranchHead)}."
+                        )
+                      yield IndexState.ConflictingEntries
+                yield Some(indexState)
+                end for
 
               case TheirModificationAndOurDeletion(
                     theirModification,
@@ -1398,7 +1407,7 @@ object Main extends StrictLogging:
                 val theirModificationWasTweakedByTheMerge =
                   mergedFileContent != theirModification.content
 
-                (for
+                for
                   _ <- recordDeletionInIndex(path)
                   _ <- recordConflictModificationInIndex(
                     stageIndex = bestCommonAncestorStageIndex
@@ -1408,63 +1417,76 @@ object Main extends StrictLogging:
                     bestAncestorCommitIdMode,
                     bestAncestorCommitIdBlobId
                   )
-                  conflicted <-
+                  indexState <-
                     // Git's merge updates the working directory tree with
                     // *their* modified file which wouldn't have been present on
                     // our branch prior to the merge. So that's what we do too.
                     if theirModificationWasTweakedByTheMerge then
                       if mergedFileContent.nonEmpty then
-                        storeBlobFor(path, mergedFileContent).flatMap {
-                          blobId =>
-                            restoreFileFromBlobId(
-                              path,
-                              blobId
-                            ) >> recordConflictModificationInIndex(
-                              stageIndex = theirStageIndex
-                            )(
-                              theirBranchHead,
-                              path,
-                              theirModification.mode,
-                              blobId
-                            ) >> right(true)
-                        }
+                        for
+                          blobId <- storeBlobFor(path, mergedFileContent)
+                          _ <- restoreFileFromBlobId(
+                            path,
+                            blobId
+                          )
+                          _ <- recordConflictModificationInIndex(
+                            stageIndex = theirStageIndex
+                          )(
+                            theirBranchHead,
+                            path,
+                            theirModification.mode,
+                            blobId
+                          ).logOperation(
+                            s"Conflict - file ${underline(path)} was deleted on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
+                          )
+                        yield IndexState.ConflictingEntries
                       else
-                        recordDeletionInIndex(path) >> IO {
-                          os.remove(path)
-                        }.labelExceptionWith(errorMessage =
-                          s"Unexpected error: could not update working directory tree by deleting file ${underline(path)}."
-                        ) >> right(false)
+                        for
+                          _ <- recordDeletionInIndex(path)
+                          _ <- IO {
+                            os.remove(path)
+                          }.labelExceptionWith(errorMessage =
+                            s"Unexpected error: could not update working directory tree by deleting file ${underline(path)}."
+                          )
+                        yield IndexState.OneEntry
                     else
-                      restoreFileFromBlobId(
-                        path,
-                        theirModification.blobId
-                      ) >> recordConflictModificationInIndex(
-                        stageIndex = theirStageIndex
-                      )(
-                        theirBranchHead,
-                        path,
-                        theirModification.mode,
-                        theirModification.blobId
-                      ) >> right(true)
-                  indexState <-
-                    if conflicted then
-                      right(IndexState.ConflictingEntries).logOperation(
-                        s"Conflict - file ${underline(path)} was deleted on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
-                      )
-                    else right(IndexState.OneEntry)
-                yield indexState).map(Some.apply)
+                      for
+                        _ <- restoreFileFromBlobId(
+                          path,
+                          theirModification.blobId
+                        )
+                        _ <- recordConflictModificationInIndex(
+                          stageIndex = theirStageIndex
+                        )(
+                          theirBranchHead,
+                          path,
+                          theirModification.mode,
+                          theirModification.blobId
+                        ).logOperation(
+                          s"Conflict - file ${underline(path)} was deleted on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
+                        )
+                      yield IndexState.ConflictingEntries
+                yield Some(indexState)
+                end for
 
               case BothContributeAnAddition(_, _, mergedFileMode) =>
-                (mergeResultsByPath(path) match
+                mergeResultsByPath(path) match
                   case FullyMerged(tokens) =>
                     val mergedFileContent = reconstituteTextFrom(tokens)
 
-                    storeBlobFor(path, mergedFileContent).flatMap { blobId =>
-                      restoreFileFromBlobId(
+                    for
+                      blobId <- storeBlobFor(path, mergedFileContent)
+                      _ <- restoreFileFromBlobId(
                         path,
                         blobId
-                      ) >> indexStateForCleanMerge(path, mergedFileMode, blobId)
-                    }
+                      )
+                      _ <- recordModificationInIndex(
+                        path,
+                        mergedFileMode,
+                        blobId
+                      )
+                    yield Some(IndexState.OneEntry)
+                    end for
 
                   case MergedWithConflicts(leftTokens, rightTokens) =>
                     val leftContent  = reconstituteTextFrom(leftTokens)
@@ -1540,9 +1562,8 @@ object Main extends StrictLogging:
                             ourBranchHead
                           )} and added on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
                       )
-                    yield IndexState.ConflictingEntries
+                    yield Some(IndexState.ConflictingEntries)
                     end for
-                ).map(Some.apply)
 
               case BothContributeAModification(
                     _,
@@ -1552,16 +1573,23 @@ object Main extends StrictLogging:
                     bestAncestorCommitIdContent,
                     mergedFileMode
                   ) =>
-                (mergeResultsByPath(path) match
+                mergeResultsByPath(path) match
                   case FullyMerged(tokens) =>
                     val mergedFileContent = reconstituteTextFrom(tokens)
 
-                    storeBlobFor(path, mergedFileContent).flatMap { blobId =>
-                      restoreFileFromBlobId(
+                    for
+                      blobId <- storeBlobFor(path, mergedFileContent)
+                      _ <- restoreFileFromBlobId(
                         path,
                         blobId
-                      ) >> indexStateForCleanMerge(path, mergedFileMode, blobId)
-                    }
+                      )
+                      _ <- recordModificationInIndex(
+                        path,
+                        mergedFileMode,
+                        blobId
+                      )
+                    yield Some(IndexState.OneEntry)
+                    end for
 
                   case MergedWithConflicts(leftTokens, rightTokens) =>
                     val leftContent  = reconstituteTextFrom(leftTokens)
@@ -1645,20 +1673,18 @@ object Main extends StrictLogging:
                             ourBranchHead
                           )} and added on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
                       )
-                    yield IndexState.ConflictingEntries
+                    yield Some(IndexState.ConflictingEntries)
                     end for
-                ).map(Some.apply)
 
               case BothContributeADeletion(_) =>
                 // We already have the deletion in our branch, so no need to
                 // update the index. We do yield a result so that there is still
                 // a merge commit if this is the only change, though - this
                 // should *not* be a fast-forward merge.
-                right(IndexState.OneEntry)
+                right(Some(IndexState.OneEntry))
                   .logOperation(
                     s"Coincidental deletion of file ${underline(path)} on our branch ${underline(ourBranchHead)} and on their branch ${underline(theirBranchHead)}."
                   )
-                  .map(Some.apply)
           }
       yield indexStates.flatten
     end indexUpdates
@@ -1691,20 +1717,6 @@ object Main extends StrictLogging:
         .reduceOption(_ ++ _)
         .getOrElse("")
         .taggedWith[Tags.Content]
-
-    private def indexStateForCleanMerge(
-        path: Path,
-        mergedFileMode: String @@ Tags.Mode,
-        mergedBlobId: String @@ Tags.BlobId
-    ): Workflow[IndexState] =
-      for _ <- recordModificationInIndex(
-          path,
-          mergedFileMode,
-          mergedBlobId
-        )
-      yield IndexState.OneEntry
-      end for
-    end indexStateForCleanMerge
 
     private def recordModificationInIndex(
         path: Path,
