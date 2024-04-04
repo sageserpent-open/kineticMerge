@@ -680,7 +680,7 @@ trait ProseExamples:
       |  val assert: Expecty = new Expecty:
       |    override val showLocation: Boolean = true
       |    override val showTypes: Boolean    = /* TODO - remove this comment, it's here to force propagation of the edit on the right. */ true
-      |  end assert
+      |  end assert /* TODO - remove this comment, it's here to force an all-sides match. */
       |end ExpectyFlavouredAssert
       |""".stripMargin
 
@@ -697,7 +697,7 @@ trait ProseExamples:
       |    override val showTypes: Boolean    = /* TODO - remove this comment, it's here to force propagation of the edit on the right. */ true
       |    override val showLocation: Boolean = true
       |
-      |  end assert
+      |  end assert /* TODO - remove this comment, it's here to force an all-sides match. */
       |end ExpectyFlavouredAssert
       |""".stripMargin
 
@@ -711,7 +711,7 @@ trait ProseExamples:
       |  val assert: Expecty = new Expecty:
       |    override val showLocation: Boolean = true
       |    override val showTypes: Boolean    = false // This edit should propagate.
-      |  end assert
+      |  end assert /* TODO - remove this comment, it's here to force an all-sides match. */
       |end ExpectyFlavouredAssert
       |  // Using Kinetic Merge will improve your software engineering practices...
       |""".stripMargin
@@ -728,7 +728,7 @@ trait ProseExamples:
       |    override val showTypes: Boolean    = false // This edit should propagate.
       |    override val showLocation: Boolean = true
       |
-      |  end assert
+      |  end assert /* TODO - remove this comment, it's here to force an all-sides match. */
       |end ExpectyFlavouredAssert
       | // Using Kinetic Merge will help you improvise in your software engineering experience...
       |""".stripMargin
