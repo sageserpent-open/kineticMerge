@@ -32,7 +32,7 @@ object MainTest extends ProseExamples:
   private val excisedCasesLimitStrategies =
     RelPath("pathPrefix1") / "CasesLimitStrategies.java"
   private val expectyFlavouredAssert =
-    RelPath("pathPrefix1") / "pathPrefix2" / "ExpectyFlavouredAssert.java"
+    RelPath("pathPrefix1") / "pathPrefix2" / "ExpectyFlavouredAssert.scala"
 
   private val arthurFirstVariation  = "chap"
   private val arthurSecondVariation = "boy"
