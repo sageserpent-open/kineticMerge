@@ -593,39 +593,6 @@ object Main extends StrictLogging:
         s"Unexpected error - can't parse changes reported by Git ${underline(line)}."
       ).flatMap { case (path, changed) => changed.map(path -> _) }
 
-    private def blobAndContentFor(
-        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
-    )(
-        path: Path
-    ): Workflow[
-      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
-    ] =
-      IO {
-        val line = os
-          .proc("git", "ls-tree", commitIdOrBranchName, path)
-          .call(workingDirectory)
-          .out
-          .text()
-
-        line.split(whitespaceRun) match
-          case Array(mode, _, blobId, _) =>
-            val content = os
-              .proc("git", "cat-file", "blob", blobId)
-              .call(workingDirectory)
-              .out
-              .text()
-
-            (
-              mode.taggedWith[Tags.Mode],
-              blobId.taggedWith[Tags.BlobId],
-              content.taggedWith[Tags.Content]
-            )
-        end match
-      }.labelExceptionWith(errorMessage =
-        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
-      )
-    end blobAndContentFor
-
     def mergeInputsOf(
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
         ourBranchHead: String @@ Tags.CommitOrBranchName,
@@ -833,6 +800,39 @@ object Main extends StrictLogging:
         }
     end mergeInputsOf
 
+    private def blobAndContentFor(
+        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
+    )(
+        path: Path
+    ): Workflow[
+      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
+    ] =
+      IO {
+        val line = os
+          .proc("git", "ls-tree", commitIdOrBranchName, path)
+          .call(workingDirectory)
+          .out
+          .text()
+
+        line.split(whitespaceRun) match
+          case Array(mode, _, blobId, _) =>
+            val content = os
+              .proc("git", "cat-file", "blob", blobId)
+              .call(workingDirectory)
+              .out
+              .text()
+
+            (
+              mode.taggedWith[Tags.Mode],
+              blobId.taggedWith[Tags.BlobId],
+              content.taggedWith[Tags.Content]
+            )
+        end match
+      }.labelExceptionWith(errorMessage =
+        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
+      )
+    end blobAndContentFor
+
     def mergeWithRollback(
         ourBranchHead: String @@ Main.Tags.CommitOrBranchName,
         theirBranchHead: String @@ Main.Tags.CommitOrBranchName,
@@ -1013,15 +1013,15 @@ object Main extends StrictLogging:
                       ourModification,
                       bestAncestorCommitIdContent
                     ) =>
+                  val unchangedContent = tokens(bestAncestorCommitIdContent).get
+
                   right(
                     (
-                      baseContentsByPath + (path -> tokens(
-                        bestAncestorCommitIdContent
-                      ).get),
+                      baseContentsByPath + (path -> unchangedContent),
                       leftContentsByPath + (path -> tokens(
                         ourModification.content
                       ).get),
-                      rightContentsByPath
+                      rightContentsByPath + (path -> unchangedContent)
                     )
                   )
 
@@ -1029,12 +1029,12 @@ object Main extends StrictLogging:
                       theirModification,
                       bestAncestorCommitIdContent
                     ) =>
+                  val unchangedContent = tokens(bestAncestorCommitIdContent).get
+
                   right(
                     (
-                      baseContentsByPath + (path -> tokens(
-                        bestAncestorCommitIdContent
-                      ).get),
-                      leftContentsByPath,
+                      baseContentsByPath + (path -> unchangedContent),
+                      leftContentsByPath + (path -> unchangedContent),
                       rightContentsByPath + (path -> tokens(
                         theirModification.content
                       ).get)
@@ -1064,23 +1064,23 @@ object Main extends StrictLogging:
                   )
 
                 case JustOurDeletion(bestAncestorCommitIdContent) =>
+                  val unchangedContent = tokens(bestAncestorCommitIdContent).get
+
                   right(
                     (
-                      baseContentsByPath + (path -> tokens(
-                        bestAncestorCommitIdContent
-                      ).get),
+                      baseContentsByPath + (path -> unchangedContent),
                       leftContentsByPath,
-                      rightContentsByPath
+                      rightContentsByPath + (path -> unchangedContent)
                     )
                   )
 
                 case JustTheirDeletion(bestAncestorCommitIdContent) =>
+                  val unchangedContent = tokens(bestAncestorCommitIdContent).get
+
                   right(
                     (
-                      baseContentsByPath + (path -> tokens(
-                        bestAncestorCommitIdContent
-                      ).get),
-                      leftContentsByPath,
+                      baseContentsByPath + (path -> unchangedContent),
+                      leftContentsByPath + (path -> unchangedContent),
                       rightContentsByPath
                     )
                   )
