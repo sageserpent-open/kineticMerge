@@ -165,14 +165,25 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               )
             )
           case MergedWithConflicts(leftElements, rightElements) =>
-            MergedWithConflicts(
-              leftElements = leftElements.flatMap(
-                elementsOf
-              ),
-              rightElements = rightElements.flatMap(
-                elementsOf
-              )
+            val leftElementsWithPropagatedChanges = leftElements.flatMap(
+              elementsOf
             )
+            val rightElementsWithPropagatedChanges = rightElements.flatMap(
+              elementsOf
+            )
+
+            // Just in case the conflict is resolved by the propagated
+            // changes...
+            if leftElementsWithPropagatedChanges.corresponds(
+                rightElementsWithPropagatedChanges
+              )(equality.eqv)
+            then FullyMerged(leftElementsWithPropagatedChanges)
+            else
+              MergedWithConflicts(
+                leftElementsWithPropagatedChanges,
+                rightElementsWithPropagatedChanges
+              )
+            end if
         )
       end applyPropagatedChanges
 
