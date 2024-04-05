@@ -134,6 +134,19 @@ object MainTest extends ProseExamples:
     )
   end arthurCorrectsHimself
 
+  private def arthurClearsHisThroat(path: Path): Unit =
+    os.write.append(
+      path / arthur,
+      "\n"
+    )
+    println(
+      os.proc("git", "commit", "-am", "'Arthur elaborates.'")
+        .call(path)
+        .out
+        .text()
+    )
+  end arthurClearsHisThroat
+
   private def exeuntArthur(path: Path): Unit =
     println(os.proc("git", "rm", arthur).call(path).out.text())
     println(
@@ -158,16 +171,6 @@ object MainTest extends ProseExamples:
       os.proc("git", "commit", "-m", "'Tyson responds.'").call(path).out.text()
     )
   end enterTysonStageLeft
-
-  private def enterTysonStageRight(path: Path): Unit =
-    // Inject a tab into Tyson's response - this makes it different, but allows
-    // a clean merge of a benign twin.
-    os.write(path / tyson, s"$tysonResponse\t\n", createFolders = true)
-    println(os.proc("git", "add", tyson).call(path).out.text())
-    println(
-      os.proc("git", "commit", "-m", "'Tyson responds.'").call(path).out.text()
-    )
-  end enterTysonStageRight
 
   private def evilTysonMakesDramaticEntranceExulting(path: Path): Unit =
     os.write(path / tyson, s"$evilTysonExultation\n", createFolders = true)
@@ -852,7 +855,7 @@ class MainTest:
   @TestFactory
   def cleanMergeOfAFileAddedInBothBranches(): DynamicTests =
     (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
-      .withLimit(4)
+      .withLimit(10)
       .dynamicTests { case (optionalSubdirectory, flipBranches, noCommit) =>
         gitRepository()
           .use(path =>
@@ -860,23 +863,25 @@ class MainTest:
               optionalSubdirectory
                 .foreach(subdirectory => os.makeDir(path / subdirectory))
 
-              introducingArthur(path)
-
               sandraStopsByBriefly(path)
 
               val benignTwinBranch = "benignTwin"
 
               makeNewBranch(path)(benignTwinBranch)
 
-              enterTysonStageRight(path)
+              introducingArthur(path)
+
+              arthurContinues(path)
 
               val commitOfBenignTwinBranch = currentCommit(path)
 
               checkoutBranch(path)(masterBranch)
 
+              introducingArthur(path)
+
               sandraHeadsOffHome(path)
 
-              enterTysonStageLeft(path)
+              arthurClearsHisThroat(path)
 
               val commitOfMasterBranch = currentCommit(path).strip
 
