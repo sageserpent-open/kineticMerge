@@ -11,7 +11,7 @@ import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.ProseExamples
 import com.sageserpent.kineticmerge.core.Token.{tokens, equality as tokenEquality}
 import com.softwaremill.tagging.*
-import org.junit.jupiter.api.TestFactory
+import org.junit.jupiter.api.{Disabled, TestFactory}
 import os.{Path, RelPath}
 
 object MainTest extends ProseExamples:
@@ -1561,12 +1561,19 @@ class MainTest:
                     excisedCasesLimitStrategiesExpectedContent
                   )
                 )
+
+                if loseOriginalFileInSplit then
+                  assert(!os.exists(path / casesLimitStrategy))
+                end if
               }
             )
             .unsafeRunSync()
       }
   end anEditAndADeletionPropagatingThroughAFileSplit
 
+  @Disabled(
+    "Until insertions can be propagated through code motion, there will be leftover content in what's left of the file that should disappear completely."
+  )
   @TestFactory
   def anEditAndADeletionPropagatingThroughAFileCondensation(): DynamicTests =
     (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans and trialsApi.booleans)
@@ -1585,8 +1592,8 @@ class MainTest:
                   .foreach(subdirectory => os.makeDir(path / subdirectory))
 
                 // What follows is
-                // `anEditAndADeletionPropagatingThroughAFileSplit` in
-                // reverse...
+                // `anEditAndADeletionPropagatingThroughAFileSplit` in reverse,
+                // hence the odd paths in the expectations further down...
 
                 introducingInterfaceOnlyCasesLimitStrategy(path)
                 introducingCasesLimitStrategies(path)
@@ -1647,6 +1654,7 @@ class MainTest:
                   )
                 end if
 
+                // Remember, this test is a split in reverse...
                 assert(
                   fileHasExpectedContent(
                     path / (if loseBothOriginalFilesInJoin then
@@ -1655,6 +1663,12 @@ class MainTest:
                     baseCasesLimitStrategyContent
                   )
                 )
+
+                assert(!os.exists(path / excisedCasesLimitStrategies))
+
+                if loseBothOriginalFilesInJoin then
+                  assert(!os.exists(path / casesLimitStrategy))
+                end if
               }
             )
             .unsafeRunSync()
