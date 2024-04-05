@@ -278,6 +278,66 @@ object MainTest extends ProseExamples:
     )
   end introducingCasesLimitStrategy
 
+  private def introducingInterfaceOnlyCasesLimitStrategy(path: Path): Unit =
+    os.write(
+      path / casesLimitStrategy,
+      justTheInterfaceForCasesLimitStrategyExpectedContent,
+      createFolders = true
+    )
+    println(os.proc("git", "add", casesLimitStrategy).call(path).out.text())
+    println(
+      os.proc("git", "commit", "-m", "'Introducing `CasesLimitStrategy`.'")
+        .call(path)
+        .out
+        .text()
+    )
+  end introducingInterfaceOnlyCasesLimitStrategy
+
+  private def introducingCasesLimitStrategies(path: Path): Unit =
+    os.write(
+      path / excisedCasesLimitStrategies,
+      excisedCasesLimitStrategiesExpectedContent,
+      createFolders = true
+    )
+    println(
+      os.proc("git", "add", excisedCasesLimitStrategies).call(path).out.text()
+    )
+    println(
+      os.proc("git", "commit", "-m", "'Introducing `CasesLimitStrategies`.'")
+        .call(path)
+        .out
+        .text()
+    )
+  end introducingCasesLimitStrategies
+
+  private def editingInterfaceOnlyCasesLimitStrategy(path: Path): Unit =
+    os.write.over(
+      path / casesLimitStrategy,
+      justTheInterfaceForCasesLimitStrategyContent,
+      createFolders = true
+    )
+    println(
+      os.proc("git", "commit", "-am", "'Editing `CasesLimitStrategy`.'")
+        .call(path)
+        .out
+        .text()
+    )
+  end editingInterfaceOnlyCasesLimitStrategy
+
+  private def editingCasesLimitStrategies(path: Path): Unit =
+    os.write.over(
+      path / excisedCasesLimitStrategies,
+      excisedCasesLimitStrategiesContent,
+      createFolders = true
+    )
+    println(
+      os.proc("git", "commit", "-am", "'Editing `CasesLimitStrategies`.'")
+        .call(path)
+        .out
+        .text()
+    )
+  end editingCasesLimitStrategies
+
   private def editingCasesLimitStrategy(path: Path): Unit =
     os.write.over(
       path / casesLimitStrategy,
@@ -317,6 +377,30 @@ object MainTest extends ProseExamples:
         .text()
     )
   end splittingCasesLimitStrategy
+
+  private def condensingCasesLimitStrategy(path: Path): Unit =
+    os.write.over(
+      path / casesLimitStrategy,
+      editedCasesLimitStrategyContent,
+      createFolders = true
+    )
+    os.remove(
+      path / excisedCasesLimitStrategies
+    )
+    println(
+      os.proc("git", "rm", excisedCasesLimitStrategies).call(path).out.text()
+    )
+    println(
+      os.proc(
+        "git",
+        "commit",
+        "-am",
+        "'Condensing `CasesLimitStrategies` in with `CasesLimitStrategy`.'"
+      ).call(path)
+        .out
+        .text()
+    )
+  end condensingCasesLimitStrategy
 
   private def moveCasesLimitStrategy(path: Path): Unit =
     os.move(
@@ -494,19 +578,6 @@ object MainTest extends ProseExamples:
     assert(status.isEmpty)
   end verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit
 
-  private def currentCommit(path: Path) =
-    os.proc("git", "log", "-1", "--format=tformat:%H")
-      .call(path)
-      .out
-      .text()
-      .strip
-
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
-
-  private def mergeHeadPath(path: Path) =
-    path / ".git" / "MERGE_HEAD"
-
   private def verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit(
       path: Path
   )(
@@ -535,11 +606,24 @@ object MainTest extends ProseExamples:
     assert(currentStatus(path).nonEmpty)
   end verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit
 
+  private def currentCommit(path: Path) =
+    os.proc("git", "log", "-1", "--format=tformat:%H")
+      .call(path)
+      .out
+      .text()
+      .strip
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+
   private def currentStatus(path: Path) =
     os.proc(s"git", "status", "--short").call(path).out.text().strip
 
   private def mergeHead(path: Path) =
     os.read(mergeHeadPath(path)).strip()
+
+  private def mergeHeadPath(path: Path) =
+    path / ".git" / "MERGE_HEAD"
 
   private def verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
       path: Path
@@ -1482,6 +1566,100 @@ class MainTest:
             .unsafeRunSync()
       }
   end anEditAndADeletionPropagatingThroughAFileSplit
+
+  @TestFactory
+  def anEditAndADeletionPropagatingThroughAFileCondensation(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans and trialsApi.booleans)
+      .withLimit(20)
+      .dynamicTests {
+        case (
+              optionalSubdirectory,
+              flipBranches,
+              noCommit,
+              loseBothOriginalFilesInJoin
+            ) =>
+          gitRepository()
+            .use(path =>
+              IO {
+                optionalSubdirectory
+                  .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+                // What follows is
+                // `anEditAndADeletionPropagatingThroughAFileSplit` in
+                // reverse...
+
+                introducingInterfaceOnlyCasesLimitStrategy(path)
+                introducingCasesLimitStrategies(path)
+
+                val condensedFilesBranch = "condensedFilesBranch"
+
+                makeNewBranch(path)(condensedFilesBranch)
+
+                condensingCasesLimitStrategy(path)
+
+                if loseBothOriginalFilesInJoin then moveCasesLimitStrategy(path)
+                end if
+
+                val commitOfCondensedFilesBranch = currentCommit(path)
+
+                checkoutBranch(path)(masterBranch)
+
+                editingInterfaceOnlyCasesLimitStrategy(path)
+                editingCasesLimitStrategies(path)
+
+                val commitOfMasterBranch = currentCommit(path)
+
+                if flipBranches then checkoutBranch(path)(condensedFilesBranch)
+                end if
+
+                val (ourBranch, theirBranch) =
+                  if flipBranches then condensedFilesBranch -> masterBranch
+                  else masterBranch -> condensedFilesBranch
+
+                val exitCode = Main.mergeTheirBranch(
+                  ApplicationRequest(
+                    theirBranchHead =
+                      theirBranch.taggedWith[Tags.CommitOrBranchName],
+                    noCommit = noCommit,
+                    minimumMatchSize =
+                      5 // TODO: go back to using the default when https://github.com/sageserpent-open/kineticMerge/issues/31 is delivered.
+                  )
+                )(workingDirectory =
+                  optionalSubdirectory.fold(ifEmpty = path)(path / _)
+                )
+
+                if noCommit then
+                  verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                    path
+                  )(
+                    flipBranches,
+                    commitOfCondensedFilesBranch,
+                    commitOfMasterBranch,
+                    ourBranch,
+                    exitCode
+                  )
+                else
+                  verifyMergeMakesANewCommitWithACleanIndex(path)(
+                    commitOfCondensedFilesBranch,
+                    commitOfMasterBranch,
+                    ourBranch,
+                    exitCode
+                  )
+                end if
+
+                assert(
+                  fileHasExpectedContent(
+                    path / (if loseBothOriginalFilesInJoin then
+                              movedCasesLimitStrategy
+                            else casesLimitStrategy),
+                    baseCasesLimitStrategyContent
+                  )
+                )
+              }
+            )
+            .unsafeRunSync()
+      }
+  end anEditAndADeletionPropagatingThroughAFileCondensation
 
   @TestFactory
   def twoFilesSwappingAroundWithModificationOfOne(): DynamicTests =
