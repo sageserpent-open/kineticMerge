@@ -159,6 +159,16 @@ object MainTest extends ProseExamples:
     )
   end enterTysonStageLeft
 
+  private def enterTysonStageRight(path: Path): Unit =
+    // Inject a tab into Tyson's response - this makes it different, but allows
+    // a clean merge of a benign twin.
+    os.write(path / tyson, s"$tysonResponse\t\n", createFolders = true)
+    println(os.proc("git", "add", tyson).call(path).out.text())
+    println(
+      os.proc("git", "commit", "-m", "'Tyson responds.'").call(path).out.text()
+    )
+  end enterTysonStageRight
+
   private def evilTysonMakesDramaticEntranceExulting(path: Path): Unit =
     os.write(path / tyson, s"$evilTysonExultation\n", createFolders = true)
     println(os.proc("git", "add", tyson).call(path).out.text())
@@ -397,13 +407,6 @@ object MainTest extends ProseExamples:
     assert(currentStatus(path).isEmpty)
   end verifyTrivialMergeMovesToTheMostAdvancedCommitWithACleanIndex
 
-  private def currentCommit(path: Path) =
-    os.proc("git", "log", "-1", "--format=tformat:%H")
-      .call(path)
-      .out
-      .text()
-      .strip
-
   private def verifyMergeMakesANewCommitWithACleanIndex(path: Path)(
       commitOfOneBranch: String,
       commitOfTheOtherBranch: String,
@@ -461,12 +464,6 @@ object MainTest extends ProseExamples:
       case Array(postMergeCommit, parents*) => postMergeCommit -> parents
     : @unchecked
 
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
-
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
-
   private def verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit(
       path: Path
   )(
@@ -493,9 +490,6 @@ object MainTest extends ProseExamples:
 
     assert(status.isEmpty)
   end verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit
-
-  private def mergeHeadPath(path: Path) =
-    path / ".git" / "MERGE_HEAD"
 
   private def verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit(
       path: Path
@@ -525,8 +519,24 @@ object MainTest extends ProseExamples:
     assert(currentStatus(path).nonEmpty)
   end verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit
 
+  private def currentCommit(path: Path) =
+    os.proc("git", "log", "-1", "--format=tformat:%H")
+      .call(path)
+      .out
+      .text()
+      .strip
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
   private def mergeHead(path: Path) =
     os.read(mergeHeadPath(path)).strip()
+
+  private def mergeHeadPath(path: Path) =
+    path / ".git" / "MERGE_HEAD"
 
   private def verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
       path: Path
@@ -838,6 +848,78 @@ class MainTest:
           .unsafeRunSync()
       }
   end cleanMergeDeletingAFile
+
+  @TestFactory
+  def cleanMergeOfAFileAddedInBothBranches(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
+      .withLimit(4)
+      .dynamicTests { case (optionalSubdirectory, flipBranches, noCommit) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingArthur(path)
+
+              sandraStopsByBriefly(path)
+
+              val benignTwinBranch = "benignTwin"
+
+              makeNewBranch(path)(benignTwinBranch)
+
+              enterTysonStageRight(path)
+
+              val commitOfBenignTwinBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              sandraHeadsOffHome(path)
+
+              enterTysonStageLeft(path)
+
+              val commitOfMasterBranch = currentCommit(path).strip
+
+              if flipBranches then checkoutBranch(path)(benignTwinBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then benignTwinBranch -> masterBranch
+                else masterBranch                     -> benignTwinBranch
+
+              val exitCode = Main.mergeTheirBranch(
+                ApplicationRequest(
+                  theirBranchHead =
+                    theirBranch.taggedWith[Tags.CommitOrBranchName],
+                  noCommit = noCommit
+                )
+              )(workingDirectory =
+                optionalSubdirectory.fold(ifEmpty = path)(path / _)
+              )
+
+              if noCommit then
+                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                  path
+                )(
+                  flipBranches,
+                  commitOfBenignTwinBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              else
+                verifyMergeMakesANewCommitWithACleanIndex(path)(
+                  commitOfBenignTwinBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              end if
+            }
+          )
+          .unsafeRunSync()
+      }
+  end cleanMergeOfAFileAddedInBothBranches
 
   @TestFactory
   def conflictingAdditionOfTheSameFile(): DynamicTests =
