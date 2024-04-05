@@ -494,6 +494,19 @@ object MainTest extends ProseExamples:
     assert(status.isEmpty)
   end verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit
 
+  private def currentCommit(path: Path) =
+    os.proc("git", "log", "-1", "--format=tformat:%H")
+      .call(path)
+      .out
+      .text()
+      .strip
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+
+  private def mergeHeadPath(path: Path) =
+    path / ".git" / "MERGE_HEAD"
+
   private def verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit(
       path: Path
   )(
@@ -522,24 +535,11 @@ object MainTest extends ProseExamples:
     assert(currentStatus(path).nonEmpty)
   end verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit
 
-  private def currentCommit(path: Path) =
-    os.proc("git", "log", "-1", "--format=tformat:%H")
-      .call(path)
-      .out
-      .text()
-      .strip
-
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
-
   private def currentStatus(path: Path) =
     os.proc(s"git", "status", "--short").call(path).out.text().strip
 
   private def mergeHead(path: Path) =
     os.read(mergeHeadPath(path)).strip()
-
-  private def mergeHeadPath(path: Path) =
-    path / ".git" / "MERGE_HEAD"
 
   private def verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
       path: Path
@@ -1391,84 +1391,95 @@ class MainTest:
 
   @TestFactory
   def anEditAndADeletionPropagatingThroughAFileSplit(): DynamicTests =
-    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
-      .withLimit(10)
-      .dynamicTests { case (optionalSubdirectory, flipBranches, noCommit) =>
-        gitRepository()
-          .use(path =>
-            IO {
-              optionalSubdirectory
-                .foreach(subdirectory => os.makeDir(path / subdirectory))
+    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans and trialsApi.booleans)
+      .withLimit(20)
+      .dynamicTests {
+        case (
+              optionalSubdirectory,
+              flipBranches,
+              noCommit,
+              loseOriginalFileInSplit
+            ) =>
+          gitRepository()
+            .use(path =>
+              IO {
+                optionalSubdirectory
+                  .foreach(subdirectory => os.makeDir(path / subdirectory))
 
-              introducingCasesLimitStrategy(path)
+                introducingCasesLimitStrategy(path)
 
-              val splitFileBranch = "splitFileBranch"
+                val splitFileBranch = "splitFileBranch"
 
-              makeNewBranch(path)(splitFileBranch)
+                makeNewBranch(path)(splitFileBranch)
 
-              splittingCasesLimitStrategy(path)
+                splittingCasesLimitStrategy(path)
 
-              val commitOfSplitFileBranch = currentCommit(path)
+                if loseOriginalFileInSplit then moveCasesLimitStrategy(path)
+                end if
 
-              checkoutBranch(path)(masterBranch)
+                val commitOfSplitFileBranch = currentCommit(path)
 
-              editingCasesLimitStrategy(path)
+                checkoutBranch(path)(masterBranch)
 
-              val commitOfMasterBranch = currentCommit(path)
+                editingCasesLimitStrategy(path)
 
-              if flipBranches then checkoutBranch(path)(splitFileBranch)
-              end if
+                val commitOfMasterBranch = currentCommit(path)
 
-              val (ourBranch, theirBranch) =
-                if flipBranches then splitFileBranch -> masterBranch
-                else masterBranch                    -> splitFileBranch
+                if flipBranches then checkoutBranch(path)(splitFileBranch)
+                end if
 
-              val exitCode = Main.mergeTheirBranch(
-                ApplicationRequest(
-                  theirBranchHead =
-                    theirBranch.taggedWith[Tags.CommitOrBranchName],
-                  noCommit = noCommit,
-                  minimumMatchSize =
-                    5 // TODO: go back to using the default when https://github.com/sageserpent-open/kineticMerge/issues/31 is delivered.
+                val (ourBranch, theirBranch) =
+                  if flipBranches then splitFileBranch -> masterBranch
+                  else masterBranch                    -> splitFileBranch
+
+                val exitCode = Main.mergeTheirBranch(
+                  ApplicationRequest(
+                    theirBranchHead =
+                      theirBranch.taggedWith[Tags.CommitOrBranchName],
+                    noCommit = noCommit,
+                    minimumMatchSize =
+                      5 // TODO: go back to using the default when https://github.com/sageserpent-open/kineticMerge/issues/31 is delivered.
+                  )
+                )(workingDirectory =
+                  optionalSubdirectory.fold(ifEmpty = path)(path / _)
                 )
-              )(workingDirectory =
-                optionalSubdirectory.fold(ifEmpty = path)(path / _)
-              )
 
-              if noCommit then
-                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
-                  path
-                )(
-                  flipBranches,
-                  commitOfSplitFileBranch,
-                  commitOfMasterBranch,
-                  ourBranch,
-                  exitCode
-                )
-              else
-                verifyMergeMakesANewCommitWithACleanIndex(path)(
-                  commitOfSplitFileBranch,
-                  commitOfMasterBranch,
-                  ourBranch,
-                  exitCode
-                )
-              end if
+                if noCommit then
+                  verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                    path
+                  )(
+                    flipBranches,
+                    commitOfSplitFileBranch,
+                    commitOfMasterBranch,
+                    ourBranch,
+                    exitCode
+                  )
+                else
+                  verifyMergeMakesANewCommitWithACleanIndex(path)(
+                    commitOfSplitFileBranch,
+                    commitOfMasterBranch,
+                    ourBranch,
+                    exitCode
+                  )
+                end if
 
-              assert(
-                fileHasExpectedContent(
-                  path / casesLimitStrategy,
-                  justTheInterfaceForCasesLimitStrategyExpectedContent
+                assert(
+                  fileHasExpectedContent(
+                    path / (if loseOriginalFileInSplit then
+                              movedCasesLimitStrategy
+                            else casesLimitStrategy),
+                    justTheInterfaceForCasesLimitStrategyExpectedContent
+                  )
                 )
-              )
-              assert(
-                fileHasExpectedContent(
-                  path / excisedCasesLimitStrategies,
-                  excisedCasesLimitStrategiesExpectedContent
+                assert(
+                  fileHasExpectedContent(
+                    path / excisedCasesLimitStrategies,
+                    excisedCasesLimitStrategiesExpectedContent
+                  )
                 )
-              )
-            }
-          )
-          .unsafeRunSync()
+              }
+            )
+            .unsafeRunSync()
       }
   end anEditAndADeletionPropagatingThroughAFileSplit
 
