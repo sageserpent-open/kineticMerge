@@ -52,65 +52,94 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
       val (
         mergeResultsByPath,
-        changesPropagatedThroughMotion
+        changesPropagatedThroughMotion,
+        excludedFromChangePropagation
       ) =
         paths.foldLeft(
           Map.empty[Path, MergeResult[Section[Element]]],
           Map.empty[Section[Element], Option[
             Section[Element]
-          ]]
-        ) { case ((mergeResultsByPath, changesPropagatedThroughMotion), path) =>
-          val base  = codeMotionAnalysis.base.get(path).map(_.sections)
-          val left  = codeMotionAnalysis.left.get(path).map(_.sections)
-          val right = codeMotionAnalysis.right.get(path).map(_.sections)
+          ]],
+          Set.empty[Section[Element]]
+        ) {
+          case (
+                (
+                  mergeResultsByPath,
+                  changesPropagatedThroughMotion,
+                  excludedFromChangePropagation
+                ),
+                path
+              ) =>
+            val base  = codeMotionAnalysis.base.get(path).map(_.sections)
+            val left  = codeMotionAnalysis.left.get(path).map(_.sections)
+            val right = codeMotionAnalysis.right.get(path).map(_.sections)
 
-          (base, left, right) match
-            case (None, Some(leftSections), None) =>
-              // File added only on the left; pass through as there is neither
-              // anything to merge nor any sources of edits or deletions...
-              (mergeResultsByPath + (path -> FullyMerged(
-                leftSections
-              ))) -> changesPropagatedThroughMotion
-            case (None, None, Some(rightSections)) =>
-              // File added only on the right; pass through as there is neither
-              // anything to merge nor any sources of edits or deletions...
-              (mergeResultsByPath + (path -> FullyMerged(
-                rightSections
-              ))) -> changesPropagatedThroughMotion
-            case (
-                  optionalBaseSections,
-                  optionalLeftSections,
-                  optionalRightSections
-                ) =>
-              // Mix of possibilities - the file may have been added on both
-              // sides, or modified on either or both sides, or deleted on one
-              // side and modified on the other, or deleted on one or both
-              // sides. There is also an extraneous case where there is no file
-              // on any of the sides, and another extraneous case where the file
-              // is on all three sides but hasn't changed.
-
-              // Whichever is the case, merge...
-              val mergedSectionsResult
-                  : MergeResultDetectingMotion[MergeResult, Section[Element]] =
-                mergeOf(mergeAlgebra =
-                  MergeResultDetectingMotion.mergeAlgebra(
-                    matchesFor = codeMotionAnalysis.matchesFor,
-                    coreMergeAlgebra = MergeResult.mergeAlgebra
-                  )
-                )(
-                  base = optionalBaseSections.getOrElse(IndexedSeq.empty),
-                  left = optionalLeftSections.getOrElse(IndexedSeq.empty),
-                  right = optionalRightSections.getOrElse(IndexedSeq.empty)
-                )(
-                  equality =
-                    sectionEqualityViaDominantsFallingBackToContentComparison,
-                  elementSize = _.size
+            (base, left, right) match
+              case (None, Some(leftSections), None) =>
+                // File added only on the left; pass through as there is neither
+                // anything to merge nor any sources of edits or deletions...
+                (
+                  mergeResultsByPath + (path -> FullyMerged(
+                    leftSections
+                  )),
+                  changesPropagatedThroughMotion,
+                  excludedFromChangePropagation
                 )
+              case (None, None, Some(rightSections)) =>
+                // File added only on the right; pass through as there is
+                // neither
+                // anything to merge nor any sources of edits or deletions...
+                (
+                  mergeResultsByPath + (path -> FullyMerged(
+                    rightSections
+                  )),
+                  changesPropagatedThroughMotion,
+                  excludedFromChangePropagation
+                )
+              case (
+                    optionalBaseSections,
+                    optionalLeftSections,
+                    optionalRightSections
+                  ) =>
+                // Mix of possibilities - the file may have been added on both
+                // sides, or modified on either or both sides, or deleted on one
+                // side and modified on the other, or deleted on one or both
+                // sides. There is also an extraneous case where there is no
+                // file
+                // on any of the sides, and another extraneous case where the
+                // file
+                // is on all three sides but hasn't changed.
 
-              (mergeResultsByPath + (path -> mergedSectionsResult.coreMergeResult)) ->
-                (changesPropagatedThroughMotion ++ mergedSectionsResult.changesPropagatedThroughMotion)
-          end match
+                // Whichever is the case, merge...
+                val mergedSectionsResult
+                    : MergeResultDetectingMotion[MergeResult, Section[
+                      Element
+                    ]] =
+                  mergeOf(mergeAlgebra =
+                    MergeResultDetectingMotion.mergeAlgebra(
+                      matchesFor = codeMotionAnalysis.matchesFor,
+                      coreMergeAlgebra = MergeResult.mergeAlgebra
+                    )
+                  )(
+                    base = optionalBaseSections.getOrElse(IndexedSeq.empty),
+                    left = optionalLeftSections.getOrElse(IndexedSeq.empty),
+                    right = optionalRightSections.getOrElse(IndexedSeq.empty)
+                  )(
+                    equality =
+                      sectionEqualityViaDominantsFallingBackToContentComparison,
+                    elementSize = _.size
+                  )
+
+                (
+                  mergeResultsByPath + (path -> mergedSectionsResult.coreMergeResult),
+                  changesPropagatedThroughMotion ++ mergedSectionsResult.changesPropagatedThroughMotion,
+                  excludedFromChangePropagation union mergedSectionsResult.excludedFromChangePropagation
+                )
+            end match
         }
+
+      val vettedChangesPropagatedThroughMotion =
+        changesPropagatedThroughMotion.removedAll(excludedFromChangePropagation)
 
       def applyPropagatedChanges(
           path: Path,
@@ -118,7 +147,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       ): (Path, MergeResult[Element]) =
         def elementsOf(section: Section[Element]): IndexedSeq[Element] =
           val propagatedChange: Option[Option[Section[Element]]] =
-            changesPropagatedThroughMotion.get(section)
+            vettedChangesPropagatedThroughMotion.get(section)
 
           // If we do have a propagated change, then there is no need to look
           // for the dominant - either the section was deleted or edited;

@@ -20,7 +20,8 @@ object MergeResultDetectingMotion extends StrictLogging:
       override def empty: ConfiguredMergeResultDetectingMotion[Element] =
         MergeResultDetectingMotion(
           coreMergeResult = coreMergeAlgebra.empty,
-          changesPropagatedThroughMotion = Map.empty
+          changesPropagatedThroughMotion = Map.empty,
+          excludedFromChangePropagation = Set.empty
         )
 
       override def preservation(
@@ -29,6 +30,8 @@ object MergeResultDetectingMotion extends StrictLogging:
       ): ConfiguredMergeResultDetectingMotion[Element] = result
         .focus(_.coreMergeResult)
         .modify(coreMergeAlgebra.preservation(_, preservedElement))
+        .focus(_.excludedFromChangePropagation)
+        .modify(_ + preservedElement)
 
       override def leftInsertion(
           result: ConfiguredMergeResultDetectingMotion[Element],
@@ -383,6 +386,7 @@ case class MergeResultDetectingMotion[CoreResult[_], Element](
     coreMergeResult: CoreResult[Element],
     // Use `Option[Element]` to model the difference between an edit and an
     // outright deletion.
-    changesPropagatedThroughMotion: Map[Element, Option[Element]]
+    changesPropagatedThroughMotion: Map[Element, Option[Element]],
+    excludedFromChangePropagation: Set[Element]
 ):
 end MergeResultDetectingMotion
