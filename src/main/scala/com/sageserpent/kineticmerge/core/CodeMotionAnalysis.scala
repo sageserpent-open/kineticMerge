@@ -936,9 +936,7 @@ object CodeMotionAnalysis extends StrictLogging:
         val sectionsSeenOnAllPathsAcrossAllSides =
           baseSectionsByPath.values ++ leftSectionsByPath.values ++ rightSectionsByPath.values
 
-        sectionsSeenOnAllPathsAcrossAllSides
-          .map(maximumSizeOfCoalescedSections)
-          .flatten
+        sectionsSeenOnAllPathsAcrossAllSides.flatMap(maximumSizeOfCoalescedSections)
           .maxOption
       end estimateOptimalMatchSize
 
