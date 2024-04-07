@@ -1200,7 +1200,10 @@ object merge extends StrictLogging:
               Seq(Contribution.Difference(deletedBaseElement), baseTail*),
               Seq(Contribution.Difference(_), _*),
               Seq(Contribution.CommonToBaseAndRightOnly(_), _*)
-            ) if leftEditNotMaroonedByPriorRightDeletion(baseTail) => // Coincident deletion with pending left edit.
+            )
+            if leftEditNotMaroonedByPriorRightDeletion(
+              baseTail
+            ) => // Coincident deletion with pending left edit.
           logger.debug(
             s"Coincident deletion of $deletedBaseElement with following left edit."
           )
@@ -1218,7 +1221,10 @@ object merge extends StrictLogging:
               Seq(Contribution.Difference(deletedBaseElement), baseTail*),
               Seq(Contribution.CommonToBaseAndLeftOnly(_), _*),
               Seq(Contribution.Difference(_), _*)
-            ) if rightEditNotMaroonedByPriorLeftDeletion(baseTail) => // Coincident deletion with pending right edit.
+            )
+            if rightEditNotMaroonedByPriorLeftDeletion(
+              baseTail
+            ) => // Coincident deletion with pending right edit.
           logger.debug(
             s"Coincident deletion of $deletedBaseElement with following right edit."
           )
@@ -1375,7 +1381,7 @@ object merge extends StrictLogging:
 
         // SYMMETRIC...
         case (NoCoalescence, Seq(), Seq(), Seq()) => // Terminating case!
-          logger.debug(s"Merge yielded:\n${pprint(partialResult)}")
+          logger.debug(s"Merge yielded:\n${pprintCustomised(partialResult)}")
           partialResult
       end match
     end mergeBetweenRunsOfCommonElements

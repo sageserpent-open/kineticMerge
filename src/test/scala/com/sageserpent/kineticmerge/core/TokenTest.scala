@@ -5,7 +5,7 @@ import com.sageserpent.kineticmerge.core.Token.{Significant, tokens}
 import com.sageserpent.kineticmerge.core.TokenTest.{checkTokenization, scalaStuff, stringLiteral}
 import org.apache.commons.text.StringEscapeUtils
 import org.junit.jupiter.api.Test
-import pprint.pprintln
+import pprintCustomised.pprintln
 
 object TokenTest:
   val scalaStuff =

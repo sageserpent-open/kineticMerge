@@ -10,7 +10,7 @@ import com.sageserpent.kineticmerge.core.MergeTest.DelegatingMergeAlgebraWithCon
 import com.sageserpent.kineticmerge.core.MergeTest.Move.*
 import monocle.syntax.all.*
 import org.junit.jupiter.api.{Assertions, Test, TestFactory}
-import pprint.*
+import pprintCustomised.*
 
 class MergeTest:
   private val fullyMergedTestCases: Trials[MergeTestCase] =

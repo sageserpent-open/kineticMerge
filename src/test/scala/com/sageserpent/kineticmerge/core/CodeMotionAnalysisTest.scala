@@ -74,7 +74,7 @@ class CodeMotionAnalysisTest:
             right: FakeSources,
             minimumSizeFraction: Double
         ) =>
-          pprint.pprintln((base, left, right, minimumSizeFraction))
+          pprintCustomised.pprintln((base, left, right, minimumSizeFraction))
 
           try
             val Right(
@@ -98,7 +98,7 @@ class CodeMotionAnalysisTest:
             analysis.right matches right
           catch
             case overlappingSections: FakeSources#OverlappingSections =>
-              pprint.pprintln(overlappingSections)
+              pprintCustomised.pprintln(overlappingSections)
               Trials.reject()
           end try
       )
@@ -435,13 +435,13 @@ class CodeMotionAnalysisTest:
           s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
         )
         println("Sizes of common to all three sides...")
-        pprint.pprintln(commonToAllThreeSides.map(_.size))
+        pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
         println("Sizes of common to base and left...")
-        pprint.pprintln(commonToBaseAndLeft.map(_.size))
+        pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
         println("Sizes of common to base and right...")
-        pprint.pprintln(commonToBaseAndRight.map(_.size))
+        pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
         println("Sizes of common to left and right...")
-        pprint.pprintln(commonToLeftAndRight.map(_.size))
+        pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
 
         try
           val Right(
@@ -668,7 +668,7 @@ class CodeMotionAnalysisTest:
 
         catch
           case overlappingSections: FakeSources#OverlappingSections =>
-            pprint.pprintln(overlappingSections)
+            pprintCustomised.pprintln(overlappingSections)
             Trials.reject()
         end try
       }
