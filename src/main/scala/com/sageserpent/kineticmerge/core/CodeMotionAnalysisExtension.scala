@@ -4,6 +4,8 @@ import cats.Eq
 import com.sageserpent.kineticmerge.core.merge.of as mergeOf
 import com.typesafe.scalalogging.StrictLogging
 
+import scala.collection.immutable.MultiDict
+
 object CodeMotionAnalysisExtension extends StrictLogging:
   /** Add merging capability to a [[CodeMotionAnalysis]].
     *
@@ -57,9 +59,14 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       ) =
         paths.foldLeft(
           Map.empty[Path, MergeResult[Section[Element]]],
-          Map.empty[Section[Element], Option[
-            Section[Element]
-          ]],
+          Iterable.empty[
+            (
+                Section[Element],
+                Option[
+                  Section[Element]
+                ]
+            )
+          ],
           Set.empty[Section[Element]]
         ) {
           case (
@@ -105,10 +112,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 // sides, or modified on either or both sides, or deleted on one
                 // side and modified on the other, or deleted on one or both
                 // sides. There is also an extraneous case where there is no
-                // file
-                // on any of the sides, and another extraneous case where the
-                // file
-                // is on all three sides but hasn't changed.
+                // file on any of the sides, and another extraneous case where
+                // the file is on all three sides but hasn't changed.
 
                 // Whichever is the case, merge...
                 val mergedSectionsResult
@@ -139,15 +144,23 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         }
 
       val vettedChangesPropagatedThroughMotion =
-        changesPropagatedThroughMotion.removedAll(excludedFromChangePropagation)
+        excludedFromChangePropagation.foldLeft(
+          MultiDict.from(changesPropagatedThroughMotion)
+        )(_ removeKey _)
 
       def applyPropagatedChanges(
           path: Path,
           mergeResult: MergeResult[Section[Element]]
       ): (Path, MergeResult[Element]) =
         def elementsOf(section: Section[Element]): IndexedSeq[Element] =
-          val propagatedChange: Option[Option[Section[Element]]] =
+          val propagatedChanges: collection.Set[Option[Section[Element]]] =
             vettedChangesPropagatedThroughMotion.get(section)
+          val propagatedChange: Option[Option[Section[Element]]] =
+            if 1 >= propagatedChanges.size then propagatedChanges.headOption
+            else
+              throw new RuntimeException(
+                s"Multiple potential changes propagated to destination: $section, these are: $propagatedChanges"
+              )
 
           // If we do have a propagated change, then there is no need to look
           // for the dominant - either the section was deleted or edited;

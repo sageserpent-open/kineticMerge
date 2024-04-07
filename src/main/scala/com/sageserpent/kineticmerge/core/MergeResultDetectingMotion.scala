@@ -5,6 +5,8 @@ import com.sageserpent.kineticmerge.core.merge.MergeAlgebra
 import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
 
+import scala.collection.immutable.MultiDict
+
 object MergeResultDetectingMotion extends StrictLogging:
   private type MergeResultDetectingMotionType[CoreResult[_]] =
     [Element] =>> MergeResultDetectingMotion[CoreResult, Element]
@@ -20,7 +22,7 @@ object MergeResultDetectingMotion extends StrictLogging:
       override def empty: ConfiguredMergeResultDetectingMotion[Element] =
         MergeResultDetectingMotion(
           coreMergeResult = coreMergeAlgebra.empty,
-          changesPropagatedThroughMotion = Map.empty,
+          changesPropagatedThroughMotion = MultiDict.empty,
           excludedFromChangePropagation = Set.empty
         )
 
@@ -485,7 +487,7 @@ case class MergeResultDetectingMotion[CoreResult[_], Element](
     coreMergeResult: CoreResult[Element],
     // Use `Option[Element]` to model the difference between an edit and an
     // outright deletion.
-    changesPropagatedThroughMotion: Map[Element, Option[Element]],
+    changesPropagatedThroughMotion: MultiDict[Element, Option[Element]],
     excludedFromChangePropagation: Set[Element]
 ):
 end MergeResultDetectingMotion

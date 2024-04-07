@@ -129,7 +129,8 @@ class MergeResultDetectingMotionTest:
       )
 
       assert(
-        None == mergeResult.changesPropagatedThroughMotion(ourSideMovedElement)
+        Set(None) == mergeResult.changesPropagatedThroughMotion
+          .get(ourSideMovedElement)
       )
     }
   end coincidentDeletionWhereBaseHasMovedAwayOnOurSide
@@ -191,8 +192,9 @@ class MergeResultDetectingMotionTest:
       )
 
       assert(
-        Some(theirSideEditElement) == mergeResult
-          .changesPropagatedThroughMotion(ourSideMovedElement)
+        Set(
+          Some(theirSideEditElement)
+        ) == mergeResult.changesPropagatedThroughMotion.get(ourSideMovedElement)
       )
     }
   end ourDeletionVersusTheirEditConflictWhereBaseHasMovedAwayOnOurSide
@@ -273,8 +275,8 @@ class MergeResultDetectingMotionTest:
       end if
 
       assert(
-        None == mergeResult
-          .changesPropagatedThroughMotion(ourSideMovedElement)
+        Set(None) == mergeResult.changesPropagatedThroughMotion
+          .get(ourSideMovedElement)
       )
     }
   end ourEditVersusTheirDeletionConflictWhereBaseHasMovedAwayOnOurSide
@@ -356,8 +358,9 @@ class MergeResultDetectingMotionTest:
       end if
 
       assert(
-        Some(theirSideEditElement) == mergeResult
-          .changesPropagatedThroughMotion(ourSideMovedElement)
+        Set(
+          Some(theirSideEditElement)
+        ) == mergeResult.changesPropagatedThroughMotion.get(ourSideMovedElement)
       )
     }
   end ourEditVersusTheirEditConflictWhereBaseHasMovedAwayOnOurSide
@@ -414,8 +417,8 @@ class MergeResultDetectingMotionTest:
       )
 
       assert(
-        None == mergeResult
-          .changesPropagatedThroughMotion(ourSideMovedElement)
+        Set(None) == mergeResult.changesPropagatedThroughMotion
+          .get(ourSideMovedElement)
       )
     }
   end coincidentEditWhereBaseHasMovedAwayOnOurSide
@@ -473,7 +476,7 @@ class MergeResultDetectingMotionTest:
 
       assert(
         !mergeResult.changesPropagatedThroughMotion
-          .contains(ourSideMovedElement)
+          .containsKey(ourSideMovedElement)
       )
     }
   end ourSideDeletionWhereBaseHasMovedAwayOnOurSide
@@ -545,7 +548,7 @@ class MergeResultDetectingMotionTest:
 
       assert(
         !mergeResult.changesPropagatedThroughMotion
-          .contains(ourSideMovedElement)
+          .containsKey(ourSideMovedElement)
       )
     }
   end ourSideEditWhereBaseHasMovedAwayOnOurSide
@@ -594,11 +597,12 @@ class MergeResultDetectingMotionTest:
       )
 
       assert(
-        None == mergeResult.changesPropagatedThroughMotion(ourSideMovedElement)
+        Set(None) == mergeResult.changesPropagatedThroughMotion
+          .get(ourSideMovedElement)
       )
       assert(
-        None == mergeResult
-          .changesPropagatedThroughMotion(theirSideMovedElement)
+        Set(None) == mergeResult.changesPropagatedThroughMotion
+          .get(theirSideMovedElement)
       )
     }
   end coincidentDeletionWhereBaseHasMovedAwayOnBothSides
@@ -682,11 +686,13 @@ class MergeResultDetectingMotionTest:
 
       assert(
         !mergeResult.changesPropagatedThroughMotion
-          .contains(ourSideMovedElement)
+          .containsKey(ourSideMovedElement)
       )
       assert(
-        Some(ourSideEditElement) == mergeResult
-          .changesPropagatedThroughMotion(theirSideMovedElement)
+        Set(
+          Some(ourSideEditElement)
+        ) == mergeResult.changesPropagatedThroughMotion
+          .get(theirSideMovedElement)
       )
     }
   end ourEditVersusTheirDeletionConflictWhereBaseHasMovedAwayOnBothSides
@@ -769,12 +775,15 @@ class MergeResultDetectingMotionTest:
       end if
 
       assert(
-        Some(theirSideEditElement) == mergeResult
-          .changesPropagatedThroughMotion(ourSideMovedElement)
+        Set(
+          Some(theirSideEditElement)
+        ) == mergeResult.changesPropagatedThroughMotion.get(ourSideMovedElement)
       )
       assert(
-        Some(ourSideEditElement) == mergeResult
-          .changesPropagatedThroughMotion(theirSideMovedElement)
+        Set(
+          Some(ourSideEditElement)
+        ) == mergeResult.changesPropagatedThroughMotion
+          .get(theirSideMovedElement)
       )
     }
   end ourEditVersusTheirEditConflictWhereBaseHasMovedAwayOnBothSides
@@ -843,11 +852,11 @@ class MergeResultDetectingMotionTest:
 
       assert(
         !mergeResult.changesPropagatedThroughMotion
-          .contains(ourSideMovedElement)
+          .containsKey(ourSideMovedElement)
       )
       assert(
         !mergeResult.changesPropagatedThroughMotion
-          .contains(theirSideMovedElement)
+          .containsKey(theirSideMovedElement)
       )
     }
   end coincidentInsertionOfMovesOnBothSides
