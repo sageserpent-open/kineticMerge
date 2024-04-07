@@ -1,6 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
 import com.typesafe.scalalogging.StrictLogging
+import org.apache.commons.text.StringEscapeUtils
 
 case class MappedContentSources[Path, Element](
     contentsByPath: Map[Path, IndexedSeq[Element]],
@@ -115,7 +116,17 @@ case class MappedContentSources[Path, Element](
       override val size: Int
   ) extends Section[Element]:
     override def toString: String =
-      s"Section(path=$path, startOffset=$startOffset, size=$size), label: $label, content: \"${content.take(5).mkString}\""
+      s"Section(path = \"$path\", startOffset = $startOffset, size = $size, label = $label, content = \"${StringEscapeUtils.escapeJava(
+          content
+            .take(5)
+            .map {
+              // NASTY HACK: rather than use dependency injection to render an
+              // element, just use a special case to render `Token`.
+              case token: Token => token.text
+              case anythingElse => anythingElse.toString
+            }
+            .mkString
+        )}\")"
 
     override def content: IndexedSeq[Element] =
       contentsByPath(path).slice(startOffset, onePastEndOffset)

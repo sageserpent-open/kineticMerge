@@ -113,9 +113,9 @@ object Token extends JavaTokenParsers:
 end Token
 
 trait Token:
-  override def toString: String = this match
+  def text: String = this match
     case Whitespace(blanks)   => blanks
     case Significant(letters) => letters
     case WithTrailingWhitespace(coreToken, whitespace) =>
-      coreToken.toString ++ whitespace.toString
+      coreToken.text ++ whitespace.text
 end Token
