@@ -3,6 +3,11 @@ package com.sageserpent.kineticmerge.core
 import com.typesafe.scalalogging.StrictLogging
 import org.apache.commons.text.StringEscapeUtils
 
+object MappedContentSources:
+  val sectionImplementationRegex =
+    raw"(.*SectionImplementation[^(]*)\((.*)\).*".r
+end MappedContentSources
+
 case class MappedContentSources[Path, Element](
     contentsByPath: Map[Path, IndexedSeq[Element]],
     label: String
@@ -116,17 +121,31 @@ case class MappedContentSources[Path, Element](
       override val size: Int
   ) extends Section[Element]:
     override def toString: String =
-      s"Section(path = \"$path\", startOffset = $startOffset, size = $size, label = $label, content = \"${StringEscapeUtils.escapeJava(
-          content
-            .take(5)
-            .map {
-              // NASTY HACK: rather than use dependency injection to render an
-              // element, just use a special case to render `Token`.
-              case token: Token => token.text
-              case anythingElse => anythingElse.toString
-            }
-            .mkString
-        )}\")"
+      val prettyPrintedCore = pprint(this).render
+
+      import MappedContentSources.sectionImplementationRegex
+
+      prettyPrintedCore match
+        case sectionImplementationRegex(
+              prelude,
+              payload
+            ) =>
+          s"${prelude.replace("SectionImplementation", "Section")}($payload, label = ${pprint(label).render}, content = ${pprint(
+              StringEscapeUtils.escapeJava(
+                content
+                  .take(5)
+                  .map {
+                    // NASTY HACK: rather than use dependency injection to
+                    // render an element, just use a special case to render
+                    // `Token`.
+                    case token: Token => token.text
+                    case anythingElse => anythingElse.toString
+                  }
+                  .mkString
+              )
+            ).render})"
+      end match
+    end toString
 
     override def content: IndexedSeq[Element] =
       contentsByPath(path).slice(startOffset, onePastEndOffset)
