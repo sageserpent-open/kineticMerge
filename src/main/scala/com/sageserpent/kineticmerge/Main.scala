@@ -1181,6 +1181,7 @@ object Main extends StrictLogging:
             )(
               minimumMatchSize,
               thresholdSizeFractionForMatching,
+              minimumAmbiguousMatchSize = None,
               propagateExceptions = false
             )(
               elementEquality = Token.equality,

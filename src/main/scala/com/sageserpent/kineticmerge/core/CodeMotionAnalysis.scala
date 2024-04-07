@@ -67,6 +67,7 @@ object CodeMotionAnalysis extends StrictLogging:
   )(
       minimumMatchSize: Int,
       thresholdSizeFractionForMatching: Double,
+      minimumAmbiguousMatchSize: Option[Int],
       propagateExceptions: Boolean = true
   )(
       elementEquality: Eq[Element],
@@ -1149,6 +1150,9 @@ object CodeMotionAnalysis extends StrictLogging:
       ): MatchingResult =
         require(0 < windowSize)
 
+        val allowAmbiguousMatches =
+          minimumAmbiguousMatchSize.fold(ifEmpty = true)(_ <= windowSize)
+
         def fingerprintStartIndices(
             elements: IndexedSeq[Element]
         ): SortedMultiDict[BigInt, Int] =
@@ -1289,7 +1293,9 @@ object CodeMotionAnalysis extends StrictLogging:
                 baseFingerprints.tail,
                 leftFingerprints.tail,
                 rightFingerprints.tail,
-                matches ++ matchesForSynchronisedFingerprint
+                if allowAmbiguousMatches || 1 == matchesForSynchronisedFingerprint.size
+                then matches ++ matchesForSynchronisedFingerprint
+                else matches
               )
 
             case (Some(baseHead), Some(leftHead), Some(rightHead))
@@ -1334,7 +1340,9 @@ object CodeMotionAnalysis extends StrictLogging:
                 baseFingerprints.tail,
                 leftFingerprints.tail,
                 rightFingerprints,
-                matches ++ matchesForSynchronisedFingerprint
+                if allowAmbiguousMatches || 1 == matchesForSynchronisedFingerprint.size
+                then matches ++ matchesForSynchronisedFingerprint
+                else matches
               )
 
             case (Some(baseHead), Some(leftHead), Some(rightHead))
@@ -1379,7 +1387,9 @@ object CodeMotionAnalysis extends StrictLogging:
                 baseFingerprints.tail,
                 leftFingerprints,
                 rightFingerprints.tail,
-                matches ++ matchesForSynchronisedFingerprint
+                if allowAmbiguousMatches || 1 == matchesForSynchronisedFingerprint.size
+                then matches ++ matchesForSynchronisedFingerprint
+                else matches
               )
 
             case (Some(baseHead), Some(leftHead), Some(rightHead))
@@ -1424,7 +1434,9 @@ object CodeMotionAnalysis extends StrictLogging:
                 baseFingerprints,
                 leftFingerprints.tail,
                 rightFingerprints.tail,
-                matches ++ matchesForSynchronisedFingerprint
+                if allowAmbiguousMatches || 1 == matchesForSynchronisedFingerprint.size
+                then matches ++ matchesForSynchronisedFingerprint
+                else matches
               )
 
             case (Some(baseHead), Some(leftHead), Some(rightHead)) =>

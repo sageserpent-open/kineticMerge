@@ -85,7 +85,8 @@ class CodeMotionAnalysisTest:
             ) =
               CodeMotionAnalysis.of(base, left, right)(
                 minimumMatchSize = 2,
-                thresholdSizeFractionForMatching = minimumSizeFraction
+                thresholdSizeFractionForMatching = minimumSizeFraction,
+                minimumAmbiguousMatchSize = None
               )(
                 elementEquality = Eq[Element],
                 elementOrder = Order[Element],
@@ -454,7 +455,8 @@ class CodeMotionAnalysisTest:
             )(
               minimumMatchSize = minimumPossibleExpectedMatchSize,
               thresholdSizeFractionForMatching =
-                minimumSizeFractionForMotionDetection
+                minimumSizeFractionForMotionDetection,
+              minimumAmbiguousMatchSize = None
             )(
               elementEquality = Eq[Element],
               elementOrder = Order[Element],
@@ -737,7 +739,8 @@ class CodeMotionAnalysisTest:
         rightSources
       )(
         minimumMatchSize = 10,
-        thresholdSizeFractionForMatching = 0
+        thresholdSizeFractionForMatching = 0,
+        minimumAmbiguousMatchSize = None
       )(
         elementEquality = Eq[Element],
         elementOrder = Order[Element],
@@ -838,7 +841,8 @@ class CodeMotionAnalysisTest:
         minimumMatchSize = 10,
         // Low enough to allow the all-sides match to be considered, except in
         // path 2 on the base side...
-        thresholdSizeFractionForMatching = 0.3
+        thresholdSizeFractionForMatching = 0.3,
+        minimumAmbiguousMatchSize = None
       )(
         elementEquality = Eq[Element],
         elementOrder = Order[Element],
@@ -929,7 +933,8 @@ class CodeMotionAnalysisTest:
         rightSources
       )(
         minimumMatchSize = 10,
-        thresholdSizeFractionForMatching = 0
+        thresholdSizeFractionForMatching = 0,
+        minimumAmbiguousMatchSize = None
       )(
         elementEquality = Eq[Element],
         elementOrder = Order[Element],
