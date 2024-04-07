@@ -5,7 +5,11 @@ import org.apache.commons.text.StringEscapeUtils
 
 object MappedContentSources:
   val sectionImplementationRegex =
-    raw"(.*SectionImplementation[^(]*)\((.*)\).*".r
+    // Perplexed by the chicken tracks? This regex isolates a prefix of
+    // `SectionImplementation` from the following bracketed payload, but keeps
+    // all the messy colour code sequences intact, also preserving newlines via
+    // the `(?s:<non-capturing group>)` construct.
+    raw"(?s:(.*SectionImplementation[^(]*)\((.*)\).*)".r
 end MappedContentSources
 
 case class MappedContentSources[Path, Element](
