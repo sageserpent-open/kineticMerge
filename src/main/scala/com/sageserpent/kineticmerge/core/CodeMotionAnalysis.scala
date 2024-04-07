@@ -67,7 +67,7 @@ object CodeMotionAnalysis extends StrictLogging:
   )(
       minimumMatchSize: Int,
       thresholdSizeFractionForMatching: Double,
-      minimumAmbiguousMatchSize: Option[Int],
+      minimumAmbiguousMatchSize: Int,
       propagateExceptions: Boolean = true
   )(
       elementEquality: Eq[Element],
@@ -1151,7 +1151,7 @@ object CodeMotionAnalysis extends StrictLogging:
         require(0 < windowSize)
 
         val allowAmbiguousMatches =
-          minimumAmbiguousMatchSize.fold(ifEmpty = true)(_ <= windowSize)
+          minimumAmbiguousMatchSize <= windowSize
 
         def fingerprintStartIndices(
             elements: IndexedSeq[Element]

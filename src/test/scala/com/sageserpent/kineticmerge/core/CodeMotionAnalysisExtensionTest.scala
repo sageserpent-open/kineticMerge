@@ -58,7 +58,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )(
       minimumMatchSize = minimumMatchSize,
       thresholdSizeFractionForMatching = thresholdSizeFractionForMatching,
-      minimumAmbiguousMatchSize = None
+      minimumAmbiguousMatchSize = 0
     )(
       elementEquality = Token.equality,
       elementOrder = Token.comparison,
@@ -121,7 +121,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )(
       minimumMatchSize = minimumMatchSize,
       thresholdSizeFractionForMatching = thresholdSizeFractionForMatching,
-      minimumAmbiguousMatchSize = None
+      minimumAmbiguousMatchSize = 0
     )(
       elementEquality = Token.equality,
       elementOrder = Token.comparison,
@@ -187,7 +187,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )(
       minimumMatchSize = minimumMatchSize,
       thresholdSizeFractionForMatching = thresholdSizeFractionForMatching,
-      minimumAmbiguousMatchSize = Some(5)
+      minimumAmbiguousMatchSize = 5
     )(
       elementEquality = Token.equality,
       elementOrder = Token.comparison,
@@ -282,7 +282,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       )(
         minimumMatchSize = minimumMatchSize,
         thresholdSizeFractionForMatching = 0,
-        minimumAmbiguousMatchSize = None
+        minimumAmbiguousMatchSize = 0
       )(
         elementEquality = Token.equality,
         elementOrder = Token.comparison,
