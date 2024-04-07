@@ -159,8 +159,15 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             if 1 >= propagatedChanges.size then propagatedChanges.headOption
             else
               throw new RuntimeException(
-                s"Multiple potential changes propagated to destination: $section, these are: ${propagatedChanges
-                    .map(_.fold(ifEmpty = "*** Deletion ***")(edit => s"Edit: ${pprintCustomised(edit).render}"))}"
+                s"""
+                |Multiple potential changes propagated to destination: $section, these are: ${propagatedChanges
+                    .map(
+                      _.fold(ifEmpty = "*** Deletion ***")(edit =>
+                        s"Edit: ${pprintCustomised(edit).render}"
+                      )
+                    )}
+                |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${section.size}
+                    """.stripMargin
               )
 
           // If we do have a propagated change, then there is no need to look

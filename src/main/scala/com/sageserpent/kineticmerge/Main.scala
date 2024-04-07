@@ -158,6 +158,18 @@ object Main extends StrictLogging:
           .text(
             "Minimum fraction of a containing file's size for a section of text to qualify for matching."
           ),
+        opt[Int](name = "minimum-ambiguous-match-size")
+          .validate(minimumAmbiguousMatchSize =>
+            if 0 <= minimumAmbiguousMatchSize then success
+            else failure(s"Minimum match size must be zero or positive.")
+          )
+          .action((minimumAmbiguousMatchSize, commandLineArguments) =>
+            commandLineArguments
+              .copy(minimumAmbiguousMatchSize = minimumAmbiguousMatchSize)
+          )
+          .text(
+            "Minimum number of tokens for an ambiguous match to be considered."
+          ),
         arg[String](name = "<their branch to merge into ours>")
           .action((theirBranch, commandLineArguments) =>
             commandLineArguments.copy(theirBranchHead =
@@ -317,7 +329,8 @@ object Main extends StrictLogging:
                 noCommit,
                 noFastForward,
                 minimumMatchSize,
-                thresholdSizeFractionForMatching
+                thresholdSizeFractionForMatching,
+                minimumAmbiguousMatchSize
               )
           yield exitCode
           end for
@@ -396,7 +409,8 @@ object Main extends StrictLogging:
         // practice, avoiding small window sizes above one leads to a much
         // better merge as well.
         4,
-      thresholdSizeFractionForMatching: Double = 0
+      thresholdSizeFractionForMatching: Double = 0,
+      minimumAmbiguousMatchSize: Int = 0
   )
 
   enum Change:
@@ -841,7 +855,8 @@ object Main extends StrictLogging:
         noCommit: Boolean,
         noFastForward: Boolean,
         minimumMatchSize: Int,
-        thresholdSizeFractionForMatching: Double
+        thresholdSizeFractionForMatching: Double,
+        minimumAmbiguousMatchSize: Int
     ): Workflow[Int @@ Tags.ExitCode] =
       val workflow =
         for
@@ -850,7 +865,8 @@ object Main extends StrictLogging:
             ourBranchHead,
             theirBranchHead,
             minimumMatchSize,
-            thresholdSizeFractionForMatching
+            thresholdSizeFractionForMatching,
+            minimumAmbiguousMatchSize
           )(mergeInputs)
 
           goodForAMergeCommit = indexUpdates.forall {
@@ -991,7 +1007,8 @@ object Main extends StrictLogging:
         ourBranchHead: String @@ Tags.CommitOrBranchName,
         theirBranchHead: String @@ Tags.CommitOrBranchName,
         minimumMatchSize: Int,
-        thresholdSizeFractionForMatching: Double
+        thresholdSizeFractionForMatching: Double,
+        minimumAmbiguousMatchSize: Int
     )(
         mergeInputs: List[(Path, MergeInput)]
     ): Workflow[List[IndexState]] =
@@ -1181,7 +1198,7 @@ object Main extends StrictLogging:
             )(
               minimumMatchSize,
               thresholdSizeFractionForMatching,
-              minimumAmbiguousMatchSize = 0,
+              minimumAmbiguousMatchSize,
               propagateExceptions = false
             )(
               elementEquality = Token.equality,
