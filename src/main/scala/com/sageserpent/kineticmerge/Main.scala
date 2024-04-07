@@ -1706,10 +1706,7 @@ object Main extends StrictLogging:
     private def reconstituteTextFrom(
         tokens: IndexedSeq[Token]
     ): String @@ Main.Tags.Content =
-      tokens
-        .map(_.text)
-        .reduceOption(_ ++ _)
-        .getOrElse("")
+      tokens.mkString
         .taggedWith[Tags.Content]
 
     private def recordModificationInIndex(

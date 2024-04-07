@@ -16,7 +16,7 @@ object CodeMotionAnalysisExtensionTest:
   type FakePath = String
 
   def reconstituteTextFrom(tokens: IndexedSeq[Token]) =
-    tokens.map(_.text).reduce(_ ++ _)
+    tokens.mkString
 end CodeMotionAnalysisExtensionTest
 
 class CodeMotionAnalysisExtensionTest extends ProseExamples:

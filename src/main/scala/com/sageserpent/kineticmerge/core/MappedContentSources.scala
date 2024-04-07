@@ -114,6 +114,9 @@ case class MappedContentSources[Path, Element](
       override val startOffset: Int,
       override val size: Int
   ) extends Section[Element]:
+    override def toString: String =
+      s"Section(path=$path, startOffset=$startOffset, size=$size), label: $label, content: \"${content.take(5).mkString}\""
+
     override def content: IndexedSeq[Element] =
       contentsByPath(path).slice(startOffset, onePastEndOffset)
   end SectionImplementation

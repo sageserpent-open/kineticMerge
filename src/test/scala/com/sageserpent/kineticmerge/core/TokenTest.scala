@@ -82,7 +82,7 @@ object TokenTest:
   def checkTokenization(prose: String): Unit =
     val proseTokens = tokens(prose)
     pprintln(proseTokens)
-    assert(proseTokens.get.foldLeft("")(_ ++ _.text) == prose)
+    assert(proseTokens.get.mkString == prose)
   end checkTokenization
 end TokenTest
 
