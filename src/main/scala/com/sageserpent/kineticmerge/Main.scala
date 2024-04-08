@@ -1192,9 +1192,18 @@ object Main extends StrictLogging:
         codeMotionAnalysis: CodeMotionAnalysis[Path, Token] <- EitherT
           .fromEither[WorkflowLogWriter](
             CodeMotionAnalysis.of(
-              base = MappedContentSources(baseContentsByPath, label = "base"),
-              left = MappedContentSources(leftContentsByPath, label = "left"),
-              right = MappedContentSources(rightContentsByPath, label = "right")
+              base = MappedContentSources(
+                baseContentsByPath,
+                label = s"BASE: ${bestAncestorCommitId.take(8)}"
+              ),
+              left = MappedContentSources(
+                leftContentsByPath,
+                label = s"OURS: $ourBranchHead"
+              ),
+              right = MappedContentSources(
+                rightContentsByPath,
+                label = s"THEIRS: $theirBranchHead"
+              )
             )(
               minimumMatchSize,
               thresholdSizeFractionForMatching,
