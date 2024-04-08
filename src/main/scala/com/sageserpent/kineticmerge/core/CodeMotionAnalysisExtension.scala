@@ -160,13 +160,19 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             else
               throw new RuntimeException(
                 s"""
-                |Multiple potential changes propagated to destination: $section, these are: ${propagatedChanges
+                |Multiple potential changes propagated to destination: $section,
+                |these are:
+                |${propagatedChanges
                     .map(
-                      _.fold(ifEmpty = "*** Deletion ***")(edit =>
-                        s"Edit: ${pprintCustomised(edit).render}"
+                      _.fold(ifEmpty = "DELETION")(edit =>
+                        s"EDIT: ${pprintCustomised(edit).render}"
                       )
-                    )}
-                |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${section.size}
+                    )
+                    .zipWithIndex
+                    .map((change, index) => s"${1 + index}. $change")
+                    .mkString("\n")}
+                |These are from ambiguous matches of text with the destination.
+                |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${section.size}.
                     """.stripMargin
               )
 
