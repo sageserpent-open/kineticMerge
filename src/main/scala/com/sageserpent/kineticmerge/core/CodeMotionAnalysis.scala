@@ -120,6 +120,8 @@ object CodeMotionAnalysis extends StrictLogging:
 
     type MatchedSections = MultiDict[Section[Element], Match[Section[Element]]]
 
+    val tiebreakContentSamplingLimit = 10
+
     object MatchesAndTheirSections:
       type PairwiseMatch = Match.BaseAndLeft[Section[Element]] |
         Match.BaseAndRight[Section[Element]] |
@@ -1589,7 +1591,10 @@ object CodeMotionAnalysis extends StrictLogging:
         Order.by(_.fingerprint),
         // NOTE: need the pesky type ascription because `Order` is invariant on
         // its type parameter.
-        Order.by(_.impliedContent.content: Seq[Element])
+        Order.by(
+          _.impliedContent.content
+            .take(tiebreakContentSamplingLimit): Seq[Element]
+        )
       )
     end potentialMatchKeyOrder
 
