@@ -282,7 +282,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       )(
         minimumMatchSize = minimumMatchSize,
         thresholdSizeFractionForMatching = 0,
-        minimumAmbiguousMatchSize = None
+        minimumAmbiguousMatchSize = Some(4)
       )(
         elementEquality = Token.equality,
         elementOrder = Token.comparison,
