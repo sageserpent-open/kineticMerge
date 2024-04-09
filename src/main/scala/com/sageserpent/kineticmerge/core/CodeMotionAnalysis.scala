@@ -12,7 +12,7 @@ import monocle.syntax.all.*
 
 import java.lang.Byte as JavaByte
 import scala.annotation.tailrec
-import scala.collection.immutable.{MultiDict, TreeSet}
+import scala.collection.immutable.{MultiDict, SortedMultiSet}
 import scala.collection.{SortedMultiDict, mutable}
 import scala.util.Try
 
@@ -81,22 +81,22 @@ object CodeMotionAnalysis extends StrictLogging:
     given witness: Eq[Element] = elementEquality
 
     // TODO: suppose all the sources are empty? Could this happen?
-    val fileSizes = base.filesByPath.values.map(_.size) ++
-      left.filesByPath.values.map(_.size) ++
-      right.filesByPath.values.map(_.size)
+    val fileSizes = SortedMultiSet.from(
+      base.filesByPath.values.map(_.size) ++ left.filesByPath.values.map(
+        _.size
+      ) ++ right.filesByPath.values.map(_.size)
+    )
 
     val totalContentSize = fileSizes.sum
 
-    val uniqueFileSizes = TreeSet.from(fileSizes)
-
-    val minimumFileSizeAcrossAllFilesOverAllSides = uniqueFileSizes.head
+    val minimumFileSizeAcrossAllFilesOverAllSides = fileSizes.head
 
     // This is the minimum window size that would be allowed in *some* file
     // across the sources.
     val minimumWindowSizeAcrossAllFilesOverAllSides =
       minimumMatchSize max (minimumFileSizeAcrossAllFilesOverAllSides * thresholdSizeFractionForMatching).floor.toInt
 
-    val maximumFileSizeAcrossAllFilesOverAllSides = uniqueFileSizes.last
+    val maximumFileSizeAcrossAllFilesOverAllSides = fileSizes.last
 
     // This is the minimum window size that would be allowed in *all* files
     // across the sources.
@@ -113,7 +113,7 @@ object CodeMotionAnalysis extends StrictLogging:
       s"Maximum match window size across all files over all sides: $maximumFileSizeAcrossAllFilesOverAllSides"
     )
     logger.debug(
-      s"File sizes across all files over all sides: $uniqueFileSizes"
+      s"File sizes across all files over all sides: $fileSizes"
     )
 
     type SectionsSeen = RangedSeq[Section[Element], Int]
@@ -584,6 +584,10 @@ object CodeMotionAnalysis extends StrictLogging:
           end if
         end keepTryingToImproveThis
 
+        val largestFileSize = fileSizes.last
+        val largestFileMightBeUnchangedOnOneSideOrCoincidentallyAddedAsInDuplicate =
+          1 < fileSizes.get(largestFileSize)
+
         keepTryingToImproveThis(
           bestMatchSize =
             minimumSureFireWindowSizeAcrossAllFilesOverAllSides - 1,
@@ -594,7 +598,9 @@ object CodeMotionAnalysis extends StrictLogging:
             // both sides), then we may as well go straight to it to avoid the
             // cost of working back up to that matching size with lots of
             // overlapping matches.
-            Some(uniqueFileSizes.last),
+            Option.when(
+              largestFileMightBeUnchangedOnOneSideOrCoincidentallyAddedAsInDuplicate
+            )(largestFileSize),
           fallbackImprovedState = this
         )
       end withAllMatchesOfAtLeastTheSureFireWindowSize
