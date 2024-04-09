@@ -584,23 +584,24 @@ object CodeMotionAnalysis extends StrictLogging:
           end if
         end keepTryingToImproveThis
 
-        val largestFileSize = fileSizes.last
-        val largestFileMightBeUnchangedOnOneSideOrCoincidentallyAddedAsInDuplicate =
-          1 < fileSizes.get(largestFileSize)
+        // Speculative optimisation - if the largest file was modified on just
+        // one side (or coincidentally added as exact duplicates on both sides),
+        // then we may as well go straight to it to avoid the cost of working
+        // back up to that matching size with lots of overlapping matches.
+        val guessAtOptimalMatchSize = for
+          largestPertinentFileSize <- fileSizes
+            .rangeTo(looseExclusiveUpperBoundOnMaximumMatchSize)
+            .lastOption
+          largestFileMightBeUnchangedOnOneSideOrCoincidentallyAddedAsInDuplicate =
+            1 < fileSizes.get(largestPertinentFileSize)
+          if largestFileMightBeUnchangedOnOneSideOrCoincidentallyAddedAsInDuplicate
+        yield largestPertinentFileSize
 
         keepTryingToImproveThis(
           bestMatchSize =
             minimumSureFireWindowSizeAcrossAllFilesOverAllSides - 1,
           looseExclusiveUpperBoundOnMaximumMatchSize,
-          guessAtOptimalMatchSize =
-            // Speculative optimisation - if the largest file was modified on
-            // just one side (or coincidentally added as exact duplicates on
-            // both sides), then we may as well go straight to it to avoid the
-            // cost of working back up to that matching size with lots of
-            // overlapping matches.
-            Option.when(
-              largestFileMightBeUnchangedOnOneSideOrCoincidentallyAddedAsInDuplicate
-            )(largestFileSize),
+          guessAtOptimalMatchSize = guessAtOptimalMatchSize,
           fallbackImprovedState = this
         )
       end withAllMatchesOfAtLeastTheSureFireWindowSize
