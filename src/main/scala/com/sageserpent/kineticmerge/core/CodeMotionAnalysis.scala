@@ -12,7 +12,7 @@ import monocle.syntax.all.*
 
 import java.lang.Byte as JavaByte
 import scala.annotation.tailrec
-import scala.collection.immutable.MultiDict
+import scala.collection.immutable.{MultiDict, TreeSet}
 import scala.collection.{SortedMultiDict, mutable}
 import scala.util.Try
 
@@ -87,14 +87,16 @@ object CodeMotionAnalysis extends StrictLogging:
 
     val totalContentSize = fileSizes.sum
 
-    val minimumFileSizeAcrossAllFilesOverAllSides = fileSizes.min
+    val uniqueFileSizes = TreeSet.from(fileSizes)
+
+    val minimumFileSizeAcrossAllFilesOverAllSides = uniqueFileSizes.head
 
     // This is the minimum window size that would be allowed in *some* file
     // across the sources.
     val minimumWindowSizeAcrossAllFilesOverAllSides =
       minimumMatchSize max (minimumFileSizeAcrossAllFilesOverAllSides * thresholdSizeFractionForMatching).floor.toInt
 
-    val maximumFileSizeAcrossAllFilesOverAllSides = fileSizes.max
+    val maximumFileSizeAcrossAllFilesOverAllSides = uniqueFileSizes.last
 
     // This is the minimum window size that would be allowed in *all* files
     // across the sources.
@@ -109,6 +111,9 @@ object CodeMotionAnalysis extends StrictLogging:
     )
     logger.debug(
       s"Maximum match window size across all files over all sides: $maximumFileSizeAcrossAllFilesOverAllSides"
+    )
+    logger.debug(
+      s"File sizes across all files over all sides: $uniqueFileSizes"
     )
 
     type SectionsSeen = RangedSeq[Section[Element], Int]
@@ -583,7 +588,13 @@ object CodeMotionAnalysis extends StrictLogging:
           bestMatchSize =
             minimumSureFireWindowSizeAcrossAllFilesOverAllSides - 1,
           looseExclusiveUpperBoundOnMaximumMatchSize,
-          guessAtOptimalMatchSize = None,
+          guessAtOptimalMatchSize =
+            // Speculative optimisation - if the largest file was modified on
+            // just one side (or coincidentally added as exact duplicates on
+            // both sides), then we may as well go straight to it to avoid the
+            // cost of working back up to that matching size with lots of
+            // overlapping matches.
+            Some(uniqueFileSizes.last),
           fallbackImprovedState = this
         )
       end withAllMatchesOfAtLeastTheSureFireWindowSize
