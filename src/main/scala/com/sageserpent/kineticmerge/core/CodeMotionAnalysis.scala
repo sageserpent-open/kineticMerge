@@ -516,9 +516,28 @@ object CodeMotionAnalysis extends StrictLogging:
             // `bestMatchSize`...
             val candidateWindowSize = guessAtOptimalMatchSize
               .filter(_ < looseExclusiveUpperBoundOnMaximumMatchSize)
-              .getOrElse(
-                (bestMatchSize + looseExclusiveUpperBoundOnMaximumMatchSize) / 2
-              )
+              .getOrElse {
+                // Speculative optimisation - if the largest file was modified
+                // on just one side (or coincidentally added as exact duplicates
+                // on both sides), then we may as well go straight to it to
+                // avoid the cost of working back up to that matching size with
+                // lots of overlapping matches.
+                val potentialFullMatchSize = for
+                  largestPertinentFileSize <- fileSizes
+                    .rangeFrom(bestMatchSize)
+                    .rangeTo(looseExclusiveUpperBoundOnMaximumMatchSize)
+                    .lastOption
+                  largestFileMightBeUnchangedOnOneSideOrCoincidentallyAddedAsInDuplicate =
+                    1 < fileSizes.get(largestPertinentFileSize)
+                  if largestFileMightBeUnchangedOnOneSideOrCoincidentallyAddedAsInDuplicate
+                yield largestPertinentFileSize
+
+                val bisectedSize =
+                  (bestMatchSize + looseExclusiveUpperBoundOnMaximumMatchSize) / 2
+                potentialFullMatchSize.fold(ifEmpty = bisectedSize)(
+                  _ max bisectedSize
+                )
+              }
 
             val MatchingResult(
               stateAfterTryingCandidate,
@@ -584,24 +603,11 @@ object CodeMotionAnalysis extends StrictLogging:
           end if
         end keepTryingToImproveThis
 
-        // Speculative optimisation - if the largest file was modified on just
-        // one side (or coincidentally added as exact duplicates on both sides),
-        // then we may as well go straight to it to avoid the cost of working
-        // back up to that matching size with lots of overlapping matches.
-        val guessAtOptimalMatchSize = for
-          largestPertinentFileSize <- fileSizes
-            .rangeTo(looseExclusiveUpperBoundOnMaximumMatchSize)
-            .lastOption
-          largestFileMightBeUnchangedOnOneSideOrCoincidentallyAddedAsInDuplicate =
-            1 < fileSizes.get(largestPertinentFileSize)
-          if largestFileMightBeUnchangedOnOneSideOrCoincidentallyAddedAsInDuplicate
-        yield largestPertinentFileSize
-
         keepTryingToImproveThis(
           bestMatchSize =
             minimumSureFireWindowSizeAcrossAllFilesOverAllSides - 1,
           looseExclusiveUpperBoundOnMaximumMatchSize,
-          guessAtOptimalMatchSize = guessAtOptimalMatchSize,
+          guessAtOptimalMatchSize = None,
           fallbackImprovedState = this
         )
       end withAllMatchesOfAtLeastTheSureFireWindowSize
