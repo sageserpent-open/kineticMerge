@@ -157,11 +157,10 @@ object CodeMotionAnalysis extends StrictLogging:
           .fold(ifEmpty = false)(
             _.filterIncludes(section.closedOpenInterval)
               .filter(_ != section)
-              .flatMap(sectionsAndTheirMatches.get)
-              .exists {
+              .exists(sectionsAndTheirMatches.get(_).exists {
                 case _: Match.AllSides[Section[Element]] => true
                 case _                                   => false
-              }
+              })
           )
 
       private def subsumingPairwiseMatches(
@@ -176,17 +175,17 @@ object CodeMotionAnalysis extends StrictLogging:
             _.filterIncludes(section.closedOpenInterval)
               .filter(_ != section)
               .flatMap(sectionsAndTheirMatches.get)
+              .collect {
+                case baseAndLeft: Match.BaseAndLeft[Section[Element]] =>
+                  baseAndLeft: PairwiseMatch
+                case baseAndRight: Match.BaseAndRight[Section[Element]] =>
+                  baseAndRight: PairwiseMatch
+                case leftAndRight: Match.LeftAndRight[Section[Element]] =>
+                  leftAndRight: PairwiseMatch
+              }
               // NOTE: convert to a set at this point as we expect sections to
               // be duplicated when involved in ambiguous matches.
               .toSet
-              .collect {
-                case baseAndLeft: Match.BaseAndLeft[Section[Element]] =>
-                  baseAndLeft
-                case baseAndRight: Match.BaseAndRight[Section[Element]] =>
-                  baseAndRight
-                case leftAndRight: Match.LeftAndRight[Section[Element]] =>
-                  leftAndRight
-              }
           )
 
       private def overlapsSection(
