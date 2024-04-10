@@ -92,8 +92,6 @@ case class MappedContentSources[Path, Element](
 
   override def pathFor(section: Section[Element]): Path =
     section match
-      // If the section implementation does not come from this `FakeSources`,
-      // then it can't be accepted, it's up to the client to be consistent.
       case SectionImplementation(path, _, _) if contentsByPath.contains(path) =>
         path
 

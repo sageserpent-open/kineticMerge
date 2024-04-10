@@ -7,6 +7,11 @@ package com.sageserpent.kineticmerge.core
   * To facilitate testing, the notion of the [[PathType]] is left generic - so
   * while it could be a [[String]] or [[java.nio.file.Path]], it could also be a
   * simple [[Int]] that labels a [[File]].
+  *
+  * @note
+  *   Methods on a [[Sources]] instance should only be passed a [[Section]]
+  *   created by the same [[Sources]] instance, it's up to the client to be
+  *   consistent.
   */
 trait Sources[PathType, ElementType]:
   type Path    = PathType
