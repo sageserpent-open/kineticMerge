@@ -1228,12 +1228,7 @@ object CodeMotionAnalysis extends StrictLogging:
         // match is permitted by its own rules. If not, the all-sides match is
         // completely suppressed.
 
-        val overlapped =
-          overlapsBaseSection(baseSection) ||
-            overlapsLeftSection(leftSection) ||
-            overlapsRightSection(rightSection)
-
-        Option.unless(overlapped)(()).flatMap { _ =>
+        {
           val baseIsSubsumedByAnAllSidesMatch =
             subsumesBaseSectionViaAtLeastOneAllSidesMatch(baseSection)
           val leftIsSubsumedByAnAllSidesMatch =
@@ -1273,6 +1268,12 @@ object CodeMotionAnalysis extends StrictLogging:
               )(Match.LeftAndRight(leftSection, rightSection))
             case _ => None
           end match
+        }.flatMap { potentialMatch =>
+          val overlapped = overlapsBaseSection(baseSection) ||
+            overlapsLeftSection(leftSection) ||
+            overlapsRightSection(rightSection)
+
+          Option.unless(overlapped)(potentialMatch)
         }
       end matchFrom
 
@@ -1280,13 +1281,13 @@ object CodeMotionAnalysis extends StrictLogging:
           baseSection: Section[Element],
           leftSection: Section[Element]
       ): Option[Match.BaseAndLeft[Section[Element]]] =
-        // If anything overlaps on either side or fully or partially subsumes
-        // either section in a putative pairwise match, then the match is
+        // If anything fully or partially subsumes either section in a putative
+        // pairwise match or overlaps on either side, then the match is
         // suppressed.
         val suppressed =
-          overlapsBaseSection(baseSection) || overlapsLeftSection(
+          subsumesBaseSection(baseSection) || subsumesLeftSection(
             leftSection
-          ) || subsumesBaseSection(baseSection) || subsumesLeftSection(
+          ) || overlapsBaseSection(baseSection) || overlapsLeftSection(
             leftSection
           )
 
