@@ -132,9 +132,9 @@ object CodeMotionAnalysis extends StrictLogging:
         leftSectionsByPath = Map.empty,
         rightSectionsByPath = Map.empty,
         sectionsAndTheirMatches = MultiDict.empty,
-        baseSpanningMatchesByPath = Map.empty,
-        leftSpanningMatchesByPath = Map.empty,
-        rightSpanningMatchesByPath = Map.empty
+        baseSpanningSectionsByPath = Map.empty,
+        leftSpanningSectionsByPath = Map.empty,
+        rightSpanningSectionsByPath = Map.empty
       )
       private val rollingHashFactoryCache: Cache[Int, RollingHash.Factory] =
         Caffeine.newBuilder().build()
@@ -154,12 +154,16 @@ object CodeMotionAnalysis extends StrictLogging:
       )(
           side: Sources[Path, Element],
           sectionsByPath: Map[Path, SectionsSeen],
-          spanningMatchesByPath: Map[Path, Match[Section[Element]]]
+          spanningSectionsByPath: Map[Path, Section[Element]]
       )(section: Section[Element]): Boolean =
         val path = side.pathFor(section)
 
-        spanningMatchesByPath
+        spanningSectionsByPath
           .get(path)
+          .collect {
+            case spanningSection if spanningSection != section =>
+              sectionsAndTheirMatches.get(spanningSection).head
+          }
           .collect { case _: Match.AllSides[Section[Element]] => true }
           .getOrElse(
             sectionsByPath
@@ -457,9 +461,9 @@ object CodeMotionAnalysis extends StrictLogging:
         leftSectionsByPath: Map[Path, SectionsSeen],
         rightSectionsByPath: Map[Path, SectionsSeen],
         sectionsAndTheirMatches: MatchedSections,
-        baseSpanningMatchesByPath: Map[Path, Match[Section[Element]]],
-        leftSpanningMatchesByPath: Map[Path, Match[Section[Element]]],
-        rightSpanningMatchesByPath: Map[Path, Match[Section[Element]]]
+        baseSpanningSectionsByPath: Map[Path, Section[Element]],
+        leftSpanningSectionsByPath: Map[Path, Section[Element]],
+        rightSpanningSectionsByPath: Map[Path, Section[Element]]
     ):
       import MatchesAndTheirSections.*
 
@@ -474,21 +478,21 @@ object CodeMotionAnalysis extends StrictLogging:
         subsumesSectionViaAtLeastOneAllSidesMatch(sectionsAndTheirMatches)(
           base,
           baseSectionsByPath,
-          baseSpanningMatchesByPath
+          baseSpanningSectionsByPath
         )
       private val subsumesLeftSectionViaAtLeastOneAllSidesMatch
           : Section[Element] => Boolean =
         subsumesSectionViaAtLeastOneAllSidesMatch(sectionsAndTheirMatches)(
           left,
           leftSectionsByPath,
-          leftSpanningMatchesByPath
+          leftSpanningSectionsByPath
         )
       private val subsumesRightSectionViaAtLeastOneAllSidesMatch
           : Section[Element] => Boolean =
         subsumesSectionViaAtLeastOneAllSidesMatch(sectionsAndTheirMatches)(
           right,
           rightSectionsByPath,
-          rightSpanningMatchesByPath
+          rightSpanningSectionsByPath
         )
       private val overlapsBaseSection: Section[Element] => Boolean =
         overlapsSection(base, baseSectionsByPath)
@@ -768,33 +772,68 @@ object CodeMotionAnalysis extends StrictLogging:
           .matchesAndTheirSections
       end withPairwiseMatchesEatenInto
 
-      // Eating into pairwise matches can create smaller pairwise matches that
-      // are partially subsumed by other larger pairwise matches. Prefer keeping
-      // the larger matches and remove the subsumed ones.
-      def cleanedUp: MatchesAndTheirSections =
-        val subsumedBaseSections = baseSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesBaseSection)
-        val subsumedLeftSections = leftSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesLeftSection)
-        val subsumedRightSections = rightSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesRightSection)
+      private def withMatches(
+          matches: collection.Set[Match[Section[Element]]]
+      ): MatchingResult =
+        val (
+          updatedMatchesAndTheirSections,
+          matchesWithoutRedundantPairwiseMatches
+        ) =
+          matches
+            .foldLeft(this)(_.withMatch(_))
+            .withoutRedundantPairwiseMatchesIn(matches)
 
-        val matchesToRemove =
-          (subsumedBaseSections ++ subsumedLeftSections ++ subsumedRightSections)
-            .flatMap(sectionsAndTheirMatches.get)
-            .toSet
+        MatchingResult(
+          matchesAndTheirSections = updatedMatchesAndTheirSections,
+          numberOfMatchesForTheGivenWindowSize =
+            matchesWithoutRedundantPairwiseMatches.size,
+          estimatedWindowSizeForOptimalMatch = updatedMatchesAndTheirSections
+            .estimateOptimalMatchSize(matchesWithoutRedundantPairwiseMatches)
+        )
+      end withMatches
 
-        if matchesToRemove.nonEmpty then
+      // Cleans up the state when a putative all-sides match that would have
+      // been ambiguous on one side with another all-sides match is partially
+      // suppressed by a larger pairwise match. This situation results in a
+      // pairwise match that shares its sections on both sides with the other
+      // all-sides match; remove any such redundant pairwise matches.
+      private def withoutRedundantPairwiseMatchesIn(
+          matches: collection.Set[Match[Section[Element]]]
+      ): (MatchesAndTheirSections, collection.Set[Match[Section[Element]]]) =
+        val (redundantMatches, usefulMatches) =
+          val isAnAllSidesMatch: Match[Section[Element]] => Boolean = {
+            case _: Match.AllSides[Section[Element]] => true
+            case _                                   => false
+          }
+
+          matches.partition {
+            case Match.BaseAndLeft(baseSection, leftSection) =>
+              sectionsAndTheirMatches
+                .get(baseSection)
+                .intersect(sectionsAndTheirMatches.get(leftSection))
+                .exists(isAnAllSidesMatch)
+            case Match.BaseAndRight(baseSection, rightSection) =>
+              sectionsAndTheirMatches
+                .get(baseSection)
+                .intersect(sectionsAndTheirMatches.get(rightSection))
+                .exists(isAnAllSidesMatch)
+            case Match.LeftAndRight(leftSection, rightSection) =>
+              sectionsAndTheirMatches
+                .get(leftSection)
+                .intersect(sectionsAndTheirMatches.get(rightSection))
+                .exists(isAnAllSidesMatch)
+            case _: Match.AllSides[Section[Element]] => false
+          }
+        end val
+
+        if redundantMatches.nonEmpty then
           logger.debug(
-            s"Removing matches that have subsumed sections:\n${pprintCustomised(matchesToRemove)} as part of cleanup."
+            s"Removing redundant pairwise matches:\n${pprintCustomised(redundantMatches)} as their sections also belong to all-sides matches."
           )
         end if
 
-        this.withoutTheseMatches(matchesToRemove)
-      end cleanedUp
+        withoutTheseMatches(redundantMatches) -> usefulMatches
+      end withoutRedundantPairwiseMatchesIn
 
       private def withoutTheseMatches(
           matches: Iterable[Match[Section[Element]]]
@@ -896,69 +935,6 @@ object CodeMotionAnalysis extends StrictLogging:
         }
       end withoutTheseMatches
 
-      private def withMatches(
-          matches: collection.Set[Match[Section[Element]]]
-      ): MatchingResult =
-        val (
-          updatedMatchesAndTheirSections,
-          matchesWithoutRedundantPairwiseMatches
-        ) =
-          matches
-            .foldLeft(this)(_.withMatch(_))
-            .withoutRedundantPairwiseMatchesIn(matches)
-
-        MatchingResult(
-          matchesAndTheirSections = updatedMatchesAndTheirSections,
-          numberOfMatchesForTheGivenWindowSize =
-            matchesWithoutRedundantPairwiseMatches.size,
-          estimatedWindowSizeForOptimalMatch = updatedMatchesAndTheirSections
-            .estimateOptimalMatchSize(matchesWithoutRedundantPairwiseMatches)
-        )
-      end withMatches
-
-      // Cleans up the state when a putative all-sides match that would have
-      // been ambiguous on one side with another all-sides match is partially
-      // suppressed by a larger pairwise match. This situation results in a
-      // pairwise match that shares its sections on both sides with the other
-      // all-sides match; remove any such redundant pairwise matches.
-      private def withoutRedundantPairwiseMatchesIn(
-          matches: collection.Set[Match[Section[Element]]]
-      ): (MatchesAndTheirSections, collection.Set[Match[Section[Element]]]) =
-        val (redundantMatches, usefulMatches) =
-          val isAnAllSidesMatch: Match[Section[Element]] => Boolean = {
-            case _: Match.AllSides[Section[Element]] => true
-            case _                                   => false
-          }
-
-          matches.partition {
-            case Match.BaseAndLeft(baseSection, leftSection) =>
-              sectionsAndTheirMatches
-                .get(baseSection)
-                .intersect(sectionsAndTheirMatches.get(leftSection))
-                .exists(isAnAllSidesMatch)
-            case Match.BaseAndRight(baseSection, rightSection) =>
-              sectionsAndTheirMatches
-                .get(baseSection)
-                .intersect(sectionsAndTheirMatches.get(rightSection))
-                .exists(isAnAllSidesMatch)
-            case Match.LeftAndRight(leftSection, rightSection) =>
-              sectionsAndTheirMatches
-                .get(leftSection)
-                .intersect(sectionsAndTheirMatches.get(rightSection))
-                .exists(isAnAllSidesMatch)
-            case _: Match.AllSides[Section[Element]] => false
-          }
-        end val
-
-        if redundantMatches.nonEmpty then
-          logger.debug(
-            s"Removing redundant pairwise matches:\n${pprintCustomised(redundantMatches)} as their sections also belong to all-sides matches."
-          )
-        end if
-
-        withoutTheseMatches(redundantMatches) -> usefulMatches
-      end withoutRedundantPairwiseMatchesIn
-
       // When the window size used to calculate matches is lower than the
       // optimal match size, overlapping matches will be made that cover the
       // elements of the optimal math. Estimate the size of the optimal match by
@@ -987,12 +963,6 @@ object CodeMotionAnalysis extends StrictLogging:
           .maxOption
       end estimateOptimalMatchSize
 
-      extension (sources: Sources[Path, Element])
-        def pathWhenSectionSpansFile(section: Section[Element]): Option[Path] =
-          val path           = sources.pathFor(section)
-          val entireFileSize = sources.filesByPath(path).size
-          Option.when(entireFileSize == section.size)(path)
-
       private def withMatch(
           aMatch: Match[Section[Element]]
       ): MatchesAndTheirSections =
@@ -1004,21 +974,21 @@ object CodeMotionAnalysis extends StrictLogging:
               rightSectionsByPath = withRightSection(rightSection),
               sectionsAndTheirMatches =
                 sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch) + (rightSection -> aMatch),
-              baseSpanningMatchesByPath = baseSpanningMatchesByPath ++ base
+              baseSpanningSectionsByPath = baseSpanningSectionsByPath ++ base
                 .pathWhenSectionSpansFile(
                   baseSection
                 )
-                .map(_ -> aMatch),
-              leftSpanningMatchesByPath = leftSpanningMatchesByPath ++ left
+                .map(_ -> baseSection),
+              leftSpanningSectionsByPath = leftSpanningSectionsByPath ++ left
                 .pathWhenSectionSpansFile(
                   leftSection
                 )
-                .map(_ -> aMatch),
-              rightSpanningMatchesByPath = rightSpanningMatchesByPath ++ right
+                .map(_ -> leftSection),
+              rightSpanningSectionsByPath = rightSpanningSectionsByPath ++ right
                 .pathWhenSectionSpansFile(
                   rightSection
                 )
-                .map(_ -> aMatch)
+                .map(_ -> rightSection)
             )
           case Match.BaseAndLeft(baseSection, leftSection) =>
             copy(
@@ -1026,16 +996,16 @@ object CodeMotionAnalysis extends StrictLogging:
               leftSectionsByPath = withLeftSection(leftSection),
               sectionsAndTheirMatches =
                 sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch),
-              baseSpanningMatchesByPath = baseSpanningMatchesByPath ++ base
+              baseSpanningSectionsByPath = baseSpanningSectionsByPath ++ base
                 .pathWhenSectionSpansFile(
                   baseSection
                 )
-                .map(_ -> aMatch),
-              leftSpanningMatchesByPath = leftSpanningMatchesByPath ++ left
+                .map(_ -> baseSection),
+              leftSpanningSectionsByPath = leftSpanningSectionsByPath ++ left
                 .pathWhenSectionSpansFile(
                   leftSection
                 )
-                .map(_ -> aMatch)
+                .map(_ -> leftSection)
             )
           case Match.BaseAndRight(baseSection, rightSection) =>
             copy(
@@ -1043,16 +1013,16 @@ object CodeMotionAnalysis extends StrictLogging:
               rightSectionsByPath = withRightSection(rightSection),
               sectionsAndTheirMatches =
                 sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch),
-              baseSpanningMatchesByPath = baseSpanningMatchesByPath ++ base
+              baseSpanningSectionsByPath = baseSpanningSectionsByPath ++ base
                 .pathWhenSectionSpansFile(
                   baseSection
                 )
-                .map(_ -> aMatch),
-              rightSpanningMatchesByPath = rightSpanningMatchesByPath ++ right
+                .map(_ -> baseSection),
+              rightSpanningSectionsByPath = rightSpanningSectionsByPath ++ right
                 .pathWhenSectionSpansFile(
                   rightSection
                 )
-                .map(_ -> aMatch)
+                .map(_ -> rightSection)
             )
           case Match.LeftAndRight(leftSection, rightSection) =>
             copy(
@@ -1060,19 +1030,53 @@ object CodeMotionAnalysis extends StrictLogging:
               rightSectionsByPath = withRightSection(rightSection),
               sectionsAndTheirMatches =
                 sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch),
-              leftSpanningMatchesByPath = leftSpanningMatchesByPath ++ left
+              leftSpanningSectionsByPath = leftSpanningSectionsByPath ++ left
                 .pathWhenSectionSpansFile(
                   leftSection
                 )
-                .map(_ -> aMatch),
-              rightSpanningMatchesByPath = rightSpanningMatchesByPath ++ right
+                .map(_ -> leftSection),
+              rightSpanningSectionsByPath = rightSpanningSectionsByPath ++ right
                 .pathWhenSectionSpansFile(
                   rightSection
                 )
-                .map(_ -> aMatch)
+                .map(_ -> rightSection)
             )
         end match
       end withMatch
+
+      extension (sources: Sources[Path, Element])
+        def pathWhenSectionSpansFile(section: Section[Element]): Option[Path] =
+          val path           = sources.pathFor(section)
+          val entireFileSize = sources.filesByPath(path).size
+          Option.when(entireFileSize == section.size)(path)
+
+      // Eating into pairwise matches can create smaller pairwise matches that
+      // are partially subsumed by other larger pairwise matches. Prefer keeping
+      // the larger matches and remove the subsumed ones.
+      def cleanedUp: MatchesAndTheirSections =
+        val subsumedBaseSections = baseSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesBaseSection)
+        val subsumedLeftSections = leftSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesLeftSection)
+        val subsumedRightSections = rightSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesRightSection)
+
+        val matchesToRemove =
+          (subsumedBaseSections ++ subsumedLeftSections ++ subsumedRightSections)
+            .flatMap(sectionsAndTheirMatches.get)
+            .toSet
+
+        if matchesToRemove.nonEmpty then
+          logger.debug(
+            s"Removing matches that have subsumed sections:\n${pprintCustomised(matchesToRemove)} as part of cleanup."
+          )
+        end if
+
+        this.withoutTheseMatches(matchesToRemove)
+      end cleanedUp
 
       private def pairwiseMatchSubsumesJustOneSideOnly(
           allSides: Match.AllSides[Section[Element]]
