@@ -131,7 +131,10 @@ object CodeMotionAnalysis extends StrictLogging:
         baseSectionsByPath = Map.empty,
         leftSectionsByPath = Map.empty,
         rightSectionsByPath = Map.empty,
-        sectionsAndTheirMatches = MultiDict.empty
+        sectionsAndTheirMatches = MultiDict.empty,
+        baseSpanningMatchesByPath = Map.empty,
+        leftSpanningMatchesByPath = Map.empty,
+        rightSpanningMatchesByPath = Map.empty
       )
       private val rollingHashFactoryCache: Cache[Int, RollingHash.Factory] =
         Caffeine.newBuilder().build()
@@ -150,18 +153,27 @@ object CodeMotionAnalysis extends StrictLogging:
           sectionsAndTheirMatches: MatchedSections
       )(
           side: Sources[Path, Element],
-          sectionsByPath: Map[Path, SectionsSeen]
+          sectionsByPath: Map[Path, SectionsSeen],
+          spanningMatchesByPath: Map[Path, Match[Section[Element]]]
       )(section: Section[Element]): Boolean =
-        sectionsByPath
-          .get(side.pathFor(section))
-          .fold(ifEmpty = false)(
-            _.filterIncludes(section.closedOpenInterval)
-              .filter(_ != section)
-              .exists(sectionsAndTheirMatches.get(_).exists {
-                case _: Match.AllSides[Section[Element]] => true
-                case _                                   => false
-              })
+        val path = side.pathFor(section)
+
+        spanningMatchesByPath
+          .get(path)
+          .collect { case _: Match.AllSides[Section[Element]] => true }
+          .getOrElse(
+            sectionsByPath
+              .get(path)
+              .fold(ifEmpty = false)(
+                _.filterIncludes(section.closedOpenInterval)
+                  .filter(_ != section)
+                  .exists(sectionsAndTheirMatches.get(_).exists {
+                    case _: Match.AllSides[Section[Element]] => true
+                    case _                                   => false
+                  })
+              )
           )
+      end subsumesSectionViaAtLeastOneAllSidesMatch
 
       private def subsumingPairwiseMatches(
           sectionsAndTheirMatches: MatchedSections
@@ -444,7 +456,10 @@ object CodeMotionAnalysis extends StrictLogging:
         baseSectionsByPath: Map[Path, SectionsSeen],
         leftSectionsByPath: Map[Path, SectionsSeen],
         rightSectionsByPath: Map[Path, SectionsSeen],
-        sectionsAndTheirMatches: MatchedSections
+        sectionsAndTheirMatches: MatchedSections,
+        baseSpanningMatchesByPath: Map[Path, Match[Section[Element]]],
+        leftSpanningMatchesByPath: Map[Path, Match[Section[Element]]],
+        rightSpanningMatchesByPath: Map[Path, Match[Section[Element]]]
     ):
       import MatchesAndTheirSections.*
 
@@ -458,19 +473,22 @@ object CodeMotionAnalysis extends StrictLogging:
           : Section[Element] => Boolean =
         subsumesSectionViaAtLeastOneAllSidesMatch(sectionsAndTheirMatches)(
           base,
-          baseSectionsByPath
+          baseSectionsByPath,
+          baseSpanningMatchesByPath
         )
       private val subsumesLeftSectionViaAtLeastOneAllSidesMatch
           : Section[Element] => Boolean =
         subsumesSectionViaAtLeastOneAllSidesMatch(sectionsAndTheirMatches)(
           left,
-          leftSectionsByPath
+          leftSectionsByPath,
+          leftSpanningMatchesByPath
         )
       private val subsumesRightSectionViaAtLeastOneAllSidesMatch
           : Section[Element] => Boolean =
         subsumesSectionViaAtLeastOneAllSidesMatch(sectionsAndTheirMatches)(
           right,
-          rightSectionsByPath
+          rightSectionsByPath,
+          rightSpanningMatchesByPath
         )
       private val overlapsBaseSection: Section[Element] => Boolean =
         overlapsSection(base, baseSectionsByPath)
@@ -955,6 +973,9 @@ object CodeMotionAnalysis extends StrictLogging:
           baseSectionsByPath,
           leftSectionsByPath,
           rightSectionsByPath,
+          _,
+          _,
+          _,
           _
         ) = matches.foldLeft(empty)(_.withMatch(_))
 
@@ -966,6 +987,12 @@ object CodeMotionAnalysis extends StrictLogging:
           .maxOption
       end estimateOptimalMatchSize
 
+      extension (sources: Sources[Path, Element])
+        def pathWhenSectionSpansFile(section: Section[Element]): Option[Path] =
+          val path           = sources.pathFor(section)
+          val entireFileSize = sources.filesByPath(path).size
+          Option.when(entireFileSize == section.size)(path)
+
       private def withMatch(
           aMatch: Match[Section[Element]]
       ): MatchesAndTheirSections =
@@ -976,28 +1003,73 @@ object CodeMotionAnalysis extends StrictLogging:
               leftSectionsByPath = withLeftSection(leftSection),
               rightSectionsByPath = withRightSection(rightSection),
               sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch) + (rightSection -> aMatch)
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch) + (rightSection -> aMatch),
+              baseSpanningMatchesByPath = baseSpanningMatchesByPath ++ base
+                .pathWhenSectionSpansFile(
+                  baseSection
+                )
+                .map(_ -> aMatch),
+              leftSpanningMatchesByPath = leftSpanningMatchesByPath ++ left
+                .pathWhenSectionSpansFile(
+                  leftSection
+                )
+                .map(_ -> aMatch),
+              rightSpanningMatchesByPath = rightSpanningMatchesByPath ++ right
+                .pathWhenSectionSpansFile(
+                  rightSection
+                )
+                .map(_ -> aMatch)
             )
           case Match.BaseAndLeft(baseSection, leftSection) =>
             copy(
               baseSectionsByPath = withBaseSection(baseSection),
               leftSectionsByPath = withLeftSection(leftSection),
               sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch)
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch),
+              baseSpanningMatchesByPath = baseSpanningMatchesByPath ++ base
+                .pathWhenSectionSpansFile(
+                  baseSection
+                )
+                .map(_ -> aMatch),
+              leftSpanningMatchesByPath = leftSpanningMatchesByPath ++ left
+                .pathWhenSectionSpansFile(
+                  leftSection
+                )
+                .map(_ -> aMatch)
             )
           case Match.BaseAndRight(baseSection, rightSection) =>
             copy(
               baseSectionsByPath = withBaseSection(baseSection),
               rightSectionsByPath = withRightSection(rightSection),
               sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch)
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch),
+              baseSpanningMatchesByPath = baseSpanningMatchesByPath ++ base
+                .pathWhenSectionSpansFile(
+                  baseSection
+                )
+                .map(_ -> aMatch),
+              rightSpanningMatchesByPath = rightSpanningMatchesByPath ++ right
+                .pathWhenSectionSpansFile(
+                  rightSection
+                )
+                .map(_ -> aMatch)
             )
           case Match.LeftAndRight(leftSection, rightSection) =>
             copy(
               leftSectionsByPath = withLeftSection(leftSection),
               rightSectionsByPath = withRightSection(rightSection),
               sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch)
+                sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch),
+              leftSpanningMatchesByPath = leftSpanningMatchesByPath ++ left
+                .pathWhenSectionSpansFile(
+                  leftSection
+                )
+                .map(_ -> aMatch),
+              rightSpanningMatchesByPath = rightSpanningMatchesByPath ++ right
+                .pathWhenSectionSpansFile(
+                  rightSection
+                )
+                .map(_ -> aMatch)
             )
         end match
       end withMatch
