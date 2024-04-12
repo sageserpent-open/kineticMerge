@@ -831,7 +831,7 @@ object CodeMotionAnalysis extends StrictLogging:
       ): MatchesAndTheirSections =
         matches.foldLeft(this) {
           case (
-                matches,
+                matchesAndTheirSections,
                 allSides @ Match.AllSides(
                   baseSection,
                   leftSection,
@@ -841,17 +841,19 @@ object CodeMotionAnalysis extends StrictLogging:
             val basePath  = base.pathFor(baseSection)
             val leftPath  = left.pathFor(leftSection)
             val rightPath = right.pathFor(rightSection)
-            matches
+            matchesAndTheirSections
               .focus(_.baseSectionsByPath)
               .modify(_.updatedWith(basePath) { case Some(sectionsSeen) =>
                 Some(sectionsSeen - baseSection)
               })
               .focus(_.baseSpanningSectionsByPath)
               .modify(
-                _ -- matches.baseSpanningSectionsByPath.get(basePath).collect {
-                  case spanningSection if baseSection == spanningSection =>
-                    basePath
-                }
+                _ -- matchesAndTheirSections.baseSpanningSectionsByPath
+                  .get(basePath)
+                  .collect {
+                    case spanningSection if baseSection == spanningSection =>
+                      basePath
+                  }
               )
               .focus(_.leftSectionsByPath)
               .modify(_.updatedWith(leftPath) { case Some(sectionsSeen) =>
@@ -859,10 +861,12 @@ object CodeMotionAnalysis extends StrictLogging:
               })
               .focus(_.leftSpanningSectionsByPath)
               .modify(
-                _ -- matches.leftSpanningSectionsByPath.get(leftPath).collect {
-                  case spanningSection if leftSection == spanningSection =>
-                    leftPath
-                }
+                _ -- matchesAndTheirSections.leftSpanningSectionsByPath
+                  .get(leftPath)
+                  .collect {
+                    case spanningSection if leftSection == spanningSection =>
+                      leftPath
+                  }
               )
               .focus(_.rightSectionsByPath)
               .modify(_.updatedWith(rightPath) { case Some(sectionsSeen) =>
@@ -870,7 +874,7 @@ object CodeMotionAnalysis extends StrictLogging:
               })
               .focus(_.rightSpanningSectionsByPath)
               .modify(
-                _ -- matches.rightSpanningSectionsByPath
+                _ -- matchesAndTheirSections.rightSpanningSectionsByPath
                   .get(rightPath)
                   .collect {
                     case spanningSection if rightSection == spanningSection =>
@@ -885,22 +889,24 @@ object CodeMotionAnalysis extends StrictLogging:
               )
 
           case (
-                matches,
+                matchesAndTheirSections,
                 baseAndLeft @ Match.BaseAndLeft(baseSection, leftSection)
               ) =>
             val basePath = base.pathFor(baseSection)
             val leftPath = left.pathFor(leftSection)
-            matches
+            matchesAndTheirSections
               .focus(_.baseSectionsByPath)
               .modify(_.updatedWith(basePath) { case Some(sectionsSeen) =>
                 Some(sectionsSeen - baseSection)
               })
               .focus(_.baseSpanningSectionsByPath)
               .modify(
-                _ -- matches.baseSpanningSectionsByPath.get(basePath).collect {
-                  case spanningSection if baseSection == spanningSection =>
-                    basePath
-                }
+                _ -- matchesAndTheirSections.baseSpanningSectionsByPath
+                  .get(basePath)
+                  .collect {
+                    case spanningSection if baseSection == spanningSection =>
+                      basePath
+                  }
               )
               .focus(_.leftSectionsByPath)
               .modify(_.updatedWith(leftPath) { case Some(sectionsSeen) =>
@@ -908,10 +914,12 @@ object CodeMotionAnalysis extends StrictLogging:
               })
               .focus(_.leftSpanningSectionsByPath)
               .modify(
-                _ -- matches.leftSpanningSectionsByPath.get(leftPath).collect {
-                  case spanningSection if leftSection == spanningSection =>
-                    leftPath
-                }
+                _ -- matchesAndTheirSections.leftSpanningSectionsByPath
+                  .get(leftPath)
+                  .collect {
+                    case spanningSection if leftSection == spanningSection =>
+                      leftPath
+                  }
               )
               .focus(_.sectionsAndTheirMatches)
               .modify(
@@ -920,22 +928,24 @@ object CodeMotionAnalysis extends StrictLogging:
               )
 
           case (
-                matches,
+                matchesAndTheirSections,
                 baseAndRight @ Match.BaseAndRight(baseSection, rightSection)
               ) =>
             val basePath  = base.pathFor(baseSection)
             val rightPath = right.pathFor(rightSection)
-            matches
+            matchesAndTheirSections
               .focus(_.baseSectionsByPath)
               .modify(_.updatedWith(basePath) { case Some(sectionsSeen) =>
                 Some(sectionsSeen - baseSection)
               })
               .focus(_.baseSpanningSectionsByPath)
               .modify(
-                _ -- matches.baseSpanningSectionsByPath.get(basePath).collect {
-                  case spanningSection if baseSection == spanningSection =>
-                    basePath
-                }
+                _ -- matchesAndTheirSections.baseSpanningSectionsByPath
+                  .get(basePath)
+                  .collect {
+                    case spanningSection if baseSection == spanningSection =>
+                      basePath
+                  }
               )
               .focus(_.rightSectionsByPath)
               .modify(_.updatedWith(rightPath) { case Some(sectionsSeen) =>
@@ -943,7 +953,7 @@ object CodeMotionAnalysis extends StrictLogging:
               })
               .focus(_.rightSpanningSectionsByPath)
               .modify(
-                _ -- matches.rightSpanningSectionsByPath
+                _ -- matchesAndTheirSections.rightSpanningSectionsByPath
                   .get(rightPath)
                   .collect {
                     case spanningSection if rightSection == spanningSection =>
@@ -957,22 +967,24 @@ object CodeMotionAnalysis extends StrictLogging:
               )
 
           case (
-                matches,
+                matchesAndTheirSections,
                 leftAndRight @ Match.LeftAndRight(leftSection, rightSection)
               ) =>
             val leftPath  = left.pathFor(leftSection)
             val rightPath = right.pathFor(rightSection)
-            matches
+            matchesAndTheirSections
               .focus(_.leftSectionsByPath)
               .modify(_.updatedWith(leftPath) { case Some(sectionsSeen) =>
                 Some(sectionsSeen - leftSection)
               })
               .focus(_.leftSpanningSectionsByPath)
               .modify(
-                _ -- matches.leftSpanningSectionsByPath.get(leftPath).collect {
-                  case spanningSection if leftSection == spanningSection =>
-                    leftPath
-                }
+                _ -- matchesAndTheirSections.leftSpanningSectionsByPath
+                  .get(leftPath)
+                  .collect {
+                    case spanningSection if leftSection == spanningSection =>
+                      leftPath
+                  }
               )
               .focus(_.rightSectionsByPath)
               .modify(_.updatedWith(rightPath) { case Some(sectionsSeen) =>
@@ -980,7 +992,7 @@ object CodeMotionAnalysis extends StrictLogging:
               })
               .focus(_.rightSpanningSectionsByPath)
               .modify(
-                _ -- matches.rightSpanningSectionsByPath
+                _ -- matchesAndTheirSections.rightSpanningSectionsByPath
                   .get(rightPath)
                   .collect {
                     case spanningSection if rightSection == spanningSection =>
@@ -1214,67 +1226,58 @@ object CodeMotionAnalysis extends StrictLogging:
           rightSection: Section[Element]
       ): Option[Match[Section[Element]]] =
         // Rules of the game:
-        // 1. No overlaps on *any* side are permitted.
-        // 2. An all-sides match may not be subsumed on *all three sides* by a
+        // 1. An all-sides match may not be subsumed on *all three sides* by a
         // larger all-sides match.
-        // 3. An all-sides match may not be subsumed on *two* of its sides by a
+        // 2. An all-sides match may not be subsumed on *two* of its sides by a
         // larger all-sides match.
-        // 4. An all-sides match may be subsumed on *two* of its sides by a
+        // 3. An all-sides match may be subsumed on *two* of its sides by a
         // larger pairwise match - this facilitates eating into the larger
         // pairwise section elsewhere.
-        // 5. A putative all-sides match subsumed on *one* side by a larger
+        // 4. A putative all-sides match subsumed on *one* side by a larger
         // match (all-sides or pairwise) is partially suppressed, yielding a
         // pairwise match across the other two sides, provided that the pairwise
         // match is permitted by its own rules. If not, the all-sides match is
         // completely suppressed.
 
-        {
-          val baseIsSubsumedByAnAllSidesMatch =
-            subsumesBaseSectionViaAtLeastOneAllSidesMatch(baseSection)
-          val leftIsSubsumedByAnAllSidesMatch =
-            subsumesLeftSectionViaAtLeastOneAllSidesMatch(leftSection)
-          val rightIsSubsumedByAnAllSidesMatch =
-            subsumesRightSectionViaAtLeastOneAllSidesMatch(rightSection)
+        val baseIsSubsumedByAnAllSidesMatch =
+          subsumesBaseSectionViaAtLeastOneAllSidesMatch(baseSection)
+        val leftIsSubsumedByAnAllSidesMatch =
+          subsumesLeftSectionViaAtLeastOneAllSidesMatch(leftSection)
+        val rightIsSubsumedByAnAllSidesMatch =
+          subsumesRightSectionViaAtLeastOneAllSidesMatch(rightSection)
 
-          (
-            baseIsSubsumedByAnAllSidesMatch,
-            leftIsSubsumedByAnAllSidesMatch,
-            rightIsSubsumedByAnAllSidesMatch
-          ) match
-            case (false, false, false) =>
-              val tediousTypecheckingWorkaround
-                  : Option[Match.AllSides[Section[Element]]] =
-                Some(Match.AllSides(baseSection, leftSection, rightSection))
+        (
+          baseIsSubsumedByAnAllSidesMatch,
+          leftIsSubsumedByAnAllSidesMatch,
+          rightIsSubsumedByAnAllSidesMatch
+        ) match
+          case (false, false, false) =>
+            val tediousTypecheckingWorkaround
+                : Option[Match.AllSides[Section[Element]]] =
+              Some(Match.AllSides(baseSection, leftSection, rightSection))
 
-              tediousTypecheckingWorkaround
-                .filterNot(pairwiseMatchSubsumesJustOneSideOnly)
-            case (false, false, true) =>
-              Option.unless(
-                subsumesBaseSection(baseSection) || subsumesLeftSection(
-                  leftSection
-                )
-              )(Match.BaseAndLeft(baseSection, leftSection))
-            case (false, true, false) =>
-              Option.unless(
-                subsumesBaseSection(baseSection) || subsumesRightSection(
-                  rightSection
-                )
-              )(Match.BaseAndRight(baseSection, rightSection))
-            case (true, false, false) =>
-              Option.unless(
-                subsumesLeftSection(leftSection) || subsumesRightSection(
-                  rightSection
-                )
-              )(Match.LeftAndRight(leftSection, rightSection))
-            case _ => None
-          end match
-        }.flatMap { potentialMatch =>
-          val overlapped = overlapsBaseSection(baseSection) ||
-            overlapsLeftSection(leftSection) ||
-            overlapsRightSection(rightSection)
-
-          Option.unless(overlapped)(potentialMatch)
-        }
+            tediousTypecheckingWorkaround
+              .filterNot(pairwiseMatchSubsumesJustOneSideOnly)
+          case (false, false, true) =>
+            Option.unless(
+              subsumesBaseSection(baseSection) || subsumesLeftSection(
+                leftSection
+              )
+            )(Match.BaseAndLeft(baseSection, leftSection))
+          case (false, true, false) =>
+            Option.unless(
+              subsumesBaseSection(baseSection) || subsumesRightSection(
+                rightSection
+              )
+            )(Match.BaseAndRight(baseSection, rightSection))
+          case (true, false, false) =>
+            Option.unless(
+              subsumesLeftSection(leftSection) || subsumesRightSection(
+                rightSection
+              )
+            )(Match.LeftAndRight(leftSection, rightSection))
+          case _ => None
+        end match
       end matchFrom
 
       private def baseAndLeftMatchOf(
@@ -1282,12 +1285,9 @@ object CodeMotionAnalysis extends StrictLogging:
           leftSection: Section[Element]
       ): Option[Match.BaseAndLeft[Section[Element]]] =
         // If anything fully or partially subsumes either section in a putative
-        // pairwise match or overlaps on either side, then the match is
-        // suppressed.
+        // pairwise match, then the match is suppressed.
         val suppressed =
           subsumesBaseSection(baseSection) || subsumesLeftSection(
-            leftSection
-          ) || overlapsBaseSection(baseSection) || overlapsLeftSection(
             leftSection
           )
 
@@ -1303,13 +1303,10 @@ object CodeMotionAnalysis extends StrictLogging:
           baseSection: Section[Element],
           rightSection: Section[Element]
       ): Option[Match.BaseAndRight[Section[Element]]] =
-        // If anything overlaps on either side or fully or partially subsumes
-        // either section in a putative pairwise match, then the match is
-        // suppressed.
+        // If anything fully or partially subsumes either section in a putative
+        // pairwise match, then the match is suppressed.
         val suppressed =
-          overlapsBaseSection(baseSection) || overlapsRightSection(
-            rightSection
-          ) || subsumesBaseSection(baseSection) || subsumesRightSection(
+          subsumesBaseSection(baseSection) || subsumesRightSection(
             rightSection
           )
 
@@ -1325,13 +1322,10 @@ object CodeMotionAnalysis extends StrictLogging:
           leftSection: Section[Element],
           rightSection: Section[Element]
       ): Option[Match.LeftAndRight[Section[Element]]] =
-        // If anything overlaps on either side or fully or partially subsumes
-        // either section in a putative pairwise match, then the match is
-        // suppressed.
+        // If anything fully or partially subsumes either section in a putative
+        // pairwise match, then the match is suppressed.
         val suppressed =
-          overlapsLeftSection(leftSection) || overlapsRightSection(
-            rightSection
-          ) || subsumesLeftSection(leftSection) || subsumesRightSection(
+          subsumesLeftSection(leftSection) || subsumesRightSection(
             rightSection
           )
         Option.unless(suppressed)(
@@ -1465,35 +1459,52 @@ object CodeMotionAnalysis extends StrictLogging:
                 ) && potentialMatchKeyOrder.eqv(baseHead, rightHead) =>
               // Synchronised the fingerprints across all three sides...
               val matchesForSynchronisedFingerprint
-                  : Set[Match[Section[Element]]] =
-                val baseSections =
-                  baseSectionsByFingerprint.get(baseHead)
-                val leftSections =
-                  leftSectionsByFingerprint.get(leftHead)
-                val rightSections =
-                  rightSectionsByFingerprint.get(rightHead)
+                  : LazyList[Match[Section[Element]]] =
+                val baseSectionsThatDoNotOverlap = LazyList
+                  .from(baseSectionsByFingerprint.get(baseHead))
+                  .filterNot(overlapsBaseSection)
 
-                (for
-                  baseSection  <- LazyList.from(baseSections)
-                  leftSection  <- LazyList.from(leftSections)
-                  rightSection <- LazyList.from(rightSections)
+                val leftSectionsThatDoNotOverlap = LazyList
+                  .from(leftSectionsByFingerprint.get(leftHead))
+                  .filterNot(overlapsLeftSection)
+
+                val rightSectionsThatDoNotOverlap = LazyList
+                  .from(rightSectionsByFingerprint.get(rightHead))
+                  .filterNot(overlapsRightSection)
+
+                for
+                  baseSection  <- baseSectionsThatDoNotOverlap
+                  leftSection  <- leftSectionsThatDoNotOverlap
+                  rightSection <- rightSectionsThatDoNotOverlap
 
                   aMatch <- matchFrom(
                     baseSection,
                     leftSection,
                     rightSection
                   )
-                yield aMatch).toSet
+                yield aMatch
+                end for
               end matchesForSynchronisedFingerprint
 
-              matchingFingerprintsAcrossSides(
-                baseFingerprints.tail,
-                leftFingerprints.tail,
-                rightFingerprints.tail,
-                if allowAmbiguousMatches || 1 == matchesForSynchronisedFingerprint.size
-                then matches ++ matchesForSynchronisedFingerprint
-                else matches
-              )
+              matchesForSynchronisedFingerprint match
+                case leadingMatch #:: remainingMatches =>
+                  matchingFingerprintsAcrossSides(
+                    baseFingerprints.tail,
+                    leftFingerprints.tail,
+                    rightFingerprints.tail,
+                    if allowAmbiguousMatches
+                    then matches ++ matchesForSynchronisedFingerprint
+                    else if remainingMatches.isEmpty then matches + leadingMatch
+                    else matches
+                  )
+                case _ =>
+                  matchingFingerprintsAcrossSides(
+                    baseFingerprints.tail,
+                    leftFingerprints.tail,
+                    rightFingerprints.tail,
+                    matches
+                  )
+              end match
 
             case (Some(baseHead), Some(leftHead), Some(rightHead))
                 if potentialMatchKeyOrder.eqv(
@@ -1516,31 +1527,46 @@ object CodeMotionAnalysis extends StrictLogging:
                 if potentialMatchKeyOrder.eqv(baseHead, leftHead) =>
               // Synchronised the fingerprints between the base and left...
               val matchesForSynchronisedFingerprint
-                  : Set[Match[Section[Element]]] =
-                val baseSections =
-                  baseSectionsByFingerprint.get(baseHead)
-                val leftSections =
-                  leftSectionsByFingerprint.get(leftHead)
+                  : LazyList[Match.BaseAndLeft[Section[Element]]] =
+                val baseSectionsThatDoNotOverlap = LazyList
+                  .from(baseSectionsByFingerprint.get(baseHead))
+                  .filterNot(overlapsBaseSection)
 
-                (for
-                  baseSection <- LazyList.from(baseSections)
-                  leftSection <- LazyList.from(leftSections)
+                val leftSectionsThatDoNotOverlap = LazyList
+                  .from(leftSectionsByFingerprint.get(leftHead))
+                  .filterNot(overlapsLeftSection)
+
+                for
+                  baseSection <- baseSectionsThatDoNotOverlap
+                  leftSection <- leftSectionsThatDoNotOverlap
 
                   baseAndLeftMatch <- baseAndLeftMatchOf(
                     baseSection,
                     leftSection
                   )
-                yield baseAndLeftMatch).toSet
+                yield baseAndLeftMatch
+                end for
               end matchesForSynchronisedFingerprint
 
-              matchingFingerprintsAcrossSides(
-                baseFingerprints.tail,
-                leftFingerprints.tail,
-                rightFingerprints,
-                if allowAmbiguousMatches || 1 == matchesForSynchronisedFingerprint.size
-                then matches ++ matchesForSynchronisedFingerprint
-                else matches
-              )
+              matchesForSynchronisedFingerprint match
+                case leadingMatch #:: remainingMatches =>
+                  matchingFingerprintsAcrossSides(
+                    baseFingerprints.tail,
+                    leftFingerprints.tail,
+                    rightFingerprints,
+                    if allowAmbiguousMatches
+                    then matches ++ matchesForSynchronisedFingerprint
+                    else if remainingMatches.isEmpty then matches + leadingMatch
+                    else matches
+                  )
+                case _ =>
+                  matchingFingerprintsAcrossSides(
+                    baseFingerprints.tail,
+                    leftFingerprints.tail,
+                    rightFingerprints,
+                    matches
+                  )
+              end match
 
             case (Some(baseHead), Some(leftHead), Some(rightHead))
                 if potentialMatchKeyOrder.eqv(
@@ -1563,31 +1589,46 @@ object CodeMotionAnalysis extends StrictLogging:
                 if potentialMatchKeyOrder.eqv(baseHead, rightHead) =>
               // Synchronised the fingerprints between the base and right...
               val matchesForSynchronisedFingerprint
-                  : Set[Match[Section[Element]]] =
-                val baseSections =
-                  baseSectionsByFingerprint.get(baseHead)
-                val rightSections =
-                  rightSectionsByFingerprint.get(rightHead)
+                  : LazyList[Match.BaseAndRight[Section[Element]]] =
+                val baseSectionsThatDoNotOverlap = LazyList
+                  .from(baseSectionsByFingerprint.get(baseHead))
+                  .filterNot(overlapsBaseSection)
 
-                (for
-                  baseSection  <- LazyList.from(baseSections)
-                  rightSection <- LazyList.from(rightSections)
+                val rightSectionsThatDoNotOverlap = LazyList
+                  .from(rightSectionsByFingerprint.get(rightHead))
+                  .filterNot(overlapsRightSection)
+
+                for
+                  baseSection  <- baseSectionsThatDoNotOverlap
+                  rightSection <- rightSectionsThatDoNotOverlap
 
                   baseAndRightMatch <- baseAndRightMatchOf(
                     baseSection,
                     rightSection
                   )
-                yield baseAndRightMatch).toSet
+                yield baseAndRightMatch
+                end for
               end matchesForSynchronisedFingerprint
 
-              matchingFingerprintsAcrossSides(
-                baseFingerprints.tail,
-                leftFingerprints,
-                rightFingerprints.tail,
-                if allowAmbiguousMatches || 1 == matchesForSynchronisedFingerprint.size
-                then matches ++ matchesForSynchronisedFingerprint
-                else matches
-              )
+              matchesForSynchronisedFingerprint match
+                case leadingMatch #:: remainingMatches =>
+                  matchingFingerprintsAcrossSides(
+                    baseFingerprints.tail,
+                    leftFingerprints,
+                    rightFingerprints.tail,
+                    if allowAmbiguousMatches
+                    then matches ++ matchesForSynchronisedFingerprint
+                    else if remainingMatches.isEmpty then matches + leadingMatch
+                    else matches
+                  )
+                case _ =>
+                  matchingFingerprintsAcrossSides(
+                    baseFingerprints.tail,
+                    leftFingerprints,
+                    rightFingerprints.tail,
+                    matches
+                  )
+              end match
 
             case (Some(baseHead), Some(leftHead), Some(rightHead))
                 if potentialMatchKeyOrder.eqv(
@@ -1610,31 +1651,46 @@ object CodeMotionAnalysis extends StrictLogging:
                 if potentialMatchKeyOrder.eqv(leftHead, rightHead) =>
               // Synchronised the fingerprints between the left and right...
               val matchesForSynchronisedFingerprint
-                  : Set[Match[Section[Element]]] =
-                val leftSections =
-                  leftSectionsByFingerprint.get(leftHead)
-                val rightSections =
-                  rightSectionsByFingerprint.get(rightHead)
+                  : LazyList[Match.LeftAndRight[Section[Element]]] =
+                val leftSectionsThatDoNotOverlap = LazyList
+                  .from(leftSectionsByFingerprint.get(leftHead))
+                  .filterNot(overlapsLeftSection)
 
-                (for
-                  leftSection  <- LazyList.from(leftSections)
-                  rightSection <- LazyList.from(rightSections)
+                val rightSectionsThatDoNotOverlap = LazyList
+                  .from(rightSectionsByFingerprint.get(rightHead))
+                  .filterNot(overlapsRightSection)
+
+                for
+                  leftSection  <- leftSectionsThatDoNotOverlap
+                  rightSection <- rightSectionsThatDoNotOverlap
 
                   leftAndRightMatch <- leftAndRightMatchOf(
                     leftSection,
                     rightSection
                   )
-                yield leftAndRightMatch).toSet
+                yield leftAndRightMatch
+                end for
               end matchesForSynchronisedFingerprint
 
-              matchingFingerprintsAcrossSides(
-                baseFingerprints,
-                leftFingerprints.tail,
-                rightFingerprints.tail,
-                if allowAmbiguousMatches || 1 == matchesForSynchronisedFingerprint.size
-                then matches ++ matchesForSynchronisedFingerprint
-                else matches
-              )
+              matchesForSynchronisedFingerprint match
+                case leadingMatch #:: remainingMatches =>
+                  matchingFingerprintsAcrossSides(
+                    baseFingerprints,
+                    leftFingerprints.tail,
+                    rightFingerprints.tail,
+                    if allowAmbiguousMatches
+                    then matches ++ matchesForSynchronisedFingerprint
+                    else if remainingMatches.isEmpty then matches + leadingMatch
+                    else matches
+                  )
+                case _ =>
+                  matchingFingerprintsAcrossSides(
+                    baseFingerprints,
+                    leftFingerprints.tail,
+                    rightFingerprints.tail,
+                    matches
+                  )
+              end match
 
             case (Some(baseHead), Some(leftHead), Some(rightHead)) =>
               // All the fingerprints disagree, so advance the side with the
