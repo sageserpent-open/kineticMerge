@@ -551,12 +551,6 @@ object MainTest extends ProseExamples:
       case Array(postMergeCommit, parents*) => postMergeCommit -> parents
     : @unchecked
 
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
-
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
-
   private def verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit(
       path: Path
   )(
@@ -583,6 +577,19 @@ object MainTest extends ProseExamples:
 
     assert(status.isEmpty)
   end verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+
+  private def currentCommit(path: Path) =
+    os.proc("git", "log", "-1", "--format=tformat:%H")
+      .call(path)
+      .out
+      .text()
+      .strip
+
+  private def mergeHeadPath(path: Path) =
+    path / ".git" / "MERGE_HEAD"
 
   private def verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit(
       path: Path
@@ -611,6 +618,12 @@ object MainTest extends ProseExamples:
 
     assert(currentStatus(path).nonEmpty)
   end verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit
+
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
+  private def mergeHead(path: Path) =
+    os.read(mergeHeadPath(path)).strip()
 
   private def verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
       path: Path
@@ -643,19 +656,6 @@ object MainTest extends ProseExamples:
 
     currentStatus(path)
   end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
-
-  private def currentCommit(path: Path) =
-    os.proc("git", "log", "-1", "--format=tformat:%H")
-      .call(path)
-      .out
-      .text()
-      .strip
-
-  private def mergeHead(path: Path) =
-    os.read(mergeHeadPath(path)).strip()
-
-  private def mergeHeadPath(path: Path) =
-    path / ".git" / "MERGE_HEAD"
 
   private def gitRepository(): ImperativeResource[Path] =
     for
@@ -739,7 +739,8 @@ class MainTest:
                     theirBranchHead =
                       theirBranch.taggedWith[Tags.CommitOrBranchName],
                     noCommit = noCommit,
-                    noFastForward = noFastForward
+                    noFastForward = noFastForward,
+                    minimumAmbiguousMatchSize = 0
                   )
                 )(workingDirectory =
                   optionalSubdirectory.fold(ifEmpty = path)(path / _)
@@ -838,7 +839,8 @@ class MainTest:
                 ApplicationRequest(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
-                  noCommit = noCommit
+                  noCommit = noCommit,
+                  minimumAmbiguousMatchSize = 0
                 )
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path / _)
@@ -906,7 +908,8 @@ class MainTest:
                 ApplicationRequest(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
-                  noCommit = noCommit
+                  noCommit = noCommit,
+                  minimumAmbiguousMatchSize = 0
                 )
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path / _)
@@ -980,7 +983,8 @@ class MainTest:
                 ApplicationRequest(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
-                  noCommit = noCommit
+                  noCommit = noCommit,
+                  minimumAmbiguousMatchSize = 0
                 )
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path / _)
@@ -1049,8 +1053,10 @@ class MainTest:
                 else masterBranch                   -> evilTwinBranch
 
               val exitCode = Main.mergeTheirBranch(
-                ApplicationRequest(theirBranchHead =
-                  theirBranch.taggedWith[Tags.CommitOrBranchName]
+                ApplicationRequest(
+                  theirBranchHead =
+                    theirBranch.taggedWith[Tags.CommitOrBranchName],
+                  minimumAmbiguousMatchSize = 0
                 )
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path / _)
@@ -1123,8 +1129,10 @@ class MainTest:
                 else masterBranch                      -> deletedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                ApplicationRequest(theirBranchHead =
-                  theirBranch.taggedWith[Tags.CommitOrBranchName]
+                ApplicationRequest(
+                  theirBranchHead =
+                    theirBranch.taggedWith[Tags.CommitOrBranchName],
+                  minimumAmbiguousMatchSize = 0
                 )
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path / _)
@@ -1203,8 +1211,10 @@ class MainTest:
                 else masterBranch -> concurrentlyModifiedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                ApplicationRequest(theirBranchHead =
-                  theirBranch.taggedWith[Tags.CommitOrBranchName]
+                ApplicationRequest(
+                  theirBranchHead =
+                    theirBranch.taggedWith[Tags.CommitOrBranchName],
+                  minimumAmbiguousMatchSize = 0
                 )
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path / _)
@@ -1287,7 +1297,8 @@ class MainTest:
                 ApplicationRequest(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
-                  noCommit = noCommit
+                  noCommit = noCommit,
+                  minimumAmbiguousMatchSize = 0
                 )
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path / _)
@@ -1365,7 +1376,8 @@ class MainTest:
                 ApplicationRequest(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
-                  noCommit = noCommit
+                  noCommit = noCommit,
+                  minimumAmbiguousMatchSize = 0
                 )
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path / _)
@@ -1625,7 +1637,8 @@ class MainTest:
                   ApplicationRequest(
                     theirBranchHead =
                       theirBranch.taggedWith[Tags.CommitOrBranchName],
-                    noCommit = noCommit
+                    noCommit = noCommit,
+                    minimumAmbiguousMatchSize = 0
                   )
                 )(workingDirectory =
                   optionalSubdirectory.fold(ifEmpty = path)(path / _)
@@ -1710,7 +1723,8 @@ class MainTest:
                 ApplicationRequest(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
-                  noCommit = noCommit
+                  noCommit = noCommit,
+                  minimumAmbiguousMatchSize = 0
                 )
               )(workingDirectory =
                 optionalSubdirectory.fold(ifEmpty = path)(path / _)

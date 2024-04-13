@@ -410,7 +410,7 @@ object Main extends StrictLogging:
         // better merge as well.
         4,
       thresholdSizeFractionForMatching: Double = 0,
-      minimumAmbiguousMatchSize: Int = 0
+      minimumAmbiguousMatchSize: Int = 10
   )
 
   enum Change:
