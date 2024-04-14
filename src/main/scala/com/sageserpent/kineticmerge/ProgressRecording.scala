@@ -2,9 +2,9 @@ package com.sageserpent.kineticmerge
 
 import me.tongfei.progressbar.{ConsoleProgressBarConsumer, ProgressBarBuilder}
 import org.jline.utils.WriterOutputStream
-import sun.nio.cs.UTF_8
 
 import java.io.PrintStream
+import java.nio.charset.Charset
 
 /** Records progress from zero up to some implied maximum set up by
   * [[ProgressRecording.newSession]]. It is a ratchet, so attempting to decrease
@@ -48,7 +48,7 @@ object ConsoleProgressRecording extends ProgressRecording:
       private val progressBar = Option(System.console()).map(console =>
         val progressBarConsumer = new ConsoleProgressBarConsumer(
           new PrintStream(
-            new WriterOutputStream(console.writer(), UTF_8.INSTANCE)
+            new WriterOutputStream(console.writer(), Charset.defaultCharset())
           )
         )
         val builder = new ProgressBarBuilder
