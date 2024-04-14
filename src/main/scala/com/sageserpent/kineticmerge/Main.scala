@@ -279,7 +279,8 @@ object Main extends StrictLogging:
         )
 
       inTopLevelWorkingDirectory = InWorkingDirectory(
-        topLevelWorkingDirectory
+        topLevelWorkingDirectory,
+        progressRecording
       )
 
       ourBranchHead <- inTopLevelWorkingDirectory.ourBranchHead()
@@ -490,7 +491,10 @@ object Main extends StrictLogging:
     )
   end MergeInput
 
-  private case class InWorkingDirectory(workingDirectory: Path):
+  private case class InWorkingDirectory(
+      workingDirectory: Path,
+      progressRecording: ProgressRecording
+  ):
     def ourBranchHead(): Workflow[String @@ Main.Tags.CommitOrBranchName] =
       IO {
         val branchName = os
@@ -1234,7 +1238,7 @@ object Main extends StrictLogging:
               elementOrder = Token.comparison,
               elementFunnel = Token.funnel,
               hashFunction = Hashing.murmur3_32_fixed()
-            )
+            )(progressRecording)
           )
           .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
 

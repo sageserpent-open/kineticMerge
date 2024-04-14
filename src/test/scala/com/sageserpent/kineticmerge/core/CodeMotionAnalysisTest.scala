@@ -6,6 +6,7 @@ import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.java.CasesLimitStrategy
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.americium.{Trials, TrialsApi}
+import com.sageserpent.kineticmerge.NoProgressRecording
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import org.junit.jupiter.api.{Order as _, *}
@@ -92,7 +93,7 @@ class CodeMotionAnalysisTest:
                 elementOrder = Order[Element],
                 elementFunnel = elementFunnel,
                 hashFunction = Hashing.murmur3_32_fixed()
-              ): @unchecked
+              )(progressRecording = NoProgressRecording): @unchecked
 
             analysis.base matches base
             analysis.left matches left
@@ -462,7 +463,7 @@ class CodeMotionAnalysisTest:
               elementOrder = Order[Element],
               elementFunnel = elementFunnel,
               hashFunction = Hashing.murmur3_32_fixed()
-            ): @unchecked
+            )(progressRecording = NoProgressRecording): @unchecked
           end val
 
           // Check that all matches are consistent with the base sections...
@@ -746,7 +747,7 @@ class CodeMotionAnalysisTest:
         elementOrder = Order[Element],
         elementFunnel = elementFunnel,
         hashFunction = Hashing.murmur3_32_fixed()
-      ): @unchecked
+      )(progressRecording = NoProgressRecording): @unchecked
     end val
 
     val matches =
@@ -848,7 +849,7 @@ class CodeMotionAnalysisTest:
         elementOrder = Order[Element],
         elementFunnel = elementFunnel,
         hashFunction = Hashing.murmur3_32_fixed()
-      ): @unchecked
+      )(progressRecording = NoProgressRecording): @unchecked
     end val
 
     val matches =
@@ -940,7 +941,7 @@ class CodeMotionAnalysisTest:
         elementOrder = Order[Element],
         elementFunnel = elementFunnel,
         hashFunction = Hashing.murmur3_32_fixed()
-      ): @unchecked
+      )(progressRecording = NoProgressRecording): @unchecked
     end val
 
     val matches =

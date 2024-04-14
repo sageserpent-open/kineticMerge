@@ -3,6 +3,7 @@ package com.sageserpent.kineticmerge.core
 import com.google.common.hash.Hashing
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.junit5.*
+import com.sageserpent.kineticmerge.NoProgressRecording
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtension.*
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtensionTest.{FakePath, reconstituteTextFrom}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
@@ -64,7 +65,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       elementOrder = Token.comparison,
       elementFunnel = Token.funnel,
       hashFunction = Hashing.murmur3_32_fixed()
-    ): @unchecked
+    )(progressRecording = NoProgressRecording): @unchecked
 
     val expected = stuntDoubleTokens(issue23BugReproductionExpectedMerge)
 
@@ -127,7 +128,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       elementOrder = Token.comparison,
       elementFunnel = Token.funnel,
       hashFunction = Hashing.murmur3_32_fixed()
-    ): @unchecked
+    )(progressRecording = NoProgressRecording): @unchecked
 
     val expected = tokens(codeMotionExampleExpectedMerge).get
 
@@ -193,7 +194,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       elementOrder = Token.comparison,
       elementFunnel = Token.funnel,
       hashFunction = Hashing.murmur3_32_fixed()
-    ): @unchecked
+    )(progressRecording = NoProgressRecording): @unchecked
 
     val expectedForOriginal = tokens(
       codeMotionExampleWithSplitOriginalExpectedMerge
@@ -288,7 +289,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         elementOrder = Token.comparison,
         elementFunnel = Token.funnel,
         hashFunction = Hashing.murmur3_32_fixed()
-      ): @unchecked
+      )(progressRecording = NoProgressRecording): @unchecked
 
       def merge(path: FakePath): Unit =
         codeMotionAnalysis

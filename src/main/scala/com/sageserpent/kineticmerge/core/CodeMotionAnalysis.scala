@@ -5,7 +5,7 @@ import cats.instances.seq.*
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction}
-import com.sageserpent.kineticmerge.core
+import com.sageserpent.kineticmerge.{ProgressRecording, core}
 import com.typesafe.scalalogging.StrictLogging
 import de.sciss.fingertree.RangedSeq
 import monocle.syntax.all.*
@@ -26,6 +26,7 @@ trait CodeMotionAnalysis[Path, Element]:
   ): collection.Set[Match[Section[Element]]]
 end CodeMotionAnalysis
 
+// TODO: `CodeMotionAnalysis.of` is turning into a parameter monstrosity. Is it time to hoist most of the parameters into a factory?
 object CodeMotionAnalysis extends StrictLogging:
   /** Analyse code motion from the sources of {@code base} to both {@code left}
     * and {@code right}, breaking them into [[File]] and thence [[Section]]
@@ -74,6 +75,8 @@ object CodeMotionAnalysis extends StrictLogging:
       elementOrder: Order[Element],
       elementFunnel: Funnel[Element],
       hashFunction: HashFunction
+  )(
+      progressRecording: ProgressRecording
   ): Either[Throwable, CodeMotionAnalysis[Path, Element]] =
     require(0 <= thresholdSizeFractionForMatching)
     require(1 >= thresholdSizeFractionForMatching)
