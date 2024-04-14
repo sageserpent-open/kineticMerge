@@ -33,10 +33,13 @@ end ProgressRecording
 
 object NoProgressRecording extends ProgressRecording:
   override def newSession(maximumProgress: Int): ProgressRecordingSession =
-    new ProgressRecordingSession:
-      override def upTo(amount: Int): Unit = {}
+    Session
 
-      override def close(): Unit = {}
+  private object Session extends ProgressRecordingSession:
+    override def upTo(amount: Int): Unit = {}
+
+    override def close(): Unit = {}
+  end Session
 end NoProgressRecording
 
 object ConsoleProgressRecording extends ProgressRecording:

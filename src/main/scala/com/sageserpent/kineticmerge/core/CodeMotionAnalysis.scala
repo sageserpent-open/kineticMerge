@@ -5,7 +5,7 @@ import cats.instances.seq.*
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction}
-import com.sageserpent.kineticmerge.{ProgressRecording, core}
+import com.sageserpent.kineticmerge.{ProgressRecording, ProgressRecordingSession, core}
 import com.typesafe.scalalogging.StrictLogging
 import de.sciss.fingertree.RangedSeq
 import monocle.syntax.all.*
@@ -14,7 +14,7 @@ import java.lang.Byte as JavaByte
 import scala.annotation.tailrec
 import scala.collection.immutable.{MultiDict, SortedMultiSet}
 import scala.collection.{SortedMultiDict, mutable}
-import scala.util.Try
+import scala.util.{Try, Using}
 
 trait CodeMotionAnalysis[Path, Element]:
   def base: Map[Path, File[Element]]
@@ -500,8 +500,8 @@ object CodeMotionAnalysis extends StrictLogging:
 
       @tailrec
       final def withAllMatchesOfAtLeastTheSureFireWindowSize(
-          looseExclusiveUpperBoundOnMaximumMatchSize: Int =
-            1 + maximumFileSizeAcrossAllFilesOverAllSides
+          progressRecordingSession: ProgressRecordingSession,
+          looseExclusiveUpperBoundOnMaximumMatchSize: Int
       ): MatchesAndTheirSections =
         // Essentially a binary chop algorithm, but using
         // `fallbackImprovedState` to track the best solution.
@@ -568,8 +568,12 @@ object CodeMotionAnalysis extends StrictLogging:
                 logger.debug(
                   s"Search has found an optimal match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, restarting search to look for smaller matches."
                 )
+                progressRecordingSession.upTo(
+                  maximumFileSizeAcrossAllFilesOverAllSides - candidateWindowSize
+                )
                 stateAfterTryingCandidate
                   .withAllMatchesOfAtLeastTheSureFireWindowSize(
+                    progressRecordingSession,
                     looseExclusiveUpperBoundOnMaximumMatchSize =
                       candidateWindowSize
                   )
@@ -592,6 +596,9 @@ object CodeMotionAnalysis extends StrictLogging:
             logger.debug(
               s"Search for matches whose size is no less than the sure-fire match window size of: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides has terminated; results are:\n${pprintCustomised(fallbackImprovedState)}"
             )
+            progressRecordingSession.upTo(
+              maximumFileSizeAcrossAllFilesOverAllSides - minimumSureFireWindowSizeAcrossAllFilesOverAllSides
+            )
             fallbackImprovedState
           else
             // The optimal matches are in the fallback improved state; try
@@ -601,7 +608,11 @@ object CodeMotionAnalysis extends StrictLogging:
             logger.debug(
               s"Search has found optimal matches at window size: $bestMatchSize, restarting search to look for smaller matches."
             )
+            progressRecordingSession.upTo(
+              maximumFileSizeAcrossAllFilesOverAllSides - bestMatchSize
+            )
             fallbackImprovedState.withAllMatchesOfAtLeastTheSureFireWindowSize(
+              progressRecordingSession,
               looseExclusiveUpperBoundOnMaximumMatchSize = bestMatchSize
             )
           end if
@@ -1664,9 +1675,20 @@ object CodeMotionAnalysis extends StrictLogging:
     )
 
     val matchesAndTheirSections =
-      val withAllMatchesOfAtLeastTheSureFireWindowSize =
-        MatchesAndTheirSections.empty
-          .withAllMatchesOfAtLeastTheSureFireWindowSize()
+      val withAllMatchesOfAtLeastTheSureFireWindowSize = Using
+        .apply(
+          progressRecording.newSession(
+            maximumFileSizeAcrossAllFilesOverAllSides - minimumWindowSizeAcrossAllFilesOverAllSides
+          )
+        )(progressRecordingSession =>
+          MatchesAndTheirSections.empty
+            .withAllMatchesOfAtLeastTheSureFireWindowSize(
+              progressRecordingSession,
+              looseExclusiveUpperBoundOnMaximumMatchSize =
+                1 + maximumFileSizeAcrossAllFilesOverAllSides
+            )
+        )
+        .get
 
       (if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > minimumWindowSizeAcrossAllFilesOverAllSides
        then
