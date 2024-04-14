@@ -81,7 +81,23 @@ object Main extends StrictLogging:
     *   and Java client code.
     */
   @varargs
-  def apply(commandLineArguments: String*): Int =
+  def apply(commandLineArguments: String*): Int = apply(
+    progressRecording = NoProgressRecording,
+    commandLineArguments = commandLineArguments*
+  )
+
+  /** @param progressRecording
+    * @param commandLineArguments
+    *   Command line arguments as varargs.
+    * @return
+    *   The exit code as a plain integer, suitable for consumption by both Scala
+    *   and Java client code.
+    */
+  @varargs
+  def apply(
+      progressRecording: ProgressRecording,
+      commandLineArguments: String*
+  ): Int =
     val logbackRootLevelLoggingJavaPropertyName = "logback-root-level"
 
     val parser =
@@ -215,7 +231,7 @@ object Main extends StrictLogging:
         .parse(
           parser,
           commandLineArguments,
-          ApplicationRequest(theirBranchHead = noBranchProvided),
+          ApplicationRequest(),
           new DefaultOEffectSetup:
             // Don't terminate the application, let execution return back to the
             // caller via a glorified long-jump.
@@ -229,12 +245,15 @@ object Main extends StrictLogging:
 
     applicationRequest.fold(
       { case EarlyTermination(exitCode) => exitCode },
-      _.fold(ifEmpty = incorrectCommandLine)(mergeTheirBranch(_)(os.pwd))
+      _.fold(ifEmpty = incorrectCommandLine)(
+        mergeTheirBranch(_)(workingDirectory = os.pwd, progressRecording)
+      )
     )
   end apply
 
   def mergeTheirBranch(applicationRequest: ApplicationRequest)(
-      workingDirectory: Path
+      workingDirectory: Path,
+      progressRecording: ProgressRecording = NoProgressRecording
   ): Int @@ Main.Tags.ExitCode =
     import applicationRequest.*
 
@@ -400,7 +419,8 @@ object Main extends StrictLogging:
     yield temporaryFile
 
   case class ApplicationRequest(
-      theirBranchHead: String @@ Main.Tags.CommitOrBranchName,
+      theirBranchHead: String @@ Main.Tags.CommitOrBranchName =
+        noBranchProvided,
       noCommit: Boolean = false,
       noFastForward: Boolean = false,
       minimumMatchSize: Int =
