@@ -66,6 +66,7 @@ object ConsoleProgressRecording extends ProgressRecording:
         )
         val builder = new ProgressBarBuilder
         builder.setTaskName(label)
+        builder.hideEta()
         builder.startsFrom(initialProgress, JavaDuration.ZERO)
         builder.setInitialMax(maximumProgress)
         builder.setConsumer(progressBarConsumer)
