@@ -29,18 +29,14 @@ trait ProgressRecording:
     *   An instance of [[ProgressRecordingSession]] that has zero progress
     *   recorded.
     */
-  def newSession(
-      label: String,
-      initialProgress: Int,
-      maximumProgress: Int
+  def newSession(label: String, maximumProgress: Int)(
+      initialProgress: Int
   ): ProgressRecordingSession
 end ProgressRecording
 
 object NoProgressRecording extends ProgressRecording:
-  override def newSession(
-      label: String,
-      initialProgress: Int,
-      maximumProgress: Int
+  override def newSession(label: String, maximumProgress: Int)(
+      initialProgress: Int
   ): ProgressRecordingSession =
     Session
 
@@ -52,10 +48,8 @@ object NoProgressRecording extends ProgressRecording:
 end NoProgressRecording
 
 object ConsoleProgressRecording extends ProgressRecording:
-  override def newSession(
-      label: String,
-      initialProgress: Int,
-      maximumProgress: Int
+  override def newSession(label: String, maximumProgress: Int)(
+      initialProgress: Int
   ): ProgressRecordingSession =
     new ProgressRecordingSession:
       private val progressBar = Option(System.console()).map(console =>
@@ -69,6 +63,7 @@ object ConsoleProgressRecording extends ProgressRecording:
         builder.hideEta()
         builder.startsFrom(initialProgress, JavaDuration.ZERO)
         builder.setInitialMax(maximumProgress)
+        builder.clearDisplayOnFinish()
         builder.setConsumer(progressBarConsumer)
         builder.build()
       )
