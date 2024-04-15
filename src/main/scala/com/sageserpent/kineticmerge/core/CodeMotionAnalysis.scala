@@ -140,15 +140,11 @@ object CodeMotionAnalysis extends StrictLogging:
         Caffeine.newBuilder().build()
 
       def withAllMatchesOfAtLeastTheSureFireWindowSize() =
-        def progressForMatchSize(matchSize: Int): Int =
-          maximumFileSizeAcrossAllFilesOverAllSides - matchSize
-
         Using(
           progressRecording.newSession(
-            progressForMatchSize(
-              minimumSureFireWindowSizeAcrossAllFilesOverAllSides
-            )
-          )
+            label = "Minimum match size considered:",
+            maximumProgress = maximumFileSizeAcrossAllFilesOverAllSides
+          )(initialProgress = maximumFileSizeAcrossAllFilesOverAllSides)
         ) { progressRecordingSession =>
           @tailrec
           def withAllMatchesOfAtLeastTheSureFireWindowSize(
@@ -225,8 +221,7 @@ object CodeMotionAnalysis extends StrictLogging:
                       s"Search has found an optimal match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, restarting search to look for smaller matches."
                     )
                     progressRecordingSession.upTo(
-                      progressForMatchSize(candidateWindowSize)
-                    )
+                      candidateWindowSize)
                     withAllMatchesOfAtLeastTheSureFireWindowSize(
                       stateAfterTryingCandidate,
                       looseExclusiveUpperBoundOnMaximumMatchSize =
@@ -252,9 +247,7 @@ object CodeMotionAnalysis extends StrictLogging:
                   s"Search for matches whose size is no less than the sure-fire match window size of: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides has terminated; results are:\n${pprintCustomised(fallbackImprovedState)}"
                 )
                 progressRecordingSession.upTo(
-                  progressForMatchSize(
-                    minimumSureFireWindowSizeAcrossAllFilesOverAllSides
-                  )
+                  minimumSureFireWindowSizeAcrossAllFilesOverAllSides
                 )
                 fallbackImprovedState
               else
@@ -266,8 +259,7 @@ object CodeMotionAnalysis extends StrictLogging:
                   s"Search has found optimal matches at window size: $bestMatchSize, restarting search to look for smaller matches."
                 )
                 progressRecordingSession.upTo(
-                  progressForMatchSize(bestMatchSize)
-                )
+                  bestMatchSize)
                 withAllMatchesOfAtLeastTheSureFireWindowSize(
                   fallbackImprovedState,
                   looseExclusiveUpperBoundOnMaximumMatchSize = bestMatchSize

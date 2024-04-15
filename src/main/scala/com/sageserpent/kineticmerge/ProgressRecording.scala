@@ -6,6 +6,8 @@ import org.jline.utils.WriterOutputStream
 import java.io.PrintStream
 import java.nio.charset.Charset
 
+import java.time.Duration as JavaDuration
+
 /** Records progress from zero up to some implied maximum set up by
   * [[ProgressRecording.newSession]]. It is a ratchet, so attempting to decrease
   * the recorded progress is ignored. Attempting to record more than the maximum
@@ -28,11 +30,13 @@ trait ProgressRecording:
     *   An instance of [[ProgressRecordingSession]] that has zero progress
     *   recorded.
     */
-  def newSession(maximumProgress: Int): ProgressRecordingSession
+  def newSession(label: String, maximumProgress: Int)(
+      initialProgress: Int): ProgressRecordingSession
 end ProgressRecording
 
 object NoProgressRecording extends ProgressRecording:
-  override def newSession(maximumProgress: Int): ProgressRecordingSession =
+  override def newSession(label: String, maximumProgress: Int)(
+      initialProgress: Int): ProgressRecordingSession =
     Session
 
   private object Session extends ProgressRecordingSession:
@@ -43,7 +47,8 @@ object NoProgressRecording extends ProgressRecording:
 end NoProgressRecording
 
 object ConsoleProgressRecording extends ProgressRecording:
-  override def newSession(maximumProgress: Int): ProgressRecordingSession =
+  override def newSession(label: String, maximumProgress: Int)(
+      initialProgress: Int): ProgressRecordingSession =
     new ProgressRecordingSession:
       private val progressBar = Option(System.console()).map(console =>
         val progressBarConsumer = new ConsoleProgressBarConsumer(
@@ -52,7 +57,11 @@ object ConsoleProgressRecording extends ProgressRecording:
           )
         )
         val builder = new ProgressBarBuilder
+        builder.setTaskName(label)
+        builder.hideEta()
+        builder.startsFrom(initialProgress, JavaDuration.ZERO)
         builder.setInitialMax(maximumProgress)
+        builder.clearDisplayOnFinish()
         builder.setConsumer(progressBarConsumer)
         builder.build()
       )
