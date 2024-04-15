@@ -130,7 +130,7 @@ object CodeMotionAnalysis extends StrictLogging:
         Match.BaseAndRight[Section[Element]] |
         Match.LeftAndRight[Section[Element]]
 
-      lazy val empty = MatchesAndTheirSections(
+      private lazy val empty = MatchesAndTheirSections(
         baseSectionsByPath = Map.empty,
         leftSectionsByPath = Map.empty,
         rightSectionsByPath = Map.empty,
@@ -138,6 +138,159 @@ object CodeMotionAnalysis extends StrictLogging:
       )
       private val rollingHashFactoryCache: Cache[Int, RollingHash.Factory] =
         Caffeine.newBuilder().build()
+
+      def withAllMatchesOfAtLeastTheSureFireWindowSize() =
+        def progressForMatchSize(matchSize: Int): Int =
+          maximumFileSizeAcrossAllFilesOverAllSides - matchSize
+
+        Using(
+          progressRecording.newSession(
+            progressForMatchSize(
+              minimumSureFireWindowSizeAcrossAllFilesOverAllSides
+            )
+          )
+        ) { progressRecordingSession =>
+          @tailrec
+          def withAllMatchesOfAtLeastTheSureFireWindowSize(
+              matchesAndTheirSections: MatchesAndTheirSections,
+              looseExclusiveUpperBoundOnMaximumMatchSize: Int
+          ): MatchesAndTheirSections =
+            // Essentially a binary chop algorithm, but using
+            // `fallbackImprovedState` to track the best solution.
+            @tailrec
+            def keepTryingToImproveThis(
+                bestMatchSize: Int,
+                looseExclusiveUpperBoundOnMaximumMatchSize: Int,
+                guessAtOptimalMatchSize: Option[Int],
+                fallbackImprovedState: MatchesAndTheirSections
+            ): MatchesAndTheirSections =
+              require(
+                bestMatchSize < looseExclusiveUpperBoundOnMaximumMatchSize
+              )
+
+              if 1 + bestMatchSize < looseExclusiveUpperBoundOnMaximumMatchSize
+              then
+                // There is at least one candidate window size greater than
+                // `bestMatchSize`...
+                val candidateWindowSize = guessAtOptimalMatchSize
+                  .filter(_ < looseExclusiveUpperBoundOnMaximumMatchSize)
+                  .getOrElse {
+                    // Speculative optimisation - if the largest file was
+                    // modified on just one side (or coincidentally added as
+                    // exact duplicates on both sides), then we may as well go
+                    // straight to it to avoid the cost of working back up to
+                    // that matching size with lots of overlapping matches.
+                    val potentialFullMatchSize = for
+                      largestPertinentFileSize <- fileSizes
+                        .rangeFrom(bestMatchSize)
+                        .rangeTo(looseExclusiveUpperBoundOnMaximumMatchSize)
+                        .lastOption
+                      largestFileMightBeUnchangedOnOneSideOrCoincidentallyAddedAsInDuplicate =
+                        1 < fileSizes.get(largestPertinentFileSize)
+                      if largestFileMightBeUnchangedOnOneSideOrCoincidentallyAddedAsInDuplicate
+                    yield largestPertinentFileSize
+
+                    val bisectedSize =
+                      (bestMatchSize + looseExclusiveUpperBoundOnMaximumMatchSize) / 2
+                    potentialFullMatchSize.fold(ifEmpty = bisectedSize)(
+                      _ max bisectedSize
+                    )
+                  }
+
+                val MatchingResult(
+                  stateAfterTryingCandidate,
+                  numberOfMatchesForTheGivenWindowSize,
+                  estimatedWindowSizeForOptimalMatch
+                ) = matchesAndTheirSections.matchesForWindowSize(
+                  candidateWindowSize
+                )
+
+                estimatedWindowSizeForOptimalMatch match
+                  case None =>
+                    // Failed to improve the match size, try again with the
+                    // contracted upper bound.
+                    keepTryingToImproveThis(
+                      bestMatchSize,
+                      looseExclusiveUpperBoundOnMaximumMatchSize =
+                        candidateWindowSize,
+                      guessAtOptimalMatchSize = None,
+                      fallbackImprovedState
+                    )
+                  case Some(estimate)
+                      if estimate == candidateWindowSize || 1 == numberOfMatchesForTheGivenWindowSize =>
+                    // Found the optimal solution; try searching for the next
+                    // lowest optimal size. NOTE: this won't pick up multiple
+                    // distinct optimal matches, see below.
+                    logger.debug(
+                      s"Search has found an optimal match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, restarting search to look for smaller matches."
+                    )
+                    progressRecordingSession.upTo(
+                      progressForMatchSize(candidateWindowSize)
+                    )
+                    withAllMatchesOfAtLeastTheSureFireWindowSize(
+                      stateAfterTryingCandidate,
+                      looseExclusiveUpperBoundOnMaximumMatchSize =
+                        candidateWindowSize
+                    )
+                  case Some(estimate) =>
+                    // We have an improvement, move the lower bound up and note
+                    // the improved state.
+                    logger.debug(
+                      s"Search has found an improved match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, looking for a more optimal match with estimated window size of: $estimate."
+                    )
+                    keepTryingToImproveThis(
+                      bestMatchSize = candidateWindowSize,
+                      looseExclusiveUpperBoundOnMaximumMatchSize,
+                      guessAtOptimalMatchSize = Some(estimate),
+                      fallbackImprovedState = stateAfterTryingCandidate
+                    )
+                end match
+              else if minimumSureFireWindowSizeAcrossAllFilesOverAllSides == looseExclusiveUpperBoundOnMaximumMatchSize
+              then
+                // There is nowhere left to search.
+                logger.debug(
+                  s"Search for matches whose size is no less than the sure-fire match window size of: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides has terminated; results are:\n${pprintCustomised(fallbackImprovedState)}"
+                )
+                progressRecordingSession.upTo(
+                  progressForMatchSize(
+                    minimumSureFireWindowSizeAcrossAllFilesOverAllSides
+                  )
+                )
+                fallbackImprovedState
+              else
+                // The optimal matches are in the fallback improved state; try
+                // searching for the next lowest optimal size. This is necessary
+                // as we may have *multiple* distinct optimal matches at a given
+                // window size.
+                logger.debug(
+                  s"Search has found optimal matches at window size: $bestMatchSize, restarting search to look for smaller matches."
+                )
+                progressRecordingSession.upTo(
+                  progressForMatchSize(bestMatchSize)
+                )
+                withAllMatchesOfAtLeastTheSureFireWindowSize(
+                  fallbackImprovedState,
+                  looseExclusiveUpperBoundOnMaximumMatchSize = bestMatchSize
+                )
+              end if
+            end keepTryingToImproveThis
+
+            keepTryingToImproveThis(
+              bestMatchSize =
+                minimumSureFireWindowSizeAcrossAllFilesOverAllSides - 1,
+              looseExclusiveUpperBoundOnMaximumMatchSize,
+              guessAtOptimalMatchSize = None,
+              fallbackImprovedState = matchesAndTheirSections
+            )
+          end withAllMatchesOfAtLeastTheSureFireWindowSize
+
+          withAllMatchesOfAtLeastTheSureFireWindowSize(
+            matchesAndTheirSections = empty,
+            looseExclusiveUpperBoundOnMaximumMatchSize =
+              1 + maximumFileSizeAcrossAllFilesOverAllSides
+          )
+        }.get
+      end withAllMatchesOfAtLeastTheSureFireWindowSize
 
       private def subsumesSection(
           side: Sources[Path, Element],
@@ -498,157 +651,394 @@ object CodeMotionAnalysis extends StrictLogging:
       def rightSections: Set[Section[Element]] =
         rightSectionsByPath.values.flatMap(_.iterator).toSet
 
-      def withAllMatchesOfAtLeastTheSureFireWindowSize()
-          : MatchesAndTheirSections =
-        def progressForMatchSize(matchSize: Int): Int =
-          maximumFileSizeAcrossAllFilesOverAllSides - matchSize
+      @tailrec
+      final def withAllSmallFryMatches(
+          candidateWindowSize: Int
+      ): MatchesAndTheirSections =
+        require(
+          minimumWindowSizeAcrossAllFilesOverAllSides until minimumSureFireWindowSizeAcrossAllFilesOverAllSides contains candidateWindowSize
+        )
 
-        Using(
-          progressRecording.newSession(
-            progressForMatchSize(
-              minimumSureFireWindowSizeAcrossAllFilesOverAllSides
+        // We will be exploring the small-fry window sizes below
+        // `minimumSureFireWindowSizeAcrossAllFilesOverAllSides`; in this
+        // situation, sizes below per-file thresholds lead to no matches, this
+        // leads to gaps in validity as a size exceeds the largest match it
+        // could participate in, but fails to meet the next highest per-file
+        // threshold. Consequently, don't bother checking whether any matches
+        // were found - instead, plod linearly down each window size.
+        val MatchingResult(
+          stateAfterTryingCandidate,
+          numberOfMatchesForTheGivenWindowSize,
+          _
+        ) =
+          this.matchesForWindowSize(candidateWindowSize)
+
+        if candidateWindowSize > minimumWindowSizeAcrossAllFilesOverAllSides
+        then
+          if 0 < numberOfMatchesForTheGivenWindowSize then
+            logger.debug(
+              s"Search has found a match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, continuing to look for smaller matches."
+            )
+          end if
+          stateAfterTryingCandidate.withAllSmallFryMatches(
+            candidateWindowSize - 1
+          )
+        else
+          if 0 < numberOfMatchesForTheGivenWindowSize then
+            logger.debug(
+              s"Search has found a match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, search for matches whose size is less than the sure-fire match window size of: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides has terminated at minimum window size: $minimumWindowSizeAcrossAllFilesOverAllSides; results are:\n${pprintCustomised(stateAfterTryingCandidate)}"
+            )
+          else
+            logger.debug(
+              s"Search for matches whose size is less than the sure-fire match window size of: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides has terminated at minimum window size: $minimumWindowSizeAcrossAllFilesOverAllSides; results are:\n${pprintCustomised(stateAfterTryingCandidate)}"
+            )
+          end if
+          stateAfterTryingCandidate
+        end if
+      end withAllSmallFryMatches
+
+      // `MatchCalculationState` allows pairwise matches to subsume all-sides
+      // matches on two sides: this condenses the state by having those
+      // all-sides matches eat into their subsuming pairwise matches, replacing
+      // them with smaller leftover sections.
+      def withPairwiseMatchesEatenInto: MatchesAndTheirSections =
+        val allSidesMatches = sectionsAndTheirMatches.values.collect {
+          case allSides: Match.AllSides[Section[Element]] => allSides
+        }.toSet
+
+        def pairwiseMatchesSubsumingOnBothSides(
+            allSides: Match.AllSides[Section[Element]]
+        ): Set[PairwiseMatch] =
+          val subsumingOnBase =
+            subsumingPairwiseMatches(sectionsAndTheirMatches)(
+              base,
+              baseSectionsByPath
+            )(
+              allSides.baseElement
+            )
+          val subsumingOnLeft =
+            subsumingPairwiseMatches(sectionsAndTheirMatches)(
+              left,
+              leftSectionsByPath
+            )(
+              allSides.leftElement
+            )
+          val subsumingOnRight =
+            subsumingPairwiseMatches(sectionsAndTheirMatches)(
+              right,
+              rightSectionsByPath
+            )(
+              allSides.rightElement
+            )
+
+          (subsumingOnBase intersect subsumingOnLeft) union (subsumingOnBase intersect subsumingOnRight) union (subsumingOnLeft intersect subsumingOnRight)
+        end pairwiseMatchesSubsumingOnBothSides
+
+        val pairwiseMatchesToBeEaten
+            : MultiDict[PairwiseMatch, Match.AllSides[Section[Element]]] =
+          MultiDict.from(
+            allSidesMatches.flatMap(allSides =>
+              pairwiseMatchesSubsumingOnBothSides(allSides).map(_ -> allSides)
             )
           )
-        ) { progressRecordingSession =>
-          @tailrec
-          def withAllMatchesOfAtLeastTheSureFireWindowSize(
-              thisInLocalContext: MatchesAndTheirSections,
-              looseExclusiveUpperBoundOnMaximumMatchSize: Int
-          ): MatchesAndTheirSections =
-            // Essentially a binary chop algorithm, but using
-            // `fallbackImprovedState` to track the best solution.
-            @tailrec
-            def keepTryingToImproveThis(
-                bestMatchSize: Int,
-                looseExclusiveUpperBoundOnMaximumMatchSize: Int,
-                guessAtOptimalMatchSize: Option[Int],
-                fallbackImprovedState: MatchesAndTheirSections
-            ): MatchesAndTheirSections =
-              require(
-                bestMatchSize < looseExclusiveUpperBoundOnMaximumMatchSize
+
+        val withoutThosePairwiseMatches: MatchesAndTheirSections =
+          withoutTheseMatches(pairwiseMatchesToBeEaten.keySet)
+
+        val pairwiseMatchesFromLeftovers =
+          pairwiseMatchesToBeEaten.keySet.flatMap[PairwiseMatch] {
+            pairwiseMatch =>
+              val bites = pairwiseMatchesToBeEaten.get(pairwiseMatch)
+
+              val leftovers: Seq[PairwiseMatch] = pairwiseMatch match
+                case Match.BaseAndLeft(baseSection, leftSection) =>
+                  (eatIntoSection(base, bites.map(_.baseElement))(
+                    baseSection
+                  ) zip eatIntoSection(left, bites.map(_.leftElement))(
+                    leftSection
+                  ))
+                    .map(Match.BaseAndLeft.apply)
+
+                case Match.BaseAndRight(baseSection, rightSection) =>
+                  (eatIntoSection(base, bites.map(_.baseElement))(
+                    baseSection
+                  ) zip eatIntoSection(right, bites.map(_.rightElement))(
+                    rightSection
+                  )).map(Match.BaseAndRight.apply)
+
+                case Match.LeftAndRight(leftSection, rightSection) =>
+                  (eatIntoSection(left, bites.map(_.leftElement))(
+                    leftSection
+                  ) zip eatIntoSection(right, bites.map(_.rightElement))(
+                    rightSection
+                  )).map(Match.LeftAndRight.apply)
+
+              logger.debug(
+                s"Eating into pairwise match:\n${pprintCustomised(pairwiseMatch)} on behalf of all-sides matches:\n${pprintCustomised(bites)}, resulting in matches:\n${pprintCustomised(leftovers)}."
               )
 
-              if 1 + bestMatchSize < looseExclusiveUpperBoundOnMaximumMatchSize
-              then
-                // There is at least one candidate window size greater than
-                // `bestMatchSize`...
-                val candidateWindowSize = guessAtOptimalMatchSize
-                  .filter(_ < looseExclusiveUpperBoundOnMaximumMatchSize)
-                  .getOrElse {
-                    // Speculative optimisation - if the largest file was
-                    // modified on just one side (or coincidentally added as
-                    // exact duplicates on both sides), then we may as well go
-                    // straight to it to avoid the cost of working back up to
-                    // that matching size with lots of overlapping matches.
-                    val potentialFullMatchSize = for
-                      largestPertinentFileSize <- fileSizes
-                        .rangeFrom(bestMatchSize)
-                        .rangeTo(looseExclusiveUpperBoundOnMaximumMatchSize)
-                        .lastOption
-                      largestFileMightBeUnchangedOnOneSideOrCoincidentallyAddedAsInDuplicate =
-                        1 < fileSizes.get(largestPertinentFileSize)
-                      if largestFileMightBeUnchangedOnOneSideOrCoincidentallyAddedAsInDuplicate
-                    yield largestPertinentFileSize
+              leftovers
+          }
 
-                    val bisectedSize =
-                      (bestMatchSize + looseExclusiveUpperBoundOnMaximumMatchSize) / 2
-                    potentialFullMatchSize.fold(ifEmpty = bisectedSize)(
-                      _ max bisectedSize
-                    )
-                  }
-
-                val MatchingResult(
-                  stateAfterTryingCandidate,
-                  numberOfMatchesForTheGivenWindowSize,
-                  estimatedWindowSizeForOptimalMatch
-                ) = thisInLocalContext.matchesForWindowSize(candidateWindowSize)
-
-                estimatedWindowSizeForOptimalMatch match
-                  case None =>
-                    // Failed to improve the match size, try again with the
-                    // contracted upper bound.
-                    keepTryingToImproveThis(
-                      bestMatchSize,
-                      looseExclusiveUpperBoundOnMaximumMatchSize =
-                        candidateWindowSize,
-                      guessAtOptimalMatchSize = None,
-                      fallbackImprovedState
-                    )
-                  case Some(estimate)
-                      if estimate == candidateWindowSize || 1 == numberOfMatchesForTheGivenWindowSize =>
-                    // Found the optimal solution; try searching for the next
-                    // lowest optimal size. NOTE: this won't pick up multiple
-                    // distinct optimal matches, see below.
-                    logger.debug(
-                      s"Search has found an optimal match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, restarting search to look for smaller matches."
-                    )
-                    progressRecordingSession.upTo(
-                      progressForMatchSize(candidateWindowSize)
-                    )
-                    withAllMatchesOfAtLeastTheSureFireWindowSize(
-                      stateAfterTryingCandidate,
-                      looseExclusiveUpperBoundOnMaximumMatchSize =
-                        candidateWindowSize
-                    )
-                  case Some(estimate) =>
-                    // We have an improvement, move the lower bound up and note
-                    // the improved state.
-                    logger.debug(
-                      s"Search has found an improved match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, looking for a more optimal match with estimated window size of: $estimate."
-                    )
-                    keepTryingToImproveThis(
-                      bestMatchSize = candidateWindowSize,
-                      looseExclusiveUpperBoundOnMaximumMatchSize,
-                      guessAtOptimalMatchSize = Some(estimate),
-                      fallbackImprovedState = stateAfterTryingCandidate
-                    )
-                end match
-              else if minimumSureFireWindowSizeAcrossAllFilesOverAllSides == looseExclusiveUpperBoundOnMaximumMatchSize
-              then
-                // There is nowhere left to search.
-                logger.debug(
-                  s"Search for matches whose size is no less than the sure-fire match window size of: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides has terminated; results are:\n${pprintCustomised(fallbackImprovedState)}"
-                )
-                progressRecordingSession.upTo(
-                  progressForMatchSize(
-                    minimumSureFireWindowSizeAcrossAllFilesOverAllSides
-                  )
-                )
-                fallbackImprovedState
-              else
-                // The optimal matches are in the fallback improved state; try
-                // searching for the next lowest optimal size. This is necessary
-                // as we may have *multiple* distinct optimal matches at a given
-                // window size.
-                logger.debug(
-                  s"Search has found optimal matches at window size: $bestMatchSize, restarting search to look for smaller matches."
-                )
-                progressRecordingSession.upTo(
-                  progressForMatchSize(bestMatchSize)
-                )
-                withAllMatchesOfAtLeastTheSureFireWindowSize(
-                  fallbackImprovedState,
-                  looseExclusiveUpperBoundOnMaximumMatchSize = bestMatchSize
-                )
-              end if
-            end keepTryingToImproveThis
-
-            keepTryingToImproveThis(
-              bestMatchSize =
-                minimumSureFireWindowSizeAcrossAllFilesOverAllSides - 1,
-              looseExclusiveUpperBoundOnMaximumMatchSize,
-              guessAtOptimalMatchSize = None,
-              fallbackImprovedState = thisInLocalContext
-            )
-          end withAllMatchesOfAtLeastTheSureFireWindowSize
-
-          withAllMatchesOfAtLeastTheSureFireWindowSize(
-            this,
-            looseExclusiveUpperBoundOnMaximumMatchSize =
-              1 + maximumFileSizeAcrossAllFilesOverAllSides
+        withoutThosePairwiseMatches
+          .withMatches(
+            pairwiseMatchesFromLeftovers
+              .asInstanceOf[collection.Set[Match[Section[Element]]]]
           )
-        }.get
-      end withAllMatchesOfAtLeastTheSureFireWindowSize
+          .matchesAndTheirSections
+      end withPairwiseMatchesEatenInto
+
+      private def withoutTheseMatches(
+          matches: Iterable[Match[Section[Element]]]
+      ): MatchesAndTheirSections =
+        matches.foldLeft(this) {
+          case (
+                matchesAndTheirSections,
+                allSides @ Match.AllSides(
+                  baseSection,
+                  leftSection,
+                  rightSection
+                )
+              ) =>
+            val basePath  = base.pathFor(baseSection)
+            val leftPath  = left.pathFor(leftSection)
+            val rightPath = right.pathFor(rightSection)
+            matchesAndTheirSections
+              .focus(_.baseSectionsByPath)
+              .modify(_.updatedWith(basePath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - baseSection)
+              })
+              .focus(_.leftSectionsByPath)
+              .modify(_.updatedWith(leftPath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - leftSection)
+              })
+              .focus(_.rightSectionsByPath)
+              .modify(_.updatedWith(rightPath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - rightSection)
+              })
+              .focus(_.sectionsAndTheirMatches)
+              .modify(
+                _.remove(baseSection, allSides)
+                  .remove(leftSection, allSides)
+                  .remove(rightSection, allSides)
+              )
+
+          case (
+                matchesAndTheirSections,
+                baseAndLeft @ Match.BaseAndLeft(baseSection, leftSection)
+              ) =>
+            val basePath = base.pathFor(baseSection)
+            val leftPath = left.pathFor(leftSection)
+            matchesAndTheirSections
+              .focus(_.baseSectionsByPath)
+              .modify(_.updatedWith(basePath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - baseSection)
+              })
+              .focus(_.leftSectionsByPath)
+              .modify(_.updatedWith(leftPath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - leftSection)
+              })
+              .focus(_.sectionsAndTheirMatches)
+              .modify(
+                _.remove(baseSection, baseAndLeft)
+                  .remove(leftSection, baseAndLeft)
+              )
+
+          case (
+                matchesAndTheirSections,
+                baseAndRight @ Match.BaseAndRight(baseSection, rightSection)
+              ) =>
+            val basePath  = base.pathFor(baseSection)
+            val rightPath = right.pathFor(rightSection)
+            matchesAndTheirSections
+              .focus(_.baseSectionsByPath)
+              .modify(_.updatedWith(basePath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - baseSection)
+              })
+              .focus(_.rightSectionsByPath)
+              .modify(_.updatedWith(rightPath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - rightSection)
+              })
+              .focus(_.sectionsAndTheirMatches)
+              .modify(
+                _.remove(baseSection, baseAndRight)
+                  .remove(rightSection, baseAndRight)
+              )
+
+          case (
+                matchesAndTheirSections,
+                leftAndRight @ Match.LeftAndRight(leftSection, rightSection)
+              ) =>
+            val leftPath  = left.pathFor(leftSection)
+            val rightPath = right.pathFor(rightSection)
+            matchesAndTheirSections
+              .focus(_.leftSectionsByPath)
+              .modify(_.updatedWith(leftPath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - leftSection)
+              })
+              .focus(_.rightSectionsByPath)
+              .modify(_.updatedWith(rightPath) { case Some(sectionsSeen) =>
+                Some(sectionsSeen - rightSection)
+              })
+              .focus(_.sectionsAndTheirMatches)
+              .modify(
+                _.remove(leftSection, leftAndRight)
+                  .remove(rightSection, leftAndRight)
+              )
+        }
+      end withoutTheseMatches
+
+      private def withMatches(
+          matches: collection.Set[Match[Section[Element]]]
+      ): MatchingResult =
+        val (
+          updatedMatchesAndTheirSections,
+          matchesWithoutRedundantPairwiseMatches
+        ) =
+          matches
+            .foldLeft(this)(_.withMatch(_))
+            .withoutRedundantPairwiseMatchesIn(matches)
+
+        MatchingResult(
+          matchesAndTheirSections = updatedMatchesAndTheirSections,
+          numberOfMatchesForTheGivenWindowSize =
+            matchesWithoutRedundantPairwiseMatches.size,
+          estimatedWindowSizeForOptimalMatch = updatedMatchesAndTheirSections
+            .estimateOptimalMatchSize(matchesWithoutRedundantPairwiseMatches)
+        )
+      end withMatches
+
+      // Cleans up the state when a putative all-sides match that would have
+      // been ambiguous on one side with another all-sides match is partially
+      // suppressed by a larger pairwise match. This situation results in a
+      // pairwise match that shares its sections on both sides with the other
+      // all-sides match; remove any such redundant pairwise matches.
+      private def withoutRedundantPairwiseMatchesIn(
+          matches: collection.Set[Match[Section[Element]]]
+      ): (MatchesAndTheirSections, collection.Set[Match[Section[Element]]]) =
+        val (redundantMatches, usefulMatches) =
+          val isAnAllSidesMatch: Match[Section[Element]] => Boolean = {
+            case _: Match.AllSides[Section[Element]] => true
+            case _                                   => false
+          }
+
+          matches.partition {
+            case Match.BaseAndLeft(baseSection, leftSection) =>
+              sectionsAndTheirMatches
+                .get(baseSection)
+                .intersect(sectionsAndTheirMatches.get(leftSection))
+                .exists(isAnAllSidesMatch)
+            case Match.BaseAndRight(baseSection, rightSection) =>
+              sectionsAndTheirMatches
+                .get(baseSection)
+                .intersect(sectionsAndTheirMatches.get(rightSection))
+                .exists(isAnAllSidesMatch)
+            case Match.LeftAndRight(leftSection, rightSection) =>
+              sectionsAndTheirMatches
+                .get(leftSection)
+                .intersect(sectionsAndTheirMatches.get(rightSection))
+                .exists(isAnAllSidesMatch)
+            case _: Match.AllSides[Section[Element]] => false
+          }
+        end val
+
+        if redundantMatches.nonEmpty then
+          logger.debug(
+            s"Removing redundant pairwise matches:\n${pprintCustomised(redundantMatches)} as their sections also belong to all-sides matches."
+          )
+        end if
+
+        withoutTheseMatches(redundantMatches) -> usefulMatches
+      end withoutRedundantPairwiseMatchesIn
+
+      // When the window size used to calculate matches is lower than the
+      // optimal match size, overlapping matches will be made that cover the
+      // elements of the optimal math. Estimate the size of the optimal match by
+      // coalescing the overlaps.
+      private def estimateOptimalMatchSize(
+          matches: collection.Set[Match[Section[Element]]]
+      ): Option[Int] =
+        // Deconstruct a throwaway instance of `MatchesAndTheirSections` made
+        // from just `matches` as a quick-and-dirty way of organising the
+        // matches' sections.
+        val MatchesAndTheirSections(
+          baseSectionsByPath,
+          leftSectionsByPath,
+          rightSectionsByPath,
+          _
+        ) = matches.foldLeft(empty)(_.withMatch(_))
+
+        val sectionsSeenOnAllPathsAcrossAllSides =
+          baseSectionsByPath.values ++ leftSectionsByPath.values ++ rightSectionsByPath.values
+
+        sectionsSeenOnAllPathsAcrossAllSides
+          .flatMap(maximumSizeOfCoalescedSections)
+          .maxOption
+      end estimateOptimalMatchSize
+
+      private def withMatch(
+          aMatch: Match[Section[Element]]
+      ): MatchesAndTheirSections =
+        aMatch match
+          case Match.AllSides(baseSection, leftSection, rightSection) =>
+            copy(
+              baseSectionsByPath = withBaseSection(baseSection),
+              leftSectionsByPath = withLeftSection(leftSection),
+              rightSectionsByPath = withRightSection(rightSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch) + (rightSection -> aMatch)
+            )
+          case Match.BaseAndLeft(baseSection, leftSection) =>
+            copy(
+              baseSectionsByPath = withBaseSection(baseSection),
+              leftSectionsByPath = withLeftSection(leftSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch)
+            )
+          case Match.BaseAndRight(baseSection, rightSection) =>
+            copy(
+              baseSectionsByPath = withBaseSection(baseSection),
+              rightSectionsByPath = withRightSection(rightSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch)
+            )
+          case Match.LeftAndRight(leftSection, rightSection) =>
+            copy(
+              leftSectionsByPath = withLeftSection(leftSection),
+              rightSectionsByPath = withRightSection(rightSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch)
+            )
+        end match
+      end withMatch
+
+      // Eating into pairwise matches can create smaller pairwise matches that
+      // are partially subsumed by other larger pairwise matches. Prefer keeping
+      // the larger matches and remove the subsumed ones.
+      def cleanedUp: MatchesAndTheirSections =
+        val subsumedBaseSections = baseSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesBaseSection)
+        val subsumedLeftSections = leftSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesLeftSection)
+        val subsumedRightSections = rightSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesRightSection)
+
+        val matchesToRemove =
+          (subsumedBaseSections ++ subsumedLeftSections ++ subsumedRightSections)
+            .flatMap(sectionsAndTheirMatches.get)
+            .toSet
+
+        if matchesToRemove.nonEmpty then
+          logger.debug(
+            s"Removing matches that have subsumed sections:\n${pprintCustomised(matchesToRemove)} as part of cleanup."
+          )
+        end if
+
+        this.withoutTheseMatches(matchesToRemove)
+      end cleanedUp
 
       private def matchesForWindowSize(
           windowSize: Int
@@ -1111,230 +1501,6 @@ object CodeMotionAnalysis extends StrictLogging:
         )
       end matchesForWindowSize
 
-      private def withMatches(
-          matches: collection.Set[Match[Section[Element]]]
-      ): MatchingResult =
-        val (
-          updatedMatchesAndTheirSections,
-          matchesWithoutRedundantPairwiseMatches
-        ) =
-          matches
-            .foldLeft(this)(_.withMatch(_))
-            .withoutRedundantPairwiseMatchesIn(matches)
-
-        MatchingResult(
-          matchesAndTheirSections = updatedMatchesAndTheirSections,
-          numberOfMatchesForTheGivenWindowSize =
-            matchesWithoutRedundantPairwiseMatches.size,
-          estimatedWindowSizeForOptimalMatch = updatedMatchesAndTheirSections
-            .estimateOptimalMatchSize(matchesWithoutRedundantPairwiseMatches)
-        )
-      end withMatches
-
-      // Cleans up the state when a putative all-sides match that would have
-      // been ambiguous on one side with another all-sides match is partially
-      // suppressed by a larger pairwise match. This situation results in a
-      // pairwise match that shares its sections on both sides with the other
-      // all-sides match; remove any such redundant pairwise matches.
-      private def withoutRedundantPairwiseMatchesIn(
-          matches: collection.Set[Match[Section[Element]]]
-      ): (MatchesAndTheirSections, collection.Set[Match[Section[Element]]]) =
-        val (redundantMatches, usefulMatches) =
-          val isAnAllSidesMatch: Match[Section[Element]] => Boolean = {
-            case _: Match.AllSides[Section[Element]] => true
-            case _                                   => false
-          }
-
-          matches.partition {
-            case Match.BaseAndLeft(baseSection, leftSection) =>
-              sectionsAndTheirMatches
-                .get(baseSection)
-                .intersect(sectionsAndTheirMatches.get(leftSection))
-                .exists(isAnAllSidesMatch)
-            case Match.BaseAndRight(baseSection, rightSection) =>
-              sectionsAndTheirMatches
-                .get(baseSection)
-                .intersect(sectionsAndTheirMatches.get(rightSection))
-                .exists(isAnAllSidesMatch)
-            case Match.LeftAndRight(leftSection, rightSection) =>
-              sectionsAndTheirMatches
-                .get(leftSection)
-                .intersect(sectionsAndTheirMatches.get(rightSection))
-                .exists(isAnAllSidesMatch)
-            case _: Match.AllSides[Section[Element]] => false
-          }
-        end val
-
-        if redundantMatches.nonEmpty then
-          logger.debug(
-            s"Removing redundant pairwise matches:\n${pprintCustomised(redundantMatches)} as their sections also belong to all-sides matches."
-          )
-        end if
-
-        withoutTheseMatches(redundantMatches) -> usefulMatches
-      end withoutRedundantPairwiseMatchesIn
-
-      private def withoutTheseMatches(
-          matches: Iterable[Match[Section[Element]]]
-      ): MatchesAndTheirSections =
-        matches.foldLeft(this) {
-          case (
-                matchesAndTheirSections,
-                allSides @ Match.AllSides(
-                  baseSection,
-                  leftSection,
-                  rightSection
-                )
-              ) =>
-            val basePath  = base.pathFor(baseSection)
-            val leftPath  = left.pathFor(leftSection)
-            val rightPath = right.pathFor(rightSection)
-            matchesAndTheirSections
-              .focus(_.baseSectionsByPath)
-              .modify(_.updatedWith(basePath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - baseSection)
-              })
-              .focus(_.leftSectionsByPath)
-              .modify(_.updatedWith(leftPath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - leftSection)
-              })
-              .focus(_.rightSectionsByPath)
-              .modify(_.updatedWith(rightPath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - rightSection)
-              })
-              .focus(_.sectionsAndTheirMatches)
-              .modify(
-                _.remove(baseSection, allSides)
-                  .remove(leftSection, allSides)
-                  .remove(rightSection, allSides)
-              )
-
-          case (
-                matchesAndTheirSections,
-                baseAndLeft @ Match.BaseAndLeft(baseSection, leftSection)
-              ) =>
-            val basePath = base.pathFor(baseSection)
-            val leftPath = left.pathFor(leftSection)
-            matchesAndTheirSections
-              .focus(_.baseSectionsByPath)
-              .modify(_.updatedWith(basePath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - baseSection)
-              })
-              .focus(_.leftSectionsByPath)
-              .modify(_.updatedWith(leftPath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - leftSection)
-              })
-              .focus(_.sectionsAndTheirMatches)
-              .modify(
-                _.remove(baseSection, baseAndLeft)
-                  .remove(leftSection, baseAndLeft)
-              )
-
-          case (
-                matchesAndTheirSections,
-                baseAndRight @ Match.BaseAndRight(baseSection, rightSection)
-              ) =>
-            val basePath  = base.pathFor(baseSection)
-            val rightPath = right.pathFor(rightSection)
-            matchesAndTheirSections
-              .focus(_.baseSectionsByPath)
-              .modify(_.updatedWith(basePath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - baseSection)
-              })
-              .focus(_.rightSectionsByPath)
-              .modify(_.updatedWith(rightPath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - rightSection)
-              })
-              .focus(_.sectionsAndTheirMatches)
-              .modify(
-                _.remove(baseSection, baseAndRight)
-                  .remove(rightSection, baseAndRight)
-              )
-
-          case (
-                matchesAndTheirSections,
-                leftAndRight @ Match.LeftAndRight(leftSection, rightSection)
-              ) =>
-            val leftPath  = left.pathFor(leftSection)
-            val rightPath = right.pathFor(rightSection)
-            matchesAndTheirSections
-              .focus(_.leftSectionsByPath)
-              .modify(_.updatedWith(leftPath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - leftSection)
-              })
-              .focus(_.rightSectionsByPath)
-              .modify(_.updatedWith(rightPath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - rightSection)
-              })
-              .focus(_.sectionsAndTheirMatches)
-              .modify(
-                _.remove(leftSection, leftAndRight)
-                  .remove(rightSection, leftAndRight)
-              )
-        }
-      end withoutTheseMatches
-
-      // When the window size used to calculate matches is lower than the
-      // optimal match size, overlapping matches will be made that cover the
-      // elements of the optimal math. Estimate the size of the optimal match by
-      // coalescing the overlaps.
-      private def estimateOptimalMatchSize(
-          matches: collection.Set[Match[Section[Element]]]
-      ): Option[Int] =
-        // Deconstruct a throwaway instance of `MatchesAndTheirSections` made
-        // from just `matches` as a quick-and-dirty way of organising the
-        // matches' sections.
-        val MatchesAndTheirSections(
-          baseSectionsByPath,
-          leftSectionsByPath,
-          rightSectionsByPath,
-          _
-        ) = matches.foldLeft(empty)(_.withMatch(_))
-
-        val sectionsSeenOnAllPathsAcrossAllSides =
-          baseSectionsByPath.values ++ leftSectionsByPath.values ++ rightSectionsByPath.values
-
-        sectionsSeenOnAllPathsAcrossAllSides
-          .flatMap(maximumSizeOfCoalescedSections)
-          .maxOption
-      end estimateOptimalMatchSize
-
-      private def withMatch(
-          aMatch: Match[Section[Element]]
-      ): MatchesAndTheirSections =
-        aMatch match
-          case Match.AllSides(baseSection, leftSection, rightSection) =>
-            copy(
-              baseSectionsByPath = withBaseSection(baseSection),
-              leftSectionsByPath = withLeftSection(leftSection),
-              rightSectionsByPath = withRightSection(rightSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch) + (rightSection -> aMatch)
-            )
-          case Match.BaseAndLeft(baseSection, leftSection) =>
-            copy(
-              baseSectionsByPath = withBaseSection(baseSection),
-              leftSectionsByPath = withLeftSection(leftSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch)
-            )
-          case Match.BaseAndRight(baseSection, rightSection) =>
-            copy(
-              baseSectionsByPath = withBaseSection(baseSection),
-              rightSectionsByPath = withRightSection(rightSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch)
-            )
-          case Match.LeftAndRight(leftSection, rightSection) =>
-            copy(
-              leftSectionsByPath = withLeftSection(leftSection),
-              rightSectionsByPath = withRightSection(rightSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch)
-            )
-        end match
-      end withMatch
-
       private def matchFrom(
           baseSection: Section[Element],
           leftSection: Section[Element],
@@ -1485,171 +1651,6 @@ object CodeMotionAnalysis extends StrictLogging:
           )
         )
       end leftAndRightMatchOf
-
-      @tailrec
-      final def withAllSmallFryMatches(
-          candidateWindowSize: Int
-      ): MatchesAndTheirSections =
-        require(
-          minimumWindowSizeAcrossAllFilesOverAllSides until minimumSureFireWindowSizeAcrossAllFilesOverAllSides contains candidateWindowSize
-        )
-
-        // We will be exploring the small-fry window sizes below
-        // `minimumSureFireWindowSizeAcrossAllFilesOverAllSides`; in this
-        // situation, sizes below per-file thresholds lead to no matches, this
-        // leads to gaps in validity as a size exceeds the largest match it
-        // could participate in, but fails to meet the next highest per-file
-        // threshold. Consequently, don't bother checking whether any matches
-        // were found - instead, plod linearly down each window size.
-        val MatchingResult(
-          stateAfterTryingCandidate,
-          numberOfMatchesForTheGivenWindowSize,
-          _
-        ) =
-          this.matchesForWindowSize(candidateWindowSize)
-
-        if candidateWindowSize > minimumWindowSizeAcrossAllFilesOverAllSides
-        then
-          if 0 < numberOfMatchesForTheGivenWindowSize then
-            logger.debug(
-              s"Search has found a match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, continuing to look for smaller matches."
-            )
-          end if
-          stateAfterTryingCandidate.withAllSmallFryMatches(
-            candidateWindowSize - 1
-          )
-        else
-          if 0 < numberOfMatchesForTheGivenWindowSize then
-            logger.debug(
-              s"Search has found a match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, search for matches whose size is less than the sure-fire match window size of: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides has terminated at minimum window size: $minimumWindowSizeAcrossAllFilesOverAllSides; results are:\n${pprintCustomised(stateAfterTryingCandidate)}"
-            )
-          else
-            logger.debug(
-              s"Search for matches whose size is less than the sure-fire match window size of: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides has terminated at minimum window size: $minimumWindowSizeAcrossAllFilesOverAllSides; results are:\n${pprintCustomised(stateAfterTryingCandidate)}"
-            )
-          end if
-          stateAfterTryingCandidate
-        end if
-      end withAllSmallFryMatches
-
-      // `MatchCalculationState` allows pairwise matches to subsume all-sides
-      // matches on two sides: this condenses the state by having those
-      // all-sides matches eat into their subsuming pairwise matches, replacing
-      // them with smaller leftover sections.
-      def withPairwiseMatchesEatenInto: MatchesAndTheirSections =
-        val allSidesMatches = sectionsAndTheirMatches.values.collect {
-          case allSides: Match.AllSides[Section[Element]] => allSides
-        }.toSet
-
-        def pairwiseMatchesSubsumingOnBothSides(
-            allSides: Match.AllSides[Section[Element]]
-        ): Set[PairwiseMatch] =
-          val subsumingOnBase =
-            subsumingPairwiseMatches(sectionsAndTheirMatches)(
-              base,
-              baseSectionsByPath
-            )(
-              allSides.baseElement
-            )
-          val subsumingOnLeft =
-            subsumingPairwiseMatches(sectionsAndTheirMatches)(
-              left,
-              leftSectionsByPath
-            )(
-              allSides.leftElement
-            )
-          val subsumingOnRight =
-            subsumingPairwiseMatches(sectionsAndTheirMatches)(
-              right,
-              rightSectionsByPath
-            )(
-              allSides.rightElement
-            )
-
-          (subsumingOnBase intersect subsumingOnLeft) union (subsumingOnBase intersect subsumingOnRight) union (subsumingOnLeft intersect subsumingOnRight)
-        end pairwiseMatchesSubsumingOnBothSides
-
-        val pairwiseMatchesToBeEaten
-            : MultiDict[PairwiseMatch, Match.AllSides[Section[Element]]] =
-          MultiDict.from(
-            allSidesMatches.flatMap(allSides =>
-              pairwiseMatchesSubsumingOnBothSides(allSides).map(_ -> allSides)
-            )
-          )
-
-        val withoutThosePairwiseMatches: MatchesAndTheirSections =
-          withoutTheseMatches(pairwiseMatchesToBeEaten.keySet)
-
-        val pairwiseMatchesFromLeftovers =
-          pairwiseMatchesToBeEaten.keySet.flatMap[PairwiseMatch] {
-            pairwiseMatch =>
-              val bites = pairwiseMatchesToBeEaten.get(pairwiseMatch)
-
-              val leftovers: Seq[PairwiseMatch] = pairwiseMatch match
-                case Match.BaseAndLeft(baseSection, leftSection) =>
-                  (eatIntoSection(base, bites.map(_.baseElement))(
-                    baseSection
-                  ) zip eatIntoSection(left, bites.map(_.leftElement))(
-                    leftSection
-                  ))
-                    .map(Match.BaseAndLeft.apply)
-
-                case Match.BaseAndRight(baseSection, rightSection) =>
-                  (eatIntoSection(base, bites.map(_.baseElement))(
-                    baseSection
-                  ) zip eatIntoSection(right, bites.map(_.rightElement))(
-                    rightSection
-                  )).map(Match.BaseAndRight.apply)
-
-                case Match.LeftAndRight(leftSection, rightSection) =>
-                  (eatIntoSection(left, bites.map(_.leftElement))(
-                    leftSection
-                  ) zip eatIntoSection(right, bites.map(_.rightElement))(
-                    rightSection
-                  )).map(Match.LeftAndRight.apply)
-
-              logger.debug(
-                s"Eating into pairwise match:\n${pprintCustomised(pairwiseMatch)} on behalf of all-sides matches:\n${pprintCustomised(bites)}, resulting in matches:\n${pprintCustomised(leftovers)}."
-              )
-
-              leftovers
-          }
-
-        withoutThosePairwiseMatches
-          .withMatches(
-            pairwiseMatchesFromLeftovers
-              .asInstanceOf[collection.Set[Match[Section[Element]]]]
-          )
-          .matchesAndTheirSections
-      end withPairwiseMatchesEatenInto
-
-      // Eating into pairwise matches can create smaller pairwise matches that
-      // are partially subsumed by other larger pairwise matches. Prefer keeping
-      // the larger matches and remove the subsumed ones.
-      def cleanedUp: MatchesAndTheirSections =
-        val subsumedBaseSections = baseSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesBaseSection)
-        val subsumedLeftSections = leftSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesLeftSection)
-        val subsumedRightSections = rightSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesRightSection)
-
-        val matchesToRemove =
-          (subsumedBaseSections ++ subsumedLeftSections ++ subsumedRightSections)
-            .flatMap(sectionsAndTheirMatches.get)
-            .toSet
-
-        if matchesToRemove.nonEmpty then
-          logger.debug(
-            s"Removing matches that have subsumed sections:\n${pprintCustomised(matchesToRemove)} as part of cleanup."
-          )
-        end if
-
-        this.withoutTheseMatches(matchesToRemove)
-      end cleanedUp
     end MatchesAndTheirSections
 
     given potentialMatchKeyOrder: Order[PotentialMatchKey] =
@@ -1699,8 +1700,7 @@ object CodeMotionAnalysis extends StrictLogging:
 
     val matchesAndTheirSections =
       val withAllMatchesOfAtLeastTheSureFireWindowSize =
-        MatchesAndTheirSections.empty
-          .withAllMatchesOfAtLeastTheSureFireWindowSize()
+        MatchesAndTheirSections.withAllMatchesOfAtLeastTheSureFireWindowSize()
 
       (if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > minimumWindowSizeAcrossAllFilesOverAllSides
        then
