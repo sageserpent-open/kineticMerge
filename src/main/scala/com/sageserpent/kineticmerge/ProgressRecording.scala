@@ -5,6 +5,7 @@ import org.jline.utils.WriterOutputStream
 
 import java.io.PrintStream
 import java.nio.charset.Charset
+import java.time.Duration as JavaDuration
 
 /** Records progress from zero up to some implied maximum set up by
   * [[ProgressRecording.newSession]]. It is a ratchet, so attempting to decrease
@@ -28,11 +29,19 @@ trait ProgressRecording:
     *   An instance of [[ProgressRecordingSession]] that has zero progress
     *   recorded.
     */
-  def newSession(maximumProgress: Int): ProgressRecordingSession
+  def newSession(
+      label: String,
+      initialProgress: Int,
+      maximumProgress: Int
+  ): ProgressRecordingSession
 end ProgressRecording
 
 object NoProgressRecording extends ProgressRecording:
-  override def newSession(maximumProgress: Int): ProgressRecordingSession =
+  override def newSession(
+      label: String,
+      initialProgress: Int,
+      maximumProgress: Int
+  ): ProgressRecordingSession =
     Session
 
   private object Session extends ProgressRecordingSession:
@@ -43,7 +52,11 @@ object NoProgressRecording extends ProgressRecording:
 end NoProgressRecording
 
 object ConsoleProgressRecording extends ProgressRecording:
-  override def newSession(maximumProgress: Int): ProgressRecordingSession =
+  override def newSession(
+      label: String,
+      initialProgress: Int,
+      maximumProgress: Int
+  ): ProgressRecordingSession =
     new ProgressRecordingSession:
       private val progressBar = Option(System.console()).map(console =>
         val progressBarConsumer = new ConsoleProgressBarConsumer(
@@ -52,6 +65,8 @@ object ConsoleProgressRecording extends ProgressRecording:
           )
         )
         val builder = new ProgressBarBuilder
+        builder.setTaskName(label)
+        builder.startsFrom(initialProgress, JavaDuration.ZERO)
         builder.setInitialMax(maximumProgress)
         builder.setConsumer(progressBarConsumer)
         builder.build()
