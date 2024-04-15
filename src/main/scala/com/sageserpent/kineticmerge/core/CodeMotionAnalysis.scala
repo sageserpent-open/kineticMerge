@@ -5,7 +5,7 @@ import cats.instances.seq.*
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction}
-import com.sageserpent.kineticmerge.{ProgressRecording, core}
+import com.sageserpent.kineticmerge.{ProgressRecording, ProgressRecordingSession, core}
 import com.typesafe.scalalogging.StrictLogging
 import de.sciss.fingertree.RangedSeq
 import monocle.syntax.all.*
@@ -139,149 +139,152 @@ object CodeMotionAnalysis extends StrictLogging:
       private val rollingHashFactoryCache: Cache[Int, RollingHash.Factory] =
         Caffeine.newBuilder().build()
 
-      def withAllMatchesOfAtLeastTheSureFireWindowSize() =
+      def withAllMatchesOfAtLeastTheSureFireWindowSize()
+          : MatchesAndTheirSections =
         Using(
           progressRecording.newSession(
             label = "Minimum match size considered:",
             maximumProgress = maximumFileSizeAcrossAllFilesOverAllSides
           )(initialProgress = maximumFileSizeAcrossAllFilesOverAllSides)
         ) { progressRecordingSession =>
-          @tailrec
-          def withAllMatchesOfAtLeastTheSureFireWindowSize(
-              matchesAndTheirSections: MatchesAndTheirSections,
-              looseExclusiveUpperBoundOnMaximumMatchSize: Int
-          ): MatchesAndTheirSections =
-            // Essentially a binary chop algorithm, but using
-            // `fallbackImprovedState` to track the best solution.
-            @tailrec
-            def keepTryingToImproveThis(
-                bestMatchSize: Int,
-                looseExclusiveUpperBoundOnMaximumMatchSize: Int,
-                guessAtOptimalMatchSize: Option[Int],
-                fallbackImprovedState: MatchesAndTheirSections
-            ): MatchesAndTheirSections =
-              require(
-                bestMatchSize < looseExclusiveUpperBoundOnMaximumMatchSize
-              )
-
-              if 1 + bestMatchSize < looseExclusiveUpperBoundOnMaximumMatchSize
-              then
-                // There is at least one candidate window size greater than
-                // `bestMatchSize`...
-                val candidateWindowSize = guessAtOptimalMatchSize
-                  .filter(_ < looseExclusiveUpperBoundOnMaximumMatchSize)
-                  .getOrElse {
-                    // Speculative optimisation - if the largest file was
-                    // modified on just one side (or coincidentally added as
-                    // exact duplicates on both sides), then we may as well go
-                    // straight to it to avoid the cost of working back up to
-                    // that matching size with lots of overlapping matches.
-                    val potentialFullMatchSize = for
-                      largestPertinentFileSize <- fileSizes
-                        .rangeFrom(bestMatchSize)
-                        .rangeTo(looseExclusiveUpperBoundOnMaximumMatchSize)
-                        .lastOption
-                      largestFileMightBeUnchangedOnOneSideOrCoincidentallyAddedAsInDuplicate =
-                        1 < fileSizes.get(largestPertinentFileSize)
-                      if largestFileMightBeUnchangedOnOneSideOrCoincidentallyAddedAsInDuplicate
-                    yield largestPertinentFileSize
-
-                    val bisectedSize =
-                      (bestMatchSize + looseExclusiveUpperBoundOnMaximumMatchSize) / 2
-                    potentialFullMatchSize.fold(ifEmpty = bisectedSize)(
-                      _ max bisectedSize
-                    )
-                  }
-
-                val MatchingResult(
-                  stateAfterTryingCandidate,
-                  numberOfMatchesForTheGivenWindowSize,
-                  estimatedWindowSizeForOptimalMatch
-                ) = matchesAndTheirSections.matchesForWindowSize(
-                  candidateWindowSize
-                )
-
-                estimatedWindowSizeForOptimalMatch match
-                  case None =>
-                    // Failed to improve the match size, try again with the
-                    // contracted upper bound.
-                    keepTryingToImproveThis(
-                      bestMatchSize,
-                      looseExclusiveUpperBoundOnMaximumMatchSize =
-                        candidateWindowSize,
-                      guessAtOptimalMatchSize = None,
-                      fallbackImprovedState
-                    )
-                  case Some(estimate)
-                      if estimate == candidateWindowSize || 1 == numberOfMatchesForTheGivenWindowSize =>
-                    // Found the optimal solution; try searching for the next
-                    // lowest optimal size. NOTE: this won't pick up multiple
-                    // distinct optimal matches, see below.
-                    logger.debug(
-                      s"Search has found an optimal match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, restarting search to look for smaller matches."
-                    )
-                    progressRecordingSession.upTo(
-                      candidateWindowSize)
-                    withAllMatchesOfAtLeastTheSureFireWindowSize(
-                      stateAfterTryingCandidate,
-                      looseExclusiveUpperBoundOnMaximumMatchSize =
-                        candidateWindowSize
-                    )
-                  case Some(estimate) =>
-                    // We have an improvement, move the lower bound up and note
-                    // the improved state.
-                    logger.debug(
-                      s"Search has found an improved match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, looking for a more optimal match with estimated window size of: $estimate."
-                    )
-                    keepTryingToImproveThis(
-                      bestMatchSize = candidateWindowSize,
-                      looseExclusiveUpperBoundOnMaximumMatchSize,
-                      guessAtOptimalMatchSize = Some(estimate),
-                      fallbackImprovedState = stateAfterTryingCandidate
-                    )
-                end match
-              else if minimumSureFireWindowSizeAcrossAllFilesOverAllSides == looseExclusiveUpperBoundOnMaximumMatchSize
-              then
-                // There is nowhere left to search.
-                logger.debug(
-                  s"Search for matches whose size is no less than the sure-fire match window size of: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides has terminated; results are:\n${pprintCustomised(fallbackImprovedState)}"
-                )
-                progressRecordingSession.upTo(
-                  minimumSureFireWindowSizeAcrossAllFilesOverAllSides
-                )
-                fallbackImprovedState
-              else
-                // The optimal matches are in the fallback improved state; try
-                // searching for the next lowest optimal size. This is necessary
-                // as we may have *multiple* distinct optimal matches at a given
-                // window size.
-                logger.debug(
-                  s"Search has found optimal matches at window size: $bestMatchSize, restarting search to look for smaller matches."
-                )
-                progressRecordingSession.upTo(
-                  bestMatchSize)
-                withAllMatchesOfAtLeastTheSureFireWindowSize(
-                  fallbackImprovedState,
-                  looseExclusiveUpperBoundOnMaximumMatchSize = bestMatchSize
-                )
-              end if
-            end keepTryingToImproveThis
-
-            keepTryingToImproveThis(
-              bestMatchSize =
-                minimumSureFireWindowSizeAcrossAllFilesOverAllSides - 1,
-              looseExclusiveUpperBoundOnMaximumMatchSize,
-              guessAtOptimalMatchSize = None,
-              fallbackImprovedState = matchesAndTheirSections
-            )
-          end withAllMatchesOfAtLeastTheSureFireWindowSize
-
           withAllMatchesOfAtLeastTheSureFireWindowSize(
             matchesAndTheirSections = empty,
             looseExclusiveUpperBoundOnMaximumMatchSize =
-              1 + maximumFileSizeAcrossAllFilesOverAllSides
+              1 + maximumFileSizeAcrossAllFilesOverAllSides,
+            progressRecordingSession = progressRecordingSession
           )
         }.get
+      end withAllMatchesOfAtLeastTheSureFireWindowSize
+
+      @tailrec
+      private def withAllMatchesOfAtLeastTheSureFireWindowSize(
+          matchesAndTheirSections: MatchesAndTheirSections,
+          looseExclusiveUpperBoundOnMaximumMatchSize: Int,
+          progressRecordingSession: ProgressRecordingSession
+      ): MatchesAndTheirSections =
+        // Essentially a binary chop algorithm, but using
+        // `fallbackImprovedState` to track the best solution.
+        @tailrec
+        def keepTryingToImproveThis(
+            bestMatchSize: Int,
+            looseExclusiveUpperBoundOnMaximumMatchSize: Int,
+            guessAtOptimalMatchSize: Option[Int],
+            fallbackImprovedState: MatchesAndTheirSections
+        ): MatchesAndTheirSections =
+          require(
+            bestMatchSize < looseExclusiveUpperBoundOnMaximumMatchSize
+          )
+
+          if 1 + bestMatchSize < looseExclusiveUpperBoundOnMaximumMatchSize
+          then
+            // There is at least one candidate window size greater than
+            // `bestMatchSize`...
+            val candidateWindowSize = guessAtOptimalMatchSize
+              .filter(_ < looseExclusiveUpperBoundOnMaximumMatchSize)
+              .getOrElse {
+                // Speculative optimisation - if the largest file was
+                // modified on just one side (or coincidentally added as
+                // exact duplicates on both sides), then we may as well go
+                // straight to it to avoid the cost of working back up to
+                // that matching size with lots of overlapping matches.
+                val potentialFullMatchSize = for
+                  largestPertinentFileSize <- fileSizes
+                    .rangeFrom(bestMatchSize)
+                    .rangeTo(looseExclusiveUpperBoundOnMaximumMatchSize)
+                    .lastOption
+                  largestFileMightBeUnchangedOnOneSideOrCoincidentallyAddedAsInDuplicate =
+                    1 < fileSizes.get(largestPertinentFileSize)
+                  if largestFileMightBeUnchangedOnOneSideOrCoincidentallyAddedAsInDuplicate
+                yield largestPertinentFileSize
+
+                val bisectedSize =
+                  (bestMatchSize + looseExclusiveUpperBoundOnMaximumMatchSize) / 2
+                potentialFullMatchSize.fold(ifEmpty = bisectedSize)(
+                  _ max bisectedSize
+                )
+              }
+
+            val MatchingResult(
+              stateAfterTryingCandidate,
+              numberOfMatchesForTheGivenWindowSize,
+              estimatedWindowSizeForOptimalMatch
+            ) = matchesAndTheirSections.matchesForWindowSize(
+              candidateWindowSize
+            )
+
+            estimatedWindowSizeForOptimalMatch match
+              case None =>
+                // Failed to improve the match size, try again with the
+                // contracted upper bound.
+                keepTryingToImproveThis(
+                  bestMatchSize,
+                  looseExclusiveUpperBoundOnMaximumMatchSize =
+                    candidateWindowSize,
+                  guessAtOptimalMatchSize = None,
+                  fallbackImprovedState
+                )
+              case Some(estimate)
+                  if estimate == candidateWindowSize || 1 == numberOfMatchesForTheGivenWindowSize =>
+                // Found the optimal solution; try searching for the next
+                // lowest optimal size. NOTE: this won't pick up multiple
+                // distinct optimal matches, see below.
+                logger.debug(
+                  s"Search has found an optimal match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, restarting search to look for smaller matches."
+                )
+                progressRecordingSession.upTo(candidateWindowSize)
+                withAllMatchesOfAtLeastTheSureFireWindowSize(
+                  stateAfterTryingCandidate,
+                  looseExclusiveUpperBoundOnMaximumMatchSize =
+                    candidateWindowSize,
+                  progressRecordingSession
+                )
+              case Some(estimate) =>
+                // We have an improvement, move the lower bound up and note
+                // the improved state.
+                logger.debug(
+                  s"Search has found an improved match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, looking for a more optimal match with estimated window size of: $estimate."
+                )
+                keepTryingToImproveThis(
+                  bestMatchSize = candidateWindowSize,
+                  looseExclusiveUpperBoundOnMaximumMatchSize,
+                  guessAtOptimalMatchSize = Some(estimate),
+                  fallbackImprovedState = stateAfterTryingCandidate
+                )
+            end match
+          else if minimumSureFireWindowSizeAcrossAllFilesOverAllSides == looseExclusiveUpperBoundOnMaximumMatchSize
+          then
+            // There is nowhere left to search.
+            logger.debug(
+              s"Search for matches whose size is no less than the sure-fire match window size of: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides has terminated; results are:\n${pprintCustomised(fallbackImprovedState)}"
+            )
+            progressRecordingSession.upTo(
+              minimumSureFireWindowSizeAcrossAllFilesOverAllSides
+            )
+            fallbackImprovedState
+          else
+            // The optimal matches are in the fallback improved state; try
+            // searching for the next lowest optimal size. This is necessary
+            // as we may have *multiple* distinct optimal matches at a given
+            // window size.
+            logger.debug(
+              s"Search has found optimal matches at window size: $bestMatchSize, restarting search to look for smaller matches."
+            )
+            progressRecordingSession.upTo(bestMatchSize)
+            withAllMatchesOfAtLeastTheSureFireWindowSize(
+              fallbackImprovedState,
+              looseExclusiveUpperBoundOnMaximumMatchSize = bestMatchSize,
+              progressRecordingSession
+            )
+          end if
+        end keepTryingToImproveThis
+
+        keepTryingToImproveThis(
+          bestMatchSize =
+            minimumSureFireWindowSizeAcrossAllFilesOverAllSides - 1,
+          looseExclusiveUpperBoundOnMaximumMatchSize,
+          guessAtOptimalMatchSize = None,
+          fallbackImprovedState = matchesAndTheirSections
+        )
       end withAllMatchesOfAtLeastTheSureFireWindowSize
 
       private def subsumesSection(
@@ -643,50 +646,21 @@ object CodeMotionAnalysis extends StrictLogging:
       def rightSections: Set[Section[Element]] =
         rightSectionsByPath.values.flatMap(_.iterator).toSet
 
-      @tailrec
-      final def withAllSmallFryMatches(
-          candidateWindowSize: Int
-      ): MatchesAndTheirSections =
-        require(
-          minimumWindowSizeAcrossAllFilesOverAllSides until minimumSureFireWindowSizeAcrossAllFilesOverAllSides contains candidateWindowSize
-        )
+      def withAllSmallFryMatches(): MatchesAndTheirSections =
+        val maximumSmallFryWindowSize =
+          minimumSureFireWindowSizeAcrossAllFilesOverAllSides - 1
 
-        // We will be exploring the small-fry window sizes below
-        // `minimumSureFireWindowSizeAcrossAllFilesOverAllSides`; in this
-        // situation, sizes below per-file thresholds lead to no matches, this
-        // leads to gaps in validity as a size exceeds the largest match it
-        // could participate in, but fails to meet the next highest per-file
-        // threshold. Consequently, don't bother checking whether any matches
-        // were found - instead, plod linearly down each window size.
-        val MatchingResult(
-          stateAfterTryingCandidate,
-          numberOfMatchesForTheGivenWindowSize,
-          _
-        ) =
-          this.matchesForWindowSize(candidateWindowSize)
-
-        if candidateWindowSize > minimumWindowSizeAcrossAllFilesOverAllSides
-        then
-          if 0 < numberOfMatchesForTheGivenWindowSize then
-            logger.debug(
-              s"Search has found a match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, continuing to look for smaller matches."
-            )
-          end if
-          stateAfterTryingCandidate.withAllSmallFryMatches(
-            candidateWindowSize - 1
+        Using(
+          progressRecording.newSession(
+            label = "Minimum match size considered:",
+            maximumProgress = maximumSmallFryWindowSize
+          )(initialProgress = maximumSmallFryWindowSize)
+        ) { progressRecordingSession =>
+          withAllSmallFryMatches(
+            maximumSmallFryWindowSize,
+            progressRecordingSession
           )
-        else
-          if 0 < numberOfMatchesForTheGivenWindowSize then
-            logger.debug(
-              s"Search has found a match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, search for matches whose size is less than the sure-fire match window size of: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides has terminated at minimum window size: $minimumWindowSizeAcrossAllFilesOverAllSides; results are:\n${pprintCustomised(stateAfterTryingCandidate)}"
-            )
-          else
-            logger.debug(
-              s"Search for matches whose size is less than the sure-fire match window size of: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides has terminated at minimum window size: $minimumWindowSizeAcrossAllFilesOverAllSides; results are:\n${pprintCustomised(stateAfterTryingCandidate)}"
-            )
-          end if
-          stateAfterTryingCandidate
-        end if
+        }.get
       end withAllSmallFryMatches
 
       // `MatchCalculationState` allows pairwise matches to subsume all-sides
@@ -779,6 +753,34 @@ object CodeMotionAnalysis extends StrictLogging:
           )
           .matchesAndTheirSections
       end withPairwiseMatchesEatenInto
+
+      // Eating into pairwise matches can create smaller pairwise matches that
+      // are partially subsumed by other larger pairwise matches. Prefer keeping
+      // the larger matches and remove the subsumed ones.
+      def cleanedUp: MatchesAndTheirSections =
+        val subsumedBaseSections = baseSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesBaseSection)
+        val subsumedLeftSections = leftSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesLeftSection)
+        val subsumedRightSections = rightSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesRightSection)
+
+        val matchesToRemove =
+          (subsumedBaseSections ++ subsumedLeftSections ++ subsumedRightSections)
+            .flatMap(sectionsAndTheirMatches.get)
+            .toSet
+
+        if matchesToRemove.nonEmpty then
+          logger.debug(
+            s"Removing matches that have subsumed sections:\n${pprintCustomised(matchesToRemove)} as part of cleanup."
+          )
+        end if
+
+        this.withoutTheseMatches(matchesToRemove)
+      end cleanedUp
 
       private def withoutTheseMatches(
           matches: Iterable[Match[Section[Element]]]
@@ -879,6 +881,60 @@ object CodeMotionAnalysis extends StrictLogging:
               )
         }
       end withoutTheseMatches
+
+      @tailrec
+      private final def withAllSmallFryMatches(
+          candidateWindowSize: Int,
+          progressRecordingSession: ProgressRecordingSession
+      ): MatchesAndTheirSections =
+        require(
+          minimumWindowSizeAcrossAllFilesOverAllSides until minimumSureFireWindowSizeAcrossAllFilesOverAllSides contains candidateWindowSize
+        )
+
+        // We will be exploring the small-fry window sizes below
+        // `minimumSureFireWindowSizeAcrossAllFilesOverAllSides`; in this
+        // situation, sizes below per-file thresholds lead to no matches, this
+        // leads to gaps in validity as a size exceeds the largest match it
+        // could participate in, but fails to meet the next highest per-file
+        // threshold. Consequently, don't bother checking whether any matches
+        // were found - instead, plod linearly down each window size.
+        val MatchingResult(
+          stateAfterTryingCandidate,
+          numberOfMatchesForTheGivenWindowSize,
+          _
+        ) =
+          this.matchesForWindowSize(candidateWindowSize)
+
+        if candidateWindowSize > minimumWindowSizeAcrossAllFilesOverAllSides
+        then
+          if 0 < numberOfMatchesForTheGivenWindowSize then
+            logger.debug(
+              s"Search has found a match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, continuing to look for smaller matches."
+            )
+          end if
+          progressRecordingSession.upTo(candidateWindowSize)
+
+          stateAfterTryingCandidate.withAllSmallFryMatches(
+            candidateWindowSize = candidateWindowSize - 1,
+            progressRecordingSession = progressRecordingSession
+          )
+        else
+          if 0 < numberOfMatchesForTheGivenWindowSize then
+            logger.debug(
+              s"Search has found a match at window size: $minimumWindowSizeAcrossAllFilesOverAllSides, number of matches is: $numberOfMatchesForTheGivenWindowSize, search for matches whose size is less than the sure-fire match window size of: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides has terminated; results are:\n${pprintCustomised(stateAfterTryingCandidate)}"
+            )
+          else
+            logger.debug(
+              s"Search for matches whose size is less than the sure-fire match window size of: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides has terminated at minimum window size: $minimumWindowSizeAcrossAllFilesOverAllSides; results are:\n${pprintCustomised(stateAfterTryingCandidate)}"
+            )
+          end if
+          progressRecordingSession.upTo(
+            minimumWindowSizeAcrossAllFilesOverAllSides
+          )
+
+          stateAfterTryingCandidate
+        end if
+      end withAllSmallFryMatches
 
       private def withMatches(
           matches: collection.Set[Match[Section[Element]]]
@@ -1003,34 +1059,6 @@ object CodeMotionAnalysis extends StrictLogging:
             )
         end match
       end withMatch
-
-      // Eating into pairwise matches can create smaller pairwise matches that
-      // are partially subsumed by other larger pairwise matches. Prefer keeping
-      // the larger matches and remove the subsumed ones.
-      def cleanedUp: MatchesAndTheirSections =
-        val subsumedBaseSections = baseSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesBaseSection)
-        val subsumedLeftSections = leftSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesLeftSection)
-        val subsumedRightSections = rightSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesRightSection)
-
-        val matchesToRemove =
-          (subsumedBaseSections ++ subsumedLeftSections ++ subsumedRightSections)
-            .flatMap(sectionsAndTheirMatches.get)
-            .toSet
-
-        if matchesToRemove.nonEmpty then
-          logger.debug(
-            s"Removing matches that have subsumed sections:\n${pprintCustomised(matchesToRemove)} as part of cleanup."
-          )
-        end if
-
-        this.withoutTheseMatches(matchesToRemove)
-      end cleanedUp
 
       private def matchesForWindowSize(
           windowSize: Int
@@ -1697,9 +1725,7 @@ object CodeMotionAnalysis extends StrictLogging:
       (if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > minimumWindowSizeAcrossAllFilesOverAllSides
        then
          withAllMatchesOfAtLeastTheSureFireWindowSize
-           .withAllSmallFryMatches(
-             minimumSureFireWindowSizeAcrossAllFilesOverAllSides - 1
-           )
+           .withAllSmallFryMatches()
        else
          withAllMatchesOfAtLeastTheSureFireWindowSize
       ).withPairwiseMatchesEatenInto.cleanedUp
