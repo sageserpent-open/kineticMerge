@@ -1,4 +1,5 @@
 /.idea/
 target
 .bsp
-htmlReport.DS_Store
+htmlReport
+.DS_Store
