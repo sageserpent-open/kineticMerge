@@ -28,9 +28,7 @@ object merge extends StrictLogging:
     *   What the sequences contain.
     * @return
     *   A [[Result]] representing either a full merge without conflicts or a
-    *   conflicted merge, wrapped in an [[Either]]. Currently the [[Either]] is
-    *   always a [[Right]], as there is no support for code motion and thus no
-    *   possibility of a divergence error.
+    *   conflicted merge.
     * @note
     *   The three-way merge has an implicit precondition that the {@code base},
     *   {@code left} and {@code right} are yielded from a
