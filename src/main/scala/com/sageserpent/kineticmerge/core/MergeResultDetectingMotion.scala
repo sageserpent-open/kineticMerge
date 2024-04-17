@@ -82,25 +82,7 @@ object MergeResultDetectingMotion extends StrictLogging:
 
         matches match
           case Seq(_: AllSides[Section[Element]], _*) =>
-            matches.foldLeft(default) {
-              case (
-                    result,
-                    AllSides(
-                      _,
-                      leftElementAtMoveDestination,
-                      rightElementAtMoveDestination
-                    )
-                  ) =>
-                logger.debug(
-                  s"Coincident deletion at origin of move: propagating deletion to left move destination $leftElementAtMoveDestination and right move destination $rightElementAtMoveDestination."
-                )
-
-                result
-                  .focus(_.changesPropagatedThroughMotion)
-                  .modify(
-                    _ + (leftElementAtMoveDestination -> None) + (rightElementAtMoveDestination -> None)
-                  )
-            }
+            default
 
           case Seq(_: BaseAndLeft[Section[Element]], _*) =>
             matches.foldLeft(default) {
