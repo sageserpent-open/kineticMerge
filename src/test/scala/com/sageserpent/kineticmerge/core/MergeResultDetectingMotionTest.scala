@@ -4,12 +4,18 @@ import com.sageserpent.americium.Trials
 import com.sageserpent.americium.junit5.{DynamicTests, given}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.MergeResultDetectingMotionTest.Operation.*
-import com.sageserpent.kineticmerge.core.MergeResultDetectingMotionTest.{Element, auditingCoreMergeAlgebra}
+import com.sageserpent.kineticmerge.core.MergeResultDetectingMotionTest.{Element, auditingCoreMergeAlgebra, matchesFor}
 import org.junit.jupiter.api.TestFactory
 
 object MergeResultDetectingMotionTest:
   type Element  = Int
   type Audit[X] = Vector[Operation[X]]
+
+  def matchesFor(
+      matchesByElement: Map[Element, Match[Element]]
+  )(element: Element): Set[Match[Element]] = matchesByElement
+    .get(element)
+    .fold(ifEmpty = Set.empty[Match[Element]])(Set(_))
 
   enum Operation[X]:
     case Preservation(preserved: X)
@@ -83,7 +89,6 @@ object MergeResultDetectingMotionTest:
     ): Audit[Element] =
       result :+ Conflict(editedElements, leftEditElements, rightEditElements)
   end auditingCoreMergeAlgebra
-
 end MergeResultDetectingMotionTest
 
 class MergeResultDetectingMotionTest:
@@ -113,13 +118,9 @@ class MergeResultDetectingMotionTest:
           ourSideMovedElement -> baseAndOurSidePairwiseMatch
         )
 
-      def matchesFor(element: Element): Set[Match[Element]] = matchesByElement
-        .get(element)
-        .fold(ifEmpty = Set.empty[Match[Element]])(Set(_))
-
       val mergeAlgebra =
         MergeResultDetectingMotion
-          .mergeAlgebra(matchesFor, auditingCoreMergeAlgebra)
+          .mergeAlgebra(matchesFor(matchesByElement), auditingCoreMergeAlgebra)
 
       val mergeResult =
         mergeAlgebra.coincidentDeletion(mergeAlgebra.empty, baseElement)
@@ -163,13 +164,9 @@ class MergeResultDetectingMotionTest:
           ourSideMovedElement -> baseAndOurSidePairwiseMatch
         )
 
-      def matchesFor(element: Element): Set[Match[Element]] = matchesByElement
-        .get(element)
-        .fold(ifEmpty = Set.empty[Match[Element]])(Set(_))
-
       val mergeAlgebra =
         MergeResultDetectingMotion
-          .mergeAlgebra(matchesFor, auditingCoreMergeAlgebra)
+          .mergeAlgebra(matchesFor(matchesByElement), auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -227,13 +224,9 @@ class MergeResultDetectingMotionTest:
           ourSideMovedElement -> baseAndOurSidePairwiseMatch
         )
 
-      def matchesFor(element: Element): Set[Match[Element]] = matchesByElement
-        .get(element)
-        .fold(ifEmpty = Set.empty[Match[Element]])(Set(_))
-
       val mergeAlgebra =
         MergeResultDetectingMotion
-          .mergeAlgebra(matchesFor, auditingCoreMergeAlgebra)
+          .mergeAlgebra(matchesFor(matchesByElement), auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -310,13 +303,9 @@ class MergeResultDetectingMotionTest:
           ourSideMovedElement -> baseAndOurSidePairwiseMatch
         )
 
-      def matchesFor(element: Element): Set[Match[Element]] = matchesByElement
-        .get(element)
-        .fold(ifEmpty = Set.empty[Match[Element]])(Set(_))
-
       val mergeAlgebra =
         MergeResultDetectingMotion
-          .mergeAlgebra(matchesFor, auditingCoreMergeAlgebra)
+          .mergeAlgebra(matchesFor(matchesByElement), auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -392,13 +381,9 @@ class MergeResultDetectingMotionTest:
           ourSideMovedElement -> baseAndOurSidePairwiseMatch
         )
 
-      def matchesFor(element: Element): Set[Match[Element]] = matchesByElement
-        .get(element)
-        .fold(ifEmpty = Set.empty[Match[Element]])(Set(_))
-
       val mergeAlgebra =
         MergeResultDetectingMotion
-          .mergeAlgebra(matchesFor, auditingCoreMergeAlgebra)
+          .mergeAlgebra(matchesFor(matchesByElement), auditingCoreMergeAlgebra)
 
       val mergeResult =
         mergeAlgebra.coincidentEdit(
@@ -451,13 +436,9 @@ class MergeResultDetectingMotionTest:
           theirSideElement    -> allSidesMatch
         )
 
-      def matchesFor(element: Element): Set[Match[Element]] = matchesByElement
-        .get(element)
-        .fold(ifEmpty = Set.empty[Match[Element]])(Set(_))
-
       val mergeAlgebra =
         MergeResultDetectingMotion
-          .mergeAlgebra(matchesFor, auditingCoreMergeAlgebra)
+          .mergeAlgebra(matchesFor(matchesByElement), auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -510,13 +491,9 @@ class MergeResultDetectingMotionTest:
           theirSideElement    -> allSidesMatch
         )
 
-      def matchesFor(element: Element): Set[Match[Element]] = matchesByElement
-        .get(element)
-        .fold(ifEmpty = Set.empty[Match[Element]])(Set(_))
-
       val mergeAlgebra =
         MergeResultDetectingMotion
-          .mergeAlgebra(matchesFor, auditingCoreMergeAlgebra)
+          .mergeAlgebra(matchesFor(matchesByElement), auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -581,13 +558,9 @@ class MergeResultDetectingMotionTest:
           theirSideMovedElement -> allSidesMatch
         )
 
-      def matchesFor(element: Element): Set[Match[Element]] = matchesByElement
-        .get(element)
-        .fold(ifEmpty = Set.empty[Match[Element]])(Set(_))
-
       val mergeAlgebra =
         MergeResultDetectingMotion
-          .mergeAlgebra(matchesFor, auditingCoreMergeAlgebra)
+          .mergeAlgebra(matchesFor(matchesByElement), auditingCoreMergeAlgebra)
 
       val mergeResult =
         mergeAlgebra.coincidentDeletion(mergeAlgebra.empty, baseElement)
@@ -637,13 +610,9 @@ class MergeResultDetectingMotionTest:
           theirSideMovedElement -> allSidesMatch
         )
 
-      def matchesFor(element: Element): Set[Match[Element]] = matchesByElement
-        .get(element)
-        .fold(ifEmpty = Set.empty[Match[Element]])(Set(_))
-
       val mergeAlgebra =
         MergeResultDetectingMotion
-          .mergeAlgebra(matchesFor, auditingCoreMergeAlgebra)
+          .mergeAlgebra(matchesFor(matchesByElement), auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -728,13 +697,9 @@ class MergeResultDetectingMotionTest:
           theirSideMovedElement -> allSidesMatch
         )
 
-      def matchesFor(element: Element): Set[Match[Element]] = matchesByElement
-        .get(element)
-        .fold(ifEmpty = Set.empty[Match[Element]])(Set(_))
-
       val mergeAlgebra =
         MergeResultDetectingMotion
-          .mergeAlgebra(matchesFor, auditingCoreMergeAlgebra)
+          .mergeAlgebra(matchesFor(matchesByElement), auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -816,13 +781,9 @@ class MergeResultDetectingMotionTest:
           theirSideMovedElement -> allSidesMatch
         )
 
-      def matchesFor(element: Element): Set[Match[Element]] = matchesByElement
-        .get(element)
-        .fold(ifEmpty = Set.empty[Match[Element]])(Set(_))
-
       val mergeAlgebra =
         MergeResultDetectingMotion
-          .mergeAlgebra(matchesFor, auditingCoreMergeAlgebra)
+          .mergeAlgebra(matchesFor(matchesByElement), auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
