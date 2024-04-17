@@ -202,38 +202,8 @@ object MergeResultDetectingMotion extends StrictLogging:
 
             matches match
               case Seq(_: AllSides[Section[Element]], _*) =>
-                matches.foldLeft(
-                  result
-                    .focus(_.coreMergeResult)
-                    .modify(
-                      coreMergeAlgebra
-                        .coincidentDeletion(_, baseElement)
-                    )
-                    .focus(_.coreMergeResult)
-                    .modify(
-                      coreMergeAlgebra
-                        .leftInsertion(_, leftElement)
-                    )
-                ) {
-                  case (
-                        result,
-                        AllSides(
-                          _,
-                          _,
-                          rightElementAtMoveDestination
-                        )
-                      ) =>
-                    logger.debug(
-                      s"Conflict at origin of move: resolved as a coincident deletion of $baseElement and a left insertion of $leftElement; propagating left edit $leftElement to right move destination $rightElementAtMoveDestination."
-                    )
-
-                    result
-                      .focus(_.changesPropagatedThroughMotion)
-                      .modify(
-                        _ + (rightElementAtMoveDestination -> Some(leftElement))
-                      )
-                }
-
+                default
+                
               case Seq(_: BaseAndRight[Section[Element]], _*) =>
                 matches.foldLeft(
                   result
@@ -289,37 +259,7 @@ object MergeResultDetectingMotion extends StrictLogging:
 
             matches match
               case Seq(_: AllSides[Section[Element]], _*) =>
-                matches.foldLeft(
-                  result
-                    .focus(_.coreMergeResult)
-                    .modify(
-                      coreMergeAlgebra
-                        .coincidentDeletion(_, baseElement)
-                    )
-                    .focus(_.coreMergeResult)
-                    .modify(
-                      coreMergeAlgebra
-                        .rightInsertion(_, rightElement)
-                    )
-                ) {
-                  case (
-                        result,
-                        AllSides(
-                          _,
-                          leftElementAtMoveDestination,
-                          _
-                        )
-                      ) =>
-                    logger.debug(
-                      s"Conflict at origin of move: resolved as a coincident deletion of $baseElement and a right insertion of $rightElement; propagating right edit $rightElement to left move destination $leftElementAtMoveDestination."
-                    )
-
-                    result
-                      .focus(_.changesPropagatedThroughMotion)
-                      .modify(
-                        _ + (leftElementAtMoveDestination -> Some(rightElement))
-                      )
-                }
+                default
 
               case Seq(_: BaseAndLeft[Section[Element]], _*) =>
                 matches.foldLeft(
