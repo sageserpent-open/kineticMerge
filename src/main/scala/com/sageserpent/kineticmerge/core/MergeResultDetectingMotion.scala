@@ -203,7 +203,7 @@ object MergeResultDetectingMotion extends StrictLogging:
             matches match
               case Seq(_: AllSides[Section[Element]], _*) =>
                 default
-                
+
               case Seq(_: BaseAndRight[Section[Element]], _*) =>
                 matches.foldLeft(
                   result
@@ -316,29 +316,7 @@ object MergeResultDetectingMotion extends StrictLogging:
 
             matches match
               case Seq(_: AllSides[Section[Element]], _*) =>
-                matches.foldLeft(default) {
-                  case (
-                        result,
-                        AllSides(
-                          _,
-                          leftElementAtMoveDestination,
-                          rightElementAtMoveDestination
-                        )
-                      ) =>
-                    logger.debug(
-                      s"Conflict at origin of move: propagating right edit $rightElement to left move destination $leftElementAtMoveDestination and left edit $leftElement to right move destination $rightElementAtMoveDestination."
-                    )
-
-                    result
-                      .focus(_.changesPropagatedThroughMotion)
-                      .modify(
-                        _ + (leftElementAtMoveDestination -> Some(rightElement))
-                      )
-                      .focus(_.changesPropagatedThroughMotion)
-                      .modify(
-                        _ + (rightElementAtMoveDestination -> Some(leftElement))
-                      )
-                }
+                default
 
               case Seq(_: BaseAndLeft[Section[Element]], _*) =>
                 matches.foldLeft(
