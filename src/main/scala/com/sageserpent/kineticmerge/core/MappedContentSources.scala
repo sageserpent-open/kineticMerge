@@ -122,20 +122,29 @@ case class MappedContentSources[Path, Element](
       override val startOffset: Int,
       override val size: Int
   ) extends Section[Element]:
-    override def toString: String =
-      val prettyPrintedCore = pprint(this).render
+    override def toString: String = render(plainTextOnly = true)
+
+    def render(plainTextOnly: Boolean): String =
+      extension (fancyString: fansi.Str)
+        def asString: String =
+          if plainTextOnly then fancyString.plainText else fancyString.render
+      end extension
+
+      val prettyPrintedCore = pprint(this).asString
 
       import MappedContentSources.sectionImplementationRegex
+
+      val contentPrefixLimit = 5
 
       prettyPrintedCore match
         case sectionImplementationRegex(
               prelude,
               payload
             ) =>
-          s"${prelude.replace("SectionImplementation", "Section")}($payload, label = ${pprint(label).render}, content = ${pprint(
+          s"${prelude.replace("SectionImplementation", "Section")}($payload, label = ${pprint(label).asString}, content = ${pprint(
               StringEscapeUtils.escapeJava(
                 content
-                  .take(5)
+                  .take(contentPrefixLimit)
                   .map {
                     // NASTY HACK: rather than use dependency injection to
                     // render an element, just use a special case to render
@@ -145,9 +154,9 @@ case class MappedContentSources[Path, Element](
                   }
                   .mkString
               )
-            ).render})"
+            ).asString})"
       end match
-    end toString
+    end render
 
     override def content: IndexedSeq[Element] =
       contentsByPath(path).slice(startOffset, onePastEndOffset)

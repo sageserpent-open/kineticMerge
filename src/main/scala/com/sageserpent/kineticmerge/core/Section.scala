@@ -13,4 +13,6 @@ trait Section[Element]:
   def onePastEndOffset: Int = startOffset + size
 
   def content: IndexedSeq[Element]
+
+  def render(plainTextOnly: Boolean): String
 end Section
