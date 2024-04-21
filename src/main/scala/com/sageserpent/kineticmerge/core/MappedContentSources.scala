@@ -3,11 +3,12 @@ package com.sageserpent.kineticmerge.core
 import com.typesafe.scalalogging.StrictLogging
 import pprint.Tree
 
-case class MappedContentSources[Path, Element](
-    contentsByPath: Map[Path, IndexedSeq[Element]],
-    label: String
-) extends Sources[Path, Element]
+trait MappedContentSources[Path, Element]
+    extends Sources[Path, Element]
     with StrictLogging:
+  val contentsByPath: Map[Path, IndexedSeq[Element]]
+  val label: String
+
   override def filesByPathUtilising(
       mandatorySections: Set[Section[Element]]
   ): Map[Path, File[Element]] =
@@ -31,7 +32,7 @@ case class MappedContentSources[Path, Element](
               if first.onePastEndOffset > second.startOffset then
                 require(
                   first.onePastEndOffset < second.onePastEndOffset,
-                  s"Subsumed section detected on side: $label at path: $path, $second (content: ${second.content}) is subsumed by section: $first (content: ${first.content})."
+                  s"Subsumed section ${pprintCustomised(second)} is subsumed by section: ${pprintCustomised(first)}."
                 )
                 throw new OverlappingSections(path, first, second)
             )
@@ -49,7 +50,7 @@ case class MappedContentSources[Path, Element](
                     // Fill the gap with a new section - this may be a leading
                     // gap before the first section or between two sections.
                     logger.debug(
-                      s"Filling gap on side: $label at path: $path prior to following section with: $fillerSection."
+                      s"Filling gap on side: $label at path: $path prior to following section with: ${pprintCustomised(fillerSection)}."
                     )
                     partialResult :+ fillerSection
                   else partialResult)
@@ -64,7 +65,7 @@ case class MappedContentSources[Path, Element](
               content.size - onePastLastEndOffset
             )
             logger.debug(
-              s"Filling final gap on side: $label at path: $path with $fillerSection."
+              s"Filling final gap on side: $label at path: $path with ${pprintCustomised(fillerSection)}."
             )
             contiguousSections :+ fillerSection
           else contiguousSections
@@ -145,3 +146,8 @@ case class MappedContentSources[Path, Element](
       contentsByPath(path).slice(startOffset, onePastEndOffset)
   end SectionImplementation
 end MappedContentSources
+
+case class MappedContentSourcesOfTokens[Path](
+    override val contentsByPath: Map[Path, IndexedSeq[Token]],
+    override val label: String
+) extends MappedContentSources[Path, Token]

@@ -321,7 +321,7 @@ object merge extends StrictLogging:
               Seq(Contribution.Difference(_), _*)
             ) =>
           logger.debug(
-            s"Conflict between left insertion of $leftElement and right insertion of $rightElement, coalescing with following left insertion and right insertion conflict."
+            s"Conflict between left insertion of ${pprintCustomised(leftElement)} and right insertion of ${pprintCustomised(rightElement)}, coalescing with following left insertion and right insertion conflict."
           )
           mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
             partialResult,
@@ -334,7 +334,7 @@ object merge extends StrictLogging:
 
         case (Seq(Contribution.Difference(_), _*), _) =>
           logger.debug(
-            s"Conflict between left insertion of $leftElement and right insertion of $rightElement, coalescing with following left insertion."
+            s"Conflict between left insertion of ${pprintCustomised(leftElement)} and right insertion of ${pprintCustomised(rightElement)}, coalescing with following left insertion."
           )
           mergeBetweenRunsOfCommonElements(base, leftTail, right)(
             partialResult,
@@ -347,7 +347,7 @@ object merge extends StrictLogging:
 
         case (_, Seq(Contribution.Difference(_), _*)) =>
           logger.debug(
-            s"Conflict between left insertion of $leftElement and right insertion of $rightElement, coalescing with following right insertion."
+            s"Conflict between left insertion of ${pprintCustomised(leftElement)} and right insertion of ${pprintCustomised(rightElement)}, coalescing with following right insertion."
           )
           mergeBetweenRunsOfCommonElements(base, left, rightTail)(
             partialResult,
@@ -360,7 +360,7 @@ object merge extends StrictLogging:
 
         case _ =>
           logger.debug(
-            s"Conflict between left insertion of $leftElement and right insertion of $rightElement."
+            s"Conflict between left insertion of ${pprintCustomised(leftElement)} and right insertion of ${pprintCustomised(rightElement)}."
           )
           mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
             partialResult = conflictOperations.finalConflict(
@@ -389,7 +389,7 @@ object merge extends StrictLogging:
               Seq(Contribution.Difference(_), _*)
             ) =>
           logger.debug(
-            s"Conflict between left deletion of $editedBaseElement and its edit on the right into $rightElement, coalescing with following left deletion and right edit conflict."
+            s"Conflict between left deletion of ${pprintCustomised(editedBaseElement)} and its edit on the right into ${pprintCustomised(rightElement)}, coalescing with following left deletion and right edit conflict."
           )
           mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
             partialResult,
@@ -402,7 +402,7 @@ object merge extends StrictLogging:
 
         case (_, Seq(Contribution.Difference(followingRightElement), _*)) =>
           logger.debug(
-            s"Conflict between left deletion of $editedBaseElement and its edit on the right into $rightElement, coalescing with following insertion of $followingRightElement on the right."
+            s"Conflict between left deletion of ${pprintCustomised(editedBaseElement)} and its edit on the right into ${pprintCustomised(rightElement)}, coalescing with following insertion of ${pprintCustomised(followingRightElement)} on the right."
           )
           mergeBetweenRunsOfCommonElements(base, left, rightTail)(
             partialResult,
@@ -415,7 +415,7 @@ object merge extends StrictLogging:
 
         case _ =>
           logger.debug(
-            s"Conflict between left deletion of $editedBaseElement and its edit on the right into $rightElement."
+            s"Conflict between left deletion of ${pprintCustomised(editedBaseElement)} and its edit on the right into ${pprintCustomised(rightElement)}."
           )
           mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
             partialResult = conflictOperations.finalConflict(
@@ -444,7 +444,7 @@ object merge extends StrictLogging:
               Seq(Contribution.Difference(_), _*)
             ) =>
           logger.debug(
-            s"Conflict between right deletion of $editedBaseElement and its edit on the left into $leftElement, coalescing with following right deletion and left edit conflict."
+            s"Conflict between right deletion of ${pprintCustomised(editedBaseElement)} and its edit on the left into ${pprintCustomised(leftElement)}, coalescing with following right deletion and left edit conflict."
           )
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
             partialResult,
@@ -457,7 +457,7 @@ object merge extends StrictLogging:
 
         case (_, Seq(Contribution.Difference(followingLeftElement), _*)) =>
           logger.debug(
-            s"Conflict between right deletion of $editedBaseElement and its edit on the left into $leftElement, coalescing with following insertion of $followingLeftElement on the left."
+            s"Conflict between right deletion of ${pprintCustomised(editedBaseElement)} and its edit on the left into ${pprintCustomised(leftElement)}, coalescing with following insertion of ${pprintCustomised(followingLeftElement)} on the left."
           )
           mergeBetweenRunsOfCommonElements(base, leftTail, right)(
             partialResult,
@@ -470,7 +470,7 @@ object merge extends StrictLogging:
 
         case _ =>
           logger.debug(
-            s"Conflict between right deletion of $editedBaseElement and its edit on the left into $leftElement."
+            s"Conflict between right deletion of ${pprintCustomised(editedBaseElement)} and its edit on the left into ${pprintCustomised(leftElement)}."
           )
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
             partialResult = conflictOperations.finalConflict(
@@ -503,7 +503,7 @@ object merge extends StrictLogging:
             ) =>
           // Edit conflict with another pending edit conflict.
           logger.debug(
-            s"Edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right, coalescing with following edit conflict."
+            s"Edit conflict of ${pprintCustomised(editedBaseElement)} into ${pprintCustomised(leftElement)} on the left and ${pprintCustomised(rightElement)} on the right, coalescing with following edit conflict."
           )
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
             partialResult,
@@ -522,7 +522,7 @@ object merge extends StrictLogging:
           // Edit conflict with a pending left edit versus right deletion
           // conflict.
           logger.debug(
-            s"Edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right, coalescing with following left edit versus right deletion conflict."
+            s"Edit conflict of ${pprintCustomised(editedBaseElement)} into ${pprintCustomised(leftElement)} on the left and ${pprintCustomised(rightElement)} on the right, coalescing with following left edit versus right deletion conflict."
           )
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
             partialResult,
@@ -541,7 +541,7 @@ object merge extends StrictLogging:
           // Edit conflict with a pending right edit versus left deletion
           // conflict.
           logger.debug(
-            s"Edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right, coalescing with following right edit versus left deletion conflict."
+            s"Edit conflict of ${pprintCustomised(editedBaseElement)} into ${pprintCustomised(leftElement)} on the left and ${pprintCustomised(rightElement)} on the right, coalescing with following right edit versus left deletion conflict."
           )
           mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
             partialResult,
@@ -560,7 +560,7 @@ object merge extends StrictLogging:
           // Edit conflict with a pending left insertion versus right
           // insertion conflict.
           logger.debug(
-            s"Edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right, coalescing with following left insertion versus right insertion conflict."
+            s"Edit conflict of ${pprintCustomised(editedBaseElement)} into ${pprintCustomised(leftElement)} on the left and ${pprintCustomised(rightElement)} on the right, coalescing with following left insertion versus right insertion conflict."
           )
           mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
             partialResult,
@@ -585,7 +585,7 @@ object merge extends StrictLogging:
           // Left edit / right deletion conflict with pending left insertion
           // and pending right edit.
           logger.debug(
-            s"Conflict between right deletion of $editedBaseElement and its edit on the left into $leftElement, coalescing with following insertion of $followingLeftElement on the left."
+            s"Conflict between right deletion of ${pprintCustomised(editedBaseElement)} and its edit on the left into ${pprintCustomised(leftElement)}, coalescing with following insertion of ${pprintCustomised(followingLeftElement)} on the left."
           )
           mergeBetweenRunsOfCommonElements(base, leftTail, right)(
             partialResult,
@@ -606,7 +606,7 @@ object merge extends StrictLogging:
             ) if rightEditNotMaroonedByPriorCoincidentInsertion(leftTail) =>
           // Left edit / right deletion conflict with pending right edit.
           logger.debug(
-            s"Conflict between right deletion of $editedBaseElement and its edit on the left into $leftElement with following right edit."
+            s"Conflict between right deletion of ${pprintCustomised(editedBaseElement)} and its edit on the left into ${pprintCustomised(leftElement)} with following right edit."
           )
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
             partialResult = conflictOperations.finalConflict(
@@ -629,7 +629,7 @@ object merge extends StrictLogging:
           // Right edit / left deletion conflict with pending right
           // insertion and pending left edit.
           logger.debug(
-            s"Conflict between left deletion of $editedBaseElement and its edit on the right into $rightElement, coalescing with following insertion of $followingRightElement on the right."
+            s"Conflict between left deletion of ${pprintCustomised(editedBaseElement)} and its edit on the right into ${pprintCustomised(rightElement)}, coalescing with following insertion of ${pprintCustomised(followingRightElement)} on the right."
           )
           mergeBetweenRunsOfCommonElements(base, left, rightTail)(
             partialResult,
@@ -650,7 +650,7 @@ object merge extends StrictLogging:
             ) if leftEditNotMaroonedByPriorCoincidentInsertion(rightTail) =>
           // Right edit / left deletion conflict with pending left edit.
           logger.debug(
-            s"Conflict between left deletion of $editedBaseElement and its edit on the right into $rightElement with following left edit."
+            s"Conflict between left deletion of ${pprintCustomised(editedBaseElement)} and its edit on the right into ${pprintCustomised(rightElement)} with following left edit."
           )
           mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
             partialResult = conflictOperations.finalConflict(
@@ -669,7 +669,7 @@ object merge extends StrictLogging:
             ) =>
           // Edit conflict with a pending coincident edit.
           logger.debug(
-            s"Edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right with following coincident edit of $followingBaseElement."
+            s"Edit conflict of ${pprintCustomised(editedBaseElement)} into ${pprintCustomised(leftElement)} on the left and ${pprintCustomised(rightElement)} on the right with following coincident edit of ${pprintCustomised(followingBaseElement)}."
           )
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
             partialResult = conflictOperations.finalConflict(
@@ -689,7 +689,7 @@ object merge extends StrictLogging:
           // If the following element in the base would also be deleted on
           // both sides, coalesce into a single edit conflict.
           logger.debug(
-            s"Edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right, coalescing with following coincident deletion of $followingBaseElement."
+            s"Edit conflict of ${pprintCustomised(editedBaseElement)} into ${pprintCustomised(leftElement)} on the left and ${pprintCustomised(rightElement)} on the right, coalescing with following coincident deletion of ${pprintCustomised(followingBaseElement)}."
           )
           mergeBetweenRunsOfCommonElements(baseTail, left, right)(
             partialResult,
@@ -707,7 +707,7 @@ object merge extends StrictLogging:
             ) =>
           // Edit conflict with a pending left insertion.
           logger.debug(
-            s"Edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right, coalescing with following left insertion of $followingLeftElement."
+            s"Edit conflict of ${pprintCustomised(editedBaseElement)} into ${pprintCustomised(leftElement)} on the left and ${pprintCustomised(rightElement)} on the right, coalescing with following left insertion of ${pprintCustomised(followingLeftElement)}."
           )
           mergeBetweenRunsOfCommonElements(base, leftTail, right)(
             partialResult,
@@ -725,7 +725,7 @@ object merge extends StrictLogging:
             ) =>
           // Edit conflict with a pending right insertion.
           logger.debug(
-            s"Edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right, coalescing with following right insertion of $followingRightElement."
+            s"Edit conflict of ${pprintCustomised(editedBaseElement)} into ${pprintCustomised(leftElement)} on the left and ${pprintCustomised(rightElement)} on the right, coalescing with following right insertion of ${pprintCustomised(followingRightElement)}."
           )
           mergeBetweenRunsOfCommonElements(base, left, rightTail)(
             partialResult,
@@ -739,7 +739,7 @@ object merge extends StrictLogging:
         case _ =>
           // Edit conflict.
           logger.debug(
-            s"Edit conflict of $editedBaseElement into $leftElement on the left and $rightElement on the right."
+            s"Edit conflict of ${pprintCustomised(editedBaseElement)} into ${pprintCustomised(leftElement)} on the left and ${pprintCustomised(rightElement)} on the right."
           )
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
             partialResult = conflictOperations.finalConflict(
@@ -776,7 +776,7 @@ object merge extends StrictLogging:
           // There is a pending coincident deletion; handle this left edit
           // in isolation without coalescing any following left insertion.
           logger.debug(
-            s"Left edit of $editedBaseElement into $leftElement with following coincident deletion of $followingBaseElement."
+            s"Left edit of ${pprintCustomised(editedBaseElement)} into ${pprintCustomised(leftElement)} with following coincident deletion of ${pprintCustomised(followingBaseElement)}."
           )
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
             partialResult = leftEditOperations
@@ -793,7 +793,7 @@ object merge extends StrictLogging:
           // insertions that may be lurking on the right prior to the
           // pending left edit claiming the following element on the left.
           logger.debug(
-            s"Left edit of $editedBaseElement into $leftElement, not coalescing with following left edit."
+            s"Left edit of ${pprintCustomised(editedBaseElement)} into ${pprintCustomised(leftElement)}, not coalescing with following left edit."
           )
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
             partialResult = leftEditOperations
@@ -805,7 +805,7 @@ object merge extends StrictLogging:
           // If the following element on the left would also be inserted,
           // coalesce into a single edit.
           logger.debug(
-            s"Left edit of $editedBaseElement into $leftElement, coalescing with following insertion of $followingLeftElement on the left."
+            s"Left edit of ${pprintCustomised(editedBaseElement)} into ${pprintCustomised(leftElement)}, coalescing with following insertion of ${pprintCustomised(followingLeftElement)} on the left."
           )
           mergeBetweenRunsOfCommonElements(base, leftTail, right)(
             partialResult,
@@ -814,7 +814,7 @@ object merge extends StrictLogging:
 
         case _ =>
           logger.debug(
-            s"Left edit of $editedBaseElement into $leftElement."
+            s"Left edit of ${pprintCustomised(editedBaseElement)} into ${pprintCustomised(leftElement)}."
           )
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
             partialResult = leftEditOperations
@@ -847,7 +847,7 @@ object merge extends StrictLogging:
           // There is a pending coincident deletion; handle this right edit
           // in isolation without coalescing any following right insertion.
           logger.debug(
-            s"Right edit of $editedBaseElement into $rightElement with following coincident deletion of $followingBaseElement."
+            s"Right edit of ${pprintCustomised(editedBaseElement)} into ${pprintCustomised(rightElement)} with following coincident deletion of ${pprintCustomised(followingBaseElement)}."
           )
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
             partialResult = rightEditOperations.finalRightEdit(
@@ -867,7 +867,7 @@ object merge extends StrictLogging:
           // insertions that may be lurking on the left prior to the pending
           // right edit claiming the following element on the right.
           logger.debug(
-            s"Right edit of $editedBaseElement into $rightElement, not coalescing with following right edit."
+            s"Right edit of ${pprintCustomised(editedBaseElement)} into ${pprintCustomised(rightElement)}, not coalescing with following right edit."
           )
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
             partialResult = rightEditOperations.finalRightEdit(
@@ -882,7 +882,7 @@ object merge extends StrictLogging:
           // If the following element on the right would also be inserted,
           // coalesce into a single edit.
           logger.debug(
-            s"Right edit of $editedBaseElement into $rightElement, coalescing with following insertion of $followingRightElement on the right."
+            s"Right edit of ${pprintCustomised(editedBaseElement)} into ${pprintCustomised(rightElement)}, coalescing with following insertion of ${pprintCustomised(followingRightElement)} on the right."
           )
           mergeBetweenRunsOfCommonElements(base, left, rightTail)(
             partialResult,
@@ -892,7 +892,7 @@ object merge extends StrictLogging:
 
         case _ =>
           logger.debug(
-            s"Right edit of $editedBaseElement into $rightElement."
+            s"Right edit of ${pprintCustomised(editedBaseElement)} into ${pprintCustomised(rightElement)}."
           )
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
             rightEditOperations.finalRightEdit(
@@ -923,7 +923,7 @@ object merge extends StrictLogging:
               Seq(Contribution.CommonToLeftAndRightOnly(_), _*)
             ) =>
           logger.debug(
-            s"Coincident edit of $editedBaseElement into $coincidentElement, not coalescing with following coincident edit."
+            s"Coincident edit of ${pprintCustomised(editedBaseElement)} into ${pprintCustomised(coincidentElement)}, not coalescing with following coincident edit."
           )
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
             partialResult = coincidentEditOperations.finalCoincidentEdit(
@@ -943,7 +943,7 @@ object merge extends StrictLogging:
               Seq(Contribution.CommonToLeftAndRightOnly(_), _*)
             ) =>
           logger.debug(
-            s"Coincident edit of $editedBaseElement into $coincidentElement, coalescing with following coincident insertion of $followingLeftElement."
+            s"Coincident edit of ${pprintCustomised(editedBaseElement)} into ${pprintCustomised(coincidentElement)}, coalescing with following coincident insertion of ${pprintCustomised(followingLeftElement)}."
           )
           mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
             partialResult,
@@ -954,7 +954,7 @@ object merge extends StrictLogging:
 
         case _ =>
           logger.debug(
-            s"Coincident edit of $editedBaseElement into $coincidentElement."
+            s"Coincident edit of ${pprintCustomised(editedBaseElement)} into ${pprintCustomised(coincidentElement)}."
           )
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
             coincidentEditOperations.finalCoincidentEdit(
@@ -985,7 +985,7 @@ object merge extends StrictLogging:
               Seq(Contribution.Common(_), rightTail*)
             ) => // Preservation.
           logger.debug(
-            s"Preservation of $leftElement as it is common to all three sides."
+            s"Preservation of ${pprintCustomised(leftElement)} as it is common to all three sides."
           )
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
             partialResult = mergeAlgebra.preservation(
@@ -1036,7 +1036,7 @@ object merge extends StrictLogging:
               )
             ) => // Coincident insertion.
           logger.debug(
-            s"Coincident insertion on left and right side of $leftElement."
+            s"Coincident insertion on left and right side of ${pprintCustomised(leftElement)}."
           )
           mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
             partialResult = mergeAlgebra.coincidentInsertion(
@@ -1104,7 +1104,9 @@ object merge extends StrictLogging:
                 rightTail*
               )
             ) => // Left deletion.
-          logger.debug(s"Left deletion of $deletedBaseElement.")
+          logger.debug(
+            s"Left deletion of ${pprintCustomised(deletedBaseElement)}."
+          )
           mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
             mergeAlgebra.leftDeletion(
               partialResult,
@@ -1126,7 +1128,9 @@ object merge extends StrictLogging:
               ),
               _
             ) => // Right deletion.
-          logger.debug(s"Right deletion of $deletedBaseElement.")
+          logger.debug(
+            s"Right deletion of ${pprintCustomised(deletedBaseElement)}."
+          )
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
             mergeAlgebra.rightDeletion(
               partialResult,
@@ -1164,7 +1168,7 @@ object merge extends StrictLogging:
               Seq(Contribution.CommonToLeftAndRightOnly(_), _*)
             ) => // Left insertion with pending coincident edit.
           logger.debug(
-            s"Left insertion of $leftElement with following coincident edit."
+            s"Left insertion of ${pprintCustomised(leftElement)} with following coincident edit."
           )
           mergeBetweenRunsOfCommonElements(base, leftTail, right)(
             mergeAlgebra.leftInsertion(
@@ -1182,7 +1186,7 @@ object merge extends StrictLogging:
               Seq(Contribution.Difference(rightElement), rightTail*)
             ) => // Right insertion with pending coincident edit.
           logger.debug(
-            s"Right insertion of $rightElement with following coincident edit."
+            s"Right insertion of ${pprintCustomised(rightElement)} with following coincident edit."
           )
           mergeBetweenRunsOfCommonElements(base, left, rightTail)(
             mergeAlgebra.rightInsertion(
@@ -1203,7 +1207,7 @@ object merge extends StrictLogging:
               baseTail
             ) => // Coincident deletion with pending left edit.
           logger.debug(
-            s"Coincident deletion of $deletedBaseElement with following left edit."
+            s"Coincident deletion of ${pprintCustomised(deletedBaseElement)} with following left edit."
           )
           mergeBetweenRunsOfCommonElements(baseTail, left, right)(
             mergeAlgebra.coincidentDeletion(
@@ -1224,7 +1228,7 @@ object merge extends StrictLogging:
               baseTail
             ) => // Coincident deletion with pending right edit.
           logger.debug(
-            s"Coincident deletion of $deletedBaseElement with following right edit."
+            s"Coincident deletion of ${pprintCustomised(deletedBaseElement)} with following right edit."
           )
           mergeBetweenRunsOfCommonElements(baseTail, left, right)(
             mergeAlgebra.coincidentDeletion(
@@ -1269,7 +1273,9 @@ object merge extends StrictLogging:
               _,
               _
             ) => // Coincident deletion.
-          logger.debug(s"Coincident deletion of $deletedBaseElement.")
+          logger.debug(
+            s"Coincident deletion of ${pprintCustomised(deletedBaseElement)}."
+          )
           mergeBetweenRunsOfCommonElements(baseTail, left, right)(
             mergeAlgebra.coincidentDeletion(
               partialResult,
@@ -1286,7 +1292,7 @@ object merge extends StrictLogging:
               Seq(Contribution.Difference(_), _*)
             ) => // Left insertion with pending right edit.
           logger.debug(
-            s"Left insertion of $leftElement with following right edit."
+            s"Left insertion of ${pprintCustomised(leftElement)} with following right edit."
           )
           mergeBetweenRunsOfCommonElements(base, leftTail, right)(
             mergeAlgebra.leftInsertion(
@@ -1304,7 +1310,7 @@ object merge extends StrictLogging:
               Seq(Contribution.Difference(rightElement), rightTail*)
             ) => // Right insertion with pending left edit.
           logger.debug(
-            s"Right insertion of $rightElement with following left edit."
+            s"Right insertion of ${pprintCustomised(rightElement)} with following left edit."
           )
           mergeBetweenRunsOfCommonElements(base, left, rightTail)(
             mergeAlgebra.rightInsertion(
@@ -1346,7 +1352,7 @@ object merge extends StrictLogging:
               Seq(Contribution.Difference(leftElement), leftTail*),
               _
             ) => // Left insertion.
-          logger.debug(s"Left insertion of $leftElement.")
+          logger.debug(s"Left insertion of ${pprintCustomised(leftElement)}.")
           mergeBetweenRunsOfCommonElements(base, leftTail, right)(
             mergeAlgebra.leftInsertion(
               partialResult,
@@ -1368,7 +1374,7 @@ object merge extends StrictLogging:
               _,
               Seq(Contribution.Difference(rightElement), rightTail*)
             ) => // Right insertion.
-          logger.debug(s"Right insertion of $rightElement.")
+          logger.debug(s"Right insertion of ${pprintCustomised(rightElement)}.")
           mergeBetweenRunsOfCommonElements(base, left, rightTail)(
             mergeAlgebra.rightInsertion(
               partialResult,

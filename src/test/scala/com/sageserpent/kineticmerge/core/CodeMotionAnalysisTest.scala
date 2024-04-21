@@ -972,9 +972,15 @@ class CodeMotionAnalysisTest:
 end CodeMotionAnalysisTest
 
 object CodeMotionAnalysisTest:
-  type Path        = Int
-  type Element     = Int
-  type FakeSources = MappedContentSources[Path, Element]
+  type Path    = Int
+  type Element = Int
+
+  private def elementFunnel(
+      element: Element,
+      primitiveSink: PrimitiveSink
+  ): Unit =
+    primitiveSink.putInt(element)
+  end elementFunnel
 
   extension (fakeSources: FakeSources)
     /** Specific to testing, not part of the [[Sources]] API implementation.
@@ -1070,13 +1076,6 @@ object CodeMotionAnalysisTest:
     end thingsInChunks
   end extension
 
-  private def elementFunnel(
-      element: Element,
-      primitiveSink: PrimitiveSink
-  ): Unit =
-    primitiveSink.putInt(element)
-  end elementFunnel
-
   trait SourcesContracts[Path, Element] extends Sources[Path, Element]:
     abstract override def section(
         path: SourcesContracts.this.Path
@@ -1115,4 +1114,9 @@ object CodeMotionAnalysisTest:
       result
     end filesByPathUtilising
   end SourcesContracts
+
+  case class FakeSources(
+      override val contentsByPath: Map[Path, IndexedSeq[Element]],
+      override val label: String
+  ) extends MappedContentSources[Path, Element]
 end CodeMotionAnalysisTest

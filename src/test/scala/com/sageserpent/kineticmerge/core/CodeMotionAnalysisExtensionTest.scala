@@ -36,17 +36,17 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       .map(Token.Significant.apply)
       .toVector
 
-    val baseSources = MappedContentSources(
+    val baseSources = MappedContentSourcesOfTokens(
       contentsByPath =
         Map(placeholderPath -> stuntDoubleTokens(issue23BugReproductionBase)),
       label = "base"
     )
-    val leftSources = MappedContentSources(
+    val leftSources = MappedContentSourcesOfTokens(
       contentsByPath =
         Map(placeholderPath -> stuntDoubleTokens(issue23BugReproductionLeft)),
       label = "left"
     )
-    val rightSources = MappedContentSources(
+    val rightSources = MappedContentSourcesOfTokens(
       contentsByPath =
         Map(placeholderPath -> stuntDoubleTokens(issue23BugReproductionRight)),
       label = "right"
@@ -99,17 +99,17 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
     val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
 
-    val baseSources = MappedContentSources(
+    val baseSources = MappedContentSourcesOfTokens(
       contentsByPath =
         Map(placeholderPath -> tokens(codeMotionExampleBase).get),
       label = "base"
     )
-    val leftSources = MappedContentSources(
+    val leftSources = MappedContentSourcesOfTokens(
       contentsByPath =
         Map(placeholderPath -> tokens(codeMotionExampleLeft).get),
       label = "left"
     )
-    val rightSources = MappedContentSources(
+    val rightSources = MappedContentSourcesOfTokens(
       contentsByPath =
         Map(placeholderPath -> tokens(codeMotionExampleRight).get),
       label = "right"
@@ -163,17 +163,17 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val originalPath: FakePath = "*** ORIGINAL ***"
     val hivedOffPath: FakePath = "*** HIVED OFF ***"
 
-    val baseSources = MappedContentSources(
+    val baseSources = MappedContentSourcesOfTokens(
       contentsByPath =
         Map(originalPath -> tokens(codeMotionExampleWithSplitOriginalBase).get),
       label = "base"
     )
-    val leftSources = MappedContentSources(
+    val leftSources = MappedContentSourcesOfTokens(
       contentsByPath =
         Map(originalPath -> tokens(codeMotionExampleWithSplitOriginalLeft).get),
       label = "left"
     )
-    val rightSources = MappedContentSources(
+    val rightSources = MappedContentSourcesOfTokens(
       contentsByPath = Map(
         originalPath -> tokens(codeMotionExampleWithSplitOriginalRight).get,
         hivedOffPath -> tokens(codeMotionExampleWithSplitHivedOffRight).get
@@ -252,7 +252,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       val sbtBuildPath: FakePath = "sbtBuild"
 
       val baseSources =
-        MappedContentSources(
+        MappedContentSourcesOfTokens(
           contentsByPath = Map(
             prosePath    -> tokens(wordsworth).get,
             sbtBuildPath -> tokens(baseSbtBuild).get
@@ -260,7 +260,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           label = "base"
         )
       val leftSources =
-        MappedContentSources(
+        MappedContentSourcesOfTokens(
           contentsByPath = Map(
             prosePath    -> tokens(jobsworth).get,
             sbtBuildPath -> tokens(leftSbtBuild).get
@@ -268,7 +268,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           label = "left"
         )
       val rightSources =
-        MappedContentSources(
+        MappedContentSourcesOfTokens(
           contentsByPath = Map(
             prosePath    -> tokens(emsworth).get,
             sbtBuildPath -> tokens(rightSbtBuild).get

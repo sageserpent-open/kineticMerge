@@ -164,9 +164,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 |these are:
                 |${propagatedChanges
                     .map(
-                      _.fold(ifEmpty = "DELETION")(edit =>
-                        s"EDIT: ${pprintCustomised(edit).render}"
-                      )
+                      _.fold(ifEmpty = "DELETION")(edit => s"EDIT: $edit")
                     )
                     .zipWithIndex
                     .map((change, index) => s"${1 + index}. $change")
@@ -195,14 +193,14 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               // Moved section was deleted...
               ifEmpty =
                 logger.debug(
-                  s"Applying propagated deletion to move destination: $section."
+                  s"Applying propagated deletion to move destination: ${pprintCustomised(section)}."
                 )
                 IndexedSeq.empty
             )(
               // Moved section was edited...
               { edit =>
                 logger.debug(
-                  s"Applying propagated edit into $edit to move destination: $section."
+                  s"Applying propagated edit into ${pprintCustomised(edit)} to move destination: ${pprintCustomised(section)}."
                 )
                 edit.content
               }

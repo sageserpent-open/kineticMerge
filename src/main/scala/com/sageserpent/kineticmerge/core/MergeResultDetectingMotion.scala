@@ -88,7 +88,7 @@ object MergeResultDetectingMotion extends StrictLogging:
             matches.foldLeft(default) {
               case (result, BaseAndLeft(_, leftElementAtMoveDestination)) =>
                 logger.debug(
-                  s"Coincident deletion at origin of move: propagating deletion to left move destination $leftElementAtMoveDestination."
+                  s"Coincident deletion at origin of move: propagating deletion to left move destination ${pprintCustomised(leftElementAtMoveDestination)}."
                 )
 
                 result
@@ -100,7 +100,7 @@ object MergeResultDetectingMotion extends StrictLogging:
             matches.foldLeft(default) {
               case (result, BaseAndRight(_, rightElementAtMoveDestination)) =>
                 logger.debug(
-                  s"Coincident deletion at origin of move: propagating deletion to right move destination $rightElementAtMoveDestination."
+                  s"Coincident deletion at origin of move: propagating deletion to right move destination ${pprintCustomised(rightElementAtMoveDestination)}."
                 )
 
                 result
@@ -149,7 +149,7 @@ object MergeResultDetectingMotion extends StrictLogging:
             matches.foldLeft(default) {
               case (result, BaseAndLeft(_, leftElementAtMoveDestination)) =>
                 logger.debug(
-                  s"Coincident edit at origin of move: propagating deletion to left move destination $leftElementAtMoveDestination."
+                  s"Coincident edit at origin of move: propagating deletion to left move destination ${pprintCustomised(leftElementAtMoveDestination)}."
                 )
 
                 result
@@ -163,7 +163,7 @@ object MergeResultDetectingMotion extends StrictLogging:
             matches.foldLeft(default) {
               case (result, BaseAndRight(_, rightElementAtMoveDestination)) =>
                 logger.debug(
-                  s"Coincident edit at origin of move: propagating deletion to right move destination $rightElementAtMoveDestination."
+                  s"Coincident edit at origin of move: propagating deletion to right move destination ${pprintCustomised(rightElementAtMoveDestination)}."
                 )
 
                 result
@@ -215,7 +215,7 @@ object MergeResultDetectingMotion extends StrictLogging:
                         BaseAndRight(_, rightElementAtMoveDestination)
                       ) =>
                     logger.debug(
-                      s"Conflict at origin of move: resolved as a coincident deletion of $baseElement; propagating left edit $leftElement to right move destination $rightElementAtMoveDestination."
+                      s"Conflict at origin of move: resolved as a coincident deletion of ${pprintCustomised(baseElement)}; propagating left edit ${pprintCustomised(leftElement)} to right move destination ${pprintCustomised(rightElementAtMoveDestination)}."
                     )
 
                     result
@@ -241,7 +241,7 @@ object MergeResultDetectingMotion extends StrictLogging:
                 ) {
                   case (result, BaseAndLeft(_, leftElementAtMoveDestination)) =>
                     logger.debug(
-                      s"Conflict at origin of move: resolved as a coincident deletion of $baseElement and a left insertion of $leftElement; propagating deletion to left move destination $leftElementAtMoveDestination."
+                      s"Conflict at origin of move: resolved as a coincident deletion of ${pprintCustomised(baseElement)} and a left insertion of ${pprintCustomised(leftElement)}; propagating deletion to left move destination ${pprintCustomised(leftElementAtMoveDestination)}."
                     )
 
                     result
@@ -269,7 +269,7 @@ object MergeResultDetectingMotion extends StrictLogging:
                 ) {
                   case (result, BaseAndLeft(_, leftElementAtMoveDestination)) =>
                     logger.debug(
-                      s"Conflict at origin of move: resolved as a coincident deletion of $baseElement; propagating right edit $rightElement to left move destination $leftElementAtMoveDestination."
+                      s"Conflict at origin of move: resolved as a coincident deletion of ${pprintCustomised(baseElement)}; propagating right edit ${pprintCustomised(rightElement)} to left move destination ${pprintCustomised(leftElementAtMoveDestination)}."
                     )
 
                     result
@@ -298,7 +298,7 @@ object MergeResultDetectingMotion extends StrictLogging:
                         BaseAndRight(_, rightElementAtMoveDestination)
                       ) =>
                     logger.debug(
-                      s"Conflict at origin of move: resolved as a coincident deletion of $baseElement and a right insertion of $rightElement; propagating deletion to right move destination $rightElementAtMoveDestination."
+                      s"Conflict at origin of move: resolved as a coincident deletion of ${pprintCustomised(baseElement)} and a right insertion of ${pprintCustomised(rightElement)}; propagating deletion to right move destination ${pprintCustomised(rightElementAtMoveDestination)}."
                     )
 
                     result
@@ -334,7 +334,7 @@ object MergeResultDetectingMotion extends StrictLogging:
                 ) {
                   case (result, BaseAndLeft(_, leftElementAtMoveDestination)) =>
                     logger.debug(
-                      s"Conflict at origin of move: resolved as a coincident deletion of $baseElement and a left insertion of $leftElement; propagating right edit $rightElement to left move destination $leftElementAtMoveDestination."
+                      s"Conflict at origin of move: resolved as a coincident deletion of ${pprintCustomised(baseElement)} and a left insertion of ${pprintCustomised(leftElement)}; propagating right edit ${pprintCustomised(rightElement)} to left move destination ${pprintCustomised(leftElementAtMoveDestination)}."
                     )
 
                     result
@@ -363,7 +363,7 @@ object MergeResultDetectingMotion extends StrictLogging:
                         BaseAndRight(_, rightElementAtMoveDestination)
                       ) =>
                     logger.debug(
-                      s"Conflict at origin of move: resolved as a coincident deletion of $baseElement and a right insertion of $rightElement; propagating left edit $leftElement to right move destination $rightElementAtMoveDestination."
+                      s"Conflict at origin of move: resolved as a coincident deletion of ${pprintCustomised(baseElement)} and a right insertion of ${pprintCustomised(rightElement)}; propagating left edit ${pprintCustomised(leftElement)} to right move destination ${pprintCustomised(rightElementAtMoveDestination)}."
                     )
 
                     result
