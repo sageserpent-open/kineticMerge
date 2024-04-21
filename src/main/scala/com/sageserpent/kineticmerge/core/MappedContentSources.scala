@@ -1,7 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
 import com.typesafe.scalalogging.StrictLogging
-import org.apache.commons.text.StringEscapeUtils
+import pprint.Tree
 
 object MappedContentSources:
   val sectionImplementationRegex =
@@ -122,40 +122,32 @@ case class MappedContentSources[Path, Element](
       override val startOffset: Int,
       override val size: Int
   ) extends Section[Element]:
-    override def toString: String = render(plainTextOnly = true)
+    override def toString: String = pprintCustomised(this).plainText
 
-    def render(plainTextOnly: Boolean): String =
-      extension (fancyString: fansi.Str)
-        def asString: String =
-          if plainTextOnly then fancyString.plainText else fancyString.render
-      end extension
-
-      val prettyPrintedCore = pprint(this).asString
-
-      import MappedContentSources.sectionImplementationRegex
-
+    def render: Tree =
       val contentPrefixLimit = 5
 
-      prettyPrintedCore match
-        case sectionImplementationRegex(
-              prelude,
-              payload
-            ) =>
-          s"${prelude.replace("SectionImplementation", "Section")}($payload, label = ${pprint(label).asString}, content = ${pprint(
-              StringEscapeUtils.escapeJava(
-                content
-                  .take(contentPrefixLimit)
-                  .map {
-                    // NASTY HACK: rather than use dependency injection to
-                    // render an element, just use a special case to render
-                    // `Token`.
-                    case token: Token => token.text
-                    case anythingElse => anythingElse.toString
-                  }
-                  .mkString
-              )
-            ).asString})"
-      end match
+      val revealedContent = content
+        .take(contentPrefixLimit)
+        .map {
+          // NASTY HACK: rather than use dependency injection to
+          // render an element, just use a special case to render
+          // `Token`.
+          case token: Token => token.text
+          case anythingElse => anythingElse.toString
+        }
+        .mkString // TODO: this isn't correct - unless we have a sequence of tokens or possibly strings, we should show a *sequence* of elements.
+
+      Tree.Apply(
+        "Section",
+        Iterator(
+          Tree.KeyValue("label", pprintCustomised.treeFrom(label)),
+          Tree.KeyValue("path", pprintCustomised.treeFrom(path)),
+          Tree.KeyValue("startOffset", pprintCustomised.treeFrom(startOffset)),
+          Tree.KeyValue("size", pprintCustomised.treeFrom(size)),
+          Tree.KeyValue("content", pprintCustomised.treeFrom(revealedContent))
+        )
+      )
     end render
 
     override def content: IndexedSeq[Element] =

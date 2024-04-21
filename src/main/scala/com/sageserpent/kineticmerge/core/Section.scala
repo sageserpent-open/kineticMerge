@@ -1,5 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
+import pprint.Tree
+
 /** A [[Section]] covers some part of a [[File]], and knows how to render the
   * content.
   */
@@ -14,5 +16,5 @@ trait Section[Element]:
 
   def content: IndexedSeq[Element]
 
-  def render(plainTextOnly: Boolean): String
+  def render: Tree
 end Section
