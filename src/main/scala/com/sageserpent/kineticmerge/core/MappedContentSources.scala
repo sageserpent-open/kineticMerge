@@ -3,15 +3,6 @@ package com.sageserpent.kineticmerge.core
 import com.typesafe.scalalogging.StrictLogging
 import pprint.Tree
 
-object MappedContentSources:
-  val sectionImplementationRegex =
-    // Perplexed by the chicken tracks? This regex isolates a prefix of
-    // `SectionImplementation` from the following bracketed payload, but keeps
-    // all the messy colour code sequences intact, also preserving newlines via
-    // the `(?s:<non-capturing group>)` construct.
-    raw"(?s:(.*SectionImplementation[^(]*)\((.*)\).*)".r
-end MappedContentSources
-
 case class MappedContentSources[Path, Element](
     contentsByPath: Map[Path, IndexedSeq[Element]],
     label: String
