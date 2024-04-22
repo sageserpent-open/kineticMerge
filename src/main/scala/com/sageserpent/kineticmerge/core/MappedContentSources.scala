@@ -72,8 +72,7 @@ trait MappedContentSources[Path, Element]
           end if
         else
           Vector(
-            SectionImplementation(
-              path = path,
+            section(path = path)(
               startOffset = 0,
               size = content.length
             )
@@ -84,15 +83,41 @@ trait MappedContentSources[Path, Element]
 
   override def pathFor(section: Section[Element]): Path =
     section match
-      case SectionImplementation(path, _, _) if contentsByPath.contains(path) =>
-        path
+      case section: SectionImplementation
+          if contentsByPath.contains(section.path) =>
+        section.path
 
   override def section(path: Path)(
       startOffset: Int,
       size: Int
-  ): Section[Element] = SectionImplementation(path, startOffset, size)
+  ): Section[Element] = new SectionImplementation(path, startOffset, size)
 
   override def paths: Set[Path] = contentsByPath.keySet
+
+  class SectionImplementation(
+      val path: Path,
+      override val startOffset: Int,
+      override val size: Int
+  ) extends Section[Element]:
+
+    override def toString: String = pprintCustomised(this).plainText
+
+    def render: Tree =
+      Tree.Apply(
+        "Section",
+        Iterator(
+          Tree.KeyValue("label", pprintCustomised.treeFrom(label)),
+          Tree.KeyValue("path", pprintCustomised.treeFrom(path)),
+          Tree.KeyValue("startOffset", pprintCustomised.treeFrom(startOffset)),
+          Tree.KeyValue("size", pprintCustomised.treeFrom(size)),
+          Tree.KeyValue("content", pprintCustomised.treeFrom(content))
+        )
+      )
+    end render
+
+    override def content: IndexedSeq[Element] =
+      contentsByPath(path).slice(startOffset, onePastEndOffset)
+  end SectionImplementation
 
   class OverlappingSections(
       path: Path,
@@ -108,46 +133,38 @@ trait MappedContentSources[Path, Element]
       }):
 
   end OverlappingSections
-
-  case class SectionImplementation(
-      path: Path,
-      override val startOffset: Int,
-      override val size: Int
-  ) extends Section[Element]:
-    override def toString: String = pprintCustomised(this).plainText
-
-    def render: Tree =
-      val contentPrefixLimit = 5
-
-      val revealedContent = content
-        .take(contentPrefixLimit)
-        .map {
-          // NASTY HACK: rather than use dependency injection to
-          // render an element, just use a special case to render
-          // `Token`.
-          case token: Token => token.text
-          case anythingElse => anythingElse.toString
-        }
-        .mkString // TODO: this isn't correct - unless we have a sequence of tokens or possibly strings, we should show a *sequence* of elements.
-
-      Tree.Apply(
-        "Section",
-        Iterator(
-          Tree.KeyValue("label", pprintCustomised.treeFrom(label)),
-          Tree.KeyValue("path", pprintCustomised.treeFrom(path)),
-          Tree.KeyValue("startOffset", pprintCustomised.treeFrom(startOffset)),
-          Tree.KeyValue("size", pprintCustomised.treeFrom(size)),
-          Tree.KeyValue("content", pprintCustomised.treeFrom(revealedContent))
-        )
-      )
-    end render
-
-    override def content: IndexedSeq[Element] =
-      contentsByPath(path).slice(startOffset, onePastEndOffset)
-  end SectionImplementation
 end MappedContentSources
 
 case class MappedContentSourcesOfTokens[Path](
     override val contentsByPath: Map[Path, IndexedSeq[Token]],
     override val label: String
-) extends MappedContentSources[Path, Token]
+) extends MappedContentSources[Path, Token]:
+  override def section(path: Path)(
+      startOffset: Int,
+      size: Int
+  ): Section[Element] = new SectionImplementation(path, startOffset, size):
+    override def render: Tree =
+      val contentPrefixLimit = 5
+
+      // The content is the text covered by a prefix of the section's tokens.
+      val revealedContent = content
+        .take(contentPrefixLimit)
+        .map(_.text)
+        .mkString
+
+      Tree.Apply(
+        "Section",
+        Iterator(
+          Tree.KeyValue("label", pprintCustomised.treeFrom(label)),
+          Tree.KeyValue("path", pprintCustomised.treeFrom(this.path)),
+          Tree.KeyValue(
+            "startOffset",
+            pprintCustomised.treeFrom(this.startOffset)
+          ),
+          Tree.KeyValue("size", pprintCustomised.treeFrom(this.size)),
+          Tree.KeyValue("content", pprintCustomised.treeFrom(revealedContent))
+        )
+      )
+    end render
+
+end MappedContentSourcesOfTokens
