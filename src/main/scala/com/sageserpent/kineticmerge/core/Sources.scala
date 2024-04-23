@@ -13,10 +13,8 @@ package com.sageserpent.kineticmerge.core
   *   created by the same [[Sources]] instance, it's up to the client to be
   *   consistent.
   */
-trait Sources[PathType, ElementType]:
-  type Path    = PathType
-  type Element = ElementType
-  val filesByPath: Map[Path, File[ElementType]] = filesByPathUtilising(
+trait Sources[Path, Element]:
+  val filesByPath: Map[Path, File[Element]] = filesByPathUtilising(
     Set.empty
   )
 
@@ -56,5 +54,5 @@ trait Sources[PathType, ElementType]:
     */
   def filesByPathUtilising(
       mandatorySections: Set[Section[Element]]
-  ): Map[Path, File[ElementType]]
+  ): Map[Path, File[Element]]
 end Sources

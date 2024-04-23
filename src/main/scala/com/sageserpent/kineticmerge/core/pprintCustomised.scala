@@ -13,7 +13,7 @@ extension (prettyPrinter: PPrinter)
 val pprintCustomised: PPrinter = pprint.copy(additionalHandlers = {
   case section: Section[?] => section.render
   case rangedSeq: RangedSeq[?, ?] =>
-    pprint.Tree.Apply(
+    Tree.Apply(
       "RangedSeq",
       rangedSeq.iterator.map(pprintCustomised.treeFrom)
     )

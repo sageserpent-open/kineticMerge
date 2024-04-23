@@ -1,7 +1,11 @@
 package com.sageserpent.kineticmerge.core
 
+import com.sageserpent.kineticmerge.core.MappedContentSourcesOfTokens.{TextPosition, linebreakExtraction}
 import com.typesafe.scalalogging.StrictLogging
 import pprint.Tree
+
+import java.util.Arrays as JavaArrays
+import scala.collection.mutable.Map as MutableMap
 
 trait MappedContentSources[Path, Element]
     extends Sources[Path, Element]
@@ -135,6 +139,21 @@ trait MappedContentSources[Path, Element]
   end OverlappingSections
 end MappedContentSources
 
+object MappedContentSourcesOfTokens:
+  private val linebreakExtraction =
+    """(?m:.*$(\s+?)^)""".r // Matches a single, possibly empty line; the nested parentheses capture the terminating linebreak sequence. A final line without a terminating linebreak is not matched.
+
+    /** @param line
+      *   One-relative line number within the entire content at some path.
+      * @param character
+      *   Zero-relative character offset from the start of the line.
+      */
+  case class TextPosition(
+      line: Int,
+      character: Int
+  )
+end MappedContentSourcesOfTokens
+
 case class MappedContentSourcesOfTokens[Path](
     override val contentsByPath: Map[Path, IndexedSeq[Token]],
     override val label: String
@@ -142,7 +161,7 @@ case class MappedContentSourcesOfTokens[Path](
   override def section(path: Path)(
       startOffset: Int,
       size: Int
-  ): Section[Element] = new SectionImplementation(path, startOffset, size):
+  ): Section[Token] = new SectionImplementation(path, startOffset, size):
     override def render: Tree =
       val contentPrefixLimit = 5
 
@@ -158,13 +177,84 @@ case class MappedContentSourcesOfTokens[Path](
           Tree.KeyValue("label", pprintCustomised.treeFrom(label)),
           Tree.KeyValue("path", pprintCustomised.treeFrom(this.path)),
           Tree.KeyValue(
-            "startOffset",
+            "start",
+            pprintCustomised.treeFrom(
+              LineInformation(this.path)
+                .textPositionFor(
+                  this.startOffset
+                )
+            )
+          ),
+          Tree.KeyValue(
+            "onePastEnd",
+            pprintCustomised.treeFrom(
+              LineInformation(this.path)
+                .textPositionFor(
+                  this.startOffset + this.size
+                )
+            )
+          ),
+          Tree.KeyValue(
+            "startTokenIndex",
             pprintCustomised.treeFrom(this.startOffset)
           ),
-          Tree.KeyValue("size", pprintCustomised.treeFrom(this.size)),
+          Tree.KeyValue("sizeInTokens", pprintCustomised.treeFrom(this.size)),
           Tree.KeyValue("content", pprintCustomised.treeFrom(revealedContent))
         )
       )
     end render
+
+  private class LineInformation(contents: IndexedSeq[Token]):
+    private val cumulativeCharacterOffsetsOfTokensIncludingThePhantomOffTheEnd
+        : IndexedSeq[Int] =
+      (0 until contents.size)
+        .scanLeft(0)((cumulativeCharacterOffset, tokenIndex) =>
+          cumulativeCharacterOffset + contents(tokenIndex).text.size
+        )
+
+    private val cumulativeCharacterOffsetsOfLines: Array[Int] =
+      val textCoveredBySection = contents.map(_.text).mkString
+
+      val offsetsFollowingLinebreaks =
+        linebreakExtraction.findAllMatchIn(textCoveredBySection).map(_.end(1))
+
+      (Iterator(0) ++ offsetsFollowingLinebreaks).toArray
+    end cumulativeCharacterOffsetsOfLines
+
+    def textPositionFor(
+        tokenIndex: Int
+    ): TextPosition =
+      val characterOffsetOfToken =
+        cumulativeCharacterOffsetsOfTokensIncludingThePhantomOffTheEnd(
+          tokenIndex
+        )
+
+      val locationOrInsertion = JavaArrays.binarySearch(
+        cumulativeCharacterOffsetsOfLines,
+        characterOffsetOfToken
+      )
+
+      val lineIndex =
+        if 0 > locationOrInsertion then -(locationOrInsertion + 2)
+        else locationOrInsertion
+
+      TextPosition(
+        line = 1 + lineIndex,
+        character =
+          characterOffsetOfToken - cumulativeCharacterOffsetsOfLines(lineIndex)
+      )
+    end textPositionFor
+  end LineInformation
+
+  private object LineInformation:
+    private val lineInformationByPath: MutableMap[Path, LineInformation] =
+      MutableMap.empty
+
+    def apply(path: Path): LineInformation =
+      lineInformationByPath.getOrElseUpdate(
+        path,
+        new LineInformation(contentsByPath(path))
+      )
+  end LineInformation
 
 end MappedContentSourcesOfTokens
