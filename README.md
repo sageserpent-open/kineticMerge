@@ -6,6 +6,8 @@ Merge a heavily refactored codebase and stay sane.
 
 (In **BETA**).
 
+YouTube: [Kinetic Merge: Merging through a File Split](https://youtu.be/JHb9DKK0LIA)
+
 <video src="https://github.com/sageserpent-open/kineticMerge/assets/1765601/2d676e20-dce0-441a-b4a2-fcbaa8aff35d"><video/>
 
 <video src="https://github.com/sageserpent-open/kineticMerge/assets/1765601/783172ef-7688-45ab-83ab-2e0aa633ce01"><video/>
@@ -106,14 +108,11 @@ one.
 
 ## Status
 
-Well, that's the plan. It's no longer vapourware, there is a release; the code motion aspect is implemented end-to-end.
+Well, that's the plan. It's no longer vapourware, there is a release; the code motion aspect is implemented end-to-end. Code motion is tracked both intra-file and inter-file. You can split a file into pieces on one branch and edit the original file on another - those changes will find their way into the right pieces when you merge. Cool.
 
-The caveat as of version 1.0.0 is that code motion is only tracked **intra-file**, not *inter-file*. So you can rearrange
-code as much as you like inside a file and any edits to that code on another branch will be propagated when you merge, but
-this won't work if code jumps from one file to another. Yet. There is a
-[ticket for this](https://github.com/sageserpent-open/kineticMerge/issues/26), it is coming soon...
+The caveat is for now that it is only *edits and deletions* that follow code motion. If you *insert* code into existing code that has moved without changing anything else, that won't move. Yet. There is a ticket for this, stay tuned: [Insertion Anchoring](https://github.com/sageserpent-open/kineticMerge/issues/30). 
 
-For now, consider this in **BETA** release. If you give it a spin, do raise bug tickets,
+For now, consider this in **BETA** release. Give it a spin, do raise bug tickets,
 see [https://github.com/sageserpent-open/kineticMerge/issues/21](https://github.com/sageserpent-open/kineticMerge/issues/21)
 for guidance.
 
