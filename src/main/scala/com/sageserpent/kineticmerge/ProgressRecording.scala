@@ -20,7 +20,8 @@ trait ProgressRecordingSession extends AutoCloseable:
 end ProgressRecordingSession
 
 trait ProgressRecording:
-  /** Create a new progress recording session that has zero recorded progress.
+  /** Creates a new progress recording session with some initial progress
+    * already recorded.
     *
     * @param label
     *   Labels a specific activity whose progress is being recorded.
