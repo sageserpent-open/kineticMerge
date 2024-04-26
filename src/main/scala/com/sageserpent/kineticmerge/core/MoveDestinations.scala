@@ -26,4 +26,11 @@ case class MoveDestinations[Element](
   def isDivergent: Boolean = left.nonEmpty && right.nonEmpty
 
   def isAmbiguous: Boolean = 1 < (left.size max right.size) + coincident.size
+
+  def mergeWith(another: MoveDestinations[Element]): MoveDestinations[Element] =
+    MoveDestinations(
+      left = this.left union another.left,
+      right = this.right union another.right,
+      coincident = this.coincident union another.coincident
+    )
 end MoveDestinations
