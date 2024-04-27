@@ -4,6 +4,7 @@ import cats.Eq
 import com.sageserpent.kineticmerge.core.merge.of as mergeOf
 import com.typesafe.scalalogging.StrictLogging
 
+import scala.collection.decorators.mapDecorator
 import scala.collection.immutable.MultiDict
 
 object CodeMotionAnalysisExtension extends StrictLogging:
@@ -55,7 +56,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       val (
         mergeResultsByPath,
         changesPropagatedThroughMotion,
-        excludedFromChangePropagation
+        excludedFromChangePropagation,
+        moveDestinationsByDominantSet
       ) =
         paths.foldLeft(
           Map.empty[Path, MergeResult[Section[Element]]],
@@ -67,13 +69,17 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 ]
             )
           ],
-          Set.empty[Section[Element]]
+          Set.empty[Section[Element]],
+          Map.empty[collection.Set[Section[Element]], MoveDestinations[
+            Section[Element]
+          ]]
         ) {
           case (
                 (
                   mergeResultsByPath,
                   changesPropagatedThroughMotion,
-                  excludedFromChangePropagation
+                  excludedFromChangePropagation,
+                  movesByDominantSet
                 ),
                 path
               ) =>
@@ -90,18 +96,20 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     leftSections
                   )),
                   changesPropagatedThroughMotion,
-                  excludedFromChangePropagation
+                  excludedFromChangePropagation,
+                  movesByDominantSet
                 )
               case (None, None, Some(rightSections)) =>
                 // File added only on the right; pass through as there is
-                // neither
-                // anything to merge nor any sources of edits or deletions...
+                // neither anything to merge nor any sources of edits or
+                // deletions...
                 (
                   mergeResultsByPath + (path -> FullyMerged(
                     rightSections
                   )),
                   changesPropagatedThroughMotion,
-                  excludedFromChangePropagation
+                  excludedFromChangePropagation,
+                  movesByDominantSet
                 )
               case (
                     optionalBaseSections,
@@ -138,7 +146,12 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 (
                   mergeResultsByPath + (path -> mergedSectionsResult.coreMergeResult),
                   changesPropagatedThroughMotion ++ mergedSectionsResult.changesPropagatedThroughMotion,
-                  excludedFromChangePropagation union mergedSectionsResult.excludedFromChangePropagation
+                  excludedFromChangePropagation union mergedSectionsResult.excludedFromChangePropagation,
+                  (movesByDominantSet mergeByKeyWith mergedSectionsResult.moveDestinationsByDominantSet) {
+                    case (Some(lhs), Some(rhs)) => lhs mergeWith rhs
+                    case (Some(lhs), None)      => lhs
+                    case (None, Some(rhs))      => rhs
+                  }
                 )
             end match
         }

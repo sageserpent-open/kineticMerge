@@ -18,12 +18,90 @@ object MergeResultDetectingMotion extends StrictLogging:
     type ConfiguredMergeResultDetectingMotion[Element] =
       MergeResultDetectingMotionType[CoreResult][Element]
 
+    def dominantsOf(
+        element: Element
+    ): collection.Set[Element] =
+      matchesFor(element).map(_.dominantElement)
+
     new MergeAlgebra[MergeResultDetectingMotionType[CoreResult], Element]:
+      extension (
+          moveDestinationsByDominantSet: Map[collection.Set[
+            Element
+          ], MoveDestinations[Element]]
+      )
+        def leftMoveOf(
+            element: Element
+        ): Map[collection.Set[Element], MoveDestinations[Element]] =
+          val dominants = dominantsOf(element)
+
+          if dominants.nonEmpty then
+            moveDestinationsByDominantSet.updatedWith(dominants) {
+              case None =>
+                Some(
+                  MoveDestinations(
+                    left = Set(element),
+                    right = Set.empty,
+                    coincident = Set.empty
+                  )
+                )
+              case Some(moveDestinations) =>
+                Some(moveDestinations.focus(_.left).modify(_ + element))
+            }
+          else moveDestinationsByDominantSet
+          end if
+        end leftMoveOf
+
+        def rightMoveOf(
+            element: Element
+        ): Map[collection.Set[Element], MoveDestinations[Element]] =
+          val dominants = dominantsOf(element)
+
+          if dominants.nonEmpty then
+            moveDestinationsByDominantSet.updatedWith(dominants) {
+              case None =>
+                Some(
+                  MoveDestinations(
+                    left = Set.empty,
+                    right = Set(element),
+                    coincident = Set.empty
+                  )
+                )
+              case Some(moveDestinations) =>
+                Some(moveDestinations.focus(_.right).modify(_ + element))
+            }
+          else moveDestinationsByDominantSet
+          end if
+        end rightMoveOf
+
+        def coincidentMoveOf(
+            element: Element
+        ): Map[collection.Set[Element], MoveDestinations[Element]] =
+          val dominants = dominantsOf(element)
+
+          if dominants.nonEmpty then
+            moveDestinationsByDominantSet.updatedWith(dominants) {
+              case None =>
+                Some(
+                  MoveDestinations(
+                    left = Set.empty,
+                    right = Set.empty,
+                    coincident = Set(element)
+                  )
+                )
+              case Some(moveDestinations) =>
+                Some(moveDestinations.focus(_.coincident).modify(_ + element))
+            }
+          else moveDestinationsByDominantSet
+          end if
+        end coincidentMoveOf
+      end extension
+
       override def empty: ConfiguredMergeResultDetectingMotion[Element] =
         MergeResultDetectingMotion(
           coreMergeResult = coreMergeAlgebra.empty,
           changesPropagatedThroughMotion = MultiDict.empty,
-          excludedFromChangePropagation = Set.empty
+          excludedFromChangePropagation = Set.empty,
+          moveDestinationsByDominantSet = Map.empty
         )
 
       override def preservation(
@@ -41,6 +119,8 @@ object MergeResultDetectingMotion extends StrictLogging:
       ): ConfiguredMergeResultDetectingMotion[Element] = result
         .focus(_.coreMergeResult)
         .modify(coreMergeAlgebra.leftInsertion(_, insertedElement))
+        .focus(_.moveDestinationsByDominantSet)
+        .modify(_.leftMoveOf(insertedElement))
 
       override def rightInsertion(
           result: ConfiguredMergeResultDetectingMotion[Element],
@@ -48,6 +128,8 @@ object MergeResultDetectingMotion extends StrictLogging:
       ): ConfiguredMergeResultDetectingMotion[Element] = result
         .focus(_.coreMergeResult)
         .modify(coreMergeAlgebra.rightInsertion(_, insertedElement))
+        .focus(_.moveDestinationsByDominantSet)
+        .modify(_.rightMoveOf(insertedElement))
 
       override def coincidentInsertion(
           result: ConfiguredMergeResultDetectingMotion[Element],
@@ -55,6 +137,8 @@ object MergeResultDetectingMotion extends StrictLogging:
       ): ConfiguredMergeResultDetectingMotion[Element] = result
         .focus(_.coreMergeResult)
         .modify(coreMergeAlgebra.coincidentInsertion(_, insertedElement))
+        .focus(_.moveDestinationsByDominantSet)
+        .modify(_.coincidentMoveOf(insertedElement))
 
       override def leftDeletion(
           result: ConfiguredMergeResultDetectingMotion[Element],
@@ -119,6 +203,8 @@ object MergeResultDetectingMotion extends StrictLogging:
       ): ConfiguredMergeResultDetectingMotion[Element] = result
         .focus(_.coreMergeResult)
         .modify(coreMergeAlgebra.leftEdit(_, editedElement, editElements))
+        .focus(_.moveDestinationsByDominantSet)
+        .modify(_.leftMoveOf(editedElement))
 
       override def rightEdit(
           result: ConfiguredMergeResultDetectingMotion[Element],
@@ -127,6 +213,8 @@ object MergeResultDetectingMotion extends StrictLogging:
       ): ConfiguredMergeResultDetectingMotion[Element] = result
         .focus(_.coreMergeResult)
         .modify(coreMergeAlgebra.rightEdit(_, editedElement, editElements))
+        .focus(_.moveDestinationsByDominantSet)
+        .modify(_.rightMoveOf(editedElement))
 
       override def coincidentEdit(
           result: ConfiguredMergeResultDetectingMotion[Element],
@@ -138,6 +226,8 @@ object MergeResultDetectingMotion extends StrictLogging:
           .modify(
             coreMergeAlgebra.coincidentEdit(_, editedElement, editElements)
           )
+          .focus(_.moveDestinationsByDominantSet)
+          .modify(_.coincidentMoveOf(editedElement))
 
         val matches = matchesFor(editedElement).toSeq
 
@@ -388,6 +478,11 @@ case class MergeResultDetectingMotion[CoreResult[_], Element](
     // Use `Option[Element]` to model the difference between an edit and an
     // outright deletion.
     changesPropagatedThroughMotion: MultiDict[Element, Option[Element]],
-    excludedFromChangePropagation: Set[Element]
+    excludedFromChangePropagation: Set[Element],
+    moveDestinationsByDominantSet: Map[collection.Set[
+      Element
+    ], MoveDestinations[
+      Element
+    ]]
 ):
 end MergeResultDetectingMotion
