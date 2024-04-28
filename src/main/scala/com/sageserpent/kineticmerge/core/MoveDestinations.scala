@@ -1,5 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
+import monocle.syntax.all.*
+
 /** This models the various possibilities for a move: <p>1. A single move to the
   * left. Neither divergent nor ambiguous. <p>2. A single move to the right.
   * Neither divergent nor ambiguous. <p>3. Ambiguous moves to the left. Not
@@ -34,3 +36,82 @@ case class MoveDestinations[Element](
       coincident = this.coincident union another.coincident
     )
 end MoveDestinations
+
+class MoveDestinationsSupport[Element](
+    matchesFor: Element => collection.Set[Match[Element]]
+):
+  extension (
+      moveDestinationsByDominantSet: Map[collection.Set[
+        Element
+      ], MoveDestinations[Element]]
+  )
+    private def dominantsOf(element: Element): collection.Set[Element] =
+      matchesFor(element).map(_.dominantElement)
+
+    def leftMoveOf(
+        element: Element
+    ): Map[collection.Set[Element], MoveDestinations[Element]] =
+      val dominants = dominantsOf(element)
+
+      if dominants.nonEmpty then
+        moveDestinationsByDominantSet.updatedWith(dominants) {
+          case None =>
+            Some(
+              MoveDestinations(
+                left = Set(element),
+                right = Set.empty,
+                coincident = Set.empty
+              )
+            )
+          case Some(moveDestinations) =>
+            Some(moveDestinations.focus(_.left).modify(_ + element))
+        }
+      else moveDestinationsByDominantSet
+      end if
+    end leftMoveOf
+
+    def rightMoveOf(
+        element: Element
+    ): Map[collection.Set[Element], MoveDestinations[Element]] =
+      val dominants = dominantsOf(element)
+
+      if dominants.nonEmpty then
+        moveDestinationsByDominantSet.updatedWith(dominants) {
+          case None =>
+            Some(
+              MoveDestinations(
+                left = Set.empty,
+                right = Set(element),
+                coincident = Set.empty
+              )
+            )
+          case Some(moveDestinations) =>
+            Some(moveDestinations.focus(_.right).modify(_ + element))
+        }
+      else moveDestinationsByDominantSet
+      end if
+    end rightMoveOf
+
+    def coincidentMoveOf(
+        element: Element
+    ): Map[collection.Set[Element], MoveDestinations[Element]] =
+      val dominants = dominantsOf(element)
+
+      if dominants.nonEmpty then
+        moveDestinationsByDominantSet.updatedWith(dominants) {
+          case None =>
+            Some(
+              MoveDestinations(
+                left = Set.empty,
+                right = Set.empty,
+                coincident = Set(element)
+              )
+            )
+          case Some(moveDestinations) =>
+            Some(moveDestinations.focus(_.coincident).modify(_ + element))
+        }
+      else moveDestinationsByDominantSet
+      end if
+    end coincidentMoveOf
+  end extension
+end MoveDestinationsSupport

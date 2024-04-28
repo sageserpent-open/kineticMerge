@@ -18,83 +18,10 @@ object MergeResultDetectingMotion extends StrictLogging:
     type ConfiguredMergeResultDetectingMotion[Element] =
       MergeResultDetectingMotionType[CoreResult][Element]
 
-    def dominantsOf(
-        element: Element
-    ): collection.Set[Element] =
-      matchesFor(element).map(_.dominantElement)
-
     new MergeAlgebra[MergeResultDetectingMotionType[CoreResult], Element]:
-      extension (
-          moveDestinationsByDominantSet: Map[collection.Set[
-            Element
-          ], MoveDestinations[Element]]
-      )
-        def leftMoveOf(
-            element: Element
-        ): Map[collection.Set[Element], MoveDestinations[Element]] =
-          val dominants = dominantsOf(element)
-
-          if dominants.nonEmpty then
-            moveDestinationsByDominantSet.updatedWith(dominants) {
-              case None =>
-                Some(
-                  MoveDestinations(
-                    left = Set(element),
-                    right = Set.empty,
-                    coincident = Set.empty
-                  )
-                )
-              case Some(moveDestinations) =>
-                Some(moveDestinations.focus(_.left).modify(_ + element))
-            }
-          else moveDestinationsByDominantSet
-          end if
-        end leftMoveOf
-
-        def rightMoveOf(
-            element: Element
-        ): Map[collection.Set[Element], MoveDestinations[Element]] =
-          val dominants = dominantsOf(element)
-
-          if dominants.nonEmpty then
-            moveDestinationsByDominantSet.updatedWith(dominants) {
-              case None =>
-                Some(
-                  MoveDestinations(
-                    left = Set.empty,
-                    right = Set(element),
-                    coincident = Set.empty
-                  )
-                )
-              case Some(moveDestinations) =>
-                Some(moveDestinations.focus(_.right).modify(_ + element))
-            }
-          else moveDestinationsByDominantSet
-          end if
-        end rightMoveOf
-
-        def coincidentMoveOf(
-            element: Element
-        ): Map[collection.Set[Element], MoveDestinations[Element]] =
-          val dominants = dominantsOf(element)
-
-          if dominants.nonEmpty then
-            moveDestinationsByDominantSet.updatedWith(dominants) {
-              case None =>
-                Some(
-                  MoveDestinations(
-                    left = Set.empty,
-                    right = Set.empty,
-                    coincident = Set(element)
-                  )
-                )
-              case Some(moveDestinations) =>
-                Some(moveDestinations.focus(_.coincident).modify(_ + element))
-            }
-          else moveDestinationsByDominantSet
-          end if
-        end coincidentMoveOf
-      end extension
+      val moveDestinationsSupport = MoveDestinationsSupport(matchesFor)
+      
+      import moveDestinationsSupport.*
 
       override def empty: ConfiguredMergeResultDetectingMotion[Element] =
         MergeResultDetectingMotion(

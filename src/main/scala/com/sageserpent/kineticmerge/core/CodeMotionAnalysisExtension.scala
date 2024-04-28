@@ -79,7 +79,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   mergeResultsByPath,
                   changesPropagatedThroughMotion,
                   excludedFromChangePropagation,
-                  movesByDominantSet
+                  moveDestinationsByDominantSet
                 ),
                 path
               ) =>
@@ -97,7 +97,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   )),
                   changesPropagatedThroughMotion,
                   excludedFromChangePropagation,
-                  movesByDominantSet
+                  moveDestinationsByDominantSet
                 )
               case (None, None, Some(rightSections)) =>
                 // File added only on the right; pass through as there is
@@ -109,7 +109,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   )),
                   changesPropagatedThroughMotion,
                   excludedFromChangePropagation,
-                  movesByDominantSet
+                  moveDestinationsByDominantSet
                 )
               case (
                     optionalBaseSections,
@@ -147,7 +147,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   mergeResultsByPath + (path -> mergedSectionsResult.coreMergeResult),
                   changesPropagatedThroughMotion ++ mergedSectionsResult.changesPropagatedThroughMotion,
                   excludedFromChangePropagation union mergedSectionsResult.excludedFromChangePropagation,
-                  movesByDominantSet.mergeByKeyWith(
+                  moveDestinationsByDominantSet.mergeByKeyWith(
                     mergedSectionsResult.moveDestinationsByDominantSet
                   ) {
                     case (Some(lhs), Some(rhs)) => lhs mergeWith rhs
