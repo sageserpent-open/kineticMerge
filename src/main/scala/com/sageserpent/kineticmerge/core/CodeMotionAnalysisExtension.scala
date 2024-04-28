@@ -50,6 +50,12 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         }
       end sectionEqualityViaDominantsFallingBackToContentComparison
 
+      val moveDestinationsSupport = MoveDestinationsSupport(
+        codeMotionAnalysis.matchesFor
+      )
+
+      import moveDestinationsSupport.*
+
       val paths =
         codeMotionAnalysis.base.keySet ++ codeMotionAnalysis.left.keySet ++ codeMotionAnalysis.right.keySet
 
@@ -97,7 +103,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   )),
                   changesPropagatedThroughMotion,
                   excludedFromChangePropagation,
-                  moveDestinationsByDominantSet
+                  leftSections.foldLeft(moveDestinationsByDominantSet)(
+                    _.leftMoveOf(_)
+                  )
                 )
               case (None, None, Some(rightSections)) =>
                 // File added only on the right; pass through as there is
@@ -109,7 +117,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   )),
                   changesPropagatedThroughMotion,
                   excludedFromChangePropagation,
-                  moveDestinationsByDominantSet
+                  rightSections.foldLeft(moveDestinationsByDominantSet)(
+                    _.rightMoveOf(_)
+                  )
                 )
               case (
                     optionalBaseSections,
