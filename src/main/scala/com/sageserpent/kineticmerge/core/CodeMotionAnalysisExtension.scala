@@ -2,9 +2,9 @@ package com.sageserpent.kineticmerge.core
 
 import cats.Eq
 import com.sageserpent.kineticmerge.core.merge.of as mergeOf
+import com.sageserpent.kineticmerge.mergeByKeyWith
 import com.typesafe.scalalogging.StrictLogging
 
-import scala.collection.decorators.mapDecorator
 import scala.collection.immutable.MultiDict
 
 object CodeMotionAnalysisExtension extends StrictLogging:
@@ -147,7 +147,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   mergeResultsByPath + (path -> mergedSectionsResult.coreMergeResult),
                   changesPropagatedThroughMotion ++ mergedSectionsResult.changesPropagatedThroughMotion,
                   excludedFromChangePropagation union mergedSectionsResult.excludedFromChangePropagation,
-                  (movesByDominantSet mergeByKeyWith mergedSectionsResult.moveDestinationsByDominantSet) {
+                  movesByDominantSet.mergeByKeyWith(
+                    mergedSectionsResult.moveDestinationsByDominantSet
+                  ) {
                     case (Some(lhs), Some(rhs)) => lhs mergeWith rhs
                     case (Some(lhs), None)      => lhs
                     case (None, Some(rhs))      => rhs

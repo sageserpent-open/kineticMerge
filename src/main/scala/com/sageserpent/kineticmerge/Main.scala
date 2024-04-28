@@ -74,6 +74,18 @@ object Main extends StrictLogging:
     System.exit(apply(ConsoleProgressRecording, commandLineArguments*))
   end main
 
+  /** @param commandLineArguments
+    *   Command line arguments as varargs.
+    * @return
+    *   The exit code as a plain integer, suitable for consumption by both Scala
+    *   and Java client code.
+    */
+  @varargs
+  def apply(commandLineArguments: String*): Int = apply(
+    progressRecording = NoProgressRecording,
+    commandLineArguments = commandLineArguments*
+  )
+
   /** @param progressRecording
     * @param commandLineArguments
     *   Command line arguments as varargs.
@@ -362,9 +374,6 @@ object Main extends StrictLogging:
     exitCode
   end mergeTheirBranch
 
-  private def right[Payload](payload: Payload): Workflow[Payload] =
-    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
-
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
       EitherT
@@ -383,20 +392,11 @@ object Main extends StrictLogging:
       workflow.semiflatTap(_ => WriterT.tell(List(Right(message))))
   end extension
 
+  private def right[Payload](payload: Payload): Workflow[Payload] =
+    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
+
   private def underline(anything: Any): Str =
     fansi.Underlined.On(anything.toString)
-
-  /** @param commandLineArguments
-    *   Command line arguments as varargs.
-    * @return
-    *   The exit code as a plain integer, suitable for consumption by both Scala
-    *   and Java client code.
-    */
-  @varargs
-  def apply(commandLineArguments: String*): Int = apply(
-    progressRecording = NoProgressRecording,
-    commandLineArguments = commandLineArguments*
-  )
 
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](
@@ -631,39 +631,6 @@ object Main extends StrictLogging:
         s"Unexpected error - can't parse changes reported by Git ${underline(line)}."
       ).flatMap { case (path, changed) => changed.map(path -> _) }
 
-    private def blobAndContentFor(
-        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
-    )(
-        path: Path
-    ): Workflow[
-      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
-    ] =
-      IO {
-        val line = os
-          .proc("git", "ls-tree", commitIdOrBranchName, path)
-          .call(workingDirectory)
-          .out
-          .text()
-
-        line.split(whitespaceRun) match
-          case Array(mode, _, blobId, _) =>
-            val content = os
-              .proc("git", "cat-file", "blob", blobId)
-              .call(workingDirectory)
-              .out
-              .text()
-
-            (
-              mode.taggedWith[Tags.Mode],
-              blobId.taggedWith[Tags.BlobId],
-              content.taggedWith[Tags.Content]
-            )
-        end match
-      }.labelExceptionWith(errorMessage =
-        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
-      )
-    end blobAndContentFor
-
     def mergeInputsOf(
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
         ourBranchHead: String @@ Tags.CommitOrBranchName,
@@ -870,6 +837,39 @@ object Main extends StrictLogging:
             yield path -> BothContributeADeletion(bestAncestorCommitIdContent)
         }
     end mergeInputsOf
+
+    private def blobAndContentFor(
+        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
+    )(
+        path: Path
+    ): Workflow[
+      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
+    ] =
+      IO {
+        val line = os
+          .proc("git", "ls-tree", commitIdOrBranchName, path)
+          .call(workingDirectory)
+          .out
+          .text()
+
+        line.split(whitespaceRun) match
+          case Array(mode, _, blobId, _) =>
+            val content = os
+              .proc("git", "cat-file", "blob", blobId)
+              .call(workingDirectory)
+              .out
+              .text()
+
+            (
+              mode.taggedWith[Tags.Mode],
+              blobId.taggedWith[Tags.BlobId],
+              content.taggedWith[Tags.Content]
+            )
+        end match
+      }.labelExceptionWith(errorMessage =
+        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
+      )
+    end blobAndContentFor
 
     def mergeWithRollback(
         ourBranchHead: String @@ Main.Tags.CommitOrBranchName,
@@ -1855,41 +1855,6 @@ object Main extends StrictLogging:
         s"Unexpected error: could not update index for added file ${underline(path)}."
       )
     end recordAdditionInIndex
-
-    // TODO: remove this and use the functionality from
-    // `MapDecorator` instead...
-    extension (thisMap: Map[Path, Change])
-      // Adapted from
-      // https://github.com/scala/scala-collection-contrib/blob/7dbb2494ddb4e1e4ded532df25ea31a65206c3cc/src/main/scala/scala/collection/decorators/MapDecorator.scala#L60
-      // as a temporary workaround.
-      def mergeByKey(
-          other: Map[Path, Change]
-      )(implicit
-          bf: BuildFrom[
-            Map[Path, Change],
-            (Path, (Option[Change], Option[Change])),
-            Map[Path, (Option[Change], Option[Change])]
-          ]
-      ): Map[Path, (Option[Change], Option[Change])] =
-        import scala.collection.mutable
-
-        val b         = bf.newBuilder(thisMap)
-        val traversed = mutable.Set.empty[Path]
-        for
-          (k, v) <- thisMap
-          x = other
-            .get(k)
-            .fold[(Option[Change], Option[Change])]((Some(v), None)) { w =>
-              traversed += k; (Some(v), Some(w))
-            }
-        do b += k -> x
-        end for
-        for
-          (k, w) <- other if !traversed(k)
-          x = (None, Some(w))
-        do b += k -> x
-        end for
-        b.result()
   end InWorkingDirectory
 
   private enum IndexState:
