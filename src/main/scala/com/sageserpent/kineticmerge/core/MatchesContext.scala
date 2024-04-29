@@ -113,7 +113,18 @@ class MatchesContext[Element](
         }
       )
 
-    def summarizeInText: Seq[String] = ???
+    def summarizeInText: Seq[String] =
+      // What to report?
+      // 1. The unambiguous and non-divergent moves.
+      // 2. The ambiguous and non-divergent moves.
+      // 3. The unambiguous and divergent moves.
+      // 4. The ambiguous and divergent moves.
+      // 5. The unambiguous coincident insertions.
+      // 6. The ambiguous coincident insertions.
+      // 7. The unambiguous divergent insertions.
+      // 8. The ambiguous divergent insertions.
+
+      ???
   end MoveDestinationsReport
 
   object MergeResultDetectingMotion extends StrictLogging:
