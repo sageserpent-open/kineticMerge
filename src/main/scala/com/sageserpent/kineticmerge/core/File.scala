@@ -10,9 +10,11 @@ case class File[Element](
     sections: IndexedSeq[Section[Element]]
 ):
   // Invariant - sections are contiguous.
-  sections.zip(sections.tail).foreach { case (first, second) =>
-    require(first.onePastEndOffset == second.startOffset)
-  }
+  if sections.nonEmpty then
+    sections.zip(sections.tail).foreach { case (first, second) =>
+      require(first.onePastEndOffset == second.startOffset)
+    }
+  end if
 
   def size: Int = sections.foldLeft(0)(_ + _.size)
 
