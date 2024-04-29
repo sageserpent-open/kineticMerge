@@ -2,7 +2,6 @@ package com.sageserpent.kineticmerge.core
 
 import cats.Eq
 import com.sageserpent.kineticmerge.core.merge.of as mergeOf
-import com.sageserpent.kineticmerge.mergeByKeyWith
 import com.typesafe.scalalogging.StrictLogging
 
 import scala.collection.immutable.MultiDict
@@ -50,11 +49,11 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         }
       end sectionEqualityViaDominantsFallingBackToContentComparison
 
-      val moveDestinationsSupport = MoveDestinationsSupport(
+      val matchesContext = MatchesContext(
         codeMotionAnalysis.matchesFor
       )
 
-      import moveDestinationsSupport.*
+      import matchesContext.*
 
       val paths =
         codeMotionAnalysis.base.keySet ++ codeMotionAnalysis.left.keySet ++ codeMotionAnalysis.right.keySet
@@ -63,7 +62,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         mergeResultsByPath,
         changesPropagatedThroughMotion,
         excludedFromChangePropagation,
-        moveDestinationsByDominantSet
+        moveDestinationsReport
       ) =
         paths.foldLeft(
           Map.empty[Path, MergeResult[Section[Element]]],
@@ -76,16 +75,14 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             )
           ],
           Set.empty[Section[Element]],
-          Map.empty[collection.Set[Section[Element]], MoveDestinations[
-            Section[Element]
-          ]]
+          emptyReport
         ) {
           case (
                 (
                   mergeResultsByPath,
                   changesPropagatedThroughMotion,
                   excludedFromChangePropagation,
-                  moveDestinationsByDominantSet
+                  moveDestinationsReport
                 ),
                 path
               ) =>
@@ -103,7 +100,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   )),
                   changesPropagatedThroughMotion,
                   excludedFromChangePropagation,
-                  leftSections.foldLeft(moveDestinationsByDominantSet)(
+                  leftSections.foldLeft(moveDestinationsReport)(
                     _.leftMoveOf(_)
                   )
                 )
@@ -117,7 +114,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   )),
                   changesPropagatedThroughMotion,
                   excludedFromChangePropagation,
-                  rightSections.foldLeft(moveDestinationsByDominantSet)(
+                  rightSections.foldLeft(moveDestinationsReport)(
                     _.rightMoveOf(_)
                   )
                 )
@@ -139,9 +136,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       Element
                     ]] =
                   mergeOf(mergeAlgebra =
-                    MergeResultDetectingMotion.mergeAlgebra(
-                      matchesFor = codeMotionAnalysis.matchesFor,
-                      coreMergeAlgebra = MergeResult.mergeAlgebra
+                    MergeResultDetectingMotion.mergeAlgebra(coreMergeAlgebra =
+                      MergeResult.mergeAlgebra
                     )
                   )(
                     base = optionalBaseSections.getOrElse(IndexedSeq.empty),
@@ -157,13 +153,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   mergeResultsByPath + (path -> mergedSectionsResult.coreMergeResult),
                   changesPropagatedThroughMotion ++ mergedSectionsResult.changesPropagatedThroughMotion,
                   excludedFromChangePropagation union mergedSectionsResult.excludedFromChangePropagation,
-                  moveDestinationsByDominantSet.mergeByKeyWith(
-                    mergedSectionsResult.moveDestinationsByDominantSet
-                  ) {
-                    case (Some(lhs), Some(rhs)) => lhs mergeWith rhs
-                    case (Some(lhs), None)      => lhs
-                    case (None, Some(rhs))      => rhs
-                  }
+                  moveDestinationsReport.mergeWith(
+                    mergedSectionsResult.moveDestinationsReport
+                  )
                 )
             end match
         }

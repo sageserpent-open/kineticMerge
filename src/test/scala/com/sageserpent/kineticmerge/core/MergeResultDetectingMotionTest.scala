@@ -119,8 +119,10 @@ class MergeResultDetectingMotionTest:
         )
 
       val mergeAlgebra =
-        MergeResultDetectingMotion
-          .mergeAlgebra(matchesFor(matchesByElement), auditingCoreMergeAlgebra)
+        MatchesContext(
+          matchesFor(matchesByElement)
+        ).MergeResultDetectingMotion
+          .mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         mergeAlgebra.coincidentDeletion(mergeAlgebra.empty, baseElement)
@@ -165,8 +167,9 @@ class MergeResultDetectingMotionTest:
         )
 
       val mergeAlgebra =
-        MergeResultDetectingMotion
-          .mergeAlgebra(matchesFor(matchesByElement), auditingCoreMergeAlgebra)
+        MatchesContext(
+          matchesFor(matchesByElement)
+        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -225,8 +228,9 @@ class MergeResultDetectingMotionTest:
         )
 
       val mergeAlgebra =
-        MergeResultDetectingMotion
-          .mergeAlgebra(matchesFor(matchesByElement), auditingCoreMergeAlgebra)
+        MatchesContext(
+          matchesFor(matchesByElement)
+        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -304,8 +308,9 @@ class MergeResultDetectingMotionTest:
         )
 
       val mergeAlgebra =
-        MergeResultDetectingMotion
-          .mergeAlgebra(matchesFor(matchesByElement), auditingCoreMergeAlgebra)
+        MatchesContext(
+          matchesFor(matchesByElement)
+        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -382,8 +387,9 @@ class MergeResultDetectingMotionTest:
         )
 
       val mergeAlgebra =
-        MergeResultDetectingMotion
-          .mergeAlgebra(matchesFor(matchesByElement), auditingCoreMergeAlgebra)
+        MatchesContext(
+          matchesFor(matchesByElement)
+        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         mergeAlgebra.coincidentEdit(
@@ -437,8 +443,9 @@ class MergeResultDetectingMotionTest:
         )
 
       val mergeAlgebra =
-        MergeResultDetectingMotion
-          .mergeAlgebra(matchesFor(matchesByElement), auditingCoreMergeAlgebra)
+        MatchesContext(
+          matchesFor(matchesByElement)
+        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -492,8 +499,9 @@ class MergeResultDetectingMotionTest:
         )
 
       val mergeAlgebra =
-        MergeResultDetectingMotion
-          .mergeAlgebra(matchesFor(matchesByElement), auditingCoreMergeAlgebra)
+        MatchesContext(
+          matchesFor(matchesByElement)
+        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -559,8 +567,9 @@ class MergeResultDetectingMotionTest:
         )
 
       val mergeAlgebra =
-        MergeResultDetectingMotion
-          .mergeAlgebra(matchesFor(matchesByElement), auditingCoreMergeAlgebra)
+        MatchesContext(
+          matchesFor(matchesByElement)
+        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         mergeAlgebra.coincidentDeletion(mergeAlgebra.empty, baseElement)
@@ -611,8 +620,9 @@ class MergeResultDetectingMotionTest:
         )
 
       val mergeAlgebra =
-        MergeResultDetectingMotion
-          .mergeAlgebra(matchesFor(matchesByElement), auditingCoreMergeAlgebra)
+        MatchesContext(
+          matchesFor(matchesByElement)
+        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -695,8 +705,9 @@ class MergeResultDetectingMotionTest:
         )
 
       val mergeAlgebra =
-        MergeResultDetectingMotion
-          .mergeAlgebra(matchesFor(matchesByElement), auditingCoreMergeAlgebra)
+        MatchesContext(
+          matchesFor(matchesByElement)
+        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -776,8 +787,9 @@ class MergeResultDetectingMotionTest:
         )
 
       val mergeAlgebra =
-        MergeResultDetectingMotion
-          .mergeAlgebra(matchesFor(matchesByElement), auditingCoreMergeAlgebra)
+        MatchesContext(
+          matchesFor(matchesByElement)
+        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
