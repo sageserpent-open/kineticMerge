@@ -18,7 +18,10 @@ object CodeMotionAnalysisExtension extends StrictLogging:
   )
     def merge(
         equality: Eq[Element]
-    ): Map[Path, MergeResult[Element]] =
+    ): (
+        Map[Path, MergeResult[Element]],
+        MatchesContext[Section[Element]]#MoveDestinationsReport
+    ) =
       def dominantsOf(
           section: Section[Element]
       ): collection.Set[Section[Element]] =
@@ -256,7 +259,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         )
       end applyPropagatedChanges
 
-      mergeResultsByPath.map(applyPropagatedChanges)
+      mergeResultsByPath.map(applyPropagatedChanges) -> moveDestinationsReport
     end merge
 
     // TODO: remove this method and cut over the tests to use `mergeOverPaths`;
@@ -265,7 +268,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
     def mergeAt(path: Path)(
         equality: Eq[Element]
     ): MergeResult[Element] =
-      merge(equality)(path)
+      merge(equality)._1(path)
 
   end extension
 end CodeMotionAnalysisExtension

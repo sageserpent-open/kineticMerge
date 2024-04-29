@@ -203,7 +203,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       codeMotionExampleWithSplitHivedOffExpectedMerge
     ).get
 
-    val mergeResultsByPath = codeMotionAnalysis.merge(equality = Token.equality)
+    val (mergeResultsByPath, _) = codeMotionAnalysis.merge(equality = Token.equality)
 
     println(fansi.Color.Yellow(s"Checking $hivedOffPath...\n"))
     println(fansi.Color.Yellow("Expected..."))

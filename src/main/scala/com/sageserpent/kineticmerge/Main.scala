@@ -1242,7 +1242,7 @@ object Main extends StrictLogging:
           )
           .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
 
-        mergeResultsByPath = codeMotionAnalysis.merge(equality = Token.equality)
+        (mergeResultsByPath, _) = codeMotionAnalysis.merge(equality = Token.equality)
 
         indexStates: List[Option[IndexState]] <-
           mergeInputs.traverse { case (path, mergeInput) =>
