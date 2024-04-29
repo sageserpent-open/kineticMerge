@@ -22,65 +22,71 @@ trait MappedContentSources[Path, Element]
       val pertinentSections = sectionsByPath.getOrElse(path, Set.empty)
 
       path -> File(
-        if pertinentSections.nonEmpty then
-          val sectionsInStartOffsetOrder =
-            // Sort by the lowest start offset and then use the largest one past
-            // end offset as a tiebreaker.
-            pertinentSections.toSeq.sortBy(section =>
-              section.startOffset -> -section.onePastEndOffset
-            )
+        if content.nonEmpty then
+          if pertinentSections.nonEmpty then
+            val sectionsInStartOffsetOrder =
+              // Sort by the lowest start offset and then use the largest one
+              // past end offset as a tiebreaker.
+              pertinentSections.toSeq.sortBy(section =>
+                section.startOffset -> -section.onePastEndOffset
+              )
 
-          sectionsInStartOffsetOrder
-            .zip(sectionsInStartOffsetOrder.tail)
-            .foreach((first, second) =>
-              if first.onePastEndOffset > second.startOffset then
-                require(
-                  first.onePastEndOffset < second.onePastEndOffset,
-                  s"Subsumed section ${pprintCustomised(second)} is subsumed by section: ${pprintCustomised(first)}."
-                )
-                throw new OverlappingSections(path, first, second)
-            )
+            sectionsInStartOffsetOrder
+              .zip(sectionsInStartOffsetOrder.tail)
+              .foreach((first, second) =>
+                if first.onePastEndOffset > second.startOffset then
+                  require(
+                    first.onePastEndOffset < second.onePastEndOffset,
+                    s"Subsumed section ${pprintCustomised(second)} is subsumed by section: ${pprintCustomised(first)}."
+                  )
+                  throw new OverlappingSections(path, first, second)
+              )
 
-          val (onePastLastEndOffset, contiguousSections) =
-            sectionsInStartOffsetOrder.foldLeft(
-              0 -> Vector.empty[Section[Element]]
-            ) { case ((onePastLastEndOffset, partialResult), section) =>
-              section.onePastEndOffset ->
-                ((if onePastLastEndOffset < section.startOffset then
-                    val fillerSection = this.section(path)(
-                      onePastLastEndOffset,
-                      section.startOffset - onePastLastEndOffset
-                    )
-                    // Fill the gap with a new section - this may be a leading
-                    // gap before the first section or between two sections.
-                    logger.debug(
-                      s"Filling gap on side: $label at path: $path prior to following section with: ${pprintCustomised(fillerSection)}."
-                    )
-                    partialResult :+ fillerSection
-                  else partialResult)
-                :+ section)
-            }
+            val (onePastLastEndOffset, contiguousSections) =
+              sectionsInStartOffsetOrder.foldLeft(
+                0 -> Vector.empty[Section[Element]]
+              ) { case ((onePastLastEndOffset, partialResult), section) =>
+                section.onePastEndOffset ->
+                  ((if onePastLastEndOffset < section.startOffset then
+                      val fillerSection = this.section(path)(
+                        onePastLastEndOffset,
+                        section.startOffset - onePastLastEndOffset
+                      )
+                      // Fill the gap with a new section - this may be a leading
+                      // gap before the first section or between two sections.
+                      logger.debug(
+                        s"Filling gap on side: $label at path: $path prior to following section with: ${pprintCustomised(fillerSection)}."
+                      )
+                      partialResult :+ fillerSection
+                    else partialResult)
+                  :+ section)
+              }
 
-          if content.size > onePastLastEndOffset then
-            // Fill out the final gap with a new section to cover the entire
-            // content.
-            val fillerSection = section(path)(
-              onePastLastEndOffset,
-              content.size - onePastLastEndOffset
+            if content.size > onePastLastEndOffset then
+              // Fill out the final gap with a new section to cover the entire
+              // content.
+              val fillerSection = section(path)(
+                onePastLastEndOffset,
+                content.size - onePastLastEndOffset
+              )
+              logger.debug(
+                s"Filling final gap on side: $label at path: $path with ${pprintCustomised(fillerSection)}."
+              )
+              contiguousSections :+ fillerSection
+            else contiguousSections
+            end if
+          else
+            Vector(
+              section(path = path)(
+                startOffset = 0,
+                size = content.length
+              )
             )
-            logger.debug(
-              s"Filling final gap on side: $label at path: $path with ${pprintCustomised(fillerSection)}."
-            )
-            contiguousSections :+ fillerSection
-          else contiguousSections
-          end if
         else
-          Vector(
-            section(path = path)(
-              startOffset = 0,
-              size = content.length
-            )
-          )
+          // Section content is *never* empty: if there is no content at this
+          // path, how could there be mandatory sections using it?
+          require(pertinentSections.isEmpty)
+          Vector.empty
       )
     }
   end filesByPathUtilising
