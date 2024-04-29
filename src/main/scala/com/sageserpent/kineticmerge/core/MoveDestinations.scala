@@ -13,24 +13,39 @@ import monocle.syntax.all.*
   * move to the right. Divergent, but not ambiguous. <p>9. All other
   * possibilities. Divergent and ambiguous.
   *
+  * @param sources
+  *   Sources of the moves - may be empty in which case the move is degenerate
+  *   and models matching *insertions* on the left and right hand sides of the
+  *   merge.
   * @param left
+  *   Destinations on the left hand side of the merge.
   * @param right
+  *   Destinations on the right hand side of the merge.
   * @param coincident
+  *   Destinations that coincide on the left and right hand sides of the merge.
   * @tparam Element
   */
 case class MoveDestinations[Element](
-    left: Set[Element],
-    right: Set[Element],
-    coincident: Set[Element]
+    sources: collection.Set[Element],
+    left: collection.Set[Element],
+    right: collection.Set[Element],
+    coincident: collection.Set[Element]
 ):
-  require(left.nonEmpty || right.nonEmpty || coincident.nonEmpty)
+  require(
+    left.nonEmpty || right.nonEmpty || coincident.nonEmpty
+  )
 
-  def isDivergent: Boolean = left.nonEmpty && right.nonEmpty
+  def isDivergent: Boolean =
+    left.nonEmpty && right.nonEmpty
 
-  def isAmbiguous: Boolean = 1 < (left.size max right.size) + coincident.size
+  def isAmbiguous: Boolean =
+    1 < (left.size max right.size) + coincident.size
+
+  def isDegenerate: Boolean = sources.isEmpty
 
   def mergeWith(another: MoveDestinations[Element]): MoveDestinations[Element] =
     MoveDestinations(
+      sources = this.sources union another.sources,
       left = this.left union another.left,
       right = this.right union another.right,
       coincident = this.coincident union another.coincident

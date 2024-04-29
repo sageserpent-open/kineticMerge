@@ -16,6 +16,14 @@ class MatchesContext[Element](
   private def dominantsOf(element: Element): collection.Set[Element] =
     matchesFor(element).map(_.dominantElement)
 
+  private def sourcesOf(element: Element): collection.Set[Element] =
+    matchesFor(element).flatMap {
+      case BaseAndLeft(baseElement, _)  => Some(baseElement)
+      case BaseAndRight(baseElement, _) => Some(baseElement)
+      case LeftAndRight(_, _)           => None
+      case AllSides(baseElement, _, _)  => Some(baseElement)
+    }
+
   case class MergeResultDetectingMotion[CoreResult[_], Element](
       coreMergeResult: CoreResult[Element],
       // Use `Option[Element]` to model the difference between an edit and an
@@ -41,6 +49,7 @@ class MatchesContext[Element](
             case None =>
               Some(
                 MoveDestinations(
+                  sources = sourcesOf(element),
                   left = Set(element),
                   right = Set.empty,
                   coincident = Set.empty
@@ -65,6 +74,7 @@ class MatchesContext[Element](
             case None =>
               Some(
                 MoveDestinations(
+                  sources = sourcesOf(element),
                   left = Set.empty,
                   right = Set(element),
                   coincident = Set.empty
@@ -89,6 +99,7 @@ class MatchesContext[Element](
             case None =>
               Some(
                 MoveDestinations(
+                  sources = sourcesOf(element),
                   left = Set.empty,
                   right = Set.empty,
                   coincident = Set(element)

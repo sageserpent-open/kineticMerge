@@ -18,11 +18,13 @@ class MoveDestinationsTest:
     val suts = Trials.api
       .choose(
         MoveDestinations(
+          sources = Set.empty,
           left = Set(newUniqueFakeLocation()),
           right = Set.empty,
           coincident = Set.empty
         ),
         MoveDestinations(
+          sources = Set.empty,
           left = Set.empty,
           right = Set(newUniqueFakeLocation()),
           coincident = Set.empty
@@ -39,11 +41,13 @@ class MoveDestinationsTest:
   def multipleMovesOnOneSideAreAmbiguousButNotDivergent =
     val suts = Trials.api.choose(
       MoveDestinations(
+        sources = Set.empty,
         left = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
         right = Set.empty,
         coincident = Set.empty
       ),
       MoveDestinations(
+        sources = Set.empty,
         left = Set.empty,
         right = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
         coincident = Set.empty
@@ -60,6 +64,7 @@ class MoveDestinationsTest:
   def aSingleCoincidentMoveIsNeitherAmbiguousNorDivergent =
     val sut =
       MoveDestinations(
+        sources = Set.empty,
         left = Set.empty,
         right = Set.empty,
         coincident = Set(newUniqueFakeLocation())
@@ -72,6 +77,7 @@ class MoveDestinationsTest:
   def multipleCoincidentMovesAreAmbiguousButNotDivergent =
     val sut =
       MoveDestinations(
+        sources = Set.empty,
         left = Set.empty,
         right = Set.empty,
         coincident = Set(newUniqueFakeLocation(), newUniqueFakeLocation())
@@ -84,41 +90,49 @@ class MoveDestinationsTest:
   def mixturesOfMovesOnOneSideAndCoincidentMovesAreAmbiguousButNotDivergent =
     val suts = Trials.api.choose(
       MoveDestinations(
+        sources = Set.empty,
         left = Set(newUniqueFakeLocation()),
         right = Set.empty,
         coincident = Set(newUniqueFakeLocation())
       ),
       MoveDestinations(
+        sources = Set.empty,
         left = Set.empty,
         right = Set(newUniqueFakeLocation()),
         coincident = Set(newUniqueFakeLocation())
       ),
       MoveDestinations(
+        sources = Set.empty,
         left = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
         right = Set.empty,
         coincident = Set(newUniqueFakeLocation())
       ),
       MoveDestinations(
+        sources = Set.empty,
         left = Set.empty,
         right = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
         coincident = Set(newUniqueFakeLocation())
       ),
       MoveDestinations(
+        sources = Set.empty,
         left = Set(newUniqueFakeLocation()),
         right = Set.empty,
         coincident = Set(newUniqueFakeLocation(), newUniqueFakeLocation())
       ),
       MoveDestinations(
+        sources = Set.empty,
         left = Set.empty,
         right = Set(newUniqueFakeLocation()),
         coincident = Set(newUniqueFakeLocation(), newUniqueFakeLocation())
       ),
       MoveDestinations(
+        sources = Set.empty,
         left = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
         right = Set.empty,
         coincident = Set(newUniqueFakeLocation(), newUniqueFakeLocation())
       ),
       MoveDestinations(
+        sources = Set.empty,
         left = Set.empty,
         right = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
         coincident = Set(newUniqueFakeLocation(), newUniqueFakeLocation())
@@ -135,6 +149,7 @@ class MoveDestinationsTest:
   def aSingleLeftMoveWithASingleRightMoveIsDivergentButNotAmbiguous =
     val sut =
       MoveDestinations(
+        sources = Set.empty,
         left = Set(newUniqueFakeLocation()),
         right = Set(newUniqueFakeLocation()),
         coincident = Set.empty
@@ -147,56 +162,67 @@ class MoveDestinationsTest:
   def anythingElseInvolvingLeftMovesAndRightMovesIsBothAmbiguousAndDivergent =
     val suts = Trials.api.choose(
       MoveDestinations(
+        sources = Set.empty,
         left = Set(newUniqueFakeLocation()),
         right = Set(newUniqueFakeLocation()),
         coincident = Set(newUniqueFakeLocation())
       ),
       MoveDestinations(
+        sources = Set.empty,
         left = Set(newUniqueFakeLocation()),
         right = Set(newUniqueFakeLocation()),
         coincident = Set(newUniqueFakeLocation(), newUniqueFakeLocation())
       ),
       MoveDestinations(
+        sources = Set.empty,
         left = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
         right = Set(newUniqueFakeLocation()),
         coincident = Set.empty
       ),
       MoveDestinations(
+        sources = Set.empty,
         left = Set(newUniqueFakeLocation()),
         right = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
         coincident = Set.empty
       ),
       MoveDestinations(
+        sources = Set.empty,
         left = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
         right = Set(newUniqueFakeLocation()),
         coincident = Set(newUniqueFakeLocation())
       ),
       MoveDestinations(
+        sources = Set.empty,
         left = Set(newUniqueFakeLocation()),
         right = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
         coincident = Set(newUniqueFakeLocation())
       ),
       MoveDestinations(
+        sources = Set.empty,
         left = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
         right = Set(newUniqueFakeLocation()),
         coincident = Set(newUniqueFakeLocation(), newUniqueFakeLocation())
       ),
       MoveDestinations(
+        sources = Set.empty,
         left = Set(newUniqueFakeLocation()),
         right = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
         coincident = Set(newUniqueFakeLocation(), newUniqueFakeLocation())
       ),
       MoveDestinations(
+        sources = Set.empty,
         left = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
         right = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
         coincident = Set.empty
       ),
       MoveDestinations(
+        sources = Set.empty,
         left = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
         right = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
         coincident = Set(newUniqueFakeLocation())
       ),
       MoveDestinations(
+        sources = Set.empty,
         left = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
         right = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
         coincident = Set(newUniqueFakeLocation(), newUniqueFakeLocation())
