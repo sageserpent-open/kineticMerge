@@ -13,6 +13,9 @@ class MatchesContext[Element](
 ):
   val emptyReport: MoveDestinationsReport = MoveDestinationsReport(Map.empty)
 
+  private def dominantsOf(element: Element): collection.Set[Element] =
+    matchesFor(element).map(_.dominantElement)
+
   case class MergeResultDetectingMotion[CoreResult[_], Element](
       coreMergeResult: CoreResult[Element],
       // Use `Option[Element]` to model the difference between an edit and an
@@ -20,8 +23,7 @@ class MatchesContext[Element](
       changesPropagatedThroughMotion: MultiDict[Element, Option[Element]],
       excludedFromChangePropagation: Set[Element],
       moveDestinationsReport: MoveDestinationsReport
-  ):
-  end MergeResultDetectingMotion
+  )
 
   case class MoveDestinationsReport(
       moveDestinationsByDominantSet: Map[collection.Set[
@@ -76,9 +78,6 @@ class MatchesContext[Element](
       end if
     end rightMoveOf
 
-    private def dominantsOf(element: Element): collection.Set[Element] =
-      matchesFor(element).map(_.dominantElement)
-
     def coincidentMoveOf(
         element: Element
     ): MoveDestinationsReport =
@@ -113,6 +112,8 @@ class MatchesContext[Element](
           case (None, Some(rhs))      => rhs
         }
       )
+
+    def summarizeInText: Seq[String] = ???
   end MoveDestinationsReport
 
   object MergeResultDetectingMotion extends StrictLogging:

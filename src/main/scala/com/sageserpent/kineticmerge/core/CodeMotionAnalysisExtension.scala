@@ -261,14 +261,5 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
       mergeResultsByPath.map(applyPropagatedChanges) -> moveDestinationsReport
     end merge
-
-    // TODO: remove this method and cut over the tests to use `mergeOverPaths`;
-    // this method is only used by older tests.
-    @deprecated
-    def mergeAt(path: Path)(
-        equality: Eq[Element]
-    ): MergeResult[Element] =
-      merge(equality)._1(path)
-
   end extension
 end CodeMotionAnalysisExtension

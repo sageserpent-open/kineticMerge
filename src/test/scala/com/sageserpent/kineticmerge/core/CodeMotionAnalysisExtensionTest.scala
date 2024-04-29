@@ -69,8 +69,10 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
     val expected = stuntDoubleTokens(issue23BugReproductionExpectedMerge)
 
-    val mergeResult =
-      codeMotionAnalysis.mergeAt(placeholderPath)(equality = Token.equality)
+    val (mergeResultsByPath, _) =
+      codeMotionAnalysis.merge(equality = Token.equality)
+
+    val mergeResult = mergeResultsByPath(placeholderPath)
 
     println(fansi.Color.Yellow(s"Checking $placeholderPath...\n"))
     println(fansi.Color.Yellow("Expected..."))
@@ -132,8 +134,10 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
     val expected = tokens(codeMotionExampleExpectedMerge).get
 
-    val mergeResult =
-      codeMotionAnalysis.mergeAt(placeholderPath)(equality = Token.equality)
+    val (mergeResultsByPath, _) =
+      codeMotionAnalysis.merge(equality = Token.equality)
+
+    val mergeResult = mergeResultsByPath(placeholderPath)
 
     println(fansi.Color.Yellow(s"Checking $placeholderPath...\n"))
     println(fansi.Color.Yellow("Expected..."))
@@ -203,7 +207,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       codeMotionExampleWithSplitHivedOffExpectedMerge
     ).get
 
-    val (mergeResultsByPath, _) = codeMotionAnalysis.merge(equality = Token.equality)
+    val (mergeResultsByPath, _) =
+      codeMotionAnalysis.merge(equality = Token.equality)
 
     println(fansi.Color.Yellow(s"Checking $hivedOffPath...\n"))
     println(fansi.Color.Yellow("Expected..."))
@@ -291,9 +296,11 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         hashFunction = Hashing.murmur3_32_fixed()
       )(progressRecording = NoProgressRecording): @unchecked
 
+      val (mergeResultsByPath, _) = codeMotionAnalysis
+        .merge(equality = Token.equality)
+
       def merge(path: FakePath): Unit =
-        codeMotionAnalysis
-          .mergeAt(path)(equality = Token.equality) match
+        mergeResultsByPath(path) match
           case FullyMerged(result) =>
             println(fansi.Color.Yellow("Fully merged result..."))
             println(fansi.Color.Green(reconstituteTextFrom(result)))
