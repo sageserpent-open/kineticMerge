@@ -12,6 +12,7 @@ object MoveDestinationsTest:
   def newUniqueFakeLocation(): UUID = UUID.randomUUID()
 end MoveDestinationsTest
 
+// TODO: all the sources are empty in the test cases below - but if they were to have more than one element, wouldn't that be ambiguous?
 class MoveDestinationsTest:
   @TestFactory
   def aSingleMoveOnOneSideIsNeitherAmbiguousNorDivergent =

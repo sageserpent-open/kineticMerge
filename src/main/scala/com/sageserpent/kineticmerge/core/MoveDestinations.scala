@@ -35,14 +35,6 @@ case class MoveDestinations[Element](
     left.nonEmpty || right.nonEmpty || coincident.nonEmpty
   )
 
-  def isDivergent: Boolean =
-    left.nonEmpty && right.nonEmpty
-
-  def isAmbiguous: Boolean =
-    1 < (left.size max right.size) + coincident.size
-
-  def isDegenerate: Boolean = sources.isEmpty
-
   def mergeWith(another: MoveDestinations[Element]): MoveDestinations[Element] =
     MoveDestinations(
       sources = this.sources union another.sources,
@@ -50,4 +42,68 @@ case class MoveDestinations[Element](
       right = this.right union another.right,
       coincident = this.coincident union another.coincident
     )
+
+  def description: String =
+    // What to report?
+    // 1. The unambiguous and non-divergent moves.
+    // 2. The ambiguous and non-divergent moves.
+    // 3. The unambiguous and divergent moves.
+    // 4. The ambiguous and divergent moves.
+    // 5. The unambiguous coincident insertions.
+    // 6. The ambiguous coincident insertions.
+    // 7. The unambiguous divergent insertions.
+    // 8. The ambiguous divergent insertions.
+
+    def sectionSetAsText(sections: collection.Set[Element]): String =
+      require(sections.nonEmpty)
+
+      sections.size match
+        case 1 => sections.head.toString
+        case _ => s"${sections.mkString(",\n")}"
+      end match
+    end sectionSetAsText
+
+    def destinationsAsText: String =
+      (left.nonEmpty, right.nonEmpty, coincident.nonEmpty) match
+        // NOTE: there is no case for `(false, false, false)` as that would
+        // violate the invariant.
+        case (false, true, false) => s"Right:\n${sectionSetAsText(right)}"
+        case (false, false, true) =>
+          s"Coincident:\n${sectionSetAsText(coincident)}"
+        case (false, true, true) =>
+          s"Right:\n${sectionSetAsText(right)}\nCoincident:\n${sectionSetAsText(coincident)}"
+        case (true, false, false) => s"Left:\n${sectionSetAsText(left)}"
+        case (true, true, false) =>
+          s"Left:\n${sectionSetAsText(left)}\nRight:\n${sectionSetAsText(right)}"
+        case (true, false, true) =>
+          s"Left:\n${sectionSetAsText(left)}\nCoincident:\n${sectionSetAsText(coincident)}"
+        case (true, true, true) =>
+          s"Left:\n${sectionSetAsText(left)}\nRight:\n${sectionSetAsText(right)}\nCoincident:\n${sectionSetAsText(coincident)}"
+
+    (isAmbiguous, isDivergent, isDegenerate) match
+      case (false, false, false) =>
+        s"Single move of:\n${sectionSetAsText(sources)}\nto:\n$destinationsAsText."
+      case (false, true, false) =>
+        s"Divergent move of:\n${sectionSetAsText(sources)}\nto:\n$destinationsAsText."
+      case (false, false, true) => s"Insertion of:\n$destinationsAsText."
+      case (false, true, true) =>
+        s"Divergent insertion of:\n$destinationsAsText."
+      case (true, false, false) =>
+        s"Ambiguous moves of:\n${sectionSetAsText(sources)}\nto:\n$destinationsAsText."
+      case (true, true, false) =>
+        s"Ambiguous divergent moves of:\n${sectionSetAsText(sources)}\nto:\n$destinationsAsText."
+      case (true, false, true) =>
+        s"Ambiguous insertions of:\n$destinationsAsText."
+      case (true, true, true) =>
+        s"Ambiguous divergent insertions of:\n$destinationsAsText."
+    end match
+  end description
+
+  def isDivergent: Boolean =
+    left.nonEmpty && right.nonEmpty
+
+  def isAmbiguous: Boolean =
+    1 < (left.size max right.size) + coincident.size
+
+  def isDegenerate: Boolean = sources.isEmpty
 end MoveDestinations
