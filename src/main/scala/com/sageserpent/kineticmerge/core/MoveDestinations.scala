@@ -105,5 +105,8 @@ case class MoveDestinations[Element](
   def isAmbiguous: Boolean =
     1 < (left.size max right.size) + coincident.size
 
+  // TODO: this isn't tested, and the existing tests are insensitive to whether
+  // `sources` is empty, a singleton set or has multiple entries. Should this
+  // become a trait?
   def isDegenerate: Boolean = sources.isEmpty
 end MoveDestinations

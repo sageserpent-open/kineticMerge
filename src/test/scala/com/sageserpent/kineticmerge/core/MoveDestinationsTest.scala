@@ -1,7 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
 import com.sageserpent.americium.Trials
-import com.sageserpent.americium.junit5.Syntax
+import com.sageserpent.americium.junit5.{DynamicTests, Syntax}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.MoveDestinationsTest.newUniqueFakeLocation
 import org.junit.jupiter.api.{Test, TestFactory}
@@ -12,10 +12,9 @@ object MoveDestinationsTest:
   def newUniqueFakeLocation(): UUID = UUID.randomUUID()
 end MoveDestinationsTest
 
-// TODO: all the sources are empty in the test cases below - but if they were to have more than one element, wouldn't that be ambiguous?
 class MoveDestinationsTest:
   @TestFactory
-  def aSingleMoveOnOneSideIsNeitherAmbiguousNorDivergent =
+  def aSingleMoveOnOneSideIsNeitherAmbiguousNorDivergent: DynamicTests =
     val suts = Trials.api
       .choose(
         MoveDestinations(
@@ -31,6 +30,8 @@ class MoveDestinationsTest:
           coincident = Set.empty
         )
       )
+
+    suts
       .withLimit(10)
       .dynamicTests { sut =>
         assert(!sut.isAmbiguous)
@@ -39,7 +40,7 @@ class MoveDestinationsTest:
   end aSingleMoveOnOneSideIsNeitherAmbiguousNorDivergent
 
   @TestFactory
-  def multipleMovesOnOneSideAreAmbiguousButNotDivergent =
+  def multipleMovesOnOneSideAreAmbiguousButNotDivergent: DynamicTests =
     val suts = Trials.api.choose(
       MoveDestinations(
         sources = Set.empty,
@@ -62,7 +63,7 @@ class MoveDestinationsTest:
   end multipleMovesOnOneSideAreAmbiguousButNotDivergent
 
   @Test
-  def aSingleCoincidentMoveIsNeitherAmbiguousNorDivergent =
+  def aSingleCoincidentMoveIsNeitherAmbiguousNorDivergent: Unit =
     val sut =
       MoveDestinations(
         sources = Set.empty,
@@ -75,7 +76,7 @@ class MoveDestinationsTest:
   end aSingleCoincidentMoveIsNeitherAmbiguousNorDivergent
 
   @Test
-  def multipleCoincidentMovesAreAmbiguousButNotDivergent =
+  def multipleCoincidentMovesAreAmbiguousButNotDivergent: Unit =
     val sut =
       MoveDestinations(
         sources = Set.empty,
@@ -88,7 +89,8 @@ class MoveDestinationsTest:
   end multipleCoincidentMovesAreAmbiguousButNotDivergent
 
   @TestFactory
-  def mixturesOfMovesOnOneSideAndCoincidentMovesAreAmbiguousButNotDivergent =
+  def mixturesOfMovesOnOneSideAndCoincidentMovesAreAmbiguousButNotDivergent
+      : DynamicTests =
     val suts = Trials.api.choose(
       MoveDestinations(
         sources = Set.empty,
@@ -147,7 +149,7 @@ class MoveDestinationsTest:
   end mixturesOfMovesOnOneSideAndCoincidentMovesAreAmbiguousButNotDivergent
 
   @Test
-  def aSingleLeftMoveWithASingleRightMoveIsDivergentButNotAmbiguous =
+  def aSingleLeftMoveWithASingleRightMoveIsDivergentButNotAmbiguous: Unit =
     val sut =
       MoveDestinations(
         sources = Set.empty,
@@ -160,7 +162,8 @@ class MoveDestinationsTest:
   end aSingleLeftMoveWithASingleRightMoveIsDivergentButNotAmbiguous
 
   @TestFactory
-  def anythingElseInvolvingLeftMovesAndRightMovesIsBothAmbiguousAndDivergent =
+  def anythingElseInvolvingLeftMovesAndRightMovesIsBothAmbiguousAndDivergent
+      : DynamicTests =
     val suts = Trials.api.choose(
       MoveDestinations(
         sources = Set.empty,
