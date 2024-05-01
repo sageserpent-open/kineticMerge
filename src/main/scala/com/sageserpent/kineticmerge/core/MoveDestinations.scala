@@ -25,6 +25,10 @@ import monocle.syntax.all.*
   *   Destinations that coincide on the left and right hand sides of the merge.
   * @tparam Element
   */
+// TODO: right now, the description doesn't really care about the difference
+// between left-, right- and coincident move destinations. Maybe all the
+// destinations should be lumped together, with flags to indicate whether
+// there are left-moves, right-moves and coincident moves?
 case class MoveDestinations[Element](
     sources: collection.Set[Element],
     left: collection.Set[Element],
@@ -58,8 +62,9 @@ case class MoveDestinations[Element](
       require(sections.nonEmpty)
 
       sections.size match
-        case 1 => sections.head.toString
-        case _ => s"${sections.mkString(",\n")}"
+        case 1 => pprintCustomised(sections.head).toString
+        case _ =>
+          s"${sections.map(pprintCustomised(_).toString).mkString(",\n")}"
       end match
     end sectionSetAsText
 
@@ -67,18 +72,17 @@ case class MoveDestinations[Element](
       (left.nonEmpty, right.nonEmpty, coincident.nonEmpty) match
         // NOTE: there is no case for `(false, false, false)` as that would
         // violate the invariant.
-        case (false, true, false) => s"Right:\n${sectionSetAsText(right)}"
-        case (false, false, true) =>
-          s"Coincident:\n${sectionSetAsText(coincident)}"
+        case (false, true, false) => s"${sectionSetAsText(right)}"
+        case (false, false, true) => s"${sectionSetAsText(coincident)}"
         case (false, true, true) =>
-          s"Right:\n${sectionSetAsText(right)}\nCoincident:\n${sectionSetAsText(coincident)}"
-        case (true, false, false) => s"Left:\n${sectionSetAsText(left)}"
+          s"${sectionSetAsText(right)}\n\n${sectionSetAsText(coincident)}"
+        case (true, false, false) => s"${sectionSetAsText(left)}"
         case (true, true, false) =>
-          s"Left:\n${sectionSetAsText(left)}\nRight:\n${sectionSetAsText(right)}"
+          s"${sectionSetAsText(left)}\n\n${sectionSetAsText(right)}"
         case (true, false, true) =>
-          s"Left:\n${sectionSetAsText(left)}\nCoincident:\n${sectionSetAsText(coincident)}"
+          s"${sectionSetAsText(left)}\n\n${sectionSetAsText(coincident)}"
         case (true, true, true) =>
-          s"Left:\n${sectionSetAsText(left)}\nRight:\n${sectionSetAsText(right)}\nCoincident:\n${sectionSetAsText(coincident)}"
+          s"${sectionSetAsText(left)}\n\n${sectionSetAsText(right)}\n\n${sectionSetAsText(coincident)}"
 
     (isAmbiguous, isDivergent, isDegenerate) match
       case (false, false, false) =>
