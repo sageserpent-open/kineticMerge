@@ -93,6 +93,150 @@ end MergeResultDetectingMotionTest
 
 class MergeResultDetectingMotionTest:
   @TestFactory
+  def ourMoveDestinationInsertion: DynamicTests =
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val sourceElement: Element = 1
+
+      val ourSideInsertedElement: Element = 2
+
+      val baseAndOurSidePairwiseMatch =
+        if mirrorImage then
+          Match
+            .BaseAndRight(
+              baseElement = sourceElement,
+              rightElement = ourSideInsertedElement
+            )
+        else
+          Match
+            .BaseAndLeft(
+              baseElement = sourceElement,
+              leftElement = ourSideInsertedElement
+            )
+
+      val matchesByElement =
+        Map(
+          sourceElement          -> baseAndOurSidePairwiseMatch,
+          ourSideInsertedElement -> baseAndOurSidePairwiseMatch
+        )
+
+      val mergeAlgebra =
+        MatchesContext(
+          matchesFor(matchesByElement)
+        ).MergeResultDetectingMotion
+          .mergeAlgebra(auditingCoreMergeAlgebra)
+
+      val mergeResult =
+        if mirrorImage then
+          mergeAlgebra
+            .rightInsertion(mergeAlgebra.empty, ourSideInsertedElement)
+        else
+          mergeAlgebra.leftInsertion(mergeAlgebra.empty, ourSideInsertedElement)
+
+      val Seq((dominantSet, moveDestinations)) =
+        mergeResult.moveDestinationsReport.moveDestinationsByDominantSet.toSeq
+
+      assert(dominantSet == Set(ourSideInsertedElement))
+
+      if mirrorImage then
+        assert(
+          moveDestinations == MoveDestinations(
+            sources = Set(sourceElement),
+            left = Set.empty,
+            right = Set(ourSideInsertedElement),
+            coincident = Set.empty
+          )
+        )
+      else
+        assert(
+          moveDestinations == MoveDestinations(
+            sources = Set(sourceElement),
+            left = Set(ourSideInsertedElement),
+            right = Set.empty,
+            coincident = Set.empty
+          )
+        )
+      end if
+    }
+  end ourMoveDestinationInsertion
+
+  @TestFactory
+  def ourMoveDestinationEdit: DynamicTests =
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val sourceElement: Element = 1
+
+      val baseElement: Element = 2
+
+      val ourSideEditElement: Element = 3
+
+      val baseAndOurSidePairwiseMatch =
+        if mirrorImage then
+          Match
+            .BaseAndRight(
+              baseElement = sourceElement,
+              rightElement = ourSideEditElement
+            )
+        else
+          Match
+            .BaseAndLeft(
+              baseElement = sourceElement,
+              leftElement = ourSideEditElement
+            )
+
+      val matchesByElement =
+        Map(
+          sourceElement      -> baseAndOurSidePairwiseMatch,
+          ourSideEditElement -> baseAndOurSidePairwiseMatch
+        )
+
+      val mergeAlgebra =
+        MatchesContext(
+          matchesFor(matchesByElement)
+        ).MergeResultDetectingMotion
+          .mergeAlgebra(auditingCoreMergeAlgebra)
+
+      val mergeResult =
+        if mirrorImage then
+          mergeAlgebra
+            .rightEdit(
+              mergeAlgebra.empty,
+              baseElement,
+              IndexedSeq(ourSideEditElement)
+            )
+        else
+          mergeAlgebra.leftEdit(
+            mergeAlgebra.empty,
+            baseElement,
+            IndexedSeq(ourSideEditElement)
+          )
+
+      val Seq((dominantSet, moveDestinations)) =
+        mergeResult.moveDestinationsReport.moveDestinationsByDominantSet.toSeq
+
+      assert(dominantSet == Set(ourSideEditElement))
+
+      if mirrorImage then
+        assert(
+          moveDestinations == MoveDestinations(
+            sources = Set(sourceElement),
+            left = Set.empty,
+            right = Set(ourSideEditElement),
+            coincident = Set.empty
+          )
+        )
+      else
+        assert(
+          moveDestinations == MoveDestinations(
+            sources = Set(sourceElement),
+            left = Set(ourSideEditElement),
+            right = Set.empty,
+            coincident = Set.empty
+          )
+        )
+      end if
+    }
+  end ourMoveDestinationEdit
+
+  @TestFactory
   def coincidentDeletionWhereBaseHasMovedAwayOnOurSide: DynamicTests =
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
       val baseElement: Element         = 1
@@ -759,29 +903,29 @@ class MergeResultDetectingMotionTest:
   end ourEditVersusTheirEditConflictWhereBaseHasMovedAwayOnBothSides
 
   @TestFactory
-  def coincidentInsertionOfMovesOnBothSides: DynamicTests =
+  def coincidentMoveDestinationInsertion: DynamicTests =
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
-      val baseElement: Element           = 1
+      val sourceElement: Element         = 1
       val ourSideMovedElement: Element   = 2
       val theirSideMovedElement: Element = 3
 
       val allSidesMatch =
         if mirrorImage then
           Match.AllSides(
-            baseElement = baseElement,
+            baseElement = sourceElement,
             leftElement = theirSideMovedElement,
             rightElement = ourSideMovedElement
           )
         else
           Match.AllSides(
-            baseElement = baseElement,
+            baseElement = sourceElement,
             leftElement = ourSideMovedElement,
             rightElement = theirSideMovedElement
           )
 
       val matchesByElement =
         Map(
-          baseElement           -> allSidesMatch,
+          sourceElement         -> allSidesMatch,
           ourSideMovedElement   -> allSidesMatch,
           theirSideMovedElement -> allSidesMatch
         )
@@ -825,7 +969,134 @@ class MergeResultDetectingMotionTest:
         !mergeResult.changesPropagatedThroughMotion
           .containsKey(theirSideMovedElement)
       )
+
+      val Seq((dominantSet, moveDestinations)) =
+        mergeResult.moveDestinationsReport.moveDestinationsByDominantSet.toSeq
+
+      if mirrorImage then
+        assert(dominantSet == Set(theirSideMovedElement))
+
+        assert(
+          moveDestinations == MoveDestinations(
+            sources = Set(sourceElement),
+            left = Set.empty,
+            right = Set.empty,
+            coincident = Set(theirSideMovedElement)
+          )
+        )
+      else
+        assert(dominantSet == Set(ourSideMovedElement))
+
+        assert(
+          moveDestinations == MoveDestinations(
+            sources = Set(sourceElement),
+            left = Set.empty,
+            right = Set.empty,
+            coincident = Set(ourSideMovedElement)
+          )
+        )
+      end if
     }
-  end coincidentInsertionOfMovesOnBothSides
+  end coincidentMoveDestinationInsertion
+
+  @TestFactory
+  def coincidentMoveDestinationEdit: DynamicTests =
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val sourceElement: Element         = 1
+      val baseElement: Element           = 2
+      val ourSideMovedElement: Element   = 3
+      val theirSideMovedElement: Element = 4
+
+      val allSidesMatch =
+        if mirrorImage then
+          Match.AllSides(
+            baseElement = sourceElement,
+            leftElement = theirSideMovedElement,
+            rightElement = ourSideMovedElement
+          )
+        else
+          Match.AllSides(
+            baseElement = sourceElement,
+            leftElement = ourSideMovedElement,
+            rightElement = theirSideMovedElement
+          )
+
+      val matchesByElement =
+        Map(
+          sourceElement         -> allSidesMatch,
+          ourSideMovedElement   -> allSidesMatch,
+          theirSideMovedElement -> allSidesMatch
+        )
+
+      val mergeAlgebra =
+        MatchesContext(
+          matchesFor(matchesByElement)
+        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
+
+      val mergeResult =
+        if mirrorImage then
+          mergeAlgebra.coincidentEdit(
+            mergeAlgebra.empty,
+            baseElement,
+            IndexedSeq(theirSideMovedElement)
+          )
+        else
+          mergeAlgebra.coincidentEdit(
+            mergeAlgebra.empty,
+            baseElement,
+            IndexedSeq(ourSideMovedElement)
+          )
+
+      if mirrorImage then
+        assert(
+          Vector(
+            CoincidentEdit(baseElement, IndexedSeq(theirSideMovedElement))
+          ) == mergeResult.coreMergeResult
+        )
+      else
+        assert(
+          Vector(
+            CoincidentEdit(baseElement, IndexedSeq(ourSideMovedElement))
+          ) == mergeResult.coreMergeResult
+        )
+      end if
+
+      assert(
+        !mergeResult.changesPropagatedThroughMotion
+          .containsKey(ourSideMovedElement)
+      )
+      assert(
+        !mergeResult.changesPropagatedThroughMotion
+          .containsKey(theirSideMovedElement)
+      )
+
+      val Seq((dominantSet, moveDestinations)) =
+        mergeResult.moveDestinationsReport.moveDestinationsByDominantSet.toSeq
+
+      if mirrorImage then
+        assert(dominantSet == Set(theirSideMovedElement))
+
+        assert(
+          moveDestinations == MoveDestinations(
+            sources = Set(sourceElement),
+            left = Set.empty,
+            right = Set.empty,
+            coincident = Set(theirSideMovedElement)
+          )
+        )
+      else
+        assert(dominantSet == Set(ourSideMovedElement))
+
+        assert(
+          moveDestinations == MoveDestinations(
+            sources = Set(sourceElement),
+            left = Set.empty,
+            right = Set.empty,
+            coincident = Set(ourSideMovedElement)
+          )
+        )
+      end if
+    }
+  end coincidentMoveDestinationEdit
 
 end MergeResultDetectingMotionTest
