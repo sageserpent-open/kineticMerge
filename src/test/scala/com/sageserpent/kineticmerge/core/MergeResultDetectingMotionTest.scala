@@ -53,8 +53,9 @@ object MergeResultDetectingMotionTest:
     ): Audit[Element] = result :+ RightInsertion(insertedElement)
     override def coincidentInsertion(
         result: Audit[Element],
-        insertedElement: Element
-    ): Audit[Element] = result :+ CoincidentInsertion(insertedElement)
+        insertedElementOnLeft: Element,
+        insertedElementOnRight: Element
+    ): Audit[Element] = result :+ CoincidentInsertion(insertedElementOnLeft)
     override def leftDeletion(
         result: Audit[Element],
         deletedElement: Element
@@ -940,12 +941,14 @@ class MergeResultDetectingMotionTest:
         if mirrorImage then
           mergeAlgebra.coincidentInsertion(
             mergeAlgebra.empty,
-            theirSideMovedElement
+            theirSideMovedElement,
+            ourSideMovedElement
           )
         else
           mergeAlgebra.coincidentInsertion(
             mergeAlgebra.empty,
-            ourSideMovedElement
+            ourSideMovedElement,
+            theirSideMovedElement
           )
 
       if mirrorImage then

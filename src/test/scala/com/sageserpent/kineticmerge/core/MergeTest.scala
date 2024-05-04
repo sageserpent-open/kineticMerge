@@ -2109,7 +2109,8 @@ object MergeTest:
 
     override def coincidentInsertion(
         result: AugmentedMergeResult[Element],
-        insertedElement: Element
+        insertedElementOnLeft: Element,
+        insertedElementOnRight: Element
     ): AugmentedMergeResult[Element] =
       result.state match
         case State.Conflict | State.Neutral | State.LeftEdit |
@@ -2120,7 +2121,8 @@ object MergeTest:
         state = State.Neutral,
         coreMergeResult = coreMergeAlgebra.coincidentInsertion(
           result.coreMergeResult,
-          insertedElement
+          insertedElementOnLeft,
+          insertedElementOnRight
         )
       )
     end coincidentInsertion

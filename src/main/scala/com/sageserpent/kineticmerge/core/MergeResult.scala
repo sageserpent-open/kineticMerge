@@ -51,15 +51,18 @@ object MergeResult:
 
       override def coincidentInsertion(
           result: MergeResult[Element],
-          insertedElement: Element
+          insertedElementOnLeft: Element,
+          insertedElementOnRight: Element
       ): MergeResult[Element] =
         result match
           case FullyMerged(elements) =>
-            FullyMerged(elements :+ insertedElement)
+            // Break the symmetry - choose the left.
+            FullyMerged(elements :+ insertedElementOnLeft)
           case MergedWithConflicts(leftElements, rightElements) =>
             MergedWithConflicts(
-              leftElements :+ insertedElement,
-              rightElements :+ insertedElement
+              leftElements :+ insertedElementOnLeft,
+              // Break the symmetry - choose the left.
+              rightElements :+ insertedElementOnLeft
             )
 
       override def leftDeletion(

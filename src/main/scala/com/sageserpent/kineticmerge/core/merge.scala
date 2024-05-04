@@ -1031,7 +1031,7 @@ object merge extends StrictLogging:
                 leftTail*
               ),
               Seq(
-                Contribution.CommonToLeftAndRightOnly(_),
+                Contribution.CommonToLeftAndRightOnly(rightElement),
                 rightTail*
               )
             ) => // Coincident insertion.
@@ -1041,8 +1041,8 @@ object merge extends StrictLogging:
           mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
             partialResult = mergeAlgebra.coincidentInsertion(
               partialResult,
-              // Break the symmetry - choose the left.
-              insertedElement = leftElement
+              insertedElementOnLeft = leftElement,
+              insertedElementOnRight = rightElement
             ),
             coalescence = NoCoalescence
           )
@@ -1423,7 +1423,8 @@ object merge extends StrictLogging:
 
     def coincidentInsertion(
         result: Result[Element],
-        insertedElement: Element
+        insertedElementOnLeft: Element,
+        insertedElementOnRight: Element
     ): Result[Element]
 
     def leftDeletion(

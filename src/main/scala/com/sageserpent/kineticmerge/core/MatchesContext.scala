@@ -182,13 +182,20 @@ class MatchesContext[Element](
           .modify(_.rightMoveOf(insertedElement))
 
         override def coincidentInsertion(
-            result: ConfiguredMergeResultDetectingMotion[Element],
-            insertedElement: Element
+            result: MergeResultDetectingMotionType[CoreResult][Element],
+            insertedElementOnLeft: Element,
+            insertedElementOnRight: Element
         ): ConfiguredMergeResultDetectingMotion[Element] = result
           .focus(_.coreMergeResult)
-          .modify(coreMergeAlgebra.coincidentInsertion(_, insertedElement))
+          .modify((result: CoreResult[Element]) =>
+            coreMergeAlgebra.coincidentInsertion(
+              result,
+              insertedElementOnLeft,
+              insertedElementOnRight
+            )
+          )
           .focus(_.moveDestinationsReport)
-          .modify(_.coincidentMoveOf(insertedElement))
+          .modify(_.coincidentMoveOf(insertedElementOnLeft))
 
         override def leftDeletion(
             result: ConfiguredMergeResultDetectingMotion[Element],
