@@ -39,6 +39,11 @@ case class MoveDestinations[Element](
     left.nonEmpty || right.nonEmpty || coincident.nonEmpty
   )
 
+  private val isDegenerate: Boolean = sources.isEmpty
+  
+  if isDegenerate then require(isDivergent || coincident.nonEmpty)
+  end if
+
   def mergeWith(another: MoveDestinations[Element]): MoveDestinations[Element] =
     MoveDestinations(
       sources = this.sources union another.sources,
@@ -108,9 +113,4 @@ case class MoveDestinations[Element](
 
   def isAmbiguous: Boolean =
     1 < (left.size max right.size) + coincident.size
-
-  // TODO: this isn't tested, and the existing tests are insensitive to whether
-  // `sources` is empty, a singleton set or has multiple entries. Should this
-  // become a trait?
-  def isDegenerate: Boolean = sources.isEmpty
 end MoveDestinations
