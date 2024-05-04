@@ -2057,13 +2057,15 @@ object MergeTest:
 
     override def preservation(
         result: AugmentedMergeResult[Element],
-        preservedElement: Element
+        preservedElementOnLeft: Element,
+        preservedElementOnRight: Element
     ): AugmentedMergeResult[Element] =
       AugmentedMergeResult(
         state = State.Neutral,
         coreMergeResult = coreMergeAlgebra.preservation(
           result.coreMergeResult,
-          preservedElement
+          preservedElementOnLeft,
+          preservedElementOnRight
         )
       )
 

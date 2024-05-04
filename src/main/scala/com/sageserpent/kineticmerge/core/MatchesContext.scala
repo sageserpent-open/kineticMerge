@@ -148,13 +148,20 @@ class MatchesContext[Element](
           )
 
         override def preservation(
-            result: ConfiguredMergeResultDetectingMotion[Element],
-            preservedElement: Element
+            result: MergeResultDetectingMotionType[CoreResult][Element],
+            preservedElementOnLeft: Element,
+            preservedElementOnRight: Element
         ): ConfiguredMergeResultDetectingMotion[Element] = result
           .focus(_.coreMergeResult)
-          .modify(coreMergeAlgebra.preservation(_, preservedElement))
+          .modify((result: CoreResult[Element]) =>
+            coreMergeAlgebra.preservation(
+              result,
+              preservedElementOnLeft,
+              preservedElementOnRight
+            )
+          )
           .focus(_.excludedFromChangePropagation)
-          .modify(_ + preservedElement)
+          .modify(_ + preservedElementOnLeft)
 
         override def leftInsertion(
             result: ConfiguredMergeResultDetectingMotion[Element],

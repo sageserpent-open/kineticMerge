@@ -9,15 +9,18 @@ object MergeResult:
 
       override def preservation(
           result: MergeResult[Element],
-          preservedElement: Element
+          preservedElementOnLeft: Element,
+          preservedElementOnRight: Element
       ): MergeResult[Element] =
         result match
           case FullyMerged(elements) =>
-            FullyMerged(elements :+ preservedElement)
+            // Break the symmetry - choose the left.
+            FullyMerged(elements :+ preservedElementOnLeft)
           case MergedWithConflicts(leftElements, rightElements) =>
             MergedWithConflicts(
-              leftElements :+ preservedElement,
-              rightElements :+ preservedElement
+              leftElements :+ preservedElementOnLeft,
+              // Break the symmetry - choose the left.
+              rightElements :+ preservedElementOnLeft
             )
 
       override def leftInsertion(

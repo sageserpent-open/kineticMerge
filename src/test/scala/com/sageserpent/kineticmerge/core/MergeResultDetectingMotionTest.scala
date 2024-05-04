@@ -40,8 +40,9 @@ object MergeResultDetectingMotionTest:
     override def empty: Audit[Element] = Vector.empty
     override def preservation(
         result: Audit[Element],
-        preservedElement: Element
-    ): Audit[Element] = result :+ Preservation(preservedElement)
+        preservedElementOnLeft: Element,
+        preservedElementOnRight: Element
+    ): Audit[Element] = result :+ Preservation(preservedElementOnLeft)
     override def leftInsertion(
         result: Audit[Element],
         insertedElement: Element
