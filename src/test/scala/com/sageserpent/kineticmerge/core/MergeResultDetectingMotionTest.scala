@@ -27,7 +27,7 @@ object MergeResultDetectingMotionTest:
     case CoincidentDeletion(deleted: X)
     case LeftEdit(edited: X, edits: IndexedSeq[X])
     case RightEdit(edited: X, edits: IndexedSeq[X])
-    case CoincidentEdit(edited: X, edits: IndexedSeq[X])
+    case CoincidentEdit(edited: X, edits: IndexedSeq[(X, X)])
     case Conflict(
         edited: IndexedSeq[X],
         leftEdits: IndexedSeq[X],
@@ -81,7 +81,7 @@ object MergeResultDetectingMotionTest:
     override def coincidentEdit(
         result: Audit[Element],
         editedElement: Element,
-        editElements: IndexedSeq[Element]
+        editElements: IndexedSeq[(Element, Element)]
     ): Audit[Element] = result :+ CoincidentEdit(editedElement, editElements)
     override def conflict(
         result: Audit[Element],
@@ -508,9 +508,10 @@ class MergeResultDetectingMotionTest:
   @TestFactory
   def coincidentEditWhereBaseHasMovedAwayOnOurSide: DynamicTests =
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
-      val baseElement: Element           = 1
-      val ourSideMovedElement: Element   = 2
-      val coincidentEditElement: Element = 3
+      val baseElement: Element                    = 1
+      val ourSideMovedElement: Element            = 2
+      val ourSideCoincidentEditElement: Element   = 3
+      val theirSideCoincidentEditElement: Element = 4
 
       val baseAndOurSidePairwiseMatch =
         if mirrorImage then
@@ -538,20 +539,49 @@ class MergeResultDetectingMotionTest:
         ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
-        mergeAlgebra.coincidentEdit(
-          mergeAlgebra.empty,
-          baseElement,
-          IndexedSeq(coincidentEditElement)
-        )
+        if mirrorImage then
+          mergeAlgebra.coincidentEdit(
+            mergeAlgebra.empty,
+            baseElement,
+            IndexedSeq(
+              theirSideCoincidentEditElement -> ourSideCoincidentEditElement
+            )
+          )
+        else
+          mergeAlgebra.coincidentEdit(
+            mergeAlgebra.empty,
+            baseElement,
+            IndexedSeq(
+              ourSideCoincidentEditElement -> theirSideCoincidentEditElement
+            )
+          )
 
       // The reasoning here is that a coincident edit, regardless of whether it
       // is part of a match or not, should stand as it is and not have one side
       // considered as an edit of the moved element.
-      assert(
-        Vector(
-          CoincidentEdit(baseElement, IndexedSeq(coincidentEditElement))
-        ) == mergeResult.coreMergeResult
-      )
+      if mirrorImage then
+        assert(
+          Vector(
+            CoincidentEdit(
+              baseElement,
+              IndexedSeq(
+                theirSideCoincidentEditElement -> ourSideCoincidentEditElement
+              )
+            )
+          ) == mergeResult.coreMergeResult
+        )
+      else
+        assert(
+          Vector(
+            CoincidentEdit(
+              baseElement,
+              IndexedSeq(
+                ourSideCoincidentEditElement -> theirSideCoincidentEditElement
+              )
+            )
+          ) == mergeResult.coreMergeResult
+        )
+      end if
 
       assert(
         Set(None) == mergeResult.changesPropagatedThroughMotion
@@ -1042,25 +1072,31 @@ class MergeResultDetectingMotionTest:
           mergeAlgebra.coincidentEdit(
             mergeAlgebra.empty,
             baseElement,
-            IndexedSeq(theirSideMovedElement)
+            IndexedSeq(theirSideMovedElement -> ourSideMovedElement)
           )
         else
           mergeAlgebra.coincidentEdit(
             mergeAlgebra.empty,
             baseElement,
-            IndexedSeq(ourSideMovedElement)
+            IndexedSeq(ourSideMovedElement -> theirSideMovedElement)
           )
 
       if mirrorImage then
         assert(
           Vector(
-            CoincidentEdit(baseElement, IndexedSeq(theirSideMovedElement))
+            CoincidentEdit(
+              baseElement,
+              IndexedSeq(theirSideMovedElement -> ourSideMovedElement)
+            )
           ) == mergeResult.coreMergeResult
         )
       else
         assert(
           Vector(
-            CoincidentEdit(baseElement, IndexedSeq(ourSideMovedElement))
+            CoincidentEdit(
+              baseElement,
+              IndexedSeq(ourSideMovedElement -> theirSideMovedElement)
+            )
           ) == mergeResult.coreMergeResult
         )
       end if

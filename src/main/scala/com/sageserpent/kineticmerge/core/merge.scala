@@ -166,12 +166,14 @@ object merge extends StrictLogging:
 
     trait CoincidentEditOperations:
       def coalesceCoincidentInsertion(
-          insertedElement: Element
+          insertedElementOnLeft: Element,
+          insertedElementOnRight: Element
       ): CoincidentEdit
       def finalCoincidentEdit(
           result: Result[Element],
           editedElement: Element,
-          insertedElement: Element
+          insertedElementOnLeft: Element,
+          insertedElementOnRight: Element
       ): Result[Element]
     end CoincidentEditOperations
 
@@ -255,21 +257,24 @@ object merge extends StrictLogging:
     end RightEdit
 
     case class CoincidentEdit(
-        deferredCoincidentEdits: IndexedSeq[Element]
+        deferredCoincidentEdits: IndexedSeq[(Element, Element)]
     ) extends Coalescence
         with CoincidentEditOperations:
       override def coalesceCoincidentInsertion(
-          insertedElement: Element
+          insertedElementOnLeft: Element,
+          insertedElementOnRight: Element
       ): CoincidentEdit =
-        this.focus(_.deferredCoincidentEdits).modify(_ :+ insertedElement)
+        this.focus(_.deferredCoincidentEdits).modify(_ :+ (insertedElementOnLeft -> insertedElementOnRight))
       override def finalCoincidentEdit(
           result: Result[Element],
           editedElement: Element,
-          insertedElement: Element
-      ): Result[Element] = mergeAlgebra.coincidentEdit(
+          insertedElementOnLeft: Element,
+          insertedElementOnRight: Element
+      ): Result[Element] =
+        mergeAlgebra.coincidentEdit(
         result,
         editedElement,
-        editElements = deferredCoincidentEdits :+ insertedElement
+        editElements = deferredCoincidentEdits :+ (insertedElementOnLeft -> insertedElementOnRight)
       )
     end CoincidentEdit
 
@@ -914,7 +919,8 @@ object merge extends StrictLogging:
         rightTail: Seq[Contribution[Element]]
     )(
         coincidentEditOperations: CoincidentEditOperations,
-        coincidentElement: Element
+        coincidentElementOnLeft: Element,
+        coincidentElementOnRight: Element
     ) =
       (baseTail, leftTail, rightTail) match
         case (
@@ -923,13 +929,14 @@ object merge extends StrictLogging:
               Seq(Contribution.CommonToLeftAndRightOnly(_), _*)
             ) =>
           logger.debug(
-            s"Coincident edit of ${pprintCustomised(editedBaseElement)} into ${pprintCustomised(coincidentElement)}, not coalescing with following coincident edit."
+            s"Coincident edit of ${pprintCustomised(editedBaseElement)} into ${pprintCustomised(coincidentElementOnLeft)} on the left and ${pprintCustomised(coincidentElementOnRight)} on the right, not coalescing with following coincident edit."
           )
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
             partialResult = coincidentEditOperations.finalCoincidentEdit(
               partialResult,
               editedBaseElement,
-              coincidentElement
+              coincidentElementOnLeft,
+              coincidentElementOnRight
             ),
             coalescence = NoCoalescence
           )
@@ -940,27 +947,32 @@ object merge extends StrictLogging:
                 Contribution.CommonToLeftAndRightOnly(followingLeftElement),
                 _*
               ),
-              Seq(Contribution.CommonToLeftAndRightOnly(_), _*)
+              Seq(
+                Contribution.CommonToLeftAndRightOnly(followingRightElement),
+                _*
+              )
             ) =>
           logger.debug(
-            s"Coincident edit of ${pprintCustomised(editedBaseElement)} into ${pprintCustomised(coincidentElement)}, coalescing with following coincident insertion of ${pprintCustomised(followingLeftElement)}."
+            s"Coincident edit of ${pprintCustomised(editedBaseElement)} into ${pprintCustomised(coincidentElementOnLeft)} on the left and ${pprintCustomised(coincidentElementOnRight)} on the right, coalescing with following coincident insertion of ${pprintCustomised(followingLeftElement)} on the left and ${pprintCustomised(followingRightElement)} on the right."
           )
           mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
             partialResult,
             coalescence = coincidentEditOperations.coalesceCoincidentInsertion(
-              coincidentElement
+              coincidentElementOnLeft,
+              coincidentElementOnRight
             )
           )
 
         case _ =>
           logger.debug(
-            s"Coincident edit of ${pprintCustomised(editedBaseElement)} into ${pprintCustomised(coincidentElement)}."
+            s"Coincident edit of ${pprintCustomised(editedBaseElement)} into ${pprintCustomised(coincidentElementOnLeft)} on the left and ${pprintCustomised(coincidentElementOnRight)} on the right."
           )
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
             coincidentEditOperations.finalCoincidentEdit(
               partialResult,
               editedBaseElement,
-              coincidentElement
+              coincidentElementOnLeft,
+              coincidentElementOnRight
             ),
             coalescence = NoCoalescence
           )
@@ -1005,7 +1017,7 @@ object merge extends StrictLogging:
                 leftTail*
               ),
               Seq(
-                Contribution.CommonToLeftAndRightOnly(_),
+                Contribution.CommonToLeftAndRightOnly(rightElement),
                 rightTail*
               )
             ) => // Coincident edit.
@@ -1018,8 +1030,8 @@ object merge extends StrictLogging:
             rightTail
           )(
             coincidentEditOperations,
-            // Break the symmetry - choose the left.
-            coincidentElement = leftElement
+            coincidentElementOnLeft = leftElement,
+            coincidentElementOnRight = rightElement
           )
 
         // SYMMETRIC...
@@ -1472,7 +1484,7 @@ object merge extends StrictLogging:
     def coincidentEdit(
         result: Result[Element],
         editedElement: Element,
-        editElements: IndexedSeq[Element]
+        editElements: IndexedSeq[(Element, Element)]
     ): Result[Element]
 
     /** @note

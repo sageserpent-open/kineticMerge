@@ -276,7 +276,7 @@ class MatchesContext[Element](
         override def coincidentEdit(
             result: ConfiguredMergeResultDetectingMotion[Element],
             editedElement: Element,
-            editElements: IndexedSeq[Element]
+            editElements: IndexedSeq[(Element, Element)]
         ): ConfiguredMergeResultDetectingMotion[Element] =
           def default = result
             .focus(_.coreMergeResult)
@@ -284,7 +284,7 @@ class MatchesContext[Element](
               coreMergeAlgebra.coincidentEdit(_, editedElement, editElements)
             )
             .focus(_.moveDestinationsReport)
-            .modify(editElements.foldLeft(_)(_ coincidentMoveOf _))
+            .modify(editElements.foldLeft(_)(_ coincidentMoveOf _._1))
 
           val matches = matchesFor(editedElement).toSeq
 

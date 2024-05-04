@@ -111,16 +111,22 @@ object MergeResult:
       override def coincidentEdit(
           result: MergeResult[Element],
           editedElement: Element,
-          editElements: IndexedSeq[Element]
+          editElements: IndexedSeq[(Element, Element)]
       ): MergeResult[Element] =
+        val leftEditElements = editElements.map(_._1)
+
         result match
           case FullyMerged(elements) =>
-            FullyMerged(elements ++ editElements)
+            // Break the symmetry - choose the left.
+            FullyMerged(elements ++ leftEditElements)
           case MergedWithConflicts(leftElements, rightElements) =>
             MergedWithConflicts(
-              leftElements ++ editElements,
-              rightElements ++ editElements
+              leftElements ++ leftEditElements,
+              // Break the symmetry - choose the left.
+              rightElements ++ leftEditElements
             )
+        end match
+      end coincidentEdit
 
       override def conflict(
           result: MergeResult[Element],

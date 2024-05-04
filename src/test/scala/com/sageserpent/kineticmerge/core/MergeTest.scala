@@ -2187,7 +2187,7 @@ object MergeTest:
     override def coincidentEdit(
         result: AugmentedMergeResult[Element],
         editedElement: Element,
-        editElements: IndexedSeq[Element]
+        editElements: IndexedSeq[(Element, Element)]
     ): AugmentedMergeResult[Element] = AugmentedMergeResult(
       state = State.CoincidentEdit,
       coreMergeResult = coreMergeAlgebra.coincidentEdit(
