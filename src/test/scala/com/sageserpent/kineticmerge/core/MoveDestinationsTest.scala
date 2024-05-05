@@ -39,6 +39,8 @@ class MoveDestinationsTest:
       .dynamicTests { sut =>
         assert(!sut.isAmbiguous)
         assert(!sut.isDivergent)
+
+        println(sut.description)
       }
   end aSingleMoveOnOneSideIsNeitherAmbiguousNorDivergent
 
@@ -65,6 +67,8 @@ class MoveDestinationsTest:
     suts.withLimit(10).dynamicTests { sut =>
       assert(sut.isAmbiguous)
       assert(!sut.isDivergent)
+
+      println(sut.description)
     }
   end multipleMovesOnOneSideAreAmbiguousButNotDivergent
 
@@ -79,6 +83,8 @@ class MoveDestinationsTest:
       )
     assert(!sut.isAmbiguous)
     assert(!sut.isDivergent)
+
+    println(sut.description)
   end aSingleCoincidentMoveIsNeitherAmbiguousNorDivergent
 
   @Test
@@ -95,6 +101,8 @@ class MoveDestinationsTest:
       )
     assert(sut.isAmbiguous)
     assert(!sut.isDivergent)
+
+    println(sut.description)
   end multipleCoincidentMovesAreAmbiguousButNotDivergent
 
   @TestFactory
@@ -166,6 +174,8 @@ class MoveDestinationsTest:
     suts.withLimit(10).dynamicTests { sut =>
       assert(sut.isAmbiguous)
       assert(!sut.isDivergent)
+
+      println(sut.description)
     }
   end mixturesOfMovesOnOneSideAndCoincidentMovesAreAmbiguousButNotDivergent
 
@@ -180,6 +190,8 @@ class MoveDestinationsTest:
       )
     assert(!sut.isAmbiguous)
     assert(sut.isDivergent)
+
+    println(sut.description)
   end aSingleLeftMoveWithASingleRightMoveIsDivergentButNotAmbiguous
 
   @TestFactory
@@ -269,6 +281,8 @@ class MoveDestinationsTest:
     suts.withLimit(10).dynamicTests { sut =>
       assert(sut.isAmbiguous)
       assert(sut.isDivergent)
+
+      println(sut.description)
     }
   end anythingElseInvolvingLeftMovesAndRightMovesIsBothAmbiguousAndDivergent
 end MoveDestinationsTest
