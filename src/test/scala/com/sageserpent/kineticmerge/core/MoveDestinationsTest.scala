@@ -15,16 +15,19 @@ end MoveDestinationsTest
 class MoveDestinationsTest:
   @TestFactory
   def aSingleMoveOnOneSideIsNeitherAmbiguousNorDivergent: DynamicTests =
+    // NOTE: need to define at least one source, because the invariant for
+    // `MoveDestinations` forbids a degenerate instance from modelling a move to
+    // just one side.
     val suts = Trials.api
       .choose(
         MoveDestinations(
-          sources = Set.empty,
+          sources = Set(newUniqueFakeLocation()),
           left = Set(newUniqueFakeLocation()),
           right = Set.empty,
           coincident = Set.empty
         ),
         MoveDestinations(
-          sources = Set.empty,
+          sources = Set(newUniqueFakeLocation()),
           left = Set.empty,
           right = Set(newUniqueFakeLocation()),
           coincident = Set.empty
@@ -41,15 +44,18 @@ class MoveDestinationsTest:
 
   @TestFactory
   def multipleMovesOnOneSideAreAmbiguousButNotDivergent: DynamicTests =
+    // NOTE: need to define at least one source, because the invariant for
+    // `MoveDestinations` forbids a degenerate instance from modelling moves to
+    // just one side.
     val suts = Trials.api.choose(
       MoveDestinations(
-        sources = Set.empty,
+        sources = Set(newUniqueFakeLocation()),
         left = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
         right = Set.empty,
         coincident = Set.empty
       ),
       MoveDestinations(
-        sources = Set.empty,
+        sources = Set(newUniqueFakeLocation()),
         left = Set.empty,
         right = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
         coincident = Set.empty
