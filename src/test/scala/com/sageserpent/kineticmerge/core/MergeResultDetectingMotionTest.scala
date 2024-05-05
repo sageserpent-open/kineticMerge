@@ -1015,7 +1015,7 @@ class MergeResultDetectingMotionTest:
             sources = Set(sourceElement),
             left = Set.empty,
             right = Set.empty,
-            coincident = Set(theirSideMovedElement)
+            coincident = Set(theirSideMovedElement -> ourSideMovedElement)
           )
         )
       else
@@ -1026,7 +1026,7 @@ class MergeResultDetectingMotionTest:
             sources = Set(sourceElement),
             left = Set.empty,
             right = Set.empty,
-            coincident = Set(ourSideMovedElement)
+            coincident = Set(ourSideMovedElement -> theirSideMovedElement)
           )
         )
       end if
@@ -1121,7 +1121,7 @@ class MergeResultDetectingMotionTest:
             sources = Set(sourceElement),
             left = Set.empty,
             right = Set.empty,
-            coincident = Set(theirSideMovedElement)
+            coincident = Set(theirSideMovedElement -> ourSideMovedElement)
           )
         )
       else
@@ -1132,7 +1132,7 @@ class MergeResultDetectingMotionTest:
             sources = Set(sourceElement),
             left = Set.empty,
             right = Set.empty,
-            coincident = Set(ourSideMovedElement)
+            coincident = Set(ourSideMovedElement -> theirSideMovedElement)
           )
         )
       end if

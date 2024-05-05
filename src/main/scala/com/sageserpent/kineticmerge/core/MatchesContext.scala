@@ -89,9 +89,9 @@ class MatchesContext[Element](
     end rightMoveOf
 
     def coincidentMoveOf(
-        element: Element
+        elementPairAcrossLeftAndRight: (Element, Element)
     ): MoveDestinationsReport =
-      val dominants = dominantsOf(element)
+      val dominants = dominantsOf(elementPairAcrossLeftAndRight._1)
 
       if dominants.nonEmpty then
         MoveDestinationsReport(
@@ -99,14 +99,18 @@ class MatchesContext[Element](
             case None =>
               Some(
                 MoveDestinations(
-                  sources = sourcesOf(element),
+                  sources = sourcesOf(elementPairAcrossLeftAndRight._1),
                   left = Set.empty,
                   right = Set.empty,
-                  coincident = Set(element)
+                  coincident = Set(elementPairAcrossLeftAndRight)
                 )
               )
             case Some(moveDestinations) =>
-              Some(moveDestinations.focus(_.coincident).modify(_ + element))
+              Some(
+                moveDestinations
+                  .focus(_.coincident)
+                  .modify(_ + elementPairAcrossLeftAndRight)
+              )
           }
         )
       else this
@@ -195,7 +199,9 @@ class MatchesContext[Element](
             )
           )
           .focus(_.moveDestinationsReport)
-          .modify(_.coincidentMoveOf(insertedElementOnLeft))
+          .modify(
+            _.coincidentMoveOf(insertedElementOnLeft -> insertedElementOnRight)
+          )
 
         override def leftDeletion(
             result: ConfiguredMergeResultDetectingMotion[Element],
@@ -284,7 +290,7 @@ class MatchesContext[Element](
               coreMergeAlgebra.coincidentEdit(_, editedElement, editElements)
             )
             .focus(_.moveDestinationsReport)
-            .modify(editElements.foldLeft(_)(_ coincidentMoveOf _._1))
+            .modify(editElements.foldLeft(_)(_ coincidentMoveOf _))
 
           val matches = matchesFor(editedElement).toSeq
 

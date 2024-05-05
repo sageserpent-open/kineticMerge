@@ -75,7 +75,7 @@ class MoveDestinationsTest:
         sources = Set.empty,
         left = Set.empty,
         right = Set.empty,
-        coincident = Set(newUniqueFakeLocation())
+        coincident = Set(newUniqueFakeLocation() -> newUniqueFakeLocation())
       )
     assert(!sut.isAmbiguous)
     assert(!sut.isDivergent)
@@ -88,7 +88,10 @@ class MoveDestinationsTest:
         sources = Set.empty,
         left = Set.empty,
         right = Set.empty,
-        coincident = Set(newUniqueFakeLocation(), newUniqueFakeLocation())
+        coincident = Set(
+          newUniqueFakeLocation() -> newUniqueFakeLocation(),
+          newUniqueFakeLocation() -> newUniqueFakeLocation()
+        )
       )
     assert(sut.isAmbiguous)
     assert(!sut.isDivergent)
@@ -102,49 +105,61 @@ class MoveDestinationsTest:
         sources = Set.empty,
         left = Set(newUniqueFakeLocation()),
         right = Set.empty,
-        coincident = Set(newUniqueFakeLocation())
+        coincident = Set(newUniqueFakeLocation() -> newUniqueFakeLocation())
       ),
       MoveDestinations(
         sources = Set.empty,
         left = Set.empty,
         right = Set(newUniqueFakeLocation()),
-        coincident = Set(newUniqueFakeLocation())
+        coincident = Set(newUniqueFakeLocation() -> newUniqueFakeLocation())
       ),
       MoveDestinations(
         sources = Set.empty,
         left = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
         right = Set.empty,
-        coincident = Set(newUniqueFakeLocation())
+        coincident = Set(newUniqueFakeLocation() -> newUniqueFakeLocation())
       ),
       MoveDestinations(
         sources = Set.empty,
         left = Set.empty,
         right = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
-        coincident = Set(newUniqueFakeLocation())
+        coincident = Set(newUniqueFakeLocation() -> newUniqueFakeLocation())
       ),
       MoveDestinations(
         sources = Set.empty,
         left = Set(newUniqueFakeLocation()),
         right = Set.empty,
-        coincident = Set(newUniqueFakeLocation(), newUniqueFakeLocation())
+        coincident = Set(
+          newUniqueFakeLocation() -> newUniqueFakeLocation(),
+          newUniqueFakeLocation() -> newUniqueFakeLocation()
+        )
       ),
       MoveDestinations(
         sources = Set.empty,
         left = Set.empty,
         right = Set(newUniqueFakeLocation()),
-        coincident = Set(newUniqueFakeLocation(), newUniqueFakeLocation())
+        coincident = Set(
+          newUniqueFakeLocation() -> newUniqueFakeLocation(),
+          newUniqueFakeLocation() -> newUniqueFakeLocation()
+        )
       ),
       MoveDestinations(
         sources = Set.empty,
         left = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
         right = Set.empty,
-        coincident = Set(newUniqueFakeLocation(), newUniqueFakeLocation())
+        coincident = Set(
+          newUniqueFakeLocation() -> newUniqueFakeLocation(),
+          newUniqueFakeLocation() -> newUniqueFakeLocation()
+        )
       ),
       MoveDestinations(
         sources = Set.empty,
         left = Set.empty,
         right = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
-        coincident = Set(newUniqueFakeLocation(), newUniqueFakeLocation())
+        coincident = Set(
+          newUniqueFakeLocation() -> newUniqueFakeLocation(),
+          newUniqueFakeLocation() -> newUniqueFakeLocation()
+        )
       )
     )
 
@@ -175,13 +190,16 @@ class MoveDestinationsTest:
         sources = Set.empty,
         left = Set(newUniqueFakeLocation()),
         right = Set(newUniqueFakeLocation()),
-        coincident = Set(newUniqueFakeLocation())
+        coincident = Set(newUniqueFakeLocation() -> newUniqueFakeLocation())
       ),
       MoveDestinations(
         sources = Set.empty,
         left = Set(newUniqueFakeLocation()),
         right = Set(newUniqueFakeLocation()),
-        coincident = Set(newUniqueFakeLocation(), newUniqueFakeLocation())
+        coincident = Set(
+          newUniqueFakeLocation() -> newUniqueFakeLocation(),
+          newUniqueFakeLocation() -> newUniqueFakeLocation()
+        )
       ),
       MoveDestinations(
         sources = Set.empty,
@@ -199,25 +217,31 @@ class MoveDestinationsTest:
         sources = Set.empty,
         left = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
         right = Set(newUniqueFakeLocation()),
-        coincident = Set(newUniqueFakeLocation())
+        coincident = Set(newUniqueFakeLocation() -> newUniqueFakeLocation())
       ),
       MoveDestinations(
         sources = Set.empty,
         left = Set(newUniqueFakeLocation()),
         right = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
-        coincident = Set(newUniqueFakeLocation())
+        coincident = Set(newUniqueFakeLocation() -> newUniqueFakeLocation())
       ),
       MoveDestinations(
         sources = Set.empty,
         left = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
         right = Set(newUniqueFakeLocation()),
-        coincident = Set(newUniqueFakeLocation(), newUniqueFakeLocation())
+        coincident = Set(
+          newUniqueFakeLocation() -> newUniqueFakeLocation(),
+          newUniqueFakeLocation() -> newUniqueFakeLocation()
+        )
       ),
       MoveDestinations(
         sources = Set.empty,
         left = Set(newUniqueFakeLocation()),
         right = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
-        coincident = Set(newUniqueFakeLocation(), newUniqueFakeLocation())
+        coincident = Set(
+          newUniqueFakeLocation() -> newUniqueFakeLocation(),
+          newUniqueFakeLocation() -> newUniqueFakeLocation()
+        )
       ),
       MoveDestinations(
         sources = Set.empty,
@@ -229,13 +253,16 @@ class MoveDestinationsTest:
         sources = Set.empty,
         left = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
         right = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
-        coincident = Set(newUniqueFakeLocation())
+        coincident = Set(newUniqueFakeLocation() -> newUniqueFakeLocation())
       ),
       MoveDestinations(
         sources = Set.empty,
         left = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
         right = Set(newUniqueFakeLocation(), newUniqueFakeLocation()),
-        coincident = Set(newUniqueFakeLocation(), newUniqueFakeLocation())
+        coincident = Set(
+          newUniqueFakeLocation() -> newUniqueFakeLocation(),
+          newUniqueFakeLocation() -> newUniqueFakeLocation()
+        )
       )
     )
 

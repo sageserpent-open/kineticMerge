@@ -25,22 +25,18 @@ import monocle.syntax.all.*
   *   Destinations that coincide on the left and right hand sides of the merge.
   * @tparam Element
   */
-// TODO: right now, the description doesn't really care about the difference
-// between left-, right- and coincident move destinations. Maybe all the
-// destinations should be lumped together, with flags to indicate whether
-// there are left-moves, right-moves and coincident moves?
 case class MoveDestinations[Element](
     sources: collection.Set[Element],
     left: collection.Set[Element],
     right: collection.Set[Element],
-    coincident: collection.Set[Element]
+    coincident: collection.Set[(Element, Element)]
 ):
   require(
     left.nonEmpty || right.nonEmpty || coincident.nonEmpty
   )
 
   private val isDegenerate: Boolean = sources.isEmpty
-  
+
   if isDegenerate then require(isDivergent || coincident.nonEmpty)
   end if
 
@@ -63,7 +59,9 @@ case class MoveDestinations[Element](
     // 7. The unambiguous divergent insertions.
     // 8. The ambiguous divergent insertions.
 
-    def sectionSetAsText(sections: collection.Set[Element]): String =
+    def sectionSetAsText(
+        sections: collection.Set[? <: (Element | (Element, Element))]
+    ): String =
       require(sections.nonEmpty)
 
       sections.size match
