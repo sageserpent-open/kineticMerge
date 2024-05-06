@@ -95,6 +95,91 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
   end issue23BugReproduction
 
   @Test
+  def codeMotionWithPropagatedAnchoredInsertion(): Unit =
+    val minimumMatchSize                 = 1
+    val thresholdSizeFractionForMatching = 0
+
+    val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
+
+    val tokenRegex =
+      raw"(Fish|Chips|Ketchup|Muesli|Toastie|Noodles|Sandwich|Pudding|.)+?".r.anchored
+
+    def stuntDoubleTokens(content: String): Vector[Token] = tokenRegex
+      .findAllMatchIn(content)
+      .map(_.group(1))
+      .map(Token.Significant.apply)
+      .toVector
+
+    val baseSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(
+        placeholderPath -> stuntDoubleTokens(
+          propagatedAnchoredInsertionExampleBase
+        )
+      ),
+      label = "base"
+    )
+    val leftSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(
+        placeholderPath -> stuntDoubleTokens(
+          propagatedAnchoredInsertionExampleLeft
+        )
+      ),
+      label = "left"
+    )
+    val rightSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(
+        placeholderPath -> stuntDoubleTokens(
+          propagatedAnchoredInsertionExampleRight
+        )
+      ),
+      label = "right"
+    )
+
+    val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+      base = baseSources,
+      left = leftSources,
+      right = rightSources
+    )(
+      minimumMatchSize = minimumMatchSize,
+      thresholdSizeFractionForMatching = thresholdSizeFractionForMatching,
+      minimumAmbiguousMatchSize = 0
+    )(
+      elementEquality = Token.equality,
+      elementOrder = Token.comparison,
+      elementFunnel = Token.funnel,
+      hashFunction = Hashing.murmur3_32_fixed()
+    )(progressRecording = NoProgressRecording): @unchecked
+
+    val expected = stuntDoubleTokens(
+      propagatedAnchoredInsertionExampleExpectedMerge
+    )
+
+    val (mergeResultsByPath, _) =
+      codeMotionAnalysis.merge(equality = Token.equality)
+
+    val mergeResult = mergeResultsByPath(placeholderPath)
+
+    println(fansi.Color.Yellow(s"Checking $placeholderPath...\n"))
+    println(fansi.Color.Yellow("Expected..."))
+    println(fansi.Color.Green(reconstituteTextFrom(expected)))
+
+    mergeResult match
+      case FullyMerged(result) =>
+        println(fansi.Color.Yellow("Fully merged result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(result)))
+        assert(result.corresponds(expected)(Token.equality))
+      case MergedWithConflicts(leftResult, rightResult) =>
+        println(fansi.Color.Red(s"Left result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+        println(fansi.Color.Red(s"Right result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+        fail("Should have seen a clean merge.")
+    end match
+
+  end codeMotionWithPropagatedAnchoredInsertion
+
+  @Test
   def codeMotion(): Unit =
     val minimumMatchSize                 = 4
     val thresholdSizeFractionForMatching = 0
@@ -336,6 +421,26 @@ trait ProseExamples:
   protected val issue23BugReproductionExpectedMerge: String =
     """
       |chipsINTRUDERketchupINTRUDERnoodlesBANGsandwichINTRUDERpudding
+      |""".stripMargin
+
+  protected val propagatedAnchoredInsertionExampleBase: String =
+    """
+      |FishChipsKetchupMuesliToastieNoodlesSandwichPudding
+      |""".stripMargin
+
+  protected val propagatedAnchoredInsertionExampleLeft: String =
+    """
+      |MuesliToastieNoodlesSandwichFishChipsKetchupPudding
+      |""".stripMargin
+
+  protected val propagatedAnchoredInsertionExampleRight: String =
+    """
+      |FishCurrySauceChipsKetchupMuesliToastieNoodlesSandwichPudding
+      |""".stripMargin
+
+  protected val propagatedAnchoredInsertionExampleExpectedMerge: String =
+    """
+      |MuesliToastieNoodlesSandwichFishCurrySauceChipsKetchupPudding
       |""".stripMargin
 
   protected val wordsworth: String =
