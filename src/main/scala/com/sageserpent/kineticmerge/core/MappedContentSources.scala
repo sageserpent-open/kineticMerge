@@ -149,11 +149,11 @@ object MappedContentSourcesOfTokens:
   private val linebreakExtraction =
     """(?m:.*$(\s+?)^)""".r // Matches a single, possibly empty line; the nested parentheses capture the terminating linebreak sequence. A final line without a terminating linebreak is not matched.
 
-    /** @param line
-      *   One-relative line number within the entire content at some path.
-      * @param character
-      *   Zero-relative character offset from the start of the line.
-      */
+      /** @param line
+        *   One-relative line number within the entire content at some path.
+        * @param character
+        *   Zero-relative character offset from the start of the line.
+        */
   case class TextPosition(
       line: Int,
       character: Int
@@ -169,13 +169,19 @@ case class MappedContentSourcesOfTokens[Path](
       size: Int
   ): Section[Token] = new SectionImplementation(path, startOffset, size):
     override def render: Tree =
-      val contentPrefixLimit = 5
+      val contentLimit = 10
 
       // The content is the text covered by a prefix of the section's tokens.
-      val revealedContent = content
-        .take(contentPrefixLimit)
-        .map(_.text)
-        .mkString
+      val (contentLabel, revealedContent) =
+        if content.size > contentLimit then
+          "content summary" -> (content
+            .take((1 + contentLimit) / 2)
+            .map(_.text)
+            .mkString ++ " ... " ++ content
+            .drop(content.size - contentLimit / 2)
+            .map(_.text)
+            .mkString)
+        else "content" -> content.map(_.text).mkString
 
       Tree.Apply(
         "Section",
@@ -205,7 +211,10 @@ case class MappedContentSourcesOfTokens[Path](
             pprintCustomised.treeFrom(this.startOffset)
           ),
           Tree.KeyValue("sizeInTokens", pprintCustomised.treeFrom(this.size)),
-          Tree.KeyValue("content", pprintCustomised.treeFrom(revealedContent))
+          Tree.KeyValue(
+            contentLabel,
+            pprintCustomised.treeFrom(revealedContent)
+          )
         )
       )
     end render
