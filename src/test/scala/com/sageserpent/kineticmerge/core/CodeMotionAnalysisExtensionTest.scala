@@ -96,13 +96,13 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
   @Test
   def codeMotionWithPropagatedAnchoredInsertion(): Unit =
-    val minimumMatchSize                 = 1
+    val minimumMatchSize                 = 2
     val thresholdSizeFractionForMatching = 0
 
     val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
 
     val tokenRegex =
-      raw"(Fish|Chips|Ketchup|Muesli|Toastie|Noodles|Sandwich|Pudding|.)+?".r.anchored
+      raw"(Fish|Chips|MushyPeas|Ketchup|Muesli|Toast|Tea|Coffee|Kippers|Noodles|Sandwich|Cake|Pudding|.)+?".r.anchored
 
     def stuntDoubleTokens(content: String): Vector[Token] = tokenRegex
       .findAllMatchIn(content)
@@ -425,22 +425,22 @@ trait ProseExamples:
 
   protected val propagatedAnchoredInsertionExampleBase: String =
     """
-      |FishChipsKetchupMuesliToastieNoodlesSandwichPudding
+      |FishChipsMushyPeasKetchupMuesliToastTeaKippersNoodlesSandwichCakePudding
       |""".stripMargin
 
   protected val propagatedAnchoredInsertionExampleLeft: String =
     """
-      |MuesliToastieNoodlesSandwichFishChipsKetchupPudding
+      |MuesliToastTeaKippersNoodlesSandwichCakeFishChipsMushyPeasKetchupPudding
       |""".stripMargin
 
   protected val propagatedAnchoredInsertionExampleRight: String =
     """
-      |FishCurrySauceChipsKetchupMuesliToastieNoodlesSandwichPudding
+      |FishChipsCurrySauceMushyPeasKetchupMuesliToastCoffeeKippersNoodlesSandwichCakePudding
       |""".stripMargin
 
   protected val propagatedAnchoredInsertionExampleExpectedMerge: String =
     """
-      |MuesliToastieNoodlesSandwichFishCurrySauceChipsKetchupPudding
+      |MuesliToastCoffeeKippersNoodlesSandwichCakeFishChipsCurrySauceMushyPeasKetchupPudding
       |""".stripMargin
 
   protected val wordsworth: String =
