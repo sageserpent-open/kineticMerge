@@ -175,12 +175,15 @@ object CodeMotionAnalysis extends StrictLogging:
             bestMatchSize < looseExclusiveUpperBoundOnMaximumMatchSize
           )
 
+          guessAtOptimalMatchSize.foreach(guess =>
+            require(looseExclusiveUpperBoundOnMaximumMatchSize > guess)
+          )
+
           if 1 + bestMatchSize < looseExclusiveUpperBoundOnMaximumMatchSize
           then
             // There is at least one candidate window size greater than
             // `bestMatchSize`...
             val candidateWindowSize = guessAtOptimalMatchSize
-              .filter(_ < looseExclusiveUpperBoundOnMaximumMatchSize)
               .getOrElse {
                 // Speculative optimisation - if the largest file was
                 // modified on just one side (or coincidentally added as
@@ -241,15 +244,28 @@ object CodeMotionAnalysis extends StrictLogging:
               case Some(estimate) =>
                 // We have an improvement, move the lower bound up and note
                 // the improved state.
-                logger.debug(
-                  s"Search has found an improved match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, looking for a more optimal match with estimated window size of: $estimate."
-                )
-                keepTryingToImproveThis(
-                  bestMatchSize = candidateWindowSize,
-                  looseExclusiveUpperBoundOnMaximumMatchSize,
-                  guessAtOptimalMatchSize = Some(estimate),
-                  fallbackImprovedState = stateAfterTryingCandidate
-                )
+
+                if looseExclusiveUpperBoundOnMaximumMatchSize > estimate then
+                  logger.debug(
+                    s"Search has found an improved match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, looking for a more optimal match with estimated window size of: $estimate."
+                  )
+                  keepTryingToImproveThis(
+                    bestMatchSize = candidateWindowSize,
+                    looseExclusiveUpperBoundOnMaximumMatchSize,
+                    guessAtOptimalMatchSize = Some(estimate),
+                    fallbackImprovedState = stateAfterTryingCandidate
+                  )
+                else
+                  logger.debug(
+                    s"Search has found an improved match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, looking for a more optimal match."
+                  )
+                  keepTryingToImproveThis(
+                    bestMatchSize = candidateWindowSize,
+                    looseExclusiveUpperBoundOnMaximumMatchSize,
+                    guessAtOptimalMatchSize = None,
+                    fallbackImprovedState = stateAfterTryingCandidate
+                  )
+                end if
             end match
           else if minimumSureFireWindowSizeAcrossAllFilesOverAllSides == looseExclusiveUpperBoundOnMaximumMatchSize
           then
@@ -882,60 +898,6 @@ object CodeMotionAnalysis extends StrictLogging:
         }
       end withoutTheseMatches
 
-      @tailrec
-      private final def withAllSmallFryMatches(
-          candidateWindowSize: Int,
-          progressRecordingSession: ProgressRecordingSession
-      ): MatchesAndTheirSections =
-        require(
-          minimumWindowSizeAcrossAllFilesOverAllSides until minimumSureFireWindowSizeAcrossAllFilesOverAllSides contains candidateWindowSize
-        )
-
-        // We will be exploring the small-fry window sizes below
-        // `minimumSureFireWindowSizeAcrossAllFilesOverAllSides`; in this
-        // situation, sizes below per-file thresholds lead to no matches, this
-        // leads to gaps in validity as a size exceeds the largest match it
-        // could participate in, but fails to meet the next highest per-file
-        // threshold. Consequently, don't bother checking whether any matches
-        // were found - instead, plod linearly down each window size.
-        val MatchingResult(
-          stateAfterTryingCandidate,
-          numberOfMatchesForTheGivenWindowSize,
-          _
-        ) =
-          this.matchesForWindowSize(candidateWindowSize)
-
-        if candidateWindowSize > minimumWindowSizeAcrossAllFilesOverAllSides
-        then
-          if 0 < numberOfMatchesForTheGivenWindowSize then
-            logger.debug(
-              s"Search has found a match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, continuing to look for smaller matches."
-            )
-          end if
-          progressRecordingSession.upTo(candidateWindowSize)
-
-          stateAfterTryingCandidate.withAllSmallFryMatches(
-            candidateWindowSize = candidateWindowSize - 1,
-            progressRecordingSession = progressRecordingSession
-          )
-        else
-          if 0 < numberOfMatchesForTheGivenWindowSize then
-            logger.debug(
-              s"Search has found a match at window size: $minimumWindowSizeAcrossAllFilesOverAllSides, number of matches is: $numberOfMatchesForTheGivenWindowSize, search for matches whose size is less than the sure-fire match window size of: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides has terminated; results are:\n${pprintCustomised(stateAfterTryingCandidate)}"
-            )
-          else
-            logger.debug(
-              s"Search for matches whose size is less than the sure-fire match window size of: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides has terminated at minimum window size: $minimumWindowSizeAcrossAllFilesOverAllSides; results are:\n${pprintCustomised(stateAfterTryingCandidate)}"
-            )
-          end if
-          progressRecordingSession.upTo(
-            minimumWindowSizeAcrossAllFilesOverAllSides
-          )
-
-          stateAfterTryingCandidate
-        end if
-      end withAllSmallFryMatches
-
       private def withMatches(
           matches: collection.Set[Match[Section[Element]]]
       ): MatchingResult =
@@ -1059,6 +1021,60 @@ object CodeMotionAnalysis extends StrictLogging:
             )
         end match
       end withMatch
+
+      @tailrec
+      private final def withAllSmallFryMatches(
+          candidateWindowSize: Int,
+          progressRecordingSession: ProgressRecordingSession
+      ): MatchesAndTheirSections =
+        require(
+          minimumWindowSizeAcrossAllFilesOverAllSides until minimumSureFireWindowSizeAcrossAllFilesOverAllSides contains candidateWindowSize
+        )
+
+        // We will be exploring the small-fry window sizes below
+        // `minimumSureFireWindowSizeAcrossAllFilesOverAllSides`; in this
+        // situation, sizes below per-file thresholds lead to no matches, this
+        // leads to gaps in validity as a size exceeds the largest match it
+        // could participate in, but fails to meet the next highest per-file
+        // threshold. Consequently, don't bother checking whether any matches
+        // were found - instead, plod linearly down each window size.
+        val MatchingResult(
+          stateAfterTryingCandidate,
+          numberOfMatchesForTheGivenWindowSize,
+          _
+        ) =
+          this.matchesForWindowSize(candidateWindowSize)
+
+        if candidateWindowSize > minimumWindowSizeAcrossAllFilesOverAllSides
+        then
+          if 0 < numberOfMatchesForTheGivenWindowSize then
+            logger.debug(
+              s"Search has found a match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, continuing to look for smaller matches."
+            )
+          end if
+          progressRecordingSession.upTo(candidateWindowSize)
+
+          stateAfterTryingCandidate.withAllSmallFryMatches(
+            candidateWindowSize = candidateWindowSize - 1,
+            progressRecordingSession = progressRecordingSession
+          )
+        else
+          if 0 < numberOfMatchesForTheGivenWindowSize then
+            logger.debug(
+              s"Search has found a match at window size: $minimumWindowSizeAcrossAllFilesOverAllSides, number of matches is: $numberOfMatchesForTheGivenWindowSize, search for matches whose size is less than the sure-fire match window size of: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides has terminated; results are:\n${pprintCustomised(stateAfterTryingCandidate)}"
+            )
+          else
+            logger.debug(
+              s"Search for matches whose size is less than the sure-fire match window size of: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides has terminated at minimum window size: $minimumWindowSizeAcrossAllFilesOverAllSides; results are:\n${pprintCustomised(stateAfterTryingCandidate)}"
+            )
+          end if
+          progressRecordingSession.upTo(
+            minimumWindowSizeAcrossAllFilesOverAllSides
+          )
+
+          stateAfterTryingCandidate
+        end if
+      end withAllSmallFryMatches
 
       private def matchesForWindowSize(
           windowSize: Int
