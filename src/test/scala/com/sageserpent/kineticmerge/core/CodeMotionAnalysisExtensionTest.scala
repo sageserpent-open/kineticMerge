@@ -154,7 +154,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
   @Test
   def codeMotionWithSplit(): Unit =
-    val minimumMatchSize                 = 5
+    val minimumMatchSize                 = 4
     val thresholdSizeFractionForMatching = 0
 
     val originalPath: FakePath = "*** ORIGINAL ***"
