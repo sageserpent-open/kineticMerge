@@ -29,7 +29,6 @@ class MatchesContext[Element](
       // Use `Option[Element]` to model the difference between an edit and an
       // outright deletion.
       changesPropagatedThroughMotion: MultiDict[Element, Option[Element]],
-      excludedFromChangePropagation: Set[Element],
       moveDestinationsReport: MoveDestinationsReport
   )
 
@@ -147,7 +146,6 @@ class MatchesContext[Element](
           MergeResultDetectingMotion(
             coreMergeResult = coreMergeAlgebra.empty,
             changesPropagatedThroughMotion = MultiDict.empty,
-            excludedFromChangePropagation = Set.empty,
             moveDestinationsReport = emptyReport
           )
 
@@ -164,8 +162,6 @@ class MatchesContext[Element](
               preservedElementOnRight
             )
           )
-          .focus(_.excludedFromChangePropagation)
-          .modify(_ + preservedElementOnLeft)
 
         override def leftInsertion(
             result: ConfiguredMergeResultDetectingMotion[Element],

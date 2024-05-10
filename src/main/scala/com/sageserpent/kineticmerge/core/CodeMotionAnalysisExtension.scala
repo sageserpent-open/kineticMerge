@@ -64,7 +64,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       val (
         mergeResultsByPath,
         changesPropagatedThroughMotion,
-        excludedFromChangePropagation,
         moveDestinationsReport
       ) =
         paths.foldLeft(
@@ -77,14 +76,12 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 ]
             )
           ],
-          Set.empty[Section[Element]],
           emptyReport
         ) {
           case (
                 (
                   mergeResultsByPath,
                   changesPropagatedThroughMotion,
-                  excludedFromChangePropagation,
                   moveDestinationsReport
                 ),
                 path
@@ -102,7 +99,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     leftSections
                   )),
                   changesPropagatedThroughMotion,
-                  excludedFromChangePropagation,
                   leftSections.foldLeft(moveDestinationsReport)(
                     _.leftMoveOf(_)
                   )
@@ -116,7 +112,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     rightSections
                   )),
                   changesPropagatedThroughMotion,
-                  excludedFromChangePropagation,
                   rightSections.foldLeft(moveDestinationsReport)(
                     _.rightMoveOf(_)
                   )
@@ -155,7 +150,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 (
                   mergeResultsByPath + (path -> mergedSectionsResult.coreMergeResult),
                   changesPropagatedThroughMotion ++ mergedSectionsResult.changesPropagatedThroughMotion,
-                  excludedFromChangePropagation union mergedSectionsResult.excludedFromChangePropagation,
                   moveDestinationsReport.mergeWith(
                     mergedSectionsResult.moveDestinationsReport
                   )
@@ -163,10 +157,26 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             end match
         }
 
+      val potentialValidDestinationsForPropagatingChangesTo =
+        moveDestinationsReport.moveDestinationsByDominantSet.values
+          .filterNot(moveDestinations =>
+            moveDestinations.isDegenerate || moveDestinations.isDivergent
+          )
+          .flatMap(moveDestinations =>
+            // NOTE: coincident move destinations can't pick up edits as there
+            // would be no side to contribute the edit; instead, both of them
+            // would contribute a move.
+            moveDestinations.left ++ moveDestinations.right
+          )
+          .toSet
+
       val vettedChangesPropagatedThroughMotion =
-        excludedFromChangePropagation.foldLeft(
-          MultiDict.from(changesPropagatedThroughMotion)
-        )(_ removeKey _)
+        MultiDict.from(changesPropagatedThroughMotion.filter {
+          case (potentialDestination, _) =>
+            potentialValidDestinationsForPropagatingChangesTo.contains(
+              potentialDestination
+            )
+        })
 
       def substitutePropagatedChangesOrDominants(
           path: Path,
