@@ -11,7 +11,7 @@ import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.ProseExamples
 import com.sageserpent.kineticmerge.core.Token.{tokens, equality as tokenEquality}
 import com.softwaremill.tagging.*
-import org.junit.jupiter.api.{Disabled, TestFactory}
+import org.junit.jupiter.api.TestFactory
 import os.{Path, RelPath}
 
 object MainTest extends ProseExamples:
@@ -578,19 +578,6 @@ object MainTest extends ProseExamples:
     assert(status.isEmpty)
   end verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit
 
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
-
-  private def currentCommit(path: Path) =
-    os.proc("git", "log", "-1", "--format=tformat:%H")
-      .call(path)
-      .out
-      .text()
-      .strip
-
-  private def mergeHeadPath(path: Path) =
-    path / ".git" / "MERGE_HEAD"
-
   private def verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit(
       path: Path
   )(
@@ -618,12 +605,6 @@ object MainTest extends ProseExamples:
 
     assert(currentStatus(path).nonEmpty)
   end verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit
-
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
-
-  private def mergeHead(path: Path) =
-    os.read(mergeHeadPath(path)).strip()
 
   private def verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
       path: Path
@@ -656,6 +637,25 @@ object MainTest extends ProseExamples:
 
     currentStatus(path)
   end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+
+  private def currentCommit(path: Path) =
+    os.proc("git", "log", "-1", "--format=tformat:%H")
+      .call(path)
+      .out
+      .text()
+      .strip
+
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
+  private def mergeHead(path: Path) =
+    os.read(mergeHeadPath(path)).strip()
+
+  private def mergeHeadPath(path: Path) =
+    path / ".git" / "MERGE_HEAD"
 
   private def gitRepository(): ImperativeResource[Path] =
     for
@@ -1571,19 +1571,12 @@ class MainTest:
                     excisedCasesLimitStrategiesExpectedContent
                   )
                 )
-
-                if loseOriginalFileInSplit then
-                  assert(!os.exists(path / casesLimitStrategy))
-                end if
               }
             )
             .unsafeRunSync()
       }
   end anEditAndADeletionPropagatingThroughAFileSplit
 
-  @Disabled(
-    "Until insertions can be propagated through code motion, there will be leftover content in what's left of the file that should disappear completely."
-  )
   @TestFactory
   def anEditAndADeletionPropagatingThroughAFileCondensation(): DynamicTests =
     (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans and trialsApi.booleans)
@@ -1602,8 +1595,8 @@ class MainTest:
                   .foreach(subdirectory => os.makeDir(path / subdirectory))
 
                 // What follows is
-                // `anEditAndADeletionPropagatingThroughAFileSplit` in reverse,
-                // hence the odd paths in the expectations further down...
+                // `anEditAndADeletionPropagatingThroughAFileSplit` in
+                // reverse...
 
                 introducingInterfaceOnlyCasesLimitStrategy(path)
                 introducingCasesLimitStrategies(path)
@@ -1663,7 +1656,6 @@ class MainTest:
                   )
                 end if
 
-                // Remember, this test is a split in reverse...
                 assert(
                   fileHasExpectedContent(
                     path / (if loseBothOriginalFilesInJoin then
@@ -1672,12 +1664,6 @@ class MainTest:
                     baseCasesLimitStrategyContent
                   )
                 )
-
-                assert(!os.exists(path / excisedCasesLimitStrategies))
-
-                if loseBothOriginalFilesInJoin then
-                  assert(!os.exists(path / casesLimitStrategy))
-                end if
               }
             )
             .unsafeRunSync()

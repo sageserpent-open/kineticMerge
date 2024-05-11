@@ -64,7 +64,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       val (
         mergeResultsByPath,
         changesPropagatedThroughMotion,
-        excludedFromChangePropagation,
         moveDestinationsReport
       ) =
         paths.foldLeft(
@@ -77,14 +76,12 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 ]
             )
           ],
-          Set.empty[Section[Element]],
           emptyReport
         ) {
           case (
                 (
                   mergeResultsByPath,
                   changesPropagatedThroughMotion,
-                  excludedFromChangePropagation,
                   moveDestinationsReport
                 ),
                 path
@@ -102,7 +99,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     leftSections
                   )),
                   changesPropagatedThroughMotion,
-                  excludedFromChangePropagation,
                   leftSections.foldLeft(moveDestinationsReport)(
                     _.leftMoveOf(_)
                   )
@@ -116,7 +112,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     rightSections
                   )),
                   changesPropagatedThroughMotion,
-                  excludedFromChangePropagation,
                   rightSections.foldLeft(moveDestinationsReport)(
                     _.rightMoveOf(_)
                   )
@@ -155,7 +150,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 (
                   mergeResultsByPath + (path -> mergedSectionsResult.coreMergeResult),
                   changesPropagatedThroughMotion ++ mergedSectionsResult.changesPropagatedThroughMotion,
-                  excludedFromChangePropagation union mergedSectionsResult.excludedFromChangePropagation,
                   moveDestinationsReport.mergeWith(
                     mergedSectionsResult.moveDestinationsReport
                   )
@@ -163,16 +157,32 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             end match
         }
 
-      val vettedChangesPropagatedThroughMotion =
-        excludedFromChangePropagation.foldLeft(
-          MultiDict.from(changesPropagatedThroughMotion)
-        )(_ removeKey _)
+      val potentialValidDestinationsForPropagatingChangesTo =
+        moveDestinationsReport.moveDestinationsByDominantSet.values
+          .filterNot(moveDestinations =>
+            moveDestinations.isDegenerate || moveDestinations.isDivergent
+          )
+          .flatMap(moveDestinations =>
+            // NOTE: coincident move destinations can't pick up edits as there
+            // would be no side to contribute the edit; instead, both of them
+            // would contribute a move.
+            moveDestinations.left ++ moveDestinations.right
+          )
+          .toSet
 
-      def applyPropagatedChanges(
+      val vettedChangesPropagatedThroughMotion =
+        MultiDict.from(changesPropagatedThroughMotion.filter {
+          case (potentialDestination, _) =>
+            potentialValidDestinationsForPropagatingChangesTo.contains(
+              potentialDestination
+            )
+        })
+
+      def substitutePropagatedChangesOrDominants(
           path: Path,
           mergeResult: MergeResult[Section[Element]]
-      ): (Path, MergeResult[Element]) =
-        def elementsOf(section: Section[Element]): IndexedSeq[Element] =
+      ): (Path, MergeResult[Section[Element]]) =
+        def substituteFor(section: Section[Element]): Option[Section[Element]] =
           val propagatedChanges: collection.Set[Option[Section[Element]]] =
             vettedChangesPropagatedThroughMotion.get(section)
           val propagatedChange: Option[Option[Section[Element]]] =
@@ -200,14 +210,15 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           propagatedChange.fold {
             val dominants = dominantsOf(section)
 
-            (if dominants.isEmpty then section
-             else
-               // NASTY HACK: this is hokey, but essentially correct - if we
-               // have ambiguous matches leading to multiple dominants, then
-               // they're all just as good in terms of their content. So just
-               // choose any one.
-               dominants.head
-            ).content
+            Some(
+              if dominants.isEmpty then section
+              else
+                // NASTY HACK: this is hokey, but essentially correct - if we
+                // have ambiguous matches leading to multiple dominants, then
+                // they're all just as good in terms of their content. So just
+                // choose any one.
+                dominants.head
+            )
           }(
             _.fold(
               // Moved section was deleted...
@@ -215,51 +226,62 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 logger.debug(
                   s"Applying propagated deletion to move destination: ${pprintCustomised(section)}."
                 )
-                IndexedSeq.empty
+                None
             )(
               // Moved section was edited...
               { edit =>
                 logger.debug(
                   s"Applying propagated edit into ${pprintCustomised(edit)} to move destination: ${pprintCustomised(section)}."
                 )
-                edit.content
+                Some(edit)
               }
             )
           )
 
-        end elementsOf
+        end substituteFor
 
         path -> (mergeResult match
-          case FullyMerged(elements) =>
-            FullyMerged(elements =
-              elements.flatMap(
-                elementsOf
-              )
+          case FullyMerged(sections) =>
+            FullyMerged(elements = sections.flatMap(substituteFor))
+          case MergedWithConflicts(leftSections, rightSections) =>
+            MergedWithConflicts(
+              leftSections.flatMap(substituteFor),
+              rightSections.flatMap(substituteFor)
             )
-          case MergedWithConflicts(leftElements, rightElements) =>
-            val leftElementsWithPropagatedChanges = leftElements.flatMap(
-              elementsOf
-            )
-            val rightElementsWithPropagatedChanges = rightElements.flatMap(
-              elementsOf
-            )
+        )
+      end substitutePropagatedChangesOrDominants
 
-            // Just in case the conflict is resolved by the propagated
+      def explodeSections(
+          path: Path,
+          mergeResult: MergeResult[Section[Element]]
+      ): (Path, MergeResult[Element]) =
+        path -> (mergeResult match
+          case FullyMerged(sections) =>
+            FullyMerged(elements = sections.flatMap(_.content))
+          case MergedWithConflicts(leftSections, rightSections) =>
+            val leftElements  = leftSections.flatMap(_.content)
+            val rightElements = rightSections.flatMap(_.content)
+
+            // Just in case the conflict was resolved by the propagated
             // changes...
-            if leftElementsWithPropagatedChanges.corresponds(
-                rightElementsWithPropagatedChanges
+            if leftElements.corresponds(
+                rightElements
               )(equality.eqv)
-            then FullyMerged(leftElementsWithPropagatedChanges)
+            then FullyMerged(leftElements)
             else
               MergedWithConflicts(
-                leftElementsWithPropagatedChanges,
-                rightElementsWithPropagatedChanges
+                leftElements,
+                rightElements
               )
             end if
         )
-      end applyPropagatedChanges
+      end explodeSections
 
-      mergeResultsByPath.map(applyPropagatedChanges) -> moveDestinationsReport
+      mergeResultsByPath
+        .map(
+          substitutePropagatedChangesOrDominants
+        )
+        .map(explodeSections) -> moveDestinationsReport
     end merge
   end extension
 end CodeMotionAnalysisExtension

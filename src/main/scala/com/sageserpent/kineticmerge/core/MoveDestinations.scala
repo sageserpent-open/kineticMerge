@@ -35,9 +35,10 @@ case class MoveDestinations[Element](
     left.nonEmpty || right.nonEmpty || coincident.nonEmpty
   )
 
-  private val isDegenerate: Boolean = sources.isEmpty
-
-  if isDegenerate then require(isDivergent || coincident.nonEmpty)
+  if isDegenerate then
+    // We don't consider left- and right-insertions to be degenerate moves, as
+    // there is no match involved.
+    require(isDivergent || coincident.nonEmpty)
   end if
 
   def mergeWith(another: MoveDestinations[Element]): MoveDestinations[Element] =
@@ -105,6 +106,8 @@ case class MoveDestinations[Element](
         s"Ambiguous divergent insertions of:\n$destinationsAsText."
     end match
   end description
+
+  def isDegenerate: Boolean = sources.isEmpty
 
   def isDivergent: Boolean =
     left.nonEmpty && right.nonEmpty

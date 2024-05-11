@@ -32,9 +32,6 @@ trait Sources[Path, Element]:
     */
   def section(path: Path)(startOffset: Int, size: Int): Section[Element]
 
-  // TODO: suppose there are sections that overlap? Is there absence a
-  // precondition, or should this be an admissible failure?
-
   /** @return
     *   The [[Path]] that implies the file that {@code section} refers to.
     */

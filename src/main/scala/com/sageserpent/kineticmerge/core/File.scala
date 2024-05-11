@@ -2,9 +2,6 @@ package com.sageserpent.kineticmerge.core
 
 /** A source file at a given path is implicitly broken down into [[Section]]
   * instances that cover sections of contiguous text in the file.
-  *
-  * TODO: some kind of editing that allows sections to be subdivided or merged
-  * without breaking the invariant.
   */
 case class File[Element](
     sections: IndexedSeq[Section[Element]]
