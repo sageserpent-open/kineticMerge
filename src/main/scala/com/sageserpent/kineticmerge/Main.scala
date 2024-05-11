@@ -75,18 +75,6 @@ object Main extends StrictLogging:
     System.exit(apply(ConsoleProgressRecording, commandLineArguments*))
   end main
 
-  /** @param commandLineArguments
-    *   Command line arguments as varargs.
-    * @return
-    *   The exit code as a plain integer, suitable for consumption by both Scala
-    *   and Java client code.
-    */
-  @varargs
-  def apply(commandLineArguments: String*): Int = apply(
-    progressRecording = NoProgressRecording,
-    commandLineArguments = commandLineArguments*
-  )
-
   /** @param progressRecording
     * @param commandLineArguments
     *   Command line arguments as varargs.
@@ -375,6 +363,9 @@ object Main extends StrictLogging:
     exitCode
   end mergeTheirBranch
 
+  private def right[Payload](payload: Payload): Workflow[Payload] =
+    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
+
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
       EitherT
@@ -393,11 +384,20 @@ object Main extends StrictLogging:
       workflow.semiflatTap(_ => WriterT.tell(List(Right(message))))
   end extension
 
-  private def right[Payload](payload: Payload): Workflow[Payload] =
-    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
-
   private def underline(anything: Any): Str =
     fansi.Underlined.On(anything.toString)
+
+  /** @param commandLineArguments
+    *   Command line arguments as varargs.
+    * @return
+    *   The exit code as a plain integer, suitable for consumption by both Scala
+    *   and Java client code.
+    */
+  @varargs
+  def apply(commandLineArguments: String*): Int = apply(
+    progressRecording = NoProgressRecording,
+    commandLineArguments = commandLineArguments*
+  )
 
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](
@@ -632,39 +632,6 @@ object Main extends StrictLogging:
         s"Unexpected error - can't parse changes reported by Git ${underline(line)}."
       ).flatMap { case (path, changed) => changed.map(path -> _) }
 
-    private def blobAndContentFor(
-        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
-    )(
-        path: Path
-    ): Workflow[
-      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
-    ] =
-      IO {
-        val line = os
-          .proc("git", "ls-tree", commitIdOrBranchName, path)
-          .call(workingDirectory)
-          .out
-          .text()
-
-        line.split(whitespaceRun) match
-          case Array(mode, _, blobId, _) =>
-            val content = os
-              .proc("git", "cat-file", "blob", blobId)
-              .call(workingDirectory)
-              .out
-              .text()
-
-            (
-              mode.taggedWith[Tags.Mode],
-              blobId.taggedWith[Tags.BlobId],
-              content.taggedWith[Tags.Content]
-            )
-        end match
-      }.labelExceptionWith(errorMessage =
-        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
-      )
-    end blobAndContentFor
-
     def mergeInputsOf(
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
         ourBranchHead: String @@ Tags.CommitOrBranchName,
@@ -871,6 +838,39 @@ object Main extends StrictLogging:
             yield path -> BothContributeADeletion(bestAncestorCommitIdContent)
         }
     end mergeInputsOf
+
+    private def blobAndContentFor(
+        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
+    )(
+        path: Path
+    ): Workflow[
+      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
+    ] =
+      IO {
+        val line = os
+          .proc("git", "ls-tree", commitIdOrBranchName, path)
+          .call(workingDirectory)
+          .out
+          .text()
+
+        line.split(whitespaceRun) match
+          case Array(mode, _, blobId, _) =>
+            val content = os
+              .proc("git", "cat-file", "blob", blobId)
+              .call(workingDirectory)
+              .out
+              .text()
+
+            (
+              mode.taggedWith[Tags.Mode],
+              blobId.taggedWith[Tags.BlobId],
+              content.taggedWith[Tags.Content]
+            )
+        end match
+      }.labelExceptionWith(errorMessage =
+        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
+      )
+    end blobAndContentFor
 
     def mergeWithRollback(
         ourBranchHead: String @@ Main.Tags.CommitOrBranchName,
@@ -1386,8 +1386,17 @@ object Main extends StrictLogging:
                     bestAncestorCommitIdBlobId,
                     _
                   ) =>
-                val FullyMerged(tokens) = mergeResultsByPath(path): @unchecked
-                val mergedFileContent   = reconstituteTextFrom(tokens)
+                val tokens = mergeResultsByPath(path) match
+                  case FullyMerged(mergedTokens)               => mergedTokens
+                  case MergedWithConflicts(ourMergedTokens, _) =>
+                    // We don't care about their view of the merge - their side
+                    // simply deleted the whole file, so it contributes nothing
+                    // interesting to the merge; the only point of the merge
+                    // here was to pick up propagated edits / deletions and to
+                    // note move destinations.
+                    ourMergedTokens
+
+                val mergedFileContent = reconstituteTextFrom(tokens)
                 val ourModificationWasTweakedByTheMerge =
                   mergedFileContent != ourModification.content
 
@@ -1451,8 +1460,17 @@ object Main extends StrictLogging:
                     bestAncestorCommitIdBlobId,
                     _
                   ) =>
-                val FullyMerged(tokens) = mergeResultsByPath(path): @unchecked
-                val mergedFileContent   = reconstituteTextFrom(tokens)
+                val tokens = mergeResultsByPath(path) match
+                  case FullyMerged(mergedTokens)                 => mergedTokens
+                  case MergedWithConflicts(_, theirMergedTokens) =>
+                    // We don't care about our view of the merge - our side
+                    // simply deleted the whole file, so it contributes nothing
+                    // interesting to the merge; the only point of the merge
+                    // here was to pick up propagated edits / deletions and to
+                    // note move destinations.
+                    theirMergedTokens
+
+                val mergedFileContent = reconstituteTextFrom(tokens)
                 val theirModificationWasTweakedByTheMerge =
                   mergedFileContent != theirModification.content
 
