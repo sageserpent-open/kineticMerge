@@ -394,6 +394,31 @@ object CodeMotionAnalysis extends StrictLogging:
         }
       end withSection
 
+      // When the window size used to calculate matches is lower than the
+      // optimal match size, overlapping matches will be made that cover the
+      // elements of the optimal match. Estimate the size of the optimal match
+      // by coalescing the overlaps.
+      private def estimateOptimalMatchSize(
+          matches: collection.Set[Match[Section[Element]]]
+      ): Option[Int] =
+        // Deconstruct a throwaway instance of `MatchesAndTheirSections` made
+        // from just `matches` as a quick-and-dirty way of organising the
+        // matches' sections.
+        val MatchesAndTheirSections(
+          baseSectionsByPath,
+          leftSectionsByPath,
+          rightSectionsByPath,
+          _
+        ) = matches.foldLeft(empty)(_.withMatch(_))
+
+        val sectionsSeenOnAllPathsAcrossAllSides =
+          baseSectionsByPath.values ++ leftSectionsByPath.values ++ rightSectionsByPath.values
+
+        sectionsSeenOnAllPathsAcrossAllSides
+          .flatMap(maximumSizeOfCoalescedSections)
+          .maxOption
+      end estimateOptimalMatchSize
+
       // Coalesces runs of overlapping sections together and reports the size of
       // the largest coalescence.
       private def maximumSizeOfCoalescedSections(
@@ -770,6 +795,105 @@ object CodeMotionAnalysis extends StrictLogging:
           .matchesAndTheirSections
       end withPairwiseMatchesEatenInto
 
+      private def withMatches(
+          matches: collection.Set[Match[Section[Element]]]
+      ): MatchingResult =
+        val (
+          updatedMatchesAndTheirSections,
+          matchesWithoutRedundantPairwiseMatches
+        ) =
+          matches
+            .foldLeft(this)(_.withMatch(_))
+            .withoutRedundantPairwiseMatchesIn(matches)
+
+        MatchingResult(
+          matchesAndTheirSections = updatedMatchesAndTheirSections,
+          numberOfMatchesForTheGivenWindowSize =
+            matchesWithoutRedundantPairwiseMatches.size,
+          estimatedWindowSizeForOptimalMatch =
+            estimateOptimalMatchSize(matchesWithoutRedundantPairwiseMatches)
+        )
+      end withMatches
+
+      // Cleans up the state when a putative all-sides match that would have
+      // been ambiguous on one side with another all-sides match is partially
+      // suppressed by a larger pairwise match. This situation results in a
+      // pairwise match that shares its sections on both sides with the other
+      // all-sides match; remove any such redundant pairwise matches.
+      private def withoutRedundantPairwiseMatchesIn(
+          matches: collection.Set[Match[Section[Element]]]
+      ): (MatchesAndTheirSections, collection.Set[Match[Section[Element]]]) =
+        val (redundantMatches, usefulMatches) =
+          val isAnAllSidesMatch: Match[Section[Element]] => Boolean = {
+            case _: Match.AllSides[Section[Element]] => true
+            case _                                   => false
+          }
+
+          matches.partition {
+            case Match.BaseAndLeft(baseSection, leftSection) =>
+              sectionsAndTheirMatches
+                .get(baseSection)
+                .intersect(sectionsAndTheirMatches.get(leftSection))
+                .exists(isAnAllSidesMatch)
+            case Match.BaseAndRight(baseSection, rightSection) =>
+              sectionsAndTheirMatches
+                .get(baseSection)
+                .intersect(sectionsAndTheirMatches.get(rightSection))
+                .exists(isAnAllSidesMatch)
+            case Match.LeftAndRight(leftSection, rightSection) =>
+              sectionsAndTheirMatches
+                .get(leftSection)
+                .intersect(sectionsAndTheirMatches.get(rightSection))
+                .exists(isAnAllSidesMatch)
+            case _: Match.AllSides[Section[Element]] => false
+          }
+        end val
+
+        if redundantMatches.nonEmpty then
+          logger.debug(
+            s"Removing redundant pairwise matches:\n${pprintCustomised(redundantMatches)} as their sections also belong to all-sides matches."
+          )
+        end if
+
+        withoutTheseMatches(redundantMatches) -> usefulMatches
+      end withoutRedundantPairwiseMatchesIn
+
+      private def withMatch(
+          aMatch: Match[Section[Element]]
+      ): MatchesAndTheirSections =
+        aMatch match
+          case Match.AllSides(baseSection, leftSection, rightSection) =>
+            copy(
+              baseSectionsByPath = withBaseSection(baseSection),
+              leftSectionsByPath = withLeftSection(leftSection),
+              rightSectionsByPath = withRightSection(rightSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch) + (rightSection -> aMatch)
+            )
+          case Match.BaseAndLeft(baseSection, leftSection) =>
+            copy(
+              baseSectionsByPath = withBaseSection(baseSection),
+              leftSectionsByPath = withLeftSection(leftSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch)
+            )
+          case Match.BaseAndRight(baseSection, rightSection) =>
+            copy(
+              baseSectionsByPath = withBaseSection(baseSection),
+              rightSectionsByPath = withRightSection(rightSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch)
+            )
+          case Match.LeftAndRight(leftSection, rightSection) =>
+            copy(
+              leftSectionsByPath = withLeftSection(leftSection),
+              rightSectionsByPath = withRightSection(rightSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch)
+            )
+        end match
+      end withMatch
+
       // Eating into pairwise matches can create smaller pairwise matches that
       // are partially subsumed by other larger pairwise matches. Prefer keeping
       // the larger matches and remove the subsumed ones.
@@ -897,130 +1021,6 @@ object CodeMotionAnalysis extends StrictLogging:
               )
         }
       end withoutTheseMatches
-
-      private def withMatches(
-          matches: collection.Set[Match[Section[Element]]]
-      ): MatchingResult =
-        val (
-          updatedMatchesAndTheirSections,
-          matchesWithoutRedundantPairwiseMatches
-        ) =
-          matches
-            .foldLeft(this)(_.withMatch(_))
-            .withoutRedundantPairwiseMatchesIn(matches)
-
-        MatchingResult(
-          matchesAndTheirSections = updatedMatchesAndTheirSections,
-          numberOfMatchesForTheGivenWindowSize =
-            matchesWithoutRedundantPairwiseMatches.size,
-          estimatedWindowSizeForOptimalMatch = updatedMatchesAndTheirSections
-            .estimateOptimalMatchSize(matchesWithoutRedundantPairwiseMatches)
-        )
-      end withMatches
-
-      // Cleans up the state when a putative all-sides match that would have
-      // been ambiguous on one side with another all-sides match is partially
-      // suppressed by a larger pairwise match. This situation results in a
-      // pairwise match that shares its sections on both sides with the other
-      // all-sides match; remove any such redundant pairwise matches.
-      private def withoutRedundantPairwiseMatchesIn(
-          matches: collection.Set[Match[Section[Element]]]
-      ): (MatchesAndTheirSections, collection.Set[Match[Section[Element]]]) =
-        val (redundantMatches, usefulMatches) =
-          val isAnAllSidesMatch: Match[Section[Element]] => Boolean = {
-            case _: Match.AllSides[Section[Element]] => true
-            case _                                   => false
-          }
-
-          matches.partition {
-            case Match.BaseAndLeft(baseSection, leftSection) =>
-              sectionsAndTheirMatches
-                .get(baseSection)
-                .intersect(sectionsAndTheirMatches.get(leftSection))
-                .exists(isAnAllSidesMatch)
-            case Match.BaseAndRight(baseSection, rightSection) =>
-              sectionsAndTheirMatches
-                .get(baseSection)
-                .intersect(sectionsAndTheirMatches.get(rightSection))
-                .exists(isAnAllSidesMatch)
-            case Match.LeftAndRight(leftSection, rightSection) =>
-              sectionsAndTheirMatches
-                .get(leftSection)
-                .intersect(sectionsAndTheirMatches.get(rightSection))
-                .exists(isAnAllSidesMatch)
-            case _: Match.AllSides[Section[Element]] => false
-          }
-        end val
-
-        if redundantMatches.nonEmpty then
-          logger.debug(
-            s"Removing redundant pairwise matches:\n${pprintCustomised(redundantMatches)} as their sections also belong to all-sides matches."
-          )
-        end if
-
-        withoutTheseMatches(redundantMatches) -> usefulMatches
-      end withoutRedundantPairwiseMatchesIn
-
-      // When the window size used to calculate matches is lower than the
-      // optimal match size, overlapping matches will be made that cover the
-      // elements of the optimal math. Estimate the size of the optimal match by
-      // coalescing the overlaps.
-      private def estimateOptimalMatchSize(
-          matches: collection.Set[Match[Section[Element]]]
-      ): Option[Int] =
-        // Deconstruct a throwaway instance of `MatchesAndTheirSections` made
-        // from just `matches` as a quick-and-dirty way of organising the
-        // matches' sections.
-        val MatchesAndTheirSections(
-          baseSectionsByPath,
-          leftSectionsByPath,
-          rightSectionsByPath,
-          _
-        ) = matches.foldLeft(empty)(_.withMatch(_))
-
-        val sectionsSeenOnAllPathsAcrossAllSides =
-          baseSectionsByPath.values ++ leftSectionsByPath.values ++ rightSectionsByPath.values
-
-        sectionsSeenOnAllPathsAcrossAllSides
-          .flatMap(maximumSizeOfCoalescedSections)
-          .maxOption
-      end estimateOptimalMatchSize
-
-      private def withMatch(
-          aMatch: Match[Section[Element]]
-      ): MatchesAndTheirSections =
-        aMatch match
-          case Match.AllSides(baseSection, leftSection, rightSection) =>
-            copy(
-              baseSectionsByPath = withBaseSection(baseSection),
-              leftSectionsByPath = withLeftSection(leftSection),
-              rightSectionsByPath = withRightSection(rightSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch) + (rightSection -> aMatch)
-            )
-          case Match.BaseAndLeft(baseSection, leftSection) =>
-            copy(
-              baseSectionsByPath = withBaseSection(baseSection),
-              leftSectionsByPath = withLeftSection(leftSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch)
-            )
-          case Match.BaseAndRight(baseSection, rightSection) =>
-            copy(
-              baseSectionsByPath = withBaseSection(baseSection),
-              rightSectionsByPath = withRightSection(rightSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch)
-            )
-          case Match.LeftAndRight(leftSection, rightSection) =>
-            copy(
-              leftSectionsByPath = withLeftSection(leftSection),
-              rightSectionsByPath = withRightSection(rightSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch)
-            )
-        end match
-      end withMatch
 
       @tailrec
       private final def withAllSmallFryMatches(
