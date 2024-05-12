@@ -140,7 +140,7 @@ object MainTest extends ProseExamples:
       "\n"
     )
     println(
-      os.proc("git", "commit", "-am", "'Arthur elaborates.'")
+      os.proc("git", "commit", "-am", "'Arthur clears his throat.'")
         .call(path)
         .out
         .text()
@@ -163,6 +163,16 @@ object MainTest extends ProseExamples:
         .text()
     )
   end arthurExcusesHimself
+
+  private def arthurDeniesHavingSaidAnything(path: Path): Unit =
+    os.write.over(path / arthur, "")
+    println(
+      os.proc("git", "commit", "-am", "'Arthur denies having said anything.'")
+        .call(path)
+        .out
+        .text()
+    )
+  end arthurDeniesHavingSaidAnything
 
   private def enterTysonStageLeft(path: Path): Unit =
     os.write(path / tyson, s"$tysonResponse\n", createFolders = true)
@@ -494,6 +504,19 @@ object MainTest extends ProseExamples:
     assert(currentStatus(path).isEmpty)
   end verifyTrivialMergeMovesToTheMostAdvancedCommitWithACleanIndex
 
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
+  private def currentCommit(path: Path) =
+    os.proc("git", "log", "-1", "--format=tformat:%H")
+      .call(path)
+      .out
+      .text()
+      .strip
+
   private def verifyMergeMakesANewCommitWithACleanIndex(path: Path)(
       commitOfOneBranch: String,
       commitOfTheOtherBranch: String,
@@ -578,6 +601,9 @@ object MainTest extends ProseExamples:
     assert(status.isEmpty)
   end verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit
 
+  private def mergeHeadPath(path: Path) =
+    path / ".git" / "MERGE_HEAD"
+
   private def verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit(
       path: Path
   )(
@@ -638,24 +664,8 @@ object MainTest extends ProseExamples:
     currentStatus(path)
   end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
 
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
-
-  private def currentCommit(path: Path) =
-    os.proc("git", "log", "-1", "--format=tformat:%H")
-      .call(path)
-      .out
-      .text()
-      .strip
-
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
-
   private def mergeHead(path: Path) =
     os.read(mergeHeadPath(path)).strip()
-
-  private def mergeHeadPath(path: Path) =
-    path / ".git" / "MERGE_HEAD"
 
   private def gitRepository(): ImperativeResource[Path] =
     for
@@ -1089,7 +1099,7 @@ class MainTest:
   end conflictingAdditionOfTheSameFile
 
   @TestFactory
-  def conflictingModificationAndDeletionOfTheSameFile(): DynamicTests =
+  def conflictingInsertModificationAndDeletionOfTheSameFile(): DynamicTests =
     (optionalSubdirectories and trialsApi.booleans)
       .withLimit(4)
       .dynamicTests { case (optionalSubdirectory, flipBranches) =>
@@ -1165,7 +1175,168 @@ class MainTest:
           )
           .unsafeRunSync()
       }
-  end conflictingModificationAndDeletionOfTheSameFile
+  end conflictingInsertModificationAndDeletionOfTheSameFile
+
+  @TestFactory
+  def conflictingEditModificationAndDeletionOfTheSameFile(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(4)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingArthur(path)
+
+              sandraStopsByBriefly(path)
+
+              val deletedFileBranch = "deletedFileBranch"
+
+              makeNewBranch(path)(deletedFileBranch)
+
+              enterTysonStageLeft(path)
+
+              exeuntArthur(path)
+
+              val commitOfDeletedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              sandraHeadsOffHome(path)
+
+              arthurCorrectsHimself(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then checkoutBranch(path)(deletedFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then deletedFileBranch -> masterBranch
+                else masterBranch                      -> deletedFileBranch
+
+              val exitCode = Main.mergeTheirBranch(
+                ApplicationRequest(
+                  theirBranchHead =
+                    theirBranch.taggedWith[Tags.CommitOrBranchName],
+                  minimumAmbiguousMatchSize = 0
+                )
+              )(workingDirectory =
+                optionalSubdirectory.fold(ifEmpty = path)(path / _)
+              )
+
+              val status =
+                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                  path
+                )(
+                  flipBranches,
+                  commitOfDeletedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+
+              arthurIsMarkedWithConflictingDeletionAndUpdateInTheIndex(
+                flipBranches,
+                status
+              )
+
+              if flipBranches then
+                sandraIsMarkedAsDeletedInTheIndex(status)
+                noUpdatesInIndexForTyson(status)
+              else
+                noUpdatesInIndexForSandra(status)
+                tysonIsMarkedAsAddedInTheIndex(status)
+              end if
+            }
+          )
+          .unsafeRunSync()
+      }
+  end conflictingEditModificationAndDeletionOfTheSameFile
+
+  @TestFactory
+  def conflictingContentClearanceModificationAndDeletionOfTheSameFile()
+      : DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(4)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingArthur(path)
+
+              sandraStopsByBriefly(path)
+
+              val deletedFileBranch = "deletedFileBranch"
+
+              makeNewBranch(path)(deletedFileBranch)
+
+              enterTysonStageLeft(path)
+
+              exeuntArthur(path)
+
+              val commitOfDeletedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              sandraHeadsOffHome(path)
+
+              arthurDeniesHavingSaidAnything(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then checkoutBranch(path)(deletedFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then deletedFileBranch -> masterBranch
+                else masterBranch                      -> deletedFileBranch
+
+              val exitCode = Main.mergeTheirBranch(
+                ApplicationRequest(
+                  theirBranchHead =
+                    theirBranch.taggedWith[Tags.CommitOrBranchName],
+                  minimumAmbiguousMatchSize = 0
+                )
+              )(workingDirectory =
+                optionalSubdirectory.fold(ifEmpty = path)(path / _)
+              )
+
+              val status =
+                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                  path
+                )(
+                  flipBranches,
+                  commitOfDeletedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+
+              arthurIsMarkedWithConflictingDeletionAndUpdateInTheIndex(
+                flipBranches,
+                status
+              )
+
+              assert(0 == os.size(path / arthur))
+
+              if flipBranches then
+                sandraIsMarkedAsDeletedInTheIndex(status)
+                noUpdatesInIndexForTyson(status)
+              else
+                noUpdatesInIndexForSandra(status)
+                tysonIsMarkedAsAddedInTheIndex(status)
+              end if
+            }
+          )
+          .unsafeRunSync()
+      }
+  end conflictingContentClearanceModificationAndDeletionOfTheSameFile
 
   @TestFactory
   def conflictingModificationOfTheSameFile(): DynamicTests =
