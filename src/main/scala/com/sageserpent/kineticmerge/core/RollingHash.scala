@@ -27,31 +27,34 @@ object RollingHash:
 
   class Factory(windowSize: Int, numberOfFingerprintsToBeTaken: Int):
     private val seed = 8458945L
-    def apply(): RollingHash =
-      val scale = 1 + BigInt(1 + Byte.MaxValue.toInt - Byte.MinValue.toInt)
 
-      // Kudos to this article
-      // (https://web.cs.unlv.edu/larmore/Courses/CSC477/F14/Assignments/horners.pdf)
-      // for the awareness that this could be a problem.
-      val numberOfDistinctFingerprintsToAvoidBirthdayParadoxCollision = BigInt(
+    private val scale =
+      1 + BigInt(1 + Byte.MaxValue.toInt - Byte.MinValue.toInt)
+
+    // Kudos to this article
+    // (https://web.cs.unlv.edu/larmore/Courses/CSC477/F14/Assignments/horners.pdf)
+    // for the awareness that this could be a problem.
+    private val numberOfDistinctFingerprintsToAvoidBirthdayParadoxCollision =
+      BigInt(
         ((numberOfFingerprintsToBeTaken.toDouble * numberOfFingerprintsToBeTaken.toDouble)
           / magicConstantForBirthdayParadoxAvoidanceAtOnePercentProbabilityOfCollision).ceil.toLong
       )
 
-      val primeModulusMustBeLargerThanThis =
-        numberOfDistinctFingerprintsToAvoidBirthdayParadoxCollision max scale
+    private val primeModulusMustBeLargerThanThis =
+      numberOfDistinctFingerprintsToAvoidBirthdayParadoxCollision max scale
 
-      // Clearing `scale` should guarantee this.
-      assume(1 <= primeModulusMustBeLargerThanThis.bitLength)
+    // Clearing `scale` should guarantee this.
+    assume(1 <= primeModulusMustBeLargerThanThis.bitLength)
 
-      val primeModulus =
-        BigInt.probablePrime(
-          1 + primeModulusMustBeLargerThanThis.bitLength,
-          new Random(seed)
-        )
+    private val primeModulus =
+      BigInt.probablePrime(
+        1 + primeModulusMustBeLargerThanThis.bitLength,
+        new Random(seed)
+      )
 
-      val highestScalePower = scale.pow(windowSize - 1) mod primeModulus
+    private val highestScalePower = scale.pow(windowSize - 1) mod primeModulus
 
+    def apply(): RollingHash =
       trait RollingHashImplementation extends RollingHash:
         private val bytesInRollingWindowAsRingBuffer =
           Array.ofDim[Byte](windowSize)
