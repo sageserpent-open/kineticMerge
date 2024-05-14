@@ -35,6 +35,12 @@ case class MoveDestinations[Element](
     left.nonEmpty || right.nonEmpty || coincident.nonEmpty
   )
 
+  require(
+    left.intersect(right).isEmpty && left.intersect(sources).isEmpty && right
+      .intersect(sources)
+      .isEmpty
+  )
+
   if isDegenerate then
     // We don't consider left- and right-insertions to be degenerate moves, as
     // there is no match involved.
