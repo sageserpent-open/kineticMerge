@@ -64,7 +64,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       val (
         mergeResultsByPath,
         changesPropagatedThroughMotion,
-        moveDestinationsReport
+        moveDestinationsReport,
+        insertions
       ) =
         paths.foldLeft(
           Map.empty[Path, MergeResult[Section[Element]]],
@@ -76,13 +77,15 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 ]
             )
           ],
-          emptyReport
+          emptyReport,
+          Set.empty[Insertion]
         ) {
           case (
                 (
                   mergeResultsByPath,
                   changesPropagatedThroughMotion,
-                  moveDestinationsReport
+                  moveDestinationsReport,
+                  insertions
                 ),
                 path
               ) =>
@@ -101,7 +104,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   changesPropagatedThroughMotion,
                   leftSections.foldLeft(moveDestinationsReport)(
                     _.leftMoveOf(_)
-                  )
+                  ),
+                  insertions
                 )
               case (None, None, Some(rightSections)) =>
                 // File added only on the right; pass through as there is
@@ -114,7 +118,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   changesPropagatedThroughMotion,
                   rightSections.foldLeft(moveDestinationsReport)(
                     _.rightMoveOf(_)
-                  )
+                  ),
+                  insertions
                 )
               case (
                     optionalBaseSections,
@@ -152,10 +157,91 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   changesPropagatedThroughMotion ++ mergedSectionsResult.changesPropagatedThroughMotion,
                   moveDestinationsReport.mergeWith(
                     mergedSectionsResult.moveDestinationsReport
-                  )
+                  ),
+                  insertions ++ mergedSectionsResult.insertions
                 )
             end match
         }
+
+      // PLAN:
+      // 1. Knock out each insertion whose section is a move destination, either
+      // as a left- or right-move, or as part of a coincident move. That
+      // includes degenerate coincident *insertions*, too!
+
+      val insertionsThatAreNotMoveDestinations = insertions.filter {
+        case Insertion(inserted, side) =>
+          val dominants = dominantsOf(inserted)
+          moveDestinationsReport.moveDestinationsByDominantSet
+            .get(dominants)
+            .fold(ifEmpty = false)(moveDestination =>
+              // May as well plod through the move destinations linearly via
+              // `.exists` rather than mapping to a new set and then calling
+              // `.contains`.
+              side match
+                case Side.Left =>
+                  moveDestination.left.contains(
+                    inserted
+                  ) || moveDestination.coincident.exists { case (leftPart, _) =>
+                    inserted == leftPart
+                  }
+                case Side.Right =>
+                  moveDestination.right
+                    .contains(inserted) || moveDestination.coincident.exists {
+                    case (_, rightPart) => inserted == rightPart
+                  }
+            )
+      }
+
+      // 2. For each insertion, look up its path by using the sources for its
+      // side.
+
+      // 3. Use the path to locate the inserted section in its file on the same
+      // side (not the base) - this yields zero, one or two neighbouring
+      // sections. Do a binary search on the start index of the inserted section
+      // to get it relative position in the file.
+
+      // 4. Knock out neighbouring sections that not sources of move
+      // destinations on the opposite side of the inserted section, or are
+      // divergent. This will include neighbouring sections that are
+      // destinations themselves. The resulting neighbours therefore haven't
+      // moved on the side of the inserted section.
+
+      // 5. Knock out insertions that don't have any anchors after the previous
+      // step.
+
+      // 6. Determine the destination of the neighbour on the other side of the
+      // move and taking into account whether it is a predecessor or successor
+      // of the inserted section, use a binary search to find the migrated
+      // insertion point in the merge at the given path, possibly on both sides
+      // of a conflicted merge.
+
+      // 7. Build a map of paths to multimaps, where each multimap has keys that
+      // either:
+      // a) an insertion point into a clean merge or
+      // b) insertion points into either side of a conflicted merge.
+      // The values of each multimap are the inserted sections that need to be
+      // migrated. The keys have an ordering on insertion points that is valid
+      // for both sides.
+
+      // 8. This leaves a set of remaining inserted sections that have to be be
+      // removed from their original locations, and the path to migration
+      // multimap thing...
+
+      def migrateAnchoredInsertions(
+          path: Path,
+          mergeResult: MergeResult[Section[Element]]
+      ): (Path, MergeResult[Section[Element]]) =
+        // Look at the migration multimap associated with the path and insert
+        // the migrated sections (if there is only one non-conflicting entry) in
+        // order of their insertion points on each side. Need to take into
+        // account that the migration point moves as insertions are made!
+
+        // Also need to remove any sections that are in the set of insertions
+        // being migrated - do this when traversing up the merged results,
+        // removing any migrated section in its original location prior to
+        // inserting one from the multimap.
+
+        ???
 
       val potentialValidDestinationsForPropagatingChangesTo =
         moveDestinationsReport.moveDestinationsByDominantSet.values
@@ -278,9 +364,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       end explodeSections
 
       mergeResultsByPath
-        .map(
-          substitutePropagatedChangesOrDominants
-        )
+        .map(migrateAnchoredInsertions)
+        .map(substitutePropagatedChangesOrDominants)
         .map(explodeSections) -> moveDestinationsReport
     end merge
   end extension

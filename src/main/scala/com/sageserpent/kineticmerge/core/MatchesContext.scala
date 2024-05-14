@@ -29,8 +29,16 @@ class MatchesContext[Element](
       // Use `Option[Element]` to model the difference between an edit and an
       // outright deletion.
       changesPropagatedThroughMotion: MultiDict[Element, Option[Element]],
-      moveDestinationsReport: MoveDestinationsReport
+      moveDestinationsReport: MoveDestinationsReport,
+      insertions: Set[Insertion]
   )
+
+  enum Side:
+    case Left
+    case Right
+  end Side
+
+  case class Insertion(inserted: Element, side: Side)
 
   case class MoveDestinationsReport(
       moveDestinationsByDominantSet: Map[collection.Set[
@@ -146,7 +154,8 @@ class MatchesContext[Element](
           MergeResultDetectingMotion(
             coreMergeResult = coreMergeAlgebra.empty,
             changesPropagatedThroughMotion = MultiDict.empty,
-            moveDestinationsReport = emptyReport
+            moveDestinationsReport = emptyReport,
+            insertions = Set.empty
           )
 
         override def preservation(
@@ -166,20 +175,27 @@ class MatchesContext[Element](
         override def leftInsertion(
             result: ConfiguredMergeResultDetectingMotion[Element],
             insertedElement: Element
-        ): ConfiguredMergeResultDetectingMotion[Element] = result
-          .focus(_.coreMergeResult)
-          .modify(coreMergeAlgebra.leftInsertion(_, insertedElement))
-          .focus(_.moveDestinationsReport)
-          .modify(_.leftMoveOf(insertedElement))
+        ): ConfiguredMergeResultDetectingMotion[Element] =
+          result
+            .focus(_.insertions)
+            .modify(_ + Insertion(insertedElement, Side.Left))
+            .focus(_.coreMergeResult)
+            .modify(coreMergeAlgebra.leftInsertion(_, insertedElement))
+            .focus(_.moveDestinationsReport)
+            .modify(_.leftMoveOf(insertedElement))
+        end leftInsertion
 
         override def rightInsertion(
             result: ConfiguredMergeResultDetectingMotion[Element],
             insertedElement: Element
-        ): ConfiguredMergeResultDetectingMotion[Element] = result
-          .focus(_.coreMergeResult)
-          .modify(coreMergeAlgebra.rightInsertion(_, insertedElement))
-          .focus(_.moveDestinationsReport)
-          .modify(_.rightMoveOf(insertedElement))
+        ): ConfiguredMergeResultDetectingMotion[Element] =
+          result
+            .focus(_.insertions)
+            .modify(_ + Insertion(insertedElement, Side.Right))
+            .focus(_.coreMergeResult)
+            .modify(coreMergeAlgebra.rightInsertion(_, insertedElement))
+            .focus(_.moveDestinationsReport)
+            .modify(_.rightMoveOf(insertedElement))
 
         override def coincidentInsertion(
             result: MergeResultDetectingMotionType[CoreResult][Element],
