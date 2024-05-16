@@ -4,15 +4,18 @@ import cats.Eq
 import com.sageserpent.kineticmerge.core.merge.of as mergeOf
 import com.typesafe.scalalogging.StrictLogging
 
+import scala.collection.Searching
 import scala.collection.immutable.MultiDict
 
 object CodeMotionAnalysisExtension extends StrictLogging:
+
   /** Add merging capability to a [[CodeMotionAnalysis]].
     *
     * Not sure exactly where this capability should be implemented - is it
     * really a core part of the API for [[CodeMotionAnalysis]]? Hence the
     * extension as a temporary measure.
     */
+
   extension [Path, Element](
       codeMotionAnalysis: CodeMotionAnalysis[Path, Element]
   )
@@ -65,7 +68,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         mergeResultsByPath,
         changesPropagatedThroughMotion,
         moveDestinationsReport,
-        insertions
+        insertionsAtPath
       ) =
         paths.foldLeft(
           Map.empty[Path, MergeResult[Section[Element]]],
@@ -78,14 +81,14 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             )
           ],
           emptyReport,
-          Set.empty[Insertion]
+          MultiDict.empty[Path, Insertion]
         ) {
           case (
                 (
                   mergeResultsByPath,
                   changesPropagatedThroughMotion,
                   moveDestinationsReport,
-                  insertions
+                  insertionsAtPath
                 ),
                 path
               ) =>
@@ -105,7 +108,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   leftSections.foldLeft(moveDestinationsReport)(
                     _.leftMoveOf(_)
                   ),
-                  insertions
+                  insertionsAtPath
                 )
               case (None, None, Some(rightSections)) =>
                 // File added only on the right; pass through as there is
@@ -119,7 +122,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   rightSections.foldLeft(moveDestinationsReport)(
                     _.rightMoveOf(_)
                   ),
-                  insertions
+                  insertionsAtPath
                 )
               case (
                     optionalBaseSections,
@@ -158,90 +161,226 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   moveDestinationsReport.mergeWith(
                     mergedSectionsResult.moveDestinationsReport
                   ),
-                  insertions ++ mergedSectionsResult.insertions
+                  mergedSectionsResult.insertions.foldLeft(insertionsAtPath)(
+                    (insertionsAtPath, insertion) =>
+                      insertionsAtPath + (path -> insertion)
+                  )
                 )
             end match
         }
 
-      // PLAN:
-      // 1. Knock out each insertion whose section is a move destination, either
-      // as a left- or right-move, or as part of a coincident move. That
-      // includes degenerate coincident *insertions*, too!
+      def isMoveDestinationOnGivenSide(
+          section: Section[Element],
+          side: matchesContext.Side,
+          moveDestinations: MoveDestinations[Section[Element]]
+      ) =
+        side match
+          case Side.Left =>
+            moveDestinations.left.contains(
+              section
+            ) || moveDestinations.coincident.exists { case (leftPart, _) =>
+              section == leftPart
+            }
+          case Side.Right =>
+            moveDestinations.right
+              .contains(section) || moveDestinations.coincident.exists {
+              case (_, rightPart) => section == rightPart
+            }
 
-      val insertionsThatAreNotMoveDestinations = insertions.filter {
-        case Insertion(inserted, side) =>
+      val insertionsThatAreNotMoveDestinations = insertionsAtPath.filterNot {
+        case (_, Insertion(inserted, side)) =>
           val dominants = dominantsOf(inserted)
           moveDestinationsReport.moveDestinationsByDominantSet
             .get(dominants)
-            .fold(ifEmpty = false)(moveDestination =>
-              // May as well plod through the move destinations linearly via
-              // `.exists` rather than mapping to a new set and then calling
-              // `.contains`.
-              side match
-                case Side.Left =>
-                  moveDestination.left.contains(
-                    inserted
-                  ) || moveDestination.coincident.exists { case (leftPart, _) =>
-                    inserted == leftPart
-                  }
-                case Side.Right =>
-                  moveDestination.right
-                    .contains(inserted) || moveDestination.coincident.exists {
-                    case (_, rightPart) => inserted == rightPart
-                  }
+            .fold(ifEmpty = false)(
+              isMoveDestinationOnGivenSide(inserted, side, _)
             )
       }
 
-      // 2. For each insertion, look up its path by using the sources for its
-      // side.
+      enum Anchoring:
+        case Predecessor
+        case Successor
+      end Anchoring
 
-      // 3. Use the path to locate the inserted section in its file on the same
-      // side (not the base) - this yields zero, one or two neighbouring
-      // sections. Do a binary search on the start index of the inserted section
-      // to get it relative position in the file.
+      // NOTE: the same insertion may not only be associated with multiple
+      // anchor destinations due to ambiguous matches; it may also be flanked on
+      // either side by anchor destinations. Hence the use of `Anchoring` to
+      // track whether the anchor precedes or succeeds the insertion.
+      // TODO: should we allow distinct sections with the same content to be
+      // considered as identical?
+      val migratedInsertionsByAnchorDestinations =
+        insertionsThatAreNotMoveDestinations.flatMap {
+          case (path, Insertion(inserted, side)) =>
+            val file = side match
+              case Side.Left =>
+                codeMotionAnalysis.left(path)
+              case Side.Right =>
+                codeMotionAnalysis.right(path)
 
-      // 4. Knock out neighbouring sections that not sources of move
-      // destinations on the opposite side of the inserted section, or are
-      // divergent. This will include neighbouring sections that are
-      // destinations themselves. The resulting neighbours therefore haven't
-      // moved on the side of the inserted section.
+            {
+              val Searching.Found(indexOfInsertedSection) =
+                file.searchByStartOffset(inserted.startOffset): @unchecked
 
-      // 5. Knock out insertions that don't have any anchors after the previous
-      // step.
+              def destinationsForValidAnchor(
+                  anchor: Section[Element]
+              ): collection.Set[Section[Element]] =
+                val dominants = dominantsOf(anchor)
+                moveDestinationsReport.moveDestinationsByDominantSet
+                  .get(dominants)
+                  .fold(ifEmpty = Set.empty)(moveDestinations =>
+                    if !isMoveDestinationOnGivenSide(
+                        anchor,
+                        side,
+                        moveDestinations
+                      )
+                    then
+                      side match
+                        case Side.Left  => moveDestinations.left
+                        case Side.Right => moveDestinations.right
+                    else Set.empty
+                  )
+              end destinationsForValidAnchor
 
-      // 6. Determine the destination of the neighbour on the other side of the
-      // move and taking into account whether it is a predecessor or successor
-      // of the inserted section, use a binary search to find the migrated
-      // insertion point in the merge at the given path, possibly on both sides
-      // of a conflicted merge.
+              val predecessorAnchorDestinations = Option
+                .when(0 < indexOfInsertedSection)(
+                  file.sections(indexOfInsertedSection - 1)
+                )
+                .flatMap(destinationsForValidAnchor)
 
-      // 7. Build a map of paths to multimaps, where each multimap has keys that
-      // either:
-      // a) an insertion point into a clean merge or
-      // b) insertion points into either side of a conflicted merge.
-      // The values of each multimap are the inserted sections that need to be
-      // migrated. The keys have an ordering on insertion points that is valid
-      // for both sides.
+              val onePastIndex = 1 + indexOfInsertedSection
+              val successorAnchorDestinations = Option
+                .when(file.sections.length > onePastIndex)(
+                  file.sections(onePastIndex)
+                )
+                .flatMap(destinationsForValidAnchor)
 
-      // 8. This leaves a set of remaining inserted sections that have to be be
-      // removed from their original locations, and the path to migration
-      // multimap thing...
+              predecessorAnchorDestinations.map(
+                _ -> Anchoring.Predecessor
+              ) ++ successorAnchorDestinations.map(_ -> Anchoring.Successor)
+            }.map(_ -> inserted)
+        }
+
+      val migratedInsertions =
+        migratedInsertionsByAnchorDestinations.values.toSet
+
+      // TODO: the next lot of comments refer to an alternative implementation
+      // plan - remove them if the current approach works out.
+
+      /* // 5. Determine the destination of the neighbour on the other side of
+       * the // move and taking into account whether it is a predecessor or
+       * successor // of the inserted section, use a binary search to find the
+       * migrated // insertion point in the merge at the given path, possibly on
+       * both sides // of a conflicted merge.
+       *
+       * // 6. Build a map of paths to multimaps, where each multimap has keys
+       * that // either:
+       * // a) an insertion point into a clean merge or // b) insertion points
+       * into either side of a conflicted merge.
+       * // The values of each multimap are the inserted sections that need to
+       * be // migrated. The keys have an ordering on insertion points that is
+       * valid // for both sides.
+       *
+       * // 7. This leaves a set of remaining inserted sections that have to be
+       * be // removed from their original locations, and the path to migration
+       * // multimap thing... */
 
       def migrateAnchoredInsertions(
           path: Path,
           mergeResult: MergeResult[Section[Element]]
       ): (Path, MergeResult[Section[Element]]) =
-        // Look at the migration multimap associated with the path and insert
-        // the migrated sections (if there is only one non-conflicting entry) in
-        // order of their insertion points on each side. Need to take into
-        // account that the migration point moves as insertions are made!
+        // Remove migrated insertions from their original location, and patch
+        // them in relative to their anchor destinations. Need to watch out for
+        // when the same insertion is patched in after a predecessor anchor and
+        // then patched in before a successor anchor - the second patch should
+        // be suppressed.
 
-        // Also need to remove any sections that are in the set of insertions
-        // being migrated - do this when traversing up the merged results,
-        // removing any migrated section in its original location prior to
-        // inserting one from the multimap.
+        def removeMigratedInsertions(
+            sections: IndexedSeq[Section[Element]]
+        ): IndexedSeq[Section[Element]] =
+          sections.filterNot(migratedInsertions.contains)
 
-        ???
+        def insertOrDeferAnyMigratedInsertions(
+            sections: IndexedSeq[Section[Element]]
+        ): IndexedSeq[Section[Element]] =
+          sections
+            .foldLeft(
+              IndexedSeq
+                .empty[Section[Element]] -> (None: Option[Section[Element]])
+            ) {
+              case (
+                    (partialResult, deferredMigratedInsertion),
+                    candidateAnchorDestination
+                  ) =>
+                val precedingMigratedInsertions =
+                  migratedInsertionsByAnchorDestinations.get(
+                    candidateAnchorDestination -> Anchoring.Predecessor
+                  )
+
+                val precedingMigratedInsertion =
+                  if 1 >= precedingMigratedInsertions.size then
+                    precedingMigratedInsertions.headOption
+                  else throw RuntimeException("THINK OF A AN ERROR MESSAGE.")
+
+                val succeedingMigratedInsertions =
+                  migratedInsertionsByAnchorDestinations.get(
+                    candidateAnchorDestination -> Anchoring.Successor
+                  )
+
+                val succeedingMigratedInsertion =
+                  if 1 >= succeedingMigratedInsertions.size then
+                    succeedingMigratedInsertions.headOption
+                  else throw RuntimeException("THINK OF A AN ERROR MESSAGE.")
+
+                val result =
+                  (deferredMigratedInsertion, precedingMigratedInsertion) match
+                    case (None, None) =>
+                      partialResult :+ candidateAnchorDestination
+                    case (Some(deferred), None) =>
+                      partialResult :+ deferred :+ candidateAnchorDestination
+                    case (None, Some(preceding)) =>
+                      partialResult :+ preceding :+ candidateAnchorDestination
+                    case (Some(deferred), Some(preceding)) =>
+                      if deferred == preceding then
+                        partialResult :+ deferred :+ candidateAnchorDestination
+                      else
+                        partialResult :+ deferred :+ preceding :+ candidateAnchorDestination
+
+                result -> succeedingMigratedInsertion
+            } match
+            case (partialResult, deferredMigratedInsertion) =>
+              partialResult ++ deferredMigratedInsertion
+
+        path -> (mergeResult match
+          case FullyMerged(sections) =>
+            FullyMerged(elements =
+              insertOrDeferAnyMigratedInsertions(
+                removeMigratedInsertions(sections)
+              )
+            )
+          case MergedWithConflicts(leftSections, rightSections) =>
+            MergedWithConflicts(
+              insertOrDeferAnyMigratedInsertions(
+                removeMigratedInsertions(leftSections)
+              ),
+              insertOrDeferAnyMigratedInsertions(
+                removeMigratedInsertions(rightSections)
+              )
+            )
+        )
+
+        // TODO: the next lot of comments refer to an alternative implementation
+        // plan - remove them if the current approach works out.
+
+        /* // Look at the migration multimap associated with the path and insert
+         * // the migrated sections (if there is only one non-conflicting entry)
+         * in // order of their insertion points on each side. Need to take into
+         * // account that the migration point moves as insertions are made!
+         *
+         * // Also need to remove any sections that are in the set of insertions
+         * // being migrated - do this when traversing up the merged results, //
+         * removing any migrated section in its original location prior to //
+         * inserting one from the multimap. */
+      end migrateAnchoredInsertions
 
       val potentialValidDestinationsForPropagatingChangesTo =
         moveDestinationsReport.moveDestinationsByDominantSet.values
@@ -276,18 +415,18 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             else
               throw new RuntimeException(
                 s"""
-                |Multiple potential changes propagated to destination: $section,
-                |these are:
-                |${propagatedChanges
+                  |Multiple potential changes propagated to destination: $section,
+                  |these are:
+                  |${propagatedChanges
                     .map(
                       _.fold(ifEmpty = "DELETION")(edit => s"EDIT: $edit")
                     )
                     .zipWithIndex
                     .map((change, index) => s"${1 + index}. $change")
                     .mkString("\n")}
-                |These are from ambiguous matches of text with the destination.
-                |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${section.size}.
-                    """.stripMargin
+                  |These are from ambiguous matches of text with the destination.
+                  |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${section.size}.
+                      """.stripMargin
               )
 
           // If we do have a propagated change, then there is no need to look

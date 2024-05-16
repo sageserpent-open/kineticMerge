@@ -1,5 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
+import scala.collection.Searching
+
 /** A source file at a given path is implicitly broken down into [[Section]]
   * instances that cover sections of contiguous text in the file.
   */
@@ -17,4 +19,7 @@ case class File[Element](
 
   def content: IndexedSeq[Element] =
     sections.foldLeft(IndexedSeq.empty)(_ ++ _.content)
+
+  def searchByStartOffset(startIndex: Int): Searching.SearchResult =
+    sections.view.map(_.startOffset).search(startIndex)
 end File
