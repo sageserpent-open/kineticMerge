@@ -235,8 +235,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       )
                     then
                       side match
-                        case Side.Left  => moveDestinations.left
-                        case Side.Right => moveDestinations.right
+                        case Side.Left  => moveDestinations.right
+                        case Side.Right => moveDestinations.left
                     else Set.empty
                   )
               end destinationsForValidAnchor
@@ -262,27 +262,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
       val migratedInsertions =
         migratedInsertionsByAnchorDestinations.values.toSet
-
-      // TODO: the next lot of comments refer to an alternative implementation
-      // plan - remove them if the current approach works out.
-
-      /* // 5. Determine the destination of the neighbour on the other side of
-       * the // move and taking into account whether it is a predecessor or
-       * successor // of the inserted section, use a binary search to find the
-       * migrated // insertion point in the merge at the given path, possibly on
-       * both sides // of a conflicted merge.
-       *
-       * // 6. Build a map of paths to multimaps, where each multimap has keys
-       * that // either:
-       * // a) an insertion point into a clean merge or // b) insertion points
-       * into either side of a conflicted merge.
-       * // The values of each multimap are the inserted sections that need to
-       * be // migrated. The keys have an ordering on insertion points that is
-       * valid // for both sides.
-       *
-       * // 7. This leaves a set of remaining inserted sections that have to be
-       * be // removed from their original locations, and the path to migration
-       * // multimap thing... */
 
       def migrateAnchoredInsertions(
           path: Path,
@@ -313,7 +292,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   ) =>
                 val precedingMigratedInsertions =
                   migratedInsertionsByAnchorDestinations.get(
-                    candidateAnchorDestination -> Anchoring.Predecessor
+                    candidateAnchorDestination -> Anchoring.Successor
                   )
 
                 val precedingMigratedInsertion =
@@ -323,7 +302,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
                 val succeedingMigratedInsertions =
                   migratedInsertionsByAnchorDestinations.get(
-                    candidateAnchorDestination -> Anchoring.Successor
+                    candidateAnchorDestination -> Anchoring.Predecessor
                   )
 
                 val succeedingMigratedInsertion =
@@ -367,19 +346,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               )
             )
         )
-
-        // TODO: the next lot of comments refer to an alternative implementation
-        // plan - remove them if the current approach works out.
-
-        /* // Look at the migration multimap associated with the path and insert
-         * // the migrated sections (if there is only one non-conflicting entry)
-         * in // order of their insertion points on each side. Need to take into
-         * // account that the migration point moves as insertions are made!
-         *
-         * // Also need to remove any sections that are in the set of insertions
-         * // being migrated - do this when traversing up the merged results, //
-         * removing any migrated section in its original location prior to //
-         * inserting one from the multimap. */
       end migrateAnchoredInsertions
 
       val potentialValidDestinationsForPropagatingChangesTo =
