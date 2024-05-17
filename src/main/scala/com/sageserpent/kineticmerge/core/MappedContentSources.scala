@@ -151,12 +151,12 @@ object MappedContentSourcesOfTokens:
 
       /** @param line
         *   One-relative line number within the entire content at some path.
-        * @param character
+        * @param characterOffset
         *   Zero-relative character offset from the start of the line.
         */
   case class TextPosition(
       line: Int,
-      character: Int
+      characterOffset: Int
   )
 end MappedContentSourcesOfTokens
 
@@ -255,7 +255,7 @@ case class MappedContentSourcesOfTokens[Path](
 
       TextPosition(
         line = 1 + lineIndex,
-        character =
+        characterOffset =
           characterOffsetOfToken - cumulativeCharacterOffsetsOfLines(lineIndex)
       )
     end textPositionFor
