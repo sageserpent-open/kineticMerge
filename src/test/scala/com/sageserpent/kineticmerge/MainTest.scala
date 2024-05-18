@@ -1802,7 +1802,7 @@ class MainTest:
                     theirBranchHead =
                       theirBranch.taggedWith[Tags.CommitOrBranchName],
                     noCommit = noCommit,
-                    minimumAmbiguousMatchSize = 0
+                    minimumAmbiguousMatchSize = 5
                   )
                 )(workingDirectory =
                   optionalSubdirectory.fold(ifEmpty = path)(path / _)
