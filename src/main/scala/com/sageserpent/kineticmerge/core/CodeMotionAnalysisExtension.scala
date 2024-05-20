@@ -3,6 +3,7 @@ package com.sageserpent.kineticmerge.core
 import cats.Eq
 import com.sageserpent.kineticmerge.core.merge.of as mergeOf
 import com.typesafe.scalalogging.StrictLogging
+import pprint.Tree
 
 import scala.collection.Searching
 import scala.collection.immutable.MultiDict
@@ -55,9 +56,39 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         }
       end sectionEqualityViaDominantsFallingBackToContentComparison
 
-      val matchesContext = MatchesContext(
+      val matchesContext = new MatchesContext(
         codeMotionAnalysis.matchesFor
-      )
+      ):
+        override protected def adjustmentOfEditByFollowingCoincidentDeletion(
+            editSection: Section[Element],
+            deletedSection: Section[Element]
+        ): Section[Element] =
+          // NOTE: get the size from the content rather than from the section,
+          // just in case the content doesn't match the nominal size for the
+          // sections passed in.
+
+          val expectedIndexOfSuffix =
+            editSection.content.lastIndexOfSlice(deletedSection.content)
+
+          if -1 == expectedIndexOfSuffix || editSection.content.size > deletedSection.content.size + expectedIndexOfSuffix
+          then editSection
+          else
+            new Section[Element]:
+              override def startOffset: Int = editSection.startOffset
+
+              override def size: Int = editSection.size
+
+              override def content: IndexedSeq[Element] =
+                editSection.content.take(expectedIndexOfSuffix)
+
+              override def render: Tree =
+                Tree.Infix(
+                  editSection.render,
+                  "dropping suffix",
+                  deletedSection.render
+                )
+          end if
+        end adjustmentOfEditByFollowingCoincidentDeletion
 
       import matchesContext.*
 
