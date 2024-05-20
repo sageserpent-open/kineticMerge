@@ -504,11 +504,11 @@ object MainTest extends ProseExamples:
     assert(currentStatus(path).isEmpty)
   end verifyTrivialMergeMovesToTheMostAdvancedCommitWithACleanIndex
 
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
-
   private def currentStatus(path: Path) =
     os.proc(s"git", "status", "--short").call(path).out.text().strip
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
 
   private def currentCommit(path: Path) =
     os.proc("git", "log", "-1", "--format=tformat:%H")
@@ -601,9 +601,6 @@ object MainTest extends ProseExamples:
     assert(status.isEmpty)
   end verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit
 
-  private def mergeHeadPath(path: Path) =
-    path / ".git" / "MERGE_HEAD"
-
   private def verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit(
       path: Path
   )(
@@ -667,6 +664,9 @@ object MainTest extends ProseExamples:
   private def mergeHead(path: Path) =
     os.read(mergeHeadPath(path)).strip()
 
+  private def mergeHeadPath(path: Path) =
+    path / ".git" / "MERGE_HEAD"
+
   private def gitRepository(): ImperativeResource[Path] =
     for
       temporaryDirectory <- Resource.make(IO {
@@ -698,10 +698,10 @@ object MainTest extends ProseExamples:
         .text()
     )
 
-  private def fileHasExpectedContent(file: Path, content: String) =
-    tokens(os.read(file)).get.corresponds(
+  private def contentMatches(expected: String)(actual: String) =
+    tokens(actual).get.corresponds(
       tokens(
-        content
+        expected
       ).get
     )(tokenEquality)
 end MainTest
@@ -1643,9 +1643,8 @@ class MainTest:
               end if
 
               assert(
-                fileHasExpectedContent(
-                  path / movedCasesLimitStrategy,
-                  editedCasesLimitStrategyContent
+                contentMatches(expected = editedCasesLimitStrategyContent)(
+                  os.read(path / movedCasesLimitStrategy)
                 )
               )
               assert(!os.exists(path / casesLimitStrategy))
@@ -1729,17 +1728,22 @@ class MainTest:
                 end if
 
                 assert(
-                  fileHasExpectedContent(
-                    path / (if loseOriginalFileInSplit then
-                              movedCasesLimitStrategy
-                            else casesLimitStrategy),
-                    justTheInterfaceForCasesLimitStrategyExpectedContent
+                  contentMatches(
+                    expected =
+                      justTheInterfaceForCasesLimitStrategyExpectedContent
+                  )(
+                    os.read(
+                      path / (if loseOriginalFileInSplit then
+                                movedCasesLimitStrategy
+                              else casesLimitStrategy)
+                    )
                   )
                 )
                 assert(
-                  fileHasExpectedContent(
-                    path / excisedCasesLimitStrategies,
+                  contentMatches(expected =
                     excisedCasesLimitStrategiesExpectedContent
+                  )(
+                    os.read(path / excisedCasesLimitStrategies)
                   )
                 )
               }
@@ -1828,11 +1832,12 @@ class MainTest:
                 end if
 
                 assert(
-                  fileHasExpectedContent(
-                    path / (if loseBothOriginalFilesInJoin then
-                              movedCasesLimitStrategy
-                            else casesLimitStrategy),
-                    baseCasesLimitStrategyContent
+                  contentMatches(expected = baseCasesLimitStrategyContent)(
+                    os.read(
+                      path / (if loseBothOriginalFilesInJoin then
+                                movedCasesLimitStrategy
+                              else casesLimitStrategy)
+                    )
                   )
                 )
               }
@@ -1907,15 +1912,13 @@ class MainTest:
               end if
 
               assert(
-                fileHasExpectedContent(
-                  path / casesLimitStrategy,
-                  editedExpectyFlavouredAssertContent
+                contentMatches(expected = editedExpectyFlavouredAssertContent)(
+                  os.read(path / casesLimitStrategy)
                 )
               )
               assert(
-                fileHasExpectedContent(
-                  path / expectyFlavouredAssert,
-                  baseCasesLimitStrategyContent
+                contentMatches(expected = baseCasesLimitStrategyContent)(
+                  os.read(path / expectyFlavouredAssert)
                 )
               )
             }
@@ -1991,15 +1994,13 @@ class MainTest:
               end if
 
               assert(
-                fileHasExpectedContent(
-                  path / casesLimitStrategy,
-                  editedExpectyFlavouredAssertContent
+                contentMatches(expected = editedExpectyFlavouredAssertContent)(
+                  os.read(path / casesLimitStrategy)
                 )
               )
               assert(
-                fileHasExpectedContent(
-                  path / expectyFlavouredAssert,
-                  editedCasesLimitStrategyContent
+                contentMatches(expected = editedCasesLimitStrategyContent)(
+                  os.read(path / expectyFlavouredAssert)
                 )
               )
             }
