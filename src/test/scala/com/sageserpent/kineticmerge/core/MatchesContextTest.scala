@@ -1143,4 +1143,82 @@ class MatchesContextTest:
     }
   end coincidentMoveDestinationEdit
 
+  @TestFactory
+  // Pithy...
+  def ourDeletionVersusTheirEditConflictWhereBaseHasMovedAwayOnOurSideWithFollowingCoincidentDeletion
+      : DynamicTests =
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val baseElement: Element          = 1
+      val ourSideMovedElement: Element  = 2
+      val theirSideEditElement: Element = 3
+      val followingBaseElement: Element = 4
+
+      val adjustedEditElement: Element = 5
+
+      val baseAndOurSidePairwiseMatch =
+        if mirrorImage then
+          Match
+            .BaseAndRight(
+              baseElement = baseElement,
+              rightElement = ourSideMovedElement
+            )
+        else
+          Match
+            .BaseAndLeft(
+              baseElement = baseElement,
+              leftElement = ourSideMovedElement
+            )
+
+      val matchesByElement =
+        Map(
+          baseElement         -> baseAndOurSidePairwiseMatch,
+          ourSideMovedElement -> baseAndOurSidePairwiseMatch
+        )
+
+      val mergeAlgebra =
+        new MatchesContext(
+          matchesFor(matchesByElement)
+        ):
+          override protected def adjustmentOfEditByFollowingCoincidentDeletion(
+              editElement: Element,
+              deletedElement: Element
+          ): Element =
+            adjustedEditElement
+        .MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
+
+      val mergeResult =
+        mergeAlgebra.coincidentDeletion(
+          if mirrorImage then
+            mergeAlgebra.conflict(
+              mergeAlgebra.empty,
+              editedElements = IndexedSeq(baseElement),
+              leftEditElements = IndexedSeq(theirSideEditElement),
+              rightEditElements = IndexedSeq.empty
+            )
+          else
+            mergeAlgebra.conflict(
+              mergeAlgebra.empty,
+              editedElements = IndexedSeq(baseElement),
+              leftEditElements = IndexedSeq.empty,
+              rightEditElements = IndexedSeq(theirSideEditElement)
+            )
+          ,
+          deletedElement = followingBaseElement
+        )
+
+      assert(
+        Vector(
+          CoincidentDeletion(baseElement),
+          CoincidentDeletion(followingBaseElement)
+        ) == mergeResult.coreMergeResult
+      )
+
+      assert(
+        Set(
+          Some(adjustedEditElement)
+        ) == mergeResult.changesPropagatedThroughMotion.get(ourSideMovedElement)
+      )
+    }
+  end ourDeletionVersusTheirEditConflictWhereBaseHasMovedAwayOnOurSideWithFollowingCoincidentDeletion
+
 end MatchesContextTest

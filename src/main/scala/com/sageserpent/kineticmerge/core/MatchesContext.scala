@@ -13,6 +13,11 @@ class MatchesContext[Element](
 ):
   val emptyReport: MoveDestinationsReport = MoveDestinationsReport(Map.empty)
 
+  protected def adjustmentOfEditByFollowingCoincidentDeletion(
+      editElement: Element,
+      deletedElement: Element
+  ): Element = editElement
+
   private def dominantsOf(element: Element): collection.Set[Element] =
     matchesFor(element).map(_.dominantElement)
 
