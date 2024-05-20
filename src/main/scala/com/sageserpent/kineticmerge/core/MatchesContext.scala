@@ -34,6 +34,7 @@ class MatchesContext[Element](
       // Use `Option[Element]` to model the difference between an edit and an
       // outright deletion.
       changesPropagatedThroughMotion: MultiDict[Element, Option[Element]],
+      editsPropagatedThroughMotionSubjectToAdjustment: Seq[(Element, Element)],
       moveDestinationsReport: MoveDestinationsReport,
       insertions: Set[Insertion]
   )
@@ -159,6 +160,7 @@ class MatchesContext[Element](
           MergeResultDetectingMotion(
             coreMergeResult = coreMergeAlgebra.empty,
             changesPropagatedThroughMotion = MultiDict.empty,
+            editsPropagatedThroughMotionSubjectToAdjustment = Seq.empty,
             moveDestinationsReport = emptyReport,
             insertions = Set.empty
           )
@@ -272,7 +274,30 @@ class MatchesContext[Element](
                     .modify(_ + (rightElementAtMoveDestination -> None))
               }
 
-            case Seq() => default
+            case Seq() =>
+              default
+                .focus(_.changesPropagatedThroughMotion)
+                .modify(changesPropagatedThroughMotion =>
+                  default.editsPropagatedThroughMotionSubjectToAdjustment
+                    .foldLeft(changesPropagatedThroughMotion)(
+                      {
+                        case (
+                              changesPropagatedThroughMotion,
+                              (destination, edit)
+                            ) =>
+                          changesPropagatedThroughMotion - (destination -> Some(
+                            edit
+                          )) + (destination -> Some(
+                            adjustmentOfEditByFollowingCoincidentDeletion(
+                              editElement = edit,
+                              deletedElement = deletedElement
+                            )
+                          ))
+                      }
+                    )
+                )
+                .focus(_.editsPropagatedThroughMotionSubjectToAdjustment)
+                .modify(_ => Seq.empty)
           end match
         end coincidentDeletion
 
@@ -397,6 +422,12 @@ class MatchesContext[Element](
                             leftElement
                           ))
                         )
+                        .focus(
+                          _.editsPropagatedThroughMotionSubjectToAdjustment
+                        )
+                        .modify(
+                          _ :+ (rightElementAtMoveDestination -> leftElement)
+                        )
                   }
 
                 case Seq(_: BaseAndLeft[Section[Element]], _*) =>
@@ -460,6 +491,12 @@ class MatchesContext[Element](
                           _ + (leftElementAtMoveDestination -> Some(
                             rightElement
                           ))
+                        )
+                        .focus(
+                          _.editsPropagatedThroughMotionSubjectToAdjustment
+                        )
+                        .modify(
+                          _ :+ (leftElementAtMoveDestination -> rightElement)
                         )
                   }
 
@@ -531,6 +568,12 @@ class MatchesContext[Element](
                             rightElement
                           ))
                         )
+                        .focus(
+                          _.editsPropagatedThroughMotionSubjectToAdjustment
+                        )
+                        .modify(
+                          _ :+ (leftElementAtMoveDestination -> leftElement)
+                        )
                   }
 
                 case Seq(_: BaseAndRight[Section[Element]], _*) =>
@@ -561,6 +604,12 @@ class MatchesContext[Element](
                           _ + (rightElementAtMoveDestination -> Some(
                             leftElement
                           ))
+                        )
+                        .focus(
+                          _.editsPropagatedThroughMotionSubjectToAdjustment
+                        )
+                        .modify(
+                          _ :+ (rightElementAtMoveDestination -> leftElement)
                         )
                   }
 
