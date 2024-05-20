@@ -3,11 +3,15 @@ package com.sageserpent.kineticmerge.core
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.junit5.{DynamicTests, given}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
-import com.sageserpent.kineticmerge.core.MergeResultDetectingMotionTest.Operation.*
-import com.sageserpent.kineticmerge.core.MergeResultDetectingMotionTest.{Element, auditingCoreMergeAlgebra, matchesFor}
+import com.sageserpent.kineticmerge.core.MatchesContextTest.Operation.*
+import com.sageserpent.kineticmerge.core.MatchesContextTest.{
+  Element,
+  auditingCoreMergeAlgebra,
+  matchesFor
+}
 import org.junit.jupiter.api.TestFactory
 
-object MergeResultDetectingMotionTest:
+object MatchesContextTest:
   type Element  = Int
   type Audit[X] = Vector[Operation[X]]
 
@@ -91,9 +95,9 @@ object MergeResultDetectingMotionTest:
     ): Audit[Element] =
       result :+ Conflict(editedElements, leftEditElements, rightEditElements)
   end auditingCoreMergeAlgebra
-end MergeResultDetectingMotionTest
+end MatchesContextTest
 
-class MergeResultDetectingMotionTest:
+class MatchesContextTest:
   @TestFactory
   def ourMoveDestinationInsertion: DynamicTests =
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
@@ -1139,4 +1143,4 @@ class MergeResultDetectingMotionTest:
     }
   end coincidentMoveDestinationEdit
 
-end MergeResultDetectingMotionTest
+end MatchesContextTest
