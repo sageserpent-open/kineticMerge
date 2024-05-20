@@ -62,7 +62,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         override protected def adjustmentOfEditByFollowingCoincidentDeletion(
             editSection: Section[Element],
             deletedSection: Section[Element]
-        ): Section[Element] =
+        ): Option[Section[Element]] =
           // NOTE: get the size from the content rather than from the section,
           // just in case the content doesn't match the nominal size for the
           // sections passed in.
@@ -71,9 +71,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             editSection.content.lastIndexOfSlice(deletedSection.content)
 
           if -1 == expectedIndexOfSuffix || editSection.content.size > deletedSection.content.size + expectedIndexOfSuffix
-          then editSection
+          then None
           else
-            new Section[Element]:
+            Some(new Section[Element]:
               override def startOffset: Int = editSection.startOffset
 
               override def size: Int = editSection.size
@@ -87,6 +87,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   "dropping suffix",
                   deletedSection.render
                 )
+            )
           end if
         end adjustmentOfEditByFollowingCoincidentDeletion
 

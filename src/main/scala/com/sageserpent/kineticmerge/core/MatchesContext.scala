@@ -16,7 +16,7 @@ class MatchesContext[Element](
   protected def adjustmentOfEditByFollowingCoincidentDeletion(
       editElement: Element,
       deletedElement: Element
-  ): Element = editElement
+  ): Option[Element] = None
 
   private def dominantsOf(element: Element): collection.Set[Element] =
     matchesFor(element).map(_.dominantElement)
@@ -285,14 +285,19 @@ class MatchesContext[Element](
                               changesPropagatedThroughMotion,
                               (destination, edit)
                             ) =>
-                          changesPropagatedThroughMotion - (destination -> Some(
-                            edit
-                          )) + (destination -> Some(
-                            adjustmentOfEditByFollowingCoincidentDeletion(
-                              editElement = edit,
-                              deletedElement = deletedElement
-                            )
-                          ))
+                          adjustmentOfEditByFollowingCoincidentDeletion(
+                            editElement = edit,
+                            deletedElement = deletedElement
+                          ).fold(ifEmpty = changesPropagatedThroughMotion) {
+                            adjustedEdit =>
+                              logger.debug(
+                                s"Adjusting propagated edit ${pprintCustomised(edit)} to account for following coincidentally deleted suffix ${pprintCustomised(deletedElement)} to yield ${pprintCustomised(adjustedEdit)}."
+                              )
+
+                              changesPropagatedThroughMotion - (destination -> Some(
+                                edit
+                              )) + (destination -> Some(adjustedEdit))
+                          }
                       }
                     )
                 )
