@@ -1474,7 +1474,7 @@ trait ProseExamples:
       |    }
       |
       |
-      |} // Need this to match the closing brace.
+      |}
       |""".stripMargin
 
   protected val codeMotionExampleWithSplitOriginalExpectedMerge: String =
@@ -1665,6 +1665,6 @@ trait ProseExamples:
       |    }
       |
       |
-      |} // Need this to match the closing brace.
+      |}
       |""".stripMargin
 end ProseExamples
