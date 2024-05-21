@@ -201,6 +201,126 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
   end codeMotionWithPropagatedInsertion
 
+  @TestFactory
+  def issue42BugReproduction(): DynamicTests =
+    val minimumMatchSize                 = 2
+    val thresholdSizeFractionForMatching = 0
+
+    val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
+
+    val tokenRegex =
+      raw"([}]|Fish|Chips|MushyPeas|Ketchup|Muesli|Toast|Tea|Coffee|Kippers|Noodles|Sandwich|Cake|Pudding|Porridge|Figs|BlackPudding|Bangers|.)+?".r.anchored
+
+    def stuntDoubleTokens(content: FakePath): Vector[Token] = tokenRegex
+      .findAllMatchIn(content)
+      .map(_.group(1))
+      .map(Token.Significant.apply)
+      .toVector
+
+    Trials.api
+      .choose(
+        (
+          issue42BugReproductionTrailingTokenBase,
+          issue42BugReproductionTrailingTokenLeft,
+          issue42BugReproductionTrailingTokenRight,
+          issue42BugReproductionTrailingTokenMerge
+        ),
+        (
+          issue42BugReproductionTrailingTokenAndThenRightEditBase,
+          issue42BugReproductionTrailingTokenAndThenRightEditLeft,
+          issue42BugReproductionTrailingTokenAndThenRightEditRight,
+          issue42BugReproductionTrailingTokenAndThenRightEditMerge
+        ),
+        (
+          issue42BugReproductionLeadingTokenBase,
+          issue42BugReproductionLeadingTokenLeft,
+          issue42BugReproductionLeadingTokenRight,
+          issue42BugReproductionLeadingTokenMerge
+        ),
+        (
+          issue42BugReproductionRightEditAndThenLeadingTokenBase,
+          issue42BugReproductionRightEditAndThenLeadingTokenLeft,
+          issue42BugReproductionRightEditAndThenLeadingTokenRight,
+          issue42BugReproductionRightEditAndThenLeadingTokenMerge
+        )
+      )
+      .and(Trials.api.booleans)
+      .withLimit(10)
+      .dynamicTests {
+        case (
+              (
+                baseText: String,
+                leftText: String,
+                rightText: String,
+                expectedText: String
+              ),
+              mirrorImage: Boolean
+            ) =>
+          val baseSources = MappedContentSourcesOfTokens(
+            contentsByPath =
+              Map(placeholderPath -> stuntDoubleTokens(baseText)),
+            label = "base"
+          )
+          val leftSources = MappedContentSourcesOfTokens(
+            contentsByPath = Map(
+              placeholderPath -> stuntDoubleTokens(
+                if mirrorImage then rightText else leftText
+              )
+            ),
+            label = "left"
+          )
+          val rightSources = MappedContentSourcesOfTokens(
+            contentsByPath = Map(
+              placeholderPath -> stuntDoubleTokens(
+                if mirrorImage then leftText else rightText
+              )
+            ),
+            label = "right"
+          )
+
+          val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+            base = baseSources,
+            left = leftSources,
+            right = rightSources
+          )(
+            minimumMatchSize = minimumMatchSize,
+            thresholdSizeFractionForMatching = thresholdSizeFractionForMatching,
+            minimumAmbiguousMatchSize = 0
+          )(
+            elementEquality = Token.equality,
+            elementOrder = Token.comparison,
+            elementFunnel = Token.funnel,
+            hashFunction = Hashing.murmur3_32_fixed()
+          )(progressRecording = NoProgressRecording): @unchecked
+
+          val expected = stuntDoubleTokens(expectedText)
+
+          val (mergeResultsByPath, _) =
+            codeMotionAnalysis.merge(equality = Token.equality)
+
+          val mergeResult = mergeResultsByPath(placeholderPath)
+
+          println(fansi.Color.Yellow(s"Checking $placeholderPath...\n"))
+          println(fansi.Color.Yellow("Expected..."))
+          println(fansi.Color.Green(reconstituteTextFrom(expected)))
+
+          mergeResult match
+            case FullyMerged(result) =>
+              println(fansi.Color.Yellow("Fully merged result..."))
+              println(fansi.Color.Green(reconstituteTextFrom(result)))
+              assert(result.corresponds(expected)(Token.equality))
+            case MergedWithConflicts(leftResult, rightResult) =>
+              println(fansi.Color.Red(s"Left result..."))
+              println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+              println(fansi.Color.Red(s"Right result..."))
+              println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+              fail("Should have seen a clean merge.")
+          end match
+      }
+
+  end issue42BugReproduction
+
   @Test
   def codeMotion(): Unit =
     val minimumMatchSize                 = 4
@@ -503,6 +623,92 @@ trait ProseExamples:
   protected val propagatedTrailingInsertionExampleExpectedMerge: String =
     """
       |FishChipsMushyPeasKetchupSandwichCakePuddingFigsMuesliToastCoffeeKippersNoodles
+      |""".stripMargin
+
+  protected val issue42BugReproductionTrailingTokenBase: String =
+    """
+      |FishChipsMushyPeasKetchupMuesliToastTeaKippers}
+      |""".stripMargin
+
+  protected val issue42BugReproductionTrailingTokenLeft: String =
+    """
+      |MuesliToastTeaKippersFishChipsMushyPeasKetchup
+      |""".stripMargin
+
+  protected val issue42BugReproductionTrailingTokenRight: String =
+    """
+      |FishChipsMushyPeasKetchupPorridge}
+      |""".stripMargin
+
+  protected val issue42BugReproductionTrailingTokenMerge: String =
+    """
+      |PorridgeFishChipsMushyPeasKetchup
+      |""".stripMargin
+
+  protected val issue42BugReproductionTrailingTokenAndThenRightEditBase
+      : String =
+    """
+      |FishChipsMushyPeasKetchupMuesliToastTeaKippers}NoodlesSandwichCakePudding
+      |""".stripMargin
+
+  protected val issue42BugReproductionTrailingTokenAndThenRightEditLeft
+      : String =
+    """
+      |MuesliToastTeaKippersFishChipsMushyPeasKetchupNoodlesSandwichCakePudding
+      |""".stripMargin
+
+  protected val issue42BugReproductionTrailingTokenAndThenRightEditRight
+      : String =
+    """
+      |FishChipsMushyPeasKetchupPorridge}CakePudding
+      |""".stripMargin
+
+  protected val issue42BugReproductionTrailingTokenAndThenRightEditMerge
+      : String =
+    """
+      |PorridgeFishChipsMushyPeasKetchupCakePudding
+      |""".stripMargin
+
+  protected val issue42BugReproductionLeadingTokenBase: String =
+    """
+      |FishChipsMushyPeasKetchup{MuesliToastTeaKippers
+      |""".stripMargin
+
+  protected val issue42BugReproductionLeadingTokenLeft: String =
+    """
+      |MuesliToastTeaKippersFishChipsMushyPeasKetchupBangers
+      |""".stripMargin
+
+  protected val issue42BugReproductionLeadingTokenRight: String =
+    """
+      |FishChipsMushyPeasKetchupBangers{Porridge
+      |""".stripMargin
+
+  protected val issue42BugReproductionLeadingTokenMerge: String =
+    """
+      |PorridgeFishChipsMushyPeasKetchupBangers
+      |""".stripMargin
+
+  protected val issue42BugReproductionRightEditAndThenLeadingTokenBase: String =
+    """
+      |FishChipsMushyPeasKetchupNoodlesSandwich{MuesliToastTeaKippersCakePudding
+      |""".stripMargin
+
+  protected val issue42BugReproductionRightEditAndThenLeadingTokenLeft: String =
+    """
+      |MuesliToastTeaKippersFishChipsMushyPeasKetchupNoodlesSandwichCakePudding
+      |""".stripMargin
+
+  protected val issue42BugReproductionRightEditAndThenLeadingTokenRight
+      : String =
+    """
+      |FishChipsMushyPeasKetchup{PorridgeCakePudding
+      |""".stripMargin
+
+  protected val issue42BugReproductionRightEditAndThenLeadingTokenMerge
+      : String =
+    """
+      |PorridgeFishChipsMushyPeasKetchupCakePudding
       |""".stripMargin
 
   protected val wordsworth: String =
