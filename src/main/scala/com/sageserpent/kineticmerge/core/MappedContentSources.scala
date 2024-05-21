@@ -48,31 +48,32 @@ trait MappedContentSources[Path, Element]
               ) { case ((onePastLastEndOffset, partialResult), section) =>
                 section.onePastEndOffset ->
                   ((if onePastLastEndOffset < section.startOffset then
-                      val fillerSection = this.section(path)(
-                        onePastLastEndOffset,
-                        section.startOffset - onePastLastEndOffset
-                      )
-                      // Fill the gap with a new section - this may be a leading
+                      val fillerSections =
+                        (onePastLastEndOffset until section.startOffset) map (
+                          startOffset => this.section(path)(startOffset, 1)
+                        )
+
+                      // Fill the gap one-token sections - this may be a leading
                       // gap before the first section or between two sections.
                       logger.debug(
-                        s"Filling gap on side: $label at path: $path prior to following section with: ${pprintCustomised(fillerSection)}."
+                        s"Filling gap on side: $label at path: $path prior to following section with: ${pprintCustomised(fillerSections)}."
                       )
-                      partialResult :+ fillerSection
+                      partialResult ++ fillerSections
                     else partialResult)
                   :+ section)
               }
 
             if content.size > onePastLastEndOffset then
-              // Fill out the final gap with a new section to cover the entire
+              // Fill out the final gap with new sections to cover the entire
               // content.
-              val fillerSection = section(path)(
-                onePastLastEndOffset,
-                content.size - onePastLastEndOffset
-              )
+              val fillerSections =
+                (onePastLastEndOffset until content.size) map (startOffset =>
+                  section(path)(startOffset, 1)
+                )
               logger.debug(
-                s"Filling final gap on side: $label at path: $path with ${pprintCustomised(fillerSection)}."
+                s"Filling final gap on side: $label at path: $path with ${pprintCustomised(fillerSections)}."
               )
-              contiguousSections :+ fillerSection
+              contiguousSections ++ fillerSections
             else contiguousSections
             end if
           else
