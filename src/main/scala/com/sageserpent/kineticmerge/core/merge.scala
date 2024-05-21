@@ -10,6 +10,13 @@ import scala.annotation.tailrec
 object merge extends StrictLogging:
   /** Performs a three-way merge.
     *
+    * @param mergeAlgebra
+    *   Carries out the merge operations determined by the merge algorithm. This
+    *   allows a pluggable backend for deciding which element takes precedence
+    *   when say, elements from either side compare equal via {@code equality},
+    *   but may not actually be the same via their natural equality. It can also
+    *   support propagation of edits and insertions, as well as contract
+    *   checking when testing.
     * @param base
     *   {@code left} and {@code right} are considered modified versions of this
     *   sequence.
@@ -22,27 +29,26 @@ object merge extends StrictLogging:
     * @param equality
     *   This determines whether elements are considered equal. Because it is not
     *   necessarily `==` or `eq`, this requires a preference for which of the
-    *   equivalent elements to pick in a preservation of coincident insertion.
-    *   That preference is to take the element from {@code left}.
+    *   equivalent elements to pick in a preservation or coincident insertion.
+    *   That is delegated to {@code mergeAlgebra}, which processes the merge
+    *   algorithms' decisions as to how to merge each element.
+    * @param elementSize
+    *   Some measure of an element's size, used to determine the longest common
+    *   subsequence that provides the backbone for the merge.
     * @tparam Element
     *   What the sequences contain.
     * @return
     *   A [[Result]] representing either a full merge without conflicts or a
     *   conflicted merge.
     * @note
-    *   The three-way merge has an implicit precondition that the {@code base},
-    *   {@code left} and {@code right} are yielded from a
-    *   [[LongestCommonSubsequence]], or at least conform to the implied
-    *   postcondition of calling [[LongestCommonSubsequence.of]]. Failure to
-    *   meet this may result in some unspecified exception being thrown.
-    * @note
     *   Rules of the game: If an element is [[Contribution.Common]] to all three
-    *   sides, it is preserved in its left form in the merge; the merge uses the
-    *   least common subsequence as a backbone to arrange other changes around.
-    *   <p><p> If an element is [[Contribution.CommonToLeftAndRightOnly]], it is
-    *   coincidentally inserted on both the left and right side, so goes in its
-    *   left form into the merge, extending the backbone. <p><p> If an element
-    *   is either [[Contribution.CommonToBaseAndLeftOnly]] or
+    *   sides, it is preserved according to the merge algebra in the merge; the
+    *   merge uses the longest common subsequence as a backbone to arrange other
+    *   changes around. <p><p> If an element is
+    *   [[Contribution.CommonToLeftAndRightOnly]], it is coincidentally inserted
+    *   on both the left and right side, so goes in according to the merge
+    *   algebra into the merge, extending the backbone. <p><p> If an element is
+    *   either [[Contribution.CommonToBaseAndLeftOnly]] or
     *   [[Contribution.CommonToBaseAndRightOnly]], this implies a deletion or an
     *   edit on the other side, extending the backbone. <p><p> If an element is
     *   a [[Contribution.Difference]] in {@code base}, then depending on the
@@ -264,7 +270,9 @@ object merge extends StrictLogging:
           insertedElementOnLeft: Element,
           insertedElementOnRight: Element
       ): CoincidentEdit =
-        this.focus(_.deferredCoincidentEdits).modify(_ :+ (insertedElementOnLeft -> insertedElementOnRight))
+        this
+          .focus(_.deferredCoincidentEdits)
+          .modify(_ :+ (insertedElementOnLeft -> insertedElementOnRight))
       override def finalCoincidentEdit(
           result: Result[Element],
           editedElement: Element,
@@ -272,10 +280,11 @@ object merge extends StrictLogging:
           insertedElementOnRight: Element
       ): Result[Element] =
         mergeAlgebra.coincidentEdit(
-        result,
-        editedElement,
-        editElements = deferredCoincidentEdits :+ (insertedElementOnLeft -> insertedElementOnRight)
-      )
+          result,
+          editedElement,
+          editElements =
+            deferredCoincidentEdits :+ (insertedElementOnLeft -> insertedElementOnRight)
+        )
     end CoincidentEdit
 
     case class Conflict(
