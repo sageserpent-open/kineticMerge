@@ -201,6 +201,101 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
   end codeMotionWithPropagatedInsertion
 
+  @TestFactory
+  def codeMotionWithEditAdjustment(): DynamicTests =
+    val minimumMatchSize                 = 2
+    val thresholdSizeFractionForMatching = 0
+
+    val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
+
+    val tokenRegex =
+      raw"([}]|Fish|Chips|MushyPeas|Ketchup|Muesli|Toast|Tea|Coffee|Kippers|Noodles|Sandwich|Cake|Pudding|Porridge|Figs|.)+?".r.anchored
+
+    def stuntDoubleTokens(content: FakePath): Vector[Token] = tokenRegex
+      .findAllMatchIn(content)
+      .map(_.group(1))
+      .map(Token.Significant.apply)
+      .toVector
+
+    Trials.api
+      .only(
+        (
+          adjustedEditSuffixExampleBase,
+          adjustedEditSuffixExampleLeft,
+          adjustedEditSuffixExampleRight,
+          adjustedEditSuffixExampleExpectedMerge
+        )
+      )
+      .withLimit(10)
+      .dynamicTests {
+        (
+            baseText: String,
+            leftText: String,
+            rightText: String,
+            expectedText: String
+        ) =>
+          val baseSources = MappedContentSourcesOfTokens(
+            contentsByPath =
+              Map(placeholderPath -> stuntDoubleTokens(baseText)),
+            label = "base"
+          )
+          val leftSources = MappedContentSourcesOfTokens(
+            contentsByPath = Map(
+              placeholderPath -> stuntDoubleTokens(
+                leftText
+              )
+            ),
+            label = "left"
+          )
+          val rightSources = MappedContentSourcesOfTokens(
+            contentsByPath =
+              Map(placeholderPath -> stuntDoubleTokens(rightText)),
+            label = "right"
+          )
+
+          val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+            base = baseSources,
+            left = leftSources,
+            right = rightSources
+          )(
+            minimumMatchSize = minimumMatchSize,
+            thresholdSizeFractionForMatching = thresholdSizeFractionForMatching,
+            minimumAmbiguousMatchSize = 0
+          )(
+            elementEquality = Token.equality,
+            elementOrder = Token.comparison,
+            elementFunnel = Token.funnel,
+            hashFunction = Hashing.murmur3_32_fixed()
+          )(progressRecording = NoProgressRecording): @unchecked
+
+          val expected = stuntDoubleTokens(expectedText)
+
+          val (mergeResultsByPath, _) =
+            codeMotionAnalysis.merge(equality = Token.equality)
+
+          val mergeResult = mergeResultsByPath(placeholderPath)
+
+          println(fansi.Color.Yellow(s"Checking $placeholderPath...\n"))
+          println(fansi.Color.Yellow("Expected..."))
+          println(fansi.Color.Green(reconstituteTextFrom(expected)))
+
+          mergeResult match
+            case FullyMerged(result) =>
+              println(fansi.Color.Yellow("Fully merged result..."))
+              println(fansi.Color.Green(reconstituteTextFrom(result)))
+              assert(result.corresponds(expected)(Token.equality))
+            case MergedWithConflicts(leftResult, rightResult) =>
+              println(fansi.Color.Red(s"Left result..."))
+              println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+              println(fansi.Color.Red(s"Right result..."))
+              println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+              fail("Should have seen a clean merge.")
+          end match
+      }
+
+  end codeMotionWithEditAdjustment
+
   @Test
   def codeMotion(): Unit =
     val minimumMatchSize                 = 4
@@ -503,6 +598,26 @@ trait ProseExamples:
   protected val propagatedTrailingInsertionExampleExpectedMerge: String =
     """
       |FishChipsMushyPeasKetchupSandwichCakePuddingFigsMuesliToastCoffeeKippersNoodles
+      |""".stripMargin
+
+  protected val adjustedEditSuffixExampleBase: String =
+    """
+      |FishChipsMushyPeasKetchupMuesliToastTeaKippers}NoodlesSandwichCakePudding
+      |""".stripMargin
+
+  protected val adjustedEditSuffixExampleLeft: String =
+    """
+      |MuesliToastTeaKippersFishChipsMushyPeasKetchupNoodlesSandwichCakePudding
+      |""".stripMargin
+
+  protected val adjustedEditSuffixExampleRight: String =
+    """
+      |FishChipsMushyPeasKetchupPorridge}CakePudding
+      |""".stripMargin
+
+  protected val adjustedEditSuffixExampleExpectedMerge: String =
+    """
+      |PorridgeFishChipsMushyPeasKetchupCakePudding
       |""".stripMargin
 
   protected val wordsworth: String =
