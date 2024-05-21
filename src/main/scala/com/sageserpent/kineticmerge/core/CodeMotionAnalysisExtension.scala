@@ -75,9 +75,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           Iterable.empty[
             (
                 Section[Element],
-                Option[
-                  Section[Element]
-                ]
+                IndexedSeq[Section[Element]]
             )
           ],
           emptyReport,
@@ -373,10 +371,12 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           path: Path,
           mergeResult: MergeResult[Section[Element]]
       ): (Path, MergeResult[Section[Element]]) =
-        def substituteFor(section: Section[Element]): Option[Section[Element]] =
-          val propagatedChanges: collection.Set[Option[Section[Element]]] =
+        def substituteFor(
+            section: Section[Element]
+        ): IndexedSeq[Section[Element]] =
+          val propagatedChanges: collection.Set[IndexedSeq[Section[Element]]] =
             vettedChangesPropagatedThroughMotion.get(section)
-          val propagatedChange: Option[Option[Section[Element]]] =
+          val propagatedChange: Option[IndexedSeq[Section[Element]]] =
             if 1 >= propagatedChanges.size then propagatedChanges.headOption
             else
               throw new RuntimeException(
@@ -384,8 +384,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   |Multiple potential changes propagated to destination: $section,
                   |these are:
                   |${propagatedChanges
-                    .map(
-                      _.fold(ifEmpty = "DELETION")(edit => s"EDIT: $edit")
+                    .map(change =>
+                      if change.isEmpty then "DELETION" else s"EDIT: $change"
                     )
                     .zipWithIndex
                     .map((change, index) => s"${1 + index}. $change")
@@ -401,7 +401,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           propagatedChange.fold {
             val dominants = dominantsOf(section)
 
-            Some(
+            IndexedSeq(
               if dominants.isEmpty then section
               else
                 // NASTY HACK: this is hokey, but essentially correct - if we
@@ -410,23 +410,18 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 // choose any one.
                 dominants.head
             )
-          }(
-            _.fold(
-              // Moved section was deleted...
-              ifEmpty =
-                logger.debug(
-                  s"Applying propagated deletion to move destination: ${pprintCustomised(section)}."
-                )
-                None
-            )(
-              // Moved section was edited...
-              { edit =>
-                logger.debug(
-                  s"Applying propagated edit into ${pprintCustomised(edit)} to move destination: ${pprintCustomised(section)}."
-                )
-                Some(edit)
-              }
-            )
+          }(change =>
+            if change.isEmpty then
+              logger.debug(
+                s"Applying propagated deletion to move destination: ${pprintCustomised(section)}."
+              )
+            else
+              logger.debug(
+                s"Applying propagated edit into ${pprintCustomised(change)} to move destination: ${pprintCustomised(section)}."
+              )
+            end if
+
+            change
           )
 
         end substituteFor

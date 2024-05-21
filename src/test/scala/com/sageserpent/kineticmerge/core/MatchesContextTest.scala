@@ -4,11 +4,7 @@ import com.sageserpent.americium.Trials
 import com.sageserpent.americium.junit5.{DynamicTests, given}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.MatchesContextTest.Operation.*
-import com.sageserpent.kineticmerge.core.MatchesContextTest.{
-  Element,
-  auditingCoreMergeAlgebra,
-  matchesFor
-}
+import com.sageserpent.kineticmerge.core.MatchesContextTest.{Element, auditingCoreMergeAlgebra, matchesFor}
 import org.junit.jupiter.api.TestFactory
 
 object MatchesContextTest:
@@ -282,7 +278,7 @@ class MatchesContextTest:
       )
 
       assert(
-        Set(None) == mergeResult.changesPropagatedThroughMotion
+        Set(IndexedSeq.empty) == mergeResult.changesPropagatedThroughMotion
           .get(ourSideMovedElement)
       )
     }
@@ -343,7 +339,7 @@ class MatchesContextTest:
 
       assert(
         Set(
-          Some(theirSideEditElement)
+          IndexedSeq(theirSideEditElement)
         ) == mergeResult.changesPropagatedThroughMotion.get(ourSideMovedElement)
       )
     }
@@ -422,7 +418,7 @@ class MatchesContextTest:
       end if
 
       assert(
-        Set(None) == mergeResult.changesPropagatedThroughMotion
+        Set(IndexedSeq.empty) == mergeResult.changesPropagatedThroughMotion
           .get(ourSideMovedElement)
       )
     }
@@ -503,7 +499,7 @@ class MatchesContextTest:
 
       assert(
         Set(
-          Some(theirSideEditElement)
+          IndexedSeq(theirSideEditElement)
         ) == mergeResult.changesPropagatedThroughMotion.get(ourSideMovedElement)
       )
     }
@@ -588,7 +584,7 @@ class MatchesContextTest:
       end if
 
       assert(
-        Set(None) == mergeResult.changesPropagatedThroughMotion
+        Set(IndexedSeq.empty) == mergeResult.changesPropagatedThroughMotion
           .get(ourSideMovedElement)
       )
     }
