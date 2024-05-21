@@ -602,12 +602,12 @@ trait ProseExamples:
 
   protected val adjustedEditSuffixExampleBase: String =
     """
-      |FishChipsMushyPeasKetchupMuesliToastTeaKippers}NoodlesSandwichCakePudding
+      |FishChipsMushyPeasKetchupMuesliToastTeaKippers}CakePudding
       |""".stripMargin
 
   protected val adjustedEditSuffixExampleLeft: String =
     """
-      |MuesliToastTeaKippersFishChipsMushyPeasKetchupNoodlesSandwichCakePudding
+      |MuesliToastTeaKippersFishChipsMushyPeasKetchupCakePudding
       |""".stripMargin
 
   protected val adjustedEditSuffixExampleRight: String =
