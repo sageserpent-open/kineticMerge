@@ -3,6 +3,7 @@ package com.sageserpent.kineticmerge.core
 import cats.Eq
 import com.sageserpent.kineticmerge.core.merge.of as mergeOf
 import com.typesafe.scalalogging.StrictLogging
+import monocle.syntax.all.*
 
 import scala.collection.Searching
 import scala.collection.immutable.MultiDict
@@ -64,6 +65,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       val paths =
         codeMotionAnalysis.base.keySet ++ codeMotionAnalysis.left.keySet ++ codeMotionAnalysis.right.keySet
 
+      case class InsertionsAtPath(path: Path, insertions: Seq[Insertion])
+
       val (
         mergeResultsByPath,
         changesPropagatedThroughMotion,
@@ -79,7 +82,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             )
           ],
           emptyReport,
-          MultiDict.empty[Path, Insertion]
+          Vector.empty[InsertionsAtPath]
         ) {
           case (
                 (
@@ -159,9 +162,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   moveDestinationsReport.mergeWith(
                     mergedSectionsResult.moveDestinationsReport
                   ),
-                  mergedSectionsResult.insertions.foldLeft(insertionsAtPath)(
-                    (insertionsAtPath, insertion) =>
-                      insertionsAtPath + (path -> insertion)
+                  insertionsAtPath :+ InsertionsAtPath(
+                    path,
+                    mergedSectionsResult.insertions
                   )
                 )
             end match
@@ -185,81 +188,130 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               case (_, rightPart) => section == rightPart
             }
 
-      val insertionsThatAreNotMoveDestinations = insertionsAtPath.filterNot {
-        case (_, Insertion(inserted, side)) =>
-          val dominants = dominantsOf(inserted)
-          moveDestinationsReport.moveDestinationsByDominantSet
-            .get(dominants)
-            .fold(ifEmpty = false)(
-              isMoveDestinationOnGivenSide(inserted, side, _)
-            )
-      }
-
       enum Anchoring:
         case Predecessor
         case Successor
       end Anchoring
 
-      // NOTE: the same insertion may not only be associated with multiple
-      // anchor destinations due to ambiguous matches; it may also be flanked on
-      // either side by anchor destinations. Hence the use of `Anchoring` to
-      // track whether the anchor precedes or succeeds the insertion.
-      // TODO: should we allow distinct sections with the same content to be
-      // considered as identical?
-      val migratedInsertionsByAnchorDestinations =
-        insertionsThatAreNotMoveDestinations.flatMap {
-          case (path, Insertion(inserted, side)) =>
-            val file = side match
-              case Side.Left =>
-                codeMotionAnalysis.left(path)
-              case Side.Right =>
-                codeMotionAnalysis.right(path)
-
-            {
-              val Searching.Found(indexOfInsertedSection) =
-                file.searchByStartOffset(inserted.startOffset): @unchecked
-
-              def destinationsForValidAnchor(
-                  anchor: Section[Element]
-              ): collection.Set[Section[Element]] =
-                val dominants = dominantsOf(anchor)
+      val migratedInsertionsByAnchorDestinations
+          : MultiDict[(Section[Element], Anchoring), Seq[Section[Element]]] =
+        MultiDict.from(insertionsAtPath.flatMap {
+          case InsertionsAtPath(path, insertions) =>
+            val insertionsThatAreNotMoveDestinations = insertions.filterNot {
+              case Insertion(inserted, side) =>
+                val dominants = dominantsOf(inserted)
                 moveDestinationsReport.moveDestinationsByDominantSet
                   .get(dominants)
-                  .fold(ifEmpty = Set.empty)(moveDestinations =>
-                    if !isMoveDestinationOnGivenSide(
-                        anchor,
-                        side,
-                        moveDestinations
-                      )
-                    then
-                      side match
-                        case Side.Left  => moveDestinations.right
-                        case Side.Right => moveDestinations.left
-                    else Set.empty
+                  .fold(ifEmpty = false)(
+                    isMoveDestinationOnGivenSide(inserted, side, _)
                   )
-              end destinationsForValidAnchor
+            }
 
-              val predecessorAnchorDestinations = Option
-                .when(0 < indexOfInsertedSection)(
-                  file.sections(indexOfInsertedSection - 1)
-                )
-                .flatMap(destinationsForValidAnchor)
+            case class InsertionRun(
+                side: Side,
+                // TODO: make this a nel and get rid of the null - put the
+                // insertion run in the left-fold into an option.
+                contiguousInsertions: Seq[Section[Element]]
+            )
 
-              val onePastIndex = 1 + indexOfInsertedSection
-              val successorAnchorDestinations = Option
-                .when(file.sections.length > onePastIndex)(
-                  file.sections(onePastIndex)
-                )
-                .flatMap(destinationsForValidAnchor)
+            val (partialResult, insertionRun) =
+              insertionsThatAreNotMoveDestinations.foldLeft(
+                Vector.empty[InsertionRun],
+                // Use null for the side; the priming insertion run is thrown
+                // away anyway.
+                InsertionRun(side = null, contiguousInsertions = Seq.empty)
+              ) {
+                case (
+                      (
+                        partialResult,
+                        insertionRun
+                      ),
+                      insertion @ Insertion(inserted, side)
+                    ) =>
+                  insertionRun.contiguousInsertions.lastOption.match
+                    case Some(previouslyInserted)
+                        if insertionRun.side == side && previouslyInserted.onePastEndOffset == inserted.startOffset =>
+                      partialResult -> insertionRun
+                        .focus(_.contiguousInsertions)
+                        .modify(_ :+ inserted)
+                    case _ =>
+                      (partialResult :+ insertionRun) -> InsertionRun(
+                        side = side,
+                        contiguousInsertions = Vector(inserted)
+                      )
+              }
 
-              predecessorAnchorDestinations.map(
-                _ -> Anchoring.Predecessor
-              ) ++ successorAnchorDestinations.map(_ -> Anchoring.Successor)
-            }.map(_ -> inserted)
-        }
+            val insertionRuns =
+              // TODO: seriously?
+              if partialResult.nonEmpty then partialResult.tail :+ insertionRun
+              else if null != insertionRun.side then Vector(insertionRun)
+              else Vector.empty
+
+            // NOTE: the same insertion may not only be associated with multiple
+            // anchor destinations due to ambiguous matches; it may also be
+            // flanked on either side by anchor destinations. Hence the use of
+            // `Anchoring` to track whether the anchor precedes or succeeds the
+            // insertion.
+            // TODO: should we allow distinct sections with the same content to
+            // be considered as identical?
+
+            insertionRuns.flatMap {
+              case InsertionRun(side, contiguousInsertions) =>
+                val file = side match
+                  case Side.Left =>
+                    codeMotionAnalysis.left(path)
+                  case Side.Right =>
+                    codeMotionAnalysis.right(path)
+
+                {
+                  def destinationsForValidAnchor(
+                      anchor: Section[Element]
+                  ): collection.Set[Section[Element]] =
+                    val dominants = dominantsOf(anchor)
+                    moveDestinationsReport.moveDestinationsByDominantSet
+                      .get(dominants)
+                      .fold(ifEmpty = Set.empty)(moveDestinations =>
+                        if !isMoveDestinationOnGivenSide(
+                            anchor,
+                            side,
+                            moveDestinations
+                          )
+                        then
+                          side match
+                            case Side.Left  => moveDestinations.right
+                            case Side.Right => moveDestinations.left
+                        else Set.empty
+                      )
+                  end destinationsForValidAnchor
+
+                  val Searching.Found(indexOfLeadingInsertedSection) =
+                    file.searchByStartOffset(
+                      contiguousInsertions.head.startOffset
+                    ): @unchecked
+
+                  val predecessorAnchorDestinations = Option
+                    .when(0 < indexOfLeadingInsertedSection)(
+                      file.sections(indexOfLeadingInsertedSection - 1)
+                    )
+                    .flatMap(destinationsForValidAnchor)
+
+                  val onePastIndex =
+                    contiguousInsertions.size + indexOfLeadingInsertedSection
+                  val successorAnchorDestinations = Option
+                    .when(file.sections.length > onePastIndex)(
+                      file.sections(onePastIndex)
+                    )
+                    .flatMap(destinationsForValidAnchor)
+
+                  predecessorAnchorDestinations.map(
+                    _ -> Anchoring.Predecessor
+                  ) ++ successorAnchorDestinations.map(_ -> Anchoring.Successor)
+                }.map(_ -> contiguousInsertions)
+            }
+        })
 
       val migratedInsertions =
-        migratedInsertionsByAnchorDestinations.values.toSet
+        migratedInsertionsByAnchorDestinations.values.flatten.toSet
 
       def migrateAnchoredInsertions(
           path: Path,
@@ -282,7 +334,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           sections
             .foldLeft(
               IndexedSeq
-                .empty[Section[Element]] -> (None: Option[Section[Element]])
+                .empty[Section[Element]] -> (None: Option[
+                Seq[Section[Element]]
+              ])
             ) {
               case (
                     (partialResult, deferredMigratedInsertion),
@@ -313,19 +367,21 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     case (None, None) =>
                       partialResult :+ candidateAnchorDestination
                     case (Some(deferred), None) =>
-                      partialResult :+ deferred :+ candidateAnchorDestination
+                      partialResult ++ deferred :+ candidateAnchorDestination
                     case (None, Some(preceding)) =>
-                      partialResult :+ preceding :+ candidateAnchorDestination
+                      partialResult ++ preceding :+ candidateAnchorDestination
                     case (Some(deferred), Some(preceding)) =>
                       if deferred == preceding then
-                        partialResult :+ deferred :+ candidateAnchorDestination
+                        partialResult ++ deferred :+ candidateAnchorDestination
                       else
-                        partialResult :+ deferred :+ preceding :+ candidateAnchorDestination
+                        partialResult ++ deferred ++ preceding :+ candidateAnchorDestination
 
                 result -> succeedingMigratedInsertion
             } match
             case (partialResult, deferredMigratedInsertion) =>
-              partialResult ++ deferredMigratedInsertion
+              deferredMigratedInsertion.fold(ifEmpty = partialResult)(
+                partialResult ++ _
+              )
 
         path -> (mergeResult match
           case FullyMerged(sections) =>

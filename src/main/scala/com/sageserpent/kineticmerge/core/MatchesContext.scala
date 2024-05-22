@@ -28,7 +28,7 @@ class MatchesContext[Element](
       coreMergeResult: CoreResult[Element],
       changesPropagatedThroughMotion: MultiDict[Element, IndexedSeq[Element]],
       moveDestinationsReport: MoveDestinationsReport,
-      insertions: Set[Insertion]
+      insertions: Seq[Insertion]
   )
 
   enum Side:
@@ -153,7 +153,7 @@ class MatchesContext[Element](
             coreMergeResult = coreMergeAlgebra.empty,
             changesPropagatedThroughMotion = MultiDict.empty,
             moveDestinationsReport = emptyReport,
-            insertions = Set.empty
+            insertions = Vector.empty
           )
 
         override def preservation(
@@ -176,7 +176,7 @@ class MatchesContext[Element](
         ): ConfiguredMergeResultDetectingMotion[Element] =
           result
             .focus(_.insertions)
-            .modify(_ + Insertion(insertedElement, Side.Left))
+            .modify(_ :+ Insertion(insertedElement, Side.Left))
             .focus(_.coreMergeResult)
             .modify(coreMergeAlgebra.leftInsertion(_, insertedElement))
             .focus(_.moveDestinationsReport)
@@ -189,7 +189,7 @@ class MatchesContext[Element](
         ): ConfiguredMergeResultDetectingMotion[Element] =
           result
             .focus(_.insertions)
-            .modify(_ + Insertion(insertedElement, Side.Right))
+            .modify(_ :+ Insertion(insertedElement, Side.Right))
             .focus(_.coreMergeResult)
             .modify(coreMergeAlgebra.rightInsertion(_, insertedElement))
             .focus(_.moveDestinationsReport)
