@@ -411,6 +411,8 @@ class MatchesContext[Element](
                         coreMergeAlgebra
                           .leftInsertion(_, leftElement)
                       )
+                      .focus(_.moveDestinationsReport)
+                      .modify(_.leftMoveOf(leftElement))
                   )
 
                   matches.foldLeft(withLeftInsertions) {
@@ -445,7 +447,7 @@ class MatchesContext[Element](
                     .modify(
                       coreMergeAlgebra.coincidentDeletion(_, baseElement)
                     )
-                  
+
                   matches.foldLeft(
                     withCoincidentDeletion
                   ) {
@@ -481,6 +483,8 @@ class MatchesContext[Element](
                         coreMergeAlgebra
                           .rightInsertion(_, rightElement)
                       )
+                      .focus(_.moveDestinationsReport)
+                      .modify(_.rightMoveOf(rightElement))
                   )
 
                   matches.foldLeft(withRightInsertions) {
@@ -530,6 +534,8 @@ class MatchesContext[Element](
                         coreMergeAlgebra
                           .leftInsertion(_, leftElement)
                       )
+                      .focus(_.moveDestinationsReport)
+                      .modify(_.leftMoveOf(leftElement))
                   )
 
                   matches.foldLeft(withLeftInsertions) {
@@ -565,6 +571,8 @@ class MatchesContext[Element](
                         coreMergeAlgebra
                           .rightInsertion(_, rightElement)
                       )
+                      .focus(_.moveDestinationsReport)
+                      .modify(_.rightMoveOf(rightElement))
                   )
 
                   matches.foldLeft(withRightInsertions) {
