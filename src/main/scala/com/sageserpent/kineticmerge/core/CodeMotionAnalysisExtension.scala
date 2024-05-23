@@ -198,7 +198,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         MultiDict.from(insertionsAtPath.flatMap {
           case InsertionsAtPath(path, insertions) =>
             val insertionsThatAreNotMoveDestinations = insertions.filterNot {
-              case Insertion(inserted, side) =>
+              case Insertion(side, inserted) =>
                 val dominants = dominantsOf(inserted)
                 moveDestinationsReport.moveDestinationsByDominantSet
                   .get(dominants)
@@ -226,7 +226,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                         partialResult,
                         insertionRun
                       ),
-                      insertion @ Insertion(inserted, side)
+                      insertion @ Insertion(side, inserted)
                     ) =>
                   insertionRun.contiguousInsertions.lastOption.match
                     case Some(previouslyInserted)

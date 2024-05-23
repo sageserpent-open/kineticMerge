@@ -36,7 +36,7 @@ class MatchesContext[Element](
     case Right
   end Side
 
-  case class Insertion(inserted: Element, side: Side)
+  case class Insertion(side: Side, inserted: Element)
 
   case class MoveDestinationsReport(
       moveDestinationsByDominantSet: Map[collection.Set[
@@ -176,7 +176,7 @@ class MatchesContext[Element](
         ): ConfiguredMergeResultDetectingMotion[Element] =
           result
             .focus(_.insertions)
-            .modify(_ :+ Insertion(insertedElement, Side.Left))
+            .modify(_ :+ Insertion(Side.Left, insertedElement))
             .focus(_.coreMergeResult)
             .modify(coreMergeAlgebra.leftInsertion(_, insertedElement))
             .focus(_.moveDestinationsReport)
@@ -189,7 +189,7 @@ class MatchesContext[Element](
         ): ConfiguredMergeResultDetectingMotion[Element] =
           result
             .focus(_.insertions)
-            .modify(_ :+ Insertion(insertedElement, Side.Right))
+            .modify(_ :+ Insertion(Side.Right, insertedElement))
             .focus(_.coreMergeResult)
             .modify(coreMergeAlgebra.rightInsertion(_, insertedElement))
             .focus(_.moveDestinationsReport)
