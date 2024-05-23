@@ -194,7 +194,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       end Anchoring
 
       val migratedInsertionsByAnchorDestinations
-          : MultiDict[(Section[Element], Anchoring), Seq[Section[Element]]] =
+          : MultiDict[(Section[Element], Anchoring), Seq[
+            Section[Element]
+          ]] =
         MultiDict.from(insertionsAtPath.flatMap {
           case InsertionsAtPath(path, insertions) =>
             val insertionsThatAreNotMoveDestinations = insertions.filterNot {
@@ -209,43 +211,40 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
             case class InsertionRun(
                 side: Side,
-                // TODO: make this a nel and get rid of the null - put the
-                // insertion run in the left-fold into an option.
                 contiguousInsertions: Seq[Section[Element]]
-            )
+            ):
+              require(contiguousInsertions.nonEmpty)
+            end InsertionRun
 
             val (partialResult, insertionRun) =
-              insertionsThatAreNotMoveDestinations.foldLeft(
-                Vector.empty[InsertionRun],
-                // Use null for the side; the priming insertion run is thrown
-                // away anyway.
-                InsertionRun(side = null, contiguousInsertions = Seq.empty)
-              ) {
-                case (
-                      (
-                        partialResult,
-                        insertionRun
-                      ),
-                      insertion @ Insertion(side, inserted)
-                    ) =>
-                  insertionRun.contiguousInsertions.lastOption.match
-                    case Some(previouslyInserted)
-                        if insertionRun.side == side && previouslyInserted.onePastEndOffset == inserted.startOffset =>
-                      partialResult -> insertionRun
-                        .focus(_.contiguousInsertions)
-                        .modify(_ :+ inserted)
-                    case _ =>
-                      (partialResult :+ insertionRun) -> InsertionRun(
-                        side = side,
-                        contiguousInsertions = Vector(inserted)
-                      )
-              }
+              insertionsThatAreNotMoveDestinations
+                .foldLeft(
+                  Vector.empty[InsertionRun],
+                  None: Option[InsertionRun]
+                ) {
+                  case (
+                        (
+                          partialResult,
+                          insertionRun
+                        ),
+                        insertion @ Insertion(side, inserted)
+                      ) =>
+                    insertionRun match
+                      case Some(InsertionRun(previousSide, previouslyInserted))
+                          if previousSide == side && previouslyInserted.last.onePastEndOffset == inserted.startOffset =>
+                        partialResult -> insertionRun
+                          .focus(_.some.contiguousInsertions)
+                          .modify(_ :+ inserted)
+                      case _ =>
+                        (partialResult ++ insertionRun) -> Some(
+                          InsertionRun(
+                            side = side,
+                            contiguousInsertions = Vector(inserted)
+                          )
+                        )
+                }
 
-            val insertionRuns =
-              // TODO: seriously?
-              if partialResult.nonEmpty then partialResult.tail :+ insertionRun
-              else if null != insertionRun.side then Vector(insertionRun)
-              else Vector.empty
+            val insertionRuns = partialResult ++ insertionRun
 
             // NOTE: the same insertion may not only be associated with multiple
             // anchor destinations due to ambiguous matches; it may also be
