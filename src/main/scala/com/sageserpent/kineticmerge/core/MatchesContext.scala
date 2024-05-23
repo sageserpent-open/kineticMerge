@@ -407,6 +407,8 @@ class MatchesContext[Element](
                         coreMergeAlgebra
                           .leftInsertion(_, leftElement)
                       )
+                      .focus(_.moveDestinationsReport)
+                      .modify(_.leftMoveOf(leftElement))
                   ) {
                     case (
                           result,
@@ -471,6 +473,8 @@ class MatchesContext[Element](
                         coreMergeAlgebra
                           .rightInsertion(_, rightElement)
                       )
+                      .focus(_.moveDestinationsReport)
+                      .modify(_.rightMoveOf(rightElement))
                   ) {
                     case (
                           result,
@@ -510,6 +514,8 @@ class MatchesContext[Element](
                         coreMergeAlgebra
                           .leftInsertion(_, leftElement)
                       )
+                      .focus(_.moveDestinationsReport)
+                      .modify(_.leftMoveOf(leftElement))
                   ) {
                     case (
                           result,
@@ -541,6 +547,8 @@ class MatchesContext[Element](
                         coreMergeAlgebra
                           .rightInsertion(_, rightElement)
                       )
+                      .focus(_.moveDestinationsReport)
+                      .modify(_.rightMoveOf(rightElement))
                   ) {
                     case (
                           result,
