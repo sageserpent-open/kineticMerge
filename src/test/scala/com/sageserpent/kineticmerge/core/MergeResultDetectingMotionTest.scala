@@ -239,6 +239,250 @@ class MergeResultDetectingMotionTest:
   end ourMoveDestinationEdit
 
   @TestFactory
+  def ourMoveDestinationEditVersusTheirDeletionConflictWhereBaseHasMovedAwayOnOurSide
+      : DynamicTests =
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val baseElement: Element         = 1
+      val ourSideMovedElement: Element = 2
+      val ourSideEditElement: Element  = 3
+      val baseSourceElement: Element   = 4
+
+      val baseAndOurSideOutgoingMovePairwiseMatch =
+        if mirrorImage then
+          Match
+            .BaseAndRight(
+              baseElement = baseElement,
+              rightElement = ourSideMovedElement
+            )
+        else
+          Match
+            .BaseAndLeft(
+              baseElement = baseElement,
+              leftElement = ourSideMovedElement
+            )
+
+      val baseAndOurSideIncomingMovePairwiseMatch =
+        if mirrorImage then
+          Match
+            .BaseAndRight(
+              baseElement = baseSourceElement,
+              rightElement = ourSideEditElement
+            )
+        else
+          Match
+            .BaseAndLeft(
+              baseElement = baseSourceElement,
+              leftElement = ourSideEditElement
+            )
+
+      val matchesByElement =
+        Map(
+          baseElement         -> baseAndOurSideOutgoingMovePairwiseMatch,
+          ourSideMovedElement -> baseAndOurSideOutgoingMovePairwiseMatch,
+          baseSourceElement   -> baseAndOurSideIncomingMovePairwiseMatch,
+          ourSideEditElement  -> baseAndOurSideIncomingMovePairwiseMatch
+        )
+
+      val mergeAlgebra =
+        MatchesContext(
+          matchesFor(matchesByElement)
+        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
+
+      val mergeResult =
+        if mirrorImage then
+          mergeAlgebra.conflict(
+            mergeAlgebra.empty,
+            editedElements = IndexedSeq(baseElement),
+            leftEditElements = IndexedSeq.empty,
+            rightEditElements = IndexedSeq(ourSideEditElement)
+          )
+        else
+          mergeAlgebra.conflict(
+            mergeAlgebra.empty,
+            editedElements = IndexedSeq(baseElement),
+            leftEditElements = IndexedSeq(ourSideEditElement),
+            rightEditElements = IndexedSeq.empty
+          )
+
+      // NOTE: when a merge algebra is driven by `merge.of`, the following
+      // sequences of operations would not be permitted. It's OK in this
+      // situation though - the front end algebra should be driven correctly,
+      // and the core algebra is expected to have its operations translated to
+      // take motion into account. We could translate to a right- or left-edit,
+      // but this feels wrong - there never was an element on the opposite side
+      // of the edit, that was moved out of the way instead.
+      if mirrorImage then
+        assert(
+          Vector(
+            CoincidentDeletion(baseElement),
+            RightInsertion(ourSideEditElement)
+          ) == mergeResult.coreMergeResult
+        )
+      else
+        assert(
+          Vector(
+            CoincidentDeletion(baseElement),
+            LeftInsertion(ourSideEditElement)
+          ) == mergeResult.coreMergeResult
+        )
+      end if
+
+      assert(
+        Set(None) == mergeResult.changesPropagatedThroughMotion
+          .get(ourSideMovedElement)
+      )
+
+      val Seq((dominantSet, moveDestinations)) =
+        mergeResult.moveDestinationsReport.moveDestinationsByDominantSet.toSeq
+
+      assert(dominantSet == Set(ourSideEditElement))
+
+      if mirrorImage then
+        assert(
+          moveDestinations == MoveDestinations(
+            sources = Set(baseSourceElement),
+            left = Set.empty,
+            right = Set(ourSideEditElement),
+            coincident = Set.empty
+          )
+        )
+      else
+        assert(
+          moveDestinations == MoveDestinations(
+            sources = Set(baseSourceElement),
+            left = Set(ourSideEditElement),
+            right = Set.empty,
+            coincident = Set.empty
+          )
+        )
+      end if
+    }
+  end ourMoveDestinationEditVersusTheirDeletionConflictWhereBaseHasMovedAwayOnOurSide
+
+  @TestFactory
+  def ourMoveDestinationEditVersusTheirEditConflictWhereBaseHasMovedAwayOnOurSide
+      : DynamicTests =
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val baseElement: Element          = 1
+      val ourSideMovedElement: Element  = 2
+      val ourSideEditElement: Element   = 3
+      val theirSideEditElement: Element = 4
+      val baseSourceElement: Element    = 5
+
+      val baseAndOurSidePairwiseMatch =
+        if mirrorImage then
+          Match
+            .BaseAndRight(
+              baseElement = baseElement,
+              rightElement = ourSideMovedElement
+            )
+        else
+          Match
+            .BaseAndLeft(
+              baseElement = baseElement,
+              leftElement = ourSideMovedElement
+            )
+
+      val baseAndOurSideIncomingMovePairwiseMatch =
+        if mirrorImage then
+          Match
+            .BaseAndRight(
+              baseElement = baseSourceElement,
+              rightElement = ourSideEditElement
+            )
+        else
+          Match
+            .BaseAndLeft(
+              baseElement = baseSourceElement,
+              leftElement = ourSideEditElement
+            )
+
+      val matchesByElement =
+        Map(
+          baseElement         -> baseAndOurSidePairwiseMatch,
+          ourSideMovedElement -> baseAndOurSidePairwiseMatch,
+          baseSourceElement   -> baseAndOurSideIncomingMovePairwiseMatch,
+          ourSideEditElement  -> baseAndOurSideIncomingMovePairwiseMatch
+        )
+
+      val mergeAlgebra =
+        MatchesContext(
+          matchesFor(matchesByElement)
+        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
+
+      val mergeResult =
+        if mirrorImage then
+          mergeAlgebra.conflict(
+            mergeAlgebra.empty,
+            editedElements = IndexedSeq(baseElement),
+            leftEditElements = IndexedSeq(theirSideEditElement),
+            rightEditElements = IndexedSeq(ourSideEditElement)
+          )
+        else
+          mergeAlgebra.conflict(
+            mergeAlgebra.empty,
+            editedElements = IndexedSeq(baseElement),
+            leftEditElements = IndexedSeq(ourSideEditElement),
+            rightEditElements = IndexedSeq(theirSideEditElement)
+          )
+
+      // NOTE: when a merge algebra is driven by `merge.of`, the following
+      // sequences of operations would not be permitted. It's OK in this
+      // situation though - the front end algebra should be driven correctly,
+      // and the core algebra is expected to have its operations translated to
+      // take motion into account. We could translate to a right- or left-edit,
+      // but this feels wrong - there never was an element on the opposite side
+      // of the edit, that was moved out of the way instead.
+      if mirrorImage then
+        assert(
+          Vector(
+            CoincidentDeletion(baseElement),
+            RightInsertion(ourSideEditElement)
+          ) == mergeResult.coreMergeResult
+        )
+      else
+        assert(
+          Vector(
+            CoincidentDeletion(baseElement),
+            LeftInsertion(ourSideEditElement)
+          ) == mergeResult.coreMergeResult
+        )
+      end if
+
+      assert(
+        Set(
+          Some(theirSideEditElement)
+        ) == mergeResult.changesPropagatedThroughMotion.get(ourSideMovedElement)
+      )
+
+      val Seq((dominantSet, moveDestinations)) =
+        mergeResult.moveDestinationsReport.moveDestinationsByDominantSet.toSeq
+
+      assert(dominantSet == Set(ourSideEditElement))
+
+      if mirrorImage then
+        assert(
+          moveDestinations == MoveDestinations(
+            sources = Set(baseSourceElement),
+            left = Set.empty,
+            right = Set(ourSideEditElement),
+            coincident = Set.empty
+          )
+        )
+      else
+        assert(
+          moveDestinations == MoveDestinations(
+            sources = Set(baseSourceElement),
+            left = Set(ourSideEditElement),
+            right = Set.empty,
+            coincident = Set.empty
+          )
+        )
+      end if
+    }
+  end ourMoveDestinationEditVersusTheirEditConflictWhereBaseHasMovedAwayOnOurSide
+
+  @TestFactory
   def coincidentDeletionWhereBaseHasMovedAwayOnOurSide: DynamicTests =
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
       val baseElement: Element         = 1
