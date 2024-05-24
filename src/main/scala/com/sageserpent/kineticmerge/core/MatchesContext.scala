@@ -404,16 +404,7 @@ class MatchesContext[Element](
 
                   val withLeftInsertions = leftElements.foldLeft(
                     withCoincidentDeletion
-                  )((partialResult, leftElement) =>
-                    partialResult
-                      .focus(_.coreMergeResult)
-                      .modify(
-                        coreMergeAlgebra
-                          .leftInsertion(_, leftElement)
-                      )
-                      .focus(_.moveDestinationsReport)
-                      .modify(_.leftMoveOf(leftElement))
-                  )
+                  )(leftInsertion)
 
                   matches.foldLeft(withLeftInsertions) {
                     case (
@@ -476,16 +467,7 @@ class MatchesContext[Element](
 
                   val withRightInsertions = rightElements.foldLeft(
                     withCoincidentDeletion
-                  )((partialResult, rightElement) =>
-                    partialResult
-                      .focus(_.coreMergeResult)
-                      .modify(
-                        coreMergeAlgebra
-                          .rightInsertion(_, rightElement)
-                      )
-                      .focus(_.moveDestinationsReport)
-                      .modify(_.rightMoveOf(rightElement))
-                  )
+                  )(rightInsertion)
 
                   matches.foldLeft(withRightInsertions) {
                     case (
@@ -527,16 +509,7 @@ class MatchesContext[Element](
 
                   val withLeftInsertions = leftElements.foldLeft(
                     withCoincidentDeletion
-                  )((partialResult, leftElement) =>
-                    partialResult
-                      .focus(_.coreMergeResult)
-                      .modify(
-                        coreMergeAlgebra
-                          .leftInsertion(_, leftElement)
-                      )
-                      .focus(_.moveDestinationsReport)
-                      .modify(_.leftMoveOf(leftElement))
-                  )
+                  )(leftInsertion)
 
                   matches.foldLeft(withLeftInsertions) {
                     case (
@@ -564,16 +537,7 @@ class MatchesContext[Element](
 
                   val withRightInsertions = rightElements.foldLeft(
                     withCoincidentDeletion
-                  )((partialResult, rightElement) =>
-                    partialResult
-                      .focus(_.coreMergeResult)
-                      .modify(
-                        coreMergeAlgebra
-                          .rightInsertion(_, rightElement)
-                      )
-                      .focus(_.moveDestinationsReport)
-                      .modify(_.rightMoveOf(rightElement))
-                  )
+                  )(rightInsertion)
 
                   matches.foldLeft(withRightInsertions) {
                     case (
