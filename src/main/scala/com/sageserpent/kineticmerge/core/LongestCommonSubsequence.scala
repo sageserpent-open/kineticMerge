@@ -360,6 +360,17 @@ object LongestCommonSubsequence:
       end match
     end of
 
+    {
+      // NASTY HACK: for now, work around stack overflow by running the merge
+      // for smaller sizes upfront, so that `partialResultsCache` is
+      // pre-populated.
+      val maxSize = base.size max left.size max right.size
+
+      for size <- 1 until maxSize by 5 do
+        val _ = of(size min base.size, size min left.size, size min right.size)
+      end for
+    }
+
     of(
       base.size,
       left.size,
