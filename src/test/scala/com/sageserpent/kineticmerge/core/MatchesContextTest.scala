@@ -5,7 +5,7 @@ import com.sageserpent.americium.junit5.{DynamicTests, given}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.MatchesContextTest.Operation.*
 import com.sageserpent.kineticmerge.core.MatchesContextTest.{Element, auditingCoreMergeAlgebra, matchesFor}
-import org.junit.jupiter.api.TestFactory
+import org.junit.jupiter.api.{Test, TestFactory}
 
 object MatchesContextTest:
   type Element  = Int
@@ -283,10 +283,13 @@ class MatchesContextTest:
           ourSideEditElement  -> baseAndOurSideIncomingMovePairwiseMatch
         )
 
+      val matchesContext = MatchesContext(
+        matchesFor(matchesByElement)
+      )
+
       val mergeAlgebra =
-        MatchesContext(
-          matchesFor(matchesByElement)
-        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
+        matchesContext.MergeResultDetectingMotion
+          .mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -303,6 +306,8 @@ class MatchesContextTest:
             leftEditElements = IndexedSeq(ourSideEditElement),
             rightEditElements = IndexedSeq.empty
           )
+
+      import matchesContext.*
 
       // NOTE: when a merge algebra is driven by `merge.of`, the following
       // sequences of operations would not be permitted. It's OK in this
@@ -326,6 +331,15 @@ class MatchesContextTest:
           ) == mergeResult.coreMergeResult
         )
       end if
+
+      assert(
+        Seq(
+          Insertion(
+            if mirrorImage then Side.Right else Side.Left,
+            ourSideEditElement
+          )
+        ) == mergeResult.insertions
+      )
 
       assert(
         Set(IndexedSeq.empty) == mergeResult.changesPropagatedThroughMotion
@@ -405,10 +419,13 @@ class MatchesContextTest:
           ourSideEditElement  -> baseAndOurSideIncomingMovePairwiseMatch
         )
 
+      val matchesContext = MatchesContext(
+        matchesFor(matchesByElement)
+      )
+
       val mergeAlgebra =
-        MatchesContext(
-          matchesFor(matchesByElement)
-        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
+        matchesContext.MergeResultDetectingMotion
+          .mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -425,6 +442,8 @@ class MatchesContextTest:
             leftEditElements = IndexedSeq(ourSideEditElement),
             rightEditElements = IndexedSeq(theirSideEditElement)
           )
+
+      import matchesContext.*
 
       // NOTE: when a merge algebra is driven by `merge.of`, the following
       // sequences of operations would not be permitted. It's OK in this
@@ -448,6 +467,15 @@ class MatchesContextTest:
           ) == mergeResult.coreMergeResult
         )
       end if
+
+      assert(
+        Seq(
+          Insertion(
+            if mirrorImage then Side.Right else Side.Left,
+            ourSideEditElement
+          )
+        ) == mergeResult.insertions
+      )
 
       assert(
         Set(
@@ -617,10 +645,13 @@ class MatchesContextTest:
           ourSideMovedElement -> baseAndOurSidePairwiseMatch
         )
 
+      val matchesContext = MatchesContext(
+        matchesFor(matchesByElement)
+      )
+
       val mergeAlgebra =
-        MatchesContext(
-          matchesFor(matchesByElement)
-        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
+        matchesContext.MergeResultDetectingMotion
+          .mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -637,6 +668,8 @@ class MatchesContextTest:
             leftEditElements = IndexedSeq(ourSideEditElement),
             rightEditElements = IndexedSeq.empty
           )
+
+      import matchesContext.*
 
       // NOTE: when a merge algebra is driven by `merge.of`, the following
       // sequences of operations would not be permitted. It's OK in this
@@ -660,6 +693,15 @@ class MatchesContextTest:
           ) == mergeResult.coreMergeResult
         )
       end if
+
+      assert(
+        Seq(
+          Insertion(
+            if mirrorImage then Side.Right else Side.Left,
+            ourSideEditElement
+          )
+        ) == mergeResult.insertions
+      )
 
       assert(
         Set(IndexedSeq.empty) == mergeResult.changesPropagatedThroughMotion
@@ -697,10 +739,13 @@ class MatchesContextTest:
           ourSideMovedElement -> baseAndOurSidePairwiseMatch
         )
 
+      val matchesContext = MatchesContext(
+        matchesFor(matchesByElement)
+      )
+
       val mergeAlgebra =
-        MatchesContext(
-          matchesFor(matchesByElement)
-        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
+        matchesContext.MergeResultDetectingMotion
+          .mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -717,6 +762,8 @@ class MatchesContextTest:
             leftEditElements = IndexedSeq(ourSideEditElement),
             rightEditElements = IndexedSeq(theirSideEditElement)
           )
+
+      import matchesContext.*
 
       // NOTE: when a merge algebra is driven by `merge.of`, the following
       // sequences of operations would not be permitted. It's OK in this
@@ -740,6 +787,15 @@ class MatchesContextTest:
           ) == mergeResult.coreMergeResult
         )
       end if
+
+      assert(
+        Seq(
+          Insertion(
+            if mirrorImage then Side.Right else Side.Left,
+            ourSideEditElement
+          )
+        ) == mergeResult.insertions
+      )
 
       assert(
         Set(
@@ -1177,6 +1233,52 @@ class MatchesContextTest:
       )
     }
   end ourEditVersusTheirEditConflictWhereBaseHasMovedAwayOnBothSides
+
+  @Test
+  def leftInsertion: Unit =
+    val ourSideInsertedElement: Element = 1
+
+    val matchesContext = MatchesContext(matchesFor(Map.empty))
+
+    val mergeAlgebra =
+      matchesContext.MergeResultDetectingMotion.mergeAlgebra(
+        auditingCoreMergeAlgebra
+      )
+
+    val mergeResult =
+      mergeAlgebra.leftInsertion(mergeAlgebra.empty, ourSideInsertedElement)
+
+    import matchesContext.*
+
+    assert(
+      Seq(
+        matchesContext.Insertion(Side.Left, ourSideInsertedElement)
+      ) == mergeResult.insertions
+    )
+  end leftInsertion
+
+  @Test
+  def rightInsertion: Unit =
+    val theirSideInsertedElement: Element = 1
+
+    val matchesContext = MatchesContext(matchesFor(Map.empty))
+
+    val mergeAlgebra =
+      matchesContext.MergeResultDetectingMotion.mergeAlgebra(
+        auditingCoreMergeAlgebra
+      )
+
+    val mergeResult =
+      mergeAlgebra.rightInsertion(mergeAlgebra.empty, theirSideInsertedElement)
+
+    import matchesContext.*
+
+    assert(
+      Seq(
+        matchesContext.Insertion(Side.Right, theirSideInsertedElement)
+      ) == mergeResult.insertions
+    )
+  end rightInsertion
 
   @TestFactory
   def coincidentMoveDestinationInsertion: DynamicTests =
