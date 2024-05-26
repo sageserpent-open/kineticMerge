@@ -90,8 +90,8 @@ object Token extends JavaTokenParsers:
   end comparison
 
   @tailrec
-  def funnel(element: Token, primitiveSink: PrimitiveSink): Unit =
-    element match
+  def funnel(token: Token, primitiveSink: PrimitiveSink): Unit =
+    token match
       case Whitespace(blanks)   =>
       case Significant(letters) => letters.foreach(primitiveSink.putChar)
       case WithTrailingWhitespace(coreToken, _) =>
@@ -103,7 +103,7 @@ object Token extends JavaTokenParsers:
     require(blanks.isBlank)
   end Whitespace
 
-  case class Significant(letters: String) extends Token
+  case class Significant(content: String) extends Token
 
   case class WithTrailingWhitespace(
       coreToken: Significant,
