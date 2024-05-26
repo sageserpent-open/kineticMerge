@@ -5,6 +5,7 @@ import com.typesafe.scalalogging.StrictLogging
 import pprint.Tree
 
 import java.util.Arrays as JavaArrays
+import scala.collection.immutable.SortedSet
 import scala.collection.mutable.Map as MutableMap
 
 trait MappedContentSources[Path, Element]
@@ -14,12 +15,17 @@ trait MappedContentSources[Path, Element]
   val label: String
 
   override def filesByPathUtilising(
-      mandatorySections: Set[Section[Element]]
+      mandatorySections: Set[Section[Element]],
+      candidateGapChunksByPath: Map[Path, Set[IndexedSeq[Element]]]
   ): Map[Path, File[Element]] =
     val sectionsByPath = mandatorySections.groupBy(pathFor)
 
     contentsByPath.map { case (path, content) =>
       val pertinentSections = sectionsByPath.getOrElse(path, Set.empty)
+
+      val candidateGapChunksInDescendingSizeOrder = SortedSet.from(
+        candidateGapChunksByPath.getOrElse(path, Set.empty)
+      )(Ordering.by((_: IndexedSeq[Element]).size).reverse)
 
       path -> File(
         if content.nonEmpty then
@@ -42,22 +48,86 @@ trait MappedContentSources[Path, Element]
                   throw new OverlappingSections(path, first, second)
               )
 
+            def gapFilling(gapStart: Int, onePastGapEnd: Int): IndexedSeq[Section[Element]] =
+              val gapSize = onePastGapEnd - gapStart
+
+              val gapContent = contentsByPath(path)
+                .slice(gapStart, onePastGapEnd)
+
+              val biggestChunkContainedInGapContent =
+                candidateGapChunksInDescendingSizeOrder
+                  .dropWhile(chunk =>
+                    chunk.size > gapSize || !gapContent
+                      .containsSlice(chunk)
+                  )
+                  .headOption
+
+              biggestChunkContainedInGapContent.fold(
+                ifEmpty =
+                  val fillerSection = this.section(path)(
+                    gapStart,
+                    onePastGapEnd - gapStart
+                  )
+
+                  logger.debug(
+                    s"Filling gap on side: $label at path: $path prior to following section with: ${pprintCustomised(fillerSection)}."
+                  )
+                  
+                  IndexedSeq(fillerSection)
+              ) { chunk =>
+                val chunkStartInGapContent =
+                  gapContent.indexOfSlice(chunk)
+
+                assume(-1 != chunkStartInGapContent)
+
+                val onePastChunkEnd =
+                  chunkStartInGapContent + chunk.size
+
+                val prefixSection =
+                  Option.when(0 < chunkStartInGapContent)(
+                    this.section(path)(
+                      gapStart,
+                      chunkStartInGapContent
+                    )
+                  )
+
+                val chunkSection = this.section(path)(
+                  gapStart + chunkStartInGapContent,
+                  chunk.size
+                )
+
+                val suffixSection =
+                  Option.when(gapSize > onePastChunkEnd)(
+                    this.section(path)(
+                      gapStart + onePastChunkEnd,
+                      gapSize - onePastChunkEnd
+                    )
+                  )
+
+                val fillerSections = (prefixSection ++ Iterator(
+                  chunkSection
+                ) ++ suffixSection).toIndexedSeq
+                
+                fillerSections
+              }
+            end gapFilling
+
+
             val (onePastLastEndOffset, contiguousSections) =
               sectionsInStartOffsetOrder.foldLeft(
                 0 -> Vector.empty[Section[Element]]
               ) { case ((onePastLastEndOffset, partialResult), section) =>
                 section.onePastEndOffset ->
                   ((if onePastLastEndOffset < section.startOffset then
-                      val fillerSections =
-                        (onePastLastEndOffset until section.startOffset) map (
-                          startOffset => this.section(path)(startOffset, 1)
-                        )
+                      // Fill the gap - this may be a leading gap before the
+                      // first section or between two sections.
 
-                      // Fill the gap one-token sections - this may be a leading
-                      // gap before the first section or between two sections.
+                      val fillerSections = gapFilling(gapStart = onePastLastEndOffset, onePastGapEnd = section.startOffset)
+  
                       logger.debug(
                         s"Filling gap on side: $label at path: $path prior to following section with: ${pprintCustomised(fillerSections)}."
                       )
+                      
                       partialResult ++ fillerSections
                     else partialResult)
                   :+ section)
@@ -66,10 +136,8 @@ trait MappedContentSources[Path, Element]
             if content.size > onePastLastEndOffset then
               // Fill out the final gap with new sections to cover the entire
               // content.
-              val fillerSections =
-                (onePastLastEndOffset until content.size) map (startOffset =>
-                  section(path)(startOffset, 1)
-                )
+              val fillerSections = gapFilling(gapStart = onePastLastEndOffset, onePastGapEnd = content.size)
+
               logger.debug(
                 s"Filling final gap on side: $label at path: $path with ${pprintCustomised(fillerSections)}."
               )

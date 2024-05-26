@@ -1774,21 +1774,38 @@ object CodeMotionAnalysis extends StrictLogging:
     end matchesAndTheirSections
 
     val attempt = Try {
+      val sectionsAndTheirMatches =
+        matchesAndTheirSections.sectionsAndTheirMatches
+
       val baseFilesByPath =
         base.filesByPathUtilising(
-          matchesAndTheirSections.baseSections
+          mandatorySections = matchesAndTheirSections.baseSections
         )
+
+      // NOTE: we collect the unmatched sections from the base side and use them
+      // to break up gap fills for the left- and right-sides. This gives the
+      // downstream merge a chance to make last-minute matches of its own
+      // between small unmatched sections that are deleted from the base and
+      // their counterparts on the left or right. See
+      // https://github.com/sageserpent-open/kineticMerge/issues/42 and
+      // https://github.com/sageserpent-open/kineticMerge/issues/43.
+      val candidateGapChunksByPath = baseFilesByPath.map { case (path, file) =>
+        path -> file.sections
+          .filterNot(sectionsAndTheirMatches.containsKey)
+          .map(_.content)
+          .toSet
+      }
+
       val leftFilesByPath =
         left.filesByPathUtilising(
-          matchesAndTheirSections.leftSections
+          mandatorySections = matchesAndTheirSections.leftSections,
+          candidateGapChunksByPath = candidateGapChunksByPath
         )
       val rightFilesByPath =
         right.filesByPathUtilising(
-          matchesAndTheirSections.rightSections
+          mandatorySections = matchesAndTheirSections.rightSections,
+          candidateGapChunksByPath = candidateGapChunksByPath
         )
-
-      val sectionsAndTheirMatches =
-        matchesAndTheirSections.sectionsAndTheirMatches
 
       // Check the invariant that all matches that involve the same section must
       // be of the same kind...

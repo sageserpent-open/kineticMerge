@@ -38,18 +38,24 @@ trait Sources[Path, Element]:
   def pathFor(section: Section[Element]): Path
 
   /** Yield a breakdown of [[File]] instances arranged by [[Path]], such that
-    * each of the {@code sections} is present in a [[File]] instance.
+    * each of the {@code mandatorySections} is present in a [[File]] instance.
     *
     * This adds additional sections to fill in gaps between the ones given in
-    * {@code sections}, and where a path has no section from {@code sections}
-    * associated with it, it will be given a [[File]] instance with one section
-    * covering the entire file content.
+    * {@code mandatorySections}; where a path has no associated section from
+    * {@code mandatorySections}, it will be given a [[File]] instance with one
+    * section covering the entire file content.
     *
     * @note
-    *   {@code sections} may be an empty set - this then yields an initial
-    *   coarse breakdown into files of one section each.
+    *   {@code mandatorySections} may be an empty set - this then yields an
+    *   initial coarse breakdown into files of one section each.
+    * @note
+    *   {@code candidateGapChunksByPath} is used when filling gaps - if a gap on
+    *   a path has a candidate chunk as a subsequence, the gap will be split up
+    *   so that the chunk forms its own section. Only one candidate chunk is
+    *   used for a gap fill (if any).
     */
   def filesByPathUtilising(
-      mandatorySections: Set[Section[Element]]
+      mandatorySections: Set[Section[Element]],
+      candidateGapChunksByPath: Map[Path, Set[IndexedSeq[Element]]] = Map.empty
   ): Map[Path, File[Element]]
 end Sources
