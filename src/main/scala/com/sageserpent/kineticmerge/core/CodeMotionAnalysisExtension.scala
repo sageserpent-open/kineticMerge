@@ -69,7 +69,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
       val (
         mergeResultsByPath,
-        changesPropagatedThroughMotion,
+        changesMigratedThroughMotion,
         moveDestinationsReport,
         insertionsAtPath
       ) =
@@ -87,7 +87,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           case (
                 (
                   mergeResultsByPath,
-                  changesPropagatedThroughMotion,
+                  changesMigratedThroughMotion,
                   moveDestinationsReport,
                   insertionsAtPath
                 ),
@@ -105,7 +105,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   mergeResultsByPath + (path -> FullyMerged(
                     leftSections
                   )),
-                  changesPropagatedThroughMotion,
+                  changesMigratedThroughMotion,
                   leftSections.foldLeft(moveDestinationsReport)(
                     _.leftMoveOf(_)
                   ),
@@ -119,7 +119,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   mergeResultsByPath + (path -> FullyMerged(
                     rightSections
                   )),
-                  changesPropagatedThroughMotion,
+                  changesMigratedThroughMotion,
                   rightSections.foldLeft(moveDestinationsReport)(
                     _.rightMoveOf(_)
                   ),
@@ -158,7 +158,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
                 (
                   mergeResultsByPath + (path -> mergedSectionsResult.coreMergeResult),
-                  changesPropagatedThroughMotion ++ mergedSectionsResult.changesPropagatedThroughMotion,
+                  changesMigratedThroughMotion ++ mergedSectionsResult.changesMigratedThroughMotion,
                   moveDestinationsReport.mergeWith(
                     mergedSectionsResult.moveDestinationsReport
                   ),
@@ -401,7 +401,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         )
       end migrateAnchoredInsertions
 
-      val potentialValidDestinationsForPropagatingChangesTo =
+      val potentialValidDestinationsForMigratingChangesTo =
         moveDestinationsReport.moveDestinationsByDominantSet.values
           .filterNot(moveDestinations =>
             moveDestinations.isDegenerate || moveDestinations.isDivergent
@@ -414,31 +414,31 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           )
           .toSet
 
-      val vettedChangesPropagatedThroughMotion =
-        MultiDict.from(changesPropagatedThroughMotion.filter {
+      val vettedChangesMigratedThroughMotion =
+        MultiDict.from(changesMigratedThroughMotion.filter {
           case (potentialDestination, _) =>
-            potentialValidDestinationsForPropagatingChangesTo.contains(
+            potentialValidDestinationsForMigratingChangesTo.contains(
               potentialDestination
             )
         })
 
-      def substitutePropagatedChangesOrDominants(
+      def substituteMigratedChangesOrDominants(
           path: Path,
           mergeResult: MergeResult[Section[Element]]
       ): (Path, MergeResult[Section[Element]]) =
         def substituteFor(
             section: Section[Element]
         ): IndexedSeq[Section[Element]] =
-          val propagatedChanges: collection.Set[IndexedSeq[Section[Element]]] =
-            vettedChangesPropagatedThroughMotion.get(section)
-          val propagatedChange: Option[IndexedSeq[Section[Element]]] =
-            if 1 >= propagatedChanges.size then propagatedChanges.headOption
+          val migratedChanges: collection.Set[IndexedSeq[Section[Element]]] =
+            vettedChangesMigratedThroughMotion.get(section)
+          val migratedChange: Option[IndexedSeq[Section[Element]]] =
+            if 1 >= migratedChanges.size then migratedChanges.headOption
             else
               throw new RuntimeException(
                 s"""
-                  |Multiple potential changes propagated to destination: $section,
+                  |Multiple potential changes migrated to destination: $section,
                   |these are:
-                  |${propagatedChanges
+                  |${migratedChanges
                     .map(change =>
                       if change.isEmpty then "DELETION" else s"EDIT: $change"
                     )
@@ -450,10 +450,10 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       """.stripMargin
               )
 
-          // If we do have a propagated change, then there is no need to look
+          // If we do have a migrated change, then there is no need to look
           // for the dominant - either the section was deleted or edited;
           // matched sections are not considered as edit candidates.
-          propagatedChange.fold {
+          migratedChange.fold {
             val dominants = dominantsOf(section)
 
             IndexedSeq(
@@ -468,11 +468,11 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           }(change =>
             if change.isEmpty then
               logger.debug(
-                s"Applying propagated deletion to move destination: ${pprintCustomised(section)}."
+                s"Applying migrated deletion to move destination: ${pprintCustomised(section)}."
               )
             else
               logger.debug(
-                s"Applying propagated edit into ${pprintCustomised(change)} to move destination: ${pprintCustomised(section)}."
+                s"Applying migrated edit into ${pprintCustomised(change)} to move destination: ${pprintCustomised(section)}."
               )
             end if
 
@@ -490,7 +490,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               rightSections.flatMap(substituteFor)
             )
         )
-      end substitutePropagatedChangesOrDominants
+      end substituteMigratedChangesOrDominants
 
       def explodeSections(
           path: Path,
@@ -503,7 +503,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             val leftElements  = leftSections.flatMap(_.content)
             val rightElements = rightSections.flatMap(_.content)
 
-            // Just in case the conflict was resolved by the propagated
+            // Just in case the conflict was resolved by the migrated
             // changes...
             if leftElements.corresponds(
                 rightElements
@@ -520,7 +520,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
       mergeResultsByPath
         .map(migrateAnchoredInsertions)
-        .map(substitutePropagatedChangesOrDominants)
+        .map(substituteMigratedChangesOrDominants)
         .map(explodeSections) -> moveDestinationsReport
     end merge
   end extension

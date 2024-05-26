@@ -342,7 +342,7 @@ class MatchesContextTest:
       )
 
       assert(
-        Set(IndexedSeq.empty) == mergeResult.changesPropagatedThroughMotion
+        Set(IndexedSeq.empty) == mergeResult.changesMigratedThroughMotion
           .get(ourSideMovedElement)
       )
 
@@ -480,7 +480,7 @@ class MatchesContextTest:
       assert(
         Set(
           IndexedSeq(theirSideEditElement)
-        ) == mergeResult.changesPropagatedThroughMotion.get(ourSideMovedElement)
+        ) == mergeResult.changesMigratedThroughMotion.get(ourSideMovedElement)
       )
 
       val Seq((dominantSet, moveDestinations)) =
@@ -550,7 +550,7 @@ class MatchesContextTest:
       )
 
       assert(
-        Set(IndexedSeq.empty) == mergeResult.changesPropagatedThroughMotion
+        Set(IndexedSeq.empty) == mergeResult.changesMigratedThroughMotion
           .get(ourSideMovedElement)
       )
     }
@@ -612,7 +612,7 @@ class MatchesContextTest:
       assert(
         Set(
           IndexedSeq(theirSideEditElement)
-        ) == mergeResult.changesPropagatedThroughMotion.get(ourSideMovedElement)
+        ) == mergeResult.changesMigratedThroughMotion.get(ourSideMovedElement)
       )
     }
   end ourDeletionVersusTheirEditConflictWhereBaseHasMovedAwayOnOurSide
@@ -704,7 +704,7 @@ class MatchesContextTest:
       )
 
       assert(
-        Set(IndexedSeq.empty) == mergeResult.changesPropagatedThroughMotion
+        Set(IndexedSeq.empty) == mergeResult.changesMigratedThroughMotion
           .get(ourSideMovedElement)
       )
     }
@@ -800,7 +800,7 @@ class MatchesContextTest:
       assert(
         Set(
           IndexedSeq(theirSideEditElement)
-        ) == mergeResult.changesPropagatedThroughMotion.get(ourSideMovedElement)
+        ) == mergeResult.changesMigratedThroughMotion.get(ourSideMovedElement)
       )
     }
   end ourEditVersusTheirEditConflictWhereBaseHasMovedAwayOnOurSide
@@ -884,7 +884,7 @@ class MatchesContextTest:
       end if
 
       assert(
-        Set(IndexedSeq.empty) == mergeResult.changesPropagatedThroughMotion
+        Set(IndexedSeq.empty) == mergeResult.changesMigratedThroughMotion
           .get(ourSideMovedElement)
       )
     }
@@ -939,7 +939,7 @@ class MatchesContextTest:
       end if
 
       assert(
-        !mergeResult.changesPropagatedThroughMotion
+        !mergeResult.changesMigratedThroughMotion
           .containsKey(ourSideMovedElement)
       )
     }
@@ -1008,7 +1008,7 @@ class MatchesContextTest:
       end if
 
       assert(
-        !mergeResult.changesPropagatedThroughMotion
+        !mergeResult.changesMigratedThroughMotion
           .containsKey(ourSideMovedElement)
       )
     }
@@ -1055,11 +1055,11 @@ class MatchesContextTest:
       )
 
       assert(
-        !mergeResult.changesPropagatedThroughMotion
+        !mergeResult.changesMigratedThroughMotion
           .containsKey(ourSideMovedElement)
       )
       assert(
-        !mergeResult.changesPropagatedThroughMotion
+        !mergeResult.changesMigratedThroughMotion
           .containsKey(theirSideMovedElement)
       )
     }
@@ -1139,11 +1139,11 @@ class MatchesContextTest:
       end if
 
       assert(
-        !mergeResult.changesPropagatedThroughMotion
+        !mergeResult.changesMigratedThroughMotion
           .containsKey(ourSideMovedElement)
       )
       assert(
-        !mergeResult.changesPropagatedThroughMotion
+        !mergeResult.changesMigratedThroughMotion
           .containsKey(theirSideMovedElement)
       )
     }
@@ -1224,11 +1224,11 @@ class MatchesContextTest:
       end if
 
       assert(
-        !mergeResult.changesPropagatedThroughMotion
+        !mergeResult.changesMigratedThroughMotion
           .containsKey(ourSideMovedElement)
       )
       assert(
-        !mergeResult.changesPropagatedThroughMotion
+        !mergeResult.changesMigratedThroughMotion
           .containsKey(theirSideMovedElement)
       )
     }
@@ -1342,11 +1342,11 @@ class MatchesContextTest:
       end if
 
       assert(
-        !mergeResult.changesPropagatedThroughMotion
+        !mergeResult.changesMigratedThroughMotion
           .containsKey(ourSideMovedElement)
       )
       assert(
-        !mergeResult.changesPropagatedThroughMotion
+        !mergeResult.changesMigratedThroughMotion
           .containsKey(theirSideMovedElement)
       )
 
@@ -1448,11 +1448,11 @@ class MatchesContextTest:
       end if
 
       assert(
-        !mergeResult.changesPropagatedThroughMotion
+        !mergeResult.changesMigratedThroughMotion
           .containsKey(ourSideMovedElement)
       )
       assert(
-        !mergeResult.changesPropagatedThroughMotion
+        !mergeResult.changesMigratedThroughMotion
           .containsKey(theirSideMovedElement)
       )
 
