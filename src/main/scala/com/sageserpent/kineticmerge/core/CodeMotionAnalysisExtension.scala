@@ -189,6 +189,34 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               case (_, rightPart) => section == rightPart
             }
 
+      val migrationOrdering: Ordering[Seq[Section[Element]]] =
+        Ordering.Implicits.seqOrdering(
+          Ordering.by[Section[Element], IndexedSeq[Element]](_.content)(
+            Ordering.Implicits.seqOrdering(elementOrder.toOrdering)
+          )
+        )
+
+      def uniqueMigrations[Sequence[Item] <: Seq[Item]](
+          migratedChanges: collection.Set[Sequence[Section[Element]]]
+      ) =
+        require(migratedChanges.nonEmpty)
+
+        val migratedChangesSortedByContent =
+          migratedChanges.toSeq.sorted(migrationOrdering)
+
+        val uniqueMigratedChanges =
+          migratedChangesSortedByContent.tail.foldLeft(
+            List(migratedChangesSortedByContent.head)
+          ) { case (partialResult @ head :: _, change) =>
+            if 0 == migrationOrdering.compare(head, change) then partialResult
+            else change :: partialResult
+          }
+
+        assume(uniqueMigratedChanges.nonEmpty)
+
+        uniqueMigratedChanges
+      end uniqueMigrations
+
       enum Anchoring:
         case Predecessor
         case Successor
@@ -252,8 +280,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             // flanked on either side by anchor destinations. Hence the use of
             // `Anchoring` to track whether the anchor precedes or succeeds the
             // insertion.
-            // TODO: should we allow distinct sections with the same content to
-            // be considered as identical?
 
             insertionRuns.flatMap {
               case InsertionRun(side, contiguousInsertions) =>
@@ -348,9 +374,30 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   )
 
                 val precedingMigratedInsertion =
-                  if 1 >= precedingMigratedInsertions.size then
-                    precedingMigratedInsertions.headOption
-                  else throw RuntimeException("THINK OF A AN ERROR MESSAGE.")
+                  Option.when(precedingMigratedInsertions.nonEmpty) {
+                    val uniqueMigratedInsertions =
+                      uniqueMigrations(precedingMigratedInsertions)
+
+                    uniqueMigratedInsertions match
+                      case head :: Nil => head
+                      case _ =>
+                        throw new RuntimeException(
+                          s"""
+                           |Multiple potential insertions migrated before destination: $candidateAnchorDestination,
+                           |these are:
+                           |${uniqueMigratedInsertions
+                              .map(insertion => s"PRE-INSERTION: $insertion")
+                              .zipWithIndex
+                              .map((insertion, index) =>
+                                s"${1 + index}. $insertion"
+                              )
+                              .mkString("\n")}
+                           |These are from ambiguous matches of anchor text with the destination.
+                           |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${candidateAnchorDestination.size}.
+                              """.stripMargin
+                        )
+                    end match
+                  }
 
                 val succeedingMigratedInsertions =
                   migratedInsertionsByAnchorDestinations.get(
@@ -358,9 +405,30 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   )
 
                 val succeedingMigratedInsertion =
-                  if 1 >= succeedingMigratedInsertions.size then
-                    succeedingMigratedInsertions.headOption
-                  else throw RuntimeException("THINK OF A AN ERROR MESSAGE.")
+                  Option.when(succeedingMigratedInsertions.nonEmpty) {
+                    val uniqueMigratedInsertions =
+                      uniqueMigrations(succeedingMigratedInsertions)
+
+                    uniqueMigratedInsertions match
+                      case head :: Nil => head
+                      case _ =>
+                        throw new RuntimeException(
+                          s"""
+                             |Multiple potential insertions migrated after destination: $candidateAnchorDestination,
+                             |these are:
+                             |${uniqueMigratedInsertions
+                              .map(insertion => s"POST-INSERTION: $insertion")
+                              .zipWithIndex
+                              .map((insertion, index) =>
+                                s"${1 + index}. $insertion"
+                              )
+                              .mkString("\n")}
+                             |These are from ambiguous matches of anchor text with the destination.
+                             |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${candidateAnchorDestination.size}.
+                              """.stripMargin
+                        )
+                    end match
+                  }
 
                 val result =
                   (deferredMigratedInsertion, precedingMigratedInsertion) match
@@ -423,13 +491,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             )
         })
 
-      val changeOrdering: Ordering[IndexedSeq[Section[Element]]] =
-        Ordering.Implicits.seqOrdering(
-          Ordering.by[Section[Element], IndexedSeq[Element]](_.content)(
-            Ordering.Implicits.seqOrdering(elementOrder.toOrdering)
-          )
-        )
-
       def substituteMigratedChangesOrDominants(
           path: Path,
           mergeResult: MergeResult[Section[Element]]
@@ -441,18 +502,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             .get(section)
 
           if migratedChanges.nonEmpty then
-            val migratedChangesSortedByContent =
-              migratedChanges.toSeq.sorted(changeOrdering)
-
-            val uniqueMigratedChanges =
-              migratedChangesSortedByContent.tail.foldLeft(
-                List(migratedChangesSortedByContent.head)
-              ) { case (partialResult @ head :: _, change) =>
-                if 0 == changeOrdering.compare(head, change) then partialResult
-                else change :: partialResult
-              }
-
-            assume(uniqueMigratedChanges.nonEmpty)
+            val uniqueMigratedChanges = uniqueMigrations(migratedChanges)
 
             val migratedChange: IndexedSeq[Section[Element]] =
               uniqueMigratedChanges match
