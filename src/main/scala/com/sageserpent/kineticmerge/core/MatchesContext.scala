@@ -31,6 +31,15 @@ class MatchesContext[Element](
       insertions: Seq[Insertion]
   )
 
+  // NOTE: this could be moved into a companion object for `MatchesContext`, but
+  // we still need to define `MoveDestinationsReport` in scope of the class,
+  // thus requiring an import from the companion *and* an instance of the class
+  // itself. It is possible to define `MoveDestinationsReport` as a trait in the
+  // companion and thus to move `MergeResultDetectingMotion` into the companion
+  // too, but I'm not sure it makes things more readable elsewhere. We also want
+  // to merge instances of `MoveDestinationsReport` that share the same
+  // `MatchesContext`. All in all, let's stick with the current design for
+  // now...
   enum Side:
     case Left
     case Right
