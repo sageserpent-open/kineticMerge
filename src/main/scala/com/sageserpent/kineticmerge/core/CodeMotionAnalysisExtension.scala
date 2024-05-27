@@ -1,6 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
-import cats.Eq
+import cats.{Eq, Order}
 import com.sageserpent.kineticmerge.core.merge.of as mergeOf
 import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
@@ -21,7 +21,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       codeMotionAnalysis: CodeMotionAnalysis[Path, Element]
   )
     def merge(
-        equality: Eq[Element]
+        elementEquality: Eq[Element],
+        elementOrder: Order[Element]
     ): (
         Map[Path, MergeResult[Element]],
         MatchesContext[Section[Element]]#MoveDestinationsReport
@@ -50,7 +51,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           dominantsOf(lhs).intersect(dominantsOf(rhs)).nonEmpty
 
         bothBelongToTheSameMatches || {
-          given Eq[Element] = equality
+          given Eq[Element] = elementEquality
 
           Eq[Seq[Element]].eqv(lhs.content, rhs.content)
         }
@@ -422,6 +423,13 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             )
         })
 
+      val changeOrdering: Ordering[IndexedSeq[Section[Element]]] =
+        Ordering.Implicits.seqOrdering(
+          Ordering.by[Section[Element], IndexedSeq[Element]](_.content)(
+            Ordering.Implicits.seqOrdering(elementOrder.toOrdering)
+          )
+        )
+
       def substituteMigratedChangesOrDominants(
           path: Path,
           mergeResult: MergeResult[Section[Element]]
@@ -429,31 +437,60 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         def substituteFor(
             section: Section[Element]
         ): IndexedSeq[Section[Element]] =
-          val migratedChanges: collection.Set[IndexedSeq[Section[Element]]] =
-            vettedChangesMigratedThroughMotion.get(section)
-          val migratedChange: Option[IndexedSeq[Section[Element]]] =
-            if 1 >= migratedChanges.size then migratedChanges.headOption
-            else
-              throw new RuntimeException(
-                s"""
-                  |Multiple potential changes migrated to destination: $section,
-                  |these are:
-                  |${migratedChanges
-                    .map(change =>
-                      if change.isEmpty then "DELETION" else s"EDIT: $change"
-                    )
-                    .zipWithIndex
-                    .map((change, index) => s"${1 + index}. $change")
-                    .mkString("\n")}
-                  |These are from ambiguous matches of text with the destination.
-                  |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${section.size}.
-                      """.stripMargin
-              )
+          val migratedChanges = vettedChangesMigratedThroughMotion
+            .get(section)
 
-          // If we do have a migrated change, then there is no need to look
-          // for the dominant - either the section was deleted or edited;
-          // matched sections are not considered as edit candidates.
-          migratedChange.fold {
+          if migratedChanges.nonEmpty then
+            val migratedChangesSortedByContent =
+              migratedChanges.toSeq.sorted(changeOrdering)
+
+            val uniqueMigratedChanges =
+              migratedChangesSortedByContent.tail.foldLeft(
+                List(migratedChangesSortedByContent.head)
+              ) { case (partialResult @ head :: _, change) =>
+                if 0 == changeOrdering.compare(head, change) then partialResult
+                else change :: partialResult
+              }
+
+            assume(uniqueMigratedChanges.nonEmpty)
+
+            val migratedChange: IndexedSeq[Section[Element]] =
+              uniqueMigratedChanges match
+                case head :: Nil => head
+                case _ =>
+                  throw new RuntimeException(
+                    s"""
+                       |Multiple potential changes migrated to destination: $section,
+                       |these are:
+                       |${uniqueMigratedChanges
+                        .map(change =>
+                          if change.isEmpty then "DELETION"
+                          else s"EDIT: $change"
+                        )
+                        .zipWithIndex
+                        .map((change, index) => s"${1 + index}. $change")
+                        .mkString("\n")}
+                       |These are from ambiguous matches of text with the destination.
+                       |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${section.size}.
+                        """.stripMargin
+                  )
+
+            // There is no need to look for the dominant - either the section
+            // was deleted or edited; matched sections are not considered as
+            // edit candidates.
+
+            if migratedChange.isEmpty then
+              logger.debug(
+                s"Applying migrated deletion to move destination: ${pprintCustomised(section)}."
+              )
+            else
+              logger.debug(
+                s"Applying migrated edit into ${pprintCustomised(migratedChange)} to move destination: ${pprintCustomised(section)}."
+              )
+            end if
+
+            migratedChange
+          else
             val dominants = dominantsOf(section)
 
             IndexedSeq(
@@ -465,20 +502,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 // choose any one.
                 dominants.head
             )
-          }(change =>
-            if change.isEmpty then
-              logger.debug(
-                s"Applying migrated deletion to move destination: ${pprintCustomised(section)}."
-              )
-            else
-              logger.debug(
-                s"Applying migrated edit into ${pprintCustomised(change)} to move destination: ${pprintCustomised(section)}."
-              )
-            end if
-
-            change
-          )
-
+          end if
         end substituteFor
 
         path -> (mergeResult match
@@ -507,7 +531,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             // changes...
             if leftElements.corresponds(
                 rightElements
-              )(equality.eqv)
+              )(elementEquality.eqv)
             then FullyMerged(leftElements)
             else
               MergedWithConflicts(

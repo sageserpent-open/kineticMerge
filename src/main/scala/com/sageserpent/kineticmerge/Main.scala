@@ -1244,7 +1244,10 @@ object Main extends StrictLogging:
           .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
 
         (mergeResultsByPath, moveDestinationsReport) = codeMotionAnalysis
-          .merge(equality = Token.equality)
+          .merge(
+            elementEquality = Token.equality,
+            elementOrder = Token.comparison
+          )
 
         _ <- moveDestinationsReport.summarizeInText.foldLeft(right(()))(
           _ logOperation _
