@@ -1854,7 +1854,4 @@ object CodeMotionAnalysis extends StrictLogging:
       minimumAmbiguousMatchSize: Int,
       propagateExceptions: Boolean = true
   )
-
-  // TODO - what happened?
-  case object AmbiguousMatch extends RuntimeException
 end CodeMotionAnalysis
