@@ -71,10 +71,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val expected = stuntDoubleTokens(issue23BugReproductionExpectedMerge)
 
     val (mergeResultsByPath, _) =
-      codeMotionAnalysis.merge(
-        elementEquality = Token.equality,
-        elementOrder = Token.comparison
-      )
+      codeMotionAnalysis.merge
 
     val mergeResult = mergeResultsByPath(placeholderPath)
 
@@ -175,10 +172,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           val expected = stuntDoubleTokens(expectedText)
 
           val (mergeResultsByPath, _) =
-            codeMotionAnalysis.merge(
-              elementEquality = Token.equality,
-              elementOrder = Token.comparison
-            )
+            codeMotionAnalysis.merge
 
           val mergeResult = mergeResultsByPath(placeholderPath)
 
@@ -293,10 +287,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           val expected = stuntDoubleTokens(expectedText)
 
           val (mergeResultsByPath, _) =
-            codeMotionAnalysis.merge(
-              elementEquality = Token.equality,
-              elementOrder = Token.comparison
-            )
+            codeMotionAnalysis.merge
 
           val mergeResult = mergeResultsByPath(placeholderPath)
 
@@ -357,10 +348,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val expected = tokens(codeMotionExampleExpectedMerge).get
 
     val (mergeResultsByPath, _) =
-      codeMotionAnalysis.merge(
-        elementEquality = Token.equality,
-        elementOrder = Token.comparison
-      )
+      codeMotionAnalysis.merge
 
     val mergeResult = mergeResultsByPath(placeholderPath)
 
@@ -428,10 +416,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     ).get
 
     val (mergeResultsByPath, _) =
-      codeMotionAnalysis.merge(
-        elementEquality = Token.equality,
-        elementOrder = Token.comparison
-      )
+      codeMotionAnalysis.merge
 
     println(fansi.Color.Yellow(s"Checking $hivedOffPath...\n"))
     println(fansi.Color.Yellow("Expected..."))
@@ -514,11 +499,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         minimumAmbiguousMatchSize = 4
       )(progressRecording = NoProgressRecording): @unchecked
 
-      val (mergeResultsByPath, _) = codeMotionAnalysis
-        .merge(
-          elementEquality = Token.equality,
-          elementOrder = Token.comparison
-        )
+      val (mergeResultsByPath, _) = codeMotionAnalysis.merge
 
       def merge(path: FakePath): Unit =
         mergeResultsByPath(path) match

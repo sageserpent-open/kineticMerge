@@ -18,13 +18,10 @@ object CodeMotionAnalysisExtension extends StrictLogging:
     * extension as a temporary measure.
     */
 
-  extension [Path, Element](
+  extension [Path, Element: Eq: Order](
       codeMotionAnalysis: CodeMotionAnalysis[Path, Element]
   )
-    def merge(
-        elementEquality: Eq[Element],
-        elementOrder: Order[Element]
-    ): (
+    def merge: (
         Map[Path, MergeResult[Element]],
         MatchesContext[Section[Element]]#MoveDestinationsReport
     ) =
@@ -52,11 +49,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           val bothBelongToTheSameMatches =
             dominantsOf(lhs).intersect(dominantsOf(rhs)).nonEmpty
 
-          bothBelongToTheSameMatches || {
-            given Eq[Element] = elementEquality
-
-            Eq[Seq[Element]].eqv(lhs.content, rhs.content)
-          }
+          bothBelongToTheSameMatches || Eq[Seq[Element]]
+            .eqv(lhs.content, rhs.content)
         end eqv
       end given
 
@@ -194,7 +188,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       val migrationOrdering: Ordering[Seq[Section[Element]]] =
         Ordering.Implicits.seqOrdering(
           Ordering.by[Section[Element], IndexedSeq[Element]](_.content)(
-            Ordering.Implicits.seqOrdering(elementOrder.toOrdering)
+            Ordering.Implicits.seqOrdering(summon[Eq[Element]].toOrdering)
           )
         )
 
@@ -583,7 +577,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             // changes...
             if leftElements.corresponds(
                 rightElements
-              )(elementEquality.eqv)
+              )(summon[Eq[Element]].eqv)
             then FullyMerged(leftElements)
             else
               MergedWithConflicts(
