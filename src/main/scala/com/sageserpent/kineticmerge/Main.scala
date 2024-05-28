@@ -5,7 +5,8 @@ import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.syntax.foldable.toFoldableOps
 import cats.syntax.traverse.toTraverseOps
-import com.google.common.hash.Hashing
+import cats.{Eq, Order}
+import com.google.common.hash.{Funnel, HashFunction, Hashing}
 import com.sageserpent.kineticmerge.Main.MergeInput.*
 import com.sageserpent.kineticmerge.core.*
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtension.*
@@ -1215,7 +1216,12 @@ object Main extends StrictLogging:
           }
 
         codeMotionAnalysis: CodeMotionAnalysis[Path, Token] <- EitherT
-          .fromEither[WorkflowLogWriter](
+          .fromEither[WorkflowLogWriter] {
+            given Eq[Token]     = Token.equality
+            given Order[Token]  = Token.comparison
+            given Funnel[Token] = Token.funnel
+            given HashFunction  = Hashing.murmur3_32_fixed()
+
             CodeMotionAnalysis.of(
               base = MappedContentSourcesOfTokens(
                 baseContentsByPath,
@@ -1234,13 +1240,8 @@ object Main extends StrictLogging:
               thresholdSizeFractionForMatching,
               minimumAmbiguousMatchSize,
               propagateExceptions = false
-            )(
-              elementEquality = Token.equality,
-              elementOrder = Token.comparison,
-              elementFunnel = Token.funnel,
-              hashFunction = Hashing.murmur3_32_fixed()
             )(progressRecording)
-          )
+          }
           .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
 
         (mergeResultsByPath, moveDestinationsReport) = codeMotionAnalysis

@@ -62,7 +62,7 @@ object CodeMotionAnalysis extends StrictLogging:
     *   instances and thence into [[Section]] instances for each of the three
     *   sources.
     */
-  def of[Path, Element](
+  def of[Path, Element: Eq: Order: Funnel](
       base: Sources[Path, Element],
       left: Sources[Path, Element],
       right: Sources[Path, Element]
@@ -72,17 +72,12 @@ object CodeMotionAnalysis extends StrictLogging:
       minimumAmbiguousMatchSize: Int,
       propagateExceptions: Boolean = true
   )(
-      elementEquality: Eq[Element],
-      elementOrder: Order[Element],
-      elementFunnel: Funnel[Element],
-      hashFunction: HashFunction
-  )(
       progressRecording: ProgressRecording
+  )(using
+      hashFunction: HashFunction
   ): Either[Throwable, CodeMotionAnalysis[Path, Element]] =
     require(0 <= thresholdSizeFractionForMatching)
     require(1 >= thresholdSizeFractionForMatching)
-
-    given witness: Eq[Element] = elementEquality
 
     val newline = "\n"
 
@@ -919,34 +914,6 @@ object CodeMotionAnalysis extends StrictLogging:
         end match
       end withMatch
 
-      // Eating into pairwise matches can create smaller pairwise matches that
-      // are partially subsumed by other larger pairwise matches. Prefer keeping
-      // the larger matches and remove the subsumed ones.
-      def cleanedUp: MatchesAndTheirSections =
-        val subsumedBaseSections = baseSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesBaseSection)
-        val subsumedLeftSections = leftSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesLeftSection)
-        val subsumedRightSections = rightSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesRightSection)
-
-        val matchesToRemove =
-          (subsumedBaseSections ++ subsumedLeftSections ++ subsumedRightSections)
-            .flatMap(sectionsAndTheirMatches.get)
-            .toSet
-
-        if matchesToRemove.nonEmpty then
-          logger.debug(
-            s"Removing matches that have subsumed sections:\n${pprintCustomised(matchesToRemove)} as part of cleanup."
-          )
-        end if
-
-        this.withoutTheseMatches(matchesToRemove)
-      end cleanedUp
-
       private def withoutTheseMatches(
           matches: Iterable[Match[Section[Element]]]
       ): MatchesAndTheirSections =
@@ -1047,6 +1014,34 @@ object CodeMotionAnalysis extends StrictLogging:
         }
       end withoutTheseMatches
 
+      // Eating into pairwise matches can create smaller pairwise matches that
+      // are partially subsumed by other larger pairwise matches. Prefer keeping
+      // the larger matches and remove the subsumed ones.
+      def cleanedUp: MatchesAndTheirSections =
+        val subsumedBaseSections = baseSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesBaseSection)
+        val subsumedLeftSections = leftSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesLeftSection)
+        val subsumedRightSections = rightSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesRightSection)
+
+        val matchesToRemove =
+          (subsumedBaseSections ++ subsumedLeftSections ++ subsumedRightSections)
+            .flatMap(sectionsAndTheirMatches.get)
+            .toSet
+
+        if matchesToRemove.nonEmpty then
+          logger.debug(
+            s"Removing matches that have subsumed sections:\n${pprintCustomised(matchesToRemove)} as part of cleanup."
+          )
+        end if
+
+        this.withoutTheseMatches(matchesToRemove)
+      end cleanedUp
+
       @tailrec
       private final def withAllSmallFryMatches(
           candidateWindowSize: Int,
@@ -1139,7 +1134,7 @@ object CodeMotionAnalysis extends StrictLogging:
             val elementBytes =
               hashFunction
                 .newHasher()
-                .putObject(elements(elementIndex), elementFunnel)
+                .putObject(elements(elementIndex), summon[Funnel[Element]])
                 .hash()
                 .asBytes()
 
@@ -1716,8 +1711,6 @@ object CodeMotionAnalysis extends StrictLogging:
     end MatchesAndTheirSections
 
     given potentialMatchKeyOrder: Order[PotentialMatchKey] =
-      given Order[Element] = elementOrder
-
       Order.whenEqual(
         Order.by(_.fingerprint),
         // NOTE: need the pesky type ascription because `Order` is invariant on

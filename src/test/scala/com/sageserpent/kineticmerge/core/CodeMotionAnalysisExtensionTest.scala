@@ -1,11 +1,12 @@
 package com.sageserpent.kineticmerge.core
 
-import com.google.common.hash.Hashing
+import cats.{Eq, Order}
+import com.google.common.hash.{Funnel, HashFunction, Hashing}
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.NoProgressRecording
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtension.*
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtensionTest.{FakePath, reconstituteTextFrom}
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtensionTest.{FakePath, reconstituteTextFrom, given}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.Token.tokens
 import org.junit.jupiter.api.Assertions.fail
@@ -18,6 +19,11 @@ object CodeMotionAnalysisExtensionTest:
 
   def reconstituteTextFrom(tokens: IndexedSeq[Token]) =
     tokens.map(_.text).mkString
+
+  given Eq[Token]     = Token.equality
+  given Order[Token]  = Token.comparison
+  given Funnel[Token] = Token.funnel
+  given HashFunction  = Hashing.murmur3_32_fixed()
 end CodeMotionAnalysisExtensionTest
 
 class CodeMotionAnalysisExtensionTest extends ProseExamples:
@@ -60,11 +66,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       minimumMatchSize = minimumMatchSize,
       thresholdSizeFractionForMatching = thresholdSizeFractionForMatching,
       minimumAmbiguousMatchSize = 0
-    )(
-      elementEquality = Token.equality,
-      elementOrder = Token.comparison,
-      elementFunnel = Token.funnel,
-      hashFunction = Hashing.murmur3_32_fixed()
     )(progressRecording = NoProgressRecording): @unchecked
 
     val expected = stuntDoubleTokens(issue23BugReproductionExpectedMerge)
@@ -169,11 +170,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
             minimumMatchSize = minimumMatchSize,
             thresholdSizeFractionForMatching = thresholdSizeFractionForMatching,
             minimumAmbiguousMatchSize = 0
-          )(
-            elementEquality = Token.equality,
-            elementOrder = Token.comparison,
-            elementFunnel = Token.funnel,
-            hashFunction = Hashing.murmur3_32_fixed()
           )(progressRecording = NoProgressRecording): @unchecked
 
           val expected = stuntDoubleTokens(expectedText)
@@ -292,11 +288,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
             minimumMatchSize = minimumMatchSize,
             thresholdSizeFractionForMatching = thresholdSizeFractionForMatching,
             minimumAmbiguousMatchSize = 0
-          )(
-            elementEquality = Token.equality,
-            elementOrder = Token.comparison,
-            elementFunnel = Token.funnel,
-            hashFunction = Hashing.murmur3_32_fixed()
           )(progressRecording = NoProgressRecording): @unchecked
 
           val expected = stuntDoubleTokens(expectedText)
@@ -361,11 +352,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       minimumMatchSize = minimumMatchSize,
       thresholdSizeFractionForMatching = thresholdSizeFractionForMatching,
       minimumAmbiguousMatchSize = 0
-    )(
-      elementEquality = Token.equality,
-      elementOrder = Token.comparison,
-      elementFunnel = Token.funnel,
-      hashFunction = Hashing.murmur3_32_fixed()
     )(progressRecording = NoProgressRecording): @unchecked
 
     val expected = tokens(codeMotionExampleExpectedMerge).get
@@ -432,11 +418,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       minimumMatchSize = minimumMatchSize,
       thresholdSizeFractionForMatching = thresholdSizeFractionForMatching,
       minimumAmbiguousMatchSize = 5
-    )(
-      elementEquality = Token.equality,
-      elementOrder = Token.comparison,
-      elementFunnel = Token.funnel,
-      hashFunction = Hashing.murmur3_32_fixed()
     )(progressRecording = NoProgressRecording): @unchecked
 
     val expectedForOriginal = tokens(
@@ -531,11 +512,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         minimumMatchSize = minimumMatchSize,
         thresholdSizeFractionForMatching = 0,
         minimumAmbiguousMatchSize = 4
-      )(
-        elementEquality = Token.equality,
-        elementOrder = Token.comparison,
-        elementFunnel = Token.funnel,
-        hashFunction = Hashing.murmur3_32_fixed()
       )(progressRecording = NoProgressRecording): @unchecked
 
       val (mergeResultsByPath, _) = codeMotionAnalysis

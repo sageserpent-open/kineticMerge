@@ -1,13 +1,13 @@
 package com.sageserpent.kineticmerge.core
 
-import cats.kernel.{Eq, Order}
-import com.google.common.hash.{Hashing, PrimitiveSink}
+import cats.kernel.Eq
+import com.google.common.hash.{Funnel, HashFunction, Hashing, PrimitiveSink}
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.java.CasesLimitStrategy
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.americium.{Trials, TrialsApi}
 import com.sageserpent.kineticmerge.NoProgressRecording
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.*
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.{*, given}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import org.junit.jupiter.api.{Order as _, *}
 
@@ -88,11 +88,6 @@ class CodeMotionAnalysisTest:
                 minimumMatchSize = 2,
                 thresholdSizeFractionForMatching = minimumSizeFraction,
                 minimumAmbiguousMatchSize = 0
-              )(
-                elementEquality = Eq[Element],
-                elementOrder = Order[Element],
-                elementFunnel = elementFunnel,
-                hashFunction = Hashing.murmur3_32_fixed()
               )(progressRecording = NoProgressRecording): @unchecked
 
             analysis.base matches base
@@ -458,11 +453,6 @@ class CodeMotionAnalysisTest:
               thresholdSizeFractionForMatching =
                 minimumSizeFractionForMotionDetection,
               minimumAmbiguousMatchSize = 0
-            )(
-              elementEquality = Eq[Element],
-              elementOrder = Order[Element],
-              elementFunnel = elementFunnel,
-              hashFunction = Hashing.murmur3_32_fixed()
             )(progressRecording = NoProgressRecording): @unchecked
           end val
 
@@ -742,11 +732,6 @@ class CodeMotionAnalysisTest:
         minimumMatchSize = 10,
         thresholdSizeFractionForMatching = 0,
         minimumAmbiguousMatchSize = 0
-      )(
-        elementEquality = Eq[Element],
-        elementOrder = Order[Element],
-        elementFunnel = elementFunnel,
-        hashFunction = Hashing.murmur3_32_fixed()
       )(progressRecording = NoProgressRecording): @unchecked
     end val
 
@@ -844,11 +829,6 @@ class CodeMotionAnalysisTest:
         // path 2 on the base side...
         thresholdSizeFractionForMatching = 0.3,
         minimumAmbiguousMatchSize = 0
-      )(
-        elementEquality = Eq[Element],
-        elementOrder = Order[Element],
-        elementFunnel = elementFunnel,
-        hashFunction = Hashing.murmur3_32_fixed()
       )(progressRecording = NoProgressRecording): @unchecked
     end val
 
@@ -936,11 +916,6 @@ class CodeMotionAnalysisTest:
         minimumMatchSize = 10,
         thresholdSizeFractionForMatching = 0,
         minimumAmbiguousMatchSize = 0
-      )(
-        elementEquality = Eq[Element],
-        elementOrder = Order[Element],
-        elementFunnel = elementFunnel,
-        hashFunction = Hashing.murmur3_32_fixed()
       )(progressRecording = NoProgressRecording): @unchecked
     end val
 
@@ -975,12 +950,48 @@ object CodeMotionAnalysisTest:
   type Path    = Int
   type Element = Int
 
-  private def elementFunnel(
-      element: Element,
-      primitiveSink: PrimitiveSink
-  ): Unit =
-    primitiveSink.putInt(element)
-  end elementFunnel
+  given HashFunction = Hashing.murmur3_32_fixed()
+
+  trait SourcesContracts[Path, Element] extends Sources[Path, Element]:
+    abstract override def section(
+        path: SourcesContracts.this.Path
+    )(startOffset: Int, size: Int): Section[SourcesContracts.this.Element] =
+      require(0 <= startOffset)
+      require(0 < size)
+
+      val result = super.section(path)(startOffset, size)
+
+      assert(pathFor(result) == path)
+
+      assert(result.size == size)
+
+      result
+    end section
+
+    abstract override def filesByPathUtilising(
+        mandatorySections: Set[Section[SourcesContracts.this.Element]],
+        candidateGapChunksByPath: Map[Path, Set[IndexedSeq[Element]]]
+    ): Map[SourcesContracts.this.Path, File[Element]] =
+      val result =
+        super.filesByPathUtilising(mandatorySections, candidateGapChunksByPath)
+
+      assert(result.keys == paths)
+
+      mandatorySections.foreach(mandatorySection =>
+        assert(
+          result(pathFor(mandatorySection)).sections.contains(mandatorySection)
+        )
+      )
+
+      // If we have mandatory sections, we are definitely not initialising
+      // `filesByPath`, so it is safe to check consistency against it.
+      if mandatorySections.nonEmpty then
+        assert(filesByPath.values.map(_.size) == result.values.map(_.size))
+      end if
+
+      result
+    end filesByPathUtilising
+  end SourcesContracts
 
   extension (fakeSources: FakeSources)
     /** Specific to testing, not part of the [[Sources]] API implementation.
@@ -1076,49 +1087,13 @@ object CodeMotionAnalysisTest:
     end thingsInChunks
   end extension
 
-  trait SourcesContracts[Path, Element] extends Sources[Path, Element]:
-    abstract override def section(
-        path: SourcesContracts.this.Path
-    )(startOffset: Int, size: Int): Section[SourcesContracts.this.Element] =
-      require(0 <= startOffset)
-      require(0 < size)
-
-      val result = super.section(path)(startOffset, size)
-
-      assert(pathFor(result) == path)
-
-      assert(result.size == size)
-
-      result
-    end section
-
-    abstract override def filesByPathUtilising(
-        mandatorySections: Set[Section[SourcesContracts.this.Element]],
-        candidateGapChunksByPath: Map[Path, Set[IndexedSeq[Element]]]
-    ): Map[SourcesContracts.this.Path, File[Element]] =
-      val result =
-        super.filesByPathUtilising(mandatorySections, candidateGapChunksByPath)
-
-      assert(result.keys == paths)
-
-      mandatorySections.foreach(mandatorySection =>
-        assert(
-          result(pathFor(mandatorySection)).sections.contains(mandatorySection)
-        )
-      )
-
-      // If we have mandatory sections, we are definitely not initialising
-      // `filesByPath`, so it is safe to check consistency against it.
-      if mandatorySections.nonEmpty then
-        assert(filesByPath.values.map(_.size) == result.values.map(_.size))
-      end if
-
-      result
-    end filesByPathUtilising
-  end SourcesContracts
-
   case class FakeSources(
       override val contentsByPath: Map[Path, IndexedSeq[Element]],
       override val label: String
   ) extends MappedContentSources[Path, Element]
+
+  given Funnel[Element] with
+    override def funnel(element: Element, primitiveSink: PrimitiveSink): Unit =
+      primitiveSink.putInt(element)
+  end given
 end CodeMotionAnalysisTest
