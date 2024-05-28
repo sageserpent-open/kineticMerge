@@ -27,7 +27,6 @@ trait CodeMotionAnalysis[Path, Element]:
   ): collection.Set[Match[Section[Element]]]
 end CodeMotionAnalysis
 
-// TODO: `CodeMotionAnalysis.of` is turning into a parameter monstrosity. Is it time to hoist most of the parameters into a factory?
 object CodeMotionAnalysis extends StrictLogging:
   /** Analyse code motion from the sources of {@code base} to both {@code left}
     * and {@code right}, breaking them into [[File]] and thence [[Section]]
@@ -53,9 +52,8 @@ object CodeMotionAnalysis extends StrictLogging:
     *   'Our' sources, from the Git standpoint...
     * @param right
     *   'Their' sources, from the Git standpoint...
-    * @param thresholdSizeFractionForMatching
-    *   A section's size must be at least this fraction of its containing file's
-    *   size to qualify for matching.
+    * @param progressRecording
+    *   Reports progress of the analysis.
     * @tparam Path
     * @return
     *   A [[CodeMotionAnalysis]] that contains a breakdown into [[File]]
@@ -67,15 +65,17 @@ object CodeMotionAnalysis extends StrictLogging:
       left: Sources[Path, Element],
       right: Sources[Path, Element]
   )(
-      minimumMatchSize: Int,
-      thresholdSizeFractionForMatching: Double,
-      minimumAmbiguousMatchSize: Int,
-      propagateExceptions: Boolean = true
-  )(
+      configuration: Configuration,
       progressRecording: ProgressRecording
   )(using
       hashFunction: HashFunction
   ): Either[Throwable, CodeMotionAnalysis[Path, Element]] =
+    // Yes, this entire method could be moved into `Configuration`, but the
+    // level of indentation of quite a lot of code would be increased. Anyway,
+    // it's only configuration, after all - performing the analysis belongs to
+    // the companion object for `CodeMotionAnalysis`.
+    import configuration.*
+
     require(0 <= thresholdSizeFractionForMatching)
     require(1 >= thresholdSizeFractionForMatching)
 
@@ -878,42 +878,6 @@ object CodeMotionAnalysis extends StrictLogging:
         withoutTheseMatches(redundantMatches) -> usefulMatches
       end withoutRedundantPairwiseMatchesIn
 
-      private def withMatch(
-          aMatch: Match[Section[Element]]
-      ): MatchesAndTheirSections =
-        aMatch match
-          case Match.AllSides(baseSection, leftSection, rightSection) =>
-            copy(
-              baseSectionsByPath = withBaseSection(baseSection),
-              leftSectionsByPath = withLeftSection(leftSection),
-              rightSectionsByPath = withRightSection(rightSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch) + (rightSection -> aMatch)
-            )
-          case Match.BaseAndLeft(baseSection, leftSection) =>
-            copy(
-              baseSectionsByPath = withBaseSection(baseSection),
-              leftSectionsByPath = withLeftSection(leftSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch)
-            )
-          case Match.BaseAndRight(baseSection, rightSection) =>
-            copy(
-              baseSectionsByPath = withBaseSection(baseSection),
-              rightSectionsByPath = withRightSection(rightSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch)
-            )
-          case Match.LeftAndRight(leftSection, rightSection) =>
-            copy(
-              leftSectionsByPath = withLeftSection(leftSection),
-              rightSectionsByPath = withRightSection(rightSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch)
-            )
-        end match
-      end withMatch
-
       private def withoutTheseMatches(
           matches: Iterable[Match[Section[Element]]]
       ): MatchesAndTheirSections =
@@ -1013,6 +977,42 @@ object CodeMotionAnalysis extends StrictLogging:
               )
         }
       end withoutTheseMatches
+
+      private def withMatch(
+          aMatch: Match[Section[Element]]
+      ): MatchesAndTheirSections =
+        aMatch match
+          case Match.AllSides(baseSection, leftSection, rightSection) =>
+            copy(
+              baseSectionsByPath = withBaseSection(baseSection),
+              leftSectionsByPath = withLeftSection(leftSection),
+              rightSectionsByPath = withRightSection(rightSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch) + (rightSection -> aMatch)
+            )
+          case Match.BaseAndLeft(baseSection, leftSection) =>
+            copy(
+              baseSectionsByPath = withBaseSection(baseSection),
+              leftSectionsByPath = withLeftSection(leftSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch)
+            )
+          case Match.BaseAndRight(baseSection, rightSection) =>
+            copy(
+              baseSectionsByPath = withBaseSection(baseSection),
+              rightSectionsByPath = withRightSection(rightSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch)
+            )
+          case Match.LeftAndRight(leftSection, rightSection) =>
+            copy(
+              leftSectionsByPath = withLeftSection(leftSection),
+              rightSectionsByPath = withRightSection(rightSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch)
+            )
+        end match
+      end withMatch
 
       // Eating into pairwise matches can create smaller pairwise matches that
       // are partially subsumed by other larger pairwise matches. Prefer keeping
@@ -1840,6 +1840,20 @@ object CodeMotionAnalysis extends StrictLogging:
     if propagateExceptions then Right(attempt.get) else attempt.toEither
     end if
   end of
+
+  /** @param minimumMatchSize
+    * @param thresholdSizeFractionForMatching
+    *   A section's size must be at least this fraction of its containing file's
+    *   size to qualify for matching.
+    * @param minimumAmbiguousMatchSize
+    * @param propagateExceptions
+    */
+  case class Configuration(
+      minimumMatchSize: Int,
+      thresholdSizeFractionForMatching: Double,
+      minimumAmbiguousMatchSize: Int,
+      propagateExceptions: Boolean = true
+  )
 
   // TODO - what happened?
   case object AmbiguousMatch extends RuntimeException

@@ -9,6 +9,7 @@ import cats.{Eq, Order}
 import com.google.common.hash.{Funnel, HashFunction, Hashing}
 import com.sageserpent.kineticmerge.Main.MergeInput.*
 import com.sageserpent.kineticmerge.core.*
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.Configuration
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtension.*
 import com.sageserpent.kineticmerge.core.Token.tokens
 import com.softwaremill.tagging.*
@@ -75,18 +76,6 @@ object Main extends StrictLogging:
   def main(commandLineArguments: Array[String]): Unit =
     System.exit(apply(ConsoleProgressRecording, commandLineArguments*))
   end main
-
-  /** @param commandLineArguments
-    *   Command line arguments as varargs.
-    * @return
-    *   The exit code as a plain integer, suitable for consumption by both Scala
-    *   and Java client code.
-    */
-  @varargs
-  def apply(commandLineArguments: String*): Int = apply(
-    progressRecording = NoProgressRecording,
-    commandLineArguments = commandLineArguments*
-  )
 
   /** @param progressRecording
     * @param commandLineArguments
@@ -259,6 +248,13 @@ object Main extends StrictLogging:
   ): Int @@ Main.Tags.ExitCode =
     import applicationRequest.*
 
+    val configuration = Configuration(
+      minimumMatchSize,
+      thresholdSizeFractionForMatching,
+      minimumAmbiguousMatchSize,
+      propagateExceptions = false
+    )
+
     val workflow = for
       _ <- IO {
         os.proc("git", "--version").call(workingDirectory)
@@ -350,9 +346,7 @@ object Main extends StrictLogging:
                 mergeInputs,
                 noCommit,
                 noFastForward,
-                minimumMatchSize,
-                thresholdSizeFractionForMatching,
-                minimumAmbiguousMatchSize
+                configuration
               )
           yield exitCode
           end for
@@ -376,6 +370,9 @@ object Main extends StrictLogging:
     exitCode
   end mergeTheirBranch
 
+  private def right[Payload](payload: Payload): Workflow[Payload] =
+    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
+
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
       EitherT
@@ -394,11 +391,20 @@ object Main extends StrictLogging:
       workflow.semiflatTap(_ => WriterT.tell(List(Right(message))))
   end extension
 
-  private def right[Payload](payload: Payload): Workflow[Payload] =
-    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
-
   private def underline(anything: Any): Str =
     fansi.Underlined.On(anything.toString)
+
+  /** @param commandLineArguments
+    *   Command line arguments as varargs.
+    * @return
+    *   The exit code as a plain integer, suitable for consumption by both Scala
+    *   and Java client code.
+    */
+  @varargs
+  def apply(commandLineArguments: String*): Int = apply(
+    progressRecording = NoProgressRecording,
+    commandLineArguments = commandLineArguments*
+  )
 
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](
@@ -633,39 +639,6 @@ object Main extends StrictLogging:
         s"Unexpected error - can't parse changes reported by Git ${underline(line)}."
       ).flatMap { case (path, changed) => changed.map(path -> _) }
 
-    private def blobAndContentFor(
-        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
-    )(
-        path: Path
-    ): Workflow[
-      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
-    ] =
-      IO {
-        val line = os
-          .proc("git", "ls-tree", commitIdOrBranchName, path)
-          .call(workingDirectory)
-          .out
-          .text()
-
-        line.split(whitespaceRun) match
-          case Array(mode, _, blobId, _) =>
-            val content = os
-              .proc("git", "cat-file", "blob", blobId)
-              .call(workingDirectory)
-              .out
-              .text()
-
-            (
-              mode.taggedWith[Tags.Mode],
-              blobId.taggedWith[Tags.BlobId],
-              content.taggedWith[Tags.Content]
-            )
-        end match
-      }.labelExceptionWith(errorMessage =
-        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
-      )
-    end blobAndContentFor
-
     def mergeInputsOf(
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
         ourBranchHead: String @@ Tags.CommitOrBranchName,
@@ -873,6 +846,39 @@ object Main extends StrictLogging:
         }
     end mergeInputsOf
 
+    private def blobAndContentFor(
+        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
+    )(
+        path: Path
+    ): Workflow[
+      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
+    ] =
+      IO {
+        val line = os
+          .proc("git", "ls-tree", commitIdOrBranchName, path)
+          .call(workingDirectory)
+          .out
+          .text()
+
+        line.split(whitespaceRun) match
+          case Array(mode, _, blobId, _) =>
+            val content = os
+              .proc("git", "cat-file", "blob", blobId)
+              .call(workingDirectory)
+              .out
+              .text()
+
+            (
+              mode.taggedWith[Tags.Mode],
+              blobId.taggedWith[Tags.BlobId],
+              content.taggedWith[Tags.Content]
+            )
+        end match
+      }.labelExceptionWith(errorMessage =
+        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
+      )
+    end blobAndContentFor
+
     def mergeWithRollback(
         ourBranchHead: String @@ Main.Tags.CommitOrBranchName,
         theirBranchHead: String @@ Main.Tags.CommitOrBranchName,
@@ -880,9 +886,7 @@ object Main extends StrictLogging:
         mergeInputs: List[(Path, MergeInput)],
         noCommit: Boolean,
         noFastForward: Boolean,
-        minimumMatchSize: Int,
-        thresholdSizeFractionForMatching: Double,
-        minimumAmbiguousMatchSize: Int
+        configuration: Configuration
     ): Workflow[Int @@ Tags.ExitCode] =
       val workflow =
         for
@@ -890,9 +894,7 @@ object Main extends StrictLogging:
             bestAncestorCommitId,
             ourBranchHead,
             theirBranchHead,
-            minimumMatchSize,
-            thresholdSizeFractionForMatching,
-            minimumAmbiguousMatchSize
+            configuration
           )(mergeInputs)
 
           goodForAMergeCommit = indexUpdates.forall {
@@ -1032,9 +1034,7 @@ object Main extends StrictLogging:
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
         ourBranchHead: String @@ Tags.CommitOrBranchName,
         theirBranchHead: String @@ Tags.CommitOrBranchName,
-        minimumMatchSize: Int,
-        thresholdSizeFractionForMatching: Double,
-        minimumAmbiguousMatchSize: Int
+        configuration: Configuration
     )(
         mergeInputs: List[(Path, MergeInput)]
     ): Workflow[List[IndexState]] =
@@ -1222,6 +1222,7 @@ object Main extends StrictLogging:
 
         codeMotionAnalysis: CodeMotionAnalysis[Path, Token] <- EitherT
           .fromEither[WorkflowLogWriter] {
+
             CodeMotionAnalysis.of(
               base = MappedContentSourcesOfTokens(
                 baseContentsByPath,
@@ -1236,11 +1237,9 @@ object Main extends StrictLogging:
                 label = s"THEIRS: $theirBranchHead"
               )
             )(
-              minimumMatchSize,
-              thresholdSizeFractionForMatching,
-              minimumAmbiguousMatchSize,
-              propagateExceptions = false
-            )(progressRecording)
+              configuration,
+              progressRecording
+            )
           }
           .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
 

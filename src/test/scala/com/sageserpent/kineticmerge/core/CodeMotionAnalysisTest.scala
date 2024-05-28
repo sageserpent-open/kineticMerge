@@ -7,6 +7,7 @@ import com.sageserpent.americium.java.CasesLimitStrategy
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.americium.{Trials, TrialsApi}
 import com.sageserpent.kineticmerge.NoProgressRecording
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.Configuration
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.{*, given}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import org.junit.jupiter.api.{Order as _, *}
@@ -78,6 +79,12 @@ class CodeMotionAnalysisTest:
           pprintCustomised.pprintln((base, left, right, minimumSizeFraction))
 
           try
+            val configuration = Configuration(
+              minimumMatchSize = 2,
+              thresholdSizeFractionForMatching = minimumSizeFraction,
+              minimumAmbiguousMatchSize = 0
+            )
+
             val Right(
               analysis: CodeMotionAnalysis[
                 Path,
@@ -85,10 +92,9 @@ class CodeMotionAnalysisTest:
               ]
             ) =
               CodeMotionAnalysis.of(base, left, right)(
-                minimumMatchSize = 2,
-                thresholdSizeFractionForMatching = minimumSizeFraction,
-                minimumAmbiguousMatchSize = 0
-              )(progressRecording = NoProgressRecording): @unchecked
+                configuration,
+                progressRecording = NoProgressRecording
+              ): @unchecked
 
             analysis.base matches base
             analysis.left matches left
@@ -440,6 +446,13 @@ class CodeMotionAnalysisTest:
         println("Sizes of common to left and right...")
         pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
 
+        val configuration = Configuration(
+          minimumMatchSize = minimumPossibleExpectedMatchSize,
+          thresholdSizeFractionForMatching =
+            minimumSizeFractionForMotionDetection,
+          minimumAmbiguousMatchSize = 0
+        )
+
         try
           val Right(
             analysis: CodeMotionAnalysis[Path, Element]
@@ -449,11 +462,9 @@ class CodeMotionAnalysisTest:
               leftSources,
               rightSources
             )(
-              minimumMatchSize = minimumPossibleExpectedMatchSize,
-              thresholdSizeFractionForMatching =
-                minimumSizeFractionForMotionDetection,
-              minimumAmbiguousMatchSize = 0
-            )(progressRecording = NoProgressRecording): @unchecked
+              configuration,
+              progressRecording = NoProgressRecording
+            ): @unchecked
           end val
 
           // Check that all matches are consistent with the base sections...
@@ -670,6 +681,12 @@ class CodeMotionAnalysisTest:
   @Test
   def anAmbiguousAllSidesMatchSubsumedOnOneSideByALargerAllSidesMatchIsEliminatedCompletely
       : Unit =
+    val configuration = Configuration(
+      minimumMatchSize = 10,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0
+    )
+
     val prefix                        = 0 until 10
     val suffix                        = 30 until 40
     val smallAmbiguousAllSidesContent = 10 until 20
@@ -728,11 +745,7 @@ class CodeMotionAnalysisTest:
         baseSources,
         leftSources,
         rightSources
-      )(
-        minimumMatchSize = 10,
-        thresholdSizeFractionForMatching = 0,
-        minimumAmbiguousMatchSize = 0
-      )(progressRecording = NoProgressRecording): @unchecked
+      )(configuration, progressRecording = NoProgressRecording): @unchecked
     end val
 
     val matches =
@@ -816,6 +829,14 @@ class CodeMotionAnalysisTest:
       "right"
     ) with SourcesContracts[Path, Element]
 
+    val configuration = Configuration(
+      minimumMatchSize = 10,
+      // Low enough to allow the all-sides match to be considered, except in
+      // path 2 on the base side...
+      thresholdSizeFractionForMatching = 0.3,
+      minimumAmbiguousMatchSize = 0
+    )
+
     val Right(
       analysis: CodeMotionAnalysis[Path, Element]
     ) =
@@ -823,13 +844,7 @@ class CodeMotionAnalysisTest:
         baseSources,
         leftSources,
         rightSources
-      )(
-        minimumMatchSize = 10,
-        // Low enough to allow the all-sides match to be considered, except in
-        // path 2 on the base side...
-        thresholdSizeFractionForMatching = 0.3,
-        minimumAmbiguousMatchSize = 0
-      )(progressRecording = NoProgressRecording): @unchecked
+      )(configuration, progressRecording = NoProgressRecording): @unchecked
     end val
 
     val matches =
@@ -859,6 +874,12 @@ class CodeMotionAnalysisTest:
   @Test
   def eatenPairwiseMatchesMayBeSuppressedByACompetingOverlappingAllSidesMatch
       : Unit =
+    val configuration = Configuration(
+      minimumMatchSize = 10,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0
+    )
+
     // This is a even more pathological situation - we have overlapping matches
     // of the same size, one of which is a pairwise match and the other an
     // all-sides match. This in itself is permitted (but will result in an
@@ -912,11 +933,7 @@ class CodeMotionAnalysisTest:
         baseSources,
         leftSources,
         rightSources
-      )(
-        minimumMatchSize = 10,
-        thresholdSizeFractionForMatching = 0,
-        minimumAmbiguousMatchSize = 0
-      )(progressRecording = NoProgressRecording): @unchecked
+      )(configuration, progressRecording = NoProgressRecording): @unchecked
     end val
 
     val matches =

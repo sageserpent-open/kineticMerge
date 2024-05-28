@@ -5,6 +5,7 @@ import com.google.common.hash.{Funnel, HashFunction, Hashing}
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.NoProgressRecording
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.Configuration
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtension.*
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtensionTest.{FakePath, reconstituteTextFrom, given}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
@@ -24,13 +25,17 @@ object CodeMotionAnalysisExtensionTest:
   given Order[Token]  = Token.comparison
   given Funnel[Token] = Token.funnel
   given HashFunction  = Hashing.murmur3_32_fixed()
+
 end CodeMotionAnalysisExtensionTest
 
 class CodeMotionAnalysisExtensionTest extends ProseExamples:
   @Test
   def issue23BugReproduction(): Unit =
-    val minimumMatchSize                 = 4
-    val thresholdSizeFractionForMatching = 0.1
+    val configuration = Configuration(
+      minimumMatchSize = 4,
+      thresholdSizeFractionForMatching = 0.1,
+      minimumAmbiguousMatchSize = 0
+    )
 
     val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
 
@@ -62,11 +67,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       base = baseSources,
       left = leftSources,
       right = rightSources
-    )(
-      minimumMatchSize = minimumMatchSize,
-      thresholdSizeFractionForMatching = thresholdSizeFractionForMatching,
-      minimumAmbiguousMatchSize = 0
-    )(progressRecording = NoProgressRecording): @unchecked
+    )(configuration, progressRecording = NoProgressRecording): @unchecked
 
     val expected = stuntDoubleTokens(issue23BugReproductionExpectedMerge)
 
@@ -97,8 +98,11 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
   @TestFactory
   def codeMotionWithPropagatedInsertion(): DynamicTests =
-    val minimumMatchSize                 = 2
-    val thresholdSizeFractionForMatching = 0
+    val configuration = Configuration(
+      minimumMatchSize = 2,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0
+    )
 
     val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
 
@@ -163,11 +167,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
             base = baseSources,
             left = leftSources,
             right = rightSources
-          )(
-            minimumMatchSize = minimumMatchSize,
-            thresholdSizeFractionForMatching = thresholdSizeFractionForMatching,
-            minimumAmbiguousMatchSize = 0
-          )(progressRecording = NoProgressRecording): @unchecked
+          )(configuration, progressRecording = NoProgressRecording): @unchecked
 
           val expected = stuntDoubleTokens(expectedText)
 
@@ -199,8 +199,11 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
   @TestFactory
   def issue42BugReproduction(): DynamicTests =
-    val minimumMatchSize                 = 2
-    val thresholdSizeFractionForMatching = 0
+    val configuration = Configuration(
+      minimumMatchSize = 2,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0
+    )
 
     val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
 
@@ -278,11 +281,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
             base = baseSources,
             left = leftSources,
             right = rightSources
-          )(
-            minimumMatchSize = minimumMatchSize,
-            thresholdSizeFractionForMatching = thresholdSizeFractionForMatching,
-            minimumAmbiguousMatchSize = 0
-          )(progressRecording = NoProgressRecording): @unchecked
+          )(configuration, progressRecording = NoProgressRecording): @unchecked
 
           val expected = stuntDoubleTokens(expectedText)
 
@@ -314,8 +313,11 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
   @Test
   def codeMotion(): Unit =
-    val minimumMatchSize                 = 4
-    val thresholdSizeFractionForMatching = 0
+    val configuration = Configuration(
+      minimumMatchSize = 4,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0
+    )
 
     val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
 
@@ -339,11 +341,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       base = baseSources,
       left = leftSources,
       right = rightSources
-    )(
-      minimumMatchSize = minimumMatchSize,
-      thresholdSizeFractionForMatching = thresholdSizeFractionForMatching,
-      minimumAmbiguousMatchSize = 0
-    )(progressRecording = NoProgressRecording): @unchecked
+    )(configuration, progressRecording = NoProgressRecording): @unchecked
 
     val expected = tokens(codeMotionExampleExpectedMerge).get
 
@@ -374,8 +372,11 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
   @Test
   def codeMotionWithSplit(): Unit =
-    val minimumMatchSize                 = 4
-    val thresholdSizeFractionForMatching = 0
+    val configuration = Configuration(
+      minimumMatchSize = 4,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 5
+    )
 
     val originalPath: FakePath = "*** ORIGINAL ***"
     val hivedOffPath: FakePath = "*** HIVED OFF ***"
@@ -402,11 +403,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       base = baseSources,
       left = leftSources,
       right = rightSources
-    )(
-      minimumMatchSize = minimumMatchSize,
-      thresholdSizeFractionForMatching = thresholdSizeFractionForMatching,
-      minimumAmbiguousMatchSize = 5
-    )(progressRecording = NoProgressRecording): @unchecked
+    )(configuration, progressRecording = NoProgressRecording): @unchecked
 
     val expectedForOriginal = tokens(
       codeMotionExampleWithSplitOriginalExpectedMerge
@@ -461,6 +458,12 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val minimumMatchSizes = Trials.api.integers(2, 10)
 
     minimumMatchSizes.withLimit(30).dynamicTests { minimumMatchSize =>
+      val configuration = Configuration(
+        minimumMatchSize = minimumMatchSize,
+        thresholdSizeFractionForMatching = 0,
+        minimumAmbiguousMatchSize = 4
+      )
+
       val prosePath: FakePath    = "prose"
       val sbtBuildPath: FakePath = "sbtBuild"
 
@@ -493,11 +496,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         base = baseSources,
         left = leftSources,
         right = rightSources
-      )(
-        minimumMatchSize = minimumMatchSize,
-        thresholdSizeFractionForMatching = 0,
-        minimumAmbiguousMatchSize = 4
-      )(progressRecording = NoProgressRecording): @unchecked
+      )(configuration, progressRecording = NoProgressRecording): @unchecked
 
       val (mergeResultsByPath, _) = codeMotionAnalysis.merge
 
