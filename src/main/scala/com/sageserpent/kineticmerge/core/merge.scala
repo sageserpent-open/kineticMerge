@@ -1,7 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.Eq
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Contribution
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{Contribution, Sized}
 import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
 
@@ -78,12 +78,12 @@ object merge extends StrictLogging:
     *   [[Contribution.CommonToLeftAndRightOnly]] elements to make a long
     *   coincident edit.
     */
-  def of[Result[_], Element: Eq](mergeAlgebra: MergeAlgebra[Result, Element])(
+  def of[Result[_], Element: Eq: Sized](
+      mergeAlgebra: MergeAlgebra[Result, Element]
+  )(
       base: IndexedSeq[Element],
       left: IndexedSeq[Element],
       right: IndexedSeq[Element]
-  )(
-      elementSize: Element => Int
   ): Result[Element] =
     val equality = summon[Eq[Element]]
 
@@ -1407,7 +1407,7 @@ object merge extends StrictLogging:
     end mergeBetweenRunsOfCommonElements
 
     val longestCommonSubsequence =
-      LongestCommonSubsequence.of(base, left, right)(elementSize)
+      LongestCommonSubsequence.of(base, left, right)
 
     mergeBetweenRunsOfCommonElements(
       longestCommonSubsequence.base,

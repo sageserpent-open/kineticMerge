@@ -124,12 +124,10 @@ object LongestCommonSubsequence:
 
   def defaultElementSize[Element](irrelevant: Element): Int = 1
 
-  def of[Element: Eq](
+  def of[Element: Eq: Sized](
       base: IndexedSeq[Element],
       left: IndexedSeq[Element],
       right: IndexedSeq[Element]
-  )(
-      elementSize: Element => Int
   ): LongestCommonSubsequence[Element] =
     given orderBySize: Ordering[LongestCommonSubsequence[Element]] =
       given Ordering[CommonSubsequenceSize] =
@@ -139,6 +137,7 @@ object LongestCommonSubsequence:
     end orderBySize
 
     val equality = summon[Eq[Element]]
+    val sized    = summon[Sized[Element]]
 
     val partialResultsCache
         : mutable.Map[(Int, Int, Int), LongestCommonSubsequence[Element]] =
@@ -192,7 +191,7 @@ object LongestCommonSubsequence:
                 if leftEqualsRight then
                   of(onePastBaseIndex = 0, leftIndex, rightIndex)
                     .addCommonLeftAndRight(leftElement, rightElement)(
-                      elementSize
+                      sized.sizeOf
                     )
                 else
                   val resultDroppingTheEndOfTheLeft =
@@ -224,7 +223,7 @@ object LongestCommonSubsequence:
                 if baseEqualsRight then
                   of(baseIndex, onePastLeftIndex = 0, rightIndex)
                     .addCommonBaseAndRight(baseElement, rightElement)(
-                      elementSize
+                      sized.sizeOf
                     )
                 else
                   val resultDroppingTheEndOfTheBase =
@@ -255,7 +254,9 @@ object LongestCommonSubsequence:
 
                 if baseEqualsLeft then
                   of(baseIndex, leftIndex, onePastRightIndex = 0)
-                    .addCommonBaseAndLeft(baseElement, leftElement)(elementSize)
+                    .addCommonBaseAndLeft(baseElement, leftElement)(
+                      sized.sizeOf
+                    )
                 else
                   val resultDroppingTheEndOfTheBase =
                     of(baseIndex, onePastLeftIndex, onePastRightIndex = 0)
@@ -290,7 +291,7 @@ object LongestCommonSubsequence:
                 then
                   of(baseIndex, leftIndex, rightIndex)
                     .addCommon(baseElement, leftElement, rightElement)(
-                      elementSize
+                      sized.sizeOf
                     )
                 else
                   lazy val resultDroppingTheEndOfTheBase =
@@ -309,7 +310,7 @@ object LongestCommonSubsequence:
                     if baseEqualsLeft then
                       of(baseIndex, leftIndex, onePastRightIndex)
                         .addCommonBaseAndLeft(baseElement, leftElement)(
-                          elementSize
+                          sized.sizeOf
                         )
                     else
                       orderBySize.max(
@@ -323,7 +324,7 @@ object LongestCommonSubsequence:
                     if baseEqualsRight then
                       of(baseIndex, onePastLeftIndex, rightIndex)
                         .addCommonBaseAndRight(baseElement, rightElement)(
-                          elementSize
+                          sized.sizeOf
                         )
                     else
                       orderBySize.max(
@@ -339,7 +340,7 @@ object LongestCommonSubsequence:
                     if leftEqualsRight then
                       of(onePastBaseIndex, leftIndex, rightIndex)
                         .addCommonLeftAndRight(leftElement, rightElement)(
-                          elementSize
+                          sized.sizeOf
                         )
                     else
                       orderBySize.max(
@@ -368,6 +369,10 @@ object LongestCommonSubsequence:
     )
 
   end of
+
+  trait Sized[Element]:
+    def sizeOf(element: Element): Int
+  end Sized
 
   case class CommonSubsequenceSize(length: Int, elementSizeSumTiebreaker: Int):
     def addCostOfASingleContribution(size: Int): CommonSubsequenceSize = this

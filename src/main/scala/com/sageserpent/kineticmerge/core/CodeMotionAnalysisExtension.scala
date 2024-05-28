@@ -1,6 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.{Eq, Order}
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Sized
 import com.sageserpent.kineticmerge.core.merge.of as mergeOf
 import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
@@ -141,6 +142,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 // the file is on all three sides but hasn't changed.
 
                 // Whichever is the case, merge...
+
+                given Sized[Section[Element]] = _.size
+
                 val mergedSectionsResult
                     : MergeResultDetectingMotion[MergeResult, Section[
                       Element
@@ -153,7 +157,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     base = optionalBaseSections.getOrElse(IndexedSeq.empty),
                     left = optionalLeftSections.getOrElse(IndexedSeq.empty),
                     right = optionalRightSections.getOrElse(IndexedSeq.empty)
-                  )(elementSize = _.size)
+                  )
 
                 (
                   mergeResultsByPath + (path -> mergedSectionsResult.coreMergeResult),

@@ -5,7 +5,7 @@ import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.defaultElementSize
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{Sized, defaultElementSize}
 import com.sageserpent.kineticmerge.core.MergeTest.*
 import com.sageserpent.kineticmerge.core.MergeTest.DelegatingMergeAlgebraWithContracts.{AugmentedMergeResult, State}
 import com.sageserpent.kineticmerge.core.MergeTest.Move.*
@@ -43,11 +43,12 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(c))
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end edit
@@ -73,11 +74,12 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(d, c))
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end editFollowedByAnInsertionOnTheOtherSide
@@ -102,11 +104,12 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(b))
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end insertionFollowedByADeletionOnTheOtherSide
@@ -133,11 +136,12 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(b, d))
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end insertionFollowedByAnEditOnTheOtherSide
@@ -163,11 +167,12 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(d))
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end coincidentDeletionFollowedByAnEdit
@@ -194,11 +199,12 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(b, d))
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end coincidentDeletionWithCoincidentInsertionAndThenASingleSideInsertion
@@ -225,11 +231,12 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(c, b))
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end singleSideInsertionFollowedByCoincidentDeletionWithCoincidentInsertion
@@ -259,11 +266,12 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(e))
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end editOnOneSideFollowedByADeletionOnTheSameSide
@@ -296,11 +304,12 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(f, e))
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end editOnOneSideFollowedByADeletionOnTheSameSideThenAnInsertionOnTheOppositeSide
@@ -333,11 +342,12 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(f, d))
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end editOnOneSideFollowedByAnInsertionOnTheOppositeSideThenADeletionOnTheOriginalSide
@@ -369,11 +379,12 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(f, d, g))
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end editOnOneSideFollowedByAnInsertionOnTheOppositeSideThenAnEditOnTheOriginalSide
@@ -400,11 +411,12 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(c, d))
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end editOnOneSideFollowedByAnInsertionOnTheSameSide
@@ -433,11 +445,12 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(d, e, c))
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end editOnOneSideFollowedByAnInsertionOnTheSameSideThenAnInsertionOnTheOppositeSide
@@ -470,11 +483,12 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(c, d, e))
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end editOnOneSideFollowedByAnInsertionOnTheSameSideThenACoincidentEdit
@@ -503,11 +517,12 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(d))
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end editOnOneSideFollowedByADeletionOnTheOppositeSide
@@ -532,11 +547,12 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(c))
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end deletionFollowedByAnInsertionOnTheOtherSide
@@ -564,11 +580,12 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector())
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end deletionOnOneSideFollowedByADeletionOnTheOtherSide
@@ -597,11 +614,12 @@ class MergeTest:
     val expectedMerge = FullyMerged(elements = Vector(d))
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end deletionOnOneSideFollowedByAnEditOnTheOppositeSide
@@ -636,11 +654,12 @@ class MergeTest:
       )
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end editConflict
@@ -679,11 +698,12 @@ class MergeTest:
       )
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end editConflictFollowedByAnotherEditConflict
@@ -724,11 +744,12 @@ class MergeTest:
       )
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end leftEditVersusRightDeletionConflictDueToFollowingRightEdit
@@ -769,11 +790,12 @@ class MergeTest:
       )
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end rightEditVersusLeftDeletionConflictDueToFollowingLeftEdit
@@ -815,11 +837,12 @@ class MergeTest:
       )
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end leftInsertionWithFollowingLeftInsertionVersusRightInsertionConflict
@@ -860,11 +883,12 @@ class MergeTest:
       )
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end leftEditVersusRightDeletionConflictWithFollowingLeftInsertion
@@ -898,11 +922,12 @@ class MergeTest:
       )
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end insertionConflict
@@ -939,11 +964,12 @@ class MergeTest:
       )
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end insertionConflictFollowedByAnotherInsertionConflict
@@ -985,11 +1011,12 @@ class MergeTest:
       )
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end editConflictFollowedByCoincidentInsertion
@@ -1026,11 +1053,12 @@ class MergeTest:
       )
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end editConflictFollowedByCoincidentDeletion
@@ -1060,11 +1088,12 @@ class MergeTest:
       )
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end editConflictFollowedByALeftInsertionConflictingWithARightInsertion
@@ -1097,11 +1126,12 @@ class MergeTest:
       )
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end leftEditVersusRightDeletionConflictWithFollowingLeftInsertionThenACoincidentInsertion
@@ -1140,11 +1170,12 @@ class MergeTest:
       )
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end leftEditVersusRightDeletionConflictDueToFollowingRightDeletionAndThenLeftEdit
@@ -1179,11 +1210,12 @@ class MergeTest:
       )
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end leftEditVersusRightDeletionConflictWithFollowingLeftInsertionAndThenRightEdit
@@ -1222,11 +1254,12 @@ class MergeTest:
       )
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end rightEditVersusLeftDeletionConflictDueToFollowingLeftDeletionAndThenRightEdit
@@ -1261,11 +1294,12 @@ class MergeTest:
       )
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end rightEditVersusLeftDeletionConflictWithFollowingRightInsertionAndThenLeftEdit
@@ -1298,11 +1332,12 @@ class MergeTest:
       FullyMerged(elements = Vector(b, c))
 
     given Eq[Element] = equivalent(matchesByElement)
+    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(MergeResult.mergeAlgebra)
-      )(base, left, right)(elementSize = defaultElementSize): @unchecked
+      )(base, left, right): @unchecked
 
     assert(result == expectedMerge)
   end coincidentEditFollowedByACoincidentInsertion
@@ -1316,6 +1351,7 @@ class MergeTest:
         pprintln(testCase)
 
         given Eq[Element] = equivalent(testCase.matchesByElement)
+        given Sized[Element] = defaultElementSize
 
         val AugmentedMergeResult(_, result) =
           merge.of(mergeAlgebra =
@@ -1324,7 +1360,7 @@ class MergeTest:
             testCase.base,
             testCase.left,
             testCase.right
-          )(elementSize = defaultElementSize): @unchecked
+          ): @unchecked
 
         testCase.validate(result)
 
@@ -1334,6 +1370,7 @@ class MergeTest:
       .withLimit(4000)
       .dynamicTests: testCase =>
         given Eq[Element] = equivalent(testCase.matchesByElement)
+        given Sized[Element] = defaultElementSize
 
         val AugmentedMergeResult(_, result) =
           merge.of(mergeAlgebra =
@@ -1342,7 +1379,7 @@ class MergeTest:
             testCase.base,
             testCase.left,
             testCase.right
-          )(elementSize = defaultElementSize): @unchecked
+          ): @unchecked
 
         result match
           case MergedWithConflicts(_, _) =>
