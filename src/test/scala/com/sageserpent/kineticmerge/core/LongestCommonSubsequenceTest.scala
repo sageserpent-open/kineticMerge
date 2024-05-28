@@ -1,12 +1,13 @@
 package com.sageserpent.kineticmerge.core
 
+import cats.Eq
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.java.CasesLimitStrategy
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{CommonSubsequenceSize, Contribution, defaultElementSize}
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.{Element, TestCase, maximumSize, testCases}
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.{Element, TestCase, maximumSize, testCases, given}
 import org.junit.jupiter.api.TestFactory
 
 class LongestCommonSubsequenceTest:
@@ -20,9 +21,7 @@ class LongestCommonSubsequenceTest:
         ) =>
           val LongestCommonSubsequence(base, left, right, _, _, _, _) =
             LongestCommonSubsequence
-              .of(testCase.base, testCase.left, testCase.right)(
-                equality = _ == _,
-                elementSize = defaultElementSize
+              .of(testCase.base, testCase.left, testCase.right)(elementSize = defaultElementSize
               )
 
           assert(base.map(_.element) == testCase.base)
@@ -161,10 +160,7 @@ class LongestCommonSubsequenceTest:
 
           val LongestCommonSubsequence(base, left, right, CommonSubsequenceSize(commonSubsequenceLength, _), _, _, _) =
             LongestCommonSubsequence
-              .of(testCase.base, testCase.left, testCase.right)(
-                equality = _ == _,
-                elementSize = defaultElementSize
-              )
+              .of(testCase.base, testCase.left, testCase.right)(elementSize = defaultElementSize            )
 
           // NOTE: the common subsequence aspect is checked against the
           // corresponding sequence it was derived from, *not* against the core.
@@ -213,10 +209,7 @@ class LongestCommonSubsequenceTest:
 
       val LongestCommonSubsequence(base, left, right, _, _, _, _) =
         LongestCommonSubsequence
-          .of(testCase.base, testCase.left, testCase.right)(
-              equality = _ == _,
-              elementSize = elementSize
-            )
+          .of(testCase.base, testCase.left, testCase.right)(elementSize = elementSize)
         
       def commonParts(sequence: IndexedSeq[Contribution[Element]]): IndexedSeq[Element] =
         sequence.collect{
@@ -256,7 +249,6 @@ end LongestCommonSubsequenceTest
 
 object LongestCommonSubsequenceTest:
   type Element = Char
-
   val coreElements: Trials[Element] = trialsApi.choose('a' to 'z')
   val additionalElements: Trials[Element] = trialsApi.choose('A' to 'Z')
   val maximumSize = 30
@@ -291,6 +283,8 @@ object LongestCommonSubsequenceTest:
     )
     if core != base || core != left || core != right
   yield TestCase(core, base, left, right)
+
+  given Eq[Element] = _ == _
 
   def sizes(maximumSize: Int): Trials[Int] = trialsApi.alternateWithWeights(
     1 -> trialsApi.only(0),

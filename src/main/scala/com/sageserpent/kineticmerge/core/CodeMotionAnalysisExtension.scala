@@ -34,28 +34,30 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           .matchesFor(section)
           .map(_.dominantElement)
 
-      /** This is most definitely *not* [[Section.equals]] - we want to compare
-        * the underlying content of the dominant sections, as the sections are
-        * expected to come from *different* sides. [[Section.equals]] is
-        * expected to consider sections from different sides as unequal. <p>If
-        * neither section is involved in a match, fall back to comparing the
-        * contents; this is vital for comparing sections that would have been
-        * part of a larger match if not for that match not achieving the
-        * threshold size.
-        */
-      def sectionEqualityViaDominantsFallingBackToContentComparison(
-          lhs: Section[Element],
-          rhs: Section[Element]
-      ): Boolean =
-        val bothBelongToTheSameMatches =
-          dominantsOf(lhs).intersect(dominantsOf(rhs)).nonEmpty
+      given Eq[Section[Element]] with
+        /** This is most definitely *not* [[Section.equals]] - we want to
+          * compare the underlying content of the dominant sections, as the
+          * sections are expected to come from *different* sides.
+          * [[Section.equals]] is expected to consider sections from different
+          * sides as unequal. <p>If neither section is involved in a match, fall
+          * back to comparing the contents; this is vital for comparing sections
+          * that would have been part of a larger match if not for that match
+          * not achieving the threshold size.
+          */
+        override def eqv(
+            lhs: Section[Element],
+            rhs: Section[Element]
+        ): Boolean =
+          val bothBelongToTheSameMatches =
+            dominantsOf(lhs).intersect(dominantsOf(rhs)).nonEmpty
 
-        bothBelongToTheSameMatches || {
-          given Eq[Element] = elementEquality
+          bothBelongToTheSameMatches || {
+            given Eq[Element] = elementEquality
 
-          Eq[Seq[Element]].eqv(lhs.content, rhs.content)
-        }
-      end sectionEqualityViaDominantsFallingBackToContentComparison
+            Eq[Seq[Element]].eqv(lhs.content, rhs.content)
+          }
+        end eqv
+      end given
 
       val matchesContext = MatchesContext(
         codeMotionAnalysis.matchesFor
@@ -151,11 +153,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     base = optionalBaseSections.getOrElse(IndexedSeq.empty),
                     left = optionalLeftSections.getOrElse(IndexedSeq.empty),
                     right = optionalRightSections.getOrElse(IndexedSeq.empty)
-                  )(
-                    equality =
-                      sectionEqualityViaDominantsFallingBackToContentComparison,
-                    elementSize = _.size
-                  )
+                  )(elementSize = _.size)
 
                 (
                   mergeResultsByPath + (path -> mergedSectionsResult.coreMergeResult),

@@ -124,12 +124,11 @@ object LongestCommonSubsequence:
 
   def defaultElementSize[Element](irrelevant: Element): Int = 1
 
-  def of[Element](
+  def of[Element: Eq](
       base: IndexedSeq[Element],
       left: IndexedSeq[Element],
       right: IndexedSeq[Element]
   )(
-      equality: Eq[Element],
       elementSize: Element => Int
   ): LongestCommonSubsequence[Element] =
     given orderBySize: Ordering[LongestCommonSubsequence[Element]] =
@@ -138,6 +137,8 @@ object LongestCommonSubsequence:
 
       Ordering.by(_.size)
     end orderBySize
+
+    val equality = summon[Eq[Element]]
 
     val partialResultsCache
         : mutable.Map[(Int, Int, Int), LongestCommonSubsequence[Element]] =

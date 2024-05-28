@@ -26,12 +26,6 @@ object merge extends StrictLogging:
     *   the merge.
     * @param right
     *   The other modified version of {@code base}.
-    * @param equality
-    *   This determines whether elements are considered equal. Because it is not
-    *   necessarily `==` or `eq`, this requires a preference for which of the
-    *   equivalent elements to pick in a preservation or coincident insertion.
-    *   That is delegated to {@code mergeAlgebra}, which processes the merge
-    *   algorithms' decisions as to how to merge each element.
     * @param elementSize
     *   Some measure of an element's size, used to determine the longest common
     *   subsequence that provides the backbone for the merge.
@@ -84,14 +78,15 @@ object merge extends StrictLogging:
     *   [[Contribution.CommonToLeftAndRightOnly]] elements to make a long
     *   coincident edit.
     */
-  def of[Result[_], Element](mergeAlgebra: MergeAlgebra[Result, Element])(
+  def of[Result[_], Element: Eq](mergeAlgebra: MergeAlgebra[Result, Element])(
       base: IndexedSeq[Element],
       left: IndexedSeq[Element],
       right: IndexedSeq[Element]
   )(
-      equality: Eq[Element],
       elementSize: Element => Int
   ): Result[Element] =
+    val equality = summon[Eq[Element]]
+
     def rightEditNotMaroonedByPriorCoincidentInsertion(
         leftTail: Seq[Contribution[Element]]
     ) =
@@ -1412,7 +1407,7 @@ object merge extends StrictLogging:
     end mergeBetweenRunsOfCommonElements
 
     val longestCommonSubsequence =
-      LongestCommonSubsequence.of(base, left, right)(equality, elementSize)
+      LongestCommonSubsequence.of(base, left, right)(elementSize)
 
     mergeBetweenRunsOfCommonElements(
       longestCommonSubsequence.base,
