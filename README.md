@@ -33,7 +33,7 @@ curl -LJO --verbose http://github.com/sageserpent-open/kineticMerge/releases/dow
 chmod ug+x kinetic-merge
 ```
 
-Put on on your path.
+Put it on on your path.
 
 Alternatively, go to the [releases](https://github.com/sageserpent-open/kineticMerge/releases) and manually
 download `kinetic-merge`. You'll still have to execute `chmod ug+x kineticMerge` so you can run it.
