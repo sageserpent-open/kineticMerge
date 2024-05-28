@@ -74,7 +74,9 @@ object Main extends StrictLogging:
     *   specification.
     */
   def main(commandLineArguments: Array[String]): Unit =
-    System.exit(apply(ConsoleProgressRecording, commandLineArguments*))
+    System.exit(
+      apply(progressRecording = ConsoleProgressRecording, commandLineArguments*)
+    )
   end main
 
   /** @param progressRecording
@@ -252,7 +254,8 @@ object Main extends StrictLogging:
       minimumMatchSize,
       thresholdSizeFractionForMatching,
       minimumAmbiguousMatchSize,
-      propagateExceptions = false
+      propagateExceptions = false,
+      progressRecording = progressRecording
     )
 
     val workflow = for
@@ -276,10 +279,7 @@ object Main extends StrictLogging:
           s"Unexpected error: top level of Git repository ${underline(topLevel)} is not a valid path."
         )
 
-      inTopLevelWorkingDirectory = InWorkingDirectory(
-        topLevelWorkingDirectory,
-        progressRecording
-      )
+      inTopLevelWorkingDirectory = InWorkingDirectory(topLevelWorkingDirectory)
 
       ourBranchHead <- inTopLevelWorkingDirectory.ourBranchHead()
 
@@ -500,8 +500,7 @@ object Main extends StrictLogging:
   end MergeInput
 
   private case class InWorkingDirectory(
-      workingDirectory: Path,
-      progressRecording: ProgressRecording
+      workingDirectory: Path
   ):
     def ourBranchHead(): Workflow[String @@ Main.Tags.CommitOrBranchName] =
       IO {
@@ -1236,10 +1235,7 @@ object Main extends StrictLogging:
                 rightContentsByPath,
                 label = s"THEIRS: $theirBranchHead"
               )
-            )(
-              configuration,
-              progressRecording
-            )
+            )(configuration)
           }
           .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
 

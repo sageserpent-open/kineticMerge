@@ -5,7 +5,7 @@ import cats.instances.seq.*
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction}
-import com.sageserpent.kineticmerge.{ProgressRecording, ProgressRecordingSession, core}
+import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording, ProgressRecordingSession, core}
 import com.typesafe.scalalogging.StrictLogging
 import de.sciss.fingertree.RangedSeq
 import monocle.syntax.all.*
@@ -52,8 +52,8 @@ object CodeMotionAnalysis extends StrictLogging:
     *   'Our' sources, from the Git standpoint...
     * @param right
     *   'Their' sources, from the Git standpoint...
-    * @param progressRecording
-    *   Reports progress of the analysis.
+    * @param configuration
+    *   [[Configuration]] parameter object.
     * @tparam Path
     * @return
     *   A [[CodeMotionAnalysis]] that contains a breakdown into [[File]]
@@ -65,8 +65,7 @@ object CodeMotionAnalysis extends StrictLogging:
       left: Sources[Path, Element],
       right: Sources[Path, Element]
   )(
-      configuration: Configuration,
-      progressRecording: ProgressRecording
+      configuration: Configuration
   )(using
       hashFunction: HashFunction
   ): Either[Throwable, CodeMotionAnalysis[Path, Element]] =
@@ -1852,6 +1851,7 @@ object CodeMotionAnalysis extends StrictLogging:
       minimumMatchSize: Int,
       thresholdSizeFractionForMatching: Double,
       minimumAmbiguousMatchSize: Int,
-      propagateExceptions: Boolean = true
+      propagateExceptions: Boolean = true,
+      progressRecording: ProgressRecording = NoProgressRecording
   )
 end CodeMotionAnalysis

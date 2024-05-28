@@ -4,7 +4,6 @@ import cats.{Eq, Order}
 import com.google.common.hash.{Funnel, HashFunction, Hashing}
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.junit5.*
-import com.sageserpent.kineticmerge.NoProgressRecording
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.Configuration
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtension.*
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtensionTest.{FakePath, reconstituteTextFrom, given}
@@ -67,7 +66,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       base = baseSources,
       left = leftSources,
       right = rightSources
-    )(configuration, progressRecording = NoProgressRecording): @unchecked
+    )(configuration): @unchecked
 
     val expected = stuntDoubleTokens(issue23BugReproductionExpectedMerge)
 
@@ -167,7 +166,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
             base = baseSources,
             left = leftSources,
             right = rightSources
-          )(configuration, progressRecording = NoProgressRecording): @unchecked
+          )(configuration): @unchecked
 
           val expected = stuntDoubleTokens(expectedText)
 
@@ -281,7 +280,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
             base = baseSources,
             left = leftSources,
             right = rightSources
-          )(configuration, progressRecording = NoProgressRecording): @unchecked
+          )(configuration): @unchecked
 
           val expected = stuntDoubleTokens(expectedText)
 
@@ -341,7 +340,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       base = baseSources,
       left = leftSources,
       right = rightSources
-    )(configuration, progressRecording = NoProgressRecording): @unchecked
+    )(configuration): @unchecked
 
     val expected = tokens(codeMotionExampleExpectedMerge).get
 
@@ -403,7 +402,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       base = baseSources,
       left = leftSources,
       right = rightSources
-    )(configuration, progressRecording = NoProgressRecording): @unchecked
+    )(configuration): @unchecked
 
     val expectedForOriginal = tokens(
       codeMotionExampleWithSplitOriginalExpectedMerge
@@ -496,7 +495,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         base = baseSources,
         left = leftSources,
         right = rightSources
-      )(configuration, progressRecording = NoProgressRecording): @unchecked
+      )(configuration): @unchecked
 
       val (mergeResultsByPath, _) = codeMotionAnalysis.merge
 

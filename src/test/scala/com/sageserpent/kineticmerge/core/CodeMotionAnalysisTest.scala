@@ -6,7 +6,6 @@ import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.java.CasesLimitStrategy
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.americium.{Trials, TrialsApi}
-import com.sageserpent.kineticmerge.NoProgressRecording
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.Configuration
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.{*, given}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
@@ -92,8 +91,7 @@ class CodeMotionAnalysisTest:
               ]
             ) =
               CodeMotionAnalysis.of(base, left, right)(
-                configuration,
-                progressRecording = NoProgressRecording
+                configuration
               ): @unchecked
 
             analysis.base matches base
@@ -461,10 +459,7 @@ class CodeMotionAnalysisTest:
               baseSources,
               leftSources,
               rightSources
-            )(
-              configuration,
-              progressRecording = NoProgressRecording
-            ): @unchecked
+            )(configuration): @unchecked
           end val
 
           // Check that all matches are consistent with the base sections...
@@ -745,7 +740,7 @@ class CodeMotionAnalysisTest:
         baseSources,
         leftSources,
         rightSources
-      )(configuration, progressRecording = NoProgressRecording): @unchecked
+      )(configuration): @unchecked
     end val
 
     val matches =
@@ -844,7 +839,7 @@ class CodeMotionAnalysisTest:
         baseSources,
         leftSources,
         rightSources
-      )(configuration, progressRecording = NoProgressRecording): @unchecked
+      )(configuration): @unchecked
     end val
 
     val matches =
@@ -933,7 +928,7 @@ class CodeMotionAnalysisTest:
         baseSources,
         leftSources,
         rightSources
-      )(configuration, progressRecording = NoProgressRecording): @unchecked
+      )(configuration): @unchecked
     end val
 
     val matches =
