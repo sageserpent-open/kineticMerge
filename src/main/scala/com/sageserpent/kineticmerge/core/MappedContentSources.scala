@@ -68,10 +68,6 @@ trait MappedContentSources[Path, Element]
                     gapStart,
                     onePastGapEnd - gapStart
                   )
-
-                  logger.debug(
-                    s"Filling gap on side: $label at path: $path prior to following section with: ${pprintCustomised(fillerSection)}."
-                  )
                   
                   IndexedSeq(fillerSection)
               ) { chunk =>
