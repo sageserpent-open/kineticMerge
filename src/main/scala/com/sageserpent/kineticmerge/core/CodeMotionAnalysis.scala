@@ -75,9 +75,6 @@ object CodeMotionAnalysis extends StrictLogging:
     // the companion object for `CodeMotionAnalysis`.
     import configuration.*
 
-    require(0 <= thresholdSizeFractionForMatching)
-    require(1 >= thresholdSizeFractionForMatching)
-
     val newline = "\n"
 
     val baseSizesByPath = base.filesByPath.map { case (path, file) =>
@@ -1853,5 +1850,10 @@ object CodeMotionAnalysis extends StrictLogging:
       minimumAmbiguousMatchSize: Int,
       propagateExceptions: Boolean = true,
       progressRecording: ProgressRecording = NoProgressRecording
-  )
+  ):
+    require(0 <= minimumMatchSize)
+    require(0 <= thresholdSizeFractionForMatching)
+    require(1 >= thresholdSizeFractionForMatching)
+    require(0 <= minimumAmbiguousMatchSize)
+  end Configuration
 end CodeMotionAnalysis
