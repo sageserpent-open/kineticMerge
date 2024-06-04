@@ -1,5 +1,7 @@
 # Modelling of the Problem Space #
 
+## Sources, Sides, Sections and Matching ##
+
 Kinetic Merge abstracts merging away from Git - it works in terms of three *sources*, one of which represents the
 codebase as seen from the base commit, one as seen from our branch head commit and one as seen from their branch head
 commit. The sources break down into *files*, each of which is associated with a *path*.
@@ -39,10 +41,11 @@ Once an optimal set of matches has been found, each side's sources instance is b
 matched sections and 'filler' sections that cover any content gaps in each file - possibly even the entire file if none
 of its content was matched. Once we have this breakdown, merging can proceed...
 
+## Merging, Longest Common Subsequence, Code Motion ##
+
 Merging takes place both at a global level, looking at all the paths and taking code motion into account, and also at a
 file-by-file level, performing an augmented *three-way merge* on each file path. What is merged is not the raw content
-of
-the sources' files, rather it is the sections that are rearranged by the merge at both global and file-by-file level.
+of the sources' files, rather it is the sections that are rearranged by the merge at both global and file-by-file level.
 While a section belongs to a sources instance for one of the three sides, it can be queried for the content it covers -
 so rearranging sections is tantamount to rearranging the underlying content.
 
