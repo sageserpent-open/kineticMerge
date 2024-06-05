@@ -66,7 +66,7 @@ case class MoveDestinations[Element](
     // 7. The unambiguous divergent insertions.
     // 8. The ambiguous divergent insertions.
 
-    def sectionSetAsText(
+    def elementSetAsText(
         sections: collection.Set[? <: (Element | (Element, Element))]
     ): String =
       require(sections.nonEmpty)
@@ -76,36 +76,36 @@ case class MoveDestinations[Element](
         case _ =>
           s"${sections.map(pprintCustomised(_).toString).mkString(",\n")}"
       end match
-    end sectionSetAsText
+    end elementSetAsText
 
     def destinationsAsText: String =
       (left.nonEmpty, right.nonEmpty, coincident.nonEmpty) match
         // NOTE: there is no case for `(false, false, false)` as that would
         // violate the invariant.
-        case (false, true, false) => s"${sectionSetAsText(right)}"
-        case (false, false, true) => s"${sectionSetAsText(coincident)}"
+        case (false, true, false) => s"${elementSetAsText(right)}"
+        case (false, false, true) => s"${elementSetAsText(coincident)}"
         case (false, true, true) =>
-          s"${sectionSetAsText(right)}\n\n${sectionSetAsText(coincident)}"
-        case (true, false, false) => s"${sectionSetAsText(left)}"
+          s"${elementSetAsText(right)}\n\n${elementSetAsText(coincident)}"
+        case (true, false, false) => s"${elementSetAsText(left)}"
         case (true, true, false) =>
-          s"${sectionSetAsText(left)}\n\n${sectionSetAsText(right)}"
+          s"${elementSetAsText(left)}\n\n${elementSetAsText(right)}"
         case (true, false, true) =>
-          s"${sectionSetAsText(left)}\n\n${sectionSetAsText(coincident)}"
+          s"${elementSetAsText(left)}\n\n${elementSetAsText(coincident)}"
         case (true, true, true) =>
-          s"${sectionSetAsText(left)}\n\n${sectionSetAsText(right)}\n\n${sectionSetAsText(coincident)}"
+          s"${elementSetAsText(left)}\n\n${elementSetAsText(right)}\n\n${elementSetAsText(coincident)}"
 
     (isAmbiguous, isDivergent, isDegenerate) match
       case (false, false, false) =>
-        s"Single move of:\n${sectionSetAsText(sources)}\nto:\n$destinationsAsText."
+        s"Single move of:\n${elementSetAsText(sources)}\nto:\n$destinationsAsText."
       case (false, true, false) =>
-        s"Divergent move of:\n${sectionSetAsText(sources)}\nto:\n$destinationsAsText."
+        s"Divergent move of:\n${elementSetAsText(sources)}\nto:\n$destinationsAsText."
       case (false, false, true) => s"Insertion of:\n$destinationsAsText."
       case (false, true, true) =>
         s"Divergent insertion of:\n$destinationsAsText."
       case (true, false, false) =>
-        s"Ambiguous moves of:\n${sectionSetAsText(sources)}\nto:\n$destinationsAsText."
+        s"Ambiguous moves of:\n${elementSetAsText(sources)}\nto:\n$destinationsAsText."
       case (true, true, false) =>
-        s"Ambiguous divergent moves of:\n${sectionSetAsText(sources)}\nto:\n$destinationsAsText."
+        s"Ambiguous divergent moves of:\n${elementSetAsText(sources)}\nto:\n$destinationsAsText."
       case (true, false, true) =>
         s"Ambiguous insertions of:\n$destinationsAsText."
       case (true, true, true) =>
