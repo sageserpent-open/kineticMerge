@@ -93,15 +93,15 @@ The companion object provides `Token.tokens` that tokenizes string content.
 This provides a clean abstraction of a codebase from the point of view of a side. There are three instances in play -
 one for the base, the left and the right. An instance:
 
-1. yields a set of paths to the files in the codebase as seen from a given side,
+1. yields a set of paths to the files in the codebase as seen from the relevant side,
 2. acts as a factory for `Section` instances to refer to parts of the content in the codebase,
 3. looks up the path to the file whose content is referred to by a section,
 4. covers all of its content by `File` instances, taking into account mandatory sections provided by the caller and
 5. provides an initial breakdown by `File` instances that default to having one section for each file.
 
 A `Sources` instances is *not* a mutable holder of `File` instances, nor of `Section` instances - files and sections are
-to some extent freestanding, although they do retain an association with their parent sources. It is therefore possible
-to request multiple and differing breakdowns of the same sources.
+to some extent freestanding, although the latter retain an association with their parent sources. It is therefore
+possible to request multiple and differing breakdowns of the same sources.
 
 It is expected that callers do not pass sections associated with other `Sources` instances to a sources when looking up
 a path or performing a breakdown.
@@ -132,35 +132,35 @@ then they are dissimilar.
 
 ### `Match` ###
 
-Represents three or two items, all from different sides that match. These items are sections in production code, but may
-be simpler constructs in tests.
+Represents three or two items, all from different sides that match. These items are sections when built in the context
+of `CodeMotionAnalysis`, but may be simpler constructs in tests.
 
 A match can be consulted for its *dominant element* - this is one chosen to go through into the merge result. The
 dominant element is taken to be the left side's contribution if it is available, otherwise it is from the right side. In
 conjunction with whitespace insensitivity at the token level, this replicates how `git merge` selects from matching
 content when merging.
 
-Matches over sections are built by examining the *content* covered by a section - the matched sections will not compare
-equal simply because they are from different sides.
+Matches over sections are built by examining the *content* covered by a section - the matched sections cannot compare
+equal using `Section.equals`, because they are from different sides.
 
 Bear in mind that the same content may participate in multiple ambiguous matches with several locations on one, two or
 all three sides. Each such match gets its own instance - given a set of ambiguous matches, we expect each match to
 differ if we compare the elements. What this means when matches are made over sections is that at least one side's
-section from each match must differ from the corresponding side's section in all the other matches (although the content
-will agree).
+section from each match must differ by intrinsic equality from the corresponding side's section in all the other
+matches (although the content will agree).
 
 ### `CodeMotionAnalysis` ###
 
-The class is a result for the act of performing the analysis. It is a breakdown of files by path for each of the three
+The class is a result of the act of performing the analysis. It is a breakdown of files by path for each of the three
 sides, together with a set of all the matches gleaned from the analysis.
 
 The files will yield sections that are either parts of the matches, or are gap filler sections to cover the unmatched
-content in all three sides.
+content on all three sides.
 
 The companion object defines `CodeMotionAnalysis.of` - this performs the analysis, being a factory for the instances.
 Its job is find an optimal set of matches, matching as much of the content as possible across all the sides, but using
 no more matches than is necessary. All the content across the sides should be covered by sections that either belong to
-a match or a gap fillers.
+a match or are gap fillers.
 
 This method takes a `Sources` instance for each of the three sides and a `CodeMotionAnalysis.Configuration`
 that `Main.mergeTheirBranch` provides.
@@ -173,7 +173,7 @@ Instances of `RollingHash` are imperative sessions that are used to compute mult
 rolled over an implied sequence of bytes. Each windowed hash is referred to as a *fingerprint*.
 
 Each session instance is created by an immutable instance of `RollingHash.Factory` that embodies the window size and the
-expected number of fingerprints required; the factory instances are expensive to create and are cached
+expected number of fingerprints required; the factory instances themselves are expensive to create and are cached
 within `CodeMotionAnalysis.of`.
 
 Interaction with a `RollingHash` session is by repeatedly pushing in single bytes (this implies the byte sequence). Once
@@ -191,7 +191,7 @@ is treated as a parameter object to the merge.
 
 This performs file-by-file three-way merges across the sides, building up a picture of code motion and associated
 changes (edits or deletions) or insertions that need to be migrated through the code motion. It then performs the
-migrations on the merge results for each file as single postprocessing step once the code motion is known globally.
+migrations on the merge results for each file as a single postprocessing step once the code motion is known globally.
 
 Code motion that doesn't have associated changes or insertions does not feature in the postprocessing step - there is
 nothing to do. It is however tracked as it is important to the process of merging.
@@ -206,8 +206,8 @@ There is a lot of logic in this extension; this is discussed further elsewhere.
 
 The result of a three-way merge in terms of content. It may be either fully-merged, in which case there is an indexed
 sequence of merged elements, or may have conflicts, in which case there are two indexed sequences, these being the left
-and right sides' interpretation of the merge result. Code motion is not modelled in the result, but the presence of code
-motion may affect what goes into the result.
+and right sides' interpretations of the merge result. Code motion is not modelled in the result, but the presence of
+code motion may affect what goes into the result.
 
 ### `merge.MergeAlgebra` ###
 
@@ -247,7 +247,7 @@ An instance represents the destinations a piece of code may move to. There are s
 This class is odd in that it isn't a single move destination, it also carries the sources of the moves, and it is
 parameterised by an element type that itself doesn't expose any location in its abstract form. It is only
 because `CodeMotionAnalysisExtension.merge` works in terms of sections that the location information is modelled. This
-works perfectly well, the logic only needs to be able to identify a destination, it doesn't need any location when
+works perfectly well; the logic only needs to be able to identify a destination, it doesn't need any location when
 migrating changes or insertions.
 
 Nevertheless, the report shown to the user when running Kinetic Merge will refer to sections, and these do display
@@ -262,19 +262,19 @@ simply a lookup of matches for a given section.
 
 A richer merge result that aggregates (and delegates to) a simpler merge result (in `CodeMotionAnalysisExtension.merge`,
 this is a plain `MergeResult`). It has extra baggage that tracks changes (edits and deletions) to be migrated, move
-destinations and insertions that may or may not be migrated.
+destinations and insertions that may or may not need migration.
 
 ### `LongestCommonSubsequence` ###
 
 Employed by `merge.of`, this represents the backbone of a three-way merge.
 
-The companion object defines `LongestCommonSubsequence.of`, a factory that takes three indexed sequences of elements,
-one from each side, to be compared. While the algorithm computes the longest common subsequence, it is generalised so
-that the result represents not only the longest common subsequence across all three sides, but additional contributions
-where elements only align on two sides, augmented further with elements present only on one side.
+The companion object defines `LongestCommonSubsequence.of`, a factory that takes three indexed sequences of elements to
+be compared, one from each side. While the algorithm computes the longest common subsequence, it is generalised so that
+the result represents not only the longest common subsequence across all three sides, but additional contributions where
+elements only align on two sides, augmented further with elements present only on one side.
 
 In essence, it classifies the elements according to whether they are in the core longest common subsequence, or are
-common on just two sides, or are just different. This classification is revealed for all three sides.
+common on just two sides, or are just different. This classification is revealed separately for all three sides.
 
 The algorithm used is the standard dynamic programming algorithm recast as a memoized recursive algorithm. It is not
 robust against stack overflow, nor does it scale well - but as the three-way merge works over sections rather than
