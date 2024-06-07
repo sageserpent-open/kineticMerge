@@ -124,3 +124,20 @@ We don't have to worry about underestimating the candidate window sizes - we alr
 matches in the bag that might exclude whatever is being looked for at the current window size, so as soon as we see
 matches, we know they are optimal.
 
+## Checking Sections for Overlaps and Subsumption ##
+
+`MatchesAndTheirSections` does what it says on the tin, accumulating matches and allowing a match to be found from any
+of its participating sections. It breaks down into three maps from paths to instances of `SectionsSeen`, one map for
+each side, as well as a multi-dictionary implementing the mapping from sections back to their matches -
+a `MatchedSections`.
+
+`SectionsSeen` is a range-search data structure layered over a fingertree provided
+by [this implementation](https://codeberg.org/sciss/FingerTree). It stores sections belonging to the same side and path
+by the range defined by a section's start offset and one-past-end offset. It supports efficient searches for overlapping
+and subsuming sections, underpinning several helper methods in the companion object for `MatchesAndTheirSections`.
+
+While it is efficient, it is hammered by `CodeMotionAnalysis.of`; anything that can yield more optimal performance is
+likely to provide a good performance boost.
+
+## Finding the Matches for a candidate Window Size ##
+
