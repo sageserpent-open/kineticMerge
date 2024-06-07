@@ -149,6 +149,9 @@ differ if we compare the elements. What this means when matches are made over se
 section from each match must differ by intrinsic equality from the corresponding side's section in all the other
 matches (although the content will agree).
 
+Some handy jargon for later - a match across all three sides is an *all-sides match*, and one across just two side - be
+they base plus left, base plus right or left plus right - is a *pairwise match*.
+
 ### `CodeMotionAnalysis` ###
 
 The class is a result of the act of performing the analysis. It is a breakdown of files by path for each of the three
