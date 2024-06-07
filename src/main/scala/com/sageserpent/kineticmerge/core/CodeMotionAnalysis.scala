@@ -115,12 +115,21 @@ object CodeMotionAnalysis extends StrictLogging:
     val minimumWindowSizeAcrossAllFilesOverAllSides =
       minimumMatchSize max (minimumFileSizeAcrossAllFilesOverAllSides * thresholdSizeFractionForMatching).floor.toInt
 
+    // The penultimate largest file size from the three sides is the largest
+    // potential match size - because a match has to span at least two sides.
+    val maximumPossibleMatchSize =
+      Seq(
+        baseSizesByPath.values.maxOption,
+        leftSizesByPath.values.maxOption,
+        rightSizesByPath.values.maxOption
+      ).flatten.sorted(Ordering[Int].reverse).take(2).last
+
     val maximumFileSizeAcrossAllFilesOverAllSides = fileSizes.last
 
     // This is the minimum window size that would be allowed in *all* files
     // across the sources.
     val minimumSureFireWindowSizeAcrossAllFilesOverAllSides =
-      minimumMatchSize max (maximumFileSizeAcrossAllFilesOverAllSides * thresholdSizeFractionForMatching).floor.toInt
+      maximumPossibleMatchSize min (minimumMatchSize max (maximumFileSizeAcrossAllFilesOverAllSides * thresholdSizeFractionForMatching).floor.toInt)
 
     logger.debug(
       s"Minimum match window size across all files over all sides: $minimumWindowSizeAcrossAllFilesOverAllSides"
@@ -129,7 +138,7 @@ object CodeMotionAnalysis extends StrictLogging:
       s"Minimum sure-fire match window size across all files over all sides: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides"
     )
     logger.debug(
-      s"Maximum match window size across all files over all sides: $maximumFileSizeAcrossAllFilesOverAllSides"
+      s"Maximum match window size across all files over all sides: $maximumPossibleMatchSize"
     )
     logger.debug(
       s"File sizes across all files over all sides: $fileSizes"
@@ -160,13 +169,13 @@ object CodeMotionAnalysis extends StrictLogging:
         Using(
           progressRecording.newSession(
             label = "Minimum match size considered:",
-            maximumProgress = maximumFileSizeAcrossAllFilesOverAllSides
-          )(initialProgress = maximumFileSizeAcrossAllFilesOverAllSides)
+            maximumProgress = maximumPossibleMatchSize
+          )(initialProgress = maximumPossibleMatchSize)
         ) { progressRecordingSession =>
           withAllMatchesOfAtLeastTheSureFireWindowSize(
             matchesAndTheirSections = empty,
             looseExclusiveUpperBoundOnMaximumMatchSize =
-              1 + maximumFileSizeAcrossAllFilesOverAllSides,
+              1 + maximumPossibleMatchSize,
             progressRecordingSession = progressRecordingSession
           )
         }.get
@@ -874,6 +883,42 @@ object CodeMotionAnalysis extends StrictLogging:
         withoutTheseMatches(redundantMatches) -> usefulMatches
       end withoutRedundantPairwiseMatchesIn
 
+      private def withMatch(
+          aMatch: Match[Section[Element]]
+      ): MatchesAndTheirSections =
+        aMatch match
+          case Match.AllSides(baseSection, leftSection, rightSection) =>
+            copy(
+              baseSectionsByPath = withBaseSection(baseSection),
+              leftSectionsByPath = withLeftSection(leftSection),
+              rightSectionsByPath = withRightSection(rightSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch) + (rightSection -> aMatch)
+            )
+          case Match.BaseAndLeft(baseSection, leftSection) =>
+            copy(
+              baseSectionsByPath = withBaseSection(baseSection),
+              leftSectionsByPath = withLeftSection(leftSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch)
+            )
+          case Match.BaseAndRight(baseSection, rightSection) =>
+            copy(
+              baseSectionsByPath = withBaseSection(baseSection),
+              rightSectionsByPath = withRightSection(rightSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch)
+            )
+          case Match.LeftAndRight(leftSection, rightSection) =>
+            copy(
+              leftSectionsByPath = withLeftSection(leftSection),
+              rightSectionsByPath = withRightSection(rightSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch)
+            )
+        end match
+      end withMatch
+
       private def withoutTheseMatches(
           matches: Iterable[Match[Section[Element]]]
       ): MatchesAndTheirSections =
@@ -973,42 +1018,6 @@ object CodeMotionAnalysis extends StrictLogging:
               )
         }
       end withoutTheseMatches
-
-      private def withMatch(
-          aMatch: Match[Section[Element]]
-      ): MatchesAndTheirSections =
-        aMatch match
-          case Match.AllSides(baseSection, leftSection, rightSection) =>
-            copy(
-              baseSectionsByPath = withBaseSection(baseSection),
-              leftSectionsByPath = withLeftSection(leftSection),
-              rightSectionsByPath = withRightSection(rightSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch) + (rightSection -> aMatch)
-            )
-          case Match.BaseAndLeft(baseSection, leftSection) =>
-            copy(
-              baseSectionsByPath = withBaseSection(baseSection),
-              leftSectionsByPath = withLeftSection(leftSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch)
-            )
-          case Match.BaseAndRight(baseSection, rightSection) =>
-            copy(
-              baseSectionsByPath = withBaseSection(baseSection),
-              rightSectionsByPath = withRightSection(rightSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch)
-            )
-          case Match.LeftAndRight(leftSection, rightSection) =>
-            copy(
-              leftSectionsByPath = withLeftSection(leftSection),
-              rightSectionsByPath = withRightSection(rightSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch)
-            )
-        end match
-      end withMatch
 
       // Eating into pairwise matches can create smaller pairwise matches that
       // are partially subsumed by other larger pairwise matches. Prefer keeping
