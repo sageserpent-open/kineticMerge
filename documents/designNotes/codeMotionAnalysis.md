@@ -141,3 +141,37 @@ likely to provide a good performance boost.
 
 ## Finding the Matches for a candidate Window Size ##
 
+This is the job
+of [matchesForWindowSize](https://github.com/sageserpent-open/kineticMerge/blob/63ea2b5cf44d553bf9d49412cc321fc219874d9a/src/main/scala/com/sageserpent/kineticmerge/core/CodeMotionAnalysis.scala#L1095).
+It packages the matches found together with their count and the estimated window size for an optimal match in
+a `MatchingResult`.
+
+It delegates to three helper functions:
+
+1. [fingerprintStartIndices](https://github.com/sageserpent-open/kineticMerge/blob/63ea2b5cf44d553bf9d49412cc321fc219874d9a/src/main/scala/com/sageserpent/kineticmerge/core/CodeMotionAnalysis.scala#L1103)
+   collects fingerprints from the content of each file, along with the start offset of the piece of content that the
+   fingerprint refers to. It is expected that fingerprints can collide (and they do occasionally).
+2. [fingerprintSections](https://github.com/sageserpent-open/kineticMerge/blob/63ea2b5cf44d553bf9d49412cc321fc219874d9a/src/main/scala/com/sageserpent/kineticmerge/core/CodeMotionAnalysis.scala#L1161)
+   drives `fingerprintStartIndices` to gather instances of `PotentialMatchKey`. That class aggregates the raw
+   fingerprint, supporting an ordering that a) respects the fingerprint and b) uses the referenced piece of content as a
+   tiebreaker if two fingerprints with differing content collide. The content is implied via a section to avoid memory
+   bloat from copied content. These keys map to their associated sections via multi-dictionary instances that are built
+   for each side, spanning all the files in that side's sources. We use a multi-dictionary because it is entirely
+   possible for the same non-colliding fingerprint to refer to equivalent pieces of content repeated both in the same
+   file and across files. A subtlety is that when this happens, we may have a *section* with a single specific location
+   referring to several sections that all differ in location - the one in the `PotentialMatchKey` is really an exemplar
+   that refers to the piece of content in common to the mapped sections. Bear this in mind when debugging!
+3. [matchingFingerprintsAcrossSides](https://github.com/sageserpent-open/kineticMerge/blob/63ea2b5cf44d553bf9d49412cc321fc219874d9a/src/main/scala/com/sageserpent/kineticmerge/core/CodeMotionAnalysis.scala#L1201)
+   drives the creation of matches; it works its way tail-recursively through three sorted sequences
+   of `PotentialMatchKey`, one for each side, aligning the keys on either all three sides or failing that, just in
+   pairs. Each alignment leads to the Cartesian product of sections associated with the aligned key across the relevant
+   sides - the Cartesian product is thinned out with some overlap checking and flat-mapped through either `matchFrom` or
+   more specialised helpers to make specific pairwise matches only (`matchFrom` will build either an all-sides or a
+   pairwise match, depending on the context of existing larger matches). The tail recursion simply collects the matches
+   found - once it terminates, it calls the
+   helper [withMatches](https://github.com/sageserpent-open/kineticMerge/blob/63ea2b5cf44d553bf9d49412cc321fc219874d9a/src/main/scala/com/sageserpent/kineticmerge/core/CodeMotionAnalysis.scala#L814)
+   to build the final `MatchingResult` for the candidate window size out of those matches. It is here
+   that `withoutRedundantPairwiseMatchesIn` is used to thin out some redundant pairwise matches - this used to be done
+   earlier as matches were created, but this led to some surprisingly inefficient as well as difficult to maintain code,
+   so it is now done as a post-processing step. The estimate for the optimal match size is also requested here.
+
