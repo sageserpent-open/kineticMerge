@@ -203,8 +203,6 @@ The outcome is a map of `MergeResult` values keyed by path; the paths are seen f
 merge, so may be from either the left or right side. A report of the move destinations (and their sources) is also
 produced - and this does include *all* code motion, with or without migrations.
 
-There is a lot of logic in this extension; this is discussed further elsewhere.
-
 ### `MergeResult` ###
 
 The result of a three-way merge in terms of content. It may be either fully-merged, in which case there is an indexed
@@ -235,8 +233,6 @@ merge algebra that yields a `MatchesResult.MergeResultDetectingMotion`.
 A standalone object that defines `merge.of`. This method takes three sequences of elements to be merged, one for each
 side and a merge algebra that is driven by the merge algorithm's decisions. The result of the merge algebra is the
 result of the merge.
-
-There is a lot of logic in this method; this is discussed further elsewhere.
 
 ### `MoveDestinations` ###
 
