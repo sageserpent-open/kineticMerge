@@ -40,7 +40,7 @@ want to get into maintenance of all the third party codebase, just the bits requ
 
 It worked very well - in some respects, too well, because the collision resistance masked a bug in `CodeMotionAnalysis`
 provoked by fingerprint collisions between unrelated content. What did for it was the substantial overhead of
-precomputing the polynomial representation that is required to bootstrap a fingerprinting session.
+precomputing the irreducible polynomial representation that is required to bootstrap a fingerprinting session.
 
 Using a classic rolling hash algorithm, as would typically be used by the Rabin-Karp search algorithm (which is *not*
 the same as Rabin fingerprinting), yielded far better performance at the expense of encountering collisions - trying
@@ -48,7 +48,7 @@ this out was the point at which the aforementioned collision but was discovered 
 
 If collision resistance is a primary concern though, Rabin fingerprinting is worth looking at in more detail.
 
-# PartitionedThreeWayTransform #
+# `PartitionedThreeWayTransform` #
 
 This was a stop-gap measure when an attempt was made to launch Kinetic Merge in an interim release that would do just
 three-way merging without code motion. The intent was to get something out there and produce a robust application shell
@@ -73,7 +73,85 @@ This approach worked well, leading to [the first releases](https://github.com/sa
 
 `PartitionedThreeWayTransform` used Rabin fingerprinting to find common content across the sides. Given that it was
 carried out in the context of getting an interim release out, once `CodeMotionAnalysis` and its friends were reinstated,
-it was excised out in Git commit SHA: 17105a839997c1bb65b25c5039ea78d547884dcd - but its use legacy lives on in terms of
-the code
-in [`matchesForWindowSize`](https://github.com/sageserpent-open/kineticMerge/blob/63ea2b5cf44d553bf9d49412cc321fc219874d9a/src/main/scala/com/sageserpent/kineticmerge/core/CodeMotionAnalysis.scala#L1095).
+`PartitionedThreeWayTransform` was excised out in Git commit SHA: 17105a839997c1bb65b25c5039ea78d547884dcd - but its
+legacy lives on in terms of the code
+in [`matchesForWindowSize`](https://github.com/sageserpent-open/kineticMerge/blob/63ea2b5cf44d553bf9d49412cc321fc219874d9a/src/main/scala/com/sageserpent/kineticmerge/core/CodeMotionAnalysis.scala#L1095)
 initially being a crib from `PartitionedThreeWayTransform`, albeit with a lot more baggage added since then.
+
+# Two Passes to find Matches #
+
+When finding matches, it is efficient to work downwards in window size, thus blocking lots of smaller overlapping
+matches that cover the same content as a single longer match; this allows matches to be added systematically; once they
+are in for a given window size, there is nothing larger that can turn up to render them invalid.
+
+The problem is that there is a tension between whether to go with a pairwise match with a larger window size versus a
+mixture of smaller pairwise matches and smaller all-sides matches that cover all the content of the longer pairwise
+match, but bring in additional sections due to the all-sides matches.
+
+Ideally we would go with the larger pairwise match and block all smaller matches, but this would exclude the detection
+of smaller all-sides matches that might yield better coverage.
+
+As described in the detail about `CodeMotionAnalysis`, this is handled by relaxing the blocking rules slightly and then
+post-processing to clean up of the matches.
+
+An alternative that was considered was to do a two-pass search for matches, the first for all-sides matches only and the
+second for pairwise matches. Both would work down in candidate window size, but with the twist that in the second pass,
+a smaller all-sides match could block a potential *larger* pairwise match; this has the effect of holding off until the
+more optimal smaller pairwise matches are discovered, as these fit between the gaps of the all-sides matches.
+
+This wasn't pursued as having a more relaxed invariant about what matches could coexist along with subsequent
+post-processing turned out to be reasonably easy to implement and reason about. It takes significant time to search
+through the candidate window sizes, so having two passes would have resulted in a significant performance hit.
+
+Given some breakthrough on performance overall in `CodeMotionAnalysis`, this might be worth revisiting in the future...
+
+# Tiny Matches #
+
+Regardless of which of the two search strategies is used to find matches - binary search or linear scanning, the search
+will not consider candidate window sizes below a minimum limit, which defaults to 4. There is a separate limit that
+comes into play for ambiguous matches at a given candidate window size.
+
+This stops a problem with the logic for larger matches blocking smaller matches; the fingertree implementation is
+overwhelmed when there are lots of matches of sizes one, two or three elements. As we expect to find many such matches,
+both the entries stored in the fingertrees for two-element and three-element matches grows very large; this slows the
+fingertree implementation down in terms of its balancing operations. Furthermore, checking all the one-element matches
+against the resulting fingertree hammers the implementation by virtue of having so many matches to check; given the
+number of possible tokens is limited, it is inevitable that practically all the tokens participate in multiple ambiguous
+matches.
+
+Various attempts have been made to try and workaround this, e.g. not registering one-element matches in the
+fingertrees (as they cannot block anything smaller), or by allowing a certain number of ambiguous matches up to a
+cutoff, then discarding all ambiguous matches if there number would exceed the cutoff. None of these has yielded
+acceptable performance, and have resulted in subtle test failures.
+
+It may be worth revisiting this now that the matching logic has become more tractable - this might provide a more robust
+and elegant fix
+for: [one-token sections making odd-looking merges](https://github.com/sageserpent-open/kineticMerge/issues/43),
+[small ambiguous matches](https://github.com/sageserpent-open/kineticMerge/issues/31)
+and [edit anchoring](https://github.com/sageserpent-open/kineticMerge/issues/29).
+
+# Breaking down Gap Fills into Runs of One-Token Sections #
+
+An initial attempt at [fixing poor merges](https://github.com/sageserpent-open/kineticMerge/issues/42) was to break down
+gap fills into lots of one-element sections. This failed completely, at first due to the three-way merge algorithm going
+into stack overflow due to the volume of sections to merge - this was worked around in a very ungainly way as a spike to
+see what it would lead to.
+
+What it did lead to was a fix for the original failing test, but lots poor merges seen in the manual verification merge
+tests. The fundamental problem is that the three-way merge relies on the longest common subsequence algorithm, and
+*that* can make some spectacularly poor alignment decisions, as was discussed way back
+about [weird merge results](https://github.com/sageserpent-open/kineticMerge/issues/19).
+
+That earlier work led to...
+
+# Tweaking `LongestCommonSubsequence.of` #
+
+Read from [here](https://github.com/sageserpent-open/kineticMerge/issues/19#issuecomment-1757202991)
+to [here](https://github.com/sageserpent-open/kineticMerge/issues/19#issuecomment-1763446990).
+
+It may be possible that the three-way merge algorithm might still be generalised to allow alternate solutions (a
+constant problem was the explosion in partial solutions that have to be tracked; various thinning heuristics were tried,
+but none of them led to decent merges). Perhaps some other approach might yield better results?
+
+
+
