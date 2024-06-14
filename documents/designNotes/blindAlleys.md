@@ -92,7 +92,7 @@ Ideally we would go with the larger pairwise match and block all smaller matches
 of smaller all-sides matches that might yield better coverage.
 
 As described in the detail about `CodeMotionAnalysis`, this is handled by relaxing the blocking rules slightly and then
-post-processing to clean up of the matches.
+post-processing to clean up the matches.
 
 An alternative that was considered was to do a two-pass search for matches, the first for all-sides matches only and the
 second for pairwise matches. Both would work down in candidate window size, but with the twist that in the second pass,
