@@ -85,8 +85,8 @@ moved to an existing commit that refers to all the commits in both branches' his
 those branches), an error - or a program crash.
 
 Let's look at the outcomes in more detail. We'll use terminology from the man-page of `git merge` - the branch checked
-out in our repository's working tree is called `our` branch, the branch we want to merge in is called `their` branch,
-and the best common ancestor is called the `base`.
+out in our repository's working tree is called *our* branch, the branch we want to merge in is called *their* branch,
+and the best common ancestor is called the *base*.
 
 1. Clean merge, committed: a new merge commit is made with two parents; these refer to the branch histories being
    merged. The working tree is updated and the index is left clean. Just like what Git does, only with code motion taken
