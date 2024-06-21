@@ -36,8 +36,9 @@ The working directory is captured as context in the instance to simplify the met
 
 The majority of the methods in `Main.InWorkingDirectory` wrap their results in this type - it is monadic effect type
 that allows exceptions to be cleanly handled as well as keeping a log of operations performed in the workflow. The aim
-is for code to be written in for-comprehensions without having to worry about exception handling and logging. It
-is `EitherT` layered on top of `WriterT` which in turn is layered on top of `IO`.
+is for code to be written in for-comprehensions without having to worry too much about exception handling and logging.
+It is `EitherT` (representing an error versus a result) layered on top of `WriterT` (adding logging) which in turn is
+layered on top of `IO` (dealing with side effects that may throw exceptions).
 
 There are two helper methods defined in extensions that allow convenient translation of exceptions into error messages
 and logging - `Main.labelExceptionWith` and `Main.logOperation`.
@@ -45,7 +46,7 @@ and logging - `Main.labelExceptionWith` and `Main.logOperation`.
 ### `Main.MergeInput` ###
 
 Each path considered by Kinetic Merge is given a `Main.MergeInput` to classify the kind of merge required. This
-distinguishes between, say, a three-way merge were an existing file in the base has been modified by our branch and
+distinguishes between, say, a three-way merge where an existing file in the base has been modified by our branch and
 their branch, or a new file has been added by our branch, or a file in the base has been deleted by their branch, etc...
 
 ### `Main.Change` ###
