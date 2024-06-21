@@ -53,11 +53,11 @@ The file-by-file three-way merge itself depends on a more fundamental notion, th
 subsequence*. The longest common subsequence, in concert with matching, contributes in two ways to the big picture of
 merging:
 
-1. they provide a skeleton to hang the three-way merge around for each file path and
-2. they identify code motion.
+1. it provides a skeleton to hang the three-way merge around for each file path and
+2. it identifies code motion.
 
 Bear in mind that in a merge, both the left and right side will see changes to the content of a file, so even if a piece
-of code doesn't 'move' to a completely different location from the point of view of how the code is logically
+of code doesn't move to a completely different location from the point of view of how the code is logically
 structured, it may still move from one offset to another if we compare content for the same file across different sides.
 So to detect genuine code motion, we need a more flexible notion of movement - and this is what the combination of the
 longest common subsequence and matching gives us.
