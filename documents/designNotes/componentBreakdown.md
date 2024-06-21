@@ -120,9 +120,9 @@ does *not* wrap an underlying file at the OS filesystem level.
 ### `Section` ###
 
 Represents a continuous piece of content at a given path that is demarcated by a start offset and one past the end
-offset - so a closed-open interval of offsets into the file content. It is possible (and expected) to ask a `Sources`
-instance to generate several sections that may be non-contiguous due to either gaps or overlaps, but constructing
-a `File` requires contiguous sections.
+offset - so a closed-open interval of offsets into the file content as seen by the OS filesystem. It is possible (and
+expected) to ask a `Sources`instance to generate several sections that may be non-contiguous due to either gaps or
+overlaps, but constructing a `File` requires contiguous sections.
 
 A section has a loose association to the sources used to create it - in contrast to a file, it is defined analytically
 as a window into some content belonging to the sources at some path.
