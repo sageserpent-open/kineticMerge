@@ -12,13 +12,13 @@ in the determination of optimal matches by `CodeMotionAnalysis`.
 
 Here's
 the [original plan to use a genetic algorithm](https://github.com/sageserpent-open/kineticMerge/issues/19#issuecomment-1806822492),
-here's the
-[thinking about pursuing a systematic search to do the heavy lifting](https://github.com/sageserpent-open/kineticMerge/issues/19#issuecomment-1855867054)
+here's
+the [thinking about alternatives](https://github.com/sageserpent-open/kineticMerge/issues/19#issuecomment-1855867054)
 and here's the decision
 to [get rid of it altogether](https://github.com/sageserpent-open/kineticMerge/issues/19#issuecomment-1875093907).
 
 Something that wasn't explored was the first possibility
-from [thinking about pursuing a systematic search to do the heavy lifting](https://github.com/sageserpent-open/kineticMerge/issues/19#issuecomment-1855867054).
+from [thinking about alternatives](https://github.com/sageserpent-open/kineticMerge/issues/19#issuecomment-1855867054).
 
 This would have had a chromosome directly encode the matches, the crossover and mutation operations allowing additional
 matches to be acquired, removed, coalesced, expanded and contracted. This was the original implementation plan, but once
@@ -108,7 +108,7 @@ Given some breakthrough on performance overall in `CodeMotionAnalysis`, this mig
 # Tiny Matches #
 
 Regardless of which of the two search strategies is used to find matches - binary search or linear scanning, the search
-will not consider candidate window sizes below a minimum limit, which defaults to 4. There is a separate limit that
+will not consider candidate window sizes below a minimum limit, which defaults to 4. There is also a separate limit that
 comes into play for ambiguous matches at a given candidate window size.
 
 This stops a problem with the logic for larger matches blocking smaller matches; the fingertree implementation is
