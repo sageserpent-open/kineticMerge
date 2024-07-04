@@ -13,7 +13,7 @@ class MatchesContext[Element](
 ):
   val emptyReport: MoveDestinationsReport = MoveDestinationsReport(Map.empty)
 
-  private def dominantsOf(element: Element): collection.Set[Element] =
+  def dominantsOf(element: Element): collection.Set[Element] =
     matchesFor(element).map(_.dominantElement)
 
   private def sourcesOf(element: Element): collection.Set[Element] =
@@ -23,7 +23,7 @@ class MatchesContext[Element](
       case LeftAndRight(_, _)           => None
       case AllSides(baseElement, _, _)  => Some(baseElement)
     }
-
+  
   case class MergeResultDetectingMotion[CoreResult[_], Element](
       coreMergeResult: CoreResult[Element],
       changesMigratedThroughMotion: MultiDict[Element, IndexedSeq[Element]],

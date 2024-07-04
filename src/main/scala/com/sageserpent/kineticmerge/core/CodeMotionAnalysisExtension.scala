@@ -25,12 +25,11 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         Map[Path, MergeResult[Element]],
         MatchesContext[Section[Element]]#MoveDestinationsReport
     ) =
-      def dominantsOf(
-          section: Section[Element]
-      ): collection.Set[Section[Element]] =
-        codeMotionAnalysis
-          .matchesFor(section)
-          .map(_.dominantElement)
+      val matchesContext = MatchesContext(
+        codeMotionAnalysis.matchesFor
+      )
+
+      import matchesContext.*
 
       given Eq[Section[Element]] with
         /** This is most definitely *not* [[Section.equals]] - we want to
@@ -53,12 +52,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             .eqv(lhs.content, rhs.content)
         end eqv
       end given
-
-      val matchesContext = MatchesContext(
-        codeMotionAnalysis.matchesFor
-      )
-
-      import matchesContext.*
 
       val paths =
         codeMotionAnalysis.base.keySet ++ codeMotionAnalysis.left.keySet ++ codeMotionAnalysis.right.keySet
