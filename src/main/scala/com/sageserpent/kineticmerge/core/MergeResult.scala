@@ -16,16 +16,19 @@ object MergeResult:
           preservedElementOnLeft: Element,
           preservedElementOnRight: Element
       ): MergeResult[Element] =
+        val resolved =
+          resolution(preservedElementOnLeft, preservedElementOnRight)
+
         result match
           case FullyMerged(elements) =>
-            // Break the symmetry - choose the left.
-            FullyMerged(elements :+ preservedElementOnLeft)
+            FullyMerged(elements :+ resolved)
           case MergedWithConflicts(leftElements, rightElements) =>
             MergedWithConflicts(
-              leftElements :+ preservedElementOnLeft,
-              // Break the symmetry - choose the left.
-              rightElements :+ preservedElementOnLeft
+              leftElements :+ resolved,
+              rightElements :+ resolved
             )
+        end match
+      end preservation
 
       override def leftInsertion(
           result: MergeResult[Element],
@@ -58,16 +61,18 @@ object MergeResult:
           insertedElementOnLeft: Element,
           insertedElementOnRight: Element
       ): MergeResult[Element] =
+        val resolved = resolution(insertedElementOnLeft, insertedElementOnRight)
+
         result match
           case FullyMerged(elements) =>
-            // Break the symmetry - choose the left.
-            FullyMerged(elements :+ insertedElementOnLeft)
+            FullyMerged(elements :+ resolved)
           case MergedWithConflicts(leftElements, rightElements) =>
             MergedWithConflicts(
-              leftElements :+ insertedElementOnLeft,
-              // Break the symmetry - choose the left.
-              rightElements :+ insertedElementOnLeft
+              leftElements :+ resolved,
+              rightElements :+ resolved
             )
+        end match
+      end coincidentInsertion
 
       override def leftDeletion(
           result: MergeResult[Element],
@@ -117,17 +122,15 @@ object MergeResult:
           editedElement: Element,
           editElements: IndexedSeq[(Element, Element)]
       ): MergeResult[Element] =
-        val leftEditElements = editElements.map(_._1)
+        val resolvedElements = editElements.map(resolution.tupled)
 
         result match
           case FullyMerged(elements) =>
-            // Break the symmetry - choose the left.
-            FullyMerged(elements ++ leftEditElements)
+            FullyMerged(elements ++ resolvedElements)
           case MergedWithConflicts(leftElements, rightElements) =>
             MergedWithConflicts(
-              leftElements ++ leftEditElements,
-              // Break the symmetry - choose the left.
-              rightElements ++ leftEditElements
+              leftElements ++ resolvedElements,
+              rightElements ++ resolvedElements
             )
         end match
       end coincidentEdit
