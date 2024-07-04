@@ -515,6 +515,86 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       merge(sbtBuildPath)
     }
   end merging
+
+  @TestFactory
+  def whitespaceOnlyEditing(): DynamicTests =
+    (Trials.api.booleans and Trials.api.booleans).withLimit(4).dynamicTests {
+      (leftEdited, rightEdited) =>
+        val configuration = Configuration(
+          minimumMatchSize = 4,
+          thresholdSizeFractionForMatching = 0.1,
+          minimumAmbiguousMatchSize = 0
+        )
+
+        val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
+
+        val baseSources = MappedContentSourcesOfTokens(
+          contentsByPath =
+            Map(placeholderPath -> tokens(whitespaceOnlyChangeExampleBase).get),
+          label = "base"
+        )
+        val leftSources = MappedContentSourcesOfTokens(
+          contentsByPath = Map(
+            placeholderPath -> tokens(
+              if leftEdited then whitespaceOnlyChangeExampleLeftEdited
+              else whitespaceOnlyChangeExampleBase
+            ).get
+          ),
+          label = "left"
+        )
+        val rightSources = MappedContentSourcesOfTokens(
+          contentsByPath = Map(
+            placeholderPath -> tokens(
+              if rightEdited then whitespaceOnlyChangeExampleRightEdited
+              else whitespaceOnlyChangeExampleBase
+            ).get
+          ),
+          label = "right"
+        )
+
+        val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+          base = baseSources,
+          left = leftSources,
+          right = rightSources
+        )(configuration): @unchecked
+
+        val expected = tokens(
+          if leftEdited && rightEdited then
+            // The left takes precedence over the right when both have
+            // whitespace changes.
+            whitespaceOnlyChangeExampleLeftEdited
+          else if leftEdited then whitespaceOnlyChangeExampleLeftEdited
+          else if rightEdited then
+            // NOTE: this one is in contrast to what Git does.
+            whitespaceOnlyChangeExampleRightEdited
+          else whitespaceOnlyChangeExampleBase
+        ).get
+
+        val (mergeResultsByPath, _) =
+          codeMotionAnalysis.merge
+
+        val mergeResult = mergeResultsByPath(placeholderPath)
+
+        println(fansi.Color.Yellow(s"Checking $placeholderPath...\n"))
+        println(fansi.Color.Yellow("Expected..."))
+        println(fansi.Color.Green(reconstituteTextFrom(expected)))
+
+        mergeResult match
+          case FullyMerged(result) =>
+            println(fansi.Color.Yellow("Fully merged result..."))
+            println(fansi.Color.Green(reconstituteTextFrom(result)))
+            assert(result.sameElements(expected))
+          case MergedWithConflicts(leftResult, rightResult) =>
+            println(fansi.Color.Red(s"Left result..."))
+            println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+            println(fansi.Color.Red(s"Right result..."))
+            println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+            fail("Should have seen a clean merge.")
+        end match
+
+    }
+  end whitespaceOnlyEditing
 end CodeMotionAnalysisExtensionTest
 
 trait ProseExamples:
@@ -1844,6 +1924,66 @@ trait ProseExamples:
       |    }
       |
       |
+      |}
+      |""".stripMargin
+
+  protected val whitespaceOnlyChangeExampleBase: String =
+    """
+      |{
+      |  "array": [
+      |    1,
+      |    2,
+      |    3
+      |  ],
+      |  "boolean": true,
+      |  "color": "gold",
+      |  "null": null,
+      |  "number": 123,
+      |  "object": {
+      |    "a": "b",
+      |    "c": "d"
+      |  },
+      |  "string": "Hello World"
+      |}
+      |""".stripMargin
+
+  protected val whitespaceOnlyChangeExampleLeftEdited: String =
+    """
+        |{
+        |  "array": [
+        |    1,
+        |    2,
+        |    3
+        |  ],
+        |  "boolean": true,
+        |  "color": "gold",
+        |  "null": null,
+        |  "number": 123,
+        |      "object": {
+        |        "a": "b",
+        |        "c": "d"
+        |      },
+        |  "string": "Hello World"
+        |}
+        |""".stripMargin
+
+  protected val whitespaceOnlyChangeExampleRightEdited: String =
+    """
+      |{
+      |  "array": [
+      |    1,
+      |    2,
+      |    3
+      |  ],
+      |      "boolean": true,
+      |  "color": "gold",
+      |  "null": null,
+      |  "number": 123,
+      |  "object": {
+      |    "a": "b",
+      |    "c": "d"
+      |  },
+      |    "string": "Hello World"
       |}
       |""".stripMargin
 end ProseExamples
