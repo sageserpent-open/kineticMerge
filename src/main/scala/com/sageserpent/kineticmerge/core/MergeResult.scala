@@ -3,8 +3,6 @@ package com.sageserpent.kineticmerge.core
 import com.sageserpent.kineticmerge.core.merge.MergeAlgebra
 
 object MergeResult:
-  type Resolution[Element] = (Element, Element) => Element
-
   def mergeAlgebra[Element](
       resolution: Resolution[Element]
   ): MergeAlgebra[MergeResult, Element] =
@@ -16,16 +14,16 @@ object MergeResult:
           preservedElementOnLeft: Element,
           preservedElementOnRight: Element
       ): MergeResult[Element] =
-        val resolved =
-          resolution(preservedElementOnLeft, preservedElementOnRight)
+        val resolvedPreservedElement =
+          resolution(None, preservedElementOnLeft, preservedElementOnRight)
 
         result match
           case FullyMerged(elements) =>
-            FullyMerged(elements :+ resolved)
+            FullyMerged(elements :+ resolvedPreservedElement)
           case MergedWithConflicts(leftElements, rightElements) =>
             MergedWithConflicts(
-              leftElements :+ resolved,
-              rightElements :+ resolved
+              leftElements :+ resolvedPreservedElement,
+              rightElements :+ resolvedPreservedElement
             )
         end match
       end preservation
@@ -61,15 +59,16 @@ object MergeResult:
           insertedElementOnLeft: Element,
           insertedElementOnRight: Element
       ): MergeResult[Element] =
-        val resolved = resolution(insertedElementOnLeft, insertedElementOnRight)
+        val resolvedInsertedElement =
+          resolution(None, insertedElementOnLeft, insertedElementOnRight)
 
         result match
           case FullyMerged(elements) =>
-            FullyMerged(elements :+ resolved)
+            FullyMerged(elements :+ resolvedInsertedElement)
           case MergedWithConflicts(leftElements, rightElements) =>
             MergedWithConflicts(
-              leftElements :+ resolved,
-              rightElements :+ resolved
+              leftElements :+ resolvedInsertedElement,
+              rightElements :+ resolvedInsertedElement
             )
         end match
       end coincidentInsertion
@@ -122,15 +121,18 @@ object MergeResult:
           editedElement: Element,
           editElements: IndexedSeq[(Element, Element)]
       ): MergeResult[Element] =
-        val resolvedElements = editElements.map(resolution.tupled)
+        val resolvedEditElements = editElements.map {
+          case (leftEditElement, rightEditElement) =>
+            resolution(None, leftEditElement, rightEditElement)
+        }
 
         result match
           case FullyMerged(elements) =>
-            FullyMerged(elements ++ resolvedElements)
+            FullyMerged(elements ++ resolvedEditElements)
           case MergedWithConflicts(leftElements, rightElements) =>
             MergedWithConflicts(
-              leftElements ++ resolvedElements,
-              rightElements ++ resolvedElements
+              leftElements ++ resolvedEditElements,
+              rightElements ++ resolvedEditElements
             )
         end match
       end coincidentEdit
@@ -152,6 +154,10 @@ object MergeResult:
               leftElements ++ leftEditElements,
               rightElements ++ rightEditElements
             )
+
+  trait Resolution[Element]:
+    def apply(base: Option[Element], left: Element, right: Element): Element
+  end Resolution
 end MergeResult
 
 trait MergeResult[Element]

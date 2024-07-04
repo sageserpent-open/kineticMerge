@@ -5,9 +5,15 @@ import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{Sized, defaultElementSize}
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
+  Sized,
+  defaultElementSize
+}
 import com.sageserpent.kineticmerge.core.MergeTest.*
-import com.sageserpent.kineticmerge.core.MergeTest.DelegatingMergeAlgebraWithContracts.{AugmentedMergeResult, State}
+import com.sageserpent.kineticmerge.core.MergeTest.DelegatingMergeAlgebraWithContracts.{
+  AugmentedMergeResult,
+  State
+}
 import com.sageserpent.kineticmerge.core.MergeTest.Move.*
 import monocle.syntax.all.*
 import org.junit.jupiter.api.{Assertions, Test, TestFactory}
@@ -1535,6 +1541,7 @@ class MergeTest:
                   case FullyMerged(elements) =>
                     FullyMerged(
                       elements :+ coinFlippingResolution(
+                        None,
                         leftElement,
                         rightElement
                       )
@@ -1573,6 +1580,7 @@ class MergeTest:
                   case FullyMerged(elements) =>
                     FullyMerged(
                       elements :+ coinFlippingResolution(
+                        Some(baseElement),
                         leftElement,
                         rightElement
                       )
@@ -1671,6 +1679,7 @@ class MergeTest:
                   case FullyMerged(elements) =>
                     FullyMerged(
                       elements :+ coinFlippingResolution(
+                        None,
                         leftElement,
                         rightElement
                       )
@@ -1768,23 +1777,49 @@ object MergeTest:
       end match
     end equivalent
 
-    def guardedLeftBiasedResolution(lhs: Element, rhs: Element): Element =
+    def guardedLeftBiasedResolution(
+        base: Option[Element],
+        lhs: Element,
+        rhs: Element
+    ): Element =
       require(equivalent(lhs, rhs))
 
-      leftBiasedResolution(lhs, rhs)
+      base.foreach { payload =>
+        require(equivalent(payload, lhs))
+        require(equivalent(payload, rhs))
+      }
+
+      leftBiasedResolution(base, lhs, rhs)
     end guardedLeftBiasedResolution
 
-    def guardedCoinFlippingResolution(lhs: Element, rhs: Element): Element =
+    def guardedCoinFlippingResolution(
+        base: Option[Element],
+        lhs: Element,
+        rhs: Element
+    ): Element =
       require(equivalent(lhs, rhs))
 
-      coinFlippingResolution(lhs, rhs)
+      base.foreach { payload =>
+        require(equivalent(payload, lhs))
+        require(equivalent(payload, rhs))
+      }
+
+      coinFlippingResolution(base, lhs, rhs)
     end guardedCoinFlippingResolution
   end extension
 
-  private def leftBiasedResolution(lhs: Element, rhs: Element): Element = lhs
+  private def leftBiasedResolution(
+      base: Option[Element],
+      lhs: Element,
+      rhs: Element
+  ): Element = lhs
 
-  private def coinFlippingResolution(lhs: Element, rhs: Element): Element =
-    val headsItIs = 0 == (lhs, rhs).hashCode() % 2
+  private def coinFlippingResolution(
+      base: Option[Element],
+      lhs: Element,
+      rhs: Element
+  ): Element =
+    val headsItIs = 0 == (base, lhs, rhs).hashCode() % 2
     if headsItIs then lhs else rhs
   end coinFlippingResolution
 
@@ -1814,8 +1849,12 @@ object MergeTest:
       ): Set[Element] =
         val preserved = base.collect(baseElement =>
           matchesByElement.get(baseElement) match
-            case Some(Match.AllSides(_, leftElement, rightElement)) =>
-              coinFlippingResolution(leftElement, rightElement)
+            case Some(Match.AllSides(baseElement, leftElement, rightElement)) =>
+              coinFlippingResolution(
+                Some(baseElement),
+                leftElement,
+                rightElement
+              )
         )
 
         val _ = preserved.isSubsequenceOf(elements)
@@ -1827,10 +1866,14 @@ object MergeTest:
       def leftAppearsCorrectlyIn(elements: IndexedSeq[Element]): Set[Element] =
         val appears = left.collect(leftElement =>
           matchesByElement.get(leftElement) match
-            case Some(Match.AllSides(_, leftElement, rightElement)) =>
-              coinFlippingResolution(leftElement, rightElement)
+            case Some(Match.AllSides(baseElement, leftElement, rightElement)) =>
+              coinFlippingResolution(
+                Some(baseElement),
+                leftElement,
+                rightElement
+              )
             case Some(Match.LeftAndRight(leftElement, rightElement)) =>
-              coinFlippingResolution(leftElement, rightElement)
+              coinFlippingResolution(None, leftElement, rightElement)
             case None => leftElement
         )
 
@@ -1842,10 +1885,14 @@ object MergeTest:
       def rightAppearsCorrectlyIn(elements: IndexedSeq[Element]): Set[Element] =
         val appears = right.collect(rightElement =>
           matchesByElement.get(rightElement) match
-            case Some(Match.AllSides(_, leftElement, rightElement)) =>
-              coinFlippingResolution(leftElement, rightElement)
+            case Some(Match.AllSides(baseElement, leftElement, rightElement)) =>
+              coinFlippingResolution(
+                Some(baseElement),
+                leftElement,
+                rightElement
+              )
             case Some(Match.LeftAndRight(leftElement, rightElement)) =>
-              coinFlippingResolution(leftElement, rightElement)
+              coinFlippingResolution(None, leftElement, rightElement)
             case None => rightElement
         )
 
