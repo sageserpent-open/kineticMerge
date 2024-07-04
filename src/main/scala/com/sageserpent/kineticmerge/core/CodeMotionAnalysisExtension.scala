@@ -58,6 +58,28 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
       case class InsertionsAtPath(path: Path, insertions: Seq[Insertion])
 
+      def resolution(
+          baseSection: Option[Section[Element]],
+          leftSection: Section[Element],
+          rightSection: Section[Element]
+      ): Section[Element] = baseSection.fold(ifEmpty =
+        // Break the symmetry - choose the left.
+        leftSection
+      ) { payload =>
+        // Look at the content and use *exact* comparison.
+
+        val lhsIsCompletelyUnchanged = payload.content == leftSection.content
+        val rhsIsCompletelyUnchanged = payload.content == rightSection.content
+
+        (lhsIsCompletelyUnchanged, rhsIsCompletelyUnchanged) match
+          case (false, true) => leftSection
+          case (true, false) => rightSection
+          case _             =>
+            // Break the symmetry - choose the left.
+            leftSection
+        end match
+      }
+
       val (
         mergeResultsByPath,
         changesMigratedThroughMotion,
@@ -138,7 +160,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     ]] =
                   mergeOf(mergeAlgebra =
                     MergeResultDetectingMotion.mergeAlgebra(coreMergeAlgebra =
-                      MergeResult.mergeAlgebra(???)
+                      MergeResult.mergeAlgebra(resolution)
                     )
                   )(
                     base = optionalBaseSections.getOrElse(IndexedSeq.empty),
