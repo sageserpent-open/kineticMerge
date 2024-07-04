@@ -996,7 +996,7 @@ object merge extends StrictLogging:
         // SYMMETRIC...
         case (
               NoCoalescence,
-              Seq(Contribution.Common(_), baseTail*),
+              Seq(Contribution.Common(baseElement), baseTail*),
               Seq(Contribution.Common(leftElement), leftTail*),
               Seq(Contribution.Common(rightElement), rightTail*)
             ) => // Preservation.
@@ -1006,6 +1006,7 @@ object merge extends StrictLogging:
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
             partialResult = mergeAlgebra.preservation(
               partialResult,
+              preservedBaseElement = baseElement,
               preservedElementOnLeft = leftElement,
               preservedElementOnRight = rightElement
             ),
@@ -1423,6 +1424,7 @@ object merge extends StrictLogging:
     def empty: Result[Element]
     def preservation(
         result: Result[Element],
+        preservedBaseElement: Element,
         preservedElementOnLeft: Element,
         preservedElementOnRight: Element
     ): Result[Element]

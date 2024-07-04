@@ -23,7 +23,7 @@ class MatchesContext[Element](
       case LeftAndRight(_, _)           => None
       case AllSides(baseElement, _, _)  => Some(baseElement)
     }
-  
+
   case class MergeResultDetectingMotion[CoreResult[_], Element](
       coreMergeResult: CoreResult[Element],
       changesMigratedThroughMotion: MultiDict[Element, IndexedSeq[Element]],
@@ -167,6 +167,7 @@ class MatchesContext[Element](
 
         override def preservation(
             result: MergeResultDetectingMotionType[CoreResult][Element],
+            preservedBaseElement: Element,
             preservedElementOnLeft: Element,
             preservedElementOnRight: Element
         ): ConfiguredMergeResultDetectingMotion[Element] = result
@@ -174,6 +175,7 @@ class MatchesContext[Element](
           .modify((result: CoreResult[Element]) =>
             coreMergeAlgebra.preservation(
               result,
+              preservedBaseElement,
               preservedElementOnLeft,
               preservedElementOnRight
             )

@@ -40,6 +40,7 @@ object MatchesContextTest:
     override def empty: Audit[Element] = Vector.empty
     override def preservation(
         result: Audit[Element],
+        preservedBaseElement: Element,
         preservedElementOnLeft: Element,
         preservedElementOnRight: Element
     ): Audit[Element] = result :+ Preservation(preservedElementOnLeft)

@@ -11,11 +11,16 @@ object MergeResult:
 
       override def preservation(
           result: MergeResult[Element],
+          preservedBaseElement: Element,
           preservedElementOnLeft: Element,
           preservedElementOnRight: Element
       ): MergeResult[Element] =
         val resolvedPreservedElement =
-          resolution(None, preservedElementOnLeft, preservedElementOnRight)
+          resolution(
+            Some(preservedBaseElement),
+            preservedElementOnLeft,
+            preservedElementOnRight
+          )
 
         result match
           case FullyMerged(elements) =>
