@@ -3,7 +3,11 @@ package com.sageserpent.kineticmerge.core
 import com.sageserpent.kineticmerge.core.merge.MergeAlgebra
 
 object MergeResult:
-  def mergeAlgebra[Element]: MergeAlgebra[MergeResult, Element] =
+  type Resolution[Element] = (Element, Element) => Element
+
+  def mergeAlgebra[Element](
+      resolution: Resolution[Element]
+  ): MergeAlgebra[MergeResult, Element] =
     new MergeAlgebra[MergeResult, Element]:
       override def empty: MergeResult[Element] = FullyMerged(IndexedSeq.empty)
 

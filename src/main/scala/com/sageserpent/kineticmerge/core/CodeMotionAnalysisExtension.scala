@@ -145,7 +145,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     ]] =
                   mergeOf(mergeAlgebra =
                     MergeResultDetectingMotion.mergeAlgebra(coreMergeAlgebra =
-                      MergeResult.mergeAlgebra
+                      MergeResult.mergeAlgebra(???)
                     )
                   )(
                     base = optionalBaseSections.getOrElse(IndexedSeq.empty),
