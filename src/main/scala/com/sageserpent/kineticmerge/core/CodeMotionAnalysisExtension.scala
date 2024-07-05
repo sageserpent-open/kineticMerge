@@ -502,7 +502,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             )
         })
 
-      def substituteMigratedChangesOrDominants(
+      def substituteMigratedChanges(
           path: Path,
           mergeResult: MergeResult[Section[Element]]
       ): (Path, MergeResult[Section[Element]]) =
@@ -536,10 +536,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                         """.stripMargin
                   )
 
-            // There is no need to look for the dominant - either the section
-            // was deleted or edited; matched sections are not considered as
-            // edit candidates.
-
             if migratedChange.isEmpty then
               logger.debug(
                 s"Applying migrated deletion to move destination: ${pprintCustomised(section)}."
@@ -551,18 +547,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             end if
 
             migratedChange
-          else
-            val dominants = dominantsOf(section)
-
-            IndexedSeq(
-              if dominants.isEmpty then section
-              else
-                // NASTY HACK: this is hokey, but essentially correct - if we
-                // have ambiguous matches leading to multiple dominants, then
-                // they're all just as good in terms of their content. So just
-                // choose any one.
-                dominants.head
-            )
+          else IndexedSeq(section)
           end if
         end substituteFor
 
@@ -575,7 +560,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               rightSections.flatMap(substituteFor)
             )
         )
-      end substituteMigratedChangesOrDominants
+      end substituteMigratedChanges
 
       def explodeSections(
           path: Path,
@@ -605,7 +590,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
       mergeResultsByPath
         .map(migrateAnchoredInsertions)
-        .map(substituteMigratedChangesOrDominants)
+        .map(substituteMigratedChanges)
         .map(explodeSections) -> moveDestinationsReport
     end merge
   end extension
