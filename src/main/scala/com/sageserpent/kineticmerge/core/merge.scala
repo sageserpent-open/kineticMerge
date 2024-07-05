@@ -1001,7 +1001,7 @@ object merge extends StrictLogging:
               Seq(Contribution.Common(rightElement), rightTail*)
             ) => // Preservation.
           logger.debug(
-            s"Preservation of ${pprintCustomised(leftElement)} as it is common to all three sides."
+            s"Preservation of ${pprintCustomised(baseElement)} as it is common to all three sides."
           )
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
             partialResult = mergeAlgebra.preservation(
@@ -1053,7 +1053,7 @@ object merge extends StrictLogging:
               )
             ) => // Coincident insertion.
           logger.debug(
-            s"Coincident insertion on left and right side of ${pprintCustomised(leftElement)}."
+            s"Coincident insertion of ${pprintCustomised(leftElement)} on the left and ${pprintCustomised(rightElement)} on the right."
           )
           mergeBetweenRunsOfCommonElements(base, leftTail, rightTail)(
             partialResult = mergeAlgebra.coincidentInsertion(
