@@ -595,6 +595,93 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
     }
   end whitespaceOnlyEditing
+
+  @TestFactory
+  def whitespaceOnlyEditingWithCodeMotion(): DynamicTests =
+    (Trials.api.booleans and Trials.api.booleans).withLimit(4).dynamicTests {
+      (leftEdited, rightEdited) =>
+        val configuration = Configuration(
+          minimumMatchSize = 4,
+          thresholdSizeFractionForMatching = 0.1,
+          minimumAmbiguousMatchSize = 0
+        )
+
+        val originalPath: FakePath             = "*** ORIGINAL ***"
+        val renamedForCodeMotionPath: FakePath = "*** RENAMED ***"
+
+        val baseSources = MappedContentSourcesOfTokens(
+          contentsByPath =
+            Map(originalPath -> tokens(whitespaceOnlyChangeExampleBase).get),
+          label = "base"
+        )
+        val leftSources = MappedContentSourcesOfTokens(
+          contentsByPath = Map(
+            originalPath -> tokens(
+              if leftEdited then whitespaceOnlyChangeExampleLeftEdited
+              else whitespaceOnlyChangeExampleBase
+            ).get
+          ),
+          label = "left"
+        )
+        val rightSources = MappedContentSourcesOfTokens(
+          contentsByPath = Map(
+            renamedForCodeMotionPath -> tokens(
+              if rightEdited then whitespaceOnlyChangeExampleRightEdited
+              else whitespaceOnlyChangeExampleBase
+            ).get
+          ),
+          label = "right"
+        )
+
+        val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+          base = baseSources,
+          left = leftSources,
+          right = rightSources
+        )(configuration): @unchecked
+
+        val expected = tokens(
+          if leftEdited && rightEdited then
+            // The left takes precedence over the right when both have
+            // whitespace changes.
+            whitespaceOnlyChangeExampleLeftEdited
+          else if leftEdited then whitespaceOnlyChangeExampleLeftEdited
+          else if rightEdited then
+            // NOTE: this one is in contrast to what Git does.
+            whitespaceOnlyChangeExampleRightEdited
+          else whitespaceOnlyChangeExampleBase
+        ).get
+
+        val (mergeResultsByPath, _) =
+          codeMotionAnalysis.merge
+
+        val mergeResult = mergeResultsByPath(renamedForCodeMotionPath)
+
+        val FullyMerged(expectedToBeEmpty) =
+          mergeResultsByPath(originalPath): @unchecked
+
+        assert(expectedToBeEmpty.isEmpty)
+
+        println(fansi.Color.Yellow(s"Checking $renamedForCodeMotionPath...\n"))
+        println(fansi.Color.Yellow("Expected..."))
+        println(fansi.Color.Green(reconstituteTextFrom(expected)))
+
+        mergeResult match
+          case FullyMerged(result) =>
+            println(fansi.Color.Yellow("Fully merged result..."))
+            println(fansi.Color.Green(reconstituteTextFrom(result)))
+            assert(result.sameElements(expected))
+          case MergedWithConflicts(leftResult, rightResult) =>
+            println(fansi.Color.Red(s"Left result..."))
+            println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+            println(fansi.Color.Red(s"Right result..."))
+            println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+            fail("Should have seen a clean merge.")
+        end match
+
+    }
+  end whitespaceOnlyEditingWithCodeMotion
+
 end CodeMotionAnalysisExtensionTest
 
 trait ProseExamples:
