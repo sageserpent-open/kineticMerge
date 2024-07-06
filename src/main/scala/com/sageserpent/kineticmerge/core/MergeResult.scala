@@ -159,10 +159,6 @@ object MergeResult:
               leftElements ++ leftEditElements,
               rightElements ++ rightEditElements
             )
-
-  trait Resolution[Element]:
-    def apply(base: Option[Element], left: Element, right: Element): Element
-  end Resolution
 end MergeResult
 
 trait MergeResult[Element]

@@ -1777,51 +1777,14 @@ object MergeTest:
       end match
     end equivalent
 
-    def guardedLeftBiasedResolution(
-        base: Option[Element],
-        lhs: Element,
-        rhs: Element
-    ): Element =
-      require(equivalent(lhs, rhs))
-
-      base.foreach { payload =>
-        require(equivalent(payload, lhs))
-        require(equivalent(payload, rhs))
-      }
-
-      leftBiasedResolution(base, lhs, rhs)
+    def guardedLeftBiasedResolution(using Eq[Element]): Resolution[Element] =
+      new LeftBiasedResolution with ResolutionContracts[Element] {}
     end guardedLeftBiasedResolution
 
-    def guardedCoinFlippingResolution(
-        base: Option[Element],
-        lhs: Element,
-        rhs: Element
-    ): Element =
-      require(equivalent(lhs, rhs))
-
-      base.foreach { payload =>
-        require(equivalent(payload, lhs))
-        require(equivalent(payload, rhs))
-      }
-
-      coinFlippingResolution(base, lhs, rhs)
+    def guardedCoinFlippingResolution(using Eq[Element]): Resolution[Element] =
+      new CoinFlippingResolution with ResolutionContracts[Element] {}
     end guardedCoinFlippingResolution
   end extension
-
-  private def leftBiasedResolution(
-      base: Option[Element],
-      lhs: Element,
-      rhs: Element
-  ): Element = lhs
-
-  private def coinFlippingResolution(
-      base: Option[Element],
-      lhs: Element,
-      rhs: Element
-  ): Element =
-    val headsItIs = 0 == (base, lhs, rhs).hashCode() % 2
-    if headsItIs then lhs else rhs
-  end coinFlippingResolution
 
   private def emptyMergeTestCase(allowConflicts: Boolean): MergeTestCase =
     MergeTestCase(
@@ -1834,6 +1797,29 @@ object MergeTest:
       },
       moves = IndexedSeq.empty
     )
+
+  trait LeftBiasedResolution extends Resolution[Element]:
+    override def apply(
+        base: Option[Element],
+        left: Element,
+        right: Element
+    ): Element = left
+  end LeftBiasedResolution
+
+  object leftBiasedResolution extends LeftBiasedResolution
+
+  trait CoinFlippingResolution extends Resolution[Element]:
+    override def apply(
+        base: Option[Element],
+        left: Element,
+        right: Element
+    ): Element =
+      val headsItIs = 0 == (base, left, right).hashCode() % 2
+      if headsItIs then left else right
+    end apply
+  end CoinFlippingResolution
+
+  object coinFlippingResolution extends CoinFlippingResolution
 
   case class MergeTestCase(
       base: IndexedSeq[Element],
