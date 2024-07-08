@@ -1,99 +1,20 @@
 package com.sageserpent.kineticmerge.core
 
+import cats.Eq
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.junit5.{DynamicTests, given}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
+import com.sageserpent.kineticmerge.core.MatchesContextTest.*
 import com.sageserpent.kineticmerge.core.MatchesContextTest.Operation.*
-import com.sageserpent.kineticmerge.core.MatchesContextTest.{Element, auditingCoreMergeAlgebra, matchesFor}
+import com.sageserpent.kineticmerge.core.MatchesContextTest.ResolutionOutcome.SomethingElseChosen
+import com.sageserpent.kineticmerge.core.ResolutionContracts.*
+import eu.timepit.refined.api.Refined
+import eu.timepit.refined.numeric.Positive
+import eu.timepit.refined.refineV
 import org.junit.jupiter.api.{Test, TestFactory}
 
-object MatchesContextTest:
-  type Element  = Int
-  type Audit[X] = Vector[Operation[X]]
-
-  def matchesFor(
-      matchesByElement: Map[Element, Match[Element]]
-  )(element: Element): Set[Match[Element]] = matchesByElement
-    .get(element)
-    .fold(ifEmpty = Set.empty[Match[Element]])(Set(_))
-
-  enum Operation[X]:
-    case Preservation(preserved: X)
-    case LeftInsertion(inserted: X)
-    case RightInsertion(inserted: X)
-    case CoincidentInsertion(inserted: X)
-    case LeftDeletion(deleted: X)
-    case RightDeletion(deleted: X)
-    case CoincidentDeletion(deleted: X)
-    case LeftEdit(edited: X, edits: IndexedSeq[X])
-    case RightEdit(edited: X, edits: IndexedSeq[X])
-    case CoincidentEdit(edited: X, edits: IndexedSeq[(X, X)])
-    case Conflict(
-        edited: IndexedSeq[X],
-        leftEdits: IndexedSeq[X],
-        rightEdits: IndexedSeq[X]
-    )
-
-  end Operation
-
-  object auditingCoreMergeAlgebra extends merge.MergeAlgebra[Audit, Element]:
-    override def empty: Audit[Element] = Vector.empty
-    override def preservation(
-        result: Audit[Element],
-        preservedBaseElement: Element,
-        preservedElementOnLeft: Element,
-        preservedElementOnRight: Element
-    ): Audit[Element] = result :+ Preservation(preservedElementOnLeft)
-    override def leftInsertion(
-        result: Audit[Element],
-        insertedElement: Element
-    ): Audit[Element] = result :+ LeftInsertion(insertedElement)
-    override def rightInsertion(
-        result: Audit[Element],
-        insertedElement: Element
-    ): Audit[Element] = result :+ RightInsertion(insertedElement)
-    override def coincidentInsertion(
-        result: Audit[Element],
-        insertedElementOnLeft: Element,
-        insertedElementOnRight: Element
-    ): Audit[Element] = result :+ CoincidentInsertion(insertedElementOnLeft)
-    override def leftDeletion(
-        result: Audit[Element],
-        deletedElement: Element
-    ): Audit[Element] = result :+ LeftDeletion(deletedElement)
-    override def rightDeletion(
-        result: Audit[Element],
-        deletedElement: Element
-    ): Audit[Element] = result :+ RightDeletion(deletedElement)
-    override def coincidentDeletion(
-        result: Audit[Element],
-        deletedElement: Element
-    ): Audit[Element] = result :+ CoincidentDeletion(deletedElement)
-    override def leftEdit(
-        result: Audit[Element],
-        editedElement: Element,
-        editElements: IndexedSeq[Element]
-    ): Audit[Element] = result :+ LeftEdit(editedElement, editElements)
-    override def rightEdit(
-        result: Audit[Element],
-        editedElement: Element,
-        editElements: IndexedSeq[Element]
-    ): Audit[Element] = result :+ RightEdit(editedElement, editElements)
-    override def coincidentEdit(
-        result: Audit[Element],
-        editedElement: Element,
-        editElements: IndexedSeq[(Element, Element)]
-    ): Audit[Element] = result :+ CoincidentEdit(editedElement, editElements)
-    override def conflict(
-        result: Audit[Element],
-        editedElements: IndexedSeq[Element],
-        leftEditElements: IndexedSeq[Element],
-        rightEditElements: IndexedSeq[Element]
-    ): Audit[Element] =
-      result :+ Conflict(editedElements, leftEditElements, rightEditElements)
-  end auditingCoreMergeAlgebra
-end MatchesContextTest
-
+// NOTE: the majority of the tests use `guardedCoinFlippingResolution` as a stub; this emphasizes
+// the independence of the tests' expected outcomes from the behaviour of the resolution.
 class MatchesContextTest:
   @TestFactory
   def ourMoveDestinationInsertion: DynamicTests =
@@ -122,11 +43,16 @@ class MatchesContextTest:
           ourSideInsertedElement -> baseAndOurSidePairwiseMatch
         )
 
+      given Eq[Element] = matchesByElement.equivalent
+
       val mergeAlgebra =
         MatchesContext(
           matchesFor(matchesByElement)
         ).MergeResultDetectingMotion
-          .mergeAlgebra(auditingCoreMergeAlgebra)
+          .mergeAlgebra(
+            coreMergeAlgebra = auditingCoreMergeAlgebra,
+            guardedCoinFlippingResolution
+          )
 
       val mergeResult =
         if mirrorImage then
@@ -191,11 +117,16 @@ class MatchesContextTest:
           ourSideEditElement -> baseAndOurSidePairwiseMatch
         )
 
+      given Eq[Element] = matchesByElement.equivalent
+
       val mergeAlgebra =
         MatchesContext(
           matchesFor(matchesByElement)
         ).MergeResultDetectingMotion
-          .mergeAlgebra(auditingCoreMergeAlgebra)
+          .mergeAlgebra(
+            auditingCoreMergeAlgebra,
+            guardedCoinFlippingResolution
+          )
 
       val mergeResult =
         if mirrorImage then
@@ -288,9 +219,14 @@ class MatchesContextTest:
         matchesFor(matchesByElement)
       )
 
+      given Eq[Element] = matchesByElement.equivalent
+
       val mergeAlgebra =
         matchesContext.MergeResultDetectingMotion
-          .mergeAlgebra(auditingCoreMergeAlgebra)
+          .mergeAlgebra(
+            auditingCoreMergeAlgebra,
+            guardedCoinFlippingResolution
+          )
 
       val mergeResult =
         if mirrorImage then
@@ -424,9 +360,14 @@ class MatchesContextTest:
         matchesFor(matchesByElement)
       )
 
+      given Eq[Element] = matchesByElement.equivalent
+
       val mergeAlgebra =
         matchesContext.MergeResultDetectingMotion
-          .mergeAlgebra(auditingCoreMergeAlgebra)
+          .mergeAlgebra(
+            auditingCoreMergeAlgebra,
+            guardedCoinFlippingResolution
+          )
 
       val mergeResult =
         if mirrorImage then
@@ -537,11 +478,16 @@ class MatchesContextTest:
           ourSideMovedElement -> baseAndOurSidePairwiseMatch
         )
 
+      given Eq[Element] = matchesByElement.equivalent
+
       val mergeAlgebra =
         MatchesContext(
           matchesFor(matchesByElement)
         ).MergeResultDetectingMotion
-          .mergeAlgebra(auditingCoreMergeAlgebra)
+          .mergeAlgebra(
+            auditingCoreMergeAlgebra,
+            guardedCoinFlippingResolution
+          )
 
       val mergeResult =
         mergeAlgebra.coincidentDeletion(mergeAlgebra.empty, baseElement)
@@ -585,10 +531,15 @@ class MatchesContextTest:
           ourSideMovedElement -> baseAndOurSidePairwiseMatch
         )
 
+      given Eq[Element] = matchesByElement.equivalent
+
       val mergeAlgebra =
         MatchesContext(
           matchesFor(matchesByElement)
-        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
+        ).MergeResultDetectingMotion.mergeAlgebra(
+          auditingCoreMergeAlgebra,
+          guardedCoinFlippingResolution
+        )
 
       val mergeResult =
         if mirrorImage then
@@ -650,9 +601,14 @@ class MatchesContextTest:
         matchesFor(matchesByElement)
       )
 
+      given Eq[Element] = matchesByElement.equivalent
+
       val mergeAlgebra =
         matchesContext.MergeResultDetectingMotion
-          .mergeAlgebra(auditingCoreMergeAlgebra)
+          .mergeAlgebra(
+            auditingCoreMergeAlgebra,
+            guardedCoinFlippingResolution
+          )
 
       val mergeResult =
         if mirrorImage then
@@ -744,9 +700,14 @@ class MatchesContextTest:
         matchesFor(matchesByElement)
       )
 
+      given Eq[Element] = matchesByElement.equivalent
+
       val mergeAlgebra =
         matchesContext.MergeResultDetectingMotion
-          .mergeAlgebra(auditingCoreMergeAlgebra)
+          .mergeAlgebra(
+            auditingCoreMergeAlgebra,
+            guardedCoinFlippingResolution
+          )
 
       val mergeResult =
         if mirrorImage then
@@ -834,10 +795,15 @@ class MatchesContextTest:
           ourSideMovedElement -> baseAndOurSidePairwiseMatch
         )
 
+      given Eq[Element] = matchesByElement.equivalent
+
       val mergeAlgebra =
         MatchesContext(
           matchesFor(matchesByElement)
-        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
+        ).MergeResultDetectingMotion.mergeAlgebra(
+          auditingCoreMergeAlgebra,
+          guardedCoinFlippingResolution
+        )
 
       val mergeResult =
         if mirrorImage then
@@ -893,7 +859,16 @@ class MatchesContextTest:
 
   @TestFactory
   def ourSideDeletionWhereBaseHasMovedAwayOnOurSide: DynamicTests =
-    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+    (Trials.api.booleans and Trials.api
+      .integers(1, 10)
+      .options
+      .map(
+        _.fold(ifEmpty = ResolutionOutcome.LeftChosen)(unrefined =>
+          ResolutionOutcome.SomethingElseChosen(
+            refineV[Positive].unsafeFrom(unrefined)
+          )
+        )
+      )).withLimit(10).dynamicTests { (mirrorImage, resolutionOutcome) =>
       val baseElement: Element         = 1
       val ourSideMovedElement: Element = 2
       val theirSideElement: Element    = 3
@@ -919,10 +894,17 @@ class MatchesContextTest:
           theirSideElement    -> allSidesMatch
         )
 
+      given Eq[Element] = matchesByElement.equivalent
+
+      val resolution = guardedStubResolution(resolutionOutcome)
+
       val mergeAlgebra =
         MatchesContext(
           matchesFor(matchesByElement)
-        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
+        ).MergeResultDetectingMotion.mergeAlgebra(
+          auditingCoreMergeAlgebra,
+          resolution
+        )
 
       val mergeResult =
         if mirrorImage then
@@ -939,16 +921,56 @@ class MatchesContextTest:
         )
       end if
 
-      assert(
-        !mergeResult.changesMigratedThroughMotion
-          .containsKey(ourSideMovedElement)
-      )
+      resolutionOutcome match
+        case ResolutionOutcome.LeftChosen =>
+          assert(
+            !mergeResult.changesMigratedThroughMotion
+              .containsKey(ourSideMovedElement)
+          )
+        case ResolutionOutcome.SomethingElseChosen(offset) =>
+          if mirrorImage then
+            assert(
+              Set(
+                IndexedSeq(
+                  resolution(
+                    Some(baseElement),
+                    theirSideElement,
+                    ourSideMovedElement
+                  )
+                )
+              ) == mergeResult.changesMigratedThroughMotion
+                .get(ourSideMovedElement)
+            )
+          else
+            assert(
+              Set(
+                IndexedSeq(
+                  resolution(
+                    Some(baseElement),
+                    ourSideMovedElement,
+                    theirSideElement
+                  )
+                )
+              ) == mergeResult.changesMigratedThroughMotion
+                .get(ourSideMovedElement)
+            )
+          end if
+      end match
     }
   end ourSideDeletionWhereBaseHasMovedAwayOnOurSide
 
   @TestFactory
   def ourSideEditWhereBaseHasMovedAwayOnOurSide: DynamicTests =
-    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+    (Trials.api.booleans and Trials.api
+      .integers(1, 10)
+      .options
+      .map(
+        _.fold(ifEmpty = ResolutionOutcome.LeftChosen)(unrefined =>
+          ResolutionOutcome.SomethingElseChosen(
+            refineV[Positive].unsafeFrom(unrefined)
+          )
+        )
+      )).withLimit(10).dynamicTests { (mirrorImage, resolutionOutcome) =>
       val baseElement: Element         = 1
       val ourSideMovedElement: Element = 2
       val ourSideEditElement: Element  = 3
@@ -975,10 +997,17 @@ class MatchesContextTest:
           theirSideElement    -> allSidesMatch
         )
 
+      given Eq[Element] = matchesByElement.equivalent
+
+      val resolution = guardedStubResolution(resolutionOutcome)
+
       val mergeAlgebra =
         MatchesContext(
           matchesFor(matchesByElement)
-        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
+        ).MergeResultDetectingMotion.mergeAlgebra(
+          auditingCoreMergeAlgebra,
+          resolution
+        )
 
       val mergeResult =
         if mirrorImage then
@@ -1008,10 +1037,41 @@ class MatchesContextTest:
         )
       end if
 
-      assert(
-        !mergeResult.changesMigratedThroughMotion
-          .containsKey(ourSideMovedElement)
-      )
+      resolutionOutcome match
+        case ResolutionOutcome.LeftChosen =>
+          assert(
+            !mergeResult.changesMigratedThroughMotion
+              .containsKey(ourSideMovedElement)
+          )
+        case ResolutionOutcome.SomethingElseChosen(offset) =>
+          if mirrorImage then
+            assert(
+              Set(
+                IndexedSeq(
+                  resolution(
+                    Some(baseElement),
+                    theirSideElement,
+                    ourSideMovedElement
+                  )
+                )
+              ) == mergeResult.changesMigratedThroughMotion
+                .get(ourSideMovedElement)
+            )
+          else
+            assert(
+              Set(
+                IndexedSeq(
+                  resolution(
+                    Some(baseElement),
+                    ourSideMovedElement,
+                    theirSideElement
+                  )
+                )
+              ) == mergeResult.changesMigratedThroughMotion
+                .get(ourSideMovedElement)
+            )
+          end if
+      end match
     }
   end ourSideEditWhereBaseHasMovedAwayOnOurSide
 
@@ -1043,10 +1103,15 @@ class MatchesContextTest:
           theirSideMovedElement -> allSidesMatch
         )
 
+      given Eq[Element] = matchesByElement.equivalent
+
       val mergeAlgebra =
         MatchesContext(
           matchesFor(matchesByElement)
-        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
+        ).MergeResultDetectingMotion.mergeAlgebra(
+          auditingCoreMergeAlgebra,
+          guardedCoinFlippingResolution
+        )
 
       val mergeResult =
         mergeAlgebra.coincidentDeletion(mergeAlgebra.empty, baseElement)
@@ -1096,10 +1161,15 @@ class MatchesContextTest:
           theirSideMovedElement -> allSidesMatch
         )
 
+      given Eq[Element] = matchesByElement.equivalent
+
       val mergeAlgebra =
         MatchesContext(
           matchesFor(matchesByElement)
-        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
+        ).MergeResultDetectingMotion.mergeAlgebra(
+          auditingCoreMergeAlgebra,
+          guardedCoinFlippingResolution
+        )
 
       val mergeResult =
         if mirrorImage then
@@ -1181,10 +1251,15 @@ class MatchesContextTest:
           theirSideMovedElement -> allSidesMatch
         )
 
+      given Eq[Element] = matchesByElement.equivalent
+
       val mergeAlgebra =
         MatchesContext(
           matchesFor(matchesByElement)
-        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
+        ).MergeResultDetectingMotion.mergeAlgebra(
+          auditingCoreMergeAlgebra,
+          guardedCoinFlippingResolution
+        )
 
       val mergeResult =
         if mirrorImage then
@@ -1239,11 +1314,16 @@ class MatchesContextTest:
   def leftInsertion: Unit =
     val ourSideInsertedElement: Element = 1
 
-    val matchesContext = MatchesContext(matchesFor(Map.empty))
+    val matchesByElement = Map.empty[Element, Match[Element]]
+
+    val matchesContext = MatchesContext(matchesFor(matchesByElement))
+
+    given Eq[Element] = matchesByElement.equivalent
 
     val mergeAlgebra =
       matchesContext.MergeResultDetectingMotion.mergeAlgebra(
-        auditingCoreMergeAlgebra
+        auditingCoreMergeAlgebra,
+        guardedCoinFlippingResolution
       )
 
     val mergeResult =
@@ -1262,11 +1342,16 @@ class MatchesContextTest:
   def rightInsertion: Unit =
     val theirSideInsertedElement: Element = 1
 
-    val matchesContext = MatchesContext(matchesFor(Map.empty))
+    val matchesByElement = Map.empty[Element, Match[Element]]
+
+    val matchesContext = MatchesContext(matchesFor(matchesByElement))
+
+    given Eq[Element] = matchesByElement.equivalent
 
     val mergeAlgebra =
       matchesContext.MergeResultDetectingMotion.mergeAlgebra(
-        auditingCoreMergeAlgebra
+        auditingCoreMergeAlgebra,
+        guardedCoinFlippingResolution
       )
 
     val mergeResult =
@@ -1309,10 +1394,15 @@ class MatchesContextTest:
           theirSideMovedElement -> allSidesMatch
         )
 
+      given Eq[Element] = matchesByElement.equivalent
+
       val mergeAlgebra =
         MatchesContext(
           matchesFor(matchesByElement)
-        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
+        ).MergeResultDetectingMotion.mergeAlgebra(
+          auditingCoreMergeAlgebra,
+          guardedCoinFlippingResolution
+        )
 
       val mergeResult =
         if mirrorImage then
@@ -1409,10 +1499,15 @@ class MatchesContextTest:
           theirSideMovedElement -> allSidesMatch
         )
 
+      given Eq[Element] = matchesByElement.equivalent
+
       val mergeAlgebra =
         MatchesContext(
           matchesFor(matchesByElement)
-        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
+        ).MergeResultDetectingMotion.mergeAlgebra(
+          auditingCoreMergeAlgebra,
+          guardedCoinFlippingResolution
+        )
 
       val mergeResult =
         if mirrorImage then
@@ -1486,4 +1581,115 @@ class MatchesContextTest:
     }
   end coincidentMoveDestinationEdit
 
+end MatchesContextTest
+
+object MatchesContextTest:
+  type Element  = Int
+  type Audit[X] = Vector[Operation[X]]
+
+  def matchesFor(
+      matchesByElement: Map[Element, Match[Element]]
+  )(element: Element): Set[Match[Element]] = matchesByElement
+    .get(element)
+    .fold(ifEmpty = Set.empty[Match[Element]])(Set(_))
+
+  def guardedStubResolution(
+      resolutionOutcome: ResolutionOutcome
+  )(using
+      Eq[Element]
+  ): Resolution[Element] = new StubResolution(resolutionOutcome)
+    with ResolutionContracts[Element] {}
+
+  trait StubResolution(resolutionOutcome: ResolutionOutcome)
+      extends Resolution[Element]:
+    override def apply(
+        base: Option[Element],
+        left: Element,
+        right: Element
+    ): Element =
+      resolutionOutcome match
+        case ResolutionOutcome.LeftChosen => left
+        case SomethingElseChosen(offset)  => left + offset.value
+  end StubResolution
+
+  enum Operation[X]:
+    case Preservation(preserved: X)
+    case LeftInsertion(inserted: X)
+    case RightInsertion(inserted: X)
+    case CoincidentInsertion(inserted: X)
+    case LeftDeletion(deleted: X)
+    case RightDeletion(deleted: X)
+    case CoincidentDeletion(deleted: X)
+    case LeftEdit(edited: X, edits: IndexedSeq[X])
+    case RightEdit(edited: X, edits: IndexedSeq[X])
+    case CoincidentEdit(edited: X, edits: IndexedSeq[(X, X)])
+    case Conflict(
+        edited: IndexedSeq[X],
+        leftEdits: IndexedSeq[X],
+        rightEdits: IndexedSeq[X]
+    )
+
+  end Operation
+
+  enum ResolutionOutcome:
+    case LeftChosen
+    case SomethingElseChosen(offset: Int Refined Positive)
+  end ResolutionOutcome
+
+  object auditingCoreMergeAlgebra extends merge.MergeAlgebra[Audit, Element]:
+    override def empty: Audit[Element] = Vector.empty
+    override def preservation(
+        result: Audit[Element],
+        preservedBaseElement: Element,
+        preservedElementOnLeft: Element,
+        preservedElementOnRight: Element
+    ): Audit[Element] = result :+ Preservation(preservedElementOnLeft)
+    override def leftInsertion(
+        result: Audit[Element],
+        insertedElement: Element
+    ): Audit[Element] = result :+ LeftInsertion(insertedElement)
+    override def rightInsertion(
+        result: Audit[Element],
+        insertedElement: Element
+    ): Audit[Element] = result :+ RightInsertion(insertedElement)
+    override def coincidentInsertion(
+        result: Audit[Element],
+        insertedElementOnLeft: Element,
+        insertedElementOnRight: Element
+    ): Audit[Element] = result :+ CoincidentInsertion(insertedElementOnLeft)
+    override def leftDeletion(
+        result: Audit[Element],
+        deletedElement: Element
+    ): Audit[Element] = result :+ LeftDeletion(deletedElement)
+    override def rightDeletion(
+        result: Audit[Element],
+        deletedElement: Element
+    ): Audit[Element] = result :+ RightDeletion(deletedElement)
+    override def coincidentDeletion(
+        result: Audit[Element],
+        deletedElement: Element
+    ): Audit[Element] = result :+ CoincidentDeletion(deletedElement)
+    override def leftEdit(
+        result: Audit[Element],
+        editedElement: Element,
+        editElements: IndexedSeq[Element]
+    ): Audit[Element] = result :+ LeftEdit(editedElement, editElements)
+    override def rightEdit(
+        result: Audit[Element],
+        editedElement: Element,
+        editElements: IndexedSeq[Element]
+    ): Audit[Element] = result :+ RightEdit(editedElement, editElements)
+    override def coincidentEdit(
+        result: Audit[Element],
+        editedElement: Element,
+        editElements: IndexedSeq[(Element, Element)]
+    ): Audit[Element] = result :+ CoincidentEdit(editedElement, editElements)
+    override def conflict(
+        result: Audit[Element],
+        editedElements: IndexedSeq[Element],
+        leftEditElements: IndexedSeq[Element],
+        rightEditElements: IndexedSeq[Element]
+    ): Audit[Element] =
+      result :+ Conflict(editedElements, leftEditElements, rightEditElements)
+  end auditingCoreMergeAlgebra
 end MatchesContextTest

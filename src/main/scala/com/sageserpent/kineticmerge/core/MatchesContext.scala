@@ -151,7 +151,8 @@ class MatchesContext[Element](
       [Element] =>> MergeResultDetectingMotion[CoreResult, Element]
 
     def mergeAlgebra[CoreResult[_]](
-        coreMergeAlgebra: merge.MergeAlgebra[CoreResult, Element]
+        coreMergeAlgebra: merge.MergeAlgebra[CoreResult, Element],
+        resolution: Resolution[Element]
     ): MergeAlgebra[MergeResultDetectingMotionType[CoreResult], Element] =
       type ConfiguredMergeResultDetectingMotion[Element] =
         MergeResultDetectingMotionType[CoreResult][Element]
