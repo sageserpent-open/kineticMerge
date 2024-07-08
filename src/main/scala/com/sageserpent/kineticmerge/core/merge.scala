@@ -151,7 +151,8 @@ object merge extends StrictLogging:
       def coalesceLeftInsertion(insertedElement: Element): LeftEdit
       def finalLeftEdit(
           result: Result[Element],
-          editedElement: Element,
+          editedBaseElement: Element,
+          editedRightElement: Element,
           insertedElement: Element
       ): Result[Element]
     end LeftEditOperations
@@ -160,7 +161,8 @@ object merge extends StrictLogging:
       def coalesceRightInsertion(insertedElement: Element): RightEdit
       def finalRightEdit(
           result: Result[Element],
-          editedElement: Element,
+          editedBaseElement: Element,
+          editedLeftElement: Element,
           insertedElement: Element
       ): Result[Element]
     end RightEditOperations
@@ -230,11 +232,13 @@ object merge extends StrictLogging:
         this.focus(_.deferredLeftEdits).modify(_ :+ insertedElement)
       override def finalLeftEdit(
           result: Result[Element],
-          editedElement: Element,
+          editedBaseElement: Element,
+          editedRightElement: Element,
           insertedElement: Element
       ): Result[Element] = mergeAlgebra.leftEdit(
         result,
-        editedElement,
+        editedBaseElement,
+        editedRightElement,
         deferredLeftEdits :+ insertedElement
       )
     end LeftEdit
@@ -248,11 +252,13 @@ object merge extends StrictLogging:
 
       override def finalRightEdit(
           result: Result[Element],
-          editedElement: Element,
+          editedBaseElement: Element,
+          editedLeftElement: Element,
           insertedElement: Element
       ): Result[Element] = mergeAlgebra.rightEdit(
         result,
-        editedElement,
+        editedBaseElement,
+        editedLeftElement,
         editElements = deferredRightEdits :+ insertedElement
       )
     end RightEdit
@@ -766,6 +772,7 @@ object merge extends StrictLogging:
         base: Seq[Contribution[Element]],
         partialResult: Result[Element],
         editedBaseElement: Element,
+        editedRightElement: Element,
         baseTail: Seq[Contribution[Element]],
         leftTail: Seq[Contribution[Element]],
         rightTail: Seq[Contribution[Element]]
@@ -789,7 +796,12 @@ object merge extends StrictLogging:
           )
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
             partialResult = leftEditOperations
-              .finalLeftEdit(partialResult, editedBaseElement, leftElement),
+              .finalLeftEdit(
+                partialResult,
+                editedBaseElement,
+                editedRightElement,
+                leftElement
+              ),
             coalescence = NoCoalescence
           )
 
@@ -806,7 +818,12 @@ object merge extends StrictLogging:
           )
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
             partialResult = leftEditOperations
-              .finalLeftEdit(partialResult, editedBaseElement, leftElement),
+              .finalLeftEdit(
+                partialResult,
+                editedBaseElement,
+                editedRightElement,
+                leftElement
+              ),
             coalescence = NoCoalescence
           )
 
@@ -827,7 +844,12 @@ object merge extends StrictLogging:
           )
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, rightTail)(
             partialResult = leftEditOperations
-              .finalLeftEdit(partialResult, editedBaseElement, leftElement),
+              .finalLeftEdit(
+                partialResult,
+                editedBaseElement,
+                editedRightElement,
+                leftElement
+              ),
             coalescence = NoCoalescence
           )
       end match
@@ -837,6 +859,7 @@ object merge extends StrictLogging:
         base: Seq[Contribution[Element]],
         partialResult: Result[Element],
         editedBaseElement: Element,
+        editedLeftElement: Element,
         baseTail: Seq[Contribution[Element]],
         leftTail: Seq[Contribution[Element]],
         rightTail: Seq[Contribution[Element]]
@@ -862,6 +885,7 @@ object merge extends StrictLogging:
             partialResult = rightEditOperations.finalRightEdit(
               partialResult,
               editedBaseElement,
+              editedLeftElement,
               rightElement
             ),
             coalescence = NoCoalescence
@@ -882,6 +906,7 @@ object merge extends StrictLogging:
             partialResult = rightEditOperations.finalRightEdit(
               partialResult,
               editedBaseElement,
+              editedLeftElement,
               rightElement
             ),
             coalescence = NoCoalescence
@@ -907,6 +932,7 @@ object merge extends StrictLogging:
             rightEditOperations.finalRightEdit(
               partialResult,
               editedBaseElement,
+              editedLeftElement,
               rightElement
             ),
             coalescence = NoCoalescence
@@ -1073,7 +1099,7 @@ object merge extends StrictLogging:
               ),
               Seq(Contribution.Difference(leftElement), leftTail*),
               Seq(
-                Contribution.CommonToBaseAndRightOnly(_),
+                Contribution.CommonToBaseAndRightOnly(editedRightElement),
                 rightTail*
               )
             ) => // Left edit.
@@ -1081,6 +1107,7 @@ object merge extends StrictLogging:
             base,
             partialResult,
             editedBaseElement,
+            editedRightElement,
             baseTail,
             leftTail,
             rightTail
@@ -1094,7 +1121,7 @@ object merge extends StrictLogging:
                 baseTail*
               ),
               Seq(
-                Contribution.CommonToBaseAndLeftOnly(_),
+                Contribution.CommonToBaseAndLeftOnly(editedLeftElement),
                 leftTail*
               ),
               Seq(Contribution.Difference(rightElement), rightTail*)
@@ -1103,6 +1130,7 @@ object merge extends StrictLogging:
             base,
             partialResult,
             editedBaseElement,
+            editedLeftElement,
             baseTail,
             leftTail,
             rightTail
@@ -1117,7 +1145,7 @@ object merge extends StrictLogging:
               ),
               _,
               Seq(
-                Contribution.CommonToBaseAndRightOnly(_),
+                Contribution.CommonToBaseAndRightOnly(deletedRightElement),
                 rightTail*
               )
             ) => // Left deletion.
@@ -1127,7 +1155,8 @@ object merge extends StrictLogging:
           mergeBetweenRunsOfCommonElements(baseTail, left, rightTail)(
             mergeAlgebra.leftDeletion(
               partialResult,
-              deletedElement = deletedBaseElement
+              deletedBaseElement = deletedBaseElement,
+              deletedRightElement = deletedRightElement
             ),
             coalescence = NoCoalescence
           )
@@ -1140,7 +1169,7 @@ object merge extends StrictLogging:
                 baseTail*
               ),
               Seq(
-                Contribution.CommonToBaseAndLeftOnly(_),
+                Contribution.CommonToBaseAndLeftOnly(deletedLeftElement),
                 leftTail*
               ),
               _
@@ -1151,7 +1180,8 @@ object merge extends StrictLogging:
           mergeBetweenRunsOfCommonElements(baseTail, leftTail, right)(
             mergeAlgebra.rightDeletion(
               partialResult,
-              deletedElement = deletedBaseElement
+              deletedBaseElement = deletedBaseElement,
+              deletedLeftElement = deletedLeftElement
             ),
             coalescence = NoCoalescence
           )
@@ -1447,12 +1477,14 @@ object merge extends StrictLogging:
 
     def leftDeletion(
         result: Result[Element],
-        deletedElement: Element
+        deletedBaseElement: Element,
+        deletedRightElement: Element
     ): Result[Element]
 
     def rightDeletion(
         result: Result[Element],
-        deletedElement: Element
+        deletedBaseElement: Element,
+        deletedLeftElement: Element
     ): Result[Element]
 
     def coincidentDeletion(
@@ -1467,7 +1499,8 @@ object merge extends StrictLogging:
       */
     def leftEdit(
         result: Result[Element],
-        editedElement: Element,
+        editedBaseElement: Element,
+        editedRightElement: Element,
         editElements: IndexedSeq[Element]
     ): Result[Element]
 
@@ -1478,7 +1511,8 @@ object merge extends StrictLogging:
       */
     def rightEdit(
         result: Result[Element],
-        editedElement: Element,
+        editedBaseElement: Element,
+        editedLeftElement: Element,
         editElements: IndexedSeq[Element]
     ): Result[Element]
 

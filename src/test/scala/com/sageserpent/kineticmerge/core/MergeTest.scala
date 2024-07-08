@@ -5,15 +5,9 @@ import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
-  Sized,
-  defaultElementSize
-}
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{Sized, defaultElementSize}
 import com.sageserpent.kineticmerge.core.MergeTest.*
-import com.sageserpent.kineticmerge.core.MergeTest.DelegatingMergeAlgebraWithContracts.{
-  AugmentedMergeResult,
-  State
-}
+import com.sageserpent.kineticmerge.core.MergeTest.DelegatingMergeAlgebraWithContracts.{AugmentedMergeResult, State}
 import com.sageserpent.kineticmerge.core.MergeTest.Move.*
 import monocle.syntax.all.*
 import org.junit.jupiter.api.{Assertions, Test, TestFactory}
@@ -1806,8 +1800,6 @@ object MergeTest:
     ): Element = left
   end LeftBiasedResolution
 
-  object leftBiasedResolution extends LeftBiasedResolution
-
   trait CoinFlippingResolution extends Resolution[Element]:
     override def apply(
         base: Option[Element],
@@ -1818,8 +1810,6 @@ object MergeTest:
       if headsItIs then left else right
     end apply
   end CoinFlippingResolution
-
-  object coinFlippingResolution extends CoinFlippingResolution
 
   case class MergeTestCase(
       base: IndexedSeq[Element],
@@ -2275,20 +2265,28 @@ object MergeTest:
 
     override def leftDeletion(
         result: AugmentedMergeResult[Element],
-        deletedElement: Element
+        deletedBaseElement: Element,
+        deletedRightElement: Element
     ): AugmentedMergeResult[Element] = AugmentedMergeResult(
       state = State.Neutral,
-      coreMergeResult =
-        coreMergeAlgebra.leftDeletion(result.coreMergeResult, deletedElement)
+      coreMergeResult = coreMergeAlgebra.leftDeletion(
+        result.coreMergeResult,
+        deletedBaseElement,
+        deletedRightElement
+      )
     )
 
     override def rightDeletion(
         result: AugmentedMergeResult[Element],
-        deletedElement: Element
+        deletedBaseElement: Element,
+        deletedLeftElement: Element
     ): AugmentedMergeResult[Element] = AugmentedMergeResult(
       state = State.Neutral,
-      coreMergeResult =
-        coreMergeAlgebra.rightDeletion(result.coreMergeResult, deletedElement)
+      coreMergeResult = coreMergeAlgebra.rightDeletion(
+        result.coreMergeResult,
+        deletedBaseElement,
+        deletedLeftElement
+      )
     )
 
     override def coincidentDeletion(
@@ -2304,14 +2302,16 @@ object MergeTest:
 
     override def leftEdit(
         result: AugmentedMergeResult[Element],
-        editedElement: Element,
+        editedBaseElement: Element,
+        editedRightElement: Element,
         editElements: IndexedSeq[Element]
     ): AugmentedMergeResult[Element] =
       AugmentedMergeResult(
         state = State.LeftEdit,
         coreMergeResult = coreMergeAlgebra.leftEdit(
           result.coreMergeResult,
-          editedElement,
+          editedBaseElement,
+          editedRightElement,
           editElements
         )
       )
@@ -2319,13 +2319,15 @@ object MergeTest:
 
     override def rightEdit(
         result: AugmentedMergeResult[Element],
-        editedElement: Element,
+        editedBaseElement: Element,
+        editedLeftElement: Element,
         editElements: IndexedSeq[Element]
     ): AugmentedMergeResult[Element] = AugmentedMergeResult(
       state = State.RightEdit,
       coreMergeResult = coreMergeAlgebra.rightEdit(
         result.coreMergeResult,
-        editedElement,
+        editedBaseElement,
+        editedLeftElement,
         editElements
       )
     )
@@ -2376,6 +2378,10 @@ object MergeTest:
       )
     end conflict
   end DelegatingMergeAlgebraWithContracts
+
+  object leftBiasedResolution extends LeftBiasedResolution
+
+  object coinFlippingResolution extends CoinFlippingResolution
 
   object DelegatingMergeAlgebraWithContracts:
     // Leave this as an enumeration rather than as a Boolean as left- and

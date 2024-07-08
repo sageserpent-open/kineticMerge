@@ -59,26 +59,30 @@ object MatchesContextTest:
     ): Audit[Element] = result :+ CoincidentInsertion(insertedElementOnLeft)
     override def leftDeletion(
         result: Audit[Element],
-        deletedElement: Element
-    ): Audit[Element] = result :+ LeftDeletion(deletedElement)
+        deletedBaseElement: Element,
+        deletedRightElement: Element
+    ): Audit[Element] = result :+ LeftDeletion(deletedBaseElement)
     override def rightDeletion(
         result: Audit[Element],
-        deletedElement: Element
-    ): Audit[Element] = result :+ RightDeletion(deletedElement)
+        deletedBaseElement: Element,
+        deletedLeftElement: Element
+    ): Audit[Element] = result :+ RightDeletion(deletedBaseElement)
     override def coincidentDeletion(
         result: Audit[Element],
         deletedElement: Element
     ): Audit[Element] = result :+ CoincidentDeletion(deletedElement)
     override def leftEdit(
         result: Audit[Element],
-        editedElement: Element,
+        editedBaseElement: Element,
+        editedRightElement: Element,
         editElements: IndexedSeq[Element]
-    ): Audit[Element] = result :+ LeftEdit(editedElement, editElements)
+    ): Audit[Element] = result :+ LeftEdit(editedBaseElement, editElements)
     override def rightEdit(
         result: Audit[Element],
-        editedElement: Element,
+        editedBaseElement: Element,
+        editedLeftElement: Element,
         editElements: IndexedSeq[Element]
-    ): Audit[Element] = result :+ RightEdit(editedElement, editElements)
+    ): Audit[Element] = result :+ RightEdit(editedBaseElement, editElements)
     override def coincidentEdit(
         result: Audit[Element],
         editedElement: Element,
@@ -169,7 +173,9 @@ class MatchesContextTest:
 
       val baseElement: Element = 2
 
-      val ourSideEditElement: Element = 3
+      val theirSideElement: Element = 3
+
+      val ourSideEditElement: Element = 4
 
       val baseAndOurSidePairwiseMatch =
         if mirrorImage then
@@ -203,12 +209,14 @@ class MatchesContextTest:
             .rightEdit(
               mergeAlgebra.empty,
               baseElement,
+              theirSideElement,
               IndexedSeq(ourSideEditElement)
             )
         else
           mergeAlgebra.leftEdit(
             mergeAlgebra.empty,
             baseElement,
+            theirSideElement,
             IndexedSeq(ourSideEditElement)
           )
 
@@ -926,8 +934,11 @@ class MatchesContextTest:
 
       val mergeResult =
         if mirrorImage then
-          mergeAlgebra.rightDeletion(mergeAlgebra.empty, baseElement)
-        else mergeAlgebra.leftDeletion(mergeAlgebra.empty, baseElement)
+          mergeAlgebra
+            .rightDeletion(mergeAlgebra.empty, baseElement, theirSideElement)
+        else
+          mergeAlgebra
+            .leftDeletion(mergeAlgebra.empty, baseElement, theirSideElement)
 
       if mirrorImage then
         assert(
@@ -985,12 +996,14 @@ class MatchesContextTest:
           mergeAlgebra.rightEdit(
             mergeAlgebra.empty,
             baseElement,
+            theirSideElement,
             IndexedSeq(ourSideEditElement)
           )
         else
           mergeAlgebra.leftEdit(
             mergeAlgebra.empty,
             baseElement,
+            theirSideElement,
             IndexedSeq(ourSideEditElement)
           )
 

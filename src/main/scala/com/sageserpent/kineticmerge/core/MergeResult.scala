@@ -80,12 +80,14 @@ object MergeResult:
 
       override def leftDeletion(
           result: MergeResult[Element],
-          deletedElement: Element
+          deletedBaseElement: Element,
+          deletedRightElement: Element
       ): MergeResult[Element] = result
 
       override def rightDeletion(
           result: MergeResult[Element],
-          deletedElement: Element
+          deletedBaseElement: Element,
+          deletedLeftElement: Element
       ): MergeResult[Element] = result
 
       override def coincidentDeletion(
@@ -95,7 +97,8 @@ object MergeResult:
 
       override def leftEdit(
           result: MergeResult[Element],
-          editedElement: Element,
+          editedBaseElement: Element,
+          editedRightElement: Element,
           editElements: IndexedSeq[Element]
       ): MergeResult[Element] =
         result match
@@ -109,7 +112,8 @@ object MergeResult:
 
       override def rightEdit(
           result: MergeResult[Element],
-          editedElement: Element,
+          editedBaseElement: Element,
+          editedLeftElement: Element,
           editElements: IndexedSeq[Element]
       ): MergeResult[Element] =
         result match
