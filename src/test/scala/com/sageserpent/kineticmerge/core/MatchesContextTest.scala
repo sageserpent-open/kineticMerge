@@ -877,6 +877,8 @@ class MatchesContextTest:
       val ourSideMovedElement: Element = 2
       val theirSideElement: Element    = 3
 
+      val spuriousTheirSideElement: Element = 4
+
       val allSidesMatch =
         if mirrorImage then
           Match.AllSides(
@@ -898,13 +900,38 @@ class MatchesContextTest:
           theirSideElement    -> allSidesMatch
         )
 
-      given Eq[Element] = matchesByElement.equivalent
+      val spuriousAllSidesMatch =
+        if mirrorImage then
+          Match.AllSides(
+            baseElement = baseElement,
+            leftElement = spuriousTheirSideElement,
+            rightElement = ourSideMovedElement
+          )
+        else
+          Match.AllSides(
+            baseElement = baseElement,
+            leftElement = ourSideMovedElement,
+            rightElement = spuriousTheirSideElement
+          )
+
+      val spuriousMatchesByElement =
+        Map(
+          baseElement              -> spuriousAllSidesMatch,
+          ourSideMovedElement      -> spuriousAllSidesMatch,
+          spuriousTheirSideElement -> spuriousAllSidesMatch
+        )
+
+      given Eq[Element] = (lhs: Element, rhs: Element) =>
+        matchesByElement.equivalent(lhs, rhs) || spuriousMatchesByElement
+          .equivalent(lhs, rhs)
 
       val resolution = guardedStubResolution(resolutionOutcome, mirrorImage)
 
       val mergeAlgebra =
-        MatchesContext(
-          matchesFor(matchesByElement)
+        MatchesContext((element: Element) =>
+          matchesFor(matchesByElement)(element) union matchesFor(
+            spuriousMatchesByElement
+          )(element)
         ).MergeResultDetectingMotion.mergeAlgebra(
           auditingCoreMergeAlgebra,
           resolution
