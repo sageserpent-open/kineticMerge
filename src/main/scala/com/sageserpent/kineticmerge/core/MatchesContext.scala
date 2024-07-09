@@ -229,23 +229,95 @@ class MatchesContext[Element](
             result: ConfiguredMergeResultDetectingMotion[Element],
             deletedBaseElement: Element,
             deletedRightElement: Element
-        ): ConfiguredMergeResultDetectingMotion[Element] = result
-          .focus(_.coreMergeResult)
-          .modify(
-            coreMergeAlgebra
-              .leftDeletion(_, deletedBaseElement, deletedRightElement)
-          )
+        ): ConfiguredMergeResultDetectingMotion[Element] =
+          def default = result
+            .focus(_.coreMergeResult)
+            .modify(
+              coreMergeAlgebra
+                .leftDeletion(_, deletedBaseElement, deletedRightElement)
+            )
+
+          val matches = matchesFor(deletedBaseElement).toSeq
+
+          matches match
+            case Seq(_: AllSides[Section[Element]], _*) =>
+              matches.foldLeft(default) {
+                case (
+                      result,
+                      AllSides(_, leftElementAtMoveDestination, rightElement)
+                    ) if deletedRightElement == rightElement =>
+                  val resolved = resolution(
+                    Some(deletedBaseElement),
+                    leftElementAtMoveDestination,
+                    deletedRightElement
+                  )
+
+                  if resolved != leftElementAtMoveDestination then
+                    logger.debug(
+                      // TODO: this message is confusing!
+                      s"Left deletion at origin of move: migrating resolved minor edit ${pprintCustomised(resolved)} to left move destination ${pprintCustomised(leftElementAtMoveDestination)}."
+                    )
+
+                    result
+                      .focus(_.changesMigratedThroughMotion)
+                      .modify(
+                        _ + (leftElementAtMoveDestination -> IndexedSeq(
+                          resolved
+                        ))
+                      )
+                  else result
+                  end if
+              }
+            case _ => result
+          end match
+        end leftDeletion
 
         override def rightDeletion(
             result: ConfiguredMergeResultDetectingMotion[Element],
             deletedBaseElement: Element,
             deletedLeftElement: Element
-        ): ConfiguredMergeResultDetectingMotion[Element] = result
-          .focus(_.coreMergeResult)
-          .modify(
-            coreMergeAlgebra
-              .rightDeletion(_, deletedBaseElement, deletedLeftElement)
-          )
+        ): ConfiguredMergeResultDetectingMotion[Element] =
+          def default = result
+            .focus(_.coreMergeResult)
+            .modify(
+              coreMergeAlgebra
+                .rightDeletion(_, deletedBaseElement, deletedLeftElement)
+            )
+
+          val matches = matchesFor(deletedBaseElement).toSeq
+
+          matches match
+            case Seq(_: AllSides[Section[Element]], _*) =>
+              matches.foldLeft(default) {
+                case (
+                      result,
+                      AllSides(_, leftElement, rightElementAtMoveDestination)
+                    ) if deletedLeftElement == leftElement =>
+                  val resolved = resolution(
+                    Some(deletedBaseElement),
+                    deletedLeftElement,
+                    rightElementAtMoveDestination
+                  )
+
+                  if resolved != rightElementAtMoveDestination then
+                    logger.debug(
+                      // TODO: this message is confusing!
+                      s"Right deletion at origin of move: migrating resolved minor edit ${pprintCustomised(resolved)} to right move destination ${pprintCustomised(rightElementAtMoveDestination)}."
+                    )
+
+                    result
+                      .focus(_.changesMigratedThroughMotion)
+                      .modify(
+                        _ + (rightElementAtMoveDestination -> IndexedSeq(
+                          resolved
+                        ))
+                      )
+                  else result
+                  end if
+              }
+            case _ => default
+          end match
+        end rightDeletion
 
         override def coincidentDeletion(
             result: ConfiguredMergeResultDetectingMotion[Element],
@@ -298,28 +370,110 @@ class MatchesContext[Element](
             editedBaseElement: Element,
             editedRightElement: Element,
             editElements: IndexedSeq[Element]
-        ): ConfiguredMergeResultDetectingMotion[Element] = result
-          .focus(_.coreMergeResult)
-          .modify(
-            coreMergeAlgebra
-              .leftEdit(_, editedBaseElement, editedRightElement, editElements)
-          )
-          .focus(_.moveDestinationsReport)
-          .modify(editElements.foldLeft(_)(_ leftMoveOf _))
+        ): ConfiguredMergeResultDetectingMotion[Element] =
+          def default = result
+            .focus(_.coreMergeResult)
+            .modify(
+              coreMergeAlgebra
+                .leftEdit(
+                  _,
+                  editedBaseElement,
+                  editedRightElement,
+                  editElements
+                )
+            )
+            .focus(_.moveDestinationsReport)
+            .modify(editElements.foldLeft(_)(_ leftMoveOf _))
+
+          val matches = matchesFor(editedBaseElement).toSeq
+
+          matches match
+            case Seq(_: AllSides[Section[Element]], _*) =>
+              matches.foldLeft(default) {
+                case (
+                      result,
+                      AllSides(_, leftElementAtMoveDestination, rightElement)
+                    ) if editedRightElement == rightElement =>
+                  val resolved = resolution(
+                    Some(editedBaseElement),
+                    leftElementAtMoveDestination,
+                    editedRightElement
+                  )
+
+                  if resolved != leftElementAtMoveDestination then
+                    logger.debug(
+                      // TODO: this message is confusing!
+                      s"Left edit at origin of move: migrating resolved minor edit ${pprintCustomised(resolved)} to left move destination ${pprintCustomised(leftElementAtMoveDestination)}."
+                    )
+
+                    result
+                      .focus(_.changesMigratedThroughMotion)
+                      .modify(
+                        _ + (leftElementAtMoveDestination -> IndexedSeq(
+                          resolved
+                        ))
+                      )
+                  else result
+                  end if
+              }
+            case _ => default
+          end match
+        end leftEdit
 
         override def rightEdit(
             result: ConfiguredMergeResultDetectingMotion[Element],
             editedBaseElement: Element,
             editedLeftElement: Element,
             editElements: IndexedSeq[Element]
-        ): ConfiguredMergeResultDetectingMotion[Element] = result
-          .focus(_.coreMergeResult)
-          .modify(
-            coreMergeAlgebra
-              .rightEdit(_, editedBaseElement, editedLeftElement, editElements)
-          )
-          .focus(_.moveDestinationsReport)
-          .modify(editElements.foldLeft(_)(_ rightMoveOf _))
+        ): ConfiguredMergeResultDetectingMotion[Element] =
+          def default = result
+            .focus(_.coreMergeResult)
+            .modify(
+              coreMergeAlgebra
+                .rightEdit(
+                  _,
+                  editedBaseElement,
+                  editedLeftElement,
+                  editElements
+                )
+            )
+            .focus(_.moveDestinationsReport)
+            .modify(editElements.foldLeft(_)(_ rightMoveOf _))
+
+          val matches = matchesFor(editedBaseElement).toSeq
+
+          matches match
+            case Seq(_: AllSides[Section[Element]], _*) =>
+              matches.foldLeft(default) {
+                case (
+                      result,
+                      AllSides(_, leftElement, rightElementAtMoveDestination)
+                    ) if editedLeftElement == leftElement =>
+                  val resolved = resolution(
+                    Some(editedBaseElement),
+                    editedLeftElement,
+                    rightElementAtMoveDestination
+                  )
+
+                  if resolved != rightElementAtMoveDestination then
+                    logger.debug(
+                      // TODO: this message is confusing!
+                      s"Right edit at origin of move: migrating resolved minor edit ${pprintCustomised(resolved)} to right move destination ${pprintCustomised(rightElementAtMoveDestination)}."
+                    )
+
+                    result
+                      .focus(_.changesMigratedThroughMotion)
+                      .modify(
+                        _ + (rightElementAtMoveDestination -> IndexedSeq(
+                          resolved
+                        ))
+                      )
+                  else result
+                  end if
+              }
+            case _ => default
+          end match
+        end rightEdit
 
         override def coincidentEdit(
             result: ConfiguredMergeResultDetectingMotion[Element],
