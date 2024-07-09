@@ -900,7 +900,7 @@ class MatchesContextTest:
 
       given Eq[Element] = matchesByElement.equivalent
 
-      val resolution = guardedStubResolution(resolutionOutcome)
+      val resolution = guardedStubResolution(resolutionOutcome, mirrorImage)
 
       val mergeAlgebra =
         MatchesContext(
@@ -1010,7 +1010,7 @@ class MatchesContextTest:
 
       given Eq[Element] = matchesByElement.equivalent
 
-      val resolution = guardedStubResolution(resolutionOutcome)
+      val resolution = guardedStubResolution(resolutionOutcome, mirrorImage)
 
       val mergeAlgebra =
         MatchesContext(
@@ -1615,22 +1615,29 @@ object MatchesContextTest:
     .fold(ifEmpty = Set.empty[Match[Element]])(Set(_))
 
   def guardedStubResolution(
-      resolutionOutcome: ResolutionOutcome
+      resolutionOutcome: ResolutionOutcome,
+      mirrorImage: Boolean
   )(using
       Eq[Element]
-  ): Resolution[Element] = new StubResolution(resolutionOutcome)
+  ): Resolution[Element] = new StubResolution(resolutionOutcome, mirrorImage)
     with ResolutionContracts[Element] {}
 
-  trait StubResolution(resolutionOutcome: ResolutionOutcome)
-      extends Resolution[Element]:
+  trait StubResolution(
+      resolutionOutcome: ResolutionOutcome,
+      mirrorImage: Boolean
+  ) extends Resolution[Element]:
     override def apply(
         base: Option[Element],
         left: Element,
         right: Element
     ): Element =
+      val mirroredLeft = if mirrorImage then right else left
+
       resolutionOutcome match
-        case ResolutionOutcome.LeftChosen => left
-        case SomethingElseChosen(offset)  => left + offset.value
+        case ResolutionOutcome.LeftChosen => mirroredLeft
+        case SomethingElseChosen(offset)  => mirroredLeft + offset.value
+      end match
+    end apply
   end StubResolution
 
   enum Operation[X]:
