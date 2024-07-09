@@ -243,7 +243,7 @@ class MatchesContext[Element](
             case Seq(_: AllSides[Section[Element]], _*) =>
               matches.foldLeft(default) {
                 case (
-                      result,
+                      partialResult,
                       AllSides(_, leftElementAtMoveDestination, rightElement)
                     ) if deletedRightElement == rightElement =>
                   val resolved = resolution(
@@ -258,16 +258,16 @@ class MatchesContext[Element](
                       s"Left deletion at origin of move: migrating resolved minor edit ${pprintCustomised(resolved)} to left move destination ${pprintCustomised(leftElementAtMoveDestination)}."
                     )
 
-                    result
+                    partialResult
                       .focus(_.changesMigratedThroughMotion)
                       .modify(
                         _ + (leftElementAtMoveDestination -> IndexedSeq(
                           resolved
                         ))
                       )
-                  else result
+                  else partialResult
                   end if
-                case _ => result
+                case (partialResult, _) => partialResult
               }
             case _ => default
           end match
@@ -291,7 +291,7 @@ class MatchesContext[Element](
             case Seq(_: AllSides[Section[Element]], _*) =>
               matches.foldLeft(default) {
                 case (
-                      result,
+                      partialResult,
                       AllSides(_, leftElement, rightElementAtMoveDestination)
                     ) if deletedLeftElement == leftElement =>
                   val resolved = resolution(
@@ -306,16 +306,16 @@ class MatchesContext[Element](
                       s"Right deletion at origin of move: migrating resolved minor edit ${pprintCustomised(resolved)} to right move destination ${pprintCustomised(rightElementAtMoveDestination)}."
                     )
 
-                    result
+                    partialResult
                       .focus(_.changesMigratedThroughMotion)
                       .modify(
                         _ + (rightElementAtMoveDestination -> IndexedSeq(
                           resolved
                         ))
                       )
-                  else result
+                  else partialResult
                   end if
-                case _ => result
+                case (partialResult, _) => partialResult
               }
             case _ => default
           end match
@@ -393,7 +393,7 @@ class MatchesContext[Element](
             case Seq(_: AllSides[Section[Element]], _*) =>
               matches.foldLeft(default) {
                 case (
-                      result,
+                      partialResult,
                       AllSides(_, leftElementAtMoveDestination, rightElement)
                     ) if editedRightElement == rightElement =>
                   val resolved = resolution(
@@ -408,16 +408,16 @@ class MatchesContext[Element](
                       s"Left edit at origin of move: migrating resolved minor edit ${pprintCustomised(resolved)} to left move destination ${pprintCustomised(leftElementAtMoveDestination)}."
                     )
 
-                    result
+                    partialResult
                       .focus(_.changesMigratedThroughMotion)
                       .modify(
                         _ + (leftElementAtMoveDestination -> IndexedSeq(
                           resolved
                         ))
                       )
-                  else result
+                  else partialResult
                   end if
-                case _ => result
+                case (partialResult, _) => partialResult
               }
             case _ => default
           end match
@@ -449,7 +449,7 @@ class MatchesContext[Element](
             case Seq(_: AllSides[Section[Element]], _*) =>
               matches.foldLeft(default) {
                 case (
-                      result,
+                      partialResult,
                       AllSides(_, leftElement, rightElementAtMoveDestination)
                     ) if editedLeftElement == leftElement =>
                   val resolved = resolution(
@@ -464,16 +464,16 @@ class MatchesContext[Element](
                       s"Right edit at origin of move: migrating resolved minor edit ${pprintCustomised(resolved)} to right move destination ${pprintCustomised(rightElementAtMoveDestination)}."
                     )
 
-                    result
+                    partialResult
                       .focus(_.changesMigratedThroughMotion)
                       .modify(
                         _ + (rightElementAtMoveDestination -> IndexedSeq(
                           resolved
                         ))
                       )
-                  else result
+                  else partialResult
                   end if
-                case _ => result
+                case (partialResult, _) => partialResult
               }
             case _ => default
           end match
