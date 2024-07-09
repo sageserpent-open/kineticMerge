@@ -2223,20 +2223,28 @@ object MergeTest:
 
     override def leftDeletion(
         result: AugmentedMergeResult[Element],
-        deletedElement: Element
+        deletedBaseElement: Element,
+        deletedRightElement: Element
     ): AugmentedMergeResult[Element] = AugmentedMergeResult(
       state = State.Neutral,
-      coreMergeResult =
-        coreMergeAlgebra.leftDeletion(result.coreMergeResult, deletedElement)
+      coreMergeResult = coreMergeAlgebra.leftDeletion(
+        result.coreMergeResult,
+        deletedBaseElement,
+        deletedRightElement
+      )
     )
 
     override def rightDeletion(
         result: AugmentedMergeResult[Element],
-        deletedElement: Element
+        deletedBaseElement: Element,
+        deletedLeftElement: Element
     ): AugmentedMergeResult[Element] = AugmentedMergeResult(
       state = State.Neutral,
-      coreMergeResult =
-        coreMergeAlgebra.rightDeletion(result.coreMergeResult, deletedElement)
+      coreMergeResult = coreMergeAlgebra.rightDeletion(
+        result.coreMergeResult,
+        deletedBaseElement,
+        deletedLeftElement
+      )
     )
 
     override def coincidentDeletion(
@@ -2252,14 +2260,16 @@ object MergeTest:
 
     override def leftEdit(
         result: AugmentedMergeResult[Element],
-        editedElement: Element,
+        editedBaseElement: Element,
+        editedRightElement: Element,
         editElements: IndexedSeq[Element]
     ): AugmentedMergeResult[Element] =
       AugmentedMergeResult(
         state = State.LeftEdit,
         coreMergeResult = coreMergeAlgebra.leftEdit(
           result.coreMergeResult,
-          editedElement,
+          editedBaseElement,
+          editedRightElement,
           editElements
         )
       )
@@ -2267,13 +2277,15 @@ object MergeTest:
 
     override def rightEdit(
         result: AugmentedMergeResult[Element],
-        editedElement: Element,
+        editedBaseElement: Element,
+        editedLeftElement: Element,
         editElements: IndexedSeq[Element]
     ): AugmentedMergeResult[Element] = AugmentedMergeResult(
       state = State.RightEdit,
       coreMergeResult = coreMergeAlgebra.rightEdit(
         result.coreMergeResult,
-        editedElement,
+        editedBaseElement,
+        editedLeftElement,
         editElements
       )
     )

@@ -227,17 +227,25 @@ class MatchesContext[Element](
 
         override def leftDeletion(
             result: ConfiguredMergeResultDetectingMotion[Element],
-            deletedElement: Element
+            deletedBaseElement: Element,
+            deletedRightElement: Element
         ): ConfiguredMergeResultDetectingMotion[Element] = result
           .focus(_.coreMergeResult)
-          .modify(coreMergeAlgebra.leftDeletion(_, deletedElement))
+          .modify(
+            coreMergeAlgebra
+              .leftDeletion(_, deletedBaseElement, deletedRightElement)
+          )
 
         override def rightDeletion(
             result: ConfiguredMergeResultDetectingMotion[Element],
-            deletedElement: Element
+            deletedBaseElement: Element,
+            deletedLeftElement: Element
         ): ConfiguredMergeResultDetectingMotion[Element] = result
           .focus(_.coreMergeResult)
-          .modify(coreMergeAlgebra.rightDeletion(_, deletedElement))
+          .modify(
+            coreMergeAlgebra
+              .rightDeletion(_, deletedBaseElement, deletedLeftElement)
+          )
 
         override def coincidentDeletion(
             result: ConfiguredMergeResultDetectingMotion[Element],
@@ -287,21 +295,29 @@ class MatchesContext[Element](
 
         override def leftEdit(
             result: ConfiguredMergeResultDetectingMotion[Element],
-            editedElement: Element,
+            editedBaseElement: Element,
+            editedRightElement: Element,
             editElements: IndexedSeq[Element]
         ): ConfiguredMergeResultDetectingMotion[Element] = result
           .focus(_.coreMergeResult)
-          .modify(coreMergeAlgebra.leftEdit(_, editedElement, editElements))
+          .modify(
+            coreMergeAlgebra
+              .leftEdit(_, editedBaseElement, editedRightElement, editElements)
+          )
           .focus(_.moveDestinationsReport)
           .modify(editElements.foldLeft(_)(_ leftMoveOf _))
 
         override def rightEdit(
             result: ConfiguredMergeResultDetectingMotion[Element],
-            editedElement: Element,
+            editedBaseElement: Element,
+            editedLeftElement: Element,
             editElements: IndexedSeq[Element]
         ): ConfiguredMergeResultDetectingMotion[Element] = result
           .focus(_.coreMergeResult)
-          .modify(coreMergeAlgebra.rightEdit(_, editedElement, editElements))
+          .modify(
+            coreMergeAlgebra
+              .rightEdit(_, editedBaseElement, editedLeftElement, editElements)
+          )
           .focus(_.moveDestinationsReport)
           .modify(editElements.foldLeft(_)(_ rightMoveOf _))
 
