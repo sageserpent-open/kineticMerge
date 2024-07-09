@@ -267,8 +267,9 @@ class MatchesContext[Element](
                       )
                   else result
                   end if
+                case _ => result
               }
-            case _ => result
+            case _ => default
           end match
         end leftDeletion
 
@@ -314,6 +315,7 @@ class MatchesContext[Element](
                       )
                   else result
                   end if
+                case _ => result
               }
             case _ => default
           end match
@@ -415,6 +417,7 @@ class MatchesContext[Element](
                       )
                   else result
                   end if
+                case _ => result
               }
             case _ => default
           end match
@@ -470,6 +473,7 @@ class MatchesContext[Element](
                       )
                   else result
                   end if
+                case _ => result
               }
             case _ => default
           end match
