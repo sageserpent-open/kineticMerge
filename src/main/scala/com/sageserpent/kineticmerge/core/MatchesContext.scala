@@ -254,8 +254,7 @@ class MatchesContext[Element](
 
                   if resolved != leftElementAtMoveDestination then
                     logger.debug(
-                      // TODO: this message is confusing!
-                      s"Left deletion at origin of move: migrating resolved minor edit ${pprintCustomised(resolved)} to left move destination ${pprintCustomised(leftElementAtMoveDestination)}."
+                      s"Left deletion at origin of move: also migrating additional minor edit resolution ${pprintCustomised(resolved)} to left move destination ${pprintCustomised(leftElementAtMoveDestination)}."
                     )
 
                     partialResult
@@ -302,8 +301,7 @@ class MatchesContext[Element](
 
                   if resolved != rightElementAtMoveDestination then
                     logger.debug(
-                      // TODO: this message is confusing!
-                      s"Right deletion at origin of move: migrating resolved minor edit ${pprintCustomised(resolved)} to right move destination ${pprintCustomised(rightElementAtMoveDestination)}."
+                      s"Right deletion at origin of move: also migrating additional minor edit resolution ${pprintCustomised(resolved)} to right move destination ${pprintCustomised(rightElementAtMoveDestination)}."
                     )
 
                     partialResult
@@ -404,8 +402,7 @@ class MatchesContext[Element](
 
                   if resolved != leftElementAtMoveDestination then
                     logger.debug(
-                      // TODO: this message is confusing!
-                      s"Left edit at origin of move: migrating resolved minor edit ${pprintCustomised(resolved)} to left move destination ${pprintCustomised(leftElementAtMoveDestination)}."
+                      s"Left edit at origin of move: also migrating additional minor edit resolution ${pprintCustomised(resolved)} to left move destination ${pprintCustomised(leftElementAtMoveDestination)}."
                     )
 
                     partialResult
@@ -460,8 +457,7 @@ class MatchesContext[Element](
 
                   if resolved != rightElementAtMoveDestination then
                     logger.debug(
-                      // TODO: this message is confusing!
-                      s"Right edit at origin of move: migrating resolved minor edit ${pprintCustomised(resolved)} to right move destination ${pprintCustomised(rightElementAtMoveDestination)}."
+                      s"Right edit at origin of move: also migrating additional minor edit resolution ${pprintCustomised(resolved)} to right move destination ${pprintCustomised(rightElementAtMoveDestination)}."
                     )
 
                     partialResult
