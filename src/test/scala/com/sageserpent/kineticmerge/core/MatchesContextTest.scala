@@ -18,15 +18,27 @@ object MatchesContextTest:
     .fold(ifEmpty = Set.empty[Match[Element]])(Set(_))
 
   enum Operation[X]:
-    case Preservation(preserved: X)
+    case Preservation(
+        preservedBaseElement: X,
+        preservedElementOnLeft: X,
+        preservedElementOnRight: X
+    )
     case LeftInsertion(inserted: X)
     case RightInsertion(inserted: X)
     case CoincidentInsertion(inserted: X)
-    case LeftDeletion(deleted: X)
-    case RightDeletion(deleted: X)
+    case LeftDeletion(deletedBaseElement: X, deletedRightElement: X)
+    case RightDeletion(deletedBaseElement: X, deletedLeftElement: X)
     case CoincidentDeletion(deleted: X)
-    case LeftEdit(edited: X, edits: IndexedSeq[X])
-    case RightEdit(edited: X, edits: IndexedSeq[X])
+    case LeftEdit(
+        editedBaseElement: X,
+        editedRightElement: X,
+        edits: IndexedSeq[X]
+    )
+    case RightEdit(
+        editedBaseElement: X,
+        editedLeftElement: X,
+        edits: IndexedSeq[X]
+    )
     case CoincidentEdit(edited: X, edits: IndexedSeq[(X, X)])
     case Conflict(
         edited: IndexedSeq[X],
@@ -43,7 +55,11 @@ object MatchesContextTest:
         preservedBaseElement: Element,
         preservedElementOnLeft: Element,
         preservedElementOnRight: Element
-    ): Audit[Element] = result :+ Preservation(preservedElementOnLeft)
+    ): Audit[Element] = result :+ Preservation(
+      preservedBaseElement,
+      preservedElementOnLeft,
+      preservedElementOnRight
+    )
     override def leftInsertion(
         result: Audit[Element],
         insertedElement: Element
@@ -61,12 +77,14 @@ object MatchesContextTest:
         result: Audit[Element],
         deletedBaseElement: Element,
         deletedRightElement: Element
-    ): Audit[Element] = result :+ LeftDeletion(deletedBaseElement)
+    ): Audit[Element] =
+      result :+ LeftDeletion(deletedBaseElement, deletedRightElement)
     override def rightDeletion(
         result: Audit[Element],
         deletedBaseElement: Element,
         deletedLeftElement: Element
-    ): Audit[Element] = result :+ RightDeletion(deletedBaseElement)
+    ): Audit[Element] =
+      result :+ RightDeletion(deletedBaseElement, deletedLeftElement)
     override def coincidentDeletion(
         result: Audit[Element],
         deletedElement: Element
@@ -76,13 +94,15 @@ object MatchesContextTest:
         editedBaseElement: Element,
         editedRightElement: Element,
         editElements: IndexedSeq[Element]
-    ): Audit[Element] = result :+ LeftEdit(editedBaseElement, editElements)
+    ): Audit[Element] =
+      result :+ LeftEdit(editedBaseElement, editedRightElement, editElements)
     override def rightEdit(
         result: Audit[Element],
         editedBaseElement: Element,
         editedLeftElement: Element,
         editElements: IndexedSeq[Element]
-    ): Audit[Element] = result :+ RightEdit(editedBaseElement, editElements)
+    ): Audit[Element] =
+      result :+ RightEdit(editedBaseElement, editedLeftElement, editElements)
     override def coincidentEdit(
         result: Audit[Element],
         editedElement: Element,
@@ -942,11 +962,15 @@ class MatchesContextTest:
 
       if mirrorImage then
         assert(
-          Vector(RightDeletion(baseElement)) == mergeResult.coreMergeResult
+          Vector(
+            RightDeletion(baseElement, theirSideElement)
+          ) == mergeResult.coreMergeResult
         )
       else
         assert(
-          Vector(LeftDeletion(baseElement)) == mergeResult.coreMergeResult
+          Vector(
+            LeftDeletion(baseElement, theirSideElement)
+          ) == mergeResult.coreMergeResult
         )
       end if
 
@@ -1010,13 +1034,21 @@ class MatchesContextTest:
       if mirrorImage then
         assert(
           Vector(
-            RightEdit(baseElement, IndexedSeq(ourSideEditElement))
+            RightEdit(
+              baseElement,
+              theirSideElement,
+              IndexedSeq(ourSideEditElement)
+            )
           ) == mergeResult.coreMergeResult
         )
       else
         assert(
           Vector(
-            LeftEdit(baseElement, IndexedSeq(ourSideEditElement))
+            LeftEdit(
+              baseElement,
+              theirSideElement,
+              IndexedSeq(ourSideEditElement)
+            )
           ) == mergeResult.coreMergeResult
         )
       end if
