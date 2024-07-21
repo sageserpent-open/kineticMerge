@@ -113,6 +113,4 @@ are treated as one big token - although where there are alternate representation
 example Scala's raw strings versus one with escapes), these are treated as distinct.
 
 Because file content that is tokenised can match with whitespace insensitivity, we have to pick a winner when copying
-aligned sections into the merged results - do we choose the base, the left or the right? To fall in line with
-what `git-merge` does, the merge code favours the left-side's section in a match, if it is available, and the right-side
-otherwise.
+aligned sections into the merged results - do we choose the base, the left or the right? Kinetic Merge departs slightly from what `git-merge` does; the merge code favours the side that made whitespace changes if the other remains exactly the same as the base. If both sides have whitespace changes, the left is chosen as a tiebreaker.
