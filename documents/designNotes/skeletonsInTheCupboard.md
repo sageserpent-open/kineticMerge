@@ -62,7 +62,7 @@ See [`rightEditNotMaroonedByPriorCoincidentInsertion`](https://github.com/sagese
 and
 [`leftEditNotMaroonedByPriorRightDeletion`](https://github.com/sageserpent-open/kineticMerge/blob/63ea2b5cf44d553bf9d49412cc321fc219874d9a/src/main/scala/com/sageserpent/kineticmerge/core/merge.scala#L137).
 
-So far, this lookahead scanning is either rare enough or doesn't scan fare enough before aligning the edit across the
+So far, this lookahead scanning is either rare enough or doesn't scan far enough before aligning the edit across the
 base and left / right sides to cause a noticeable performance hit, so in it stays.
 
 ## Miscellaneous ##
