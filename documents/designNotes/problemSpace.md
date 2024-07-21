@@ -14,7 +14,7 @@ There is no knowledge of Git concepts such as commits, merge parents or the inde
 
 In order to model both merging and code motion, a file in turn breaks down into an indexed sequence of *sections*. Each
 section covers a continuous piece of content in a file that is demarcated by a start offset and one past the end
-offset - so a closed-open interval of offsets into the file content.
+offset - so a closed-open interval of offsets into the file content. A section does not have to align with line boundaries - it may refer to just a part of a single line, or span several lines with the start and / or end being ragged, i.e. not spanning an entire line.
 
 The idea is to cover each file in each of the three sources into contiguous sections, so that all the content belonging
 to each of the three sources is covered by one, and only one section. A sources instance does not mandate any particular
