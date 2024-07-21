@@ -16,7 +16,7 @@ In order to model both merging and code motion, a file in turn breaks down into 
 section covers a continuous piece of content in a file that is demarcated by a start offset and one past the end
 offset - so a closed-open interval of offsets into the file content. A section does not have to align with line boundaries - it may refer to just a part of a single line, or span several lines with the start and / or end being ragged, i.e. not spanning an entire line.
 
-The idea is to cover each file in each of the three sources into contiguous sections, so that all the content belonging
+The idea is to cover each file in each of the three sources with contiguous sections, so that all the content belonging
 to each of the three sources is covered by one, and only one section. A sources instance does not mandate any particular
 breakdown of its content into sections - as a starting point, it simply assigns each file with its own section that
 covers all the file's content.
