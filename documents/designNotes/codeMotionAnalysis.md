@@ -85,9 +85,8 @@ found multiple optimal matches.
 Otherwise, there is more than one match and the estimate is higher than the current candidate window size, so the binary
 search should go high and tighten the lower bound.
 
-Each time a match (or several matches) is found at a given candidate window size, the binary search is restarted with
-the lower bound relaxed to its initial value, and the exclusive upper bound set to the window size of the latest match(
-es). There is a subtlety here in that the binary search may terminate because there are multiple optimal matches, but
+Each time the search finds an optimal match (or several optimal matches) at a given candidate window size, the binary search is restarted with
+the lower bound relaxed to its initial value, and the exclusive upper bound set to the window size of the latest match(es). There is a subtlety here in that the binary search may terminate because there are multiple optimal matches, but
 the estimate is higher than their candidate window size, so the binary search keeps on looking, ultimately failing to
 improve on those matches. This situation can happen when the optimal matches refer to differing content, but have
 overlaps on one but not all the relevant sides; thus they can't be replaced by a single larger match.
