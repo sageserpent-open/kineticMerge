@@ -52,7 +52,7 @@ solution.
 
 The three-way merge algorithm was intended to systematically walk through the three sequences of contributions
 from `LongestCommonSubsequence`, so any element on any of the base, left or right is either processed completely, moving
-on it successor, or is kept on hold when one or both of the other sides moves to the next element.
+on its successor, or is kept on hold when one or both of the other sides moves to the next element.
 
 This isn't always possible - there is a certain amount of lookahead scanning done to detect *marooned edits /
 deletions*.
