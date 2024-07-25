@@ -10,7 +10,7 @@ object ResolutionContracts:
         case (None, Some(_)) => false
         case (Some(_), None) => false
         case (Some(lhsMatch), Some(rhsMatch)) =>
-          lhsMatch.dominantElement == rhsMatch.dominantElement
+          lhsMatch == rhsMatch
       end match
     end equivalent
   end extension
