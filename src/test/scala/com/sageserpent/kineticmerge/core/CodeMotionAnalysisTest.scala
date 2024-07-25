@@ -761,7 +761,7 @@ class CodeMotionAnalysisTest:
 
     // The contents should be what we started with.
     assert(
-      matches.map(_.dominantElement.content) == Set(
+      matches.map(_.content) == Set(
         bigAllSidesContent,
         smallAmbiguousAllSidesContent
       )
@@ -860,7 +860,7 @@ class CodeMotionAnalysisTest:
 
     // The contents should be the same; we have ambiguous matches.
     assert(
-      matches.map(_.dominantElement.content) == Set(
+      matches.map(_.content) == Set(
         bigAmbiguousBaseAndLeftContent
       )
     )
@@ -949,7 +949,7 @@ class CodeMotionAnalysisTest:
 
     // The contents should be that of the two all-sides matches
     assert(
-      matches.map(_.dominantElement.content) == Set(
+      matches.map(_.content) == Set(
         bigAllSidesContent,
         smallAllSidesContent
       )
@@ -1098,6 +1098,27 @@ object CodeMotionAnalysisTest:
           Seq.empty
     end thingsInChunks
   end extension
+
+  extension [Element](thisMatch: Match[Section[Element]])
+    def content: IndexedSeq[Element] = thisMatch match
+      case Match.BaseAndLeft(baseElement, leftElement) =>
+        val result = baseElement.content
+        assert(result == leftElement.content)
+        result
+      case Match.BaseAndRight(baseElement, rightElement) =>
+        val result = baseElement.content
+        assert(result == rightElement.content)
+        result
+      case Match.LeftAndRight(leftElement, rightElement) =>
+        val result = leftElement.content
+        assert(result == rightElement.content)
+        result
+      case Match.AllSides(baseElement, leftElement, rightElement) =>
+        val result = baseElement.content
+        assert(
+          result == leftElement.content && result == rightElement.content
+        )
+        result
 
   case class FakeSources(
       override val contentsByPath: Map[Path, IndexedSeq[Element]],
