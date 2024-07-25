@@ -136,11 +136,6 @@ then they are dissimilar.
 Represents three or two items, all from different sides that match. These items are sections when built in the context
 of `CodeMotionAnalysis`, but may be simpler constructs in tests.
 
-A match can be consulted for its *dominant element* - this is one chosen to go through into the merge result. The
-dominant element is taken to be the left side's contribution if it is available, otherwise it is from the right side. In
-conjunction with whitespace insensitivity at the token level, this replicates how `git merge` selects from matching
-content when merging.
-
 Matches over sections are built by examining the *content* covered by a section - the matched sections cannot compare
 equal using `Section.equals`, because they are from different sides.
 
@@ -223,7 +218,11 @@ contributions match - this is reflected in the operation method signatures that 
 preservation of an element in the base that remains on both the left and right, and coincident insertion of the same
 element on both the left and right.
 
-Merge algebra implementations have to pick a side, or find a way of unifying the content of the rival elements.
+Merge algebra implementations have to pick a side, or find a way of unifying the content of the rival
+elements. `Resolution` is a strategy that carries out the latter for the non-test implementations. It is worth noting
+that the implementation of `Resolution` used by non-test code does *not* exactly replicate how `git-merge` handles
+merging of whitespace-only changes; this is deliberately intended,
+see [the comment in this issue](https://github.com/sageserpent-open/kineticMerge/issues/9#issuecomment-2203486705).
 
 A merge algebra implementation has an associated result type - when testing the three-way merge, this result type is
 spartan, being a plain `MergeResult`. `CodeMotionAnalysisExtension.merge` drives the three-way merges with a richer
