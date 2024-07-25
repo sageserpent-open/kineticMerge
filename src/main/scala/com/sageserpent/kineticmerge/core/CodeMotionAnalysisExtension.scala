@@ -25,6 +25,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         Map[Path, MergeResult[Element]],
         MatchesContext[Section[Element]]#MoveDestinationsReport
     ) =
+      import codeMotionAnalysis.matchesFor
+
       val matchesContext = MatchesContext(
         codeMotionAnalysis.matchesFor
       )
@@ -185,7 +187,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
       def isMoveDestinationOnGivenSide(
           section: Section[Element],
-          side: matchesContext.Side,
+          side: Side,
           moveDestinations: MoveDestinations[Section[Element]]
       ) =
         side match

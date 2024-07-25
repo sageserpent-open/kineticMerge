@@ -8,7 +8,7 @@ import monocle.syntax.all.*
 
 import scala.collection.immutable.MultiDict
 
-case class MatchesContext[Element](
+class MatchesContext[Element](
     matchesFor: Element => collection.Set[Match[Element]]
 ):
   val emptyReport: MoveDestinationsReport = MoveDestinationsReport(Map.empty)
@@ -45,7 +45,7 @@ case class MatchesContext[Element](
   case class Insertion(side: Side, inserted: Element)
 
   case class MoveDestinationsReport(
-                                     moveDestinationsByMatches: Map[collection.Set[
+      moveDestinationsByMatches: Map[collection.Set[
         Match[Element]
       ], MoveDestinations[Element]]
   ):
