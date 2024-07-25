@@ -46,7 +46,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             rhs: Section[Element]
         ): Boolean =
           val bothBelongToTheSameMatches =
-            dominantsOf(lhs).intersect(dominantsOf(rhs)).nonEmpty
+            matchesFor(lhs).intersect(matchesFor(rhs)).nonEmpty
 
           bothBelongToTheSameMatches || Eq[Seq[Element]]
             .eqv(lhs.content, rhs.content)
@@ -242,9 +242,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           case InsertionsAtPath(path, insertions) =>
             val insertionsThatAreNotMoveDestinations = insertions.filterNot {
               case Insertion(side, inserted) =>
-                val dominants = dominantsOf(inserted)
-                moveDestinationsReport.moveDestinationsByDominantSet
-                  .get(dominants)
+                val matches = matchesFor(inserted)
+                moveDestinationsReport.moveDestinationsByMatches
+                  .get(matches)
                   .fold(ifEmpty = false)(
                     isMoveDestinationOnGivenSide(inserted, side, _)
                   )
@@ -305,9 +305,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   def destinationsForValidAnchor(
                       anchor: Section[Element]
                   ): collection.Set[Section[Element]] =
-                    val dominants = dominantsOf(anchor)
-                    moveDestinationsReport.moveDestinationsByDominantSet
-                      .get(dominants)
+                    val matches = matchesFor(anchor)
+                    moveDestinationsReport.moveDestinationsByMatches
+                      .get(matches)
                       .fold(ifEmpty = Set.empty)(moveDestinations =>
                         if !isMoveDestinationOnGivenSide(
                             anchor,
@@ -483,7 +483,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       end migrateAnchoredInsertions
 
       val potentialValidDestinationsForMigratingChangesTo =
-        moveDestinationsReport.moveDestinationsByDominantSet.values
+        moveDestinationsReport.moveDestinationsByMatches.values
           .filterNot(moveDestinations =>
             moveDestinations.isDegenerate || moveDestinations.isDivergent
           )

@@ -8,13 +8,10 @@ import monocle.syntax.all.*
 
 import scala.collection.immutable.MultiDict
 
-class MatchesContext[Element](
+case class MatchesContext[Element](
     matchesFor: Element => collection.Set[Match[Element]]
 ):
   val emptyReport: MoveDestinationsReport = MoveDestinationsReport(Map.empty)
-
-  def dominantsOf(element: Element): collection.Set[Element] =
-    matchesFor(element).map(_.dominantElement)
 
   private def sourcesOf(element: Element): collection.Set[Element] =
     matchesFor(element).flatMap {
@@ -48,18 +45,18 @@ class MatchesContext[Element](
   case class Insertion(side: Side, inserted: Element)
 
   case class MoveDestinationsReport(
-      moveDestinationsByDominantSet: Map[collection.Set[
-        Element
+                                     moveDestinationsByMatches: Map[collection.Set[
+        Match[Element]
       ], MoveDestinations[Element]]
   ):
     def leftMoveOf(
         element: Element
     ): MoveDestinationsReport =
-      val dominants = dominantsOf(element)
+      val matches = matchesFor(element)
 
-      if dominants.nonEmpty then
+      if matches.nonEmpty then
         MoveDestinationsReport(
-          moveDestinationsByDominantSet.updatedWith(dominants) {
+          moveDestinationsByMatches.updatedWith(matches) {
             case None =>
               Some(
                 MoveDestinations(
@@ -80,11 +77,11 @@ class MatchesContext[Element](
     def rightMoveOf(
         element: Element
     ): MoveDestinationsReport =
-      val dominants = dominantsOf(element)
+      val matches = matchesFor(element)
 
-      if dominants.nonEmpty then
+      if matches.nonEmpty then
         MoveDestinationsReport(
-          moveDestinationsByDominantSet.updatedWith(dominants) {
+          moveDestinationsByMatches.updatedWith(matches) {
             case None =>
               Some(
                 MoveDestinations(
@@ -105,11 +102,11 @@ class MatchesContext[Element](
     def coincidentMoveOf(
         elementPairAcrossLeftAndRight: (Element, Element)
     ): MoveDestinationsReport =
-      val dominants = dominantsOf(elementPairAcrossLeftAndRight._1)
+      val matches = matchesFor(elementPairAcrossLeftAndRight._1)
 
-      if dominants.nonEmpty then
+      if matches.nonEmpty then
         MoveDestinationsReport(
-          moveDestinationsByDominantSet.updatedWith(dominants) {
+          moveDestinationsByMatches.updatedWith(matches) {
             case None =>
               Some(
                 MoveDestinations(
@@ -133,8 +130,8 @@ class MatchesContext[Element](
 
     def mergeWith(another: MoveDestinationsReport): MoveDestinationsReport =
       MoveDestinationsReport(
-        this.moveDestinationsByDominantSet.mergeByKeyWith(
-          another.moveDestinationsByDominantSet
+        this.moveDestinationsByMatches.mergeByKeyWith(
+          another.moveDestinationsByMatches
         ) {
           case (Some(lhs), Some(rhs)) => lhs mergeWith rhs
           case (Some(lhs), None)      => lhs
@@ -143,7 +140,7 @@ class MatchesContext[Element](
       )
 
     def summarizeInText: Iterable[String] =
-      moveDestinationsByDominantSet.values.map(_.description)
+      moveDestinationsByMatches.values.map(_.description)
   end MoveDestinationsReport
 
   object MergeResultDetectingMotion extends StrictLogging:

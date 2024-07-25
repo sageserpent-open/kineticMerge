@@ -61,10 +61,10 @@ class MatchesContextTest:
         else
           mergeAlgebra.leftInsertion(mergeAlgebra.empty, ourSideInsertedElement)
 
-      val Seq((dominantSet, moveDestinations)) =
-        mergeResult.moveDestinationsReport.moveDestinationsByDominantSet.toSeq
+      val Seq((matches, moveDestinations)) =
+        mergeResult.moveDestinationsReport.moveDestinationsByMatches.toSeq
 
-      assert(dominantSet == Set(ourSideInsertedElement))
+      assert(matches == Set(baseAndOurSidePairwiseMatch))
 
       if mirrorImage then
         assert(
@@ -147,10 +147,10 @@ class MatchesContextTest:
             IndexedSeq(ourSideEditElement)
           )
 
-      val Seq((dominantSet, moveDestinations)) =
-        mergeResult.moveDestinationsReport.moveDestinationsByDominantSet.toSeq
+      val Seq((matches, moveDestinations)) =
+        mergeResult.moveDestinationsReport.moveDestinationsByMatches.toSeq
 
-      assert(dominantSet == Set(ourSideEditElement))
+      assert(matches == Set(baseAndOurSidePairwiseMatch))
 
       if mirrorImage then
         assert(
@@ -287,10 +287,10 @@ class MatchesContextTest:
           .get(ourSideMovedElement)
       )
 
-      val Seq((dominantSet, moveDestinations)) =
-        mergeResult.moveDestinationsReport.moveDestinationsByDominantSet.toSeq
+      val Seq((matches, moveDestinations)) =
+        mergeResult.moveDestinationsReport.moveDestinationsByMatches.toSeq
 
-      assert(dominantSet == Set(ourSideEditElement))
+      assert(matches == Set(baseAndOurSideIncomingMovePairwiseMatch))
 
       if mirrorImage then
         assert(
@@ -429,10 +429,10 @@ class MatchesContextTest:
         ) == mergeResult.changesMigratedThroughMotion.get(ourSideMovedElement)
       )
 
-      val Seq((dominantSet, moveDestinations)) =
-        mergeResult.moveDestinationsReport.moveDestinationsByDominantSet.toSeq
+      val Seq((matches, moveDestinations)) =
+        mergeResult.moveDestinationsReport.moveDestinationsByMatches.toSeq
 
-      assert(dominantSet == Set(ourSideEditElement))
+      assert(matches == Set(baseAndOurSideIncomingMovePairwiseMatch))
 
       if mirrorImage then
         assert(
@@ -1516,12 +1516,12 @@ class MatchesContextTest:
           .containsKey(theirSideMovedElement)
       )
 
-      val Seq((dominantSet, moveDestinations)) =
-        mergeResult.moveDestinationsReport.moveDestinationsByDominantSet.toSeq
+      val Seq((matches, moveDestinations)) =
+        mergeResult.moveDestinationsReport.moveDestinationsByMatches.toSeq
+
+      assert(matches == Set(allSidesMatch))
 
       if mirrorImage then
-        assert(dominantSet == Set(theirSideMovedElement))
-
         assert(
           moveDestinations == MoveDestinations(
             sources = Set(sourceElement),
@@ -1531,8 +1531,6 @@ class MatchesContextTest:
           )
         )
       else
-        assert(dominantSet == Set(ourSideMovedElement))
-
         assert(
           moveDestinations == MoveDestinations(
             sources = Set(sourceElement),
@@ -1627,12 +1625,12 @@ class MatchesContextTest:
           .containsKey(theirSideMovedElement)
       )
 
-      val Seq((dominantSet, moveDestinations)) =
-        mergeResult.moveDestinationsReport.moveDestinationsByDominantSet.toSeq
+      val Seq((matches, moveDestinations)) =
+        mergeResult.moveDestinationsReport.moveDestinationsByMatches.toSeq
+
+      assert(matches == Set(allSidesMatch))
 
       if mirrorImage then
-        assert(dominantSet == Set(theirSideMovedElement))
-
         assert(
           moveDestinations == MoveDestinations(
             sources = Set(sourceElement),
@@ -1642,8 +1640,6 @@ class MatchesContextTest:
           )
         )
       else
-        assert(dominantSet == Set(ourSideMovedElement))
-
         assert(
           moveDestinations == MoveDestinations(
             sources = Set(sourceElement),
