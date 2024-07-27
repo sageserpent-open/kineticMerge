@@ -682,6 +682,73 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     }
   end whitespaceOnlyEditingWithCodeMotion
 
+  @TestFactory
+  def indentationWithoutCodeMotion(): DynamicTests =
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrored =>
+      val configuration = Configuration(
+        minimumMatchSize = 4,
+        thresholdSizeFractionForMatching = 0.1,
+        minimumAmbiguousMatchSize = 0
+      )
+
+      val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
+
+      val baseSources = MappedContentSourcesOfTokens(
+        contentsByPath =
+          Map(placeholderPath -> tokens(indentationExampleBase).get),
+        label = "base"
+      )
+      val leftSources = MappedContentSourcesOfTokens(
+        contentsByPath = Map(
+          placeholderPath -> tokens(
+            if mirrored then indentationExampleWithLineByLineAdjustments
+            else indentationExampleWithGlobalAdjustment
+          ).get
+        ),
+        label = "left"
+      )
+      val rightSources = MappedContentSourcesOfTokens(
+        contentsByPath = Map(
+          placeholderPath -> tokens(
+            if mirrored then indentationExampleWithGlobalAdjustment
+            else indentationExampleWithLineByLineAdjustments
+          ).get
+        ),
+        label = "right"
+      )
+
+      val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+        base = baseSources,
+        left = leftSources,
+        right = rightSources
+      )(configuration): @unchecked
+
+      val (mergeResultsByPath, _) =
+        codeMotionAnalysis.merge
+
+      val mergeResult = mergeResultsByPath(placeholderPath)
+
+      println(fansi.Color.Yellow(s"Checking $placeholderPath...\n"))
+      println(fansi.Color.Yellow("Expected..."))
+      println(fansi.Color.Green(indentationExampleExpectedMerge))
+
+      mergeResult match
+        case FullyMerged(result) =>
+          println(fansi.Color.Yellow("Fully merged result..."))
+          val resultText = reconstituteTextFrom(result)
+          println(fansi.Color.Green(resultText))
+          assert(indentationExampleExpectedMerge == resultText)
+        case MergedWithConflicts(leftResult, rightResult) =>
+          println(fansi.Color.Red(s"Left result..."))
+          println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+          println(fansi.Color.Red(s"Right result..."))
+          println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+          fail("Should have seen a clean merge.")
+      end match
+    }
+  end indentationWithoutCodeMotion
+
 end CodeMotionAnalysisExtensionTest
 
 trait ProseExamples:
@@ -2072,5 +2139,53 @@ trait ProseExamples:
       |  },
       |    "string": "Hello World"
       |}
+      |""".stripMargin
+
+  protected val indentationExampleBase: String =
+    """
+      |    First line.
+      |    Second line.
+      |        Third line.
+      |        Fourth line.
+      |        Fifth line.
+      |    Sixth line.
+      |    Seventh line.
+      |    Eighth line.
+      |""".stripMargin
+
+  protected val indentationExampleWithGlobalAdjustment: String =
+    """
+      |        First line.
+      |        Second line.
+      |            Third line.
+      |            Fourth line.
+      |            Fifth line.
+      |        Sixth line.
+      |        Seventh line.
+      |        Eighth line.
+      |""".stripMargin
+
+  protected val indentationExampleWithLineByLineAdjustments: String =
+    """
+      |    First line.
+      |    Second line.
+      |        Third line.
+      |            Fourth line.
+      |    Fifth line.
+      |    Sixth line.
+      |    Seventh line.
+      |    Eighth line.
+      |""".stripMargin
+
+  protected val indentationExampleExpectedMerge: String =
+    """
+      |        First line.
+      |        Second line.
+      |            Third line.
+      |                Fourth line.
+      |        Fifth line.
+      |        Sixth line.
+      |        Seventh line.
+      |        Eighth line.
       |""".stripMargin
 end ProseExamples
