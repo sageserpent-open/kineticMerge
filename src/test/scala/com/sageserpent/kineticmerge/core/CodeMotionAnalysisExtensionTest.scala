@@ -683,71 +683,110 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
   end whitespaceOnlyEditingWithCodeMotion
 
   @TestFactory
-  def indentationWithoutCodeMotion(): DynamicTests =
-    Trials.api.booleans.withLimit(2).dynamicTests { mirrored =>
-      val configuration = Configuration(
-        minimumMatchSize = 4,
-        thresholdSizeFractionForMatching = 0.1,
-        minimumAmbiguousMatchSize = 0
+  def indentation(): DynamicTests =
+    (Trials.api.booleans and Trials.api.choose(
+      (
+        "Global indentation change versus line-by-line indentation changes",
+        indentationExampleBase,
+        indentationExampleWithGlobalAdjustment,
+        indentationExampleWithLineByLineAdjustments,
+        indentationExampleExpectedMerge
+      ),
+      (
+        "Global indentation change versus significant edits with line-by-line indentation changes",
+        indentationExampleBase,
+        indentationExampleWithGlobalAdjustment,
+        indentationExampleWithSignificantEdits,
+        indentationExampleWithSignificantEditsExpectedMerge
+      ),
+      (
+        "Global indentation change with code motion versus line-by-line indentation changes",
+        indentationExampleBase,
+        indentationExampleWithCodeMotion,
+        indentationExampleWithLineByLineAdjustments,
+        indentationExampleWithCodeMotionExpectedMerge
+      ),
+      (
+        "Global indentation change with code motion versus significant edits with line-by-line indentation changes",
+        indentationExampleBase,
+        indentationExampleWithCodeMotion,
+        indentationExampleWithSignificantEdits,
+        indentationExampleWithCodeMotionAndSignificantEditsExpectedMerge
+      ),
+      (
+        "Just code motion versus just significant edits",
+        indentationExampleBase,
+        noIndentationChangeExampleWithCodeMotion,
+        noIndentationChangeExampleWithSignificantEdits,
+        noIndentationChangeExampleWithCodeMotionAndSignificantEditsExpectedMerge
       )
+    )).withLimit(8).dynamicTests {
+      case (mirrored, (label, base, left, right, expectedMerge)) =>
+        println(fansi.Color.Yellow(s"*** $label ***"))
 
-      val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
+        val configuration = Configuration(
+          minimumMatchSize = 3,
+          thresholdSizeFractionForMatching = 0.1,
+          minimumAmbiguousMatchSize = 0
+        )
 
-      val baseSources = MappedContentSourcesOfTokens(
-        contentsByPath =
-          Map(placeholderPath -> tokens(indentationExampleBase).get),
-        label = "base"
-      )
-      val leftSources = MappedContentSourcesOfTokens(
-        contentsByPath = Map(
-          placeholderPath -> tokens(
-            if mirrored then indentationExampleWithLineByLineAdjustments
-            else indentationExampleWithGlobalAdjustment
-          ).get
-        ),
-        label = "left"
-      )
-      val rightSources = MappedContentSourcesOfTokens(
-        contentsByPath = Map(
-          placeholderPath -> tokens(
-            if mirrored then indentationExampleWithGlobalAdjustment
-            else indentationExampleWithLineByLineAdjustments
-          ).get
-        ),
-        label = "right"
-      )
+        val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
 
-      val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-        base = baseSources,
-        left = leftSources,
-        right = rightSources
-      )(configuration): @unchecked
+        val baseSources = MappedContentSourcesOfTokens(
+          contentsByPath = Map(placeholderPath -> tokens(base).get),
+          label = "base"
+        )
 
-      val (mergeResultsByPath, _) =
-        codeMotionAnalysis.merge
+        val leftSources = MappedContentSourcesOfTokens(
+          contentsByPath = Map(
+            placeholderPath -> tokens(
+              if mirrored then right
+              else left
+            ).get
+          ),
+          label = "left"
+        )
+        val rightSources = MappedContentSourcesOfTokens(
+          contentsByPath = Map(
+            placeholderPath -> tokens(
+              if mirrored then left
+              else right
+            ).get
+          ),
+          label = "right"
+        )
 
-      val mergeResult = mergeResultsByPath(placeholderPath)
+        val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+          base = baseSources,
+          left = leftSources,
+          right = rightSources
+        )(configuration): @unchecked
 
-      println(fansi.Color.Yellow(s"Checking $placeholderPath...\n"))
-      println(fansi.Color.Yellow("Expected..."))
-      println(fansi.Color.Green(indentationExampleExpectedMerge))
+        val (mergeResultsByPath, _) =
+          codeMotionAnalysis.merge
 
-      mergeResult match
-        case FullyMerged(result) =>
-          println(fansi.Color.Yellow("Fully merged result..."))
-          val resultText = reconstituteTextFrom(result)
-          println(fansi.Color.Green(resultText))
-          assert(indentationExampleExpectedMerge == resultText)
-        case MergedWithConflicts(leftResult, rightResult) =>
-          println(fansi.Color.Red(s"Left result..."))
-          println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
-          println(fansi.Color.Red(s"Right result..."))
-          println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+        val mergeResult = mergeResultsByPath(placeholderPath)
 
-          fail("Should have seen a clean merge.")
-      end match
+        println(fansi.Color.Yellow(s"Checking $placeholderPath...\n"))
+        println(fansi.Color.Yellow("Expected..."))
+        println(fansi.Color.Green(expectedMerge))
+
+        mergeResult match
+          case FullyMerged(result) =>
+            println(fansi.Color.Yellow("Fully merged result..."))
+            val resultText = reconstituteTextFrom(result)
+            println(fansi.Color.Green(resultText))
+            assert(expectedMerge == resultText)
+          case MergedWithConflicts(leftResult, rightResult) =>
+            println(fansi.Color.Red(s"Left result..."))
+            println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+            println(fansi.Color.Red(s"Right result..."))
+            println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+            fail("Should have seen a clean merge.")
+        end match
     }
-  end indentationWithoutCodeMotion
+  end indentation
 
 end CodeMotionAnalysisExtensionTest
 
@@ -2188,4 +2227,103 @@ trait ProseExamples:
       |        Seventh line.
       |        Eighth line.
       |""".stripMargin
+
+  protected val indentationExampleWithSignificantEdits: String =
+    """
+      |    First line.
+      |    Geaenderte zweite Zeile.
+      |        Geaenderte dritte Zeile.
+      |            Geaenderte vierte Zeile.
+      |    Fifth line.
+      |    Sixth line.
+      |    Seventh line.
+      |    Eighth line.
+      |""".stripMargin
+
+  protected val indentationExampleWithSignificantEditsExpectedMerge: String =
+    """
+      |        First line.
+      |        Geaenderte zweite Zeile.
+      |            Geaenderte dritte Zeile.
+      |                Geaenderte vierte Zeile.
+      |        Fifth line.
+      |        Sixth line.
+      |        Seventh line.
+      |        Eighth line.
+      |""".stripMargin
+
+  protected val indentationExampleWithCodeMotion: String =
+    """
+      |        First line.
+      |        Second line.
+      |        Sixth line.
+      |        Seventh line.
+      |            Third line.
+      |            Fourth line.
+      |            Fifth line.
+      |        Eighth line.
+      |""".stripMargin
+
+  protected val indentationExampleWithCodeMotionExpectedMerge: String =
+    """
+      |        First line.
+      |        Second line.
+      |        Sixth line.
+      |        Seventh line.
+      |            Third line.
+      |                Fourth line.
+      |        Fifth line.
+      |        Eighth line.
+      |""".stripMargin
+
+  protected val indentationExampleWithCodeMotionAndSignificantEditsExpectedMerge
+      : String =
+    """
+      |        First line.
+      |        Geaenderte zweite Zeile.
+      |        Sixth line.
+      |        Seventh line.
+      |            Geaenderte dritte Zeile.
+      |                Geaenderte vierte Zeile.
+      |        Fifth line.
+      |        Eighth line.
+      |""".stripMargin
+
+  protected val noIndentationChangeExampleWithCodeMotion: String =
+    """
+      |    First line.
+      |    Second line.
+      |    Sixth line.
+      |    Seventh line.
+      |        Third line.
+      |        Fourth line.
+      |        Fifth line.
+      |    Eighth line.
+      |""".stripMargin
+
+  protected val noIndentationChangeExampleWithSignificantEdits: String =
+    """
+      |    First line.
+      |    Geaenderte zweite Zeile.
+      |        Geaenderte dritte Zeile.
+      |        Geaenderte vierte Zeile.
+      |        Fifth line.
+      |    Sixth line.
+      |    Seventh line.
+      |    Eighth line.
+      |""".stripMargin
+
+  protected val noIndentationChangeExampleWithCodeMotionAndSignificantEditsExpectedMerge
+      : String =
+    """
+      |    First line.
+      |    Geaenderte zweite Zeile.
+      |    Sixth line.
+      |    Seventh line.
+      |        Geaenderte dritte Zeile.
+      |        Geaenderte vierte Zeile.
+      |        Fifth line.
+      |    Eighth line.
+      |""".stripMargin
+
 end ProseExamples
