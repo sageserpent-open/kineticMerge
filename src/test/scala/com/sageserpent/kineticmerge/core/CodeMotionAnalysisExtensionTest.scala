@@ -720,7 +720,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         noIndentationChangeExampleWithSignificantEdits,
         noIndentationChangeExampleWithCodeMotionAndSignificantEditsExpectedMerge
       )
-    )).withLimit(8).dynamicTests {
+    )).withLimit(10).dynamicTests {
       case (mirrored, (label, base, left, right, expectedMerge)) =>
         println(fansi.Color.Yellow(s"*** $label ***"))
 
@@ -2231,7 +2231,7 @@ trait ProseExamples:
   protected val indentationExampleWithSignificantEdits: String =
     """
       |    First line.
-      |    Geaenderte zweite Zeile.
+      |    Second line.
       |        Geaenderte dritte Zeile.
       |            Geaenderte vierte Zeile.
       |    Fifth line.
@@ -2243,7 +2243,7 @@ trait ProseExamples:
   protected val indentationExampleWithSignificantEditsExpectedMerge: String =
     """
       |        First line.
-      |        Geaenderte zweite Zeile.
+      |        Second line.
       |            Geaenderte dritte Zeile.
       |                Geaenderte vierte Zeile.
       |        Fifth line.
@@ -2280,7 +2280,7 @@ trait ProseExamples:
       : String =
     """
       |        First line.
-      |        Geaenderte zweite Zeile.
+      |        Second line.
       |        Sixth line.
       |        Seventh line.
       |            Geaenderte dritte Zeile.
@@ -2304,7 +2304,7 @@ trait ProseExamples:
   protected val noIndentationChangeExampleWithSignificantEdits: String =
     """
       |    First line.
-      |    Geaenderte zweite Zeile.
+      |    Second line.
       |        Geaenderte dritte Zeile.
       |        Geaenderte vierte Zeile.
       |        Fifth line.
@@ -2317,7 +2317,7 @@ trait ProseExamples:
       : String =
     """
       |    First line.
-      |    Geaenderte zweite Zeile.
+      |    Second line.
       |    Sixth line.
       |    Seventh line.
       |        Geaenderte dritte Zeile.
