@@ -131,7 +131,7 @@ object LongestCommonSubsequence:
   ): LongestCommonSubsequence[Element] =
     given orderBySize: Ordering[LongestCommonSubsequence[Element]] =
       given Ordering[CommonSubsequenceSize] =
-        Ordering.by(size => size.length -> size.elementSizeSumTiebreaker)
+        Ordering.by(size => size.elementSizeSum)
 
       Ordering.by(_.size)
     end orderBySize
@@ -374,18 +374,28 @@ object LongestCommonSubsequence:
     def sizeOf(element: Element): Int
   end Sized
 
-  case class CommonSubsequenceSize(length: Int, elementSizeSumTiebreaker: Int):
+  /** @todo
+    *   The parameter [[length]] needs review - its only use is by
+    *   [[LongestCommonSubsequenceTest.theLongestCommonSubsequenceUnderpinsAllThreeResults]].
+    *   It's great that said test passes, but could it be recast to not use this
+    *   parameter?
+    * @param length
+    * @param elementSizeSum
+    */
+  case class CommonSubsequenceSize(
+      length: Int,
+      elementSizeSum: Int
+  ):
     def addCostOfASingleContribution(size: Int): CommonSubsequenceSize = this
       .focus(_.length)
       .modify(1 + _)
-      .focus(_.elementSizeSumTiebreaker)
+      .focus(_.elementSizeSum)
       .modify(size + _)
 
     def plus(that: CommonSubsequenceSize): CommonSubsequenceSize =
       CommonSubsequenceSize(
         length = this.length + that.length,
-        elementSizeSumTiebreaker =
-          this.elementSizeSumTiebreaker + that.elementSizeSumTiebreaker
+        elementSizeSum = this.elementSizeSum + that.elementSizeSum
       )
   end CommonSubsequenceSize
 
@@ -410,6 +420,6 @@ object LongestCommonSubsequence:
   end Contribution
 
   object CommonSubsequenceSize:
-    val zero = CommonSubsequenceSize(length = 0, elementSizeSumTiebreaker = 0)
+    val zero = CommonSubsequenceSize(length = 0, elementSizeSum = 0)
   end CommonSubsequenceSize
 end LongestCommonSubsequence
