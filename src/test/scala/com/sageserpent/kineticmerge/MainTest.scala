@@ -504,19 +504,6 @@ object MainTest extends ProseExamples:
     assert(currentStatus(path).isEmpty)
   end verifyTrivialMergeMovesToTheMostAdvancedCommitWithACleanIndex
 
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
-
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
-
-  private def currentCommit(path: Path) =
-    os.proc("git", "log", "-1", "--format=tformat:%H")
-      .call(path)
-      .out
-      .text()
-      .strip
-
   private def verifyMergeMakesANewCommitWithACleanIndex(path: Path)(
       commitOfOneBranch: String,
       commitOfTheOtherBranch: String,
@@ -574,6 +561,9 @@ object MainTest extends ProseExamples:
       case Array(postMergeCommit, parents*) => postMergeCommit -> parents
     : @unchecked
 
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
   private def verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit(
       path: Path
   )(
@@ -600,6 +590,19 @@ object MainTest extends ProseExamples:
 
     assert(status.isEmpty)
   end verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+
+  private def currentCommit(path: Path) =
+    os.proc("git", "log", "-1", "--format=tformat:%H")
+      .call(path)
+      .out
+      .text()
+      .strip
+
+  private def mergeHeadPath(path: Path) =
+    path / ".git" / "MERGE_HEAD"
 
   private def verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit(
       path: Path
@@ -628,6 +631,9 @@ object MainTest extends ProseExamples:
 
     assert(currentStatus(path).nonEmpty)
   end verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit
+
+  private def mergeHead(path: Path) =
+    os.read(mergeHeadPath(path)).strip()
 
   private def verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
       path: Path
@@ -660,12 +666,6 @@ object MainTest extends ProseExamples:
 
     currentStatus(path)
   end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
-
-  private def mergeHead(path: Path) =
-    os.read(mergeHeadPath(path)).strip()
-
-  private def mergeHeadPath(path: Path) =
-    path / ".git" / "MERGE_HEAD"
 
   private def gitRepository(): ImperativeResource[Path] =
     for
@@ -2008,5 +2008,132 @@ class MainTest:
           .unsafeRunSync()
       }
   end twoFilesSwappingAroundWithModificationsToBoth
+
+  @TestFactory
+  def issue48BugReproduction(): DynamicTests =
+    (trialsApi.booleans and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (flipBranches, noCommit) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              val originalFilename = "aFile.txt"
+              val renamedFilename  = "theRenamedFile.txt"
+
+              {
+                os.write(
+                  path / originalFilename,
+                  """
+                    |This is the first line,
+                    |followed by the second.
+                    |
+                    |Can you see where this is going?
+                    |Need a hint?
+                    |THE END.
+                    |""".stripMargin
+                )
+                println(
+                  os.proc("git", "add", originalFilename).call(path).out.text()
+                )
+                println(
+                  os.proc(
+                    "git",
+                    "commit",
+                    "-m",
+                    s"'Introducing `$originalFilename`.'"
+                  ).call(path)
+                    .out
+                    .text()
+                )
+              }
+
+              val movedFileBranch = "renamedFileBranch"
+
+              makeNewBranch(path)(movedFileBranch)
+
+              {
+                os.remove(
+                  path / originalFilename
+                )
+                os.write(
+                  path / renamedFilename,
+                  """
+                    |This is the first line,
+                    |followed by the second.
+                    |
+                    |Can you see where this is going?
+                    |Need a hint? No, good - you're a quick study.
+                    |THE END.
+                    |""".stripMargin
+                )
+
+                println(
+                  os.proc("git", "rm", originalFilename).call(path).out.text()
+                )
+                println(
+                  os.proc("git", "add", renamedFilename).call(path).out.text()
+                )
+                println(
+                  os.proc(
+                    "git",
+                    "commit",
+                    "-m",
+                    s"'Renaming `$originalFilename` to `$renamedFilename` with an edit.'"
+                  ).call(path)
+                    .out
+                    .text()
+                )
+              }
+
+              checkoutBranch(path)(masterBranch)
+
+              {
+                os.write.over(
+                  path / originalFilename,
+                  """
+                    |This is the obligatory zeroth line.
+                    |Can you see where this is going?
+                    |Need a hint?
+                    |This was the first line,
+                    |followed by the second.
+                    |
+                    |THE END.
+                    |""".stripMargin,
+                  createFolders = true
+                )
+                println(
+                  os.proc(
+                    "git",
+                    "commit",
+                    "-am",
+                    s"'Editing `$originalFilename`.'"
+                  ).call(path)
+                    .out
+                    .text()
+                )
+              }
+
+              if flipBranches then checkoutBranch(path)(movedFileBranch)
+              end if
+
+              val theirBranch =
+                if flipBranches then masterBranch
+                else movedFileBranch
+
+              val _ = Main.mergeTheirBranch(
+                ApplicationRequest(
+                  theirBranchHead =
+                    theirBranch.taggedWith[Tags.CommitOrBranchName],
+                  noCommit = noCommit
+                )
+              )(workingDirectory = path)
+
+              assert(os.exists(path / renamedFilename))
+              assert(!os.exists(path / originalFilename))
+            }
+          )
+          .unsafeRunSync()
+      }
+  end issue48BugReproduction
 
 end MainTest
