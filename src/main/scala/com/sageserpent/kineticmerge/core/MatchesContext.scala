@@ -33,8 +33,8 @@ class MatchesContext[Element](
   // thus requiring an import from the companion *and* an instance of the class
   // itself. It is possible to define `MoveDestinationsReport` as a trait in the
   // companion and thus to move `MergeResultDetectingMotion` into the companion
-  // too, but I'm not sure it makes things more readable elsewhere. We also want
-  // to merge instances of `MoveDestinationsReport` that share the same
+  // too, but I'm not sure that it makes things more readable elsewhere. We also
+  // want to merge instances of `MoveDestinationsReport` that share the same
   // `MatchesContext`. All in all, let's stick with the current design for
   // now...
   enum Side:

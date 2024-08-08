@@ -41,12 +41,6 @@ case class MoveDestinations[Element](
       .isEmpty
   )
 
-  if isDegenerate then
-    // We don't consider left- and right-insertions to be degenerate moves, as
-    // there is no match involved.
-    require(isDivergent || coincident.nonEmpty)
-  end if
-
   def mergeWith(another: MoveDestinations[Element]): MoveDestinations[Element] =
     MoveDestinations(
       sources = this.sources union another.sources,
