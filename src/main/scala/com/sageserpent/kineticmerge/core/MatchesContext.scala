@@ -530,6 +530,15 @@ class MatchesContext[Element](
             leftEditElements: IndexedSeq[Element],
             rightEditElements: IndexedSeq[Element]
         ): ConfiguredMergeResultDetectingMotion[Element] =
+          val insertionConflict =
+            editedElements.isEmpty && leftEditElements.nonEmpty && rightEditElements.nonEmpty
+          val conflictInvolvingAnEdit =
+            editedElements.nonEmpty && (leftEditElements.nonEmpty || rightEditElements.nonEmpty)
+
+          require(
+            insertionConflict || conflictInvolvingAnEdit
+          )
+
           def default =
             result
               .focus(_.coreMergeResult)
@@ -544,6 +553,8 @@ class MatchesContext[Element](
 
           (editedElements, leftEditElements, rightEditElements) match
             case (Seq(baseElement), leftElements @ Seq(_, _*), Seq()) =>
+              // Left edit versus right deletion conflict...
+
               val matches = matchesFor(baseElement).toSeq
 
               matches match
@@ -605,6 +616,8 @@ class MatchesContext[Element](
               end match
 
             case (Seq(baseElement), Seq(), rightElements @ Seq(_, _*)) =>
+              // Left deletion versus right edit conflict...
+
               val matches = matchesFor(baseElement).toSeq
 
               matches match
@@ -672,6 +685,8 @@ class MatchesContext[Element](
                   leftElements @ Seq(_, _*),
                   rightElements @ Seq(_, _*)
                 ) =>
+              // Left edit versus right edit conflict...
+
               val matches = matchesFor(baseElement).toSeq
 
               matches match
@@ -736,7 +751,13 @@ class MatchesContext[Element](
 
                 case Seq() => default
               end match
-            case _ =>
+            case (
+                  Seq(),
+                  Seq(_, _*),
+                  Seq(_, _*)
+                ) =>
+              // Left insertion versus right insertion conflict...
+
               default
           end match
         end conflict
