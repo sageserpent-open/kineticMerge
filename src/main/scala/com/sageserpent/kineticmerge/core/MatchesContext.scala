@@ -550,6 +550,10 @@ class MatchesContext[Element](
                   rightEditElements
                 )
               )
+              .focus(_.moveDestinationsReport)
+              .modify(leftEditElements.foldLeft(_)(_ leftMoveOf _))
+              .focus(_.moveDestinationsReport)
+              .modify(rightEditElements.foldLeft(_)(_ rightMoveOf _))
 
           (editedElements, leftEditElements, rightEditElements) match
             case (Seq(baseElement), leftElements @ Seq(_, _*), Seq()) =>
