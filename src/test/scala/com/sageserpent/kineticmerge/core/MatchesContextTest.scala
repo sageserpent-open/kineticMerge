@@ -183,6 +183,115 @@ class MatchesContextTest:
   end ourMoveDestinationEdit
 
   @TestFactory
+  def ourMoveDestinationEditVersusTheirDeletionConflict: DynamicTests =
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val incomingMoveSourceElement: Element                 = 1
+      val baseElement: Element                               = 2
+      val ourSideEditIncomingMoveDestinationElement: Element = 3
+
+      val baseAndOurSideIncomingMovePairwiseMatch =
+        if mirrorImage then
+          Match
+            .BaseAndRight(
+              baseElement = incomingMoveSourceElement,
+              rightElement = ourSideEditIncomingMoveDestinationElement
+            )
+        else
+          Match
+            .BaseAndLeft(
+              baseElement = incomingMoveSourceElement,
+              leftElement = ourSideEditIncomingMoveDestinationElement
+            )
+
+      val matchesByElement =
+        Map(
+          incomingMoveSourceElement -> baseAndOurSideIncomingMovePairwiseMatch,
+          ourSideEditIncomingMoveDestinationElement -> baseAndOurSideIncomingMovePairwiseMatch
+        )
+
+      val matchesContext = MatchesContext(
+        matchesFor(matchesByElement)
+      )
+
+      given Eq[Element] = matchesByElement.equivalent
+
+      val mergeAlgebra =
+        matchesContext.MergeResultDetectingMotion
+          .mergeAlgebra(
+            auditingCoreMergeAlgebra,
+            guardedCoinFlippingResolution
+          )
+
+      val mergeResult =
+        if mirrorImage then
+          mergeAlgebra.conflict(
+            mergeAlgebra.empty,
+            editedElements = IndexedSeq(baseElement),
+            leftEditElements = IndexedSeq.empty,
+            rightEditElements =
+              IndexedSeq(ourSideEditIncomingMoveDestinationElement)
+          )
+        else
+          mergeAlgebra.conflict(
+            mergeAlgebra.empty,
+            editedElements = IndexedSeq(baseElement),
+            leftEditElements =
+              IndexedSeq(ourSideEditIncomingMoveDestinationElement),
+            rightEditElements = IndexedSeq.empty
+          )
+
+      import matchesContext.*
+
+      if mirrorImage then
+        assert(
+          Vector(
+            Conflict(
+              IndexedSeq(baseElement),
+              IndexedSeq.empty,
+              IndexedSeq(ourSideEditIncomingMoveDestinationElement)
+            )
+          ) == mergeResult.coreMergeResult
+        )
+      else
+        assert(
+          Vector(
+            Conflict(
+              IndexedSeq(baseElement),
+              IndexedSeq(ourSideEditIncomingMoveDestinationElement),
+              IndexedSeq.empty
+            )
+          ) == mergeResult.coreMergeResult
+        )
+      end if
+
+      val Seq((matches, moveDestinations)) =
+        mergeResult.moveDestinationsReport.moveDestinationsByMatches.toSeq
+
+      assert(matches == Set(baseAndOurSideIncomingMovePairwiseMatch))
+
+      if mirrorImage then
+        assert(
+          moveDestinations == MoveDestinations(
+            sources = Set(incomingMoveSourceElement),
+            left = Set.empty,
+            right = Set(ourSideEditIncomingMoveDestinationElement),
+            coincident = Set.empty
+          )
+        )
+      else
+        assert(
+          moveDestinations == MoveDestinations(
+            sources = Set(incomingMoveSourceElement),
+            left = Set(ourSideEditIncomingMoveDestinationElement),
+            right = Set.empty,
+            coincident = Set.empty
+          )
+        )
+      end if
+    }
+  end ourMoveDestinationEditVersusTheirDeletionConflict
+
+  @TestFactory
   def ourMoveDestinationEditVersusTheirDeletionConflictWhereBaseHasMovedAwayOnOurSide
       : DynamicTests =
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
