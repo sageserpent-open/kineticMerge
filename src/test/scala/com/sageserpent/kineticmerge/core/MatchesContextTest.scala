@@ -15,32 +15,36 @@ import org.junit.jupiter.api.{Test, TestFactory}
 
 // NOTE: the majority of the tests use `guardedCoinFlippingResolution` as a stub; this emphasizes
 // the independence of the tests' expected outcomes from the behaviour of the resolution.
+// NOTE: the merge algebra furnished by the `MatchesContext` only tracks *incoming* moves, so any
+// outgoing moves aren't included in test expectations; they only participate in the test setup. This
+// is in contrast to noting edit and deletion migrations, where the migration has to picked up at the
+// move source.
+// TODO: perhaps migrations should be associated with the move *source* rather than the destination?
 class MatchesContextTest:
   @TestFactory
   def ourMoveDestinationInsertion: DynamicTests =
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
-      val sourceElement: Element = 1
+      val incomingMoveSourceElement: Element                     = 1
+      val ourSideInsertedIncomingMoveDestinationElement: Element = 2
 
-      val ourSideInsertedElement: Element = 2
-
-      val baseAndOurSidePairwiseMatch =
+      val incomingMovePairwiseMatch =
         if mirrorImage then
           Match
             .BaseAndRight(
-              baseElement = sourceElement,
-              rightElement = ourSideInsertedElement
+              baseElement = incomingMoveSourceElement,
+              rightElement = ourSideInsertedIncomingMoveDestinationElement
             )
         else
           Match
             .BaseAndLeft(
-              baseElement = sourceElement,
-              leftElement = ourSideInsertedElement
+              baseElement = incomingMoveSourceElement,
+              leftElement = ourSideInsertedIncomingMoveDestinationElement
             )
 
       val matchesByElement =
         Map(
-          sourceElement          -> baseAndOurSidePairwiseMatch,
-          ourSideInsertedElement -> baseAndOurSidePairwiseMatch
+          incomingMoveSourceElement -> incomingMovePairwiseMatch,
+          ourSideInsertedIncomingMoveDestinationElement -> incomingMovePairwiseMatch
         )
 
       given Eq[Element] = matchesByElement.equivalent
@@ -57,29 +61,35 @@ class MatchesContextTest:
       val mergeResult =
         if mirrorImage then
           mergeAlgebra
-            .rightInsertion(mergeAlgebra.empty, ourSideInsertedElement)
+            .rightInsertion(
+              mergeAlgebra.empty,
+              insertedElement = ourSideInsertedIncomingMoveDestinationElement
+            )
         else
-          mergeAlgebra.leftInsertion(mergeAlgebra.empty, ourSideInsertedElement)
+          mergeAlgebra.leftInsertion(
+            mergeAlgebra.empty,
+            insertedElement = ourSideInsertedIncomingMoveDestinationElement
+          )
 
       val Seq((matches, moveDestinations)) =
         mergeResult.moveDestinationsReport.moveDestinationsByMatches.toSeq
 
-      assert(matches == Set(baseAndOurSidePairwiseMatch))
+      assert(matches == Set(incomingMovePairwiseMatch))
 
       if mirrorImage then
         assert(
           moveDestinations == MoveDestinations(
-            sources = Set(sourceElement),
+            sources = Set(incomingMoveSourceElement),
             left = Set.empty,
-            right = Set(ourSideInsertedElement),
+            right = Set(ourSideInsertedIncomingMoveDestinationElement),
             coincident = Set.empty
           )
         )
       else
         assert(
           moveDestinations == MoveDestinations(
-            sources = Set(sourceElement),
-            left = Set(ourSideInsertedElement),
+            sources = Set(incomingMoveSourceElement),
+            left = Set(ourSideInsertedIncomingMoveDestinationElement),
             right = Set.empty,
             coincident = Set.empty
           )
@@ -91,32 +101,29 @@ class MatchesContextTest:
   @TestFactory
   def ourMoveDestinationEdit: DynamicTests =
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
-      val sourceElement: Element = 1
+      val incomingMoveSourceElement: Element                 = 1
+      val baseElement: Element                               = 2
+      val theirSideElement: Element                          = 3
+      val ourSideEditIncomingMoveDestinationElement: Element = 4
 
-      val baseElement: Element = 2
-
-      val theirSideElement: Element = 3
-
-      val ourSideEditElement: Element = 4
-
-      val baseAndOurSidePairwiseMatch =
+      val incomingMovePairwiseMatch =
         if mirrorImage then
           Match
             .BaseAndRight(
-              baseElement = sourceElement,
-              rightElement = ourSideEditElement
+              baseElement = incomingMoveSourceElement,
+              rightElement = ourSideEditIncomingMoveDestinationElement
             )
         else
           Match
             .BaseAndLeft(
-              baseElement = sourceElement,
-              leftElement = ourSideEditElement
+              baseElement = incomingMoveSourceElement,
+              leftElement = ourSideEditIncomingMoveDestinationElement
             )
 
       val matchesByElement =
         Map(
-          sourceElement      -> baseAndOurSidePairwiseMatch,
-          ourSideEditElement -> baseAndOurSidePairwiseMatch
+          incomingMoveSourceElement -> incomingMovePairwiseMatch,
+          ourSideEditIncomingMoveDestinationElement -> incomingMovePairwiseMatch
         )
 
       given Eq[Element] = matchesByElement.equivalent
@@ -135,37 +142,38 @@ class MatchesContextTest:
           mergeAlgebra
             .rightEdit(
               mergeAlgebra.empty,
-              baseElement,
-              theirSideElement,
-              IndexedSeq(ourSideEditElement)
+              editedBaseElement = baseElement,
+              editedLeftElement = theirSideElement,
+              editElements =
+                IndexedSeq(ourSideEditIncomingMoveDestinationElement)
             )
         else
           mergeAlgebra.leftEdit(
             mergeAlgebra.empty,
-            baseElement,
-            theirSideElement,
-            IndexedSeq(ourSideEditElement)
+            editedBaseElement = baseElement,
+            editedRightElement = theirSideElement,
+            editElements = IndexedSeq(ourSideEditIncomingMoveDestinationElement)
           )
 
       val Seq((matches, moveDestinations)) =
         mergeResult.moveDestinationsReport.moveDestinationsByMatches.toSeq
 
-      assert(matches == Set(baseAndOurSidePairwiseMatch))
+      assert(matches == Set(incomingMovePairwiseMatch))
 
       if mirrorImage then
         assert(
           moveDestinations == MoveDestinations(
-            sources = Set(sourceElement),
+            sources = Set(incomingMoveSourceElement),
             left = Set.empty,
-            right = Set(ourSideEditElement),
+            right = Set(ourSideEditIncomingMoveDestinationElement),
             coincident = Set.empty
           )
         )
       else
         assert(
           moveDestinations == MoveDestinations(
-            sources = Set(sourceElement),
-            left = Set(ourSideEditElement),
+            sources = Set(incomingMoveSourceElement),
+            left = Set(ourSideEditIncomingMoveDestinationElement),
             right = Set.empty,
             coincident = Set.empty
           )
@@ -178,45 +186,45 @@ class MatchesContextTest:
   def ourMoveDestinationEditVersusTheirDeletionConflictWhereBaseHasMovedAwayOnOurSide
       : DynamicTests =
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
-      val baseElement: Element         = 1
-      val ourSideMovedElement: Element = 2
-      val ourSideEditElement: Element  = 3
-      val baseSourceElement: Element   = 4
-
-      val baseAndOurSideOutgoingMovePairwiseMatch =
-        if mirrorImage then
-          Match
-            .BaseAndRight(
-              baseElement = baseElement,
-              rightElement = ourSideMovedElement
-            )
-        else
-          Match
-            .BaseAndLeft(
-              baseElement = baseElement,
-              leftElement = ourSideMovedElement
-            )
+      val incomingMoveSourceElement: Element                 = 1
+      val baseOutgoingMoveSourceElement: Element             = 2
+      val ourSideOutgoingMoveDestinationElement: Element     = 3
+      val ourSideEditIncomingMoveDestinationElement: Element = 4
 
       val baseAndOurSideIncomingMovePairwiseMatch =
         if mirrorImage then
           Match
             .BaseAndRight(
-              baseElement = baseSourceElement,
-              rightElement = ourSideEditElement
+              baseElement = incomingMoveSourceElement,
+              rightElement = ourSideEditIncomingMoveDestinationElement
             )
         else
           Match
             .BaseAndLeft(
-              baseElement = baseSourceElement,
-              leftElement = ourSideEditElement
+              baseElement = incomingMoveSourceElement,
+              leftElement = ourSideEditIncomingMoveDestinationElement
+            )
+
+      val baseAndOurSideOutgoingMovePairwiseMatch =
+        if mirrorImage then
+          Match
+            .BaseAndRight(
+              baseElement = baseOutgoingMoveSourceElement,
+              rightElement = ourSideOutgoingMoveDestinationElement
+            )
+        else
+          Match
+            .BaseAndLeft(
+              baseElement = baseOutgoingMoveSourceElement,
+              leftElement = ourSideOutgoingMoveDestinationElement
             )
 
       val matchesByElement =
         Map(
-          baseElement         -> baseAndOurSideOutgoingMovePairwiseMatch,
-          ourSideMovedElement -> baseAndOurSideOutgoingMovePairwiseMatch,
-          baseSourceElement   -> baseAndOurSideIncomingMovePairwiseMatch,
-          ourSideEditElement  -> baseAndOurSideIncomingMovePairwiseMatch
+          incomingMoveSourceElement -> baseAndOurSideIncomingMovePairwiseMatch,
+          ourSideEditIncomingMoveDestinationElement -> baseAndOurSideIncomingMovePairwiseMatch,
+          baseOutgoingMoveSourceElement -> baseAndOurSideOutgoingMovePairwiseMatch,
+          ourSideOutgoingMoveDestinationElement -> baseAndOurSideOutgoingMovePairwiseMatch
         )
 
       val matchesContext = MatchesContext(
@@ -236,15 +244,17 @@ class MatchesContextTest:
         if mirrorImage then
           mergeAlgebra.conflict(
             mergeAlgebra.empty,
-            editedElements = IndexedSeq(baseElement),
+            editedElements = IndexedSeq(baseOutgoingMoveSourceElement),
             leftEditElements = IndexedSeq.empty,
-            rightEditElements = IndexedSeq(ourSideEditElement)
+            rightEditElements =
+              IndexedSeq(ourSideEditIncomingMoveDestinationElement)
           )
         else
           mergeAlgebra.conflict(
             mergeAlgebra.empty,
-            editedElements = IndexedSeq(baseElement),
-            leftEditElements = IndexedSeq(ourSideEditElement),
+            editedElements = IndexedSeq(baseOutgoingMoveSourceElement),
+            leftEditElements =
+              IndexedSeq(ourSideEditIncomingMoveDestinationElement),
             rightEditElements = IndexedSeq.empty
           )
 
@@ -260,15 +270,15 @@ class MatchesContextTest:
       if mirrorImage then
         assert(
           Vector(
-            CoincidentDeletion(baseElement),
-            RightInsertion(ourSideEditElement)
+            CoincidentDeletion(baseOutgoingMoveSourceElement),
+            RightInsertion(ourSideEditIncomingMoveDestinationElement)
           ) == mergeResult.coreMergeResult
         )
       else
         assert(
           Vector(
-            CoincidentDeletion(baseElement),
-            LeftInsertion(ourSideEditElement)
+            CoincidentDeletion(baseOutgoingMoveSourceElement),
+            LeftInsertion(ourSideEditIncomingMoveDestinationElement)
           ) == mergeResult.coreMergeResult
         )
       end if
@@ -277,14 +287,14 @@ class MatchesContextTest:
         Seq(
           Insertion(
             if mirrorImage then Side.Right else Side.Left,
-            ourSideEditElement
+            ourSideEditIncomingMoveDestinationElement
           )
         ) == mergeResult.insertions
       )
 
       assert(
         Set(IndexedSeq.empty) == mergeResult.changesMigratedThroughMotion
-          .get(ourSideMovedElement)
+          .get(ourSideOutgoingMoveDestinationElement)
       )
 
       val Seq((matches, moveDestinations)) =
@@ -295,17 +305,17 @@ class MatchesContextTest:
       if mirrorImage then
         assert(
           moveDestinations == MoveDestinations(
-            sources = Set(baseSourceElement),
+            sources = Set(incomingMoveSourceElement),
             left = Set.empty,
-            right = Set(ourSideEditElement),
+            right = Set(ourSideEditIncomingMoveDestinationElement),
             coincident = Set.empty
           )
         )
       else
         assert(
           moveDestinations == MoveDestinations(
-            sources = Set(baseSourceElement),
-            left = Set(ourSideEditElement),
+            sources = Set(incomingMoveSourceElement),
+            left = Set(ourSideEditIncomingMoveDestinationElement),
             right = Set.empty,
             coincident = Set.empty
           )
@@ -318,46 +328,46 @@ class MatchesContextTest:
   def ourMoveDestinationEditVersusTheirEditConflictWhereBaseHasMovedAwayOnOurSide
       : DynamicTests =
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
-      val baseElement: Element          = 1
-      val ourSideMovedElement: Element  = 2
-      val ourSideEditElement: Element   = 3
-      val theirSideEditElement: Element = 4
-      val baseSourceElement: Element    = 5
-
-      val baseAndOurSidePairwiseMatch =
-        if mirrorImage then
-          Match
-            .BaseAndRight(
-              baseElement = baseElement,
-              rightElement = ourSideMovedElement
-            )
-        else
-          Match
-            .BaseAndLeft(
-              baseElement = baseElement,
-              leftElement = ourSideMovedElement
-            )
+      val incomingMoveSourceElement: Element                 = 1
+      val baseOutgoingMoveSourceElement: Element             = 2
+      val ourSideOutgoingMoveDestinationElement: Element     = 3
+      val ourSideEditIncomingMoveDestinationElement: Element = 4
+      val theirSideEditElement: Element                      = 5
 
       val baseAndOurSideIncomingMovePairwiseMatch =
         if mirrorImage then
           Match
             .BaseAndRight(
-              baseElement = baseSourceElement,
-              rightElement = ourSideEditElement
+              baseElement = incomingMoveSourceElement,
+              rightElement = ourSideEditIncomingMoveDestinationElement
             )
         else
           Match
             .BaseAndLeft(
-              baseElement = baseSourceElement,
-              leftElement = ourSideEditElement
+              baseElement = incomingMoveSourceElement,
+              leftElement = ourSideEditIncomingMoveDestinationElement
+            )
+
+      val baseAndOurSideOutgoingMovePairwiseMatch =
+        if mirrorImage then
+          Match
+            .BaseAndRight(
+              baseElement = baseOutgoingMoveSourceElement,
+              rightElement = ourSideOutgoingMoveDestinationElement
+            )
+        else
+          Match
+            .BaseAndLeft(
+              baseElement = baseOutgoingMoveSourceElement,
+              leftElement = ourSideOutgoingMoveDestinationElement
             )
 
       val matchesByElement =
         Map(
-          baseElement         -> baseAndOurSidePairwiseMatch,
-          ourSideMovedElement -> baseAndOurSidePairwiseMatch,
-          baseSourceElement   -> baseAndOurSideIncomingMovePairwiseMatch,
-          ourSideEditElement  -> baseAndOurSideIncomingMovePairwiseMatch
+          baseOutgoingMoveSourceElement -> baseAndOurSideOutgoingMovePairwiseMatch,
+          ourSideOutgoingMoveDestinationElement -> baseAndOurSideOutgoingMovePairwiseMatch,
+          incomingMoveSourceElement -> baseAndOurSideIncomingMovePairwiseMatch,
+          ourSideEditIncomingMoveDestinationElement -> baseAndOurSideIncomingMovePairwiseMatch
         )
 
       val matchesContext = MatchesContext(
@@ -377,15 +387,17 @@ class MatchesContextTest:
         if mirrorImage then
           mergeAlgebra.conflict(
             mergeAlgebra.empty,
-            editedElements = IndexedSeq(baseElement),
+            editedElements = IndexedSeq(baseOutgoingMoveSourceElement),
             leftEditElements = IndexedSeq(theirSideEditElement),
-            rightEditElements = IndexedSeq(ourSideEditElement)
+            rightEditElements =
+              IndexedSeq(ourSideEditIncomingMoveDestinationElement)
           )
         else
           mergeAlgebra.conflict(
             mergeAlgebra.empty,
-            editedElements = IndexedSeq(baseElement),
-            leftEditElements = IndexedSeq(ourSideEditElement),
+            editedElements = IndexedSeq(baseOutgoingMoveSourceElement),
+            leftEditElements =
+              IndexedSeq(ourSideEditIncomingMoveDestinationElement),
             rightEditElements = IndexedSeq(theirSideEditElement)
           )
 
@@ -401,15 +413,15 @@ class MatchesContextTest:
       if mirrorImage then
         assert(
           Vector(
-            CoincidentDeletion(baseElement),
-            RightInsertion(ourSideEditElement)
+            CoincidentDeletion(baseOutgoingMoveSourceElement),
+            RightInsertion(ourSideEditIncomingMoveDestinationElement)
           ) == mergeResult.coreMergeResult
         )
       else
         assert(
           Vector(
-            CoincidentDeletion(baseElement),
-            LeftInsertion(ourSideEditElement)
+            CoincidentDeletion(baseOutgoingMoveSourceElement),
+            LeftInsertion(ourSideEditIncomingMoveDestinationElement)
           ) == mergeResult.coreMergeResult
         )
       end if
@@ -418,7 +430,7 @@ class MatchesContextTest:
         Seq(
           Insertion(
             if mirrorImage then Side.Right else Side.Left,
-            ourSideEditElement
+            ourSideEditIncomingMoveDestinationElement
           )
         ) == mergeResult.insertions
       )
@@ -426,7 +438,8 @@ class MatchesContextTest:
       assert(
         Set(
           IndexedSeq(theirSideEditElement)
-        ) == mergeResult.changesMigratedThroughMotion.get(ourSideMovedElement)
+        ) == mergeResult.changesMigratedThroughMotion
+          .get(ourSideOutgoingMoveDestinationElement)
       )
 
       val Seq((matches, moveDestinations)) =
@@ -437,17 +450,17 @@ class MatchesContextTest:
       if mirrorImage then
         assert(
           moveDestinations == MoveDestinations(
-            sources = Set(baseSourceElement),
+            sources = Set(incomingMoveSourceElement),
             left = Set.empty,
-            right = Set(ourSideEditElement),
+            right = Set(ourSideEditIncomingMoveDestinationElement),
             coincident = Set.empty
           )
         )
       else
         assert(
           moveDestinations == MoveDestinations(
-            sources = Set(baseSourceElement),
-            left = Set(ourSideEditElement),
+            sources = Set(incomingMoveSourceElement),
+            left = Set(ourSideEditIncomingMoveDestinationElement),
             right = Set.empty,
             coincident = Set.empty
           )
@@ -459,27 +472,27 @@ class MatchesContextTest:
   @TestFactory
   def coincidentDeletionWhereBaseHasMovedAwayOnOurSide: DynamicTests =
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
-      val baseElement: Element         = 1
-      val ourSideMovedElement: Element = 2
+      val baseOutgoingMoveSourceElement: Element         = 1
+      val ourSideOutgoingMoveDestinationElement: Element = 2
 
-      val baseAndOurSidePairwiseMatch =
+      val baseAndOurSideOutgoingMovePairwiseMatch =
         if mirrorImage then
           Match
             .BaseAndRight(
-              baseElement = baseElement,
-              rightElement = ourSideMovedElement
+              baseElement = baseOutgoingMoveSourceElement,
+              rightElement = ourSideOutgoingMoveDestinationElement
             )
         else
           Match
             .BaseAndLeft(
-              baseElement = baseElement,
-              leftElement = ourSideMovedElement
+              baseElement = baseOutgoingMoveSourceElement,
+              leftElement = ourSideOutgoingMoveDestinationElement
             )
 
       val matchesByElement =
         Map(
-          baseElement         -> baseAndOurSidePairwiseMatch,
-          ourSideMovedElement -> baseAndOurSidePairwiseMatch
+          baseOutgoingMoveSourceElement -> baseAndOurSideOutgoingMovePairwiseMatch,
+          ourSideOutgoingMoveDestinationElement -> baseAndOurSideOutgoingMovePairwiseMatch
         )
 
       given Eq[Element] = matchesByElement.equivalent
@@ -494,15 +507,20 @@ class MatchesContextTest:
           )
 
       val mergeResult =
-        mergeAlgebra.coincidentDeletion(mergeAlgebra.empty, baseElement)
+        mergeAlgebra.coincidentDeletion(
+          mergeAlgebra.empty,
+          deletedElement = baseOutgoingMoveSourceElement
+        )
 
       assert(
-        Vector(CoincidentDeletion(baseElement)) == mergeResult.coreMergeResult
+        Vector(
+          CoincidentDeletion(baseOutgoingMoveSourceElement)
+        ) == mergeResult.coreMergeResult
       )
 
       assert(
         Set(IndexedSeq.empty) == mergeResult.changesMigratedThroughMotion
-          .get(ourSideMovedElement)
+          .get(ourSideOutgoingMoveDestinationElement)
       )
     }
   end coincidentDeletionWhereBaseHasMovedAwayOnOurSide
@@ -511,28 +529,28 @@ class MatchesContextTest:
   def ourDeletionVersusTheirEditConflictWhereBaseHasMovedAwayOnOurSide
       : DynamicTests =
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
-      val baseElement: Element          = 1
-      val ourSideMovedElement: Element  = 2
-      val theirSideEditElement: Element = 3
+      val baseOutgoingMoveSourceElement: Element         = 1
+      val ourSideOutgoingMoveDestinationElement: Element = 2
+      val theirSideEditElement: Element                  = 3
 
-      val baseAndOurSidePairwiseMatch =
+      val baseAndOurSideOutgoingMovePairwiseMatch =
         if mirrorImage then
           Match
             .BaseAndRight(
-              baseElement = baseElement,
-              rightElement = ourSideMovedElement
+              baseElement = baseOutgoingMoveSourceElement,
+              rightElement = ourSideOutgoingMoveDestinationElement
             )
         else
           Match
             .BaseAndLeft(
-              baseElement = baseElement,
-              leftElement = ourSideMovedElement
+              baseElement = baseOutgoingMoveSourceElement,
+              leftElement = ourSideOutgoingMoveDestinationElement
             )
 
       val matchesByElement =
         Map(
-          baseElement         -> baseAndOurSidePairwiseMatch,
-          ourSideMovedElement -> baseAndOurSidePairwiseMatch
+          baseOutgoingMoveSourceElement -> baseAndOurSideOutgoingMovePairwiseMatch,
+          ourSideOutgoingMoveDestinationElement -> baseAndOurSideOutgoingMovePairwiseMatch
         )
 
       given Eq[Element] = matchesByElement.equivalent
@@ -549,26 +567,29 @@ class MatchesContextTest:
         if mirrorImage then
           mergeAlgebra.conflict(
             mergeAlgebra.empty,
-            editedElements = IndexedSeq(baseElement),
+            editedElements = IndexedSeq(baseOutgoingMoveSourceElement),
             leftEditElements = IndexedSeq(theirSideEditElement),
             rightEditElements = IndexedSeq.empty
           )
         else
           mergeAlgebra.conflict(
             mergeAlgebra.empty,
-            editedElements = IndexedSeq(baseElement),
+            editedElements = IndexedSeq(baseOutgoingMoveSourceElement),
             leftEditElements = IndexedSeq.empty,
             rightEditElements = IndexedSeq(theirSideEditElement)
           )
 
       assert(
-        Vector(CoincidentDeletion(baseElement)) == mergeResult.coreMergeResult
+        Vector(
+          CoincidentDeletion(baseOutgoingMoveSourceElement)
+        ) == mergeResult.coreMergeResult
       )
 
       assert(
         Set(
           IndexedSeq(theirSideEditElement)
-        ) == mergeResult.changesMigratedThroughMotion.get(ourSideMovedElement)
+        ) == mergeResult.changesMigratedThroughMotion
+          .get(ourSideOutgoingMoveDestinationElement)
       )
     }
   end ourDeletionVersusTheirEditConflictWhereBaseHasMovedAwayOnOurSide
@@ -577,28 +598,28 @@ class MatchesContextTest:
   def ourEditVersusTheirDeletionConflictWhereBaseHasMovedAwayOnOurSide
       : DynamicTests =
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
-      val baseElement: Element         = 1
-      val ourSideMovedElement: Element = 2
-      val ourSideEditElement: Element  = 3
+      val baseOutgoingMoveSourceElement: Element         = 1
+      val ourSideOutgoingMoveDestinationElement: Element = 2
+      val ourSideEditElement: Element                    = 3
 
-      val baseAndOurSidePairwiseMatch =
+      val baseAndOurSideOutgoingMovePairwiseMatch =
         if mirrorImage then
           Match
             .BaseAndRight(
-              baseElement = baseElement,
-              rightElement = ourSideMovedElement
+              baseElement = baseOutgoingMoveSourceElement,
+              rightElement = ourSideOutgoingMoveDestinationElement
             )
         else
           Match
             .BaseAndLeft(
-              baseElement = baseElement,
-              leftElement = ourSideMovedElement
+              baseElement = baseOutgoingMoveSourceElement,
+              leftElement = ourSideOutgoingMoveDestinationElement
             )
 
       val matchesByElement =
         Map(
-          baseElement         -> baseAndOurSidePairwiseMatch,
-          ourSideMovedElement -> baseAndOurSidePairwiseMatch
+          baseOutgoingMoveSourceElement -> baseAndOurSideOutgoingMovePairwiseMatch,
+          ourSideOutgoingMoveDestinationElement -> baseAndOurSideOutgoingMovePairwiseMatch
         )
 
       val matchesContext = MatchesContext(
@@ -618,14 +639,14 @@ class MatchesContextTest:
         if mirrorImage then
           mergeAlgebra.conflict(
             mergeAlgebra.empty,
-            editedElements = IndexedSeq(baseElement),
+            editedElements = IndexedSeq(baseOutgoingMoveSourceElement),
             leftEditElements = IndexedSeq.empty,
             rightEditElements = IndexedSeq(ourSideEditElement)
           )
         else
           mergeAlgebra.conflict(
             mergeAlgebra.empty,
-            editedElements = IndexedSeq(baseElement),
+            editedElements = IndexedSeq(baseOutgoingMoveSourceElement),
             leftEditElements = IndexedSeq(ourSideEditElement),
             rightEditElements = IndexedSeq.empty
           )
@@ -642,14 +663,14 @@ class MatchesContextTest:
       if mirrorImage then
         assert(
           Vector(
-            CoincidentDeletion(baseElement),
+            CoincidentDeletion(baseOutgoingMoveSourceElement),
             RightInsertion(ourSideEditElement)
           ) == mergeResult.coreMergeResult
         )
       else
         assert(
           Vector(
-            CoincidentDeletion(baseElement),
+            CoincidentDeletion(baseOutgoingMoveSourceElement),
             LeftInsertion(ourSideEditElement)
           ) == mergeResult.coreMergeResult
         )
@@ -666,7 +687,7 @@ class MatchesContextTest:
 
       assert(
         Set(IndexedSeq.empty) == mergeResult.changesMigratedThroughMotion
-          .get(ourSideMovedElement)
+          .get(ourSideOutgoingMoveDestinationElement)
       )
     }
   end ourEditVersusTheirDeletionConflictWhereBaseHasMovedAwayOnOurSide
@@ -675,29 +696,29 @@ class MatchesContextTest:
   def ourEditVersusTheirEditConflictWhereBaseHasMovedAwayOnOurSide
       : DynamicTests =
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
-      val baseElement: Element          = 1
-      val ourSideMovedElement: Element  = 2
-      val ourSideEditElement: Element   = 3
-      val theirSideEditElement: Element = 4
+      val baseOutgoingMoveSourceElement: Element         = 1
+      val ourSideOutgoingMoveDestinationElement: Element = 2
+      val ourSideEditElement: Element                    = 3
+      val theirSideEditElement: Element                  = 4
 
-      val baseAndOurSidePairwiseMatch =
+      val baseAndOurSideOutgoingMovePairwiseMatch =
         if mirrorImage then
           Match
             .BaseAndRight(
-              baseElement = baseElement,
-              rightElement = ourSideMovedElement
+              baseElement = baseOutgoingMoveSourceElement,
+              rightElement = ourSideOutgoingMoveDestinationElement
             )
         else
           Match
             .BaseAndLeft(
-              baseElement = baseElement,
-              leftElement = ourSideMovedElement
+              baseElement = baseOutgoingMoveSourceElement,
+              leftElement = ourSideOutgoingMoveDestinationElement
             )
 
       val matchesByElement =
         Map(
-          baseElement         -> baseAndOurSidePairwiseMatch,
-          ourSideMovedElement -> baseAndOurSidePairwiseMatch
+          baseOutgoingMoveSourceElement -> baseAndOurSideOutgoingMovePairwiseMatch,
+          ourSideOutgoingMoveDestinationElement -> baseAndOurSideOutgoingMovePairwiseMatch
         )
 
       val matchesContext = MatchesContext(
@@ -717,14 +738,14 @@ class MatchesContextTest:
         if mirrorImage then
           mergeAlgebra.conflict(
             mergeAlgebra.empty,
-            editedElements = IndexedSeq(baseElement),
+            editedElements = IndexedSeq(baseOutgoingMoveSourceElement),
             leftEditElements = IndexedSeq(theirSideEditElement),
             rightEditElements = IndexedSeq(ourSideEditElement)
           )
         else
           mergeAlgebra.conflict(
             mergeAlgebra.empty,
-            editedElements = IndexedSeq(baseElement),
+            editedElements = IndexedSeq(baseOutgoingMoveSourceElement),
             leftEditElements = IndexedSeq(ourSideEditElement),
             rightEditElements = IndexedSeq(theirSideEditElement)
           )
@@ -741,14 +762,14 @@ class MatchesContextTest:
       if mirrorImage then
         assert(
           Vector(
-            CoincidentDeletion(baseElement),
+            CoincidentDeletion(baseOutgoingMoveSourceElement),
             RightInsertion(ourSideEditElement)
           ) == mergeResult.coreMergeResult
         )
       else
         assert(
           Vector(
-            CoincidentDeletion(baseElement),
+            CoincidentDeletion(baseOutgoingMoveSourceElement),
             LeftInsertion(ourSideEditElement)
           ) == mergeResult.coreMergeResult
         )
@@ -766,7 +787,8 @@ class MatchesContextTest:
       assert(
         Set(
           IndexedSeq(theirSideEditElement)
-        ) == mergeResult.changesMigratedThroughMotion.get(ourSideMovedElement)
+        ) == mergeResult.changesMigratedThroughMotion
+          .get(ourSideOutgoingMoveDestinationElement)
       )
     }
   end ourEditVersusTheirEditConflictWhereBaseHasMovedAwayOnOurSide
@@ -774,29 +796,29 @@ class MatchesContextTest:
   @TestFactory
   def coincidentEditWhereBaseHasMovedAwayOnOurSide: DynamicTests =
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
-      val baseElement: Element                    = 1
-      val ourSideMovedElement: Element            = 2
-      val ourSideCoincidentEditElement: Element   = 3
-      val theirSideCoincidentEditElement: Element = 4
+      val baseOutgoingMoveSourceElement: Element         = 1
+      val ourSideOutgoingMoveDestinationElement: Element = 2
+      val ourSideCoincidentEditElement: Element          = 3
+      val theirSideCoincidentEditElement: Element        = 4
 
-      val baseAndOurSidePairwiseMatch =
+      val baseAndOurSideOutgoingMovePairwiseMatch =
         if mirrorImage then
           Match
             .BaseAndRight(
-              baseElement = baseElement,
-              rightElement = ourSideMovedElement
+              baseElement = baseOutgoingMoveSourceElement,
+              rightElement = ourSideOutgoingMoveDestinationElement
             )
         else
           Match
             .BaseAndLeft(
-              baseElement = baseElement,
-              leftElement = ourSideMovedElement
+              baseElement = baseOutgoingMoveSourceElement,
+              leftElement = ourSideOutgoingMoveDestinationElement
             )
 
       val matchesByElement =
         Map(
-          baseElement         -> baseAndOurSidePairwiseMatch,
-          ourSideMovedElement -> baseAndOurSidePairwiseMatch
+          baseOutgoingMoveSourceElement -> baseAndOurSideOutgoingMovePairwiseMatch,
+          ourSideOutgoingMoveDestinationElement -> baseAndOurSideOutgoingMovePairwiseMatch
         )
 
       given Eq[Element] = matchesByElement.equivalent
@@ -813,16 +835,16 @@ class MatchesContextTest:
         if mirrorImage then
           mergeAlgebra.coincidentEdit(
             mergeAlgebra.empty,
-            baseElement,
-            IndexedSeq(
+            editedElement = baseOutgoingMoveSourceElement,
+            editElements = IndexedSeq(
               theirSideCoincidentEditElement -> ourSideCoincidentEditElement
             )
           )
         else
           mergeAlgebra.coincidentEdit(
             mergeAlgebra.empty,
-            baseElement,
-            IndexedSeq(
+            editedElement = baseOutgoingMoveSourceElement,
+            editElements = IndexedSeq(
               ourSideCoincidentEditElement -> theirSideCoincidentEditElement
             )
           )
@@ -834,7 +856,7 @@ class MatchesContextTest:
         assert(
           Vector(
             CoincidentEdit(
-              baseElement,
+              baseOutgoingMoveSourceElement,
               IndexedSeq(
                 theirSideCoincidentEditElement -> ourSideCoincidentEditElement
               )
@@ -845,7 +867,7 @@ class MatchesContextTest:
         assert(
           Vector(
             CoincidentEdit(
-              baseElement,
+              baseOutgoingMoveSourceElement,
               IndexedSeq(
                 ourSideCoincidentEditElement -> theirSideCoincidentEditElement
               )
@@ -856,7 +878,7 @@ class MatchesContextTest:
 
       assert(
         Set(IndexedSeq.empty) == mergeResult.changesMigratedThroughMotion
-          .get(ourSideMovedElement)
+          .get(ourSideOutgoingMoveDestinationElement)
       )
     }
   end coincidentEditWhereBaseHasMovedAwayOnOurSide
@@ -873,52 +895,52 @@ class MatchesContextTest:
           )
         )
       )).withLimit(10).dynamicTests { (mirrorImage, resolutionOutcome) =>
-      val baseElement: Element         = 1
-      val ourSideMovedElement: Element = 2
-      val theirSideElement: Element    = 3
+      val baseOutgoingMoveSourceElement: Element         = 1
+      val ourSideOutgoingMoveDestinationElement: Element = 2
+      val theirSideElement: Element                      = 3
 
       val spuriousTheirSideElement: Element = 4
 
-      val allSidesMatch =
+      val baseAndOurSideOutgoingMoveAllSidesMatch =
         if mirrorImage then
           Match.AllSides(
-            baseElement = baseElement,
+            baseElement = baseOutgoingMoveSourceElement,
             leftElement = theirSideElement,
-            rightElement = ourSideMovedElement
+            rightElement = ourSideOutgoingMoveDestinationElement
           )
         else
           Match.AllSides(
-            baseElement = baseElement,
-            leftElement = ourSideMovedElement,
+            baseElement = baseOutgoingMoveSourceElement,
+            leftElement = ourSideOutgoingMoveDestinationElement,
             rightElement = theirSideElement
           )
 
       val matchesByElement =
         Map(
-          baseElement         -> allSidesMatch,
-          ourSideMovedElement -> allSidesMatch,
-          theirSideElement    -> allSidesMatch
+          baseOutgoingMoveSourceElement -> baseAndOurSideOutgoingMoveAllSidesMatch,
+          ourSideOutgoingMoveDestinationElement -> baseAndOurSideOutgoingMoveAllSidesMatch,
+          theirSideElement -> baseAndOurSideOutgoingMoveAllSidesMatch
         )
 
       val spuriousAllSidesMatch =
         if mirrorImage then
           Match.AllSides(
-            baseElement = baseElement,
+            baseElement = baseOutgoingMoveSourceElement,
             leftElement = spuriousTheirSideElement,
-            rightElement = ourSideMovedElement
+            rightElement = ourSideOutgoingMoveDestinationElement
           )
         else
           Match.AllSides(
-            baseElement = baseElement,
-            leftElement = ourSideMovedElement,
+            baseElement = baseOutgoingMoveSourceElement,
+            leftElement = ourSideOutgoingMoveDestinationElement,
             rightElement = spuriousTheirSideElement
           )
 
       val spuriousMatchesByElement =
         Map(
-          baseElement              -> spuriousAllSidesMatch,
-          ourSideMovedElement      -> spuriousAllSidesMatch,
-          spuriousTheirSideElement -> spuriousAllSidesMatch
+          baseOutgoingMoveSourceElement         -> spuriousAllSidesMatch,
+          ourSideOutgoingMoveDestinationElement -> spuriousAllSidesMatch,
+          spuriousTheirSideElement              -> spuriousAllSidesMatch
         )
 
       given Eq[Element] = (lhs: Element, rhs: Element) =>
@@ -940,21 +962,29 @@ class MatchesContextTest:
       val mergeResult =
         if mirrorImage then
           mergeAlgebra
-            .rightDeletion(mergeAlgebra.empty, baseElement, theirSideElement)
+            .rightDeletion(
+              mergeAlgebra.empty,
+              deletedBaseElement = baseOutgoingMoveSourceElement,
+              deletedLeftElement = theirSideElement
+            )
         else
           mergeAlgebra
-            .leftDeletion(mergeAlgebra.empty, baseElement, theirSideElement)
+            .leftDeletion(
+              mergeAlgebra.empty,
+              deletedBaseElement = baseOutgoingMoveSourceElement,
+              deletedRightElement = theirSideElement
+            )
 
       if mirrorImage then
         assert(
           Vector(
-            RightDeletion(baseElement, theirSideElement)
+            RightDeletion(baseOutgoingMoveSourceElement, theirSideElement)
           ) == mergeResult.coreMergeResult
         )
       else
         assert(
           Vector(
-            LeftDeletion(baseElement, theirSideElement)
+            LeftDeletion(baseOutgoingMoveSourceElement, theirSideElement)
           ) == mergeResult.coreMergeResult
         )
       end if
@@ -963,7 +993,7 @@ class MatchesContextTest:
         case ResolutionOutcome.LeftChosen =>
           assert(
             !mergeResult.changesMigratedThroughMotion
-              .containsKey(ourSideMovedElement)
+              .containsKey(ourSideOutgoingMoveDestinationElement)
           )
         case ResolutionOutcome.SomethingElseChosen(offset) =>
           if mirrorImage then
@@ -971,26 +1001,26 @@ class MatchesContextTest:
               Set(
                 IndexedSeq(
                   resolution(
-                    Some(baseElement),
+                    Some(baseOutgoingMoveSourceElement),
                     theirSideElement,
-                    ourSideMovedElement
+                    ourSideOutgoingMoveDestinationElement
                   )
                 )
               ) == mergeResult.changesMigratedThroughMotion
-                .get(ourSideMovedElement)
+                .get(ourSideOutgoingMoveDestinationElement)
             )
           else
             assert(
               Set(
                 IndexedSeq(
                   resolution(
-                    Some(baseElement),
-                    ourSideMovedElement,
+                    Some(baseOutgoingMoveSourceElement),
+                    ourSideOutgoingMoveDestinationElement,
                     theirSideElement
                   )
                 )
               ) == mergeResult.changesMigratedThroughMotion
-                .get(ourSideMovedElement)
+                .get(ourSideOutgoingMoveDestinationElement)
             )
           end if
       end match
@@ -1009,53 +1039,53 @@ class MatchesContextTest:
           )
         )
       )).withLimit(10).dynamicTests { (mirrorImage, resolutionOutcome) =>
-      val baseElement: Element         = 1
-      val ourSideMovedElement: Element = 2
-      val ourSideEditElement: Element  = 3
-      val theirSideElement: Element    = 4
+      val baseOutgoingMoveSourceElement: Element         = 1
+      val ourSideOutgoingMoveDestinationElement: Element = 2
+      val ourSideEditElement: Element                    = 3
+      val theirSideElement: Element                      = 4
 
       val spuriousTheirSideElement: Element = 5
 
-      val allSidesMatch =
+      val baseAndOurSideOutgoingMoveAllSidesMatch =
         if mirrorImage then
           Match.AllSides(
-            baseElement = baseElement,
+            baseElement = baseOutgoingMoveSourceElement,
             leftElement = theirSideElement,
-            rightElement = ourSideMovedElement
+            rightElement = ourSideOutgoingMoveDestinationElement
           )
         else
           Match.AllSides(
-            baseElement = baseElement,
-            leftElement = ourSideMovedElement,
+            baseElement = baseOutgoingMoveSourceElement,
+            leftElement = ourSideOutgoingMoveDestinationElement,
             rightElement = theirSideElement
           )
 
       val matchesByElement =
         Map(
-          baseElement         -> allSidesMatch,
-          ourSideMovedElement -> allSidesMatch,
-          theirSideElement    -> allSidesMatch
+          baseOutgoingMoveSourceElement -> baseAndOurSideOutgoingMoveAllSidesMatch,
+          ourSideOutgoingMoveDestinationElement -> baseAndOurSideOutgoingMoveAllSidesMatch,
+          theirSideElement -> baseAndOurSideOutgoingMoveAllSidesMatch
         )
 
       val spuriousAllSidesMatch =
         if mirrorImage then
           Match.AllSides(
-            baseElement = baseElement,
+            baseElement = baseOutgoingMoveSourceElement,
             leftElement = spuriousTheirSideElement,
-            rightElement = ourSideMovedElement
+            rightElement = ourSideOutgoingMoveDestinationElement
           )
         else
           Match.AllSides(
-            baseElement = baseElement,
-            leftElement = ourSideMovedElement,
+            baseElement = baseOutgoingMoveSourceElement,
+            leftElement = ourSideOutgoingMoveDestinationElement,
             rightElement = spuriousTheirSideElement
           )
 
       val spuriousMatchesByElement =
         Map(
-          baseElement              -> spuriousAllSidesMatch,
-          ourSideMovedElement      -> spuriousAllSidesMatch,
-          spuriousTheirSideElement -> spuriousAllSidesMatch
+          baseOutgoingMoveSourceElement         -> spuriousAllSidesMatch,
+          ourSideOutgoingMoveDestinationElement -> spuriousAllSidesMatch,
+          spuriousTheirSideElement              -> spuriousAllSidesMatch
         )
 
       given Eq[Element] = (lhs: Element, rhs: Element) =>
@@ -1078,23 +1108,23 @@ class MatchesContextTest:
         if mirrorImage then
           mergeAlgebra.rightEdit(
             mergeAlgebra.empty,
-            baseElement,
-            theirSideElement,
-            IndexedSeq(ourSideEditElement)
+            editedBaseElement = baseOutgoingMoveSourceElement,
+            editedLeftElement = theirSideElement,
+            editElements = IndexedSeq(ourSideEditElement)
           )
         else
           mergeAlgebra.leftEdit(
             mergeAlgebra.empty,
-            baseElement,
-            theirSideElement,
-            IndexedSeq(ourSideEditElement)
+            editedBaseElement = baseOutgoingMoveSourceElement,
+            editedRightElement = theirSideElement,
+            editElements = IndexedSeq(ourSideEditElement)
           )
 
       if mirrorImage then
         assert(
           Vector(
             RightEdit(
-              baseElement,
+              baseOutgoingMoveSourceElement,
               theirSideElement,
               IndexedSeq(ourSideEditElement)
             )
@@ -1104,7 +1134,7 @@ class MatchesContextTest:
         assert(
           Vector(
             LeftEdit(
-              baseElement,
+              baseOutgoingMoveSourceElement,
               theirSideElement,
               IndexedSeq(ourSideEditElement)
             )
@@ -1116,7 +1146,7 @@ class MatchesContextTest:
         case ResolutionOutcome.LeftChosen =>
           assert(
             !mergeResult.changesMigratedThroughMotion
-              .containsKey(ourSideMovedElement)
+              .containsKey(ourSideOutgoingMoveDestinationElement)
           )
         case ResolutionOutcome.SomethingElseChosen(offset) =>
           if mirrorImage then
@@ -1124,26 +1154,26 @@ class MatchesContextTest:
               Set(
                 IndexedSeq(
                   resolution(
-                    Some(baseElement),
+                    Some(baseOutgoingMoveSourceElement),
                     theirSideElement,
-                    ourSideMovedElement
+                    ourSideOutgoingMoveDestinationElement
                   )
                 )
               ) == mergeResult.changesMigratedThroughMotion
-                .get(ourSideMovedElement)
+                .get(ourSideOutgoingMoveDestinationElement)
             )
           else
             assert(
               Set(
                 IndexedSeq(
                   resolution(
-                    Some(baseElement),
-                    ourSideMovedElement,
+                    Some(baseOutgoingMoveSourceElement),
+                    ourSideOutgoingMoveDestinationElement,
                     theirSideElement
                   )
                 )
               ) == mergeResult.changesMigratedThroughMotion
-                .get(ourSideMovedElement)
+                .get(ourSideOutgoingMoveDestinationElement)
             )
           end if
       end match
@@ -1153,29 +1183,29 @@ class MatchesContextTest:
   @TestFactory
   def coincidentDeletionWhereBaseHasMovedAwayOnBothSides: DynamicTests =
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
-      val baseElement: Element           = 1
-      val ourSideMovedElement: Element   = 2
-      val theirSideMovedElement: Element = 3
+      val baseOutgoingMoveSourceElement: Element           = 1
+      val ourSideOutgoingMoveDestinationElement: Element   = 2
+      val theirSideOutgoingMoveDestinationElement: Element = 3
 
-      val allSidesMatch =
+      val baseAndBothSidesOutgoingMoveAllSidesMatch =
         if mirrorImage then
           Match.AllSides(
-            baseElement = baseElement,
-            leftElement = theirSideMovedElement,
-            rightElement = ourSideMovedElement
+            baseElement = baseOutgoingMoveSourceElement,
+            leftElement = theirSideOutgoingMoveDestinationElement,
+            rightElement = ourSideOutgoingMoveDestinationElement
           )
         else
           Match.AllSides(
-            baseElement = baseElement,
-            leftElement = ourSideMovedElement,
-            rightElement = theirSideMovedElement
+            baseElement = baseOutgoingMoveSourceElement,
+            leftElement = ourSideOutgoingMoveDestinationElement,
+            rightElement = theirSideOutgoingMoveDestinationElement
           )
 
       val matchesByElement =
         Map(
-          baseElement           -> allSidesMatch,
-          ourSideMovedElement   -> allSidesMatch,
-          theirSideMovedElement -> allSidesMatch
+          baseOutgoingMoveSourceElement -> baseAndBothSidesOutgoingMoveAllSidesMatch,
+          ourSideOutgoingMoveDestinationElement -> baseAndBothSidesOutgoingMoveAllSidesMatch,
+          theirSideOutgoingMoveDestinationElement -> baseAndBothSidesOutgoingMoveAllSidesMatch
         )
 
       given Eq[Element] = matchesByElement.equivalent
@@ -1189,19 +1219,24 @@ class MatchesContextTest:
         )
 
       val mergeResult =
-        mergeAlgebra.coincidentDeletion(mergeAlgebra.empty, baseElement)
+        mergeAlgebra.coincidentDeletion(
+          mergeAlgebra.empty,
+          deletedElement = baseOutgoingMoveSourceElement
+        )
 
       assert(
-        Vector(CoincidentDeletion(baseElement)) == mergeResult.coreMergeResult
+        Vector(
+          CoincidentDeletion(baseOutgoingMoveSourceElement)
+        ) == mergeResult.coreMergeResult
       )
 
       assert(
         !mergeResult.changesMigratedThroughMotion
-          .containsKey(ourSideMovedElement)
+          .containsKey(ourSideOutgoingMoveDestinationElement)
       )
       assert(
         !mergeResult.changesMigratedThroughMotion
-          .containsKey(theirSideMovedElement)
+          .containsKey(theirSideOutgoingMoveDestinationElement)
       )
     }
   end coincidentDeletionWhereBaseHasMovedAwayOnBothSides
@@ -1210,30 +1245,30 @@ class MatchesContextTest:
   def ourEditVersusTheirDeletionConflictWhereBaseHasMovedAwayOnBothSides
       : DynamicTests =
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
-      val baseElement: Element           = 1
-      val ourSideMovedElement: Element   = 2
-      val theirSideMovedElement: Element = 3
-      val ourSideEditElement: Element    = 4
+      val baseOutgoingMoveSourceElement: Element           = 1
+      val ourSideOutgoingMoveDestinationElement: Element   = 2
+      val theirSideOutgoingMoveDestinationElement: Element = 3
+      val ourSideEditElement: Element                      = 4
 
-      val allSidesMatch =
+      val baseAndBothSidesOutgoingMoveAllSidesMatch =
         if mirrorImage then
           Match.AllSides(
-            baseElement = baseElement,
-            leftElement = theirSideMovedElement,
-            rightElement = ourSideMovedElement
+            baseElement = baseOutgoingMoveSourceElement,
+            leftElement = theirSideOutgoingMoveDestinationElement,
+            rightElement = ourSideOutgoingMoveDestinationElement
           )
         else
           Match.AllSides(
-            baseElement = baseElement,
-            leftElement = ourSideMovedElement,
-            rightElement = theirSideMovedElement
+            baseElement = baseOutgoingMoveSourceElement,
+            leftElement = ourSideOutgoingMoveDestinationElement,
+            rightElement = theirSideOutgoingMoveDestinationElement
           )
 
       val matchesByElement =
         Map(
-          baseElement           -> allSidesMatch,
-          ourSideMovedElement   -> allSidesMatch,
-          theirSideMovedElement -> allSidesMatch
+          baseOutgoingMoveSourceElement -> baseAndBothSidesOutgoingMoveAllSidesMatch,
+          ourSideOutgoingMoveDestinationElement -> baseAndBothSidesOutgoingMoveAllSidesMatch,
+          theirSideOutgoingMoveDestinationElement -> baseAndBothSidesOutgoingMoveAllSidesMatch
         )
 
       given Eq[Element] = matchesByElement.equivalent
@@ -1250,14 +1285,14 @@ class MatchesContextTest:
         if mirrorImage then
           mergeAlgebra.conflict(
             mergeAlgebra.empty,
-            editedElements = IndexedSeq(baseElement),
+            editedElements = IndexedSeq(baseOutgoingMoveSourceElement),
             leftEditElements = IndexedSeq.empty,
             rightEditElements = IndexedSeq(ourSideEditElement)
           )
         else
           mergeAlgebra.conflict(
             mergeAlgebra.empty,
-            editedElements = IndexedSeq(baseElement),
+            editedElements = IndexedSeq(baseOutgoingMoveSourceElement),
             leftEditElements = IndexedSeq(ourSideEditElement),
             rightEditElements = IndexedSeq.empty
           )
@@ -1266,7 +1301,7 @@ class MatchesContextTest:
         assert(
           Vector(
             Conflict(
-              IndexedSeq(baseElement),
+              IndexedSeq(baseOutgoingMoveSourceElement),
               IndexedSeq.empty,
               IndexedSeq(ourSideEditElement)
             )
@@ -1276,7 +1311,7 @@ class MatchesContextTest:
         assert(
           Vector(
             Conflict(
-              IndexedSeq(baseElement),
+              IndexedSeq(baseOutgoingMoveSourceElement),
               IndexedSeq(ourSideEditElement),
               IndexedSeq.empty
             )
@@ -1286,11 +1321,11 @@ class MatchesContextTest:
 
       assert(
         !mergeResult.changesMigratedThroughMotion
-          .containsKey(ourSideMovedElement)
+          .containsKey(ourSideOutgoingMoveDestinationElement)
       )
       assert(
         !mergeResult.changesMigratedThroughMotion
-          .containsKey(theirSideMovedElement)
+          .containsKey(theirSideOutgoingMoveDestinationElement)
       )
     }
   end ourEditVersusTheirDeletionConflictWhereBaseHasMovedAwayOnBothSides
@@ -1299,31 +1334,31 @@ class MatchesContextTest:
   def ourEditVersusTheirEditConflictWhereBaseHasMovedAwayOnBothSides
       : DynamicTests =
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
-      val baseElement: Element           = 1
-      val ourSideMovedElement: Element   = 2
-      val theirSideMovedElement: Element = 3
-      val ourSideEditElement: Element    = 4
-      val theirSideEditElement: Element  = 5
+      val baseOutgoingMoveSourceElement: Element           = 1
+      val ourSideOutgoingMoveDestinationElement: Element   = 2
+      val theirSideOutgoingMoveDestinationElement: Element = 3
+      val ourSideEditElement: Element                      = 4
+      val theirSideEditElement: Element                    = 5
 
-      val allSidesMatch =
+      val baseAndBothSidesOutgoingMoveAllSidesMatch =
         if mirrorImage then
           Match.AllSides(
-            baseElement = baseElement,
-            leftElement = theirSideMovedElement,
-            rightElement = ourSideMovedElement
+            baseElement = baseOutgoingMoveSourceElement,
+            leftElement = theirSideOutgoingMoveDestinationElement,
+            rightElement = ourSideOutgoingMoveDestinationElement
           )
         else
           Match.AllSides(
-            baseElement = baseElement,
-            leftElement = ourSideMovedElement,
-            rightElement = theirSideMovedElement
+            baseElement = baseOutgoingMoveSourceElement,
+            leftElement = ourSideOutgoingMoveDestinationElement,
+            rightElement = theirSideOutgoingMoveDestinationElement
           )
 
       val matchesByElement =
         Map(
-          baseElement           -> allSidesMatch,
-          ourSideMovedElement   -> allSidesMatch,
-          theirSideMovedElement -> allSidesMatch
+          baseOutgoingMoveSourceElement -> baseAndBothSidesOutgoingMoveAllSidesMatch,
+          ourSideOutgoingMoveDestinationElement -> baseAndBothSidesOutgoingMoveAllSidesMatch,
+          theirSideOutgoingMoveDestinationElement -> baseAndBothSidesOutgoingMoveAllSidesMatch
         )
 
       given Eq[Element] = matchesByElement.equivalent
@@ -1340,14 +1375,14 @@ class MatchesContextTest:
         if mirrorImage then
           mergeAlgebra.conflict(
             mergeAlgebra.empty,
-            editedElements = IndexedSeq(baseElement),
+            editedElements = IndexedSeq(baseOutgoingMoveSourceElement),
             leftEditElements = IndexedSeq(theirSideEditElement),
             rightEditElements = IndexedSeq(ourSideEditElement)
           )
         else
           mergeAlgebra.conflict(
             mergeAlgebra.empty,
-            editedElements = IndexedSeq(baseElement),
+            editedElements = IndexedSeq(baseOutgoingMoveSourceElement),
             leftEditElements = IndexedSeq(ourSideEditElement),
             rightEditElements = IndexedSeq(theirSideEditElement)
           )
@@ -1356,7 +1391,7 @@ class MatchesContextTest:
         assert(
           Vector(
             Conflict(
-              IndexedSeq(baseElement),
+              IndexedSeq(baseOutgoingMoveSourceElement),
               IndexedSeq(theirSideEditElement),
               IndexedSeq(ourSideEditElement)
             )
@@ -1366,7 +1401,7 @@ class MatchesContextTest:
         assert(
           Vector(
             Conflict(
-              IndexedSeq(baseElement),
+              IndexedSeq(baseOutgoingMoveSourceElement),
               IndexedSeq(ourSideEditElement),
               IndexedSeq(theirSideEditElement)
             )
@@ -1376,11 +1411,11 @@ class MatchesContextTest:
 
       assert(
         !mergeResult.changesMigratedThroughMotion
-          .containsKey(ourSideMovedElement)
+          .containsKey(ourSideOutgoingMoveDestinationElement)
       )
       assert(
         !mergeResult.changesMigratedThroughMotion
-          .containsKey(theirSideMovedElement)
+          .containsKey(theirSideOutgoingMoveDestinationElement)
       )
     }
   end ourEditVersusTheirEditConflictWhereBaseHasMovedAwayOnBothSides
@@ -1402,7 +1437,10 @@ class MatchesContextTest:
       )
 
     val mergeResult =
-      mergeAlgebra.leftInsertion(mergeAlgebra.empty, ourSideInsertedElement)
+      mergeAlgebra.leftInsertion(
+        mergeAlgebra.empty,
+        insertedElement = ourSideInsertedElement
+      )
 
     import matchesContext.*
 
@@ -1430,7 +1468,10 @@ class MatchesContextTest:
       )
 
     val mergeResult =
-      mergeAlgebra.rightInsertion(mergeAlgebra.empty, theirSideInsertedElement)
+      mergeAlgebra.rightInsertion(
+        mergeAlgebra.empty,
+        insertedElement = theirSideInsertedElement
+      )
 
     import matchesContext.*
 
@@ -1444,29 +1485,29 @@ class MatchesContextTest:
   @TestFactory
   def coincidentMoveDestinationInsertion: DynamicTests =
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
-      val sourceElement: Element         = 1
-      val ourSideMovedElement: Element   = 2
-      val theirSideMovedElement: Element = 3
+      val incomingMoveSourceElement: Element                       = 1
+      val ourSideInsertedIncomingMoveDestinationElement: Element   = 2
+      val theirSideInsertedIncomingMoveDestinationElement: Element = 3
 
-      val allSidesMatch =
+      val incomingMovesAllSidesMatch =
         if mirrorImage then
           Match.AllSides(
-            baseElement = sourceElement,
-            leftElement = theirSideMovedElement,
-            rightElement = ourSideMovedElement
+            baseElement = incomingMoveSourceElement,
+            leftElement = theirSideInsertedIncomingMoveDestinationElement,
+            rightElement = ourSideInsertedIncomingMoveDestinationElement
           )
         else
           Match.AllSides(
-            baseElement = sourceElement,
-            leftElement = ourSideMovedElement,
-            rightElement = theirSideMovedElement
+            baseElement = incomingMoveSourceElement,
+            leftElement = ourSideInsertedIncomingMoveDestinationElement,
+            rightElement = theirSideInsertedIncomingMoveDestinationElement
           )
 
       val matchesByElement =
         Map(
-          sourceElement         -> allSidesMatch,
-          ourSideMovedElement   -> allSidesMatch,
-          theirSideMovedElement -> allSidesMatch
+          incomingMoveSourceElement -> incomingMovesAllSidesMatch,
+          ourSideInsertedIncomingMoveDestinationElement -> incomingMovesAllSidesMatch,
+          theirSideInsertedIncomingMoveDestinationElement -> incomingMovesAllSidesMatch
         )
 
       given Eq[Element] = matchesByElement.equivalent
@@ -1483,60 +1524,64 @@ class MatchesContextTest:
         if mirrorImage then
           mergeAlgebra.coincidentInsertion(
             mergeAlgebra.empty,
-            theirSideMovedElement,
-            ourSideMovedElement
+            theirSideInsertedIncomingMoveDestinationElement,
+            ourSideInsertedIncomingMoveDestinationElement
           )
         else
           mergeAlgebra.coincidentInsertion(
             mergeAlgebra.empty,
-            ourSideMovedElement,
-            theirSideMovedElement
+            ourSideInsertedIncomingMoveDestinationElement,
+            theirSideInsertedIncomingMoveDestinationElement
           )
 
       if mirrorImage then
         assert(
           Vector(
-            CoincidentInsertion(theirSideMovedElement)
+            CoincidentInsertion(theirSideInsertedIncomingMoveDestinationElement)
           ) == mergeResult.coreMergeResult
         )
       else
         assert(
           Vector(
-            CoincidentInsertion(ourSideMovedElement)
+            CoincidentInsertion(ourSideInsertedIncomingMoveDestinationElement)
           ) == mergeResult.coreMergeResult
         )
       end if
 
       assert(
         !mergeResult.changesMigratedThroughMotion
-          .containsKey(ourSideMovedElement)
+          .containsKey(ourSideInsertedIncomingMoveDestinationElement)
       )
       assert(
         !mergeResult.changesMigratedThroughMotion
-          .containsKey(theirSideMovedElement)
+          .containsKey(theirSideInsertedIncomingMoveDestinationElement)
       )
 
       val Seq((matches, moveDestinations)) =
         mergeResult.moveDestinationsReport.moveDestinationsByMatches.toSeq
 
-      assert(matches == Set(allSidesMatch))
+      assert(matches == Set(incomingMovesAllSidesMatch))
 
       if mirrorImage then
         assert(
           moveDestinations == MoveDestinations(
-            sources = Set(sourceElement),
+            sources = Set(incomingMoveSourceElement),
             left = Set.empty,
             right = Set.empty,
-            coincident = Set(theirSideMovedElement -> ourSideMovedElement)
+            coincident = Set(
+              theirSideInsertedIncomingMoveDestinationElement -> ourSideInsertedIncomingMoveDestinationElement
+            )
           )
         )
       else
         assert(
           moveDestinations == MoveDestinations(
-            sources = Set(sourceElement),
+            sources = Set(incomingMoveSourceElement),
             left = Set.empty,
             right = Set.empty,
-            coincident = Set(ourSideMovedElement -> theirSideMovedElement)
+            coincident = Set(
+              ourSideInsertedIncomingMoveDestinationElement -> theirSideInsertedIncomingMoveDestinationElement
+            )
           )
         )
       end if
@@ -1546,30 +1591,30 @@ class MatchesContextTest:
   @TestFactory
   def coincidentMoveDestinationEdit: DynamicTests =
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
-      val sourceElement: Element         = 1
-      val baseElement: Element           = 2
-      val ourSideMovedElement: Element   = 3
-      val theirSideMovedElement: Element = 4
+      val incomingMoveSourceElement: Element                   = 1
+      val baseElement: Element                                 = 2
+      val ourSideEditIncomingMoveDestinationElement: Element   = 3
+      val theirSideEditIncomingMoveDestinationElement: Element = 4
 
-      val allSidesMatch =
+      val incomingMovesAllSidesMatch =
         if mirrorImage then
           Match.AllSides(
-            baseElement = sourceElement,
-            leftElement = theirSideMovedElement,
-            rightElement = ourSideMovedElement
+            baseElement = incomingMoveSourceElement,
+            leftElement = theirSideEditIncomingMoveDestinationElement,
+            rightElement = ourSideEditIncomingMoveDestinationElement
           )
         else
           Match.AllSides(
-            baseElement = sourceElement,
-            leftElement = ourSideMovedElement,
-            rightElement = theirSideMovedElement
+            baseElement = incomingMoveSourceElement,
+            leftElement = ourSideEditIncomingMoveDestinationElement,
+            rightElement = theirSideEditIncomingMoveDestinationElement
           )
 
       val matchesByElement =
         Map(
-          sourceElement         -> allSidesMatch,
-          ourSideMovedElement   -> allSidesMatch,
-          theirSideMovedElement -> allSidesMatch
+          incomingMoveSourceElement -> incomingMovesAllSidesMatch,
+          ourSideEditIncomingMoveDestinationElement -> incomingMovesAllSidesMatch,
+          theirSideEditIncomingMoveDestinationElement -> incomingMovesAllSidesMatch
         )
 
       given Eq[Element] = matchesByElement.equivalent
@@ -1586,14 +1631,18 @@ class MatchesContextTest:
         if mirrorImage then
           mergeAlgebra.coincidentEdit(
             mergeAlgebra.empty,
-            baseElement,
-            IndexedSeq(theirSideMovedElement -> ourSideMovedElement)
+            editedElement = baseElement,
+            editElements = IndexedSeq(
+              theirSideEditIncomingMoveDestinationElement -> ourSideEditIncomingMoveDestinationElement
+            )
           )
         else
           mergeAlgebra.coincidentEdit(
             mergeAlgebra.empty,
-            baseElement,
-            IndexedSeq(ourSideMovedElement -> theirSideMovedElement)
+            editedElement = baseElement,
+            editElements = IndexedSeq(
+              ourSideEditIncomingMoveDestinationElement -> theirSideEditIncomingMoveDestinationElement
+            )
           )
 
       if mirrorImage then
@@ -1601,7 +1650,9 @@ class MatchesContextTest:
           Vector(
             CoincidentEdit(
               baseElement,
-              IndexedSeq(theirSideMovedElement -> ourSideMovedElement)
+              IndexedSeq(
+                theirSideEditIncomingMoveDestinationElement -> ourSideEditIncomingMoveDestinationElement
+              )
             )
           ) == mergeResult.coreMergeResult
         )
@@ -1610,7 +1661,9 @@ class MatchesContextTest:
           Vector(
             CoincidentEdit(
               baseElement,
-              IndexedSeq(ourSideMovedElement -> theirSideMovedElement)
+              IndexedSeq(
+                ourSideEditIncomingMoveDestinationElement -> theirSideEditIncomingMoveDestinationElement
+              )
             )
           ) == mergeResult.coreMergeResult
         )
@@ -1618,34 +1671,38 @@ class MatchesContextTest:
 
       assert(
         !mergeResult.changesMigratedThroughMotion
-          .containsKey(ourSideMovedElement)
+          .containsKey(ourSideEditIncomingMoveDestinationElement)
       )
       assert(
         !mergeResult.changesMigratedThroughMotion
-          .containsKey(theirSideMovedElement)
+          .containsKey(theirSideEditIncomingMoveDestinationElement)
       )
 
       val Seq((matches, moveDestinations)) =
         mergeResult.moveDestinationsReport.moveDestinationsByMatches.toSeq
 
-      assert(matches == Set(allSidesMatch))
+      assert(matches == Set(incomingMovesAllSidesMatch))
 
       if mirrorImage then
         assert(
           moveDestinations == MoveDestinations(
-            sources = Set(sourceElement),
+            sources = Set(incomingMoveSourceElement),
             left = Set.empty,
             right = Set.empty,
-            coincident = Set(theirSideMovedElement -> ourSideMovedElement)
+            coincident = Set(
+              theirSideEditIncomingMoveDestinationElement -> ourSideEditIncomingMoveDestinationElement
+            )
           )
         )
       else
         assert(
           moveDestinations == MoveDestinations(
-            sources = Set(sourceElement),
+            sources = Set(incomingMoveSourceElement),
             left = Set.empty,
             right = Set.empty,
-            coincident = Set(ourSideMovedElement -> theirSideMovedElement)
+            coincident = Set(
+              ourSideEditIncomingMoveDestinationElement -> theirSideEditIncomingMoveDestinationElement
+            )
           )
         )
       end if
