@@ -601,6 +601,9 @@ object MainTest extends ProseExamples:
     assert(status.isEmpty)
   end verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit
 
+  private def mergeHeadPath(path: Path) =
+    path / ".git" / "MERGE_HEAD"
+
   private def verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit(
       path: Path
   )(
@@ -664,9 +667,6 @@ object MainTest extends ProseExamples:
   private def mergeHead(path: Path) =
     os.read(mergeHeadPath(path)).strip()
 
-  private def mergeHeadPath(path: Path) =
-    path / ".git" / "MERGE_HEAD"
-
   private def gitRepository(): ImperativeResource[Path] =
     for
       temporaryDirectory <- Resource.make(IO {
@@ -677,6 +677,12 @@ object MainTest extends ProseExamples:
       })
       _ <- Resource.eval(IO {
         os.proc("git", "config", "user.name", "MainTest")
+          .call(temporaryDirectory)
+          .out
+          .text()
+      })
+      _ <- Resource.eval(IO {
+        os.proc("git", "config", "user.email", "non-existent@dev.null")
           .call(temporaryDirectory)
           .out
           .text()
