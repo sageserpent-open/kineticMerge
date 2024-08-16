@@ -504,6 +504,13 @@ object MainTest extends ProseExamples:
     assert(currentStatus(path).isEmpty)
   end verifyTrivialMergeMovesToTheMostAdvancedCommitWithACleanIndex
 
+  private def currentCommit(path: Path) =
+    os.proc("git", "log", "-1", "--format=tformat:%H")
+      .call(path)
+      .out
+      .text()
+      .strip
+
   private def verifyMergeMakesANewCommitWithACleanIndex(path: Path)(
       commitOfOneBranch: String,
       commitOfTheOtherBranch: String,
@@ -550,6 +557,9 @@ object MainTest extends ProseExamples:
     assert(currentStatus(path).isEmpty)
   end verifyMergeMakesANewCommitWithACleanIndex
 
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
   private def currentMergeCommit(path: Path): (String, Seq[String]) =
     os
       .proc(s"git", "log", "-1", "--format=tformat:%H %P")
@@ -560,6 +570,9 @@ object MainTest extends ProseExamples:
       .split("\\s+") match
       case Array(postMergeCommit, parents*) => postMergeCommit -> parents
     : @unchecked
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
 
   private def verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit(
       path: Path
@@ -648,19 +661,6 @@ object MainTest extends ProseExamples:
     currentStatus(path)
   end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
 
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
-
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
-
-  private def currentCommit(path: Path) =
-    os.proc("git", "log", "-1", "--format=tformat:%H")
-      .call(path)
-      .out
-      .text()
-      .strip
-
   private def mergeHead(path: Path) =
     os.read(mergeHeadPath(path)).strip()
 
@@ -674,6 +674,12 @@ object MainTest extends ProseExamples:
       })(temporaryDirectory => IO { os.remove.all.apply(temporaryDirectory) })
       _ <- Resource.eval(IO {
         os.proc("git", "init").call(temporaryDirectory).out.text()
+      })
+      _ <- Resource.eval(IO {
+        os.proc("git", "config", "user.name", "MainTest")
+          .call(temporaryDirectory)
+          .out
+          .text()
       })
       _ <- Resource.eval(IO {
         makeNewBranch(temporaryDirectory)(masterBranch)
