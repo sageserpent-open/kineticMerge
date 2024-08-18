@@ -328,6 +328,10 @@ class MatchesContext[Element](
 
           matches match
             case Seq(_: AllSides[Section[Element]], _*) =>
+              logger.debug(
+                s"Coincident deletion at origin of moves on both sides."
+              )
+
               default
 
             case Seq(_: BaseAndLeft[Section[Element]], _*) =>
@@ -563,7 +567,22 @@ class MatchesContext[Element](
 
               matches match
                 case Seq(_: AllSides[Section[Element]], _*) =>
-                  default
+                  val withCoincidentDeletion = result
+                    .focus(_.coreMergeResult)
+                    .modify(
+                      coreMergeAlgebra
+                        .coincidentDeletion(_, baseElement)
+                    )
+
+                  val withLeftInsertions = leftElements.foldLeft(
+                    withCoincidentDeletion
+                  )(leftInsertion)
+
+                  logger.debug(
+                    s"Conflict at origin of moves on both sides: resolved as a coincident deletion of ${pprintCustomised(baseElement)} and a left insertion of ${pprintCustomised(leftElements)}."
+                  )
+
+                  withLeftInsertions
 
                 case Seq(_: BaseAndRight[Section[Element]], _*) =>
                   val withCoincidentDeletion = result
@@ -626,7 +645,22 @@ class MatchesContext[Element](
 
               matches match
                 case Seq(_: AllSides[Section[Element]], _*) =>
-                  default
+                  val withCoincidentDeletion = result
+                    .focus(_.coreMergeResult)
+                    .modify(
+                      coreMergeAlgebra
+                        .coincidentDeletion(_, baseElement)
+                    )
+
+                  val withRightInsertions = rightElements.foldLeft(
+                    withCoincidentDeletion
+                  )(rightInsertion)
+
+                  logger.debug(
+                    s"Conflict at origin of moves on both sides: resolved as a coincident deletion of ${pprintCustomised(baseElement)} and a right insertion of ${pprintCustomised(rightElements)}."
+                  )
+
+                  withRightInsertions
 
                 case Seq(_: BaseAndLeft[Section[Element]], _*) =>
                   val withCoincidentDeletion = result
