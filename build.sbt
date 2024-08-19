@@ -99,8 +99,8 @@ lazy val root = (project in file("."))
     libraryDependencies += "org.typelevel" %% "cats-effect"    % "3.5.2",
     libraryDependencies += "org.scala-lang.modules" %% "scala-collection-contrib" % "0.3.0",
     libraryDependencies ++= Seq(
-      "dev.optics" %% "monocle-core"  % "3.2.0",
-      "dev.optics" %% "monocle-macro" % "3.2.0"
+      "dev.optics" %% "monocle-core"  % "3.3.0",
+      "dev.optics" %% "monocle-macro" % "3.3.0"
     ),
     libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "2.3.0",
     libraryDependencies += "com.lihaoyi"             %% "os-lib"  % "0.9.1",
