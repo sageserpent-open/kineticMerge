@@ -511,6 +511,12 @@ object MainTest extends ProseExamples:
       .text()
       .strip
 
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+
   private def verifyMergeMakesANewCommitWithACleanIndex(path: Path)(
       commitOfOneBranch: String,
       commitOfTheOtherBranch: String,
@@ -557,9 +563,6 @@ object MainTest extends ProseExamples:
     assert(currentStatus(path).isEmpty)
   end verifyMergeMakesANewCommitWithACleanIndex
 
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
-
   private def currentMergeCommit(path: Path): (String, Seq[String]) =
     os
       .proc(s"git", "log", "-1", "--format=tformat:%H %P")
@@ -570,9 +573,6 @@ object MainTest extends ProseExamples:
       .split("\\s+") match
       case Array(postMergeCommit, parents*) => postMergeCommit -> parents
     : @unchecked
-
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
 
   private def verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit(
       path: Path
@@ -2136,7 +2136,8 @@ class MainTest:
                 ApplicationRequest(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
-                  noCommit = noCommit
+                  noCommit = noCommit,
+                  minimumMatchSize = 3
                 )
               )(workingDirectory = path)
 

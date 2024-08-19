@@ -384,6 +384,15 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         ): IndexedSeq[Section[Element]] =
           sections.filterNot(migratedInsertions.contains)
 
+        extension (sections: IndexedSeq[Section[Element]])
+          private def appendMigratedInsertions(
+              migratedInsertions: Seq[Section[Element]]
+          ): IndexedSeq[Section[Element]] =
+            logger.debug(
+              s"Applying migrated insertion of ${pprintCustomised(migratedInsertions)} after destination: ${pprintCustomised(sections.last)}."
+            )
+            sections ++ migratedInsertions
+
         def insertOrDeferAnyMigratedInsertions(
             sections: IndexedSeq[Section[Element]]
         ): IndexedSeq[Section[Element]] =
@@ -465,20 +474,28 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     case (None, None) =>
                       partialResult :+ candidateAnchorDestination
                     case (Some(deferred), None) =>
-                      partialResult ++ deferred :+ candidateAnchorDestination
+                      partialResult.appendMigratedInsertions(
+                        deferred
+                      ) :+ candidateAnchorDestination
                     case (None, Some(preceding)) =>
-                      partialResult ++ preceding :+ candidateAnchorDestination
+                      partialResult.appendMigratedInsertions(
+                        preceding
+                      ) :+ candidateAnchorDestination
                     case (Some(deferred), Some(preceding)) =>
                       if deferred == preceding then
-                        partialResult ++ deferred :+ candidateAnchorDestination
+                        partialResult.appendMigratedInsertions(
+                          deferred
+                        ) :+ candidateAnchorDestination
                       else
-                        partialResult ++ deferred ++ preceding :+ candidateAnchorDestination
+                        partialResult.appendMigratedInsertions(
+                          deferred ++ preceding
+                        ) :+ candidateAnchorDestination
 
                 result -> succeedingMigratedInsertion
             } match
             case (partialResult, deferredMigratedInsertion) =>
               deferredMigratedInsertion.fold(ifEmpty = partialResult)(
-                partialResult ++ _
+                partialResult.appendMigratedInsertions
               )
 
         path -> (mergeResult match

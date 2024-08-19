@@ -1519,21 +1519,15 @@ class MatchesContextTest:
       if mirrorImage then
         assert(
           Vector(
-            Conflict(
-              IndexedSeq(baseOutgoingMoveSourceElement),
-              IndexedSeq.empty,
-              IndexedSeq(ourSideEditElement)
-            )
+            CoincidentDeletion(baseOutgoingMoveSourceElement),
+            RightInsertion(ourSideEditElement)
           ) == mergeResult.coreMergeResult
         )
       else
         assert(
           Vector(
-            Conflict(
-              IndexedSeq(baseOutgoingMoveSourceElement),
-              IndexedSeq(ourSideEditElement),
-              IndexedSeq.empty
-            )
+            CoincidentDeletion(baseOutgoingMoveSourceElement),
+            LeftInsertion(ourSideEditElement)
           ) == mergeResult.coreMergeResult
         )
       end if
