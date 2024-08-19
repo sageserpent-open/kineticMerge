@@ -119,6 +119,7 @@ lazy val root = (project in file("."))
     libraryDependencies += "eu.timepit"      %% "refined"   % "0.11.2",
     libraryDependencies += "com.eed3si9n.expecty" %% "expecty" % "0.16.0" % Test,
     libraryDependencies += "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
+    Test / logLevel := Level.Error,
     Test / testOptions += Tests.Argument(jupiterTestFramework, "-q"),
     Test / fork               := true,
     Test / testForkedParallel := true,
