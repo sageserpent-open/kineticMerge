@@ -6,11 +6,7 @@ import com.sageserpent.americium.Trials
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.Configuration
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtension.*
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtensionTest.{
-  FakePath,
-  reconstituteTextFrom,
-  given
-}
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtensionTest.{FakePath, reconstituteTextFrom, given}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.Token.tokens
 import org.junit.jupiter.api.Assertions.fail
@@ -685,6 +681,80 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
     }
   end whitespaceOnlyEditingWithCodeMotion
+
+  @Test
+  def intraVersusInterfileDivergentCodeMotion(): Unit =
+    val configuration = Configuration(
+      minimumMatchSize = 3,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0
+    )
+
+    val originalPath: FakePath = "*** ORIGINAL ***"
+    val renamedPath: FakePath  = "*** RENAMED ***"
+
+    val baseSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(
+        originalPath -> tokens(intraVersusInterfileDivergentMoveExampleBase).get
+      ),
+      label = "base"
+    )
+    val leftSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(
+        renamedPath -> tokens(intraVersusInterfileDivergentMoveExampleLeft).get
+      ),
+      label = "left"
+    )
+    val rightSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(
+        originalPath -> tokens(
+          intraVersusInterfileDivergentMoveExampleRight
+        ).get
+      ),
+      label = "right"
+    )
+
+    val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+      base = baseSources,
+      left = leftSources,
+      right = rightSources
+    )(configuration): @unchecked
+
+    val expected = tokens(
+      intraVersusInterfileDivergentMoveExampleExpectedMerge
+    ).get
+
+    val (mergeResultsByPath, moveDestinationsReport) =
+      codeMotionAnalysis.merge
+
+    println(fansi.Color.Yellow(s"Final move destinations report...\n"))
+    println(
+      fansi.Color.Green(moveDestinationsReport.summarizeInText.mkString("\n"))
+    )
+
+    assert(!mergeResultsByPath.contains(originalPath))
+
+    val mergeResult = mergeResultsByPath(renamedPath)
+
+    println(fansi.Color.Yellow(s"Checking $renamedPath...\n"))
+    println(fansi.Color.Yellow("Expected..."))
+    println(fansi.Color.Green(reconstituteTextFrom(expected)))
+
+    mergeResult match
+      case FullyMerged(result) =>
+        println(fansi.Color.Yellow("Fully merged result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(result)))
+        assert(result.corresponds(expected)(Token.equality))
+      case MergedWithConflicts(leftResult, rightResult) =>
+        println(fansi.Color.Red(s"Left result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+        println(fansi.Color.Red(s"Right result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+        fail("Should have seen a clean merge.")
+    end match
+
+  end intraVersusInterfileDivergentCodeMotion
 
 end CodeMotionAnalysisExtensionTest
 
@@ -2076,5 +2146,45 @@ trait ProseExamples:
       |  },
       |    "string": "Hello World"
       |}
+      |""".stripMargin
+
+  protected val intraVersusInterfileDivergentMoveExampleBase: String =
+    """
+      |Hey diddle diddle,
+      |The cat and the fiddle,
+      |The cow jumped over the moon;
+      |The little dog laughed
+      |To see such sport,
+      |And the dish ran away with the spoon.
+      |""".stripMargin
+
+  protected val intraVersusInterfileDivergentMoveExampleLeft: String =
+    """
+      |Hey diddle diddle,
+      |The cat and the fiddle,
+      |The cow jump'd over the moon;
+      |The little dog laugh'd
+      |To see such craft,
+      |And the fork ran away with the spoon.
+      |""".stripMargin
+
+  protected val intraVersusInterfileDivergentMoveExampleRight: String =
+    """
+      |Hey diddle diddle,
+      |The cat and the fiddle,
+      |The cow jumped!
+      |The little dog laughed
+      |To see such sport, (in fact he was over the moon)
+      |And the dish ran away with the spoon.
+      |""".stripMargin
+
+  protected val intraVersusInterfileDivergentMoveExampleExpectedMerge: String =
+    """
+      |Hey diddle diddle,
+      |The cat and the fiddle,
+      |The cow jump'd!
+      |The little dog laugh'd
+      |To see such craft, (in fact he was over the moon)
+      |And the fork ran away with the spoon.
       |""".stripMargin
 end ProseExamples
