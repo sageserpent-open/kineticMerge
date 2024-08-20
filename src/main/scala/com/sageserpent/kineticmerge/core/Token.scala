@@ -2,7 +2,17 @@ package com.sageserpent.kineticmerge.core
 
 import cats.kernel.Order
 import com.google.common.hash.PrimitiveSink
-import com.sageserpent.kineticmerge.core.Token.{Significant, Whitespace, WithTrailingWhitespace, ident, opt, parse, phrase, rep, whiteSpace}
+import com.sageserpent.kineticmerge.core.Token.{
+  Significant,
+  Whitespace,
+  WithTrailingWhitespace,
+  ident,
+  opt,
+  parse,
+  phrase,
+  rep,
+  whiteSpace
+}
 
 import scala.annotation.tailrec
 import scala.util.parsing.combinator.JavaTokenParsers

@@ -21,7 +21,7 @@ trait Sources[Path, Element]:
   def paths: Set[Path]
 
   /** Yield an isolated section covering part of the file at {@code path} as
-    * demarcated by {@code startOffset} and {@code size}.
+    * demarcated by {@code startOffset} and {@code size} .
     * @note
     *   The file referred to by {@code path} is implied; there is no actual
     *   [[File]] object associated with the section by default.
@@ -41,8 +41,8 @@ trait Sources[Path, Element]:
     * each of the {@code mandatorySections} is present in a [[File]] instance.
     *
     * This adds additional sections to fill in gaps between the ones given in
-    * {@code mandatorySections}; where a path has no associated section from
-    * {@code mandatorySections}, it will be given a [[File]] instance with one
+    * {@code mandatorySections} ; where a path has no associated section from
+    * {@code mandatorySections} , it will be given a [[File]] instance with one
     * section covering the entire file content.
     *
     * @note

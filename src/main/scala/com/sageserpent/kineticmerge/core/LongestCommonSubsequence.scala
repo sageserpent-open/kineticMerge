@@ -1,7 +1,10 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.Eq
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{CommonSubsequenceSize, Contribution}
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
+  CommonSubsequenceSize,
+  Contribution
+}
 import monocle.syntax.all.*
 
 import scala.collection.mutable

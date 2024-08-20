@@ -5,7 +5,12 @@ import cats.instances.seq.*
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction}
-import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording, ProgressRecordingSession, core}
+import com.sageserpent.kineticmerge.{
+  NoProgressRecording,
+  ProgressRecording,
+  ProgressRecordingSession,
+  core
+}
 import com.typesafe.scalalogging.StrictLogging
 import de.sciss.fingertree.RangedSeq
 import monocle.syntax.all.*
@@ -29,13 +34,13 @@ end CodeMotionAnalysis
 
 object CodeMotionAnalysis extends StrictLogging:
   /** Analyse code motion from the sources of {@code base} to both {@code left}
-    * and {@code right}, breaking them into [[File]] and thence [[Section]]
+    * and {@code right} , breaking them into [[File]] and thence [[Section]]
     * instances.
     *
-    * Where a section moves from {@code base}, it enters into a match with one
-    * or both corresponding sections in {@code left} and {@code right}; if both,
-    * then one of those latter two sections is considered to be dominant and
-    * therefore represents the match. If there is just one matching section,
+    * Where a section moves from {@code base} , it enters into a match with one
+    * or both corresponding sections in {@code left} and {@code right} ; if
+    * both, then one of those latter two sections is considered to be dominant
+    * and therefore represents the match. If there is just one matching section,
     * that is taken to be the dominant one for the sake of picking up whitespace
     * changes.
     *

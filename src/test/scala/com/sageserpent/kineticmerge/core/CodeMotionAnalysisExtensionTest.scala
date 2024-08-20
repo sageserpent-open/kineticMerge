@@ -6,7 +6,11 @@ import com.sageserpent.americium.Trials
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.Configuration
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtension.*
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtensionTest.{FakePath, reconstituteTextFrom, given}
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtensionTest.{
+  FakePath,
+  reconstituteTextFrom,
+  given
+}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.Token.tokens
 import org.junit.jupiter.api.Assertions.fail
