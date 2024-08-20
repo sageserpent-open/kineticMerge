@@ -96,7 +96,7 @@ lazy val root = (project in file("."))
     libraryDependencies += "org.typelevel" %% "cats-collections-core" % "0.9.8",
     libraryDependencies += "org.typelevel" %% "cats-core"      % "2.12.0",
     libraryDependencies += "org.typelevel" %% "alleycats-core" % "2.12.0",
-    libraryDependencies += "org.typelevel" %% "cats-effect"    % "3.5.2",
+    libraryDependencies += "org.typelevel" %% "cats-effect"    % "3.5.4",
     libraryDependencies += "org.scala-lang.modules" %% "scala-collection-contrib" % "0.3.0",
     libraryDependencies ++= Seq(
       "dev.optics" %% "monocle-core"  % "3.3.0",
