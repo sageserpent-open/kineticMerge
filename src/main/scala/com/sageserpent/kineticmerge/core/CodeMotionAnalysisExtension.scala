@@ -286,7 +286,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                           partialResult,
                           insertionRun
                         ),
-                        insertion @ Insertion(side, inserted)
+                        Insertion(side, inserted)
                       ) =>
                     insertionRun match
                       case Some(InsertionRun(previousSide, previouslyInserted))
