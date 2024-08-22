@@ -682,8 +682,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     }
   end whitespaceOnlyEditingWithCodeMotion
 
-  @Test
-  def intraVersusInterfileDivergentCodeMotion(): Unit =
+  @TestFactory
+  def codeMotionAcrossAFileRename(): DynamicTests =
     val configuration = Configuration(
       minimumMatchSize = 3,
       thresholdSizeFractionForMatching = 0,
@@ -693,82 +693,107 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val originalPath: FakePath = "*** ORIGINAL ***"
     val renamedPath: FakePath  = "*** RENAMED ***"
 
-    val baseSources = MappedContentSourcesOfTokens(
-      contentsByPath = Map(
-        originalPath -> tokens(intraVersusInterfileDivergentMoveExampleBase).get
-      ),
-      label = "base"
-    )
-    val leftSources = MappedContentSourcesOfTokens(
-      contentsByPath = Map(
-        renamedPath -> tokens(intraVersusInterfileDivergentMoveExampleLeft).get
-      ),
-      label = "left"
-    )
-    val rightSources = MappedContentSourcesOfTokens(
-      contentsByPath = Map(
-        originalPath -> tokens(
-          intraVersusInterfileDivergentMoveExampleRight
-        ).get
-      ),
-      label = "right"
-    )
+    Trials.api
+      .choose(
+        (
+          "Inserted context migrated across the file rename.",
+          heyDiddleDiddleInModernForm,
+          heyDiddleDiddleInArchaicForm,
+          heyDiddleDiddleWithInsertions,
+          heyDiddleDiddleWithInsertionsExpectedMerge
+        ),
+        (
+          "Intra-file code motion with surrounding inserted context migrated across the file rename.",
+          heyDiddleDiddleInModernForm,
+          heyDiddleDiddleInArchaicForm,
+          heyDiddleDiddleWithIntraFileMoveAndSurroundingInsertions,
+          heyDiddleDiddleWithIntraFileMoveAndSurroundingInsertionsExpectedMerge
+        )
+      )
+      .withLimit(2)
+      .dynamicTests {
+        (label, baseContent, leftContent, rightContent, expectedMergeContent) =>
+          println(fansi.Color.Yellow(s"*** $label ***"))
 
-    val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-      base = baseSources,
-      left = leftSources,
-      right = rightSources
-    )(configuration): @unchecked
+          val baseSources = MappedContentSourcesOfTokens(
+            contentsByPath = Map(
+              originalPath -> tokens(baseContent).get
+            ),
+            label = "base"
+          )
 
-    val expected = tokens(
-      intraVersusInterfileDivergentMoveExampleExpectedMerge
-    ).get
+          val leftSources = MappedContentSourcesOfTokens(
+            contentsByPath = Map(
+              renamedPath -> tokens(leftContent).get
+            ),
+            label = "left"
+          )
 
-    val (mergeResultsByPath, moveDestinationsReport) =
-      codeMotionAnalysis.merge
+          val rightSources = MappedContentSourcesOfTokens(
+            contentsByPath = Map(
+              originalPath -> tokens(
+                rightContent
+              ).get
+            ),
+            label = "right"
+          )
 
-    println(fansi.Color.Yellow(s"Final move destinations report...\n"))
-    println(
-      fansi.Color.Green(moveDestinationsReport.summarizeInText.mkString("\n"))
-    )
+          val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+            base = baseSources,
+            left = leftSources,
+            right = rightSources
+          )(configuration): @unchecked
 
-    val contentAtOriginalPath = mergeResultsByPath.get(originalPath)
+          val expected = tokens(
+            expectedMergeContent
+          ).get
 
-    contentAtOriginalPath.foreach(content =>
-      fail(
-        fansi.Color
-          .Yellow(s"\nShould not have this content at $originalPath...\n")
-          .render + fansi.Color
-          .Green(
-            reconstituteTextFrom(contentAtOriginalPath match
-              case Some(FullyMerged(result)) => result
+          val (mergeResultsByPath, moveDestinationsReport) =
+            codeMotionAnalysis.merge
+
+          println(fansi.Color.Yellow(s"Final move destinations report...\n"))
+          println(
+            fansi.Color
+              .Green(moveDestinationsReport.summarizeInText.mkString("\n"))
+          )
+
+          val contentAtOriginalPath = mergeResultsByPath.get(originalPath)
+
+          contentAtOriginalPath.foreach(content =>
+            fail(
+              fansi.Color
+                .Yellow(s"\nShould not have this content at $originalPath...\n")
+                .render + fansi.Color
+                .Green(
+                  reconstituteTextFrom(contentAtOriginalPath match
+                    case Some(FullyMerged(result)) => result
+                  )
+                )
+                .render
             )
           )
-          .render
-      )
-    )
 
-    val mergeResult = mergeResultsByPath(renamedPath)
+          val mergeResult = mergeResultsByPath(renamedPath)
 
-    println(fansi.Color.Yellow(s"Checking $renamedPath...\n"))
-    println(fansi.Color.Yellow("Expected..."))
-    println(fansi.Color.Green(reconstituteTextFrom(expected)))
+          println(fansi.Color.Yellow(s"Checking $renamedPath...\n"))
+          println(fansi.Color.Yellow("Expected..."))
+          println(fansi.Color.Green(reconstituteTextFrom(expected)))
 
-    mergeResult match
-      case FullyMerged(result) =>
-        println(fansi.Color.Yellow("Fully merged result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(result)))
-        assert(result.corresponds(expected)(Token.equality))
-      case MergedWithConflicts(leftResult, rightResult) =>
-        println(fansi.Color.Red(s"Left result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
-        println(fansi.Color.Red(s"Right result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+          mergeResult match
+            case FullyMerged(result) =>
+              println(fansi.Color.Yellow("Fully merged result..."))
+              println(fansi.Color.Green(reconstituteTextFrom(result)))
+              assert(result.corresponds(expected)(Token.equality))
+            case MergedWithConflicts(leftResult, rightResult) =>
+              println(fansi.Color.Red(s"Left result..."))
+              println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+              println(fansi.Color.Red(s"Right result..."))
+              println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
 
-        fail("Should have seen a clean merge.")
-    end match
-
-  end intraVersusInterfileDivergentCodeMotion
+              fail("Should have seen a clean merge.")
+          end match
+      }
+  end codeMotionAcrossAFileRename
 
 end CodeMotionAnalysisExtensionTest
 
@@ -2162,7 +2187,7 @@ trait ProseExamples:
       |}
       |""".stripMargin
 
-  protected val intraVersusInterfileDivergentMoveExampleBase: String =
+  protected val heyDiddleDiddleInModernForm: String =
     """
       |Hey diddle diddle,
       |The cat and the fiddle,
@@ -2172,7 +2197,7 @@ trait ProseExamples:
       |And the dish ran away with the spoon.
       |""".stripMargin
 
-  protected val intraVersusInterfileDivergentMoveExampleLeft: String =
+  protected val heyDiddleDiddleInArchaicForm: String =
     """
       |Hey diddle diddle,
       |The cat and the fiddle,
@@ -2182,7 +2207,28 @@ trait ProseExamples:
       |And the fork ran away with the spoon.
       |""".stripMargin
 
-  protected val intraVersusInterfileDivergentMoveExampleRight: String =
+  protected val heyDiddleDiddleWithInsertions: String =
+    """
+      |Hey diddle diddle,
+      |The cat and the fiddle,
+      |The cow jumped over the moon;
+      |The little dog laughed
+      |To see such sport, (they know how to have a party)
+      |And the dish ran away with the spoon.
+      |""".stripMargin
+
+  protected val heyDiddleDiddleWithInsertionsExpectedMerge: String =
+    """
+      |Hey diddle diddle,
+      |The cat and the fiddle,
+      |The cow jump'd over the moon;
+      |The little dog laugh'd
+      |To see such craft, (they know how to have a party)
+      |And the fork ran away with the spoon.
+      |""".stripMargin
+
+  protected val heyDiddleDiddleWithIntraFileMoveAndSurroundingInsertions
+      : String =
     """
       |Hey diddle diddle,
       |The cat and the fiddle,
@@ -2192,7 +2238,8 @@ trait ProseExamples:
       |And the dish ran away with the spoon.
       |""".stripMargin
 
-  protected val intraVersusInterfileDivergentMoveExampleExpectedMerge: String =
+  protected val heyDiddleDiddleWithIntraFileMoveAndSurroundingInsertionsExpectedMerge
+      : String =
     """
       |Hey diddle diddle,
       |The cat and the fiddle,
