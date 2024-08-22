@@ -1,7 +1,10 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.Eq
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{Contribution, Sized}
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
+  Contribution,
+  Sized
+}
 import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
 
@@ -13,7 +16,7 @@ object merge extends StrictLogging:
     * @param mergeAlgebra
     *   Carries out the merge operations determined by the merge algorithm. This
     *   allows a pluggable backend for deciding which element takes precedence
-    *   when say, elements from either side compare equal via {@code equality},
+    *   when say, elements from either side compare equal via {@code equality} ,
     *   but may not actually be the same via their natural equality. It can also
     *   support propagation of edits and insertions, as well as contract
     *   checking when testing.
@@ -21,11 +24,11 @@ object merge extends StrictLogging:
     *   {@code left} and {@code right} are considered modified versions of this
     *   sequence.
     * @param left
-    *   A modified version of {@code base}. Where there is a preservation or a
+    *   A modified version of {@code base} . Where there is a preservation or a
     *   coincident insertion, then this provides the representative element for
     *   the merge.
     * @param right
-    *   The other modified version of {@code base}.
+    *   The other modified version of {@code base} .
     * @param elementSize
     *   Some measure of an element's size, used to determine the longest common
     *   subsequence that provides the backbone for the merge.
@@ -45,26 +48,26 @@ object merge extends StrictLogging:
     *   either [[Contribution.CommonToBaseAndLeftOnly]] or
     *   [[Contribution.CommonToBaseAndRightOnly]], this implies a deletion or an
     *   edit on the other side, extending the backbone. <p><p> If an element is
-    *   a [[Contribution.Difference]] in {@code base}, then depending on the
+    *   a [[Contribution.Difference]] in {@code base} , then depending on the
     *   {@code left} and {@code right} context, it may mean a coincident
     *   deletion of that element, or conflicting edits of that element, or a
     *   conflict between an edit and an outright deletion of that element.
     *   <p><p> If an element is a [[Contribution.Difference]] in {@code left} or
-    *   in {@code right}, then depending on context this may mean an insertion
+    *   in {@code right} , then depending on context this may mean an insertion
     *   of the element on that side, or an edit, or may be one of two
     *   conflicting elements.<p><p> Edits are always looked for if they can
     *   avoid a conflict; so for example, if a [[Contribution.Difference]] in
     *   {@code left} is available to pair off with a
     *   [[Contribution.CommonToBaseAndRightOnly]] in both a {@code base} and
-    *   {@code right}, it will be taken to be a left-edit. This will not
+    *   {@code right} , it will be taken to be a left-edit. This will not
     *   conflict with a following [[Contribution.Difference]] in {@code right}
     *   as that will be taken to be a standalone right-insertion. <p><p>Edits
     *   are greedy in that they will eagerly take successive
     *   [[Contribution.Difference]] elements to make a long edit.<p><p>However,
     *   if there is for example a [[Contribution.Difference]] sandwiched between
-    *   two [[Contribution.CommonToBaseAndRightOnly]] elements in {@code right},
-    *   this breaks up the left-edits to preserve the sandwich in edited form in
-    *   the merge. <p><p>Similarly, successive edits on the same side will be
+    *   two [[Contribution.CommonToBaseAndRightOnly]] elements in {@code right}
+    *   , this breaks up the left-edits to preserve the sandwich in edited form
+    *   in the merge. <p><p>Similarly, successive edits on the same side will be
     *   treated as isolated edits rather than allowing the first to greedily
     *   capture all the [[Contribution.Difference]] elements.<p></p>Conflicts
     *   are also greedy, taking successive left- and right-insertions to make a

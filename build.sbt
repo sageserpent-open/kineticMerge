@@ -103,11 +103,11 @@ lazy val root = (project in file("."))
       "dev.optics" %% "monocle-macro" % "3.3.0"
     ),
     libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "2.4.0",
-    libraryDependencies += "com.lihaoyi"             %% "os-lib"  % "0.9.3",
+    libraryDependencies += "com.lihaoyi"             %% "os-lib"  % "0.10.4",
     libraryDependencies += "com.lihaoyi"             %% "fansi"   % "0.5.0",
     libraryDependencies += "com.lihaoyi"             %% "pprint"  % "0.9.0",
     libraryDependencies += "com.softwaremill.common" %% "tagging" % "2.3.5",
-    libraryDependencies += "com.google.guava" % "guava"      % "32.1.3-jre",
+    libraryDependencies += "com.google.guava" % "guava"      % "33.3.0-jre",
     libraryDependencies += "de.sciss"        %% "fingertree" % "1.5.5",
     libraryDependencies += "com.github.ben-manes.caffeine" % "caffeine" % "3.1.8",
     libraryDependencies += "org.apache.commons" % "commons-text" % "1.12.0",
