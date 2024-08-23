@@ -86,7 +86,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         mergeResultsByPath,
         changesMigratedThroughMotion,
         moveDestinationsReport,
-        insertionsAtPath
+        insertionsAtPath,
+        oneSidedDeletions
       ) =
         paths.foldLeft(
           Map.empty[Path, MergeResult[Section[Element]]],
@@ -97,14 +98,16 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             )
           ],
           emptyReport,
-          Vector.empty[InsertionsAtPath]
+          Vector.empty[InsertionsAtPath],
+          Set.empty[Section[Element]]
         ) {
           case (
                 (
                   mergeResultsByPath,
                   changesMigratedThroughMotion,
                   moveDestinationsReport,
-                  insertionsAtPath
+                  insertionsAtPath,
+                  oneSidedDeletions
                 ),
                 path
               ) =>
@@ -124,7 +127,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   leftSections.foldLeft(moveDestinationsReport)(
                     _.leftMoveOf(_)
                   ),
-                  insertionsAtPath
+                  insertionsAtPath,
+                  oneSidedDeletions
                 )
               case (None, None, Some(rightSections)) =>
                 // File added only on the right; pass through as there is
@@ -138,7 +142,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   rightSections.foldLeft(moveDestinationsReport)(
                     _.rightMoveOf(_)
                   ),
-                  insertionsAtPath
+                  insertionsAtPath,
+                  oneSidedDeletions
                 )
               case (
                     optionalBaseSections,
@@ -180,7 +185,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   insertionsAtPath :+ InsertionsAtPath(
                     path,
                     mergedSectionsResult.insertions
-                  )
+                  ),
+                  oneSidedDeletions union mergedSectionsResult.oneSidedDeletions
                 )
             end match
         }
@@ -320,25 +326,36 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     codeMotionAnalysis.right(path)
 
                 {
-                  def destinationsForValidAnchor(
-                      anchor: Section[Element]
-                  ): collection.Set[Section[Element]] =
-                    val matches = matchesFor(anchor)
+                  enum AnchorTestResult:
+                    case Found(destinations: collection.Set[Section[Element]])
+                    case StopLooking
+                    case KeepLooking
+                  end AnchorTestResult
+
+                  def testForAnchor(
+                      potentialAnchor: Section[Element]
+                  ): AnchorTestResult =
+                    val matches = matchesFor(potentialAnchor)
                     moveDestinationsReport.moveDestinationsByMatches
                       .get(matches)
-                      .fold(ifEmpty = Set.empty)(moveDestinations =>
+                      .fold(ifEmpty =
+                        if oneSidedDeletions.contains(potentialAnchor) then
+                          AnchorTestResult.KeepLooking
+                        else AnchorTestResult.StopLooking
+                      )(moveDestinations =>
                         if !isMoveDestinationOnGivenSide(
-                            anchor,
+                            potentialAnchor,
                             side,
                             moveDestinations
                           )
                         then
-                          side match
+                          AnchorTestResult.Found(side match
                             case Side.Left  => moveDestinations.right
                             case Side.Right => moveDestinations.left
-                        else Set.empty
+                          )
+                        else AnchorTestResult.StopLooking
                       )
-                  end destinationsForValidAnchor
+                  end testForAnchor
 
                   val Searching.Found(indexOfLeadingInsertedSection) =
                     file.searchByStartOffset(
@@ -346,21 +363,36 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     ): @unchecked
 
                   val potentialPrecedingAnchor =
-                    file.sections.take(indexOfLeadingInsertedSection).lastOption
+                    file.sections
+                      .take(indexOfLeadingInsertedSection)
+                      .view
+                      .reverse
+                      .map(testForAnchor)
+                      .takeWhile(AnchorTestResult.StopLooking != _)
+                      .dropWhile(AnchorTestResult.KeepLooking == _)
+                      .headOption
 
                   val predecessorAnchorDestinations =
-                    potentialPrecedingAnchor.flatMap(destinationsForValidAnchor)
+                    potentialPrecedingAnchor.fold(ifEmpty = Seq.empty) {
+                      case AnchorTestResult.Found(destinations) => destinations
+                    }
 
                   val onePastIndex =
                     contiguousInsertions.size + indexOfLeadingInsertedSection
 
                   val potentialSucceedingAnchor =
-                    file.sections.drop(onePastIndex).headOption
+                    file.sections
+                      .drop(onePastIndex)
+                      .view
+                      .map(testForAnchor)
+                      .takeWhile(AnchorTestResult.StopLooking != _)
+                      .dropWhile(AnchorTestResult.KeepLooking == _)
+                      .headOption
 
                   val successorAnchorDestinations =
-                    potentialSucceedingAnchor.flatMap(
-                      destinationsForValidAnchor
-                    )
+                    potentialSucceedingAnchor.fold(ifEmpty = Seq.empty) {
+                      case AnchorTestResult.Found(destinations) => destinations
+                    }
 
                   predecessorAnchorDestinations.map(
                     _ -> Anchoring.Predecessor

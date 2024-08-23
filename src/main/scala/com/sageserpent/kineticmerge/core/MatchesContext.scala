@@ -25,7 +25,8 @@ class MatchesContext[Element](
       coreMergeResult: CoreResult[Element],
       changesMigratedThroughMotion: MultiDict[Element, IndexedSeq[Element]],
       moveDestinationsReport: MoveDestinationsReport,
-      insertions: Seq[Insertion]
+      insertions: Seq[Insertion],
+      oneSidedDeletions: Set[Element]
   )
 
   // NOTE: this could be moved into a companion object for `MatchesContext`, but
@@ -160,7 +161,8 @@ class MatchesContext[Element](
             coreMergeResult = coreMergeAlgebra.empty,
             changesMigratedThroughMotion = MultiDict.empty,
             moveDestinationsReport = emptyReport,
-            insertions = Vector.empty
+            insertions = Vector.empty,
+            oneSidedDeletions = Set.empty
           )
 
         override def preservation(
@@ -233,6 +235,8 @@ class MatchesContext[Element](
               coreMergeAlgebra
                 .leftDeletion(_, deletedBaseElement, deletedRightElement)
             )
+            .focus(_.oneSidedDeletions)
+            .modify(_ + deletedRightElement)
 
           val matches = matchesFor(deletedBaseElement).toSeq
 
@@ -280,6 +284,8 @@ class MatchesContext[Element](
               coreMergeAlgebra
                 .rightDeletion(_, deletedBaseElement, deletedLeftElement)
             )
+            .focus(_.oneSidedDeletions)
+            .modify(_ + deletedLeftElement)
 
           val matches = matchesFor(deletedBaseElement).toSeq
 
