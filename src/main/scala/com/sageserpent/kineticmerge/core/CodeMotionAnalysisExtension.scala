@@ -345,19 +345,22 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       contiguousInsertions.head.startOffset
                     ): @unchecked
 
-                  val predecessorAnchorDestinations = Option
-                    .when(0 < indexOfLeadingInsertedSection)(
-                      file.sections(indexOfLeadingInsertedSection - 1)
-                    )
-                    .flatMap(destinationsForValidAnchor)
+                  val potentialPrecedingAnchor =
+                    file.sections.take(indexOfLeadingInsertedSection).lastOption
+
+                  val predecessorAnchorDestinations =
+                    potentialPrecedingAnchor.flatMap(destinationsForValidAnchor)
 
                   val onePastIndex =
                     contiguousInsertions.size + indexOfLeadingInsertedSection
-                  val successorAnchorDestinations = Option
-                    .when(file.sections.length > onePastIndex)(
-                      file.sections(onePastIndex)
+
+                  val potentialSucceedingAnchor =
+                    file.sections.drop(onePastIndex).headOption
+
+                  val successorAnchorDestinations =
+                    potentialSucceedingAnchor.flatMap(
+                      destinationsForValidAnchor
                     )
-                    .flatMap(destinationsForValidAnchor)
 
                   predecessorAnchorDestinations.map(
                     _ -> Anchoring.Predecessor
