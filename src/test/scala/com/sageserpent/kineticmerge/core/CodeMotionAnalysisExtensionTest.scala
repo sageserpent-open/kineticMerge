@@ -764,21 +764,34 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
               .Green(moveDestinationsReport.summarizeInText.mkString("\n"))
           )
 
-          val contentAtOriginalPath = mergeResultsByPath.get(originalPath)
+          val contentAtOriginalPath = mergeResultsByPath(originalPath)
 
-          contentAtOriginalPath.foreach(content =>
-            fail(
-              fansi.Color
-                .Yellow(s"\nShould not have this content at $originalPath...\n")
-                .render + fansi.Color
-                .Green(
-                  reconstituteTextFrom(contentAtOriginalPath match
-                    case Some(FullyMerged(result)) => result
+          contentAtOriginalPath match
+            case FullyMerged(result) =>
+              assert(
+                result.isEmpty,
+                fansi.Color
+                  .Yellow(
+                    s"\nShould not have this content at $originalPath...\n"
                   )
-                )
-                .render
-            )
-          )
+                  .render + fansi.Color
+                  .Green(
+                    reconstituteTextFrom(result)
+                  )
+                  .render
+              )
+            case MergedWithConflicts(leftResult, rightResult) =>
+              fail(
+                fansi.Color
+                  .Yellow(
+                    s"\nShould not have this content at $originalPath...\n"
+                  )
+                  .render + fansi.Color.Red(s"\nLeft result...\n")
+                  + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
+                  + fansi.Color.Red(s"\nRight result...\n").render
+                  + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
+              )
+          end match
 
           val mergeResult = mergeResultsByPath(renamedPath)
 
