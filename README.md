@@ -2,9 +2,11 @@
 
 [![Maven Central](https://index.scala-lang.org/sageserpent-open/kineticmerge/kinetic-merge/latest-by-scala-version.svg?color=2465cd&style=flat)](https://index.scala-lang.org/sageserpent-open/kineticmerge/kinetic-merge)
 
+[![Scala Steward badge](https://img.shields.io/badge/Scala_Steward-helping-blue.svg?style=flat&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAQCAMAAAARSr4IAAAAVFBMVEUAAACHjojlOy5NWlrKzcYRKjGFjIbp293YycuLa3pYY2LSqql4f3pCUFTgSjNodYRmcXUsPD/NTTbjRS+2jomhgnzNc223cGvZS0HaSD0XLjbaSjElhIr+AAAAAXRSTlMAQObYZgAAAHlJREFUCNdNyosOwyAIhWHAQS1Vt7a77/3fcxxdmv0xwmckutAR1nkm4ggbyEcg/wWmlGLDAA3oL50xi6fk5ffZ3E2E3QfZDCcCN2YtbEWZt+Drc6u6rlqv7Uk0LdKqqr5rk2UCRXOk0vmQKGfc94nOJyQjouF9H/wCc9gECEYfONoAAAAASUVORK5CYII=)](https://scala-steward.org)
+
 Merge a heavily refactored codebase and stay sane.
 
-(**Release Candidate - 1.2.0**).
+(**Release Candidate - 1.2.4**).
 
 YouTube: [Kinetic Merge: Merging through a File Split](https://youtu.be/JHb9DKK0LIA)
 
@@ -42,7 +44,8 @@ If you're on Windows, instead of `kinetic-merge` use the companion download *`ki
 
 Stuck in a firewalled corporate environment and can't just download anything you feel like?
 
-Try the instructions here [if you have Coursier](https://github.com/sageserpent-open/kineticMerge/issues/21#issuecomment-1933956129)
+Try the instructions
+here [if you have Coursier](https://github.com/sageserpent-open/kineticMerge/issues/21#issuecomment-1933956129)
 or [here if you have a corporate mirror of Maven](https://github.com/sageserpent-open/kineticMerge/issues/21#issuecomment-1932619838).
 
 ## Running it ##
@@ -108,7 +111,9 @@ one.
 
 ## Status
 
-Well, that's the plan. It's no longer vapourware, there is a release candidate; the code motion aspect is implemented end-to-end. Code motion is tracked both intra-file and inter-file. You can split a file into pieces on one branch and edit the original file on another - those changes will find their way into the right places when you merge. Cool.
+Well, that's the plan. It's no longer vapourware, there is a release candidate; the code motion aspect is implemented
+end-to-end. Code motion is tracked both intra-file and inter-file. You can split a file into pieces on one branch and
+edit the original file on another - those changes will find their way into the right places when you merge. Cool.
 
 Give it a spin, do raise bug tickets,
 see [https://github.com/sageserpent-open/kineticMerge/issues/21](https://github.com/sageserpent-open/kineticMerge/issues/21)
