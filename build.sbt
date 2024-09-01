@@ -4,13 +4,15 @@ import xerial.sbt.Sonatype.*
 import scala.language.postfixOps
 import scala.sys.process.*
 
-lazy val javaVersion = "14"
+lazy val javaVersion = "19"
 
 ThisBuild / version := "0.1.0-SNAPSHOT"
 
 ThisBuild / scalaVersion := "3.3.3"
 
 ThisBuild / javacOptions ++= Seq("-source", javaVersion, "-target", javaVersion)
+
+ThisBuild / scalacOptions += s"-java-output-version:$javaVersion"
 
 lazy val packageExecutable =
   taskKey[String]("Package an executable with Coursier")
