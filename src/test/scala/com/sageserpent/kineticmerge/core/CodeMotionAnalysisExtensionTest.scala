@@ -764,6 +764,26 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
               .Green(moveDestinationsReport.summarizeInText.mkString("\n"))
           )
 
+          val mergeResult = mergeResultsByPath(renamedPath)
+
+          println(fansi.Color.Yellow(s"Checking $renamedPath...\n"))
+          println(fansi.Color.Yellow("Expected..."))
+          println(fansi.Color.Green(reconstituteTextFrom(expected)))
+
+          mergeResult match
+            case FullyMerged(result) =>
+              println(fansi.Color.Yellow("Fully merged result..."))
+              println(fansi.Color.Green(reconstituteTextFrom(result)))
+              assert(result.corresponds(expected)(Token.equality))
+            case MergedWithConflicts(leftResult, rightResult) =>
+              println(fansi.Color.Red(s"Left result..."))
+              println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+              println(fansi.Color.Red(s"Right result..."))
+              println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+              fail("Should have seen a clean merge.")
+          end match
+
           val contentAtOriginalPath = mergeResultsByPath(originalPath)
 
           contentAtOriginalPath match
@@ -791,26 +811,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
                   + fansi.Color.Red(s"\nRight result...\n").render
                   + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
               )
-          end match
-
-          val mergeResult = mergeResultsByPath(renamedPath)
-
-          println(fansi.Color.Yellow(s"Checking $renamedPath...\n"))
-          println(fansi.Color.Yellow("Expected..."))
-          println(fansi.Color.Green(reconstituteTextFrom(expected)))
-
-          mergeResult match
-            case FullyMerged(result) =>
-              println(fansi.Color.Yellow("Fully merged result..."))
-              println(fansi.Color.Green(reconstituteTextFrom(result)))
-              assert(result.corresponds(expected)(Token.equality))
-            case MergedWithConflicts(leftResult, rightResult) =>
-              println(fansi.Color.Red(s"Left result..."))
-              println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
-              println(fansi.Color.Red(s"Right result..."))
-              println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
-
-              fail("Should have seen a clean merge.")
           end match
       }
   end codeMotionAcrossAFileRename
@@ -2243,8 +2243,9 @@ trait ProseExamples:
       |The cat and the fiddle,
       |The cow jump'd over the moon;
       |The little dog laugh'd
-      |To see such craft, (they know how to have a party)
-      |And the fork ran away with the spoon.
+      |To see such (they know how to have a party) craft,
+      |And the fork (they know how to have a party)
+      |ran away with the spoon.
       |""".stripMargin
 
   protected val heyDiddleDiddleWithIntraFileMove: String =
@@ -2285,7 +2286,8 @@ trait ProseExamples:
       |The cat and the fiddle,
       |The cow jump'd!
       |The little dog laugh'd
-      |To see such craft, (in fact he was over the moon)
-      |And the fork ran away with the spoon.
+      |To see such (in fact he was over the moon) craft,
+      |And the fork (in fact he was over the moon)
+      |ran away with the spoon.
       |""".stripMargin
 end ProseExamples
