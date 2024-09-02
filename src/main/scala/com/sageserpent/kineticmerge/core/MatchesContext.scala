@@ -21,6 +21,24 @@ class MatchesContext[Element](
       case AllSides(baseElement, _, _)  => Some(baseElement)
     }
 
+  /** @param coreMergeResult
+    *   What is says on the tin: a simpler merge result that is delegated to by
+    *   the operations implemented in
+    *   [[MatchesContext.MergeResultDetectingMotion.mergeAlgebra]].
+    * @param changesMigratedThroughMotion
+    *   Edits and deletions to be migrated, referenced by move destination.
+    * @param moveDestinationsReport
+    * @param insertions
+    *   Insertions that may need to be migrated - in contrast to
+    *   {@code changesMigratedThroughMotion} , these have to be collected
+    *   speculatively upfront and then associated with anchors once the global
+    *   picture of code motion is available.
+    * @param oneSidedDeletions
+    *   Deletions on just one side that may influence the discovery of anchors
+    *   for insertion migration.
+    * @tparam CoreResult
+    * @tparam Element
+    */
   case class MergeResultDetectingMotion[CoreResult[_], Element](
       coreMergeResult: CoreResult[Element],
       changesMigratedThroughMotion: MultiDict[Element, IndexedSeq[Element]],

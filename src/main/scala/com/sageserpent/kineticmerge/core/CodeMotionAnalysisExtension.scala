@@ -340,8 +340,18 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       .get(matches)
                       .fold(ifEmpty =
                         if oneSidedDeletions.contains(potentialAnchor) then
+                          // If the potential anchor is a one-sided deletion,
+                          // then it isn't an anchor; however the lack of an
+                          // edit in the same file means we can think of it as
+                          // noise that doesn't affect the validity of a
+                          // subsequent anchor.
                           AnchorTestResult.KeepLooking
-                        else AnchorTestResult.StopLooking
+                        else
+                          // There is an edit on the other side of the potential
+                          // anchor in the same file, this definitely isn't an
+                          // anchor in itself and will hem in any insertions
+                          // from the possibility of a subsequent anchor.
+                          AnchorTestResult.StopLooking
                       )(moveDestinations =>
                         if !isMoveDestinationOnGivenSide(
                             potentialAnchor,
@@ -362,37 +372,34 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       contiguousInsertions.head.startOffset
                     ): @unchecked
 
-                  val potentialPrecedingAnchor =
+                  val predecessorAnchorDestinations =
                     file.sections
                       .take(indexOfLeadingInsertedSection)
                       .view
                       .reverse
                       .map(testForAnchor)
-                      .takeWhile(AnchorTestResult.StopLooking != _)
                       .dropWhile(AnchorTestResult.KeepLooking == _)
                       .headOption
-
-                  val predecessorAnchorDestinations =
-                    potentialPrecedingAnchor.fold(ifEmpty = Seq.empty) {
-                      case AnchorTestResult.Found(destinations) => destinations
-                    }
+                      .collect { case AnchorTestResult.Found(destinations) =>
+                        destinations
+                      }
+                      .getOrElse(Set.empty)
 
                   val onePastIndex =
                     contiguousInsertions.size + indexOfLeadingInsertedSection
 
-                  val potentialSucceedingAnchor =
+                  val successorAnchorDestinations =
                     file.sections
                       .drop(onePastIndex)
                       .view
                       .map(testForAnchor)
-                      .takeWhile(AnchorTestResult.StopLooking != _)
                       .dropWhile(AnchorTestResult.KeepLooking == _)
+                      .takeWhile(AnchorTestResult.StopLooking != _)
                       .headOption
-
-                  val successorAnchorDestinations =
-                    potentialSucceedingAnchor.fold(ifEmpty = Seq.empty) {
-                      case AnchorTestResult.Found(destinations) => destinations
-                    }
+                      .collect { case AnchorTestResult.Found(destinations) =>
+                        destinations
+                      }
+                      .getOrElse(Set.empty)
 
                   predecessorAnchorDestinations.map(
                     _ -> Anchoring.Predecessor
