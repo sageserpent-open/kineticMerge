@@ -685,7 +685,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
   @TestFactory
   def codeMotionAcrossAFileRename(): DynamicTests =
     val configuration = Configuration(
-      minimumMatchSize = 3,
+      minimumMatchSize = 2,
       thresholdSizeFractionForMatching = 0,
       minimumAmbiguousMatchSize = 0
     )
@@ -2243,9 +2243,8 @@ trait ProseExamples:
       |The cat and the fiddle,
       |The cow jump'd over the moon;
       |The little dog laugh'd
-      |To see such (they know how to have a party) craft,
-      |And the fork (they know how to have a party)
-      |ran away with the spoon.
+      |To see such craft, (they know how to have a party)
+      |And the fork ran away with the spoon.
       |""".stripMargin
 
   protected val heyDiddleDiddleWithIntraFileMove: String =
@@ -2262,7 +2261,7 @@ trait ProseExamples:
     """
       |Hey diddle diddle,
       |The cat and the fiddle,
-      |The cow ! jump'd over the moon!
+      |The cow jump'd over the moon!
       |The little dog laugh'd
       |To see such craft,
       |And the fork ran away with the spoon over the moon.
@@ -2284,10 +2283,9 @@ trait ProseExamples:
     """
       |Hey diddle diddle,
       |The cat and the fiddle,
-      |The cow ! jump'd over the moon!
+      |The cow jump'd over the moon!
       |The little dog laugh'd
-      |To see such (in fact he was over the moon) craft,
-      |And the fork (in fact he was over the moon)
-      |ran away with the spoon.
+      |To see such craft, (in fact he was over the moon)
+      |And the fork ran away with the spoon.
       |""".stripMargin
 end ProseExamples
