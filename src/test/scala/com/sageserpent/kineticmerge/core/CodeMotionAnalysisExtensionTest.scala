@@ -717,7 +717,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           heyDiddleDiddleWithIntraFileMoveAndSurroundingInsertionsExpectedMerge
         )
       )
-      .withLimit(2)
+      .withLimit(3)
       .dynamicTests {
         (label, baseContent, leftContent, rightContent, expectedMergeContent) =>
           println(fansi.Color.Yellow(s"*** $label ***"))
@@ -2262,7 +2262,7 @@ trait ProseExamples:
     """
       |Hey diddle diddle,
       |The cat and the fiddle,
-      |The cow jump'd!
+      |The cow ! jump'd over the moon!
       |The little dog laugh'd
       |To see such craft,
       |And the fork ran away with the spoon over the moon.
@@ -2284,7 +2284,7 @@ trait ProseExamples:
     """
       |Hey diddle diddle,
       |The cat and the fiddle,
-      |The cow jump'd!
+      |The cow ! jump'd over the moon!
       |The little dog laugh'd
       |To see such (in fact he was over the moon) craft,
       |And the fork (in fact he was over the moon)
