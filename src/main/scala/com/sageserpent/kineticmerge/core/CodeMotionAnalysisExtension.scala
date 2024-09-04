@@ -264,16 +264,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           ]] =
         MultiDict.from(insertionsAtPath.flatMap {
           case InsertionsAtPath(path, insertions) =>
-            val insertionsThatAreNotMoveDestinations = insertions.filterNot {
-              case Insertion(side, inserted) =>
-                val matches = matchesFor(inserted)
-                moveDestinationsReport.moveDestinationsByMatches
-                  .get(matches)
-                  .fold(ifEmpty = false)(
-                    isMoveDestinationOnGivenSide(inserted, side, _)
-                  )
-            }
-
             case class InsertionRun(
                 side: Side,
                 contiguousInsertions: Seq[Section[Element]]
@@ -282,7 +272,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             end InsertionRun
 
             val (partialResult, insertionRun) =
-              insertionsThatAreNotMoveDestinations
+              insertions
                 .foldLeft(
                   Vector.empty[InsertionRun],
                   None: Option[InsertionRun]
