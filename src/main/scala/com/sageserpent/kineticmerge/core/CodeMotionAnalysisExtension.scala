@@ -384,7 +384,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       .view
                       .map(testForAnchor)
                       .dropWhile(AnchorTestResult.KeepLooking == _)
-                      .takeWhile(AnchorTestResult.StopLooking != _)
                       .headOption
                       .collect { case AnchorTestResult.Found(destinations) =>
                         destinations
