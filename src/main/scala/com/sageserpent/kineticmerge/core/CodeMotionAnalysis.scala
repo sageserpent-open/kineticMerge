@@ -5,12 +5,7 @@ import cats.instances.seq.*
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction}
-import com.sageserpent.kineticmerge.{
-  NoProgressRecording,
-  ProgressRecording,
-  ProgressRecordingSession,
-  core
-}
+import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording, ProgressRecordingSession, core}
 import com.typesafe.scalalogging.StrictLogging
 import de.sciss.fingertree.RangedSeq
 import monocle.syntax.all.*
@@ -38,18 +33,13 @@ object CodeMotionAnalysis extends StrictLogging:
     * instances.
     *
     * Where a section moves from {@code base} , it enters into a match with one
-    * or both corresponding sections in {@code left} and {@code right} ; if
-    * both, then one of those latter two sections is considered to be dominant
-    * and therefore represents the match. If there is just one matching section,
-    * that is taken to be the dominant one for the sake of picking up whitespace
-    * changes.
+    * or both corresponding sections in {@code left} and {@code right} .
     *
     * @note
     *   Although code motion is strictly speaking relative to the base sources,
     *   if the same section is added into both the left and right sources as a
     *   coincidental insertion (so not present in the base sources), this is
-    *   treated as a match across the left and right sources anyway, so there
-    *   will be a dominant section.
+    *   treated as a match across the left and right sources anyway.
     * @param base
     *   The common base sources from which the left and right sources are
     *   derived.

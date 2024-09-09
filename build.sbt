@@ -4,13 +4,13 @@ import xerial.sbt.Sonatype.*
 import scala.language.postfixOps
 import scala.sys.process.*
 
-lazy val javaVersion = "14"
-
-ThisBuild / version := "0.1.0-SNAPSHOT"
+lazy val javaVersion = "17"
 
 ThisBuild / scalaVersion := "3.3.3"
 
 ThisBuild / javacOptions ++= Seq("-source", javaVersion, "-target", javaVersion)
+
+ThisBuild / scalacOptions += s"-java-output-version:$javaVersion"
 
 lazy val packageExecutable =
   taskKey[String]("Package an executable with Coursier")
@@ -89,8 +89,8 @@ lazy val root = (project in file("."))
     },
     packageExecutable := (packageExecutable dependsOn publishLocal).value,
     libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.9.5",
-    libraryDependencies += "ch.qos.logback"    % "logback-core"    % "1.5.7",
-    libraryDependencies += "ch.qos.logback"    % "logback-classic" % "1.5.7",
+    libraryDependencies += "ch.qos.logback"    % "logback-core"    % "1.5.8",
+    libraryDependencies += "ch.qos.logback"    % "logback-classic" % "1.5.8",
     libraryDependencies += "org.typelevel"    %% "cats-core"       % "2.9.0",
     libraryDependencies += "com.github.scopt" %% "scopt"           % "4.1.0",
     libraryDependencies += "org.typelevel" %% "cats-collections-core" % "0.9.8",
@@ -103,7 +103,7 @@ lazy val root = (project in file("."))
       "dev.optics" %% "monocle-macro" % "3.3.0"
     ),
     libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "2.4.0",
-    libraryDependencies += "com.lihaoyi"             %% "os-lib"  % "0.10.4",
+    libraryDependencies += "com.lihaoyi"             %% "os-lib"  % "0.10.6",
     libraryDependencies += "com.lihaoyi"             %% "fansi"   % "0.5.0",
     libraryDependencies += "com.lihaoyi"             %% "pprint"  % "0.9.0",
     libraryDependencies += "com.softwaremill.common" %% "tagging" % "2.3.5",
@@ -114,7 +114,7 @@ lazy val root = (project in file("."))
     libraryDependencies += "me.tongfei"         % "progressbar"  % "0.10.1",
     libraryDependencies +=
       "org.scala-lang.modules" %% "scala-parallel-collections" % "1.0.4",
-    libraryDependencies += "com.sageserpent" %% "americium" % "1.19.4" % Test,
+    libraryDependencies += "com.sageserpent" %% "americium" % "1.19.6" % Test,
     libraryDependencies += "eu.timepit"      %% "refined"   % "0.11.2",
     libraryDependencies += "com.eed3si9n.expecty" %% "expecty" % "0.16.0" % Test,
     libraryDependencies += "com.github.sbt.junit" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
