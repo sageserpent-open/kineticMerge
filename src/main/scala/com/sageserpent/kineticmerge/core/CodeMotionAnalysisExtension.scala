@@ -224,43 +224,52 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               case (_, rightPart) => section == rightPart
             }
 
-      val migrationOrdering: Ordering[Seq[Section[Element]]] =
+      given sectionRunOrdering[Sequence[Item] <: Seq[Item]]
+          : Ordering[Sequence[Section[Element]]] =
         Ordering.Implicits.seqOrdering(
           Ordering.by[Section[Element], IndexedSeq[Element]](_.content)(
             Ordering.Implicits.seqOrdering(summon[Eq[Element]].toOrdering)
           )
         )
 
-      def uniqueMigrations[Sequence[Item] <: Seq[Item]](
-          migratedChanges: collection.Set[Sequence[Section[Element]]]
-      ) =
-        require(migratedChanges.nonEmpty)
+      given insertionSpliceOrdering: Ordering[InsertionSplice] =
+        Ordering
+          .by[InsertionSplice, Seq[Section[Element]]](_.insertions)
+          .orElseBy(_.numberOfSkipsToTheAnchor)
+
+      def uniqueItemsFrom[Item](
+          items: collection.Set[Item]
+      )(using itemOrdering: Ordering[Item]): List[Item] =
+        require(items.nonEmpty)
 
         val migratedChangesSortedByContent =
-          migratedChanges.toSeq.sorted(migrationOrdering)
+          items.toSeq.sorted(itemOrdering)
 
-        val uniqueMigratedChanges =
+        val result =
           migratedChangesSortedByContent.tail.foldLeft(
             List(migratedChangesSortedByContent.head)
           ) { case (partialResult @ head :: _, change) =>
-            if 0 == migrationOrdering.compare(head, change) then partialResult
+            if 0 == itemOrdering.compare(head, change) then partialResult
             else change :: partialResult
           }
 
-        assume(uniqueMigratedChanges.nonEmpty)
+        assume(result.nonEmpty)
 
-        uniqueMigratedChanges
-      end uniqueMigrations
+        result
+      end uniqueItemsFrom
 
       enum Anchoring:
         case Predecessor
         case Successor
       end Anchoring
 
-      val migratedInsertionsByAnchorDestinations
-          : MultiDict[(Section[Element], Anchoring), Seq[
-            Section[Element]
-          ]] =
+      case class InsertionSplice(
+          insertions: Seq[Section[Element]],
+          numberOfSkipsToTheAnchor: Int
+      )
+
+      val migratedInsertionSplicesByAnchorDestinations
+          : MultiDict[(Section[Element], Anchoring), InsertionSplice] =
         MultiDict.from(insertionsAtPath.flatMap {
           case InsertionsAtPath(path, insertions) =>
             case class InsertionRun(
@@ -318,7 +327,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   enum AnchorTestResult:
                     case Found(destinations: collection.Set[Section[Element]])
                     case StopLooking
-                    case KeepLooking
+                    case SkipOverAndKeepLooking
                   end AnchorTestResult
 
                   def testForAnchor(
@@ -334,7 +343,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                           // edit in the same file means we can think of it as
                           // noise that doesn't affect the validity of a
                           // subsequent anchor.
-                          AnchorTestResult.KeepLooking
+                          AnchorTestResult.SkipOverAndKeepLooking
                         else
                           // There is an edit on the other side of the potential
                           // anchor in the same file, this definitely isn't an
@@ -361,43 +370,66 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       contiguousInsertions.head.startOffset
                     ): @unchecked
 
-                  val predecessorAnchorDestinations =
-                    file.sections
+                  val (
+                    predecessorAnchorDestinations,
+                    numberOfSkipsToPredecessor
+                  ) =
+                    val (skipped, remainder) = file.sections
                       .take(indexOfLeadingInsertedSection)
                       .view
                       .reverse
                       .map(testForAnchor)
-                      .dropWhile(AnchorTestResult.KeepLooking == _)
-                      .headOption
+                      .span(AnchorTestResult.SkipOverAndKeepLooking == _)
+
+                    remainder.headOption
                       .collect { case AnchorTestResult.Found(destinations) =>
                         destinations
                       }
-                      .getOrElse(Set.empty)
+                      .getOrElse(Set.empty) -> skipped.size
+                  end val
 
                   val onePastIndex =
                     contiguousInsertions.size + indexOfLeadingInsertedSection
 
-                  val successorAnchorDestinations =
-                    file.sections
+                  val (successorAnchorDestinations, numberOfSkipsToSuccessor) =
+                    val (skipped, remainder) = file.sections
                       .drop(onePastIndex)
                       .view
                       .map(testForAnchor)
-                      .dropWhile(AnchorTestResult.KeepLooking == _)
-                      .headOption
+                      .span(AnchorTestResult.SkipOverAndKeepLooking == _)
+
+                    remainder.headOption
                       .collect { case AnchorTestResult.Found(destinations) =>
                         destinations
                       }
-                      .getOrElse(Set.empty)
+                      .getOrElse(Set.empty) -> skipped.size
+                  end val
 
-                  predecessorAnchorDestinations.map(
-                    _ -> Anchoring.Predecessor
-                  ) ++ successorAnchorDestinations.map(_ -> Anchoring.Successor)
-                }.map(_ -> contiguousInsertions)
+                  predecessorAnchorDestinations
+                    .map(
+                      _ -> Anchoring.Predecessor
+                    )
+                    .map(
+                      _ -> InsertionSplice(
+                        contiguousInsertions,
+                        numberOfSkipsToPredecessor
+                      )
+                    ) ++ successorAnchorDestinations
+                    .map(_ -> Anchoring.Successor)
+                    .map(
+                      _ -> InsertionSplice(
+                        contiguousInsertions,
+                        numberOfSkipsToSuccessor
+                      )
+                    )
+                }
             }
         })
 
       val migratedInsertions =
-        migratedInsertionsByAnchorDestinations.values.flatten.toSet
+        migratedInsertionSplicesByAnchorDestinations.values
+          .flatMap(_.insertions)
+          .toSet
 
       def migrateAnchoredInsertions(
           path: Path,
@@ -437,24 +469,24 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     (partialResult, deferredMigratedInsertion),
                     candidateAnchorDestination
                   ) =>
-                val precedingMigratedInsertions =
-                  migratedInsertionsByAnchorDestinations.get(
+                val precedingMigratedInsertionSplices =
+                  migratedInsertionSplicesByAnchorDestinations.get(
                     candidateAnchorDestination -> Anchoring.Successor
                   )
 
-                val precedingMigratedInsertion =
-                  Option.when(precedingMigratedInsertions.nonEmpty) {
-                    val uniqueMigratedInsertions =
-                      uniqueMigrations(precedingMigratedInsertions)
+                val precedingInsertionSplice =
+                  Option.when(precedingMigratedInsertionSplices.nonEmpty) {
+                    val uniqueInsertionSplices =
+                      uniqueItemsFrom(precedingMigratedInsertionSplices)
 
-                    uniqueMigratedInsertions match
+                    uniqueInsertionSplices match
                       case head :: Nil => head
                       case _ =>
                         throw new RuntimeException(
                           s"""
                            |Multiple potential insertions migrated before destination: $candidateAnchorDestination,
                            |these are:
-                           |${uniqueMigratedInsertions
+                           |${uniqueInsertionSplices
                               .map(insertion => s"PRE-INSERTION: $insertion")
                               .zipWithIndex
                               .map((insertion, index) =>
@@ -468,24 +500,24 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     end match
                   }
 
-                val succeedingMigratedInsertions =
-                  migratedInsertionsByAnchorDestinations.get(
+                val succeedingMigratedInsertionSplices =
+                  migratedInsertionSplicesByAnchorDestinations.get(
                     candidateAnchorDestination -> Anchoring.Predecessor
                   )
 
-                val succeedingMigratedInsertion =
-                  Option.when(succeedingMigratedInsertions.nonEmpty) {
-                    val uniqueMigratedInsertions =
-                      uniqueMigrations(succeedingMigratedInsertions)
+                val succeedingInsertionSplice =
+                  Option.when(succeedingMigratedInsertionSplices.nonEmpty) {
+                    val uniqueInsertionSplices =
+                      uniqueItemsFrom(succeedingMigratedInsertionSplices)
 
-                    uniqueMigratedInsertions match
+                    uniqueInsertionSplices match
                       case head :: Nil => head
                       case _ =>
                         throw new RuntimeException(
                           s"""
                              |Multiple potential insertions migrated after destination: $candidateAnchorDestination,
                              |these are:
-                             |${uniqueMigratedInsertions
+                             |${uniqueInsertionSplices
                               .map(insertion => s"POST-INSERTION: $insertion")
                               .zipWithIndex
                               .map((insertion, index) =>
@@ -500,18 +532,21 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   }
 
                 val result =
-                  (deferredMigratedInsertion, precedingMigratedInsertion) match
+                  (deferredMigratedInsertion, precedingInsertionSplice) match
                     case (None, None) =>
                       partialResult :+ candidateAnchorDestination
                     case (Some(deferred), None) =>
                       partialResult.appendMigratedInsertions(
                         deferred
                       ) :+ candidateAnchorDestination
-                    case (None, Some(preceding)) =>
+                    case (None, Some(InsertionSplice(preceding, _))) =>
                       partialResult.appendMigratedInsertions(
                         preceding
                       ) :+ candidateAnchorDestination
-                    case (Some(deferred), Some(preceding)) =>
+                    case (
+                          Some(deferred),
+                          Some(InsertionSplice(preceding, _))
+                        ) =>
                       if deferred == preceding then
                         partialResult.appendMigratedInsertions(
                           deferred
@@ -521,7 +556,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                           deferred ++ preceding
                         ) :+ candidateAnchorDestination
 
-                result -> succeedingMigratedInsertion
+                result -> succeedingInsertionSplice.map(_.insertions)
             } match
             case (partialResult, deferredMigratedInsertion) =>
               deferredMigratedInsertion.fold(ifEmpty = partialResult)(
@@ -579,7 +614,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             .get(section)
 
           if migratedChanges.nonEmpty then
-            val uniqueMigratedChanges = uniqueMigrations(migratedChanges)
+            val uniqueMigratedChanges = uniqueItemsFrom(migratedChanges)
 
             val migratedChange: IndexedSeq[Section[Element]] =
               uniqueMigratedChanges match
