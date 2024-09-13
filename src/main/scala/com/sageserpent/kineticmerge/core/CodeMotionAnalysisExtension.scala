@@ -543,6 +543,17 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     end match
                   }
 
+                precedingInsertionSplice.foreach(splice =>
+                  logger.debug(
+                    s"Encountered succeeding anchor destination: ${pprintCustomised(candidateAnchorDestination)} with associated preceding insertion splice: ${pprintCustomised(splice)}."
+                  )
+                )
+                succeedingInsertionSplice.foreach(splice =>
+                  logger.debug(
+                    s"Encountered preceding anchor destination: ${pprintCustomised(candidateAnchorDestination)} with associated following insertion splice: ${pprintCustomised(splice)}."
+                  )
+                )
+
                 (
                   anchorContext,
                   precedingInsertionSplice,
