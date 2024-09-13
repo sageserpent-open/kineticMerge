@@ -266,6 +266,13 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       case class InsertionSplice(
           insertions: Seq[Section[Element]],
           numberOfSkipsToTheAnchor: Int
+      ):
+        require(0 <= numberOfSkipsToTheAnchor)
+      end InsertionSplice
+
+      case class DeferredContext(
+          deferredInsertions: Seq[Section[Element]],
+          deferredContext: Seq[Section[Element]]
       )
 
       val migratedInsertionSplicesByAnchorDestinations
@@ -450,23 +457,28 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           private def appendMigratedInsertions(
               migratedInsertions: Seq[Section[Element]]
           ): IndexedSeq[Section[Element]] =
-            logger.debug(
-              s"Applying migrated insertion of ${pprintCustomised(migratedInsertions)} after destination: ${pprintCustomised(sections.last)}."
-            )
+            if migratedInsertions.nonEmpty then
+              logger.debug(
+                s"Applying migrated insertion of ${pprintCustomised(migratedInsertions)} after destination: ${pprintCustomised(sections.last)}."
+              )
+            end if
             sections ++ migratedInsertions
 
         def insertOrDeferAnyMigratedInsertions(
             sections: IndexedSeq[Section[Element]]
         ): IndexedSeq[Section[Element]] =
+          val emptyContext: InsertionSplice | DeferredContext = DeferredContext(
+            deferredInsertions = Seq.empty,
+            deferredContext = Seq.empty
+          )
+
           sections
             .foldLeft(
               IndexedSeq
-                .empty[Section[Element]] -> (None: Option[
-                Seq[Section[Element]]
-              ])
+                .empty[Section[Element]] -> emptyContext
             ) {
               case (
-                    (partialResult, deferredMigratedInsertion),
+                    (partialResult, anchorContext),
                     candidateAnchorDestination
                   ) =>
                 val precedingMigratedInsertionSplices =
@@ -484,17 +496,17 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       case _ =>
                         throw new RuntimeException(
                           s"""
-                           |Multiple potential insertions migrated before destination: $candidateAnchorDestination,
-                           |these are:
-                           |${uniqueInsertionSplices
+                             |Multiple potential insertions migrated before destination: $candidateAnchorDestination,
+                             |these are:
+                             |${uniqueInsertionSplices
                               .map(insertion => s"PRE-INSERTION: $insertion")
                               .zipWithIndex
                               .map((insertion, index) =>
                                 s"${1 + index}. $insertion"
                               )
                               .mkString("\n")}
-                           |These are from ambiguous matches of anchor text with the destination.
-                           |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${candidateAnchorDestination.size}.
+                             |These are from ambiguous matches of anchor text with the destination.
+                             |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${candidateAnchorDestination.size}.
                               """.stripMargin
                         )
                     end match
@@ -531,37 +543,123 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     end match
                   }
 
-                val result =
-                  (deferredMigratedInsertion, precedingInsertionSplice) match
-                    case (None, None) =>
-                      partialResult :+ candidateAnchorDestination
-                    case (Some(deferred), None) =>
-                      partialResult.appendMigratedInsertions(
-                        deferred
-                      ) :+ candidateAnchorDestination
-                    case (None, Some(InsertionSplice(preceding, _))) =>
-                      partialResult.appendMigratedInsertions(
-                        preceding
-                      ) :+ candidateAnchorDestination
-                    case (
-                          Some(deferred),
-                          Some(InsertionSplice(preceding, _))
-                        ) =>
-                      if deferred == preceding then
-                        partialResult.appendMigratedInsertions(
-                          deferred
-                        ) :+ candidateAnchorDestination
-                      else
-                        partialResult.appendMigratedInsertions(
-                          deferred ++ preceding
-                        ) :+ candidateAnchorDestination
+                (
+                  anchorContext,
+                  precedingInsertionSplice,
+                  succeedingInsertionSplice
+                ) match
+                  case (InsertionSplice(deferredInsertions, 0), None, None) =>
+                    // We have arrived at the insertion point after a preceding
+                    // anchor, but have to defer both the insertions and
+                    // `candidateAnchorDestination` (which is not an anchor
+                    // after all) in case of a following succeeding anchor...
+                    partialResult -> DeferredContext(
+                      deferredInsertions = deferredInsertions,
+                      deferredContext = Seq(candidateAnchorDestination)
+                    )
+                  case (splice: InsertionSplice, None, None) =>
+                    // Consider `candidateAnchorDestination` (which is not an
+                    // anchor after all) to be an edit of a skipped section
+                    // coming after a preceding anchor.
+                    (partialResult :+ candidateAnchorDestination) -> splice
+                      .focus(_.numberOfSkipsToTheAnchor)
+                      .modify(_ - 1)
+                  case (context: DeferredContext, None, None) =>
+                    // We have to defer `candidateAnchorDestination` (which is
+                    // not an anchor after all) in case of a following
+                    // succeeding anchor...
+                    partialResult -> context
+                      .focus(_.deferredContext)
+                      .modify(_ :+ candidateAnchorDestination)
+                  case (
+                        InsertionSplice(
+                          deferredInsertionsForImpliedPrecedingAnchor,
+                          _
+                        ),
+                        Some(InsertionSplice(insertionsForSucceedingAnchor, _)),
+                        _
+                      ) =>
+                    // We have encountered a succeeding anchor; will this refer
+                    // to the same insertions as the context?
 
-                result -> succeedingInsertionSplice.map(_.insertions)
+                    if sectionRunOrdering.equiv(
+                        deferredInsertionsForImpliedPrecedingAnchor,
+                        insertionsForSucceedingAnchor
+                      )
+                    then
+                      // The implied preceding anchor and the succeeding anchor
+                      // just encountered bracket the same insertions.
+                      (partialResult.appendMigratedInsertions(
+                        deferredInsertionsForImpliedPrecedingAnchor
+                      ) :+ candidateAnchorDestination) -> succeedingInsertionSplice
+                        .getOrElse(emptyContext)
+                    else
+                      // The implied preceding anchor and the succeeding anchor
+                      // just encountered refer to distinct insertions that have
+                      // migrated adjacent to each other. As insertions try to
+                      // stick as close as possible to their anchor, we put
+                      // `deferredInsertionsForImpliedPrecedingAnchor` first.
+                      (partialResult.appendMigratedInsertions(
+                        deferredInsertionsForImpliedPrecedingAnchor ++ insertionsForSucceedingAnchor
+                      ) :+ candidateAnchorDestination) -> succeedingInsertionSplice
+                        .getOrElse(emptyContext)
+                  case (
+                        DeferredContext(deferredInsertions, deferredContext),
+                        Some(spliceIntoDeferredContext),
+                        _
+                      ) =>
+                    // We have encountered a succeeding anchor, so we use the
+                    // deferred context to decide where to place the insertions.
+                    val (prefix, suffix) = deferredContext.splitAt(
+                      deferredContext.length - spliceIntoDeferredContext.numberOfSkipsToTheAnchor
+                    )
+
+                    ((partialResult.appendMigratedInsertions(
+                      deferredInsertions
+                    ) ++ prefix).appendMigratedInsertions(
+                      spliceIntoDeferredContext.insertions
+                    ) ++ suffix :+ candidateAnchorDestination) -> succeedingInsertionSplice
+                      .getOrElse(
+                        emptyContext
+                      )
+                  case (
+                        InsertionSplice(
+                          deferredInsertions,
+                          _
+                        ),
+                        None,
+                        Some(succeedingContextSplice)
+                      ) =>
+                    // We have encountered a preceding anchor, so the deferred
+                    // insertions from the previous preceding anchor can finally
+                    // be added to the partial result.
+                    (partialResult.appendMigratedInsertions(
+                      deferredInsertions
+                    ) :+ candidateAnchorDestination) -> succeedingContextSplice
+                  case (
+                        DeferredContext(deferredInsertions, deferredContext),
+                        None,
+                        Some(succeedingContextSplice)
+                      ) =>
+                    // We have encountered a preceding anchor, so the deferred
+                    // insertions from the previous preceding anchor and the
+                    // deferred content can finally be added to the partial
+                    // result.
+                    (partialResult.appendMigratedInsertions(
+                      deferredInsertions
+                    ) ++ deferredContext :+ candidateAnchorDestination) -> succeedingContextSplice
+                end match
             } match
-            case (partialResult, deferredMigratedInsertion) =>
-              deferredMigratedInsertion.fold(ifEmpty = partialResult)(
-                partialResult.appendMigratedInsertions
-              )
+            case (partialResult, anchorContext) =>
+              anchorContext match
+                case InsertionSplice(deferredInsertions, _) =>
+                  partialResult.appendMigratedInsertions(deferredInsertions)
+                case DeferredContext(deferredInsertions, deferredContext) =>
+                  partialResult.appendMigratedInsertions(
+                    deferredInsertions
+                  ) ++ deferredContext
+          end match
+        end insertOrDeferAnyMigratedInsertions
 
         path -> (mergeResult match
           case FullyMerged(sections) =>
