@@ -41,6 +41,10 @@ case class MoveDestinations[Element](
       .isEmpty
   )
 
+  def all: collection.Set[Element] = coincident.unzip.match
+    case (leftHalves, rightHalves) =>
+      left union right union leftHalves union rightHalves
+
   def mergeWith(another: MoveDestinations[Element]): MoveDestinations[Element] =
     MoveDestinations(
       sources = this.sources union another.sources,

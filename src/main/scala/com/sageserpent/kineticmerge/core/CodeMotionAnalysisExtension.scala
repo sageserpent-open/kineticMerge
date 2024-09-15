@@ -433,21 +433,93 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           .flatMap(_.insertions)
           .toSet
 
-      def migrateAnchoredInsertions(
+      val suppressedMoveDestinationsDueToMigratedInsertions =
+        migratedInsertions.flatMap { insertion =>
+          val matches = matchesFor(insertion)
+
+          moveDestinationsReport.moveDestinationsByMatches
+            .get(matches)
+            .fold(ifEmpty = Set.empty[Section[Element]])(_.all)
+        }
+
+      def applyMigrations(
           path: Path,
           mergeResult: MergeResult[Section[Element]]
       ): (Path, MergeResult[Section[Element]]) =
-        // Remove migrated insertions from their original location, and patch
-        // them in relative to their anchor destinations. Need to watch out for
-        // when the same insertion is patched in after a predecessor anchor and
-        // then patched in before a successor anchor - the second patch should
-        // be suppressed.
+        val potentialValidDestinationsForMigratingChangesTo =
+          moveDestinationsReport.moveDestinationsByMatches.values
+            .filterNot(moveDestinations =>
+              moveDestinations.isDegenerate || moveDestinations.isDivergent
+            )
+            .flatMap(moveDestinations =>
+              // NOTE: coincident move destinations can't pick up edits as there
+              // would be no side to contribute the edit; instead, both of them
+              // would contribute a move.
+              moveDestinations.left ++ moveDestinations.right
+            )
+            .toSet
+
+        val vettedChangesMigratedThroughMotion =
+          MultiDict.from(changesMigratedThroughMotion.filter {
+            case (potentialDestination, _) =>
+              potentialValidDestinationsForMigratingChangesTo.contains(
+                potentialDestination
+              )
+          })
+
+        def substituteFor(
+            section: Section[Element]
+        ): IndexedSeq[Section[Element]] =
+          val migratedChanges = vettedChangesMigratedThroughMotion
+            .get(section)
+
+          if migratedChanges.nonEmpty then
+            val uniqueMigratedChanges = uniqueItemsFrom(migratedChanges)
+
+            val migratedChange: IndexedSeq[Section[Element]] =
+              uniqueMigratedChanges match
+                case head :: Nil => head
+                case _ =>
+                  throw new RuntimeException(
+                    s"""
+                       |Multiple potential changes migrated to destination: $section,
+                       |these are:
+                       |${uniqueMigratedChanges
+                        .map(change =>
+                          if change.isEmpty then "DELETION"
+                          else s"EDIT: $change"
+                        )
+                        .zipWithIndex
+                        .map((change, index) => s"${1 + index}. $change")
+                        .mkString("\n")}
+                       |These are from ambiguous matches of text with the destination.
+                       |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${section.size}.
+                        """.stripMargin
+                  )
+
+            if migratedChange.isEmpty then
+              logger.debug(
+                s"Applying migrated deletion to move destination: ${pprintCustomised(section)}."
+              )
+            else
+              logger.debug(
+                s"Applying migrated edit into ${pprintCustomised(migratedChange)} to move destination: ${pprintCustomised(section)}."
+              )
+            end if
+
+            migratedChange
+          else IndexedSeq(section)
+          end if
+        end substituteFor
 
         def removeMigratedInsertions(
             sections: IndexedSeq[Section[Element]]
         ): IndexedSeq[Section[Element]] =
           sections
             .filterNot(migratedInsertions.contains)
+            .filterNot(
+              suppressedMoveDestinationsDueToMigratedInsertions.contains
+            )
 
         extension (sections: IndexedSeq[Section[Element]])
           private def appendMigratedInsertions(
@@ -460,7 +532,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             end if
             sections ++ migratedInsertions
 
-        def insertOrDeferAnyMigratedInsertions(
+        def migrateInsertionsAndApplySubstitutions(
             sections: IndexedSeq[Section[Element]]
         ): IndexedSeq[Section[Element]] =
           case class Deferrals(
@@ -571,6 +643,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   )
                 )
 
+                val substituted = substituteFor(candidateAnchorDestination)
+
                 (
                   anchorContext,
                   precedingInsertionSplice,
@@ -586,12 +660,13 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       ) =>
                     // We have arrived at the insertion point after a preceding
                     // anchor, but have to defer both the insertions and
-                    // `candidateAnchorDestination` (which is not an anchor
-                    // after all) in case of a following succeeding anchor...
+                    // the substitutions for `candidateAnchorDestination` (which
+                    // is not an anchor after all) in case of a following
+                    // succeeding anchor...
                     partialResult -> Deferrals(
                       deferredInsertions = deferredInsertions,
                       numberOfSkipsToTheAnchorOrDeferredContent =
-                        Right(Seq(candidateAnchorDestination))
+                        Right(substituted)
                     )
                   case (
                         Deferrals(
@@ -601,12 +676,15 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                         None,
                         None
                       ) =>
-                    // Consider `candidateAnchorDestination` (which is not an
-                    // anchor after all) to be an edit of a skipped section
-                    // coming after a preceding anchor.
-                    (partialResult :+ candidateAnchorDestination) -> Deferrals(
+                    // Consider the substitutions
+                    // for`candidateAnchorDestination` (which is not an anchor
+                    // after all) to be an edit of a skipped section coming
+                    // after a preceding anchor.
+                    (partialResult ++ substituted) -> Deferrals(
                       deferredInsertions,
-                      Left(numberOfSkipsToTheAnchor - 1)
+                      Left(
+                        numberOfSkipsToTheAnchor - substituted.length
+                      )
                     )
                   case (
                         Deferrals(
@@ -616,12 +694,12 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                         None,
                         None
                       ) =>
-                    // We have to defer `candidateAnchorDestination` (which is
-                    // not an anchor after all) in case of a following
-                    // succeeding anchor...
+                    // We have to defer the substitutions
+                    // for`candidateAnchorDestination` (which is not an anchor
+                    // after all) in case of a following succeeding anchor...
                     partialResult -> Deferrals(
                       deferredInsertions,
-                      Right(deferredContent :+ candidateAnchorDestination)
+                      Right(deferredContent ++ substituted)
                     )
                   case (
                         Deferrals(
@@ -643,7 +721,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       // just encountered bracket the same insertions.
                       (partialResult.appendMigratedInsertions(
                         deferredInsertions
-                      ) :+ candidateAnchorDestination) -> succeedingInsertionSplice
+                      ) ++ substituted) -> succeedingInsertionSplice
                         .fold(ifEmpty = emptyContext)(Deferrals.apply)
                     else
                       // The implied preceding anchor and the succeeding anchor
@@ -653,7 +731,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       // `deferredInsertionsForImpliedPrecedingAnchor` first.
                       (partialResult.appendMigratedInsertions(
                         deferredInsertions ++ insertionsForSucceedingAnchor
-                      ) :+ candidateAnchorDestination) -> succeedingInsertionSplice
+                      ) ++ substituted) -> succeedingInsertionSplice
                         .fold(ifEmpty = emptyContext)(Deferrals.apply)
                   case (
                         Deferrals(
@@ -678,14 +756,14 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       // just encountered bracket the same insertions.
                       (partialResult.appendMigratedInsertions(
                         deferredInsertions
-                      ) ++ suffix :+ candidateAnchorDestination) -> succeedingInsertionSplice
+                      ) ++ suffix ++ substituted) -> succeedingInsertionSplice
                         .fold(ifEmpty = emptyContext)(Deferrals.apply)
                     else
                       ((partialResult.appendMigratedInsertions(
                         deferredInsertions
                       ) ++ prefix).appendMigratedInsertions(
                         spliceIntoDeferredContext.insertions
-                      ) ++ suffix :+ candidateAnchorDestination) -> succeedingInsertionSplice
+                      ) ++ suffix ++ substituted) -> succeedingInsertionSplice
                         .fold(ifEmpty = emptyContext)(Deferrals.apply)
                     end if
                   case (
@@ -698,7 +776,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     // be added to the partial result.
                     (partialResult.appendMigratedInsertions(
                       deferredInsertions
-                    ) :+ candidateAnchorDestination) -> Deferrals(
+                    ) ++ substituted) -> Deferrals(
                       insertionSplice
                     )
                   case (
@@ -715,7 +793,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     // result.
                     (partialResult.appendMigratedInsertions(
                       deferredInsertions
-                    ) ++ deferredContent :+ candidateAnchorDestination) -> Deferrals(
+                    ) ++ deferredContent ++ substituted) -> Deferrals(
                       insertionSplice
                     )
                 end match
@@ -732,107 +810,26 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     deferredInsertions
                   ) ++ deferredContent
           end match
-        end insertOrDeferAnyMigratedInsertions
+        end migrateInsertionsAndApplySubstitutions
 
         path -> (mergeResult match
           case FullyMerged(sections) =>
             FullyMerged(elements =
-              insertOrDeferAnyMigratedInsertions(
+              migrateInsertionsAndApplySubstitutions(
                 removeMigratedInsertions(sections)
               )
             )
           case MergedWithConflicts(leftSections, rightSections) =>
             MergedWithConflicts(
-              insertOrDeferAnyMigratedInsertions(
+              migrateInsertionsAndApplySubstitutions(
                 removeMigratedInsertions(leftSections)
               ),
-              insertOrDeferAnyMigratedInsertions(
+              migrateInsertionsAndApplySubstitutions(
                 removeMigratedInsertions(rightSections)
               )
             )
         )
-      end migrateAnchoredInsertions
-
-      val potentialValidDestinationsForMigratingChangesTo =
-        moveDestinationsReport.moveDestinationsByMatches.values
-          .filterNot(moveDestinations =>
-            moveDestinations.isDegenerate || moveDestinations.isDivergent
-          )
-          .flatMap(moveDestinations =>
-            // NOTE: coincident move destinations can't pick up edits as there
-            // would be no side to contribute the edit; instead, both of them
-            // would contribute a move.
-            moveDestinations.left ++ moveDestinations.right
-          )
-          .toSet
-
-      val vettedChangesMigratedThroughMotion =
-        MultiDict.from(changesMigratedThroughMotion.filter {
-          case (potentialDestination, _) =>
-            potentialValidDestinationsForMigratingChangesTo.contains(
-              potentialDestination
-            )
-        })
-
-      def substituteMigratedChanges(
-          path: Path,
-          mergeResult: MergeResult[Section[Element]]
-      ): (Path, MergeResult[Section[Element]]) =
-        def substituteFor(
-            section: Section[Element]
-        ): IndexedSeq[Section[Element]] =
-          val migratedChanges = vettedChangesMigratedThroughMotion
-            .get(section)
-
-          if migratedChanges.nonEmpty then
-            val uniqueMigratedChanges = uniqueItemsFrom(migratedChanges)
-
-            val migratedChange: IndexedSeq[Section[Element]] =
-              uniqueMigratedChanges match
-                case head :: Nil => head
-                case _ =>
-                  throw new RuntimeException(
-                    s"""
-                       |Multiple potential changes migrated to destination: $section,
-                       |these are:
-                       |${uniqueMigratedChanges
-                        .map(change =>
-                          if change.isEmpty then "DELETION"
-                          else s"EDIT: $change"
-                        )
-                        .zipWithIndex
-                        .map((change, index) => s"${1 + index}. $change")
-                        .mkString("\n")}
-                       |These are from ambiguous matches of text with the destination.
-                       |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${section.size}.
-                        """.stripMargin
-                  )
-
-            if migratedChange.isEmpty then
-              logger.debug(
-                s"Applying migrated deletion to move destination: ${pprintCustomised(section)}."
-              )
-            else
-              logger.debug(
-                s"Applying migrated edit into ${pprintCustomised(migratedChange)} to move destination: ${pprintCustomised(section)}."
-              )
-            end if
-
-            migratedChange
-          else IndexedSeq(section)
-          end if
-        end substituteFor
-
-        path -> (mergeResult match
-          case FullyMerged(sections) =>
-            FullyMerged(elements = sections.flatMap(substituteFor))
-          case MergedWithConflicts(leftSections, rightSections) =>
-            MergedWithConflicts(
-              leftSections.flatMap(substituteFor),
-              rightSections.flatMap(substituteFor)
-            )
-        )
-      end substituteMigratedChanges
+      end applyMigrations
 
       def explodeSections(
           path: Path,
@@ -861,8 +858,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       end explodeSections
 
       mergeResultsByPath
-        .map(migrateAnchoredInsertions)
-        .map(substituteMigratedChanges)
+        .map(applyMigrations)
         .map(explodeSections) -> moveDestinationsReport
     end merge
   end extension
