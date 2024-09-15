@@ -2261,7 +2261,7 @@ trait ProseExamples:
     """
       |Hey diddle diddle,
       |The cat and the fiddle,
-      |The cow jump'd over the moon!
+      |The cow jump'd!
       |The little dog laugh'd
       |To see such craft,
       |And the fork ran away with the spoon over the moon.
@@ -2283,7 +2283,7 @@ trait ProseExamples:
     """
       |Hey diddle diddle,
       |The cat and the fiddle,
-      |The cow jump'd over the moon!
+      |The cow jump'd!
       |The little dog laugh'd
       |To see such craft, (in fact he was over the moon)
       |And the fork ran away with the spoon.
