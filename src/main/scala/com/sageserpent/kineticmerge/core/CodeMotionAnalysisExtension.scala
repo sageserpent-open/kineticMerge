@@ -270,11 +270,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         require(0 <= numberOfSkipsToTheAnchor)
       end InsertionSplice
 
-      case class DeferredContext(
-          deferredInsertions: Seq[Section[Element]],
-          deferredContext: Seq[Section[Element]]
-      )
-
       val migratedInsertionSplicesByAnchorDestinations
           : MultiDict[(Section[Element], Anchoring), InsertionSplice] =
         MultiDict.from(insertionsAtPath.flatMap {
@@ -467,9 +462,30 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         def insertOrDeferAnyMigratedInsertions(
             sections: IndexedSeq[Section[Element]]
         ): IndexedSeq[Section[Element]] =
-          val emptyContext: InsertionSplice | DeferredContext = DeferredContext(
+          case class Deferrals(
+              deferredInsertions: Seq[Section[Element]],
+              numberOfSkipsToTheAnchorOrDeferredContent: Either[Int, Seq[
+                Section[Element]
+              ]]
+          ):
+            numberOfSkipsToTheAnchorOrDeferredContent.left.foreach(
+              numberOfSkipsToTheAnchor => require(0 <= numberOfSkipsToTheAnchor)
+            )
+          end Deferrals
+
+          object Deferrals:
+            // TODO: use Chimney instead!
+            def apply(insertionSplice: InsertionSplice): Deferrals =
+              Deferrals(
+                deferredInsertions = insertionSplice.insertions,
+                numberOfSkipsToTheAnchorOrDeferredContent =
+                  Left(insertionSplice.numberOfSkipsToTheAnchor)
+              )
+          end Deferrals
+
+          val emptyContext: Deferrals = Deferrals(
             deferredInsertions = Seq.empty,
-            deferredContext = Seq.empty
+            numberOfSkipsToTheAnchorOrDeferredContent = Right(Seq.empty)
           )
 
           sections
@@ -559,33 +575,57 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   precedingInsertionSplice,
                   succeedingInsertionSplice
                 ) match
-                  case (InsertionSplice(deferredInsertions, 0), None, None) =>
+                  // NOTE: avoid use of lenses in the cases below when we
+                  // already have to pattern match deeply anyway...
+
+                  case (
+                        Deferrals(deferredInsertions, Left(0)),
+                        None,
+                        None
+                      ) =>
                     // We have arrived at the insertion point after a preceding
                     // anchor, but have to defer both the insertions and
                     // `candidateAnchorDestination` (which is not an anchor
                     // after all) in case of a following succeeding anchor...
-                    partialResult -> DeferredContext(
+                    partialResult -> Deferrals(
                       deferredInsertions = deferredInsertions,
-                      deferredContext = Seq(candidateAnchorDestination)
+                      numberOfSkipsToTheAnchorOrDeferredContent =
+                        Right(Seq(candidateAnchorDestination))
                     )
-                  case (splice: InsertionSplice, None, None) =>
+                  case (
+                        Deferrals(
+                          deferredInsertions,
+                          Left(numberOfSkipsToTheAnchor)
+                        ),
+                        None,
+                        None
+                      ) =>
                     // Consider `candidateAnchorDestination` (which is not an
                     // anchor after all) to be an edit of a skipped section
                     // coming after a preceding anchor.
-                    (partialResult :+ candidateAnchorDestination) -> splice
-                      .focus(_.numberOfSkipsToTheAnchor)
-                      .modify(_ - 1)
-                  case (context: DeferredContext, None, None) =>
+                    (partialResult :+ candidateAnchorDestination) -> Deferrals(
+                      deferredInsertions,
+                      Left(numberOfSkipsToTheAnchor - 1)
+                    )
+                  case (
+                        Deferrals(
+                          deferredInsertions,
+                          Right(deferredContent)
+                        ),
+                        None,
+                        None
+                      ) =>
                     // We have to defer `candidateAnchorDestination` (which is
                     // not an anchor after all) in case of a following
                     // succeeding anchor...
-                    partialResult -> context
-                      .focus(_.deferredContext)
-                      .modify(_ :+ candidateAnchorDestination)
+                    partialResult -> Deferrals(
+                      deferredInsertions,
+                      Right(deferredContent :+ candidateAnchorDestination)
+                    )
                   case (
-                        InsertionSplice(
-                          deferredInsertionsForImpliedPrecedingAnchor,
-                          _
+                        Deferrals(
+                          deferredInsertions,
+                          Left(_)
                         ),
                         Some(InsertionSplice(insertionsForSucceedingAnchor, _)),
                         _
@@ -594,16 +634,16 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     // to the same insertions as the context?
 
                     if sectionRunOrdering.equiv(
-                        deferredInsertionsForImpliedPrecedingAnchor,
+                        deferredInsertions,
                         insertionsForSucceedingAnchor
                       )
                     then
                       // The implied preceding anchor and the succeeding anchor
                       // just encountered bracket the same insertions.
                       (partialResult.appendMigratedInsertions(
-                        deferredInsertionsForImpliedPrecedingAnchor
+                        deferredInsertions
                       ) :+ candidateAnchorDestination) -> succeedingInsertionSplice
-                        .getOrElse(emptyContext)
+                        .fold(ifEmpty = emptyContext)(Deferrals.apply)
                     else
                       // The implied preceding anchor and the succeeding anchor
                       // just encountered refer to distinct insertions that have
@@ -611,18 +651,21 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       // stick as close as possible to their anchor, we put
                       // `deferredInsertionsForImpliedPrecedingAnchor` first.
                       (partialResult.appendMigratedInsertions(
-                        deferredInsertionsForImpliedPrecedingAnchor ++ insertionsForSucceedingAnchor
+                        deferredInsertions ++ insertionsForSucceedingAnchor
                       ) :+ candidateAnchorDestination) -> succeedingInsertionSplice
-                        .getOrElse(emptyContext)
+                        .fold(ifEmpty = emptyContext)(Deferrals.apply)
                   case (
-                        DeferredContext(deferredInsertions, deferredContext),
+                        Deferrals(
+                          deferredInsertions,
+                          Right(deferredContent)
+                        ),
                         Some(spliceIntoDeferredContext),
                         _
                       ) =>
                     // We have encountered a succeeding anchor, so we use the
                     // deferred context to decide where to place the insertions.
-                    val (prefix, suffix) = deferredContext.splitAt(
-                      deferredContext.length - spliceIntoDeferredContext.numberOfSkipsToTheAnchor
+                    val (prefix, suffix) = deferredContent.splitAt(
+                      deferredContent.length - spliceIntoDeferredContext.numberOfSkipsToTheAnchor
                     )
 
                     ((partialResult.appendMigratedInsertions(
@@ -630,27 +673,27 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     ) ++ prefix).appendMigratedInsertions(
                       spliceIntoDeferredContext.insertions
                     ) ++ suffix :+ candidateAnchorDestination) -> succeedingInsertionSplice
-                      .getOrElse(
-                        emptyContext
-                      )
+                      .fold(ifEmpty = emptyContext)(Deferrals.apply)
                   case (
-                        InsertionSplice(
-                          deferredInsertions,
-                          _
-                        ),
+                        Deferrals(deferredInsertions, Left(_)),
                         None,
-                        Some(succeedingContextSplice)
+                        Some(insertionSplice)
                       ) =>
                     // We have encountered a preceding anchor, so the deferred
                     // insertions from the previous preceding anchor can finally
                     // be added to the partial result.
                     (partialResult.appendMigratedInsertions(
                       deferredInsertions
-                    ) :+ candidateAnchorDestination) -> succeedingContextSplice
+                    ) :+ candidateAnchorDestination) -> Deferrals(
+                      insertionSplice
+                    )
                   case (
-                        DeferredContext(deferredInsertions, deferredContext),
+                        Deferrals(
+                          deferredInsertions,
+                          Right(deferredContent)
+                        ),
                         None,
-                        Some(succeedingContextSplice)
+                        Some(insertionSplice)
                       ) =>
                     // We have encountered a preceding anchor, so the deferred
                     // insertions from the previous preceding anchor and the
@@ -658,17 +701,22 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     // result.
                     (partialResult.appendMigratedInsertions(
                       deferredInsertions
-                    ) ++ deferredContext :+ candidateAnchorDestination) -> succeedingContextSplice
+                    ) ++ deferredContent :+ candidateAnchorDestination) -> Deferrals(
+                      insertionSplice
+                    )
                 end match
             } match
             case (partialResult, anchorContext) =>
               anchorContext match
-                case InsertionSplice(deferredInsertions, _) =>
+                case Deferrals(deferredInsertions, Left(_)) =>
                   partialResult.appendMigratedInsertions(deferredInsertions)
-                case DeferredContext(deferredInsertions, deferredContext) =>
+                case Deferrals(
+                      deferredInsertions,
+                      Right(deferredContent)
+                    ) =>
                   partialResult.appendMigratedInsertions(
                     deferredInsertions
-                  ) ++ deferredContext
+                  ) ++ deferredContent
           end match
         end insertOrDeferAnyMigratedInsertions
 
