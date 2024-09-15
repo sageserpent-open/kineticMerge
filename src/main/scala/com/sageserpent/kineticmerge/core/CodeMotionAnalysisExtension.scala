@@ -446,7 +446,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         def removeMigratedInsertions(
             sections: IndexedSeq[Section[Element]]
         ): IndexedSeq[Section[Element]] =
-          sections.filterNot(migratedInsertions.contains)
+          sections
+            .filterNot(migratedInsertions.contains)
 
         extension (sections: IndexedSeq[Section[Element]])
           private def appendMigratedInsertions(
@@ -668,12 +669,25 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       deferredContent.length - spliceIntoDeferredContext.numberOfSkipsToTheAnchor
                     )
 
-                    ((partialResult.appendMigratedInsertions(
-                      deferredInsertions
-                    ) ++ prefix).appendMigratedInsertions(
-                      spliceIntoDeferredContext.insertions
-                    ) ++ suffix :+ candidateAnchorDestination) -> succeedingInsertionSplice
-                      .fold(ifEmpty = emptyContext)(Deferrals.apply)
+                    if prefix.isEmpty && sectionRunOrdering.equiv(
+                        deferredInsertions,
+                        spliceIntoDeferredContext.insertions
+                      )
+                    then
+                      // The implied preceding anchor and the succeeding anchor
+                      // just encountered bracket the same insertions.
+                      (partialResult.appendMigratedInsertions(
+                        deferredInsertions
+                      ) ++ suffix :+ candidateAnchorDestination) -> succeedingInsertionSplice
+                        .fold(ifEmpty = emptyContext)(Deferrals.apply)
+                    else
+                      ((partialResult.appendMigratedInsertions(
+                        deferredInsertions
+                      ) ++ prefix).appendMigratedInsertions(
+                        spliceIntoDeferredContext.insertions
+                      ) ++ suffix :+ candidateAnchorDestination) -> succeedingInsertionSplice
+                        .fold(ifEmpty = emptyContext)(Deferrals.apply)
+                    end if
                   case (
                         Deferrals(deferredInsertions, Left(_)),
                         None,
