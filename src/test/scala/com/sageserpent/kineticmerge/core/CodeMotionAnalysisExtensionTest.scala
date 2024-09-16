@@ -725,7 +725,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         )
       )
       .and(Trials.api.booleans)
-      .withLimit(6)
+      .withLimit(8)
       .dynamicTests {
         case (
               (
