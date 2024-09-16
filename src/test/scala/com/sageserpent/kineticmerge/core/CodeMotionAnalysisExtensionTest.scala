@@ -783,55 +783,163 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
           val mergeResult = mergeResultsByPath(renamedPath)
 
-          println(fansi.Color.Yellow(s"Checking $renamedPath...\n"))
-          println(fansi.Color.Yellow("Expected..."))
-          println(fansi.Color.Green(reconstituteTextFrom(expected)))
-
-          mergeResult match
-            case FullyMerged(result) =>
-              println(fansi.Color.Yellow("Fully merged result..."))
-              println(fansi.Color.Green(reconstituteTextFrom(result)))
-              assert(result.corresponds(expected)(Token.equality))
-            case MergedWithConflicts(leftResult, rightResult) =>
-              println(fansi.Color.Red(s"Left result..."))
-              println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
-              println(fansi.Color.Red(s"Right result..."))
-              println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
-
-              fail("Should have seen a clean merge.")
-          end match
+          verifyContent(renamedPath, expected, mergeResult)
 
           val contentAtOriginalPath = mergeResultsByPath(originalPath)
 
-          contentAtOriginalPath match
-            case FullyMerged(result) =>
-              assert(
-                result.isEmpty,
-                fansi.Color
-                  .Yellow(
-                    s"\nShould not have this content at $originalPath...\n"
-                  )
-                  .render + fansi.Color
-                  .Green(
-                    reconstituteTextFrom(result)
-                  )
-                  .render
-              )
-            case MergedWithConflicts(leftResult, rightResult) =>
-              fail(
-                fansi.Color
-                  .Yellow(
-                    s"\nShould not have this content at $originalPath...\n"
-                  )
-                  .render + fansi.Color.Red(s"\nLeft result...\n")
-                  + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
-                  + fansi.Color.Red(s"\nRight result...\n").render
-                  + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
-              )
-          end match
+          verifyAbsenceOfContent(originalPath, contentAtOriginalPath)
       }
   end codeMotionAcrossAFileRename
 
+  private def verifyContent(
+      path: FakePath,
+      expectedContent: Vector[Token],
+      mergeResult: MergeResult[Token]
+  ): Unit =
+    println(fansi.Color.Yellow(s"Checking $path...\n"))
+    println(fansi.Color.Yellow("Expected..."))
+    println(fansi.Color.Green(reconstituteTextFrom(expectedContent)))
+
+    mergeResult match
+      case FullyMerged(result) =>
+        println(fansi.Color.Yellow("Fully merged result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(result)))
+        assert(result.corresponds(expectedContent)(Token.equality))
+      case MergedWithConflicts(leftResult, rightResult) =>
+        println(fansi.Color.Red(s"Left result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+        println(fansi.Color.Red(s"Right result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+        fail("Should have seen a clean merge.")
+    end match
+  end verifyContent
+
+  private def verifyAbsenceOfContent(
+      path: FakePath,
+      mergeResult: MergeResult[Token]
+  ): Unit =
+    mergeResult match
+      case FullyMerged(result) =>
+        assert(
+          result.isEmpty,
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render + fansi.Color
+            .Green(
+              reconstituteTextFrom(result)
+            )
+            .render
+        )
+      case MergedWithConflicts(leftResult, rightResult) =>
+        fail(
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render + fansi.Color.Red(s"\nLeft result...\n")
+            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
+            + fansi.Color.Red(s"\nRight result...\n").render
+            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
+        )
+    end match
+  end verifyAbsenceOfContent
+
+  @TestFactory
+  def codeMotionAcrossTwoFilesWhoseContentIsCombinedTogetherToMakeANewReplacementFile()
+      : DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 2,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0
+    )
+
+    val proverbsPath: FakePath    = "*** PROVERBS ***"
+    val palindromesPath: FakePath = "*** PALINDROMES ***"
+    val combinedPath: FakePath    = "*** COMBINED ***"
+
+    Trials.api
+      .only(
+        (
+          "Concatenation.",
+          (proverbs, palindromes),
+          (proverbsMeetAgileConsultant, palindromesMeetAgileConsultant),
+          concatenatedWordPlay,
+          concatenatedWordPlayExpectedMerge
+        )
+      )
+      .withLimit(3)
+      .dynamicTests {
+        case (
+              (
+                label,
+                (proverbsBaseContent, palindromesBaseContent),
+                (proverbsLeftContent, palindromesLeftContent),
+                combinedRightContent,
+                expectedMergeContent
+              )
+            ) =>
+          println(fansi.Color.Yellow(s"*** $label ***"))
+
+          val baseSources = MappedContentSourcesOfTokens(
+            contentsByPath = Map(
+              proverbsPath    -> tokens(proverbsBaseContent).get,
+              palindromesPath -> tokens(palindromesBaseContent).get
+            ),
+            label = "base"
+          )
+
+          val leftSources = MappedContentSourcesOfTokens(
+            contentsByPath = Map(
+              proverbsPath    -> tokens(proverbsLeftContent).get,
+              palindromesPath -> tokens(palindromesLeftContent).get
+            ),
+            label = "left"
+          )
+
+          val rightSources = MappedContentSourcesOfTokens(
+            contentsByPath = Map(
+              combinedPath -> tokens(
+                combinedRightContent
+              ).get
+            ),
+            label = "right"
+          )
+
+          val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+            base = baseSources,
+            left = leftSources,
+            right = rightSources
+          )(configuration): @unchecked
+
+          val expected = tokens(
+            expectedMergeContent
+          ).get
+
+          val (mergeResultsByPath, moveDestinationsReport) =
+            codeMotionAnalysis.merge
+
+          println(fansi.Color.Yellow(s"Final move destinations report...\n"))
+          println(
+            fansi.Color
+              .Green(moveDestinationsReport.summarizeInText.mkString("\n"))
+          )
+
+          val mergeResult = mergeResultsByPath(combinedPath)
+
+          verifyContent(combinedPath, expected, mergeResult)
+
+          val contentAtProverbsPath = mergeResultsByPath(proverbsPath)
+
+          verifyAbsenceOfContent(proverbsPath, contentAtProverbsPath)
+
+          val contentAtPalindromesPath = mergeResultsByPath(palindromesPath)
+
+          verifyAbsenceOfContent(palindromesPath, contentAtPalindromesPath)
+      }
+  end codeMotionAcrossTwoFilesWhoseContentIsCombinedTogetherToMakeANewReplacementFile
 end CodeMotionAnalysisExtensionTest
 
 trait ProseExamples:
@@ -2324,5 +2432,66 @@ trait ProseExamples:
       |The little dog laugh'd
       |To see such craft,
       |And the fork ran away with the spoon over the moon.
+      |""".stripMargin
+
+  protected val proverbs: String =
+    """
+      |A bird in hand is worth two in the bush.
+      |A stitch in time saves nine.
+      |Fools rush in.
+      |All's well that ends well.
+      |Better a gramme than a damn.
+      |""".stripMargin
+
+  protected val palindromes: String =
+    // Thank you, Wikipedia, for the last two entries! :-)
+    """
+      |Able was I ere I saw Elba.
+      |A man, a plan, a canal, Panama.
+      |Rats live on no evil star.
+      |No one made killer apparel like Dame Noon.
+      |""".stripMargin
+
+  protected val proverbsMeetAgileConsultant: String =
+    """
+      |A bird in hand is worth two in the bush.
+      |A stitch in time saves nine (but you aren't going to need it).
+      |Fools rush in.
+      |All's well that ends well.
+      |Better a gramme than a damn.
+      |""".stripMargin
+
+  protected val palindromesMeetAgileConsultant: String =
+    """
+      |Able was I ere I saw Elba
+      |A man, a plan (but you aren't going to need it), a canal, Panama
+      |Rats live on no evil star
+      |No one made killer apparel like Dame Noon
+      |""".stripMargin
+
+  protected val concatenatedWordPlay: String =
+    """
+      |A bird in hand is worth two in the bush.
+      |A stitch in time saves nine.
+      |Fools rush in.
+      |All's well that ends well.
+      |Better a gramme than a damn.
+      |Able was I ere I saw Elba
+      |A man, a plan, a canal, Panama
+      |Rats live on no evil star
+      |No one made killer apparel like Dame Noon
+      |""".stripMargin
+
+  protected val concatenatedWordPlayExpectedMerge: String =
+    """
+      |A bird in hand is worth two in the bush.
+      |A stitch in time saves nine (but you aren't going to need it).
+      |Fools rush in.
+      |All's well that ends well.
+      |Better a gramme than a damn.
+      |Able was I ere I saw Elba
+      |A man, a plan (but you aren't going to need it), a canal, Panama
+      |Rats live on no evil star
+      |No one made killer apparel like Dame Noon
       |""".stripMargin
 end ProseExamples
