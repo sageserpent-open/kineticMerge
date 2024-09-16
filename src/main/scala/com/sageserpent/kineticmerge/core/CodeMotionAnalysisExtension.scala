@@ -526,9 +526,14 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               migratedInsertions: Seq[Section[Element]]
           ): IndexedSeq[Section[Element]] =
             if migratedInsertions.nonEmpty then
-              logger.debug(
-                s"Applying migrated insertion of ${pprintCustomised(migratedInsertions)} after destination: ${pprintCustomised(sections.last)}."
-              )
+              if sections.nonEmpty then
+                logger.debug(
+                  s"Applying migrated insertion of ${pprintCustomised(migratedInsertions)} after destination: ${pprintCustomised(sections.last)}."
+                )
+              else
+                logger.debug(
+                  s"Applying migrated insertion of ${pprintCustomised(migratedInsertions)} at the start."
+                )
             end if
             sections ++ migratedInsertions
 

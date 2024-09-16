@@ -791,62 +791,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       }
   end codeMotionAcrossAFileRename
 
-  private def verifyContent(
-      path: FakePath,
-      expectedContent: Vector[Token],
-      mergeResult: MergeResult[Token]
-  ): Unit =
-    println(fansi.Color.Yellow(s"Checking $path...\n"))
-    println(fansi.Color.Yellow("Expected..."))
-    println(fansi.Color.Green(reconstituteTextFrom(expectedContent)))
-
-    mergeResult match
-      case FullyMerged(result) =>
-        println(fansi.Color.Yellow("Fully merged result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(result)))
-        assert(result.corresponds(expectedContent)(Token.equality))
-      case MergedWithConflicts(leftResult, rightResult) =>
-        println(fansi.Color.Red(s"Left result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
-        println(fansi.Color.Red(s"Right result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
-
-        fail("Should have seen a clean merge.")
-    end match
-  end verifyContent
-
-  private def verifyAbsenceOfContent(
-      path: FakePath,
-      mergeResult: MergeResult[Token]
-  ): Unit =
-    mergeResult match
-      case FullyMerged(result) =>
-        assert(
-          result.isEmpty,
-          fansi.Color
-            .Yellow(
-              s"\nShould not have this content at $path...\n"
-            )
-            .render + fansi.Color
-            .Green(
-              reconstituteTextFrom(result)
-            )
-            .render
-        )
-      case MergedWithConflicts(leftResult, rightResult) =>
-        fail(
-          fansi.Color
-            .Yellow(
-              s"\nShould not have this content at $path...\n"
-            )
-            .render + fansi.Color.Red(s"\nLeft result...\n")
-            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
-            + fansi.Color.Red(s"\nRight result...\n").render
-            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
-        )
-    end match
-  end verifyAbsenceOfContent
-
   @TestFactory
   def codeMotionAcrossTwoFilesWhoseContentIsCombinedTogetherToMakeANewReplacementFile()
       : DynamicTests =
@@ -954,6 +898,62 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           verifyAbsenceOfContent(palindromesPath, contentAtPalindromesPath)
       }
   end codeMotionAcrossTwoFilesWhoseContentIsCombinedTogetherToMakeANewReplacementFile
+
+  private def verifyContent(
+      path: FakePath,
+      expectedContent: Vector[Token],
+      mergeResult: MergeResult[Token]
+  ): Unit =
+    println(fansi.Color.Yellow(s"Checking $path...\n"))
+    println(fansi.Color.Yellow("Expected..."))
+    println(fansi.Color.Green(reconstituteTextFrom(expectedContent)))
+
+    mergeResult match
+      case FullyMerged(result) =>
+        println(fansi.Color.Yellow("Fully merged result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(result)))
+        assert(result.corresponds(expectedContent)(Token.equality))
+      case MergedWithConflicts(leftResult, rightResult) =>
+        println(fansi.Color.Red(s"Left result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+        println(fansi.Color.Red(s"Right result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+        fail("Should have seen a clean merge.")
+    end match
+  end verifyContent
+
+  private def verifyAbsenceOfContent(
+      path: FakePath,
+      mergeResult: MergeResult[Token]
+  ): Unit =
+    mergeResult match
+      case FullyMerged(result) =>
+        assert(
+          result.isEmpty,
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render + fansi.Color
+            .Green(
+              reconstituteTextFrom(result)
+            )
+            .render
+        )
+      case MergedWithConflicts(leftResult, rightResult) =>
+        fail(
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render + fansi.Color.Red(s"\nLeft result...\n")
+            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
+            + fansi.Color.Red(s"\nRight result...\n").render
+            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
+        )
+    end match
+  end verifyAbsenceOfContent
 end CodeMotionAnalysisExtensionTest
 
 trait ProseExamples:
@@ -2510,7 +2510,12 @@ trait ProseExamples:
       |""".stripMargin
 
   protected val jumbledWordPlay: String =
-    """
+    // NOTE: the first line is not preceded by a linebreak, this is just to work
+    // around the finicky treatment of a leading whitespace token when comparing
+    // sequences of tokens for equality.
+    """Fools rush in.
+      |All's well that ends well.
+      |Better a gramme than a damn.
       |A bird in hand is worth two in the bush.
       |A stitch in time saves nine, a canal, Panama.
       |Able was I ere I saw Elba
@@ -2520,7 +2525,12 @@ trait ProseExamples:
       |""".stripMargin
 
   protected val jumbledWordPlayExpectedMerge: String =
-    """
+    // NOTE: the first line is not preceded by a linebreak, this is just to work
+    // around the finicky treatment of a leading whitespace token when comparing
+    // sequences of tokens for equality.
+    """(but you aren't going to need it) Fools rush in.
+      |All's well that ends well.
+      |Better a gramme than a damn.
       |A bird in hand is worth two in the bush.
       |A stitch in time saves nine (but you aren't going to need it), a canal, Panama.
       |Able was I ere I saw Elba
