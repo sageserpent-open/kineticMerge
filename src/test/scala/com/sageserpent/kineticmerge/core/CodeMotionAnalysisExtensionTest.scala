@@ -861,13 +861,20 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val combinedPath: FakePath    = "*** COMBINED ***"
 
     Trials.api
-      .only(
+      .choose(
         (
           "Concatenation.",
           (proverbs, palindromes),
           (proverbsMeetAgileConsultant, palindromesMeetAgileConsultant),
           concatenatedWordPlay,
           concatenatedWordPlayExpectedMerge
+        ),
+        (
+          "Jumbling.",
+          (proverbs, palindromes),
+          (proverbsMeetAgileConsultant, palindromesMeetAgileConsultant),
+          jumbledWordPlay,
+          jumbledWordPlayExpectedMerge
         )
       )
       .withLimit(3)
@@ -2446,10 +2453,10 @@ trait ProseExamples:
   protected val palindromes: String =
     // Thank you, Wikipedia, for the last two entries! :-)
     """
-      |Able was I ere I saw Elba.
-      |A man, a plan, a canal, Panama.
-      |Rats live on no evil star.
-      |No one made killer apparel like Dame Noon.
+      |Able was I ere I saw Elba
+      |A man, a plan, a canal, Panama
+      |Rats live on no evil star
+      |No one made killer apparel like Dame Noon
       |""".stripMargin
 
   protected val proverbsMeetAgileConsultant: String =
@@ -2491,6 +2498,26 @@ trait ProseExamples:
       |Better a gramme than a damn.
       |Able was I ere I saw Elba
       |A man, a plan (but you aren't going to need it), a canal, Panama
+      |Rats live on no evil star
+      |No one made killer apparel like Dame Noon
+      |""".stripMargin
+
+  protected val jumbledWordPlay: String =
+    """
+      |A bird in hand is worth two in the bush.
+      |A stitch in time saves nine, a canal, Panama.
+      |Able was I ere I saw Elba
+      |A man, a plan
+      |Rats live on no evil star
+      |No one made killer apparel like Dame Noon
+      |""".stripMargin
+
+  protected val jumbledWordPlayExpectedMerge: String =
+    """
+      |A bird in hand is worth two in the bush.
+      |A stitch in time saves nine (but you aren't going to need it), a canal, Panama.
+      |Able was I ere I saw Elba
+      |A man, a plan (but you aren't going to need it)
       |Rats live on no evil star
       |No one made killer apparel like Dame Noon
       |""".stripMargin
