@@ -717,9 +717,19 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           heyDiddleDiddleWithIntraFileMoveAndSurroundingInsertionsExpectedMerge
         )
       )
-      .withLimit(3)
+      .and(Trials.api.booleans)
+      .withLimit(6)
       .dynamicTests {
-        (label, baseContent, leftContent, rightContent, expectedMergeContent) =>
+        case (
+              (
+                label,
+                baseContent,
+                leftContent,
+                rightContent,
+                expectedMergeContent
+              ),
+              swapSides
+            ) =>
           println(fansi.Color.Yellow(s"*** $label ***"))
 
           val baseSources = MappedContentSourcesOfTokens(
@@ -747,8 +757,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
           val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
             base = baseSources,
-            left = leftSources,
-            right = rightSources
+            left = if swapSides then rightSources else leftSources,
+            right = if swapSides then leftSources else rightSources
           )(configuration): @unchecked
 
           val expected = tokens(
