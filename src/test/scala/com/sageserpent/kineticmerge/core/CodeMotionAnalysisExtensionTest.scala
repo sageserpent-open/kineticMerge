@@ -875,6 +875,13 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           (proverbsMeetAgileConsultant, palindromesMeetAgileConsultant),
           jumbledWordPlay,
           jumbledWordPlayExpectedMerge
+        ),
+        (
+          "Odd one out.",
+          (proverbs, palindromes),
+          (proverbsMeetAgileConsultant, palindromesMeetAgileConsultant),
+          oddOneOutWordPlay,
+          oddOneOutWordPlayExpectedMerge
         )
       )
       .withLimit(3)
@@ -2518,6 +2525,26 @@ trait ProseExamples:
       |A stitch in time saves nine (but you aren't going to need it), a canal, Panama.
       |Able was I ere I saw Elba
       |A man, a plan (but you aren't going to need it)
+      |Rats live on no evil star
+      |No one made killer apparel like Dame Noon
+      |""".stripMargin
+
+  protected val oddOneOutWordPlay: String =
+    """
+      |A bird in hand is worth two in the bush.
+      |A stitch in time saves nine.
+      |A man, a plan, a canal, Panama
+      |Able was I ere I saw Elba
+      |Rats live on no evil star
+      |No one made killer apparel like Dame Noon
+      |""".stripMargin
+
+  protected val oddOneOutWordPlayExpectedMerge: String =
+    """
+      |A bird in hand is worth two in the bush.
+      |A stitch in time saves nine (but you aren't going to need it).
+      |A man, a plan (but you aren't going to need it), a canal, Panama
+      |Able was I ere I saw Elba
       |Rats live on no evil star
       |No one made killer apparel like Dame Noon
       |""".stripMargin
