@@ -715,6 +715,13 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           heyDiddleDiddleInArchaicForm,
           heyDiddleDiddleWithIntraFileMoveAndSurroundingInsertions,
           heyDiddleDiddleWithIntraFileMoveAndSurroundingInsertionsExpectedMerge
+        ),
+        (
+          "Intra-file code motion migrated across the file rename - variation.",
+          heyDiddleDiddleInModernForm,
+          heyDiddleDiddleInPsychoticForm,
+          heyDiddleDiddleWithIntraFileMove,
+          heyDiddleDiddleInPsychoticFormExpectedMerge
         )
       )
       .and(Trials.api.booleans)
@@ -2297,5 +2304,25 @@ trait ProseExamples:
       |The little dog laugh'd
       |To see such craft, (in fact he was over the moon)
       |And the fork ran away with the spoon.
+      |""".stripMargin
+
+  protected val heyDiddleDiddleInPsychoticForm: String =
+    """
+      |Hey diddle diddle,
+      |The cat and the fiddle,
+      |The cow, laughing madly, ran away with the spoon and then jump'd over the moon;
+      |The little dog laugh'd
+      |To see such craft,
+      |And the fork ran away with the spoon.
+      |""".stripMargin
+
+  protected val heyDiddleDiddleInPsychoticFormExpectedMerge: String =
+    """
+      |Hey diddle diddle,
+      |The cat and the fiddle,
+      |The cow, laughing madly, ran away with the spoon and then jump'd!
+      |The little dog laugh'd
+      |To see such craft,
+      |And the fork ran away with the spoon over the moon.
       |""".stripMargin
 end ProseExamples
