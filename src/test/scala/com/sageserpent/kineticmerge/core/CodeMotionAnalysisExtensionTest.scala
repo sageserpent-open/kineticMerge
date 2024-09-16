@@ -791,6 +791,62 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       }
   end codeMotionAcrossAFileRename
 
+  private def verifyContent(
+      path: FakePath,
+      expectedContent: Vector[Token],
+      mergeResult: MergeResult[Token]
+  ): Unit =
+    println(fansi.Color.Yellow(s"Checking $path...\n"))
+    println(fansi.Color.Yellow("Expected..."))
+    println(fansi.Color.Green(reconstituteTextFrom(expectedContent)))
+
+    mergeResult match
+      case FullyMerged(result) =>
+        println(fansi.Color.Yellow("Fully merged result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(result)))
+        assert(result.corresponds(expectedContent)(Token.equality))
+      case MergedWithConflicts(leftResult, rightResult) =>
+        println(fansi.Color.Red(s"Left result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+        println(fansi.Color.Red(s"Right result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+        fail("Should have seen a clean merge.")
+    end match
+  end verifyContent
+
+  private def verifyAbsenceOfContent(
+      path: FakePath,
+      mergeResult: MergeResult[Token]
+  ): Unit =
+    mergeResult match
+      case FullyMerged(result) =>
+        assert(
+          result.isEmpty,
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render + fansi.Color
+            .Green(
+              reconstituteTextFrom(result)
+            )
+            .render
+        )
+      case MergedWithConflicts(leftResult, rightResult) =>
+        fail(
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render + fansi.Color.Red(s"\nLeft result...\n")
+            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
+            + fansi.Color.Red(s"\nRight result...\n").render
+            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
+        )
+    end match
+  end verifyAbsenceOfContent
+
   @TestFactory
   def codeMotionAcrossTwoFilesWhoseContentIsCombinedTogetherToMakeANewReplacementFile()
       : DynamicTests =
@@ -821,11 +877,11 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           jumbledWordPlayExpectedMerge
         ),
         (
-          "Odd one out.",
+          "One line moves out of the first half past the end of the second half.",
           (proverbs, palindromes),
           (proverbsMeetAgileConsultant, palindromesMeetAgileConsultant),
-          oddOneOutWordPlay,
-          oddOneOutWordPlayExpectedMerge
+          moveToTheEndWordPlay,
+          moveToTheEndWordPlayExpectedMerge
         )
       )
       .withLimit(3)
@@ -898,62 +954,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           verifyAbsenceOfContent(palindromesPath, contentAtPalindromesPath)
       }
   end codeMotionAcrossTwoFilesWhoseContentIsCombinedTogetherToMakeANewReplacementFile
-
-  private def verifyContent(
-      path: FakePath,
-      expectedContent: Vector[Token],
-      mergeResult: MergeResult[Token]
-  ): Unit =
-    println(fansi.Color.Yellow(s"Checking $path...\n"))
-    println(fansi.Color.Yellow("Expected..."))
-    println(fansi.Color.Green(reconstituteTextFrom(expectedContent)))
-
-    mergeResult match
-      case FullyMerged(result) =>
-        println(fansi.Color.Yellow("Fully merged result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(result)))
-        assert(result.corresponds(expectedContent)(Token.equality))
-      case MergedWithConflicts(leftResult, rightResult) =>
-        println(fansi.Color.Red(s"Left result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
-        println(fansi.Color.Red(s"Right result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
-
-        fail("Should have seen a clean merge.")
-    end match
-  end verifyContent
-
-  private def verifyAbsenceOfContent(
-      path: FakePath,
-      mergeResult: MergeResult[Token]
-  ): Unit =
-    mergeResult match
-      case FullyMerged(result) =>
-        assert(
-          result.isEmpty,
-          fansi.Color
-            .Yellow(
-              s"\nShould not have this content at $path...\n"
-            )
-            .render + fansi.Color
-            .Green(
-              reconstituteTextFrom(result)
-            )
-            .render
-        )
-      case MergedWithConflicts(leftResult, rightResult) =>
-        fail(
-          fansi.Color
-            .Yellow(
-              s"\nShould not have this content at $path...\n"
-            )
-            .render + fansi.Color.Red(s"\nLeft result...\n")
-            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
-            + fansi.Color.Red(s"\nRight result...\n").render
-            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
-        )
-    end match
-  end verifyAbsenceOfContent
 end CodeMotionAnalysisExtensionTest
 
 trait ProseExamples:
@@ -2539,23 +2539,29 @@ trait ProseExamples:
       |No one made killer apparel like Dame Noon
       |""".stripMargin
 
-  protected val oddOneOutWordPlay: String =
+  protected val moveToTheEndWordPlay: String =
     """
       |A bird in hand is worth two in the bush.
-      |A stitch in time saves nine.
-      |A man, a plan, a canal, Panama
+      |Fools rush in.
+      |All's well that ends well.
+      |Better a gramme than a damn.
       |Able was I ere I saw Elba
+      |A man, a plan, a canal, Panama
       |Rats live on no evil star
       |No one made killer apparel like Dame Noon
+      |A stitch in time saves nine.
       |""".stripMargin
 
-  protected val oddOneOutWordPlayExpectedMerge: String =
+  protected val moveToTheEndWordPlayExpectedMerge: String =
     """
-      |A bird in hand is worth two in the bush.
-      |A stitch in time saves nine (but you aren't going to need it).
-      |A man, a plan (but you aren't going to need it), a canal, Panama
+      |A bird in hand is worth two in the bush (but you aren't going to need it).
+      |Fools rush in.
+      |All's well that ends well.
+      |Better a gramme than a damn.
       |Able was I ere I saw Elba
+      |A man, a plan (but you aren't going to need it), a canal, Panama
       |Rats live on no evil star
       |No one made killer apparel like Dame Noon
+      |A stitch in time saves nine (but you aren't going to need it).
       |""".stripMargin
 end ProseExamples
