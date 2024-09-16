@@ -9,10 +9,7 @@ import com.sageserpent.kineticmerge.Main.{ApplicationRequest, Tags}
 import com.sageserpent.kineticmerge.MainTest.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.ProseExamples
-import com.sageserpent.kineticmerge.core.Token.{
-  tokens,
-  equality as tokenEquality
-}
+import com.sageserpent.kineticmerge.core.Token.{tokens, equality as tokenEquality}
 import com.softwaremill.tagging.*
 import org.junit.jupiter.api.TestFactory
 import os.{Path, RelPath}
@@ -58,34 +55,8 @@ object MainTest extends ProseExamples:
     codeMotionExampleWithSplitOriginalExpectedMerge
   private val excisedCasesLimitStrategiesExpectedContent =
     codeMotionExampleWithSplitHivedOffExpectedMerge
-  private val baseExpectyFlavouredAssertContent = // Revert to referencing `codeMotionExampleBase` when https://github.com/sageserpent-open/kineticMerge/issues/32 is delivered.
-    """
-      |package com.sageserpent.kineticmerge.core
-      |
-      |import com.eed3si9n.expecty.Expecty
-      |
-      | // Using Kinetic Merge will improve your software engineering practices...
-      |object ExpectyFlavouredAssert:
-      |  val assert: Expecty = new Expecty:
-      |    override val showLocation: Boolean = true
-      |    override val showTypes: Boolean    = /* TODO - remove this comment, it's here to force propagation of the edit on the right. */ true
-      |  end assert /* TODO - remove this comment, it's here to force an all-sides match. */
-      |end ExpectyFlavouredAssert
-      |""".stripMargin
-  private val editedExpectyFlavouredAssertContent = // Revert to referencing `codeMotionExampleRight` when https://github.com/sageserpent-open/kineticMerge/issues/32 is delivered.
-    """
-      |package com.sageserpent.kineticmerge.core
-      |
-      |import com.eed3si9n.expecty.Expecty
-      |
-      | // Using Kinetic Merge will improve your software engineering practices...
-      |object ExpectyFlavouredAssert:
-      |  val assert: Expecty = new Expecty:
-      |    override val showLocation: Boolean = true
-      |    override val showTypes: Boolean    = false // This edit should propagate.
-      |  end assert /* TODO - remove this comment, it's here to force an all-sides match. */
-      |end ExpectyFlavouredAssert
-      |""".stripMargin
+  private val baseExpectyFlavouredAssertContent   = codeMotionExampleBase
+  private val editedExpectyFlavouredAssertContent = codeMotionExampleRight
 
   private def introducingArthur(path: Path): Unit =
     os.write(path / arthur, "Hello, my old mucker!\n", createFolders = true)
@@ -507,19 +478,6 @@ object MainTest extends ProseExamples:
     assert(currentStatus(path).isEmpty)
   end verifyTrivialMergeMovesToTheMostAdvancedCommitWithACleanIndex
 
-  private def currentCommit(path: Path) =
-    os.proc("git", "log", "-1", "--format=tformat:%H")
-      .call(path)
-      .out
-      .text()
-      .strip
-
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
-
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
-
   private def verifyMergeMakesANewCommitWithACleanIndex(path: Path)(
       commitOfOneBranch: String,
       commitOfTheOtherBranch: String,
@@ -604,9 +562,6 @@ object MainTest extends ProseExamples:
     assert(status.isEmpty)
   end verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit
 
-  private def mergeHeadPath(path: Path) =
-    path / ".git" / "MERGE_HEAD"
-
   private def verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit(
       path: Path
   )(
@@ -667,8 +622,24 @@ object MainTest extends ProseExamples:
     currentStatus(path)
   end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
 
+  private def currentCommit(path: Path) =
+    os.proc("git", "log", "-1", "--format=tformat:%H")
+      .call(path)
+      .out
+      .text()
+      .strip
+
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+
   private def mergeHead(path: Path) =
     os.read(mergeHeadPath(path)).strip()
+
+  private def mergeHeadPath(path: Path) =
+    path / ".git" / "MERGE_HEAD"
 
   private def gitRepository(): ImperativeResource[Path] =
     for
