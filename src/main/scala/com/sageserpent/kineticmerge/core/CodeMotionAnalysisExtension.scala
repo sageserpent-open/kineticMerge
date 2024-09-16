@@ -683,7 +683,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     (partialResult ++ substituted) -> Deferrals(
                       deferredInsertions,
                       Left(
-                        numberOfSkipsToTheAnchor - substituted.length
+                        numberOfSkipsToTheAnchor - 1
                       )
                     )
                   case (
