@@ -747,16 +747,20 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       deferredContent.length - spliceIntoDeferredContext.numberOfSkipsToTheAnchor
                     )
 
-                    if prefix.isEmpty && sectionRunOrdering.equiv(
+                    if sectionRunOrdering.equiv(
                         deferredInsertions,
                         spliceIntoDeferredContext.insertions
                       )
                     then
                       // The implied preceding anchor and the succeeding anchor
-                      // just encountered bracket the same insertions.
-                      (partialResult.appendMigratedInsertions(
-                        deferredInsertions
-                      ) ++ suffix ++ substituted) -> succeedingInsertionSplice
+                      // just encountered bracket the same insertions; if there
+                      // were any skipped sections being treated as edits coming
+                      // after the preceding anchor, then we treat the prefix as
+                      // being greedily captured by the last such edit.
+                      (partialResult ++ prefix)
+                        .appendMigratedInsertions(
+                          spliceIntoDeferredContext.insertions
+                        ) ++ suffix ++ substituted -> succeedingInsertionSplice
                         .fold(ifEmpty = emptyContext)(Deferrals.apply)
                     else
                       ((partialResult.appendMigratedInsertions(
