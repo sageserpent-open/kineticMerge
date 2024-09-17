@@ -722,10 +722,17 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           heyDiddleDiddleInPsychoticForm,
           heyDiddleDiddleWithIntraFileMove,
           heyDiddleDiddleInPsychoticFormExpectedMerge
+        ),
+        (
+          "Inserted context migrated across the file rename with a deletion at the destination.",
+          heyDiddleDiddleInModernForm,
+          heyDiddleDiddleWithDeletionAtDestination,
+          heyDiddleDiddleWithInsertions,
+          heyDiddleDiddleWithInsertionsAndADeletionAtDestinationExpectedMerge
         )
       )
       .and(Trials.api.booleans)
-      .withLimit(8)
+      .withLimit(10)
       .dynamicTests {
         case (
               (
@@ -2446,6 +2453,27 @@ trait ProseExamples:
       |The little dog laugh'd
       |To see such craft,
       |And the fork ran away with the spoon over the moon.
+      |""".stripMargin
+
+  protected val heyDiddleDiddleWithDeletionAtDestination: String =
+    """
+      |Hey diddle diddle,
+      |The cat and the fiddle,
+      |The cow jumped over the moon;
+      |The little dog laughed
+      |To see such
+      |And the dish ran away with the spoon.
+      |""".stripMargin
+
+  protected val heyDiddleDiddleWithInsertionsAndADeletionAtDestinationExpectedMerge
+      : String =
+    """
+      |Hey diddle diddle,
+      |The cat and the fiddle,
+      |The cow jumped over the moon;
+      |The little dog laughed
+      |To see such (they know how to have a party)
+      |And the dish ran away with the spoon.
       |""".stripMargin
 
   protected val proverbs: String =
