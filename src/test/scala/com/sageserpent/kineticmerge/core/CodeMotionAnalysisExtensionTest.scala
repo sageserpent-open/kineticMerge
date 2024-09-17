@@ -889,9 +889,23 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           (proverbsMeetAgileConsultant, palindromesMeetAgileConsultant),
           moveToTheEndWordPlay,
           moveToTheEndWordPlayExpectedMerge
+        ),
+        (
+          "Leading lines from both halves are made adjacent.",
+          (proverbs, palindromes),
+          (proverbsMeetAgileConsultant, palindromesMeetAgileConsultant),
+          makeLeadingLinesFromBothHalvesAdjacentWordPlay,
+          makeLeadingLinesFromBothHalvesAdjacentWordPlayExpectedMerge
+        ),
+        (
+          "Leading lines from both halves are made adjacent with some leading deletion.",
+          (proverbs, palindromes),
+          (proverbsMeetAgileConsultant, palindromesMeetAgileConsultant),
+          makeLeadingLinesFromBothHalvesAdjacentWithSomeLeadingDeletionWordPlay,
+          makeLeadingLinesFromBothHalvesAdjacentWithSomeLeadingDeletionWordPlayExpectedMerge
         )
       )
-      .withLimit(3)
+      .withLimit(5)
       .dynamicTests {
         case (
               (
@@ -2591,5 +2605,62 @@ trait ProseExamples:
       |Rats live on no evil star
       |No one made killer apparel like Dame Noon
       |A stitch in time saves nine (but you aren't going to need it).
+      |""".stripMargin
+
+  protected val makeLeadingLinesFromBothHalvesAdjacentWordPlay: String =
+    """
+      |A bird in hand is worth two in the bush.
+      |A stitch in time saves nine.
+      |A man, a plan, a canal, Panama
+      |Fools rush in.
+      |All's well that ends well.
+      |Better a gramme than a damn.
+      |Able was I ere I saw Elba
+      |Rats live on no evil star
+      |No one made killer apparel like Dame Noon
+      |""".stripMargin
+
+  protected val makeLeadingLinesFromBothHalvesAdjacentWordPlayExpectedMerge
+      : String =
+    """
+      |A bird in hand is worth two in the bush.
+      |A stitch in time saves nine (but you aren't going to need it).
+      |A man, a plan (but you aren't going to need it), a canal, Panama
+      |(but you aren't going to need it)
+      |Fools rush in.
+      |All's well that ends well.
+      |Better a gramme than a damn.
+      |Able was I ere I saw Elba
+      |Rats live on no evil star
+      |No one made killer apparel like Dame Noon
+      |""".stripMargin
+
+  protected val makeLeadingLinesFromBothHalvesAdjacentWithSomeLeadingDeletionWordPlay
+      : String =
+    """
+      |A bird in hand is worth two in the bush.
+      |A stitch in time saves.
+      |A man, a plan, a canal, Panama
+      |Fools rush in.
+      |All's well that ends well.
+      |Better a gramme than a damn.
+      |Able was I ere I saw Elba
+      |Rats live on no evil star
+      |No one made killer apparel like Dame Noon
+      |""".stripMargin
+
+  protected val makeLeadingLinesFromBothHalvesAdjacentWithSomeLeadingDeletionWordPlayExpectedMerge
+      : String =
+    """
+      |A bird in hand is worth two in the bush.
+      |A stitch in time saves (but you aren't going to need it).
+      |A man, a plan (but you aren't going to need it), a canal, Panama
+      |(but you aren't going to need it)
+      |Fools rush in.
+      |All's well that ends well.
+      |Better a gramme than a damn.
+      |Able was I ere I saw Elba
+      |Rats live on no evil star
+      |No one made killer apparel like Dame Noon
       |""".stripMargin
 end ProseExamples
