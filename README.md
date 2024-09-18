@@ -48,6 +48,8 @@ Try the instructions
 here [if you have Coursier](https://github.com/sageserpent-open/kineticMerge/issues/21#issuecomment-1933956129)
 or [here if you have a corporate mirror of Maven](https://github.com/sageserpent-open/kineticMerge/issues/21#issuecomment-1932619838).
 
+Really can't download scripts or JARs from GitHub, Maven Central or Sonatype, but can clone this repository? If so, clone this repository locally (or just download it as a source drop), install SBT and run `sbt packageExecutable` in the top level of the directory you've cloned / downloaded - that will place a freshly baked executable and companion Windows batch file in the `target` directory.
+
 ## Running it ##
 
 Go to your Git repository. Check your repository has a branch checked out (so not a *bare* repository) and that it
