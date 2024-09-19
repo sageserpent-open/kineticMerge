@@ -725,7 +725,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       // The implied preceding anchor and the succeeding anchor
                       // just encountered bracket the same insertions.
                       (partialResult.appendMigratedInsertions(
-                        deferredInsertions
+                        deferredInsertions.flatMap(substituteFor)
                       ) ++ substituted) -> succeedingInsertionSplice
                         .fold(ifEmpty = emptyContext)(Deferrals.apply)
                     else
@@ -735,7 +735,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       // stick as close as possible to their anchor, we put
                       // `deferredInsertionsForImpliedPrecedingAnchor` first.
                       (partialResult.appendMigratedInsertions(
-                        deferredInsertions ++ insertionsForSucceedingAnchor
+                        deferredInsertions.flatMap(
+                          substituteFor
+                        ) ++ insertionsForSucceedingAnchor
                       ) ++ substituted) -> succeedingInsertionSplice
                         .fold(ifEmpty = emptyContext)(Deferrals.apply)
                   case (
@@ -769,7 +771,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                         .fold(ifEmpty = emptyContext)(Deferrals.apply)
                     else
                       ((partialResult.appendMigratedInsertions(
-                        deferredInsertions
+                        deferredInsertions.flatMap(substituteFor)
                       ) ++ prefix).appendMigratedInsertions(
                         spliceIntoDeferredContext.insertions
                       ) ++ suffix ++ substituted) -> succeedingInsertionSplice
@@ -784,7 +786,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     // insertions from the previous preceding anchor can finally
                     // be added to the partial result.
                     (partialResult.appendMigratedInsertions(
-                      deferredInsertions
+                      deferredInsertions.flatMap(substituteFor)
                     ) ++ substituted) -> Deferrals(
                       insertionSplice
                     )
@@ -801,7 +803,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     // deferred content can finally be added to the partial
                     // result.
                     (partialResult.appendMigratedInsertions(
-                      deferredInsertions
+                      deferredInsertions.flatMap(substituteFor)
                     ) ++ deferredContent ++ substituted) -> Deferrals(
                       insertionSplice
                     )
@@ -816,7 +818,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       Right(deferredContent)
                     ) =>
                   partialResult.appendMigratedInsertions(
-                    deferredInsertions
+                    deferredInsertions.flatMap(substituteFor)
                   ) ++ deferredContent
           end match
         end migrateInsertionsAndApplySubstitutions
