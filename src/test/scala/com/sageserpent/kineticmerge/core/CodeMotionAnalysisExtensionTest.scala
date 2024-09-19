@@ -2753,9 +2753,12 @@ trait ProseExamples:
       |""".stripMargin
 
   protected val leftoverProverbsWithEdit: String =
+    // FIXME: once https://github.com/sageserpent-open/kineticMerge/issues/83 is
+    // in, amend the *last* line to end in an exclamation mark instead of a full
+    // stop.
     """Fools rush in.
       |All's well that ends well.
-      |Better eat gram flour, not the damned flowers!
+      |Better eat gram flour, not the damned flowers.
       |""".stripMargin
 
   protected val excisedProverbs: String =
@@ -2765,9 +2768,12 @@ trait ProseExamples:
       |""".stripMargin
 
   protected val excisedProverbsExpectedMerge: String =
+    // FIXME: once https://github.com/sageserpent-open/kineticMerge/issues/83 is
+    // in, amend the *second* line to end in an exclamation mark instead of a
+    // full stop.
     """
       |A bird in hand is worth two in the bush.
-      |Better eat gram flour, not the damned flowers!
+      |Better eat gram flour, not the damned flowers.
       |A stitch in time saves nine.
       |""".stripMargin
 
