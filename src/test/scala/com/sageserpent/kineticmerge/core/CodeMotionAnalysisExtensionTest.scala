@@ -117,22 +117,22 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     Trials.api
       .choose(
         (
-          propagatedSurroundedInsertionExampleBase,
-          propagatedSurroundedInsertionExampleLeft,
-          propagatedSurroundedInsertionExampleRight,
-          propagatedSurroundedInsertionExampleExpectedMerge
+          migratedSurroundedInsertionExampleBase,
+          migratedSurroundedInsertionExampleLeft,
+          migratedSurroundedInsertionExampleRight,
+          migratedSurroundedInsertionExampleExpectedMerge
         ),
         (
-          propagatedLeadingInsertionExampleBase,
-          propagatedLeadingInsertionExampleLeft,
-          propagatedLeadingInsertionExampleRight,
-          propagatedLeadingInsertionExampleExpectedMerge
+          migratedLeadingInsertionExampleBase,
+          migratedLeadingInsertionExampleLeft,
+          migratedLeadingInsertionExampleRight,
+          migratedLeadingInsertionExampleExpectedMerge
         ),
         (
-          propagatedTrailingInsertionExampleBase,
-          propagatedTrailingInsertionExampleLeft,
-          propagatedTrailingInsertionExampleRight,
-          propagatedTrailingInsertionExampleExpectedMerge
+          migratedTrailingInsertionExampleBase,
+          migratedTrailingInsertionExampleLeft,
+          migratedTrailingInsertionExampleRight,
+          migratedTrailingInsertionExampleExpectedMerge
         )
       )
       .withLimit(10)
@@ -775,10 +775,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
             right = if swapSides then leftSources else rightSources
           )(configuration): @unchecked
 
-          val expected = tokens(
-            expectedMergeContent
-          ).get
-
           val (mergeResultsByPath, moveDestinationsReport) =
             codeMotionAnalysis.merge
 
@@ -790,6 +786,10 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
           val mergeResult = mergeResultsByPath(renamedPath)
 
+          val expected = tokens(
+            expectedMergeContent
+          ).get
+
           verifyContent(renamedPath, expected, mergeResult)
 
           val contentAtOriginalPath = mergeResultsByPath(originalPath)
@@ -797,6 +797,62 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           verifyAbsenceOfContent(originalPath, contentAtOriginalPath)
       }
   end codeMotionAcrossAFileRename
+
+  private def verifyContent(
+      path: FakePath,
+      expectedContent: Vector[Token],
+      mergeResult: MergeResult[Token]
+  ): Unit =
+    println(fansi.Color.Yellow(s"Checking $path...\n"))
+    println(fansi.Color.Yellow("Expected..."))
+    println(fansi.Color.Green(reconstituteTextFrom(expectedContent)))
+
+    mergeResult match
+      case FullyMerged(result) =>
+        println(fansi.Color.Yellow("Fully merged result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(result)))
+        assert(result.corresponds(expectedContent)(Token.equality))
+      case MergedWithConflicts(leftResult, rightResult) =>
+        println(fansi.Color.Red(s"Left result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+        println(fansi.Color.Red(s"Right result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+        fail("Should have seen a clean merge.")
+    end match
+  end verifyContent
+
+  private def verifyAbsenceOfContent(
+      path: FakePath,
+      mergeResult: MergeResult[Token]
+  ): Unit =
+    mergeResult match
+      case FullyMerged(result) =>
+        assert(
+          result.isEmpty,
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render + fansi.Color
+            .Green(
+              reconstituteTextFrom(result)
+            )
+            .render
+        )
+      case MergedWithConflicts(leftResult, rightResult) =>
+        fail(
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render + fansi.Color.Red(s"\nLeft result...\n")
+            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
+            + fansi.Color.Red(s"\nRight result...\n").render
+            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
+        )
+    end match
+  end verifyAbsenceOfContent
 
   @TestFactory
   def codeMotionAcrossTwoFilesWhoseContentIsCombinedTogetherToMakeANewReplacementFile()
@@ -893,10 +949,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
             right = rightSources
           )(configuration): @unchecked
 
-          val expected = tokens(
-            expectedMergeContent
-          ).get
-
           val (mergeResultsByPath, moveDestinationsReport) =
             codeMotionAnalysis.merge
 
@@ -907,6 +959,10 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           )
 
           val mergeResult = mergeResultsByPath(combinedPath)
+
+          val expected = tokens(
+            expectedMergeContent
+          ).get
 
           verifyContent(combinedPath, expected, mergeResult)
 
@@ -920,61 +976,79 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       }
   end codeMotionAcrossTwoFilesWhoseContentIsCombinedTogetherToMakeANewReplacementFile
 
-  private def verifyContent(
-      path: FakePath,
-      expectedContent: Vector[Token],
-      mergeResult: MergeResult[Token]
-  ): Unit =
-    println(fansi.Color.Yellow(s"Checking $path...\n"))
-    println(fansi.Color.Yellow("Expected..."))
-    println(fansi.Color.Green(reconstituteTextFrom(expectedContent)))
+  @Test
+  def furtherMigrationOfAMigratedEditAsAnInsertion(): Unit =
+    val configuration = Configuration(
+      minimumMatchSize = 2,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0
+    )
 
-    mergeResult match
-      case FullyMerged(result) =>
-        println(fansi.Color.Yellow("Fully merged result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(result)))
-        assert(result.corresponds(expectedContent)(Token.equality))
-      case MergedWithConflicts(leftResult, rightResult) =>
-        println(fansi.Color.Red(s"Left result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
-        println(fansi.Color.Red(s"Right result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+    val proverbsPath: FakePath        = "*** PROVERBS ***"
+    val excisedProverbsPath: FakePath = "*** EXCISED PROVERBS ***"
 
-        fail("Should have seen a clean merge.")
-    end match
-  end verifyContent
+    val baseSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(
+        proverbsPath -> tokens(proverbs).get
+      ),
+      label = "base"
+    )
 
-  private def verifyAbsenceOfContent(
-      path: FakePath,
-      mergeResult: MergeResult[Token]
-  ): Unit =
-    mergeResult match
-      case FullyMerged(result) =>
-        assert(
-          result.isEmpty,
-          fansi.Color
-            .Yellow(
-              s"\nShould not have this content at $path...\n"
-            )
-            .render + fansi.Color
-            .Green(
-              reconstituteTextFrom(result)
-            )
-            .render
-        )
-      case MergedWithConflicts(leftResult, rightResult) =>
-        fail(
-          fansi.Color
-            .Yellow(
-              s"\nShould not have this content at $path...\n"
-            )
-            .render + fansi.Color.Red(s"\nLeft result...\n")
-            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
-            + fansi.Color.Red(s"\nRight result...\n").render
-            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
-        )
-    end match
-  end verifyAbsenceOfContent
+    val leftSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(
+        proverbsPath -> tokens(proverbsWithIntraFileMove).get
+      ),
+      label = "left"
+    )
+
+    val rightSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(
+        proverbsPath        -> tokens(leftoverProverbsWithEdit).get,
+        excisedProverbsPath -> tokens(excisedProverbs).get
+      ),
+      label = "right"
+    )
+
+    val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+      base = baseSources,
+      left = leftSources,
+      right = rightSources
+    )(configuration): @unchecked
+
+    val (mergeResultsByPath, moveDestinationsReport) =
+      codeMotionAnalysis.merge
+
+    println(fansi.Color.Yellow(s"Final move destinations report...\n"))
+    println(
+      fansi.Color
+        .Green(moveDestinationsReport.summarizeInText.mkString("\n"))
+    )
+
+    {
+      val mergeResult = mergeResultsByPath(excisedProverbsPath)
+
+      val expected = tokens(excisedProverbsExpectedMerge).get
+
+      verifyContent(
+        proverbsPath,
+        expected,
+        mergeResult
+      )
+    }
+
+    {
+      val mergeResult = mergeResultsByPath(proverbsPath)
+
+      val expected = tokens(leftOverProverbsExpectedMerge).get
+
+      verifyContent(
+        proverbsPath,
+        expected,
+        mergeResult
+      )
+    }
+
+  end furtherMigrationOfAMigratedEditAsAnInsertion
 end CodeMotionAnalysisExtensionTest
 
 trait ProseExamples:
@@ -998,62 +1072,62 @@ trait ProseExamples:
       |chipsINTRUDERketchupINTRUDERnoodlesBANGsandwichINTRUDERpudding
       |""".stripMargin
 
-  protected val propagatedSurroundedInsertionExampleBase: String =
+  protected val migratedSurroundedInsertionExampleBase: String =
     """
       |FishChipsMushyPeasKetchupMuesliToastTeaKippersNoodlesSandwichCakePudding
       |""".stripMargin
 
-  protected val propagatedSurroundedInsertionExampleLeft: String =
+  protected val migratedSurroundedInsertionExampleLeft: String =
     """
       |MuesliToastTeaKippersNoodlesSandwichCakeFishChipsMushyPeasKetchupPudding
       |""".stripMargin
 
-  protected val propagatedSurroundedInsertionExampleRight: String =
+  protected val migratedSurroundedInsertionExampleRight: String =
     """
       |FishChipsCurrySauceMushyPeasKetchupMuesliToastCoffeeKippersNoodlesSandwichCakePudding
       |""".stripMargin
 
-  protected val propagatedSurroundedInsertionExampleExpectedMerge: String =
+  protected val migratedSurroundedInsertionExampleExpectedMerge: String =
     """
       |MuesliToastCoffeeKippersNoodlesSandwichCakeFishChipsCurrySauceMushyPeasKetchupPudding
       |""".stripMargin
 
-  protected val propagatedLeadingInsertionExampleBase: String =
+  protected val migratedLeadingInsertionExampleBase: String =
     """
       |FishChipsMushyPeasKetchupMuesliToastTeaKippersNoodlesSandwichCakePudding
       |""".stripMargin
 
-  protected val propagatedLeadingInsertionExampleLeft: String =
+  protected val migratedLeadingInsertionExampleLeft: String =
     """
       |MuesliToastTeaKippersNoodlesSandwichCakeFishChipsMushyPeasKetchupPudding
       |""".stripMargin
 
-  protected val propagatedLeadingInsertionExampleRight: String =
+  protected val migratedLeadingInsertionExampleRight: String =
     """
       |CurrySauceFishChipsMushyPeasKetchupMuesliToastCoffeeKippersNoodlesSandwichCakePudding
       |""".stripMargin
 
-  protected val propagatedLeadingInsertionExampleExpectedMerge: String =
+  protected val migratedLeadingInsertionExampleExpectedMerge: String =
     """
       |MuesliToastCoffeeKippersNoodlesSandwichCakeCurrySauceFishChipsMushyPeasKetchupPudding
       |""".stripMargin
 
-  protected val propagatedTrailingInsertionExampleBase: String =
+  protected val migratedTrailingInsertionExampleBase: String =
     """
       |FishChipsMushyPeasKetchupMuesliToastTeaKippersNoodlesSandwichCakePudding
       |""".stripMargin
 
-  protected val propagatedTrailingInsertionExampleLeft: String =
+  protected val migratedTrailingInsertionExampleLeft: String =
     """
       |FishChipsMushyPeasKetchupSandwichCakePuddingMuesliToastTeaKippersNoodles
       |""".stripMargin
 
-  protected val propagatedTrailingInsertionExampleRight: String =
+  protected val migratedTrailingInsertionExampleRight: String =
     """
       |FishChipsMushyPeasKetchupMuesliToastCoffeeKippersNoodlesSandwichCakePuddingFigs
       |""".stripMargin
 
-  protected val propagatedTrailingInsertionExampleExpectedMerge: String =
+  protected val migratedTrailingInsertionExampleExpectedMerge: String =
     """
       |FishChipsMushyPeasKetchupSandwichCakePuddingFigsMuesliToastCoffeeKippersNoodles
       |""".stripMargin
@@ -1528,7 +1602,7 @@ trait ProseExamples:
       |object ExpectyFlavouredAssert:
       |  val assert: Expecty = new Expecty:
       |    override val showLocation: Boolean = true
-      |    override val showTypes: Boolean    = false // This edit should propagate.
+      |    override val showTypes: Boolean    = false // This edit should migrate.
       |  end assert
       |end ExpectyFlavouredAssert
       |  // Using Kinetic Merge will improve your software engineering practices...
@@ -1543,7 +1617,7 @@ trait ProseExamples:
       |object ExpectyFlavouredAssert:
       |  val assert: Expecty = new Expecty:
       |    // Swapped the next two lines around...
-      |    override val showTypes: Boolean    = false // This edit should propagate.
+      |    override val showTypes: Boolean    = false // This edit should migrate.
       |    override val showLocation: Boolean = true
       |
       |  end assert
@@ -1773,11 +1847,11 @@ trait ProseExamples:
       |     */
       |    static CasesLimitStrategy timed(final Duration timeBudget) {
       |        return new CasesLimitStrategy() {
-      |            Instant deadline = null; // This edit should propagate.
+      |            Instant deadline = null; // This edit should migrate.
       |
       |            @Override
       |            public boolean moreCasesToDo() {
-      |                if (null == deadline /* This edit should propagate. */) {
+      |                if (null == deadline /* This edit should migrate. */) {
       |                    deadline = Instant.now().plus(timeBudget);
       |                }
       |
@@ -1877,7 +1951,7 @@ trait ProseExamples:
       |     * interaction with the strategy by the implementation of {@link Trials}
       |     * except for additional calls to this method.
       |     */
-      |    boolean moreCasesToDo(); // This rename should propagate.
+      |    boolean moreCasesToDo(); // This rename should migrate.
       |
       |    /**
       |     * Notes that inlined case filtration in a test body has rejected a case.
@@ -2143,7 +2217,7 @@ trait ProseExamples:
       |     * interaction with the strategy by the implementation of {@link Trials}
       |     * except for additional calls to this method.
       |     */
-      |    boolean moreCasesToDo(); // This rename should propagate.
+      |    boolean moreCasesToDo(); // This rename should migrate.
       |
       |    /**
       |     * Notes that inlined case filtration in a test body has rejected a case.
@@ -2209,11 +2283,11 @@ trait ProseExamples:
       |     */
       |    static CasesLimitStrategy timed(final Duration timeBudget) {
       |        return new CasesLimitStrategy() {
-      |            Instant deadline = null; // This edit should propagate.
+      |            Instant deadline = null; // This edit should migrate.
       |
       |            @Override
       |            public boolean moreCasesToDo() {
-      |                if (null == deadline /* This edit should propagate. */) {
+      |                if (null == deadline /* This edit should migrate. */) {
       |                    deadline = Instant.now().plus(timeBudget);
       |                }
       |
@@ -2667,5 +2741,38 @@ trait ProseExamples:
       |Able was I ere I saw Elba
       |Rats live on no evil star
       |No one made killer apparel like Dame Noon
+      |""".stripMargin
+
+  protected val proverbsWithIntraFileMove: String =
+    """
+      |A bird in hand is worth two in the bush.
+      |Better a gramme than a damn.
+      |A stitch in time saves nine.
+      |Fools rush in.
+      |All's well that ends well.
+      |""".stripMargin
+
+  protected val leftoverProverbsWithEdit: String =
+    """Fools rush in.
+      |All's well that ends well.
+      |Better eat gram flour, not the damned flowers!
+      |""".stripMargin
+
+  protected val excisedProverbs: String =
+    """
+      |A bird in hand is worth two in the bush.
+      |A stitch in time saves nine.
+      |""".stripMargin
+
+  protected val excisedProverbsExpectedMerge: String =
+    """
+      |A bird in hand is worth two in the bush.
+      |Better eat gram flour, not the damned flowers!
+      |A stitch in time saves nine.
+      |""".stripMargin
+
+  protected val leftOverProverbsExpectedMerge: String =
+    """Fools rush in.
+      |All's well that ends well.
       |""".stripMargin
 end ProseExamples
