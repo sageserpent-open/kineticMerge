@@ -6,7 +6,7 @@ import scala.sys.process.*
 
 lazy val javaVersion = "17"
 
-ThisBuild / scalaVersion := "3.3.3"
+ThisBuild / scalaVersion := "3.3.4"
 
 ThisBuild / javacOptions ++= Seq("-source", javaVersion, "-target", javaVersion)
 
