@@ -798,6 +798,38 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       }
   end codeMotionAcrossAFileRename
 
+  private def verifyAbsenceOfContent(
+      path: FakePath,
+      mergeResult: MergeResult[Token]
+  ): Unit =
+    mergeResult match
+      case FullyMerged(result) =>
+        assert(
+          result.isEmpty,
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render + fansi.Color
+            .Green(
+              reconstituteTextFrom(result)
+            )
+            .render
+        )
+      case MergedWithConflicts(leftResult, rightResult) =>
+        fail(
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render + fansi.Color.Red(s"\nLeft result...\n")
+            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
+            + fansi.Color.Red(s"\nRight result...\n").render
+            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
+        )
+    end match
+  end verifyAbsenceOfContent
+
   @TestFactory
   def codeMotionAcrossTwoFilesWhoseContentIsCombinedTogetherToMakeANewReplacementFile()
       : DynamicTests =
@@ -919,38 +951,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           verifyAbsenceOfContent(palindromesPath, contentAtPalindromesPath)
       }
   end codeMotionAcrossTwoFilesWhoseContentIsCombinedTogetherToMakeANewReplacementFile
-
-  private def verifyAbsenceOfContent(
-      path: FakePath,
-      mergeResult: MergeResult[Token]
-  ): Unit =
-    mergeResult match
-      case FullyMerged(result) =>
-        assert(
-          result.isEmpty,
-          fansi.Color
-            .Yellow(
-              s"\nShould not have this content at $path...\n"
-            )
-            .render + fansi.Color
-            .Green(
-              reconstituteTextFrom(result)
-            )
-            .render
-        )
-      case MergedWithConflicts(leftResult, rightResult) =>
-        fail(
-          fansi.Color
-            .Yellow(
-              s"\nShould not have this content at $path...\n"
-            )
-            .render + fansi.Color.Red(s"\nLeft result...\n")
-            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
-            + fansi.Color.Red(s"\nRight result...\n").render
-            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
-        )
-    end match
-  end verifyAbsenceOfContent
 
   @Test
   def furtherMigrationOfAMigratedEditAsAnInsertion(): Unit =
@@ -2725,14 +2725,9 @@ trait ProseExamples:
 
   protected val makeLeadingLinesFromBothHalvesAdjacentWithSomeLeadingDeletionWordPlayExpectedMerge
       : String =
-    // NASTY HACK: note the line:
-    // "A stitch in time saves. (but you aren't going to need it)".
-    // This is to acknowledge that when a preceding anchor ("a stitch in time
-    // saves") is followed by another preceding anchor ("A man, a plan"), then
-    // the handling of deferred content at the destination is really clumsy.
     """
       |A bird in hand is worth two in the bush.
-      |A stitch in time saves. (but you aren't going to need it)
+      |A stitch in time saves (but you aren't going to need it).
       |A man, a plan (but you aren't going to need it), a canal, Panama
       |(but you aren't going to need it)
       |Fools rush in.
@@ -2753,12 +2748,9 @@ trait ProseExamples:
       |""".stripMargin
 
   protected val leftoverProverbsWithEdit: String =
-    // FIXME: once https://github.com/sageserpent-open/kineticMerge/issues/83 is
-    // in, amend the *last* line to end in an exclamation mark instead of a full
-    // stop.
     """Fools rush in.
       |All's well that ends well.
-      |Better eat gram flour, not the damned flowers.
+      |Better eat gram flour, not the damned flowers!
       |""".stripMargin
 
   protected val excisedProverbs: String =
@@ -2768,12 +2760,9 @@ trait ProseExamples:
       |""".stripMargin
 
   protected val excisedProverbsExpectedMerge: String =
-    // FIXME: once https://github.com/sageserpent-open/kineticMerge/issues/83 is
-    // in, amend the *second* line to end in an exclamation mark instead of a
-    // full stop.
     """
       |A bird in hand is worth two in the bush.
-      |Better eat gram flour, not the damned flowers.
+      |Better eat gram flour, not the damned flowers!
       |A stitch in time saves nine.
       |""".stripMargin
 
