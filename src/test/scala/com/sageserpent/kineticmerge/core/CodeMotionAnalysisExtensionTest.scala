@@ -258,7 +258,10 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
   private def verifyContent(
       path: FakePath,
       mergeResultsByPath: Map[FakePath, MergeResult[Token]]
-  )(expectedTokens: IndexedSeq[Token]): Unit =
+  )(
+      expectedTokens: IndexedSeq[Token],
+      equality: (Token, Token) => Boolean = Token.equality
+  ): Unit =
     println(fansi.Color.Yellow(s"Checking $path...\n"))
     println(fansi.Color.Yellow("Expected..."))
     println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
@@ -267,7 +270,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       case FullyMerged(result) =>
         println(fansi.Color.Yellow("Fully merged result..."))
         println(fansi.Color.Green(reconstituteTextFrom(result)))
-        assert(result.corresponds(expectedTokens)(Token.equality))
+        assert(result.corresponds(expectedTokens)(equality))
       case MergedWithConflicts(leftResult, rightResult) =>
         println(fansi.Color.Red(s"Left result..."))
         println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
@@ -486,26 +489,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         val (mergeResultsByPath, _) =
           codeMotionAnalysis.merge
 
-        val mergeResult = mergeResultsByPath(placeholderPath)
-
-        println(fansi.Color.Yellow(s"Checking $placeholderPath...\n"))
-        println(fansi.Color.Yellow("Expected..."))
-        println(fansi.Color.Green(reconstituteTextFrom(expected)))
-
-        mergeResult match
-          case FullyMerged(result) =>
-            println(fansi.Color.Yellow("Fully merged result..."))
-            println(fansi.Color.Green(reconstituteTextFrom(result)))
-            assert(result.sameElements(expected))
-          case MergedWithConflicts(leftResult, rightResult) =>
-            println(fansi.Color.Red(s"Left result..."))
-            println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
-            println(fansi.Color.Red(s"Right result..."))
-            println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
-
-            fail("Should have seen a clean merge.")
-        end match
-
+        verifyContent(placeholderPath, mergeResultsByPath)(expected, _ == _)
     }
   end whitespaceOnlyEditing
 
@@ -567,31 +551,12 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         val (mergeResultsByPath, _) =
           codeMotionAnalysis.merge
 
-        val mergeResult = mergeResultsByPath(renamedForCodeMotionPath)
+        verifyAbsenceOfContent(originalPath, mergeResultsByPath)
 
-        val FullyMerged(expectedToBeEmpty) =
-          mergeResultsByPath(originalPath): @unchecked
-
-        assert(expectedToBeEmpty.isEmpty)
-
-        println(fansi.Color.Yellow(s"Checking $renamedForCodeMotionPath...\n"))
-        println(fansi.Color.Yellow("Expected..."))
-        println(fansi.Color.Green(reconstituteTextFrom(expected)))
-
-        mergeResult match
-          case FullyMerged(result) =>
-            println(fansi.Color.Yellow("Fully merged result..."))
-            println(fansi.Color.Green(reconstituteTextFrom(result)))
-            assert(result.sameElements(expected))
-          case MergedWithConflicts(leftResult, rightResult) =>
-            println(fansi.Color.Red(s"Left result..."))
-            println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
-            println(fansi.Color.Red(s"Right result..."))
-            println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
-
-            fail("Should have seen a clean merge.")
-        end match
-
+        verifyContent(renamedForCodeMotionPath, mergeResultsByPath)(
+          expected,
+          _ == _
+        )
     }
   end whitespaceOnlyEditingWithCodeMotion
 
