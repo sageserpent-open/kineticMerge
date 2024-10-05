@@ -1,6 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.{Eq, Order}
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Sized
 import com.sageserpent.kineticmerge.core.merge.of as mergeOf
 import com.typesafe.scalalogging.StrictLogging
@@ -480,7 +481,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               uniqueMigratedChanges match
                 case head :: Nil => head
                 case _ =>
-                  throw new RuntimeException(
+                  throw new AdmissibleFailure(
                     s"""
                        |Multiple potential changes migrated to destination: $section,
                        |these are:
@@ -588,7 +589,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     uniqueInsertionSplices match
                       case head :: Nil => head
                       case _ =>
-                        throw new RuntimeException(
+                        throw new AdmissibleFailure(
                           s"""
                              |Multiple potential insertions migrated before destination: $candidateAnchorDestination,
                              |these are:
@@ -619,7 +620,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     uniqueInsertionSplices match
                       case head :: Nil => head
                       case _ =>
-                        throw new RuntimeException(
+                        throw new AdmissibleFailure(
                           s"""
                              |Multiple potential insertions migrated after destination: $candidateAnchorDestination,
                              |these are:

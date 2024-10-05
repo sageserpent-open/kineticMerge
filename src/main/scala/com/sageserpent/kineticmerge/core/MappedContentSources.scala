@@ -1,5 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
 import com.sageserpent.kineticmerge.core.MappedContentSourcesOfTokens.{TextPosition, linebreakExtraction}
 import com.typesafe.scalalogging.StrictLogging
 import pprint.Tree
@@ -198,7 +199,7 @@ trait MappedContentSources[Path, Element]
       path: Path,
       first: Section[Element],
       second: Section[Element]
-  ) extends RuntimeException({
+  ) extends AdmissibleFailure({
         val overlap = section(path)(
           startOffset = second.startOffset,
           size = first.onePastEndOffset - second.startOffset

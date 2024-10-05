@@ -15,7 +15,7 @@ import scala.annotation.tailrec
 import scala.collection.immutable.{MultiDict, SortedMultiSet}
 import scala.collection.parallel.CollectionConverters.*
 import scala.collection.{SortedMultiDict, mutable}
-import scala.util.{Try, Using}
+import scala.util.{Failure, Success, Try, Using}
 
 trait CodeMotionAnalysis[Path, Element]:
   def base: Map[Path, File[Element]]
@@ -1766,7 +1766,7 @@ object CodeMotionAnalysis extends StrictLogging:
       ).withPairwiseMatchesEatenInto.cleanedUp
     end matchesAndTheirSections
 
-    val attempt = Try {
+    try
       val sectionsAndTheirMatches =
         matchesAndTheirSections.sectionsAndTheirMatches
 
@@ -1822,7 +1822,7 @@ object CodeMotionAnalysis extends StrictLogging:
             }
       }
 
-      new CodeMotionAnalysis[Path, Element]:
+      Right(new CodeMotionAnalysis[Path, Element]:
         override def matchesFor(
             section: Section[Element]
         ): collection.Set[Match[Section[Element]]] =
@@ -1833,26 +1833,27 @@ object CodeMotionAnalysis extends StrictLogging:
         override def left: Map[Path, File[Element]] = leftFilesByPath
 
         override def right: Map[Path, File[Element]] = rightFilesByPath
-      end new
-
-    }
-
-    if propagateExceptions then Right(attempt.get) else attempt.toEither
-    end if
+      )
+    catch
+      case admissibleException: AdmissibleFailure if !propagateAllExceptions =>
+        Left(admissibleException)
+    end try
   end of
+
+  class AdmissibleFailure(message: String) extends RuntimeException(message)
 
   /** @param minimumMatchSize
     * @param thresholdSizeFractionForMatching
     *   A section's size must be at least this fraction of its containing file's
     *   size to qualify for matching.
     * @param minimumAmbiguousMatchSize
-    * @param propagateExceptions
+    * @param propagateAllExceptions
     */
   case class Configuration(
       minimumMatchSize: Int,
       thresholdSizeFractionForMatching: Double,
       minimumAmbiguousMatchSize: Int,
-      propagateExceptions: Boolean = true,
+      propagateAllExceptions: Boolean = true,
       progressRecording: ProgressRecording = NoProgressRecording
   ):
     require(0 <= minimumMatchSize)
