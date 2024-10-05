@@ -15,7 +15,7 @@ import scala.annotation.tailrec
 import scala.collection.immutable.{MultiDict, SortedMultiSet}
 import scala.collection.parallel.CollectionConverters.*
 import scala.collection.{SortedMultiDict, mutable}
-import scala.util.{Failure, Success, Try, Using}
+import scala.util.Using
 
 trait CodeMotionAnalysis[Path, Element]:
   def base: Map[Path, File[Element]]
@@ -1835,8 +1835,10 @@ object CodeMotionAnalysis extends StrictLogging:
         override def right: Map[Path, File[Element]] = rightFilesByPath
       )
     catch
-      case admissibleException: AdmissibleFailure if !propagateAllExceptions =>
-        Left(admissibleException)
+      // NOTE: don't convert this to use of `Try` with a subsequent `.toEither`
+      // conversion. We want most flavours of exception to propagate, as they
+      // are likely to be logic errors or something just as unwholesome.
+      case admissibleException: AdmissibleFailure => Left(admissibleException)
     end try
   end of
 
@@ -1853,7 +1855,6 @@ object CodeMotionAnalysis extends StrictLogging:
       minimumMatchSize: Int,
       thresholdSizeFractionForMatching: Double,
       minimumAmbiguousMatchSize: Int,
-      propagateAllExceptions: Boolean = true,
       progressRecording: ProgressRecording = NoProgressRecording
   ):
     require(0 <= minimumMatchSize)

@@ -259,7 +259,6 @@ object Main extends StrictLogging:
       minimumMatchSize,
       thresholdSizeFractionForMatching,
       minimumAmbiguousMatchSize,
-      propagateAllExceptions = false,
       progressRecording = progressRecording
     )
 
