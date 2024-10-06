@@ -722,7 +722,7 @@ class CodeMotionAnalysisTest:
     // of the second occurrences of `smallAmbiguousAllSidesContent` across all
     // three sides.
 
-    // All of the other ambiguous all-sides matches should be either suppressed
+    // All the other ambiguous all-sides matches should be either suppressed
     // completely or are similarly redundant.
 
     val baseSources = new FakeSources(
