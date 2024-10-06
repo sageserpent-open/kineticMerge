@@ -660,6 +660,28 @@ object CodeMotionAnalysis extends StrictLogging:
     ):
       import MatchesAndTheirSections.*
 
+      // Check the invariant that all matches that involve the same section must
+      // be of the same kind...
+      sectionsAndTheirMatches.sets.foreach { (section, matches) =>
+        matches.head match
+          case _: Match.AllSides[Section[Element]] =>
+            matches.tail.foreach { anotherMatch =>
+              require(anotherMatch.isInstanceOf[Match.AllSides[Element]])
+            }
+          case _: Match.BaseAndLeft[Section[Element]] =>
+            matches.tail.foreach { anotherMatch =>
+              require(anotherMatch.isInstanceOf[Match.BaseAndLeft[Element]])
+            }
+          case _: Match.BaseAndRight[Section[Element]] =>
+            matches.tail.foreach { anotherMatch =>
+              require(anotherMatch.isInstanceOf[Match.BaseAndRight[Element]])
+            }
+          case _: Match.LeftAndRight[Section[Element]] =>
+            matches.tail.foreach { anotherMatch =>
+              require(anotherMatch.isInstanceOf[Match.LeftAndRight[Element]])
+            }
+      }
+
       private val subsumesBaseSection: Section[Element] => Boolean =
         subsumesSection(base, baseSectionsByPath)
       private val subsumesLeftSection: Section[Element] => Boolean =
@@ -820,68 +842,88 @@ object CodeMotionAnalysis extends StrictLogging:
       ): MatchingResult =
         val (
           updatedMatchesAndTheirSections,
-          matchesWithoutRedundantPairwiseMatches
+          addedMatches
         ) =
-          matches
-            .foldLeft(this)(_.withMatch(_))
-            // NOTE: this looks terrible - why add all the matches in
-            // unconditionally and then take out the redundant pairwise ones?
-            // The answer is because the matches being added are in no
-            // particular order - so we would have to add all the all-sides
-            // matches first unconditionally and then vet the pairwise ones
-            // afterwards.
-            .withoutRedundantPairwiseMatchesIn(matches)
+          // Separate the all-sides matches from the pairwise matches. We add
+          // the all-sides matches in unconditionally, then vet the remaining
+          // pairwise matches in case they are redundant in the presence of the
+          // all-sides matches.
+
+          val (
+            allSidesMatches,
+            pairwiseMatches
+          ) = matches.partition(_.isAnAllSidesMatch)
+
+          val withAllSidesMatchesAddedIn =
+            allSidesMatches.foldLeft(this, Set.empty[Match[Section[Element]]]) {
+              case (
+                    (partialMatchesAndTheirSections, partialAddedMatches),
+                    aMatch
+                  ) =>
+                partialMatchesAndTheirSections
+                  .withMatch(aMatch) -> (partialAddedMatches + aMatch)
+            }
+
+          pairwiseMatches
+            .foldLeft(withAllSidesMatchesAddedIn) {
+              case (
+                    partialResult @ (
+                      partialMatchesAndTheirSections,
+                      partialAddedMatches
+                    ),
+                    aMatch: PairwiseMatch
+                  ) =>
+                partialMatchesAndTheirSections
+                  .withNonRedundantPairwiseMatch(aMatch)
+                  .fold(ifEmpty =
+                    logger.debug(
+                      s"Removing redundant pairwise match:\n${pprintCustomised(aMatch)} as its sections also belong to an all-sides match."
+                    )
+                    partialResult
+                  )(
+                    _ -> (partialAddedMatches + aMatch)
+                  )
+            }
+        end val
 
         MatchingResult(
           matchesAndTheirSections = updatedMatchesAndTheirSections,
-          numberOfMatchesForTheGivenWindowSize =
-            matchesWithoutRedundantPairwiseMatches.size,
+          numberOfMatchesForTheGivenWindowSize = addedMatches.size,
           estimatedWindowSizeForOptimalMatch =
-            estimateOptimalMatchSize(matchesWithoutRedundantPairwiseMatches)
+            estimateOptimalMatchSize(addedMatches)
         )
       end withMatches
 
-      // Cleans up the state when a putative all-sides match that would have
-      // been ambiguous on one side with another all-sides match was partially
-      // suppressed by a larger pairwise match. This situation results in a
-      // pairwise match that shares its sections on both sides with the other
-      // all-sides match; remove any such redundant pairwise matches.
-      private def withoutRedundantPairwiseMatchesIn(
-          matches: collection.Set[Match[Section[Element]]]
-      ): (MatchesAndTheirSections, collection.Set[Match[Section[Element]]]) =
-        val (redundantMatches, usefulMatches) =
-          matches.partition {
-            case Match.BaseAndLeft(baseSection, leftSection) =>
-              sectionsAndTheirMatches
-                .get(baseSection)
-                .intersect(sectionsAndTheirMatches.get(leftSection))
-                .exists(_.isAnAllSidesMatch)
-            case Match.BaseAndRight(baseSection, rightSection) =>
-              sectionsAndTheirMatches
-                .get(baseSection)
-                .intersect(sectionsAndTheirMatches.get(rightSection))
-                .exists(_.isAnAllSidesMatch)
-            case Match.LeftAndRight(leftSection, rightSection) =>
-              sectionsAndTheirMatches
-                .get(leftSection)
-                .intersect(sectionsAndTheirMatches.get(rightSection))
-                .exists(_.isAnAllSidesMatch)
-            case _: Match.AllSides[Section[Element]] => false
-          }
-        end val
+      private def withNonRedundantPairwiseMatch(
+          aMatch: PairwiseMatch
+      ): Option[MatchesAndTheirSections] =
+        // Check for the situation when a putative all-sides match that would
+        // have been ambiguous on one side with another all-sides match has been
+        // partially suppressed by a larger pairwise match. This situation
+        // results in a pairwise match that shares its sections on both sides
+        // with the other all-sides match; exclude such a redundant pairwise
+        // match.
+        val encounteredRedundantPairwiseMatch = aMatch match
+          case Match.BaseAndLeft(baseSection, leftSection) =>
+            sectionsAndTheirMatches
+              .get(baseSection)
+              .intersect(sectionsAndTheirMatches.get(leftSection))
+              .exists(_.isAnAllSidesMatch)
+          case Match.BaseAndRight(baseSection, rightSection) =>
+            sectionsAndTheirMatches
+              .get(baseSection)
+              .intersect(sectionsAndTheirMatches.get(rightSection))
+              .exists(_.isAnAllSidesMatch)
+          case Match.LeftAndRight(leftSection, rightSection) =>
+            sectionsAndTheirMatches
+              .get(leftSection)
+              .intersect(sectionsAndTheirMatches.get(rightSection))
+              .exists(_.isAnAllSidesMatch)
 
-        if redundantMatches.nonEmpty then
-          logger.debug(
-            s"Removing redundant pairwise matches:\n${pprintCustomised(redundantMatches)} as their sections also belong to all-sides matches."
-          )
-        end if
+        Option.unless(encounteredRedundantPairwiseMatch)(withMatch(aMatch))
+      end withNonRedundantPairwiseMatch
 
-        withoutTheseMatches(redundantMatches) -> usefulMatches
-      end withoutRedundantPairwiseMatchesIn
-
-      private def withMatch(
-          aMatch: Match[Section[Element]]
-      ): MatchesAndTheirSections =
+      private def withMatch(aMatch: Match[Section[Element]]) =
         aMatch match
           case Match.AllSides(baseSection, leftSection, rightSection) =>
             copy(
@@ -912,8 +954,6 @@ object CodeMotionAnalysis extends StrictLogging:
               sectionsAndTheirMatches =
                 sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch)
             )
-        end match
-      end withMatch
 
       private def withoutTheseMatches(
           matches: Iterable[Match[Section[Element]]]
@@ -1800,28 +1840,6 @@ object CodeMotionAnalysis extends StrictLogging:
           mandatorySections = matchesAndTheirSections.rightSections,
           candidateGapChunksByPath = candidateGapChunksByPath
         )
-
-      // Check the invariant that all matches that involve the same section must
-      // be of the same kind...
-      sectionsAndTheirMatches.sets.foreach { (section, matches) =>
-        matches.head match
-          case _: Match.AllSides[Section[Element]] =>
-            matches.tail.foreach { anotherMatch =>
-              require(anotherMatch.isInstanceOf[Match.AllSides[Element]])
-            }
-          case _: Match.BaseAndLeft[Section[Element]] =>
-            matches.tail.foreach { anotherMatch =>
-              require(anotherMatch.isInstanceOf[Match.BaseAndLeft[Element]])
-            }
-          case _: Match.BaseAndRight[Section[Element]] =>
-            matches.tail.foreach { anotherMatch =>
-              require(anotherMatch.isInstanceOf[Match.BaseAndRight[Element]])
-            }
-          case _: Match.LeftAndRight[Section[Element]] =>
-            matches.tail.foreach { anotherMatch =>
-              require(anotherMatch.isInstanceOf[Match.LeftAndRight[Element]])
-            }
-      }
 
       Right(new CodeMotionAnalysis[Path, Element]:
         override def matchesFor(
