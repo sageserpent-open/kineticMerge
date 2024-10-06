@@ -824,6 +824,12 @@ object CodeMotionAnalysis extends StrictLogging:
         ) =
           matches
             .foldLeft(this)(_.withMatch(_))
+            // NOTE: this looks terrible - why add all the matches in
+            // unconditionally and then take out the redundant pairwise ones?
+            // The answer is because the matches being added are in no
+            // particular order - so we would have to add all the all-sides
+            // matches first unconditionally and then vet the pairwise ones
+            // afterwards.
             .withoutRedundantPairwiseMatchesIn(matches)
 
         MatchingResult(
@@ -836,7 +842,7 @@ object CodeMotionAnalysis extends StrictLogging:
       end withMatches
 
       // Cleans up the state when a putative all-sides match that would have
-      // been ambiguous on one side with another all-sides match is partially
+      // been ambiguous on one side with another all-sides match was partially
       // suppressed by a larger pairwise match. This situation results in a
       // pairwise match that shares its sections on both sides with the other
       // all-sides match; remove any such redundant pairwise matches.
@@ -844,27 +850,22 @@ object CodeMotionAnalysis extends StrictLogging:
           matches: collection.Set[Match[Section[Element]]]
       ): (MatchesAndTheirSections, collection.Set[Match[Section[Element]]]) =
         val (redundantMatches, usefulMatches) =
-          val isAnAllSidesMatch: Match[Section[Element]] => Boolean = {
-            case _: Match.AllSides[Section[Element]] => true
-            case _                                   => false
-          }
-
           matches.partition {
             case Match.BaseAndLeft(baseSection, leftSection) =>
               sectionsAndTheirMatches
                 .get(baseSection)
                 .intersect(sectionsAndTheirMatches.get(leftSection))
-                .exists(isAnAllSidesMatch)
+                .exists(_.isAnAllSidesMatch)
             case Match.BaseAndRight(baseSection, rightSection) =>
               sectionsAndTheirMatches
                 .get(baseSection)
                 .intersect(sectionsAndTheirMatches.get(rightSection))
-                .exists(isAnAllSidesMatch)
+                .exists(_.isAnAllSidesMatch)
             case Match.LeftAndRight(leftSection, rightSection) =>
               sectionsAndTheirMatches
                 .get(leftSection)
                 .intersect(sectionsAndTheirMatches.get(rightSection))
-                .exists(isAnAllSidesMatch)
+                .exists(_.isAnAllSidesMatch)
             case _: Match.AllSides[Section[Element]] => false
           }
         end val
