@@ -626,7 +626,7 @@ object CodeMotionAnalysis extends StrictLogging:
               case Seq(BiteEdge.End(onePastEndOffset), remainingBiteEdges*) =>
                 require(0 < biteDepth)
 
-                require(mealStartOffset < onePastEndOffset)
+                require(mealStartOffset <= onePastEndOffset)
                 val guardedOnePastEndOffset =
                   onePastEndOffset min mealOnePastEndOffset
 
@@ -1075,6 +1075,12 @@ object CodeMotionAnalysis extends StrictLogging:
       // Eating into pairwise matches can create smaller pairwise matches that
       // are partially subsumed by other larger pairwise matches. Prefer keeping
       // the larger matches and remove the subsumed ones.
+      // Furthermore, `allSidesMatchOf` can generate provisional matches that
+      // may turn out to be spared (because a pairwise match subsuming on two
+      // sides has been eaten into), or are pared down to pairwise matches (due
+      // to subsumption on just one side by either an all-sides or pairwise
+      // match). Otherwise, they remain as is and need to be removed if they are
+      // subsumed.
       def cleanedUp: MatchesAndTheirSections =
         val subsumedBaseSections = baseSectionsByPath.values
           .flatMap(_.iterator)
@@ -1307,9 +1313,9 @@ object CodeMotionAnalysis extends StrictLogging:
                     if allowAmbiguousMatches
                     then
                       matches ++ potentialMatchesForSynchronisedFingerprint
-                        .flatMap(matchFrom)
+                        .flatMap(allSidesMatchOf)
                     else if remainingMatches.isEmpty then
-                      matches ++ matchFrom.tupled(leadingMatch)
+                      matches ++ allSidesMatchOf.tupled(leadingMatch)
                     else matches
                   )
                 case _ =>
@@ -1616,11 +1622,11 @@ object CodeMotionAnalysis extends StrictLogging:
         )
       end matchesForWindowSize
 
-      private def matchFrom(
+      private def allSidesMatchOf(
           baseSection: Section[Element],
           leftSection: Section[Element],
           rightSection: Section[Element]
-      ): Option[Match[Section[Element]]] =
+      ): Option[Match.AllSides[Section[Element]]] =
         // Rules of the game:
         // 1. An all-sides match may not be subsumed on *all three sides* by a
         // larger all-sides match.
@@ -1629,11 +1635,15 @@ object CodeMotionAnalysis extends StrictLogging:
         // 3. An all-sides match may be subsumed on *two* of its sides by a
         // larger pairwise match - this facilitates eating into the larger
         // pairwise section elsewhere.
-        // 4. A putative all-sides match subsumed on *one* side by a larger
-        // match (all-sides or pairwise) is partially suppressed, yielding a
-        // pairwise match across the other two sides, provided that the pairwise
-        // match is permitted by its own rules. If not, the all-sides match is
-        // completely suppressed.
+        // 4. An all-sides match subsumed on *one* side by a larger match is
+        // provisionally allowed; the expectation is for the result to either
+        // live on due to the subsuming match being a pairwise one that is eaten
+        // into by other all-sides matches ambiguous with the result, or that
+        // the result will be partially suppressed downstream, being cut down
+        // into a pairwise match to avoid subsumption by either an all-sides or
+        // a pairwise match, or will be completely suppressed if the resulting
+        // pairwise match is blocked or found to be redundant with other
+        // all-sides matches ambiguous with the result.
 
         val baseIsSubsumedByAnAllSidesMatch =
           subsumesBaseSectionViaAtLeastOneAllSidesMatch(baseSection)
@@ -1647,34 +1657,12 @@ object CodeMotionAnalysis extends StrictLogging:
           leftIsSubsumedByAnAllSidesMatch,
           rightIsSubsumedByAnAllSidesMatch
         ) match
-          case (false, false, false) =>
-            val tediousTypecheckingWorkaround
-                : Option[Match.AllSides[Section[Element]]] =
-              Some(Match.AllSides(baseSection, leftSection, rightSection))
-
-            tediousTypecheckingWorkaround
-              .filterNot(pairwiseMatchSubsumesJustOneSideOnly)
-          case (false, false, true) =>
-            Option.unless(
-              subsumesBaseSection(baseSection) || subsumesLeftSection(
-                leftSection
-              )
-            )(Match.BaseAndLeft(baseSection, leftSection))
-          case (false, true, false) =>
-            Option.unless(
-              subsumesBaseSection(baseSection) || subsumesRightSection(
-                rightSection
-              )
-            )(Match.BaseAndRight(baseSection, rightSection))
-          case (true, false, false) =>
-            Option.unless(
-              subsumesLeftSection(leftSection) || subsumesRightSection(
-                rightSection
-              )
-            )(Match.LeftAndRight(leftSection, rightSection))
+          case (false, false, false) | (false, false, true) |
+              (false, true, false) | (true, false, false) =>
+            Some(Match.AllSides(baseSection, leftSection, rightSection))
           case _ => None
         end match
-      end matchFrom
+      end allSidesMatchOf
 
       private def pairwiseMatchSubsumesJustOneSideOnly(
           allSides: Match.AllSides[Section[Element]]
