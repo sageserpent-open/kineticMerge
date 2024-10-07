@@ -1800,28 +1800,6 @@ object CodeMotionAnalysis extends StrictLogging:
           candidateGapChunksByPath = candidateGapChunksByPath
         )
 
-      // Check the invariant that all matches that involve the same section must
-      // be of the same kind...
-      sectionsAndTheirMatches.sets.foreach { (section, matches) =>
-        matches.head match
-          case _: Match.AllSides[Section[Element]] =>
-            matches.tail.foreach { anotherMatch =>
-              require(anotherMatch.isInstanceOf[Match.AllSides[Element]])
-            }
-          case _: Match.BaseAndLeft[Section[Element]] =>
-            matches.tail.foreach { anotherMatch =>
-              require(anotherMatch.isInstanceOf[Match.BaseAndLeft[Element]])
-            }
-          case _: Match.BaseAndRight[Section[Element]] =>
-            matches.tail.foreach { anotherMatch =>
-              require(anotherMatch.isInstanceOf[Match.BaseAndRight[Element]])
-            }
-          case _: Match.LeftAndRight[Section[Element]] =>
-            matches.tail.foreach { anotherMatch =>
-              require(anotherMatch.isInstanceOf[Match.LeftAndRight[Element]])
-            }
-      }
-
       Right(new CodeMotionAnalysis[Path, Element]:
         override def matchesFor(
             section: Section[Element]
