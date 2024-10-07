@@ -914,34 +914,6 @@ object CodeMotionAnalysis extends StrictLogging:
         end match
       end withMatch
 
-      // Eating into pairwise matches can create smaller pairwise matches that
-      // are partially subsumed by other larger pairwise matches. Prefer keeping
-      // the larger matches and remove the subsumed ones.
-      def cleanedUp: MatchesAndTheirSections =
-        val subsumedBaseSections = baseSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesBaseSection)
-        val subsumedLeftSections = leftSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesLeftSection)
-        val subsumedRightSections = rightSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesRightSection)
-
-        val matchesToRemove =
-          (subsumedBaseSections ++ subsumedLeftSections ++ subsumedRightSections)
-            .flatMap(sectionsAndTheirMatches.get)
-            .toSet
-
-        if matchesToRemove.nonEmpty then
-          logger.debug(
-            s"Removing matches that have subsumed sections:\n${pprintCustomised(matchesToRemove)} as part of cleanup."
-          )
-        end if
-
-        this.withoutTheseMatches(matchesToRemove)
-      end cleanedUp
-
       private def withoutTheseMatches(
           matches: Iterable[Match[Section[Element]]]
       ): MatchesAndTheirSections =
@@ -1041,6 +1013,34 @@ object CodeMotionAnalysis extends StrictLogging:
               )
         }
       end withoutTheseMatches
+
+      // Eating into pairwise matches can create smaller pairwise matches that
+      // are partially subsumed by other larger pairwise matches. Prefer keeping
+      // the larger matches and remove the subsumed ones.
+      def cleanedUp: MatchesAndTheirSections =
+        val subsumedBaseSections = baseSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesBaseSection)
+        val subsumedLeftSections = leftSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesLeftSection)
+        val subsumedRightSections = rightSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesRightSection)
+
+        val matchesToRemove =
+          (subsumedBaseSections ++ subsumedLeftSections ++ subsumedRightSections)
+            .flatMap(sectionsAndTheirMatches.get)
+            .toSet
+
+        if matchesToRemove.nonEmpty then
+          logger.debug(
+            s"Removing matches that have subsumed sections:\n${pprintCustomised(matchesToRemove)} as part of cleanup."
+          )
+        end if
+
+        this.withoutTheseMatches(matchesToRemove)
+      end cleanedUp
 
       @tailrec
       private final def withAllSmallFryMatches(
@@ -1800,26 +1800,42 @@ object CodeMotionAnalysis extends StrictLogging:
           candidateGapChunksByPath = candidateGapChunksByPath
         )
 
-      // Check the invariant that all matches that involve the same section must
-      // be of the same kind...
+      // Check the post-condition that all matches that involve the same section
+      // must be of the same kind...
       sectionsAndTheirMatches.sets.foreach { (section, matches) =>
-        matches.head match
-          case _: Match.AllSides[Section[Element]] =>
-            matches.tail.foreach { anotherMatch =>
-              require(anotherMatch.isInstanceOf[Match.AllSides[Element]])
-            }
-          case _: Match.BaseAndLeft[Section[Element]] =>
-            matches.tail.foreach { anotherMatch =>
-              require(anotherMatch.isInstanceOf[Match.BaseAndLeft[Element]])
-            }
-          case _: Match.BaseAndRight[Section[Element]] =>
-            matches.tail.foreach { anotherMatch =>
-              require(anotherMatch.isInstanceOf[Match.BaseAndRight[Element]])
-            }
-          case _: Match.LeftAndRight[Section[Element]] =>
-            matches.tail.foreach { anotherMatch =>
-              require(anotherMatch.isInstanceOf[Match.LeftAndRight[Element]])
-            }
+        try
+          matches.head match
+            case _: Match.AllSides[Section[Element]] =>
+              matches.tail.foreach { anotherMatch =>
+                require(anotherMatch.isInstanceOf[Match.AllSides[Element]])
+              }
+            case _: Match.BaseAndLeft[Section[Element]] =>
+              matches.tail.foreach { anotherMatch =>
+                require(anotherMatch.isInstanceOf[Match.BaseAndLeft[Element]])
+              }
+            case _: Match.BaseAndRight[Section[Element]] =>
+              matches.tail.foreach { anotherMatch =>
+                require(anotherMatch.isInstanceOf[Match.BaseAndRight[Element]])
+              }
+            case _: Match.LeftAndRight[Section[Element]] =>
+              matches.tail.foreach { anotherMatch =>
+                require(anotherMatch.isInstanceOf[Match.LeftAndRight[Element]])
+              }
+        catch
+          case exception: IllegalArgumentException =>
+            logger.error(
+              s"Post-condition failure for section: ${pprintCustomised(section)}, this has inconsistent match kinds..."
+            )
+            logger.error(
+              s"The first match is: ${pprintCustomised(matches.head)}."
+            )
+            logger.error(s"Subsequent matches are...")
+            matches.tail.foreach(aMatch =>
+              logger.debug(s"${pprintCustomised(aMatch)}")
+            )
+
+            throw exception
+        end try
       }
 
       Right(new CodeMotionAnalysis[Path, Element]:
