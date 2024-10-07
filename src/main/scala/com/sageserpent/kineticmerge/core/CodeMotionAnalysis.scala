@@ -5,6 +5,7 @@ import cats.instances.seq.*
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction}
+import com.sageserpent.kineticmerge
 import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording, ProgressRecordingSession, core}
 import com.typesafe.scalalogging.StrictLogging
 import de.sciss.fingertree.RangedSeq
@@ -647,7 +648,9 @@ object CodeMotionAnalysis extends StrictLogging:
           matchesAndTheirSections: MatchesAndTheirSections,
           numberOfMatchesForTheGivenWindowSize: Int,
           estimatedWindowSizeForOptimalMatch: Option[Int]
-      )
+      ):
+        matchesAndTheirSections.checkInvariant()
+      end MatchingResult
 
     end MatchesAndTheirSections
 
@@ -696,6 +699,61 @@ object CodeMotionAnalysis extends StrictLogging:
       private val withRightSection
           : Section[Element] => Map[Path, SectionsSeen] =
         withSection(right, rightSectionsByPath)
+
+      def checkInvariant(): Unit =
+        // Check the post-condition that all matches that involve the same
+        // section
+        // must be of the same kind...
+        sectionsAndTheirMatches.sets.foreach { (section, matches) =>
+          try
+            matches.head match
+              case _: kineticmerge.core.Match.AllSides[Section[Element]] =>
+                matches.tail.foreach { anotherMatch =>
+                  require(
+                    anotherMatch
+                      .isInstanceOf[kineticmerge.core.Match.AllSides[Element]]
+                  )
+                }
+              case _: kineticmerge.core.Match.BaseAndLeft[Section[Element]] =>
+                matches.tail.foreach { anotherMatch =>
+                  require(
+                    anotherMatch.isInstanceOf[
+                      kineticmerge.core.Match.BaseAndLeft[Element]
+                    ]
+                  )
+                }
+              case _: kineticmerge.core.Match.BaseAndRight[Section[Element]] =>
+                matches.tail.foreach { anotherMatch =>
+                  require(
+                    anotherMatch.isInstanceOf[
+                      kineticmerge.core.Match.BaseAndRight[Element]
+                    ]
+                  )
+                }
+              case _: kineticmerge.core.Match.LeftAndRight[Section[Element]] =>
+                matches.tail.foreach { anotherMatch =>
+                  require(
+                    anotherMatch.isInstanceOf[
+                      kineticmerge.core.Match.LeftAndRight[Element]
+                    ]
+                  )
+                }
+          catch
+            case exception: IllegalArgumentException =>
+              logger.error(
+                s"Post-condition failure for section: ${pprintCustomised(section)}, this has inconsistent match kinds..."
+              )
+              logger.error(
+                s"The first match is: ${pprintCustomised(matches.head)}."
+              )
+              logger.error(s"Subsequent matches are...")
+              matches.tail.foreach(aMatch =>
+                logger.debug(s"${pprintCustomised(aMatch)}")
+              )
+
+              throw exception
+          end try
+        }
 
       def baseSections: Set[Section[Element]] =
         baseSectionsByPath.values.flatMap(_.iterator).toSet
@@ -1766,6 +1824,8 @@ object CodeMotionAnalysis extends StrictLogging:
       ).withPairwiseMatchesEatenInto.cleanedUp
     end matchesAndTheirSections
 
+    matchesAndTheirSections.checkInvariant()
+
     try
       val sectionsAndTheirMatches =
         matchesAndTheirSections.sectionsAndTheirMatches
@@ -1799,44 +1859,6 @@ object CodeMotionAnalysis extends StrictLogging:
           mandatorySections = matchesAndTheirSections.rightSections,
           candidateGapChunksByPath = candidateGapChunksByPath
         )
-
-      // Check the post-condition that all matches that involve the same section
-      // must be of the same kind...
-      sectionsAndTheirMatches.sets.foreach { (section, matches) =>
-        try
-          matches.head match
-            case _: Match.AllSides[Section[Element]] =>
-              matches.tail.foreach { anotherMatch =>
-                require(anotherMatch.isInstanceOf[Match.AllSides[Element]])
-              }
-            case _: Match.BaseAndLeft[Section[Element]] =>
-              matches.tail.foreach { anotherMatch =>
-                require(anotherMatch.isInstanceOf[Match.BaseAndLeft[Element]])
-              }
-            case _: Match.BaseAndRight[Section[Element]] =>
-              matches.tail.foreach { anotherMatch =>
-                require(anotherMatch.isInstanceOf[Match.BaseAndRight[Element]])
-              }
-            case _: Match.LeftAndRight[Section[Element]] =>
-              matches.tail.foreach { anotherMatch =>
-                require(anotherMatch.isInstanceOf[Match.LeftAndRight[Element]])
-              }
-        catch
-          case exception: IllegalArgumentException =>
-            logger.error(
-              s"Post-condition failure for section: ${pprintCustomised(section)}, this has inconsistent match kinds..."
-            )
-            logger.error(
-              s"The first match is: ${pprintCustomised(matches.head)}."
-            )
-            logger.error(s"Subsequent matches are...")
-            matches.tail.foreach(aMatch =>
-              logger.debug(s"${pprintCustomised(aMatch)}")
-            )
-
-            throw exception
-        end try
-      }
 
       Right(new CodeMotionAnalysis[Path, Element]:
         override def matchesFor(
