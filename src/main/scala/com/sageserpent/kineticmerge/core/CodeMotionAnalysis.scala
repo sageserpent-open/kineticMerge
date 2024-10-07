@@ -344,10 +344,9 @@ object CodeMotionAnalysis extends StrictLogging:
           .fold(ifEmpty = false)(
             _.filterIncludes(section.closedOpenInterval)
               .filter(_ != section)
-              .exists(sectionsAndTheirMatches.get(_).exists {
-                case _: Match.AllSides[Section[Element]] => true
-                case _                                   => false
-              })
+              .exists(
+                sectionsAndTheirMatches.get(_).exists(_.isAnAllSidesMatch)
+              )
           )
 
       private def subsumingPairwiseMatches(
@@ -915,6 +914,34 @@ object CodeMotionAnalysis extends StrictLogging:
         end match
       end withMatch
 
+      // Eating into pairwise matches can create smaller pairwise matches that
+      // are partially subsumed by other larger pairwise matches. Prefer keeping
+      // the larger matches and remove the subsumed ones.
+      def cleanedUp: MatchesAndTheirSections =
+        val subsumedBaseSections = baseSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesBaseSection)
+        val subsumedLeftSections = leftSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesLeftSection)
+        val subsumedRightSections = rightSectionsByPath.values
+          .flatMap(_.iterator)
+          .filter(subsumesRightSection)
+
+        val matchesToRemove =
+          (subsumedBaseSections ++ subsumedLeftSections ++ subsumedRightSections)
+            .flatMap(sectionsAndTheirMatches.get)
+            .toSet
+
+        if matchesToRemove.nonEmpty then
+          logger.debug(
+            s"Removing matches that have subsumed sections:\n${pprintCustomised(matchesToRemove)} as part of cleanup."
+          )
+        end if
+
+        this.withoutTheseMatches(matchesToRemove)
+      end cleanedUp
+
       private def withoutTheseMatches(
           matches: Iterable[Match[Section[Element]]]
       ): MatchesAndTheirSections =
@@ -1014,34 +1041,6 @@ object CodeMotionAnalysis extends StrictLogging:
               )
         }
       end withoutTheseMatches
-
-      // Eating into pairwise matches can create smaller pairwise matches that
-      // are partially subsumed by other larger pairwise matches. Prefer keeping
-      // the larger matches and remove the subsumed ones.
-      def cleanedUp: MatchesAndTheirSections =
-        val subsumedBaseSections = baseSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesBaseSection)
-        val subsumedLeftSections = leftSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesLeftSection)
-        val subsumedRightSections = rightSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesRightSection)
-
-        val matchesToRemove =
-          (subsumedBaseSections ++ subsumedLeftSections ++ subsumedRightSections)
-            .flatMap(sectionsAndTheirMatches.get)
-            .toSet
-
-        if matchesToRemove.nonEmpty then
-          logger.debug(
-            s"Removing matches that have subsumed sections:\n${pprintCustomised(matchesToRemove)} as part of cleanup."
-          )
-        end if
-
-        this.withoutTheseMatches(matchesToRemove)
-      end cleanedUp
 
       @tailrec
       private final def withAllSmallFryMatches(
@@ -1723,12 +1722,12 @@ object CodeMotionAnalysis extends StrictLogging:
       )
     end potentialMatchKeyOrder
 
-    // NOTE: this is subtle - this type is used as a ordered key to find matches
-    // across sides; fingerprints can and do collide, so we need the content as
-    // a tiebreaker. However, we don't want to have to freight the content
-    // around for keys that will never match across sides - there are a lot of
-    // keys involved in finding matches at low window sizes, and large window
-    // sizes imply large content sizes.
+    // NOTE: this is subtle - this type is used as an ordered key to find
+    // matches across sides; fingerprints can and do collide, so we need the
+    // content as a tiebreaker. However, we don't want to have to freight the
+    // content around for keys that will never match across sides - there are a
+    // lot of keys involved in finding matches at low window sizes, and large
+    // window sizes imply large content sizes.
     //
     // The solution is to rely on lazy evaluation semantics for ordering of
     // pairs, and to evaluate the content of the section when it's really needed

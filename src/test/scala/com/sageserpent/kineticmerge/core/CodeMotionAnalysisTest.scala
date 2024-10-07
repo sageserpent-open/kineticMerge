@@ -767,10 +767,7 @@ class CodeMotionAnalysisTest:
         .reduce(_ union _)
 
     // There should be no redundant pairwise matches.
-    assert(matches.forall {
-      case _: Match.AllSides[Section[Element]] => true
-      case _                                   => false
-    })
+    assert(matches.forall(_.isAnAllSidesMatch))
 
     // There should only be a big match and a little match.
     assert(matches.size == 2)
@@ -955,10 +952,7 @@ class CodeMotionAnalysisTest:
         .reduce(_ union _)
 
     // There only be all-sides matches.
-    assert(matches.forall {
-      case _: Match.AllSides[Section[Element]] => true
-      case _                                   => false
-    })
+    assert(matches.forall(_.isAnAllSidesMatch))
 
     // There should be two matches.
     assert(matches.size == 2)
