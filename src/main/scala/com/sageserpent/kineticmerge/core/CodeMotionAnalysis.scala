@@ -150,7 +150,6 @@ object CodeMotionAnalysis extends StrictLogging:
       type PairwiseMatch = Match.BaseAndLeft[Section[Element]] |
         Match.BaseAndRight[Section[Element]] |
         Match.LeftAndRight[Section[Element]]
-
       private lazy val empty = MatchesAndTheirSections(
         baseSectionsByPath = Map.empty,
         leftSectionsByPath = Map.empty,
@@ -159,6 +158,11 @@ object CodeMotionAnalysis extends StrictLogging:
       )
       private val rollingHashFactoryCache: Cache[Int, RollingHash.Factory] =
         Caffeine.newBuilder().build()
+
+      def sizeOf(aMatch: PairwiseMatch): Int = aMatch match
+        case Match.BaseAndLeft(baseSection, _)  => baseSection.size
+        case Match.BaseAndRight(baseSection, _) => baseSection.size
+        case Match.LeftAndRight(leftSection, _) => leftSection.size
 
       def withAllMatchesOfAtLeastTheSureFireWindowSize()
           : MatchesAndTheirSections =
@@ -1062,9 +1066,8 @@ object CodeMotionAnalysis extends StrictLogging:
                 Some(Match.BaseAndRight(baseSection, rightSection))
               case (false, false, true) =>
                 Some(Match.BaseAndLeft(baseSection, leftSection))
-              case (false, false, false) =>
+              case _ =>
                 Some(aMatch)
-              case _ => None
             end match
           case _ => Some(aMatch)
 
@@ -1176,101 +1179,26 @@ object CodeMotionAnalysis extends StrictLogging:
         def withMatches(
             matches: collection.Set[Match[Section[Element]]]
         ): MatchingResult =
-          val allSidesMatches = matches.collect {
-            case allSides: Match.AllSides[Section[Element]] => allSides
-          }.toSet
+          val (paredDownMatches, leftovers, stabilized) =
+            stabilize(matches, Set.empty)
 
-          def pairwiseMatchesSubsumingOnBothSides(
-              allSides: Match.AllSides[Section[Element]]
-          ): Set[PairwiseMatch] =
-            val subsumingOnBase =
-              subsumingPairwiseMatches(sectionsAndTheirMatches)(
-                base,
-                baseSectionsByPath
-              )(
-                allSides.baseElement
-              )
-            val subsumingOnLeft =
-              subsumingPairwiseMatches(sectionsAndTheirMatches)(
-                left,
-                leftSectionsByPath
-              )(
-                allSides.leftElement
-              )
-            val subsumingOnRight =
-              subsumingPairwiseMatches(sectionsAndTheirMatches)(
-                right,
-                rightSectionsByPath
-              )(
-                allSides.rightElement
-              )
-
-            (subsumingOnBase intersect subsumingOnLeft) union (subsumingOnBase intersect subsumingOnRight) union (subsumingOnLeft intersect subsumingOnRight)
-          end pairwiseMatchesSubsumingOnBothSides
-
-          val pairwiseMatchesToBeEaten
-              : MultiDict[PairwiseMatch, Match.AllSides[Section[Element]]] =
-            MultiDict.from(
-              allSidesMatches.flatMap(allSides =>
-                pairwiseMatchesSubsumingOnBothSides(allSides).map(_ -> allSides)
-              )
-            )
-
-          val pairwiseMatchesFromLeftovers =
-            pairwiseMatchesToBeEaten.keySet.flatMap[PairwiseMatch] {
-              pairwiseMatch =>
-                val bites = pairwiseMatchesToBeEaten.get(pairwiseMatch)
-
-                val leftovers: Seq[PairwiseMatch] = pairwiseMatch match
-                  case Match.BaseAndLeft(baseSection, leftSection) =>
-                    (eatIntoSection(base, bites.map(_.baseElement))(
-                      baseSection
-                    ) zip eatIntoSection(left, bites.map(_.leftElement))(
-                      leftSection
-                    ))
-                      .map(Match.BaseAndLeft.apply)
-
-                  case Match.BaseAndRight(baseSection, rightSection) =>
-                    (eatIntoSection(base, bites.map(_.baseElement))(
-                      baseSection
-                    ) zip eatIntoSection(right, bites.map(_.rightElement))(
-                      rightSection
-                    )).map(Match.BaseAndRight.apply)
-
-                  case Match.LeftAndRight(leftSection, rightSection) =>
-                    (eatIntoSection(left, bites.map(_.leftElement))(
-                      leftSection
-                    ) zip eatIntoSection(right, bites.map(_.rightElement))(
-                      rightSection
-                    )).map(Match.LeftAndRight.apply)
-
-                logger.debug(
-                  s"Eating into pairwise match:\n${pprintCustomised(pairwiseMatch)} on behalf of all-sides matches:\n${pprintCustomised(bites)}, resulting in matches:\n${pprintCustomised(leftovers)}."
-                )
-
-                leftovers
-            }
-
-          def sizeOf(aMatch: PairwiseMatch): Int = aMatch match
-            case Match.BaseAndLeft(baseSection, _)  => baseSection.size
-            case Match.BaseAndRight(baseSection, _) => baseSection.size
-            case Match.LeftAndRight(leftSection, _) => leftSection.size
+          // Don't add any leftovers out of order wrt the overall search down
+          // window sizes; the search will find them later (and only if they are
+          // valid window sizes and aren't blocked).
+          val leftoversThatAreNotAheadOfTheOverallMatchSearchOrder =
+            leftovers.filter(windowSize <= sizeOf(_))
 
           val afterTheFeasting: MatchesAndTheirSections =
-            pairwiseMatchesFromLeftovers
-              .filter(windowSize <= sizeOf(_))
-              .foldLeft(withoutTheseMatches(pairwiseMatchesToBeEaten.keySet))(
+            leftoversThatAreNotAheadOfTheOverallMatchSearchOrder
+              .foldLeft(stabilized)(
                 _ withMatch _
               )
-
-          val matchesWithSuppressions =
-            matches.flatMap(afterTheFeasting.pareDownOrSuppressCompletely)
 
           val (
             updatedMatchesAndTheirSections,
             matchesWithoutRedundantPairwiseMatches
           ) =
-            matchesWithSuppressions
+            paredDownMatches
               .foldLeft(afterTheFeasting)(_ withMatch _)
               // NOTE: this looks terrible - why add all the matches in
               // unconditionally and then take out the redundant pairwise ones?
@@ -1278,7 +1206,7 @@ object CodeMotionAnalysis extends StrictLogging:
               // particular order - so we would have to add all the all-sides
               // matches first unconditionally and then vet the pairwise ones
               // afterwards.
-              .withoutRedundantPairwiseMatchesIn(matchesWithSuppressions)
+              .withoutRedundantPairwiseMatchesIn(paredDownMatches)
 
           MatchingResult(
             matchesAndTheirSections = updatedMatchesAndTheirSections,
@@ -1646,6 +1574,111 @@ object CodeMotionAnalysis extends StrictLogging:
         )
       end matchesForWindowSize
 
+      @tailrec
+      private def stabilize(
+          matches: collection.Set[Match[Section[Element]]],
+          accumulatedLeftovers: collection.Set[PairwiseMatch]
+      ): (
+          collection.Set[Match[Section[Element]]],
+          collection.Set[PairwiseMatch],
+          MatchesAndTheirSections
+      ) =
+        val paredDownMatches = matches.flatMap(pareDownOrSuppressCompletely)
+
+        val allSidesMatches = paredDownMatches.collect {
+          case allSides: Match.AllSides[Section[Element]] => allSides
+        }
+
+        def pairwiseMatchesSubsumingOnBothSides(
+            allSides: Match.AllSides[Section[Element]]
+        ): Set[PairwiseMatch] =
+          val subsumingOnBase =
+            subsumingPairwiseMatches(sectionsAndTheirMatches)(
+              base,
+              baseSectionsByPath
+            )(
+              allSides.baseElement
+            )
+          val subsumingOnLeft =
+            subsumingPairwiseMatches(sectionsAndTheirMatches)(
+              left,
+              leftSectionsByPath
+            )(
+              allSides.leftElement
+            )
+          val subsumingOnRight =
+            subsumingPairwiseMatches(sectionsAndTheirMatches)(
+              right,
+              rightSectionsByPath
+            )(
+              allSides.rightElement
+            )
+
+          (subsumingOnBase intersect subsumingOnLeft) union (subsumingOnBase intersect subsumingOnRight) union (subsumingOnLeft intersect subsumingOnRight)
+        end pairwiseMatchesSubsumingOnBothSides
+
+        val pairwiseMatchesToBeEaten: MultiDict[
+          PairwiseMatch,
+          Match.AllSides[Section[Element]]
+        ] =
+          MultiDict.from(
+            allSidesMatches.flatMap(allSides =>
+              pairwiseMatchesSubsumingOnBothSides(allSides).map(
+                _ -> allSides
+              )
+            )
+          )
+
+        val leftovers = pairwiseMatchesToBeEaten.keySet.flatMap[PairwiseMatch] {
+          pairwiseMatch =>
+            val bites = pairwiseMatchesToBeEaten.get(pairwiseMatch)
+
+            val leftoversFromPairwiseMatch: Seq[PairwiseMatch] =
+              pairwiseMatch match
+                case Match.BaseAndLeft(baseSection, leftSection) =>
+                  (eatIntoSection(base, bites.map(_.baseElement))(
+                    baseSection
+                  ) zip eatIntoSection(left, bites.map(_.leftElement))(
+                    leftSection
+                  ))
+                    .map(Match.BaseAndLeft.apply)
+
+                case Match.BaseAndRight(baseSection, rightSection) =>
+                  (eatIntoSection(base, bites.map(_.baseElement))(
+                    baseSection
+                  ) zip eatIntoSection(right, bites.map(_.rightElement))(
+                    rightSection
+                  )).map(Match.BaseAndRight.apply)
+
+                case Match.LeftAndRight(leftSection, rightSection) =>
+                  (eatIntoSection(left, bites.map(_.leftElement))(
+                    leftSection
+                  ) zip eatIntoSection(right, bites.map(_.rightElement))(
+                    rightSection
+                  )).map(Match.LeftAndRight.apply)
+
+            logger.debug(
+              s"Eating into pairwise match:\n${pprintCustomised(pairwiseMatch)} on behalf of all-sides matches:\n${pprintCustomised(bites)}, resulting in matches:\n${pprintCustomised(leftoversFromPairwiseMatch)}."
+            )
+
+            leftoversFromPairwiseMatch
+        }
+
+        val stabilized = leftovers.isEmpty
+
+        val updatedThis = withoutTheseMatches(pairwiseMatchesToBeEaten.keySet)
+
+        if !stabilized then
+          updatedThis.stabilize(
+            // Always start with the original matches; we anticipate that paring
+            // them down may be more lenient the further we recurse.
+            matches,
+            accumulatedLeftovers union leftovers
+          )
+        else (paredDownMatches, accumulatedLeftovers, updatedThis)
+        end if
+      end stabilize
+
       private def allSidesMatchOf(
           baseSection: Section[Element],
           leftSection: Section[Element],
@@ -1828,11 +1861,10 @@ object CodeMotionAnalysis extends StrictLogging:
         MatchesAndTheirSections.withAllMatchesOfAtLeastTheSureFireWindowSize()
 
       (if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > minimumWindowSizeAcrossAllFilesOverAllSides
-      then
-        withAllMatchesOfAtLeastTheSureFireWindowSize
-          .withAllSmallFryMatches()
-      else withAllMatchesOfAtLeastTheSureFireWindowSize
-      ).cleanedUp
+       then
+         withAllMatchesOfAtLeastTheSureFireWindowSize
+           .withAllSmallFryMatches()
+       else withAllMatchesOfAtLeastTheSureFireWindowSize).cleanedUp
     end matchesAndTheirSections
 
     matchesAndTheirSections.checkInvariant()
