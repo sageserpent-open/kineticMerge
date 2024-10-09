@@ -147,6 +147,8 @@ object CodeMotionAnalysis extends StrictLogging:
     val tiebreakContentSamplingLimit = 10
 
     object MatchesAndTheirSections:
+      // TODO: introduce a `GeneralMatch` type alias instead of
+      // `Match[Section[Element]]`?
       type PairwiseMatch = Match.BaseAndLeft[Section[Element]] |
         Match.BaseAndRight[Section[Element]] |
         Match.LeftAndRight[Section[Element]]
@@ -360,20 +362,28 @@ object CodeMotionAnalysis extends StrictLogging:
           side: Sources[Path, Element],
           sectionsByPath: Map[Path, SectionsSeen]
       )(section: Section[Element]): Set[PairwiseMatch] =
+        subsumingMatches(sectionsAndTheirMatches)(side, sectionsByPath)(section)
+          .collect {
+            case baseAndLeft: Match.BaseAndLeft[Section[Element]] =>
+              baseAndLeft: PairwiseMatch
+            case baseAndRight: Match.BaseAndRight[Section[Element]] =>
+              baseAndRight: PairwiseMatch
+            case leftAndRight: Match.LeftAndRight[Section[Element]] =>
+              leftAndRight: PairwiseMatch
+          }
+
+      private def subsumingMatches(
+          sectionsAndTheirMatches: MatchedSections
+      )(
+          side: Sources[Path, Element],
+          sectionsByPath: Map[Path, SectionsSeen]
+      )(section: Section[Element]): Set[Match[Section[Element]]] =
         sectionsByPath
           .get(side.pathFor(section))
           .fold(ifEmpty = Set.empty)(
             _.filterIncludes(section.closedOpenInterval)
               .filter(_ != section)
               .flatMap(sectionsAndTheirMatches.get)
-              .collect {
-                case baseAndLeft: Match.BaseAndLeft[Section[Element]] =>
-                  baseAndLeft: PairwiseMatch
-                case baseAndRight: Match.BaseAndRight[Section[Element]] =>
-                  baseAndRight: PairwiseMatch
-                case leftAndRight: Match.LeftAndRight[Section[Element]] =>
-                  leftAndRight: PairwiseMatch
-              }
               // NOTE: convert to a set at this point as we expect sections to
               // be duplicated when involved in ambiguous matches.
               .toSet
@@ -1052,23 +1062,50 @@ object CodeMotionAnalysis extends StrictLogging:
       ): Option[Match[Section[Element]]] =
         aMatch match
           case Match.AllSides(baseSection, leftSection, rightSection) =>
-            val baseIsSubsumed =
-              subsumesBaseSection(baseSection)
-            val leftIsSubsumed =
-              subsumesLeftSection(leftSection)
-            val rightIsSubsumed =
-              subsumesRightSection(rightSection)
+            val subsumingOnBase =
+              subsumingMatches(sectionsAndTheirMatches)(
+                base,
+                baseSectionsByPath
+              )(
+                baseSection
+              )
+            val subsumingOnLeft =
+              subsumingMatches(sectionsAndTheirMatches)(
+                left,
+                leftSectionsByPath
+              )(
+                leftSection
+              )
+            val subsumingOnRight =
+              subsumingMatches(sectionsAndTheirMatches)(
+                right,
+                rightSectionsByPath
+              )(
+                rightSection
+              )
 
-            (baseIsSubsumed, leftIsSubsumed, rightIsSubsumed) match
+            val subsumedBySomeMatchOnJustTheBase =
+              (subsumingOnBase diff (subsumingOnLeft union subsumingOnRight)).nonEmpty
+            val subsumedBySomeMatchOnJustTheLeft =
+              (subsumingOnLeft diff (subsumingOnBase union subsumingOnRight)).nonEmpty
+            val subsumedBySomeMatchOnJustTheRight =
+              (subsumingOnRight diff (subsumingOnBase union subsumingOnLeft)).nonEmpty
+
+            (
+              subsumedBySomeMatchOnJustTheBase,
+              subsumedBySomeMatchOnJustTheLeft,
+              subsumedBySomeMatchOnJustTheRight
+            ) match
+              case (false, false, false) => Some(aMatch)
               case (true, false, false) =>
-                Some(Match.LeftAndRight(leftSection, rightSection))
+                leftAndRightMatchOf(leftSection, rightSection)
               case (false, true, false) =>
-                Some(Match.BaseAndRight(baseSection, rightSection))
+                baseAndRightMatchOf(baseSection, rightSection)
               case (false, false, true) =>
-                Some(Match.BaseAndLeft(baseSection, leftSection))
-              case _ =>
-                Some(aMatch)
+                baseAndLeftMatchOf(baseSection, leftSection)
+              case _ => None
             end match
+
           case _ => Some(aMatch)
 
       private def matchesForWindowSize(
@@ -1720,41 +1757,6 @@ object CodeMotionAnalysis extends StrictLogging:
           case _ => None
         end match
       end allSidesMatchOf
-
-      private def pairwiseMatchSubsumesJustOneSideOnly(
-          allSides: Match.AllSides[Section[Element]]
-      ): Boolean =
-        val subsumingOnBase =
-          subsumingPairwiseMatches(sectionsAndTheirMatches)(
-            base,
-            baseSectionsByPath
-          )(
-            allSides.baseElement
-          )
-        val subsumingOnLeft =
-          subsumingPairwiseMatches(sectionsAndTheirMatches)(
-            left,
-            leftSectionsByPath
-          )(
-            allSides.leftElement
-          )
-        val subsumingOnRight =
-          subsumingPairwiseMatches(sectionsAndTheirMatches)(
-            right,
-            rightSectionsByPath
-          )(
-            allSides.rightElement
-          )
-
-        val subsumedOnJustTheBase =
-          (subsumingOnBase diff (subsumingOnLeft union subsumingOnRight)).nonEmpty
-        val subsumedOnJustTheLeft =
-          (subsumingOnLeft diff (subsumingOnBase union subsumingOnRight)).nonEmpty
-        val subsumedOnJustTheRight =
-          (subsumingOnRight diff (subsumingOnBase union subsumingOnLeft)).nonEmpty
-
-        subsumedOnJustTheBase || subsumedOnJustTheLeft || subsumedOnJustTheRight
-      end pairwiseMatchSubsumesJustOneSideOnly
 
       private def baseAndLeftMatchOf(
           baseSection: Section[Element],
