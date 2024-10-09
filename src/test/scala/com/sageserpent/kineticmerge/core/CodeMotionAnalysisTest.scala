@@ -421,7 +421,7 @@ class CodeMotionAnalysisTest:
       .withStrategy(caseSupplyCycle =>
         if caseSupplyCycle.isInitial then
           CasesLimitStrategy.timed(Duration.apply(5, TimeUnit.MINUTES))
-        else CasesLimitStrategy.counted(200, 3.0)
+        else CasesLimitStrategy.counted(1000, 3.0)
       )
       .dynamicTests { testPlan =>
 
