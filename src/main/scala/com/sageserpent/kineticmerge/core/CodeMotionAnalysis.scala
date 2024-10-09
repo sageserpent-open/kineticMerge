@@ -1721,6 +1721,18 @@ object CodeMotionAnalysis extends StrictLogging:
           leftSection: Section[Element],
           rightSection: Section[Element]
       ): Option[Match.AllSides[Section[Element]]] =
+        // TODO: review all of this, look at `pareDownOrSuppressCompletely` for
+        // inspiration.
+        // The reason is that in the latter method, a careful distinction is
+        // made between a match being subsumed on multiple sides by *several*
+        // matches versus being subsumed on multiple sides by an individual same
+        // match. That distinction isn't made here, and I'm not sure if that's
+        // OK. I have a sneaking suspicion that because `stabilize` pushes all
+        // the new matches through `pareDownOrSuppressCompletely`, then it
+        // doesn't matter. Does that mean its OK to be faster and looser here?
+        // Maybe move all the pruning into `pareDownOrSuppressCompletely` and
+        // just use dumb construction of matches?
+
         // Rules of the game:
         // 1. An all-sides match may not be subsumed on *all three sides* by a
         // larger all-sides match.
