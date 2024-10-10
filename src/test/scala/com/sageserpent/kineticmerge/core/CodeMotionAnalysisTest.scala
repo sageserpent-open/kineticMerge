@@ -560,6 +560,22 @@ class CodeMotionAnalysisTest:
               }
             }
 
+            // NOTE: the reason that matched sections are concatenated in the
+            // three following blocks is to allow looseness in the expectations
+            // for the generated matches. This test starts off by making content
+            // matches across two or all sides, but it also encourages the
+            // possibility of having subsumption of one content match within
+            // another larger one, either on just one side or two. This means
+            // that the original content matches from the test can't be taken
+            // literally as what we expect to see from the SUT; instead we
+            // expect to encounter the occasional situation where the original
+            // content match is broken down by the SUT into several smaller
+            // matches that abut on each side. However, the sections are ordered
+            // so as to reproduce the source file's content, thus we know that
+            // concatenation will place any such smaller matches together in the
+            // correct order for a correctly functioning SUT, so each of the
+            // original matches should show up in the concatenation.
+
             // Over all paths on the base side, the concatenations of all
             // matched sections should contain all the relevant common
             // sequences...
