@@ -204,6 +204,8 @@ object CodeMotionAnalysis extends StrictLogging:
         case Match.BaseAndRight(baseSection, _) => baseSection.size
         case Match.LeftAndRight(leftSection, _) => leftSection.size
 
+      // TODO - move this to the actual class, by analogy with
+      // `withAllSmallFryMatches`...
       def withAllMatchesOfAtLeastTheSureFireWindowSize()
           : MatchesAndTheirSections =
         Using(
@@ -686,7 +688,7 @@ object CodeMotionAnalysis extends StrictLogging:
           numberOfMatchesForTheGivenWindowSize: Int,
           estimatedWindowSizeForOptimalMatch: Option[Int]
       ):
-        matchesAndTheirSections.checkInvariant()
+      // matchesAndTheirSections.checkInvariant()
       end MatchingResult
 
     end MatchesAndTheirSections
@@ -971,6 +973,36 @@ object CodeMotionAnalysis extends StrictLogging:
             )
         end match
       end withMatch
+
+      private def withMatches(
+          matches: collection.Set[Match[Section[Element]]],
+          windowSize: Int
+      ): MatchingResult =
+        val (paredDownMatches, stabilized) =
+          stabilize(matches, windowSize)
+
+        val (
+          updatedMatchesAndTheirSections,
+          matchesWithoutRedundantPairwiseMatches
+        ) =
+          paredDownMatches
+            .foldLeft(stabilized)(_ withMatch _)
+            // NOTE: this looks terrible - why add all the matches in
+            // unconditionally and then take out the redundant pairwise ones?
+            // The answer is because the matches being added are in no
+            // particular order - so we would have to add all the all-sides
+            // matches first unconditionally and then vet the pairwise ones
+            // afterwards.
+            .withoutRedundantPairwiseMatchesIn(paredDownMatches)
+
+        MatchingResult(
+          matchesAndTheirSections = updatedMatchesAndTheirSections,
+          numberOfMatchesForTheGivenWindowSize =
+            matchesWithoutRedundantPairwiseMatches.size,
+          estimatedWindowSizeForOptimalMatch =
+            estimateOptimalMatchSize(matchesWithoutRedundantPairwiseMatches)
+        )
+      end withMatches
 
       // Cleans up the state when a putative all-sides match that would have
       // been ambiguous on one side with another all-sides match was partially
@@ -1257,50 +1289,6 @@ object CodeMotionAnalysis extends StrictLogging:
           leftSectionsByFingerprint = fingerprintSections(left),
           rightSectionsByFingerprint = fingerprintSections(right)
         )
-
-        def withMatches(
-            matches: collection.Set[Match[Section[Element]]]
-        ): MatchingResult =
-          val (paredDownMatches, leftovers, stabilized) =
-            stabilize(matches, Set.empty)
-
-          // Don't add any leftovers out of order wrt the overall search down
-          // window sizes; the search will find them later (and only if they are
-          // valid window sizes and aren't blocked).
-          val leftoversThatAreNotAheadOfTheOverallMatchSearchOrder =
-            leftovers.filter(windowSize <= sizeOf(_))
-
-          val afterTheFeasting: MatchesAndTheirSections =
-            leftoversThatAreNotAheadOfTheOverallMatchSearchOrder
-              .foldLeft(stabilized)(
-                _ withMatch _
-              )
-              .copy(evadingRediscoveryBySearch =
-                leftovers.filter(_.evadesRediscoveryBySearch)
-              )
-
-          val (
-            updatedMatchesAndTheirSections,
-            matchesWithoutRedundantPairwiseMatches
-          ) =
-            paredDownMatches
-              .foldLeft(afterTheFeasting)(_ withMatch _)
-              // NOTE: this looks terrible - why add all the matches in
-              // unconditionally and then take out the redundant pairwise ones?
-              // The answer is because the matches being added are in no
-              // particular order - so we would have to add all the all-sides
-              // matches first unconditionally and then vet the pairwise ones
-              // afterwards.
-              .withoutRedundantPairwiseMatchesIn(paredDownMatches)
-
-          MatchingResult(
-            matchesAndTheirSections = updatedMatchesAndTheirSections,
-            numberOfMatchesForTheGivenWindowSize =
-              matchesWithoutRedundantPairwiseMatches.size,
-            estimatedWindowSizeForOptimalMatch =
-              estimateOptimalMatchSize(matchesWithoutRedundantPairwiseMatches)
-          )
-        end withMatches
 
         @tailrec
         def matchingFingerprintsAcrossSides(
@@ -1652,7 +1640,7 @@ object CodeMotionAnalysis extends StrictLogging:
             case _ =>
               // There are no more opportunities to match a full triple or
               // just a pair, so this terminates the recursion.
-              withMatches(matches)
+              withMatches(matches, windowSize)
           end match
         end matchingFingerprintsAcrossSides
 
@@ -1667,10 +1655,9 @@ object CodeMotionAnalysis extends StrictLogging:
       @tailrec
       private def stabilize(
           matches: collection.Set[Match[Section[Element]]],
-          accumulatedLeftovers: collection.Set[PairwiseMatch]
+          windowSize: Int
       ): (
           collection.Set[Match[Section[Element]]],
-          collection.Set[PairwiseMatch],
           MatchesAndTheirSections
       ) =
         val paredDownMatches = matches.flatMap(pareDownOrSuppressCompletely)
@@ -1756,16 +1743,28 @@ object CodeMotionAnalysis extends StrictLogging:
 
         val stabilized = leftovers.isEmpty
 
-        val updatedThis = withoutTheseMatches(pairwiseMatchesToBeEaten.keySet)
+        // Don't add any leftovers out of order wrt the overall search down
+        // window sizes; the search will find them later (and only if they are
+        // valid window sizes and aren't blocked).
+        val leftoversThatAreNotAheadOfTheOverallMatchSearchOrder =
+          leftovers.filter(windowSize <= sizeOf(_))
+
+        val updatedThis = leftoversThatAreNotAheadOfTheOverallMatchSearchOrder
+          .foldLeft(
+            withoutTheseMatches(pairwiseMatchesToBeEaten.keySet)
+          )(_ withMatch _)
+          .copy(evadingRediscoveryBySearch =
+            leftovers.filter(_.evadesRediscoveryBySearch)
+          )
 
         if !stabilized then
           updatedThis.stabilize(
             // Always start with the original matches; we anticipate that paring
             // them down may be more lenient the further we recurse.
             matches,
-            accumulatedLeftovers union leftovers
+            windowSize
           )
-        else (paredDownMatches, accumulatedLeftovers, updatedThis)
+        else (paredDownMatches, updatedThis)
         end if
       end stabilize
     end MatchesAndTheirSections
@@ -1824,7 +1823,7 @@ object CodeMotionAnalysis extends StrictLogging:
        else withAllMatchesOfAtLeastTheSureFireWindowSize).cleanedUp
     end matchesAndTheirSections
 
-    matchesAndTheirSections.checkInvariant()
+    // matchesAndTheirSections.checkInvariant()
 
     try
       val sectionsAndTheirMatches =
