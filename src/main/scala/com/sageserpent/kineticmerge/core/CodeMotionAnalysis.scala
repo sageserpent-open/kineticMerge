@@ -1446,58 +1446,57 @@ object CodeMotionAnalysis extends StrictLogging:
             )
           )
 
-        val fragments = pairwiseMatchesToBeEaten.keySet.flatMap[PairwiseMatch] {
-          pairwiseMatch =>
-            val bites = pairwiseMatchesToBeEaten.get(pairwiseMatch)
+        if pairwiseMatchesToBeEaten.nonEmpty then
+          val fragments =
+            pairwiseMatchesToBeEaten.keySet.flatMap[PairwiseMatch] {
+              pairwiseMatch =>
+                val bites = pairwiseMatchesToBeEaten.get(pairwiseMatch)
 
-            val fragmentsFromPairwiseMatch: Seq[PairwiseMatch] =
-              pairwiseMatch match
-                case Match.BaseAndLeft(baseSection, leftSection) =>
-                  (eatIntoSection(base, bites.map(_.baseElement))(
-                    baseSection
-                  ) zip eatIntoSection(left, bites.map(_.leftElement))(
-                    leftSection
-                  ))
-                    .map(Match.BaseAndLeft.apply)
+                val fragmentsFromPairwiseMatch: Seq[PairwiseMatch] =
+                  pairwiseMatch match
+                    case Match.BaseAndLeft(baseSection, leftSection) =>
+                      (eatIntoSection(base, bites.map(_.baseElement))(
+                        baseSection
+                      ) zip eatIntoSection(left, bites.map(_.leftElement))(
+                        leftSection
+                      ))
+                        .map(Match.BaseAndLeft.apply)
 
-                case Match.BaseAndRight(baseSection, rightSection) =>
-                  (eatIntoSection(base, bites.map(_.baseElement))(
-                    baseSection
-                  ) zip eatIntoSection(right, bites.map(_.rightElement))(
-                    rightSection
-                  )).map(Match.BaseAndRight.apply)
+                    case Match.BaseAndRight(baseSection, rightSection) =>
+                      (eatIntoSection(base, bites.map(_.baseElement))(
+                        baseSection
+                      ) zip eatIntoSection(right, bites.map(_.rightElement))(
+                        rightSection
+                      )).map(Match.BaseAndRight.apply)
 
-                case Match.LeftAndRight(leftSection, rightSection) =>
-                  (eatIntoSection(left, bites.map(_.leftElement))(
-                    leftSection
-                  ) zip eatIntoSection(right, bites.map(_.rightElement))(
-                    rightSection
-                  )).map(Match.LeftAndRight.apply)
+                    case Match.LeftAndRight(leftSection, rightSection) =>
+                      (eatIntoSection(left, bites.map(_.leftElement))(
+                        leftSection
+                      ) zip eatIntoSection(right, bites.map(_.rightElement))(
+                        rightSection
+                      )).map(Match.LeftAndRight.apply)
 
-            logger.debug(
-              s"Eating into pairwise match:\n${pprintCustomised(pairwiseMatch)} on behalf of all-sides matches:\n${pprintCustomised(bites)}, resulting in fragments:\n${pprintCustomised(fragmentsFromPairwiseMatch)}."
-            )
+                logger.debug(
+                  s"Eating into pairwise match:\n${pprintCustomised(pairwiseMatch)} on behalf of all-sides matches:\n${pprintCustomised(bites)}, resulting in fragments:\n${pprintCustomised(fragmentsFromPairwiseMatch)}."
+                )
 
-            fragmentsFromPairwiseMatch
-        }
+                fragmentsFromPairwiseMatch
+            }
 
-        val stabilized = fragments.isEmpty
+          val withoutThePairwiseMatchesThatWereEatenInto = withoutTheseMatches(
+            pairwiseMatchesToBeEaten.keySet
+          )
 
-        val withoutThePairwiseMatchesThatWereEatenInto = withoutTheseMatches(
-          pairwiseMatchesToBeEaten.keySet
-        )
+          val paredDownFragments =
+            fragments.toSeq
+              .flatMap(
+                withoutThePairwiseMatchesThatWereEatenInto.pareDownOrSuppressCompletely
+              )
+              .asInstanceOf[Seq[PairwiseMatch]]
 
-        val paredDownFragments =
-          fragments.toSeq
-            .flatMap(
-              withoutThePairwiseMatchesThatWereEatenInto.pareDownOrSuppressCompletely
-            )
-            .asInstanceOf[Seq[PairwiseMatch]]
+          val updatedThis = paredDownFragments
+            .foldLeft(withoutThePairwiseMatchesThatWereEatenInto)(_ withMatch _)
 
-        val updatedThis = paredDownFragments
-          .foldLeft(withoutThePairwiseMatchesThatWereEatenInto)(_ withMatch _)
-
-        if !stabilized then
           val numberOfAttempts = 1 + phase
 
           logger.debug(
@@ -1511,7 +1510,7 @@ object CodeMotionAnalysis extends StrictLogging:
             windowSize,
             phase = numberOfAttempts
           )
-        else (paredDownMatches, updatedThis)
+        else (paredDownMatches, this)
         end if
       end stabilize
 
