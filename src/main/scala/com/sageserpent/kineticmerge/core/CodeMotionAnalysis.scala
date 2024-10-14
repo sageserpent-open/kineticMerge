@@ -13,7 +13,7 @@ import monocle.syntax.all.*
 
 import java.lang.Byte as JavaByte
 import scala.annotation.tailrec
-import scala.collection.immutable.{MultiDict, SortedMultiSet}
+import scala.collection.immutable.{MultiDict, SortedMultiSet, SortedSet}
 import scala.collection.parallel.CollectionConverters.*
 import scala.collection.{SortedMultiDict, mutable}
 import scala.util.Using
@@ -194,8 +194,10 @@ object CodeMotionAnalysis extends StrictLogging:
         leftSectionsByPath = Map.empty,
         rightSectionsByPath = Map.empty,
         sectionsAndTheirMatches = MultiDict.empty,
-        evadingRediscoveryBySearch = Set.empty
+        fragmentsEvadingRediscoveryBySearch = nothingAtLarge
       )
+      private val nothingAtLarge: SortedSet[PairwiseMatch] =
+        SortedSet.empty(Ordering.by(sizeOf).reverse)
       private val rollingHashFactoryCache: Cache[Int, RollingHash.Factory] =
         Caffeine.newBuilder().build()
 
@@ -567,7 +569,7 @@ object CodeMotionAnalysis extends StrictLogging:
       end maximumSizeOfCoalescedSections
 
       // Breaks up a section by eating into it with smaller bites, yielding the
-      // leftover sections.
+      // fragment sections.
       private def eatIntoSection(
           side: Sources[Path, Element],
           bites: collection.Set[Section[Element]]
@@ -628,18 +630,18 @@ object CodeMotionAnalysis extends StrictLogging:
           @tailrec
           final def apply(
               biteEdges: Seq[BiteEdge],
-              leftovers: Vector[Section[Element]]
+              fragments: Vector[Section[Element]]
           ): Vector[Section[Element]] =
             biteEdges match
               case Seq() =>
                 if mealOnePastEndOffset > mealStartOffset then
-                  leftovers.appended(
+                  fragments.appended(
                     side.section(path)(
                       startOffset = mealStartOffset,
                       size = mealOnePastEndOffset - mealStartOffset
                     )
                   )
-                else leftovers
+                else fragments
               case Seq(BiteEdge.Start(startOffset), remainingBiteEdges*) =>
                 require(mealOnePastEndOffset > startOffset)
                 val guardedStartOffset = startOffset max mealStartOffset
@@ -651,16 +653,16 @@ object CodeMotionAnalysis extends StrictLogging:
                   )
                   .apply(
                     remainingBiteEdges,
-                    leftovers =
+                    fragments =
                       if 0 == biteDepth && guardedStartOffset > mealStartOffset
                       then
-                        leftovers.appended(
+                        fragments.appended(
                           side.section(path)(
                             startOffset = mealStartOffset,
                             size = guardedStartOffset - mealStartOffset
                           )
                         )
-                      else leftovers
+                      else fragments
                   )
               case Seq(BiteEdge.End(onePastEndOffset), remainingBiteEdges*) =>
                 require(0 < biteDepth)
@@ -674,13 +676,13 @@ object CodeMotionAnalysis extends StrictLogging:
                     mealStartOffset = guardedOnePastEndOffset,
                     biteDepth = biteDepth - 1
                   )
-                  .apply(remainingBiteEdges, leftovers)
+                  .apply(remainingBiteEdges, fragments)
         end State
 
         State(
           mealStartOffset = section.startOffset,
           biteDepth = 0
-        )(biteEdges, leftovers = Vector.empty)
+        )(biteEdges, fragments = Vector.empty)
       end eatIntoSection
 
       case class MatchingResult(
@@ -698,7 +700,7 @@ object CodeMotionAnalysis extends StrictLogging:
         leftSectionsByPath: Map[Path, SectionsSeen],
         rightSectionsByPath: Map[Path, SectionsSeen],
         sectionsAndTheirMatches: MatchedSections,
-        evadingRediscoveryBySearch: collection.Set[PairwiseMatch]
+        fragmentsEvadingRediscoveryBySearch: SortedSet[PairwiseMatch]
     ):
       import MatchesAndTheirSections.*
 
@@ -785,6 +787,162 @@ object CodeMotionAnalysis extends StrictLogging:
       def rightSections: Set[Section[Element]] =
         rightSectionsByPath.values.flatMap(_.iterator).toSet
 
+      def consolidated: MatchesAndTheirSections =
+        val needsConsolidation =
+          fragmentsEvadingRediscoveryBySearch.toSeq.flatMap(
+            pareDownOrSuppressCompletely
+          )
+
+        if needsConsolidation.nonEmpty then
+          logger.debug(
+            s"Consolidating fragments:\n${pprintCustomised(needsConsolidation)}"
+          )
+        end if
+
+        needsConsolidation
+          .foldLeft(copy(fragmentsEvadingRediscoveryBySearch = nothingAtLarge))(
+            _ withMatch _
+          )
+      end consolidated
+
+      private def withMatch(
+          aMatch: Match[Section[Element]]
+      ): MatchesAndTheirSections =
+        aMatch match
+          case Match.AllSides(baseSection, leftSection, rightSection) =>
+            copy(
+              baseSectionsByPath = withBaseSection(baseSection),
+              leftSectionsByPath = withLeftSection(leftSection),
+              rightSectionsByPath = withRightSection(rightSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch) + (rightSection -> aMatch)
+            )
+          case Match.BaseAndLeft(baseSection, leftSection) =>
+            copy(
+              baseSectionsByPath = withBaseSection(baseSection),
+              leftSectionsByPath = withLeftSection(leftSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch)
+            )
+          case Match.BaseAndRight(baseSection, rightSection) =>
+            copy(
+              baseSectionsByPath = withBaseSection(baseSection),
+              rightSectionsByPath = withRightSection(rightSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch)
+            )
+          case Match.LeftAndRight(leftSection, rightSection) =>
+            copy(
+              leftSectionsByPath = withLeftSection(leftSection),
+              rightSectionsByPath = withRightSection(rightSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch)
+            )
+        end match
+      end withMatch
+
+      private def pareDownOrSuppressCompletely(
+          aMatch: Match[Section[Element]]
+      ): Option[Match[Section[Element]]] =
+        aMatch match
+          case Match.AllSides(baseSection, leftSection, rightSection) =>
+            val subsumingOnBase =
+              subsumingMatches(sectionsAndTheirMatches)(
+                base,
+                baseSectionsByPath
+              )(
+                baseSection
+              )
+            val subsumingOnLeft =
+              subsumingMatches(sectionsAndTheirMatches)(
+                left,
+                leftSectionsByPath
+              )(
+                leftSection
+              )
+            val subsumingOnRight =
+              subsumingMatches(sectionsAndTheirMatches)(
+                right,
+                rightSectionsByPath
+              )(
+                rightSection
+              )
+
+            val allSidesSubsumingOnLeft =
+              subsumingOnLeft.filter(_.isAnAllSidesMatch)
+            val allSidesSubsumingOnRight =
+              subsumingOnRight.filter(_.isAnAllSidesMatch)
+            val allSidesSubsumingOnBase =
+              subsumingOnBase.filter(_.isAnAllSidesMatch)
+
+            val subsumedByAnAllSidesMatchOnMoreThanOneSide =
+              (allSidesSubsumingOnLeft intersect allSidesSubsumingOnRight).nonEmpty
+                || (allSidesSubsumingOnBase intersect allSidesSubsumingOnLeft).nonEmpty
+                || (allSidesSubsumingOnBase intersect allSidesSubsumingOnRight).nonEmpty
+
+            if !subsumedByAnAllSidesMatchOnMoreThanOneSide then
+              val subsumedBySomeMatchOnJustTheBase =
+                (subsumingOnBase diff (subsumingOnLeft union subsumingOnRight)).nonEmpty
+              val subsumedBySomeMatchOnJustTheLeft =
+                (subsumingOnLeft diff (subsumingOnBase union subsumingOnRight)).nonEmpty
+              val subsumedBySomeMatchOnJustTheRight =
+                (subsumingOnRight diff (subsumingOnBase union subsumingOnLeft)).nonEmpty
+
+              // NOTE: an all-sides match could be subsumed by *some* match on
+              // just one side for two or three sides; they would be *different*
+              // matches, each doing a one-sided subsumption.
+              (
+                subsumedBySomeMatchOnJustTheBase,
+                subsumedBySomeMatchOnJustTheLeft,
+                subsumedBySomeMatchOnJustTheRight
+              ) match
+                case (false, false, false) => Some(aMatch)
+                case (true, false, false) =>
+                  Option.unless(
+                    subsumesLeftSection(leftSection) || subsumesRightSection(
+                      rightSection
+                    )
+                  )(Match.LeftAndRight(leftSection, rightSection))
+                case (false, true, false) =>
+                  Option.unless(
+                    subsumesBaseSection(baseSection) || subsumesRightSection(
+                      rightSection
+                    )
+                  )(Match.BaseAndRight(baseSection, rightSection))
+                case (false, false, true) =>
+                  Option.unless(
+                    subsumesBaseSection(baseSection) || subsumesLeftSection(
+                      leftSection
+                    )
+                  )(Match.BaseAndLeft(baseSection, leftSection))
+                case _ => None
+              end match
+            else None
+            end if
+
+          case Match.BaseAndLeft(baseSection, leftSection) =>
+            Option.unless(
+              subsumesBaseSection(baseSection) || subsumesLeftSection(
+                leftSection
+              )
+            )(aMatch)
+
+          case Match.BaseAndRight(baseSection, rightSection) =>
+            Option.unless(
+              subsumesBaseSection(baseSection) || subsumesRightSection(
+                rightSection
+              )
+            )(aMatch)
+
+          case Match.LeftAndRight(leftSection, rightSection) =>
+            Option.unless(
+              subsumesLeftSection(leftSection) || subsumesRightSection(
+                rightSection
+              )
+            )(aMatch)
+        end match
+      end pareDownOrSuppressCompletely
+
       def withAllSmallFryMatches(): MatchesAndTheirSections =
         val maximumSmallFryWindowSize =
           minimumSureFireWindowSizeAcrossAllFilesOverAllSides - 1
@@ -801,42 +959,6 @@ object CodeMotionAnalysis extends StrictLogging:
           )
         }.get
       end withAllSmallFryMatches
-
-      // Eating into pairwise matches can create smaller pairwise matches that
-      // are partially subsumed by other larger pairwise matches. Prefer keeping
-      // the larger matches and remove the subsumed ones.
-      // Furthermore, `allSidesMatchOf` can generate provisional matches that
-      // may turn out to be spared (because a pairwise match subsuming on two
-      // sides has been eaten into), or are pared down to pairwise matches (due
-      // to subsumption on just one side by either an all-sides or pairwise
-      // match). Otherwise, they remain as is and need to be removed if they are
-      // subsumed.
-      def cleanedUp: MatchesAndTheirSections =
-        val subsumedBaseSections = baseSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesBaseSection)
-        val subsumedLeftSections = leftSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesLeftSection)
-        val subsumedRightSections = rightSectionsByPath.values
-          .flatMap(_.iterator)
-          .filter(subsumesRightSection)
-
-        val matchesToRemove =
-          (subsumedBaseSections ++ subsumedLeftSections ++ subsumedRightSections)
-            .flatMap(sectionsAndTheirMatches.get)
-            .toSet
-
-        if matchesToRemove.nonEmpty then
-          logger.debug(
-            s"Removing matches that have subsumed sections:\n${pprintCustomised(matchesToRemove)} as part of cleanup."
-          )
-        end if
-
-        evadingRediscoveryBySearch.foldLeft(
-          this.withoutTheseMatches(matchesToRemove)
-        )(_ withMatch _)
-      end cleanedUp
 
       private def withoutTheseMatches(
           matches: Iterable[Match[Section[Element]]]
@@ -937,42 +1059,6 @@ object CodeMotionAnalysis extends StrictLogging:
               )
         }
       end withoutTheseMatches
-
-      private def withMatch(
-          aMatch: Match[Section[Element]]
-      ): MatchesAndTheirSections =
-        aMatch match
-          case Match.AllSides(baseSection, leftSection, rightSection) =>
-            copy(
-              baseSectionsByPath = withBaseSection(baseSection),
-              leftSectionsByPath = withLeftSection(leftSection),
-              rightSectionsByPath = withRightSection(rightSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch) + (rightSection -> aMatch)
-            )
-          case Match.BaseAndLeft(baseSection, leftSection) =>
-            copy(
-              baseSectionsByPath = withBaseSection(baseSection),
-              leftSectionsByPath = withLeftSection(leftSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch)
-            )
-          case Match.BaseAndRight(baseSection, rightSection) =>
-            copy(
-              baseSectionsByPath = withBaseSection(baseSection),
-              rightSectionsByPath = withRightSection(rightSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch)
-            )
-          case Match.LeftAndRight(leftSection, rightSection) =>
-            copy(
-              leftSectionsByPath = withLeftSection(leftSection),
-              rightSectionsByPath = withRightSection(rightSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch)
-            )
-        end match
-      end withMatch
 
       private def withMatches(
           matches: collection.Set[Match[Section[Element]]],
@@ -1096,97 +1182,32 @@ object CodeMotionAnalysis extends StrictLogging:
         end if
       end withAllSmallFryMatches
 
-      private def pareDownOrSuppressCompletely(
-          aMatch: Match[Section[Element]]
-      ): Option[Match[Section[Element]]] =
-        aMatch match
-          case Match.AllSides(baseSection, leftSection, rightSection) =>
-            val subsumingOnBase =
-              subsumingMatches(sectionsAndTheirMatches)(
-                base,
-                baseSectionsByPath
-              )(
-                baseSection
-              )
-            val subsumingOnLeft =
-              subsumingMatches(sectionsAndTheirMatches)(
-                left,
-                leftSectionsByPath
-              )(
-                leftSection
-              )
-            val subsumingOnRight =
-              subsumingMatches(sectionsAndTheirMatches)(
-                right,
-                rightSectionsByPath
-              )(
-                rightSection
-              )
-
-            val allSidesSubsumingOnLeft =
-              subsumingOnLeft.filter(_.isAnAllSidesMatch)
-            val allSidesSubsumingOnRight =
-              subsumingOnRight.filter(_.isAnAllSidesMatch)
-            val allSidesSubsumingOnBase =
-              subsumingOnBase.filter(_.isAnAllSidesMatch)
-
-            val subsumedByAnAllSidesMatchOnMoreThanOneSide =
-              (allSidesSubsumingOnLeft intersect allSidesSubsumingOnRight).nonEmpty
-                || (allSidesSubsumingOnBase intersect allSidesSubsumingOnLeft).nonEmpty
-                || (allSidesSubsumingOnBase intersect allSidesSubsumingOnRight).nonEmpty
-
-            if !subsumedByAnAllSidesMatchOnMoreThanOneSide then
-              val subsumedBySomeMatchOnJustTheBase =
-                (subsumingOnBase diff (subsumingOnLeft union subsumingOnRight)).nonEmpty
-              val subsumedBySomeMatchOnJustTheLeft =
-                (subsumingOnLeft diff (subsumingOnBase union subsumingOnRight)).nonEmpty
-              val subsumedBySomeMatchOnJustTheRight =
-                (subsumingOnRight diff (subsumingOnBase union subsumingOnLeft)).nonEmpty
-
-              // NOTE: an all-sides match could be subsumed by *some* match on
-              // just one side for two or three sides; they would be *different*
-              // matches, each doing a one-sided subsumption.
-              (
-                subsumedBySomeMatchOnJustTheBase,
-                subsumedBySomeMatchOnJustTheLeft,
-                subsumedBySomeMatchOnJustTheRight
-              ) match
-                case (false, false, false) => Some(aMatch)
-                case (true, false, false) =>
-                  Some(Match.LeftAndRight(leftSection, rightSection))
-                case (false, true, false) =>
-                  Some(Match.BaseAndRight(baseSection, rightSection))
-                case (false, false, true) =>
-                  Some(Match.BaseAndLeft(baseSection, leftSection))
-                case _ => None
-              end match
-            else None
-            end if
-
-          case Match.BaseAndLeft(baseSection, leftSection) =>
-            Option.unless(
-              subsumesBaseSection(baseSection) || subsumesLeftSection(
-                leftSection
-              )
-            )(aMatch)
-
-          case Match.BaseAndRight(baseSection, rightSection) =>
-            Option.unless(
-              subsumesBaseSection(baseSection) || subsumesRightSection(
-                rightSection
-              )
-            )(aMatch)
-
-          case Match.LeftAndRight(leftSection, rightSection) =>
-            Option.unless(
-              subsumesLeftSection(leftSection) || subsumesRightSection(
-                rightSection
-              )
-            )(aMatch)
-        end match
-      end pareDownOrSuppressCompletely
-
       private def matchesForWindowSize(
+          windowSize: Int
+      ): MatchingResult =
+        val (recaptured, slippedThroughTheNet) =
+          fragmentsEvadingRediscoveryBySearch.span(windowSize <= sizeOf(_))
+
+        val paredDownRecaptured = recaptured.toSeq.flatMap(
+          pareDownOrSuppressCompletely
+        )
+
+        if paredDownRecaptured.nonEmpty then
+          logger.debug(
+            s"Now that window size is: ${pprintCustomised(windowSize)}, recaptured fragments:\n${pprintCustomised(paredDownRecaptured)}."
+          )
+        end if
+
+        paredDownRecaptured
+          .foldLeft(
+            copy(fragmentsEvadingRediscoveryBySearch = slippedThroughTheNet)
+          )(
+            _ withMatch _
+          )
+          ._matchesForWindowSize(windowSize)
+      end matchesForWindowSize
+
+      private def _matchesForWindowSize(
           windowSize: Int
       ): MatchingResult =
         require(0 < windowSize)
@@ -1650,7 +1671,7 @@ object CodeMotionAnalysis extends StrictLogging:
           rightSectionsByFingerprint.keySet,
           matches = Set.empty
         )
-      end matchesForWindowSize
+      end _matchesForWindowSize
 
       @tailrec
       private def stabilize(
@@ -1706,11 +1727,11 @@ object CodeMotionAnalysis extends StrictLogging:
             )
           )
 
-        val leftovers = pairwiseMatchesToBeEaten.keySet.flatMap[PairwiseMatch] {
+        val fragments = pairwiseMatchesToBeEaten.keySet.flatMap[PairwiseMatch] {
           pairwiseMatch =>
             val bites = pairwiseMatchesToBeEaten.get(pairwiseMatch)
 
-            val leftoversFromPairwiseMatch: Seq[PairwiseMatch] =
+            val fragmentsFromPairwiseMatch: Seq[PairwiseMatch] =
               pairwiseMatch match
                 case Match.BaseAndLeft(baseSection, leftSection) =>
                   (eatIntoSection(base, bites.map(_.baseElement))(
@@ -1735,26 +1756,32 @@ object CodeMotionAnalysis extends StrictLogging:
                   )).map(Match.LeftAndRight.apply)
 
             logger.debug(
-              s"Eating into pairwise match:\n${pprintCustomised(pairwiseMatch)} on behalf of all-sides matches:\n${pprintCustomised(bites)}, resulting in matches:\n${pprintCustomised(leftoversFromPairwiseMatch)}."
+              s"Eating into pairwise match:\n${pprintCustomised(pairwiseMatch)} on behalf of all-sides matches:\n${pprintCustomised(bites)}, resulting in fragments:\n${pprintCustomised(fragmentsFromPairwiseMatch)}."
             )
 
-            leftoversFromPairwiseMatch
+            fragmentsFromPairwiseMatch
         }
 
-        val stabilized = leftovers.isEmpty
+        val stabilized = fragments.isEmpty
 
-        // Don't add any leftovers out of order wrt the overall search down
-        // window sizes; the search will find them later (and only if they are
-        // valid window sizes and aren't blocked).
-        val leftoversThatAreNotAheadOfTheOverallMatchSearchOrder =
-          leftovers.filter(windowSize <= sizeOf(_))
+        val paredDownFragments =
+          fragments.toSeq
+            .flatMap(pareDownOrSuppressCompletely)
+            .asInstanceOf[Seq[PairwiseMatch]]
 
-        val updatedThis = leftoversThatAreNotAheadOfTheOverallMatchSearchOrder
+        // Don't add any fragments out of order wrt the overall search down
+        // window sizes; either the search will find them later or they will be
+        // added in explicitly if they evade searching.
+        val fragmentsThatAreNotAheadOfTheOverallMatchSearchOrder =
+          paredDownFragments.filter(windowSize <= sizeOf(_))
+
+        val updatedThis = fragmentsThatAreNotAheadOfTheOverallMatchSearchOrder
           .foldLeft(
             withoutTheseMatches(pairwiseMatchesToBeEaten.keySet)
           )(_ withMatch _)
-          .copy(evadingRediscoveryBySearch =
-            leftovers.filter(_.evadesRediscoveryBySearch)
+          .focus(_.fragmentsEvadingRediscoveryBySearch)
+          .modify(
+            _ ++ paredDownFragments.filter(_.evadesRediscoveryBySearch)
           )
 
         if !stabilized then
@@ -1820,7 +1847,7 @@ object CodeMotionAnalysis extends StrictLogging:
        then
          withAllMatchesOfAtLeastTheSureFireWindowSize
            .withAllSmallFryMatches()
-       else withAllMatchesOfAtLeastTheSureFireWindowSize).cleanedUp
+       else withAllMatchesOfAtLeastTheSureFireWindowSize).consolidated
     end matchesAndTheirSections
 
     // matchesAndTheirSections.checkInvariant()
