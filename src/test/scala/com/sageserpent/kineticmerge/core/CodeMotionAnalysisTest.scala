@@ -706,7 +706,7 @@ class CodeMotionAnalysisTest:
   end matchingSectionsAreFound
 
   @Test
-  def anAmbiguousAllSidesMatchSubsumedOnOneSideByALargerAllSidesMatchIsEliminatedCompletely
+  def anAmbiguousAllSidesMatchSubsumedOnOneSideByALargerAllSidesMatchIsEliminatedCompletely()
       : Unit =
     val configuration = Configuration(
       minimumMatchSize = 10,
@@ -798,7 +798,7 @@ class CodeMotionAnalysisTest:
   end anAmbiguousAllSidesMatchSubsumedOnOneSideByALargerAllSidesMatchIsEliminatedCompletely
 
   @Test
-  def eatenPairwiseMatchesMayBeSuppressedByACompetingAmbiguousPairwiseMatch
+  def eatenPairwiseMatchesMayBeSuppressedByACompetingAmbiguousPairwiseMatch()
       : Unit =
     // This is a pathological situation - we have a pairwise match that subsumes
     // a smaller all-sides match; thus the pairwise match would be eaten into to
@@ -896,7 +896,7 @@ class CodeMotionAnalysisTest:
   end eatenPairwiseMatchesMayBeSuppressedByACompetingAmbiguousPairwiseMatch
 
   @Test
-  def eatenPairwiseMatchesMayBeSuppressedByACompetingOverlappingAllSidesMatch
+  def eatenPairwiseMatchesMayBeSuppressedByACompetingOverlappingAllSidesMatch()
       : Unit =
     val configuration = Configuration(
       minimumMatchSize = 10,

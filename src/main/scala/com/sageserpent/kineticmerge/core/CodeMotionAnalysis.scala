@@ -1328,7 +1328,7 @@ object CodeMotionAnalysis extends StrictLogging:
           windowSize: Int
       ): MatchingResult =
         val (paredDownMatches, stabilized) =
-          stabilize(windowSize)(
+          eatIntoLargerPairwiseMatchesUntilStabilized(windowSize)(
             matches = matches,
             phase = 0,
             accumulatedParedDownMatches = Set.empty
@@ -1396,7 +1396,7 @@ object CodeMotionAnalysis extends StrictLogging:
       end withoutRedundantPairwiseMatchesIn
 
       @tailrec
-      private def stabilize(windowSize: Int)(
+      private def eatIntoLargerPairwiseMatchesUntilStabilized(windowSize: Int)(
           matches: collection.Set[Match[Section[Element]]],
           phase: Int,
           accumulatedParedDownMatches: Set[Match[Section[Element]]]
@@ -1488,6 +1488,11 @@ object CodeMotionAnalysis extends StrictLogging:
             pairwiseMatchesToBeEaten.keySet
           )
 
+          // NOTE: this isn't being overly defensive - see the test
+          // `CodeMotionAnalysisTest.eatenPairwiseMatchesMayBeSuppressedByACompetingOverlappingAllSidesMatch`.
+          // To cut a long story short, we can have some other match that is
+          // smaller than the original pairwise match that the fragment came
+          // from that subsumes the fragment.
           val paredDownFragments =
             fragments.toSeq
               .flatMap(
@@ -1500,6 +1505,12 @@ object CodeMotionAnalysis extends StrictLogging:
               .reduce(_ union _)
               .asInstanceOf[Set[Match[Section[Element]]]]
 
+          // NOTE: add in the all-sides matches that ate into larger pairwise
+          // matches, as well as the fragments. Taken together, these stand in
+          // for the original pairwise match that was eaten into and prevent
+          // further matches that could overlap with the all-sides matches from
+          // trying to jump in and claim the content originally covered by said
+          // pairwise match.
           val updatedThis = allSidesMatchesThatAteIntoAPairwiseMatch.foldLeft(
             paredDownFragments
               .foldLeft(withoutThePairwiseMatchesThatWereEatenInto)(
@@ -1513,7 +1524,7 @@ object CodeMotionAnalysis extends StrictLogging:
             s"Stabilization at window size $windowSize has made $numberOfAttempts successful attempt(s) to break down larger pairwise matches into fragments, looking for more..."
           )
 
-          updatedThis.stabilize(windowSize)(
+          updatedThis.eatIntoLargerPairwiseMatchesUntilStabilized(windowSize)(
             matches = matches diff allSidesMatchesThatAteIntoAPairwiseMatch,
             phase = numberOfAttempts,
             accumulatedParedDownMatches =
@@ -1521,7 +1532,7 @@ object CodeMotionAnalysis extends StrictLogging:
           )
         else (accumulatedParedDownMatches union paredDownMatches, this)
         end if
-      end stabilize
+      end eatIntoLargerPairwiseMatchesUntilStabilized
 
       private def withMatch(
           aMatch: Match[Section[Element]]
