@@ -1328,9 +1328,8 @@ object CodeMotionAnalysis extends StrictLogging:
           windowSize: Int
       ): MatchingResult =
         val (paredDownMatches, stabilized) =
-          stabilize(
-            matches,
-            windowSize,
+          stabilize(windowSize)(
+            matches = matches,
             phase = 0,
             accumulatedParedDownMatches = Set.empty
           )
@@ -1397,15 +1396,11 @@ object CodeMotionAnalysis extends StrictLogging:
       end withoutRedundantPairwiseMatchesIn
 
       @tailrec
-      private def stabilize(
+      private def stabilize(windowSize: Int)(
           matches: collection.Set[Match[Section[Element]]],
-          windowSize: Int,
           phase: Int,
           accumulatedParedDownMatches: Set[Match[Section[Element]]]
-      ): (
-          collection.Set[Match[Section[Element]]],
-          MatchesAndTheirSections
-      ) =
+      ): (Set[Match[Section[Element]]], MatchesAndTheirSections) =
         val paredDownMatches = matches.flatMap(pareDownOrSuppressCompletely)
 
         val allSidesMatches = paredDownMatches.collect {
@@ -1518,11 +1513,8 @@ object CodeMotionAnalysis extends StrictLogging:
             s"Stabilization at window size $windowSize has made $numberOfAttempts successful attempt(s) to break down larger pairwise matches into fragments, looking for more..."
           )
 
-          updatedThis.stabilize(
-            // Always start with the original matches; we anticipate that paring
-            // them down may be more lenient the further we recurse.
-            matches diff allSidesMatchesThatAteIntoAPairwiseMatch,
-            windowSize,
+          updatedThis.stabilize(windowSize)(
+            matches = matches diff allSidesMatchesThatAteIntoAPairwiseMatch,
             phase = numberOfAttempts,
             accumulatedParedDownMatches =
               accumulatedParedDownMatches union allSidesMatchesThatAteIntoAPairwiseMatch
