@@ -1328,7 +1328,12 @@ object CodeMotionAnalysis extends StrictLogging:
           windowSize: Int
       ): MatchingResult =
         val (paredDownMatches, stabilized) =
-          stabilize(matches, windowSize, phase = 0)
+          stabilize(
+            matches,
+            windowSize,
+            phase = 0,
+            accumulatedParedDownMatches = Set.empty
+          )
 
         val (
           updatedMatchesAndTheirSections,
@@ -1395,7 +1400,8 @@ object CodeMotionAnalysis extends StrictLogging:
       private def stabilize(
           matches: collection.Set[Match[Section[Element]]],
           windowSize: Int,
-          phase: Int
+          phase: Int,
+          accumulatedParedDownMatches: Set[Match[Section[Element]]]
       ): (
           collection.Set[Match[Section[Element]]],
           MatchesAndTheirSections
@@ -1494,8 +1500,17 @@ object CodeMotionAnalysis extends StrictLogging:
               )
               .asInstanceOf[Seq[PairwiseMatch]]
 
-          val updatedThis = paredDownFragments
-            .foldLeft(withoutThePairwiseMatchesThatWereEatenInto)(_ withMatch _)
+          val allSidesMatchesThatAteIntoAPairwiseMatch =
+            pairwiseMatchesToBeEaten.sets.values
+              .reduce(_ union _)
+              .asInstanceOf[Set[Match[Section[Element]]]]
+
+          val updatedThis = allSidesMatchesThatAteIntoAPairwiseMatch.foldLeft(
+            paredDownFragments
+              .foldLeft(withoutThePairwiseMatchesThatWereEatenInto)(
+                _ withMatch _
+              )
+          )(_ withMatch _)
 
           val numberOfAttempts = 1 + phase
 
@@ -1506,11 +1521,13 @@ object CodeMotionAnalysis extends StrictLogging:
           updatedThis.stabilize(
             // Always start with the original matches; we anticipate that paring
             // them down may be more lenient the further we recurse.
-            matches,
+            matches diff allSidesMatchesThatAteIntoAPairwiseMatch,
             windowSize,
-            phase = numberOfAttempts
+            phase = numberOfAttempts,
+            accumulatedParedDownMatches =
+              accumulatedParedDownMatches union allSidesMatchesThatAteIntoAPairwiseMatch
           )
-        else (paredDownMatches, this)
+        else (accumulatedParedDownMatches union paredDownMatches, this)
         end if
       end stabilize
 
