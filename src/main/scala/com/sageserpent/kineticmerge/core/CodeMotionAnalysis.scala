@@ -687,7 +687,7 @@ object CodeMotionAnalysis extends StrictLogging:
           numberOfMatchesForTheGivenWindowSize: Int,
           estimatedWindowSizeForOptimalMatch: Option[Int]
       ):
-      // matchesAndTheirSections.checkInvariant()
+        matchesAndTheirSections.checkInvariant()
       end MatchingResult
 
     end MatchesAndTheirSections
@@ -724,58 +724,61 @@ object CodeMotionAnalysis extends StrictLogging:
         withSection(right, rightSectionsByPath)
 
       def checkInvariant(): Unit =
-        // Check the post-condition that all matches that involve the same
-        // section must be of the same kind...
-        sectionsAndTheirMatches.sets.foreach { (section, matches) =>
-          try
-            matches.head match
-              case _: kineticmerge.core.Match.AllSides[Section[Element]] =>
-                matches.tail.foreach { anotherMatch =>
-                  require(
-                    anotherMatch
-                      .isInstanceOf[kineticmerge.core.Match.AllSides[Element]]
-                  )
-                }
-              case _: kineticmerge.core.Match.BaseAndLeft[Section[Element]] =>
-                matches.tail.foreach { anotherMatch =>
-                  require(
-                    anotherMatch.isInstanceOf[
-                      kineticmerge.core.Match.BaseAndLeft[Element]
-                    ]
-                  )
-                }
-              case _: kineticmerge.core.Match.BaseAndRight[Section[Element]] =>
-                matches.tail.foreach { anotherMatch =>
-                  require(
-                    anotherMatch.isInstanceOf[
-                      kineticmerge.core.Match.BaseAndRight[Element]
-                    ]
-                  )
-                }
-              case _: kineticmerge.core.Match.LeftAndRight[Section[Element]] =>
-                matches.tail.foreach { anotherMatch =>
-                  require(
-                    anotherMatch.isInstanceOf[
-                      kineticmerge.core.Match.LeftAndRight[Element]
-                    ]
-                  )
-                }
-          catch
-            case exception: IllegalArgumentException =>
-              logger.error(
-                s"Post-condition failure for section: ${pprintCustomised(section)}, this has inconsistent match kinds..."
-              )
-              logger.error(
-                s"The first match is: ${pprintCustomised(matches.head)}."
-              )
-              logger.error(s"Subsequent matches are...")
-              matches.tail.foreach(aMatch =>
-                logger.debug(s"${pprintCustomised(aMatch)}")
-              )
+        // No match should be redundant - i.e. no match should involve sections
+        // that all belong to another match. This goes without saying for
+        // all-sides matches, as they any redundancy would imply equivalent
+        // all-asides matches being associated with the same sections - this
+        // isn't allowed by a `MultiDict` instance. The same applies for
+        // pairwise matches of the same kind; pairwise matches of different
+        // kinds can't make each other redundant.
+        // What we have to watch out for are pairwise matches having both
+        // sections also belonging to an all-sides match.
 
-              throw exception
-          end try
+        val matchesBySectionPairs = sectionsAndTheirMatches.values.foldLeft(
+          MultiDict.empty[(Section[Element], Section[Element]), Match[
+            Section[Element]
+          ]]
+        )((matchesBySectionPairs, aMatch) =>
+          aMatch match
+            case Match.AllSides(baseSection, leftSection, rightSection) =>
+              matchesBySectionPairs + ((
+                baseSection,
+                leftSection
+              ) -> aMatch) + ((baseSection, rightSection) -> aMatch) + ((
+                leftSection,
+                rightSection
+              ) -> aMatch)
+            case Match.BaseAndLeft(baseSection, leftSection) =>
+              matchesBySectionPairs + ((
+                baseSection,
+                leftSection
+              ) -> aMatch)
+            case Match.BaseAndRight(baseSection, rightSection) =>
+              matchesBySectionPairs + ((
+                baseSection,
+                rightSection
+              ) -> aMatch)
+            case Match.LeftAndRight(leftSection, rightSection) =>
+              matchesBySectionPairs + ((
+                leftSection,
+                rightSection
+              ) -> aMatch)
+        )
+
+        matchesBySectionPairs.keySet.foreach { sectionPair =>
+          val matches = matchesBySectionPairs.get(sectionPair)
+
+          val (allSides, pairwiseMatches) =
+            matches.partition(_.isAnAllSidesMatch)
+
+          if allSides.nonEmpty then
+            assert(
+              pairwiseMatches.isEmpty,
+              s"Found redundancy between pairwise matches: ${pprintCustomised(pairwiseMatches)} and an all-sides match in: ${pprintCustomised(allSides)}."
+            )
+          end if
         }
+      end checkInvariant
 
       def baseSections: Set[Section[Element]] =
         baseSectionsByPath.values.flatMap(_.iterator).toSet
@@ -1846,7 +1849,7 @@ object CodeMotionAnalysis extends StrictLogging:
       end if
     end matchesAndTheirSections
 
-    // matchesAndTheirSections.checkInvariant()
+    matchesAndTheirSections.checkInvariant()
 
     try
       val sectionsAndTheirMatches =
