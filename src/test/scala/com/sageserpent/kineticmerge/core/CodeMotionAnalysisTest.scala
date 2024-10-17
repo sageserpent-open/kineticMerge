@@ -904,7 +904,7 @@ class CodeMotionAnalysisTest:
       minimumAmbiguousMatchSize = 0
     )
 
-    // This is a even more pathological situation - we have overlapping matches
+    // This is an even more pathological situation - we have overlapping matches
     // of the same size, one of which is a pairwise match and the other an
     // all-sides match. This in itself is permitted (but will result in an
     // admissible downstream exception due to the overlap when
@@ -982,6 +982,195 @@ class CodeMotionAnalysisTest:
     )
   end eatenPairwiseMatchesMayBeSuppressedByACompetingOverlappingAllSidesMatch
 
+  @Test
+  def notEatingIntoTwoPairwiseMatchesEvenThoughBothHaveCommonContent(): Unit =
+    // Here, we have a base-left match and a base-right match - both matches
+    // share a smaller run of common content. Ordinarily, the common content
+    // would form two ambiguous all-sides matches (obviously the pairwise
+    // matches must differ in content to not constituting an all-side match
+    // overall).
+
+    // The twist is that the matching threshold forbids matching of the common
+    // content in the base side of the base-left match, so there is no ambiguous
+    // all-sides match to eat into that base-left match. In turn, that means
+    // that the putative all-sides match that would have eaten into the
+    // base-right match is blocked by the subsuming base-left match, so in the
+    // end there is no eating into either pairwise match.
+
+    val largePrefix          = 0 until 10
+    val largeSuffix          = 30 until 40
+    val smallAllSidesContent = 10 until 20
+    val bigBaseAndLeftContent =
+      largePrefix ++ smallAllSidesContent ++ largeSuffix
+    val smallPrefix = 40 until 45
+    val smallSuffix = 50 until 55
+    val bigBaseAndRightContent =
+      smallPrefix ++ smallAllSidesContent ++ smallSuffix
+
+    val baseSources = new FakeSources(
+      Map(
+        1 -> bigBaseAndLeftContent,
+        2 -> bigBaseAndRightContent
+      ),
+      "base"
+    ) with SourcesContracts[Path, Element]
+
+    val leftSources = new FakeSources(
+      Map(1 -> bigBaseAndLeftContent),
+      "left"
+    ) with SourcesContracts[Path, Element]
+
+    val rightSources = new FakeSources(
+      Map(2 -> bigBaseAndRightContent),
+      "right"
+    ) with SourcesContracts[Path, Element]
+
+    val configuration = Configuration(
+      minimumMatchSize = 10,
+      // Low enough to allow the all-sides match to be considered, except in
+      // path 1 on the base side...
+      thresholdSizeFractionForMatching = 0.4,
+      minimumAmbiguousMatchSize = 0
+    )
+
+    val Right(
+      analysis: CodeMotionAnalysis[Path, Element]
+    ) =
+      CodeMotionAnalysis.of(
+        baseSources,
+        leftSources,
+        rightSources
+      )(configuration): @unchecked
+    end val
+
+    val matches =
+      (analysis.base.values.flatMap(_.sections) ++ analysis.left.values.flatMap(
+        _.sections
+      ) ++ analysis.right.values.flatMap(_.sections))
+        .map(analysis.matchesFor)
+        .reduce(_ union _)
+
+    // There should be a base-left and a base-right match.
+    assert(matches.forall {
+      case _: Match.BaseAndLeft[Section[Element]] |
+          _: Match.BaseAndRight[Section[Element]] =>
+        true
+      case _ => false
+    })
+
+    // There should only be two big matches.
+    assert(matches.size == 2)
+
+    // The contents should be what we started with.
+    assert(
+      matches.map(_.content) == Set(
+        bigBaseAndLeftContent,
+        bigBaseAndRightContent
+      )
+    )
+  end notEatingIntoTwoPairwiseMatchesEvenThoughBothHaveCommonContent
+
+  @Test
+  def eatingIntoTwoPairwiseMatchesWhenBothHaveCommonContent(): Unit =
+    // Here, we have a base-left match and a base-right match - both matches
+    // share a smaller run of common content. Ordinarily, the common content
+    // would not form two ambiguous all-sides matches, because each pairwise
+    // match partially subsumes the all-sides match contributed by the other
+    // pairwise match.
+    //
+    // We then sneak in an all-sides match that has the common content all by
+    // itself on just the right side - it can escape partial subsumption by the
+    // base-left and eats into that pairwise match. Consequently, the common
+    // content that was part of the base-left match is liberated, allowing a
+    // fresh all-sides match to be considered that eats into the base-right
+    // match.
+
+    // The end result is that there are two ambiguous all-sides matches and
+    // fragments from both pairwise matches.
+
+    val largePrefix          = 0 until 10
+    val largeSuffix          = 30 until 40
+    val smallAllSidesContent = 10 until 20
+    val bigBaseAndLeftContent =
+      largePrefix ++ smallAllSidesContent ++ largeSuffix
+    val smallPrefix = 40 until 45
+    val smallSuffix = 50 until 55
+    val bigBaseAndRightContent =
+      smallPrefix ++ smallAllSidesContent ++ smallSuffix
+
+    val baseSources = new FakeSources(
+      Map(
+        1 -> bigBaseAndLeftContent,
+        2 -> bigBaseAndRightContent
+      ),
+      "base"
+    ) with SourcesContracts[Path, Element]
+
+    val leftSources = new FakeSources(
+      Map(1 -> bigBaseAndLeftContent),
+      "left"
+    ) with SourcesContracts[Path, Element]
+
+    val rightSources = new FakeSources(
+      Map(1 -> smallAllSidesContent, 2 -> bigBaseAndRightContent),
+      "right"
+    ) with SourcesContracts[Path, Element]
+
+    val configuration = Configuration(
+      minimumMatchSize = 10,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0
+    )
+
+    val Right(
+      analysis: CodeMotionAnalysis[Path, Element]
+    ) =
+      CodeMotionAnalysis.of(
+        baseSources,
+        leftSources,
+        rightSources
+      )(configuration): @unchecked
+    end val
+
+    val matches =
+      (analysis.base.values.flatMap(_.sections) ++ analysis.left.values.flatMap(
+        _.sections
+      ) ++ analysis.right.values.flatMap(_.sections))
+        .map(analysis.matchesFor)
+        .reduce(_ union _)
+
+    // There should be base-left, base-right and all-sides matches.
+    assert(matches.map(_.ordinal).size == 3)
+
+    // There should be two base-left matches.
+    assert((matches count {
+      case _: Match.BaseAndLeft[Section[Element]] => true
+      case _                                      => false
+    }) == 2)
+
+    // There should be two base-right matches.
+    assert((matches count {
+      case _: Match.BaseAndRight[Section[Element]] => true
+      case _                                       => false
+    }) == 2)
+
+    // There should be four all-sides matches.
+    assert((matches count {
+      case _: Match.AllSides[Section[Element]] => true
+      case _                                   => false
+    }) == 4)
+
+    // The contents should be broken down.
+    assert(
+      matches.map(_.content) == Set(
+        largePrefix,
+        largeSuffix,
+        smallPrefix,
+        smallSuffix,
+        smallAllSidesContent
+      )
+    )
+  end eatingIntoTwoPairwiseMatchesWhenBothHaveCommonContent
 end CodeMotionAnalysisTest
 
 object CodeMotionAnalysisTest:
