@@ -671,6 +671,10 @@ object CodeMotionAnalysis extends StrictLogging:
     ):
       import MatchesAndTheirSections.*
 
+      type ParedDownMatch[MatchType <: GenericMatch] = MatchType match
+        case GenericMatch  => GenericMatch
+        case PairwiseMatch => PairwiseMatch
+
       private val subsumesBaseSection: Section[Element] => Boolean =
         subsumesSection(base, baseSectionsByPath)
       private val subsumesLeftSection: Section[Element] => Boolean =
@@ -1472,12 +1476,12 @@ object CodeMotionAnalysis extends StrictLogging:
               .flatMap(
                 withoutThePairwiseMatchesThatWereEatenInto.pareDownOrSuppressCompletely
               )
-              .asInstanceOf[Seq[PairwiseMatch]]
 
-          val allSidesMatchesThatAteIntoAPairwiseMatch =
+          // NOTE: those parentheses are necessary to mark an unchecked pattern
+          // match.
+          val (allSidesMatchesThatAteIntoAPairwiseMatch: Set[GenericMatch]) =
             pairwiseMatchesToBeEaten.sets.values
-              .reduce(_ union _)
-              .asInstanceOf[Set[GenericMatch]]
+              .reduce(_ union _): @unchecked
 
           // NOTE: add in the all-sides matches that ate into larger pairwise
           // matches, as well as the fragments. Taken together, these stand in
@@ -1544,9 +1548,9 @@ object CodeMotionAnalysis extends StrictLogging:
         end match
       end withMatch
 
-      private def pareDownOrSuppressCompletely(
-          aMatch: GenericMatch
-      ): Option[GenericMatch] =
+      private def pareDownOrSuppressCompletely[MatchType <: GenericMatch](
+          aMatch: MatchType
+      ): Option[ParedDownMatch[MatchType]] =
         aMatch match
           case Match.AllSides(baseSection, leftSection, rightSection)
               if !overlapsOrIsSubsumedByBaseSection(
