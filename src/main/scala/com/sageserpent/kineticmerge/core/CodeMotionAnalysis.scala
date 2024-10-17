@@ -147,44 +147,15 @@ object CodeMotionAnalysis extends StrictLogging:
       s"File sizes across all files over all sides: $fileSizes"
     )
 
-    type SectionsSeen = RangedSeq[Section[Element], Int]
+    type GenericMatch = Match[Section[Element]]
 
-    type MatchedSections = MultiDict[Section[Element], Match[Section[Element]]]
-
-    // TODO: introduce a `GeneralMatch` type alias instead of
-    // `Match[Section[Element]]`?
     type PairwiseMatch = Match.BaseAndLeft[Section[Element]] |
       Match.BaseAndRight[Section[Element]] |
       Match.LeftAndRight[Section[Element]]
 
-    extension (pairwiseMatch: PairwiseMatch)
-      def evadesRediscoveryBySearch: Boolean =
-        def evadesRediscoveryBySearch(sources: Sources[Path, Element])(
-            section: Section[Element]
-        ): Boolean =
-          val path = sources.pathFor(section)
-          val minimumPossibleMatchSizeAtPath =
-            minimumMatchSize max thresholdSizeForMatching(
-              sources.filesByPath(path).size
-            )
+    type SectionsSeen = RangedSeq[Section[Element], Int]
 
-          section.size < minimumPossibleMatchSizeAtPath
-        end evadesRediscoveryBySearch
-
-        pairwiseMatch match
-          case Match.BaseAndLeft(baseSection, leftSection) =>
-            evadesRediscoveryBySearch(base)(
-              baseSection
-            ) && evadesRediscoveryBySearch(left)(leftSection)
-          case Match.BaseAndRight(baseSection, rightSection) =>
-            evadesRediscoveryBySearch(base)(
-              baseSection
-            ) && evadesRediscoveryBySearch(right)(rightSection)
-          case Match.LeftAndRight(leftSection, rightSection) =>
-            evadesRediscoveryBySearch(left)(
-              leftSection
-            ) && evadesRediscoveryBySearch(right)(rightSection)
-        end match
+    type MatchedSections = MultiDict[Section[Element], GenericMatch]
 
     val tiebreakContentSamplingLimit = 10
 
@@ -401,7 +372,7 @@ object CodeMotionAnalysis extends StrictLogging:
       )(
           side: Sources[Path, Element],
           sectionsByPath: Map[Path, SectionsSeen]
-      )(section: Section[Element]): Set[Match[Section[Element]]] =
+      )(section: Section[Element]): Set[GenericMatch] =
         sectionsByPath
           .get(side.pathFor(section))
           .fold(ifEmpty = Set.empty)(
@@ -457,7 +428,7 @@ object CodeMotionAnalysis extends StrictLogging:
       // elements of the optimal match. Estimate the size of the optimal match
       // by coalescing the overlaps.
       private def estimateOptimalMatchSize(
-          matches: collection.Set[Match[Section[Element]]]
+          matches: collection.Set[GenericMatch]
       ): Option[Int] =
         // Deconstruct a throwaway instance of `MatchesAndTheirSections` made
         // from just `matches` as a quick-and-dirty way of organising the
@@ -969,7 +940,7 @@ object CodeMotionAnalysis extends StrictLogging:
             baseFingerprints: Iterable[PotentialMatchKey],
             leftFingerprints: Iterable[PotentialMatchKey],
             rightFingerprints: Iterable[PotentialMatchKey],
-            matches: Set[Match[Section[Element]]]
+            matches: Set[GenericMatch]
         ): MatchingResult =
           (
             baseFingerprints.headOption,
@@ -1327,7 +1298,7 @@ object CodeMotionAnalysis extends StrictLogging:
       end matchesForWindowSize
 
       private def withMatches(
-          matches: collection.Set[Match[Section[Element]]],
+          matches: collection.Set[GenericMatch],
           windowSize: Int
       ): MatchingResult =
         val (paredDownMatches, stabilized) =
@@ -1366,8 +1337,8 @@ object CodeMotionAnalysis extends StrictLogging:
       // pairwise match that shares its sections on both sides with the other
       // all-sides match; remove any such redundant pairwise matches.
       private def withoutRedundantPairwiseMatchesIn(
-          matches: collection.Set[Match[Section[Element]]]
-      ): (MatchesAndTheirSections, collection.Set[Match[Section[Element]]]) =
+          matches: collection.Set[GenericMatch]
+      ): (MatchesAndTheirSections, collection.Set[GenericMatch]) =
         val (redundantMatches, usefulMatches) =
           matches.partition {
             case Match.BaseAndLeft(baseSection, leftSection) =>
@@ -1400,10 +1371,10 @@ object CodeMotionAnalysis extends StrictLogging:
 
       @tailrec
       private def eatIntoLargerPairwiseMatchesUntilStabilized(windowSize: Int)(
-          matches: collection.Set[Match[Section[Element]]],
+          matches: collection.Set[GenericMatch],
           phase: Int,
-          accumulatedParedDownMatches: Set[Match[Section[Element]]]
-      ): (Set[Match[Section[Element]]], MatchesAndTheirSections) =
+          accumulatedParedDownMatches: Set[GenericMatch]
+      ): (Set[GenericMatch], MatchesAndTheirSections) =
         val paredDownMatches = matches.flatMap(pareDownOrSuppressCompletely)
 
         val allSidesMatches = paredDownMatches.collect {
@@ -1506,7 +1477,7 @@ object CodeMotionAnalysis extends StrictLogging:
           val allSidesMatchesThatAteIntoAPairwiseMatch =
             pairwiseMatchesToBeEaten.sets.values
               .reduce(_ union _)
-              .asInstanceOf[Set[Match[Section[Element]]]]
+              .asInstanceOf[Set[GenericMatch]]
 
           // NOTE: add in the all-sides matches that ate into larger pairwise
           // matches, as well as the fragments. Taken together, these stand in
@@ -1538,7 +1509,7 @@ object CodeMotionAnalysis extends StrictLogging:
       end eatIntoLargerPairwiseMatchesUntilStabilized
 
       private def withMatch(
-          aMatch: Match[Section[Element]]
+          aMatch: GenericMatch
       ): MatchesAndTheirSections =
         aMatch match
           case Match.AllSides(baseSection, leftSection, rightSection) =>
@@ -1574,8 +1545,8 @@ object CodeMotionAnalysis extends StrictLogging:
       end withMatch
 
       private def pareDownOrSuppressCompletely(
-          aMatch: Match[Section[Element]]
-      ): Option[Match[Section[Element]]] =
+          aMatch: GenericMatch
+      ): Option[GenericMatch] =
         aMatch match
           case Match.AllSides(baseSection, leftSection, rightSection)
               if !overlapsOrIsSubsumedByBaseSection(
@@ -1694,7 +1665,7 @@ object CodeMotionAnalysis extends StrictLogging:
       end pareDownOrSuppressCompletely
 
       private def withoutTheseMatches(
-          matches: Iterable[Match[Section[Element]]]
+          matches: Iterable[GenericMatch]
       ): MatchesAndTheirSections =
         matches.foldLeft(this) {
           case (
