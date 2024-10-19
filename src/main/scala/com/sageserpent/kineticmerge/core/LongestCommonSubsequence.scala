@@ -1,10 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.Eq
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
-  CommonSubsequenceSize,
-  Contribution
-}
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{CommonSubsequenceSize, Contribution}
 import monocle.syntax.all.*
 
 import scala.collection.mutable
@@ -123,8 +120,6 @@ case class LongestCommonSubsequence[Element] private (
 end LongestCommonSubsequence
 
 object LongestCommonSubsequence:
-  private val sentinelIndexForExhaustion = -1
-
   def defaultElementSize[Element](irrelevant: Element): Int = 1
 
   def of[Element: Eq: Sized](
@@ -142,235 +137,230 @@ object LongestCommonSubsequence:
     val equality = summon[Eq[Element]]
     val sized    = summon[Sized[Element]]
 
-    val partialResultsCache
-        : mutable.Map[(Int, Int, Int), LongestCommonSubsequence[Element]] =
-      mutable.Map.empty
+    object mutualRecursionWorkaround:
+      private val partialResultsCache
+          : mutable.Map[(Int, Int, Int), LongestCommonSubsequence[Element]] =
+        mutable.Map.empty
 
-    def of(
-        onePastBaseIndex: Int,
-        onePastLeftIndex: Int,
-        onePastRightIndex: Int
-    ): LongestCommonSubsequence[Element] =
-      assume(0 <= onePastBaseIndex)
-      assume(0 <= onePastLeftIndex)
-      assume(0 <= onePastRightIndex)
+      def of(
+          onePastBaseIndex: Int,
+          onePastLeftIndex: Int,
+          onePastRightIndex: Int
+      ): LongestCommonSubsequence[Element] =
+        partialResultsCache.getOrElseUpdate(
+          (onePastBaseIndex, onePastLeftIndex, onePastRightIndex),
+          _of(onePastBaseIndex, onePastLeftIndex, onePastRightIndex)
+        )
 
-      val baseIsExhausted  = 0 == onePastBaseIndex
-      val leftIsExhausted  = 0 == onePastLeftIndex
-      val rightIsExhausted = 0 == onePastRightIndex
+      def _of(
+          onePastBaseIndex: Int,
+          onePastLeftIndex: Int,
+          onePastRightIndex: Int
+      ): LongestCommonSubsequence[Element] =
+        assume(0 <= onePastBaseIndex)
+        assume(0 <= onePastLeftIndex)
+        assume(0 <= onePastRightIndex)
 
-      val numberOfNonEmptySides =
-        Seq(baseIsExhausted, leftIsExhausted, rightIsExhausted).count(!_)
+        val baseIsExhausted  = 0 == onePastBaseIndex
+        val leftIsExhausted  = 0 == onePastLeftIndex
+        val rightIsExhausted = 0 == onePastRightIndex
 
-      numberOfNonEmptySides match
-        case 0 | 1 =>
-          LongestCommonSubsequence(
-            base = Vector.tabulate(onePastBaseIndex)(index =>
-              Contribution.Difference(base(index))
-            ),
-            left = Vector.tabulate(onePastLeftIndex)(index =>
-              Contribution.Difference(left(index))
-            ),
-            right = Vector.tabulate(onePastRightIndex)(index =>
-              Contribution.Difference(right(index))
-            ),
-            commonSubsequenceSize = CommonSubsequenceSize.zero,
-            commonToLeftAndRightOnlySize = CommonSubsequenceSize.zero,
-            commonToBaseAndLeftOnlySize = CommonSubsequenceSize.zero,
-            commonToBaseAndRightOnlySize = CommonSubsequenceSize.zero
-          )
-        case 2 | 3 =>
-          if baseIsExhausted then
-            val leftIndex  = onePastLeftIndex - 1
-            val rightIndex = onePastRightIndex - 1
+        val numberOfNonEmptySides =
+          Seq(baseIsExhausted, leftIsExhausted, rightIsExhausted).count(!_)
 
-            val leftElement  = left(leftIndex)
-            val rightElement = right(rightIndex)
+        numberOfNonEmptySides match
+          case 0 | 1 =>
+            LongestCommonSubsequence(
+              base = Vector.tabulate(onePastBaseIndex)(index =>
+                Contribution.Difference(base(index))
+              ),
+              left = Vector.tabulate(onePastLeftIndex)(index =>
+                Contribution.Difference(left(index))
+              ),
+              right = Vector.tabulate(onePastRightIndex)(index =>
+                Contribution.Difference(right(index))
+              ),
+              commonSubsequenceSize = CommonSubsequenceSize.zero,
+              commonToLeftAndRightOnlySize = CommonSubsequenceSize.zero,
+              commonToBaseAndLeftOnlySize = CommonSubsequenceSize.zero,
+              commonToBaseAndRightOnlySize = CommonSubsequenceSize.zero
+            )
+          case 2 | 3 =>
+            if baseIsExhausted then
+              val leftIndex  = onePastLeftIndex - 1
+              val rightIndex = onePastRightIndex - 1
 
-            partialResultsCache.getOrElseUpdate(
-              (sentinelIndexForExhaustion, leftIndex, rightIndex), {
+              val leftElement  = left(leftIndex)
+              val rightElement = right(rightIndex)
+
+              val leftEqualsRight = equality.eqv(leftElement, rightElement)
+
+              if leftEqualsRight then
+                of(onePastBaseIndex = 0, leftIndex, rightIndex)
+                  .addCommonLeftAndRight(leftElement, rightElement)(
+                    sized.sizeOf
+                  )
+              else
+                val resultDroppingTheEndOfTheLeft =
+                  of(onePastBaseIndex = 0, leftIndex, onePastRightIndex)
+                    .addLeftDifference(leftElement)
+
+                val resultDroppingTheEndOfTheRight =
+                  of(onePastBaseIndex = 0, onePastLeftIndex, rightIndex)
+                    .addRightDifference(rightElement)
+
+                orderBySize.max(
+                  resultDroppingTheEndOfTheLeft,
+                  resultDroppingTheEndOfTheRight
+                )
+              end if
+            else if leftIsExhausted then
+              val baseIndex  = onePastBaseIndex - 1
+              val rightIndex = onePastRightIndex - 1
+
+              val baseElement  = base(baseIndex)
+              val rightElement = right(rightIndex)
+
+              val baseEqualsRight = equality.eqv(baseElement, rightElement)
+
+              if baseEqualsRight then
+                of(baseIndex, onePastLeftIndex = 0, rightIndex)
+                  .addCommonBaseAndRight(baseElement, rightElement)(
+                    sized.sizeOf
+                  )
+              else
+                val resultDroppingTheEndOfTheBase =
+                  of(baseIndex, onePastLeftIndex = 0, onePastRightIndex)
+                    .addBaseDifference(baseElement)
+
+                val resultDroppingTheEndOfTheRight =
+                  of(onePastBaseIndex, onePastLeftIndex = 0, rightIndex)
+                    .addRightDifference(rightElement)
+
+                orderBySize.max(
+                  resultDroppingTheEndOfTheBase,
+                  resultDroppingTheEndOfTheRight
+                )
+              end if
+            else if rightIsExhausted then
+              val baseIndex = onePastBaseIndex - 1
+              val leftIndex = onePastLeftIndex - 1
+
+              val baseElement = base(baseIndex)
+              val leftElement = left(leftIndex)
+
+              val baseEqualsLeft = equality.eqv(baseElement, leftElement)
+
+              if baseEqualsLeft then
+                of(baseIndex, leftIndex, onePastRightIndex = 0)
+                  .addCommonBaseAndLeft(baseElement, leftElement)(
+                    sized.sizeOf
+                  )
+              else
+                val resultDroppingTheEndOfTheBase =
+                  of(baseIndex, onePastLeftIndex, onePastRightIndex = 0)
+                    .addBaseDifference(baseElement)
+
+                val resultDroppingTheEndOfTheLeft =
+                  of(onePastBaseIndex, leftIndex, onePastRightIndex = 0)
+                    .addLeftDifference(leftElement)
+
+                orderBySize.max(
+                  resultDroppingTheEndOfTheBase,
+                  resultDroppingTheEndOfTheLeft
+                )
+              end if
+            else
+              val baseIndex  = onePastBaseIndex - 1
+              val leftIndex  = onePastLeftIndex - 1
+              val rightIndex = onePastRightIndex - 1
+
+              val baseElement  = base(baseIndex)
+              val leftElement  = left(leftIndex)
+              val rightElement = right(rightIndex)
+
+              val baseEqualsLeft  = equality.eqv(baseElement, leftElement)
+              val baseEqualsRight = equality.eqv(baseElement, rightElement)
+
+              if baseEqualsLeft && baseEqualsRight
+              then
+                of(baseIndex, leftIndex, rightIndex)
+                  .addCommon(baseElement, leftElement, rightElement)(
+                    sized.sizeOf
+                  )
+              else
+                lazy val resultDroppingTheEndOfTheBase =
+                  of(baseIndex, onePastLeftIndex, onePastRightIndex)
+                    .addBaseDifference(baseElement)
+
+                lazy val resultDroppingTheEndOfTheLeft =
+                  of(onePastBaseIndex, leftIndex, onePastRightIndex)
+                    .addLeftDifference(leftElement)
+
+                lazy val resultDroppingTheEndOfTheRight =
+                  of(onePastBaseIndex, onePastLeftIndex, rightIndex)
+                    .addRightDifference(rightElement)
+
+                val resultDroppingTheBaseAndLeft =
+                  if baseEqualsLeft then
+                    of(baseIndex, leftIndex, onePastRightIndex)
+                      .addCommonBaseAndLeft(baseElement, leftElement)(
+                        sized.sizeOf
+                      )
+                  else
+                    orderBySize.max(
+                      resultDroppingTheEndOfTheBase,
+                      resultDroppingTheEndOfTheLeft
+                    )
+                  end if
+                end resultDroppingTheBaseAndLeft
+
+                val resultDroppingTheBaseAndRight =
+                  if baseEqualsRight then
+                    of(baseIndex, onePastLeftIndex, rightIndex)
+                      .addCommonBaseAndRight(baseElement, rightElement)(
+                        sized.sizeOf
+                      )
+                  else
+                    orderBySize.max(
+                      resultDroppingTheEndOfTheBase,
+                      resultDroppingTheEndOfTheRight
+                    )
+                  end if
+                end resultDroppingTheBaseAndRight
+
                 val leftEqualsRight = equality.eqv(leftElement, rightElement)
 
-                if leftEqualsRight then
-                  of(onePastBaseIndex = 0, leftIndex, rightIndex)
-                    .addCommonLeftAndRight(leftElement, rightElement)(
-                      sized.sizeOf
-                    )
-                else
-                  val resultDroppingTheEndOfTheLeft =
-                    of(onePastBaseIndex = 0, leftIndex, onePastRightIndex)
-                      .addLeftDifference(leftElement)
-
-                  val resultDroppingTheEndOfTheRight =
-                    of(onePastBaseIndex = 0, onePastLeftIndex, rightIndex)
-                      .addRightDifference(rightElement)
-
-                  orderBySize.max(
-                    resultDroppingTheEndOfTheLeft,
-                    resultDroppingTheEndOfTheRight
-                  )
-                end if
-              }
-            )
-          else if leftIsExhausted then
-            val baseIndex  = onePastBaseIndex - 1
-            val rightIndex = onePastRightIndex - 1
-
-            val baseElement  = base(baseIndex)
-            val rightElement = right(rightIndex)
-
-            partialResultsCache.getOrElseUpdate(
-              (baseIndex, sentinelIndexForExhaustion, rightIndex), {
-                val baseEqualsRight = equality.eqv(baseElement, rightElement)
-
-                if baseEqualsRight then
-                  of(baseIndex, onePastLeftIndex = 0, rightIndex)
-                    .addCommonBaseAndRight(baseElement, rightElement)(
-                      sized.sizeOf
-                    )
-                else
-                  val resultDroppingTheEndOfTheBase =
-                    of(baseIndex, onePastLeftIndex = 0, onePastRightIndex)
-                      .addBaseDifference(baseElement)
-
-                  val resultDroppingTheEndOfTheRight =
-                    of(onePastBaseIndex, onePastLeftIndex = 0, rightIndex)
-                      .addRightDifference(rightElement)
-
-                  orderBySize.max(
-                    resultDroppingTheEndOfTheBase,
-                    resultDroppingTheEndOfTheRight
-                  )
-                end if
-              }
-            )
-          else if rightIsExhausted then
-            val baseIndex = onePastBaseIndex - 1
-            val leftIndex = onePastLeftIndex - 1
-
-            val baseElement = base(baseIndex)
-            val leftElement = left(leftIndex)
-
-            partialResultsCache.getOrElseUpdate(
-              (baseIndex, leftIndex, sentinelIndexForExhaustion), {
-                val baseEqualsLeft = equality.eqv(baseElement, leftElement)
-
-                if baseEqualsLeft then
-                  of(baseIndex, leftIndex, onePastRightIndex = 0)
-                    .addCommonBaseAndLeft(baseElement, leftElement)(
-                      sized.sizeOf
-                    )
-                else
-                  val resultDroppingTheEndOfTheBase =
-                    of(baseIndex, onePastLeftIndex, onePastRightIndex = 0)
-                      .addBaseDifference(baseElement)
-
-                  val resultDroppingTheEndOfTheLeft =
-                    of(onePastBaseIndex, leftIndex, onePastRightIndex = 0)
-                      .addLeftDifference(leftElement)
-
-                  orderBySize.max(
-                    resultDroppingTheEndOfTheBase,
-                    resultDroppingTheEndOfTheLeft
-                  )
-                end if
-              }
-            )
-          else
-            val baseIndex  = onePastBaseIndex - 1
-            val leftIndex  = onePastLeftIndex - 1
-            val rightIndex = onePastRightIndex - 1
-
-            val baseElement  = base(baseIndex)
-            val leftElement  = left(leftIndex)
-            val rightElement = right(rightIndex)
-
-            partialResultsCache.getOrElseUpdate(
-              (baseIndex, leftIndex, rightIndex), {
-                val baseEqualsLeft  = equality.eqv(baseElement, leftElement)
-                val baseEqualsRight = equality.eqv(baseElement, rightElement)
-
-                if baseEqualsLeft && baseEqualsRight
-                then
-                  of(baseIndex, leftIndex, rightIndex)
-                    .addCommon(baseElement, leftElement, rightElement)(
-                      sized.sizeOf
-                    )
-                else
-                  lazy val resultDroppingTheEndOfTheBase =
-                    of(baseIndex, onePastLeftIndex, onePastRightIndex)
-                      .addBaseDifference(baseElement)
-
-                  lazy val resultDroppingTheEndOfTheLeft =
-                    of(onePastBaseIndex, leftIndex, onePastRightIndex)
-                      .addLeftDifference(leftElement)
-
-                  lazy val resultDroppingTheEndOfTheRight =
-                    of(onePastBaseIndex, onePastLeftIndex, rightIndex)
-                      .addRightDifference(rightElement)
-
-                  val resultDroppingTheBaseAndLeft =
-                    if baseEqualsLeft then
-                      of(baseIndex, leftIndex, onePastRightIndex)
-                        .addCommonBaseAndLeft(baseElement, leftElement)(
-                          sized.sizeOf
-                        )
-                    else
-                      orderBySize.max(
-                        resultDroppingTheEndOfTheBase,
-                        resultDroppingTheEndOfTheLeft
+                val resultDroppingTheLeftAndRight =
+                  if leftEqualsRight then
+                    of(onePastBaseIndex, leftIndex, rightIndex)
+                      .addCommonLeftAndRight(leftElement, rightElement)(
+                        sized.sizeOf
                       )
-                    end if
-                  end resultDroppingTheBaseAndLeft
+                  else
+                    orderBySize.max(
+                      resultDroppingTheEndOfTheLeft,
+                      resultDroppingTheEndOfTheRight
+                    )
+                  end if
+                end resultDroppingTheLeftAndRight
 
-                  val resultDroppingTheBaseAndRight =
-                    if baseEqualsRight then
-                      of(baseIndex, onePastLeftIndex, rightIndex)
-                        .addCommonBaseAndRight(baseElement, rightElement)(
-                          sized.sizeOf
-                        )
-                    else
-                      orderBySize.max(
-                        resultDroppingTheEndOfTheBase,
-                        resultDroppingTheEndOfTheRight
-                      )
-                    end if
-                  end resultDroppingTheBaseAndRight
+                Iterator(
+                  resultDroppingTheBaseAndLeft,
+                  resultDroppingTheBaseAndRight,
+                  resultDroppingTheLeftAndRight
+                ).max(orderBySize)
+              end if
+            end if
+        end match
+      end _of
+    end mutualRecursionWorkaround
 
-                  val leftEqualsRight = equality.eqv(leftElement, rightElement)
-
-                  val resultDroppingTheLeftAndRight =
-                    if leftEqualsRight then
-                      of(onePastBaseIndex, leftIndex, rightIndex)
-                        .addCommonLeftAndRight(leftElement, rightElement)(
-                          sized.sizeOf
-                        )
-                    else
-                      orderBySize.max(
-                        resultDroppingTheEndOfTheLeft,
-                        resultDroppingTheEndOfTheRight
-                      )
-                    end if
-                  end resultDroppingTheLeftAndRight
-
-                  Iterator(
-                    resultDroppingTheBaseAndLeft,
-                    resultDroppingTheBaseAndRight,
-                    resultDroppingTheLeftAndRight
-                  ).max(orderBySize)
-                end if
-              }
-            )
-          end if
-      end match
-    end of
-
-    of(
+    mutualRecursionWorkaround.of(
       base.size,
       left.size,
       right.size
     )
-
   end of
 
   trait Sized[Element]:
