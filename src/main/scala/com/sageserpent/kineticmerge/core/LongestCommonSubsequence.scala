@@ -138,7 +138,7 @@ object LongestCommonSubsequence:
     val sized    = summon[Sized[Element]]
 
     object mutualRecursionWorkaround:
-      private val partialResultsCache
+      val partialResultsCache
           : mutable.Map[(Int, Int, Int), LongestCommonSubsequence[Element]] =
         mutable.Map.empty
 
@@ -356,11 +356,18 @@ object LongestCommonSubsequence:
       end _of
     end mutualRecursionWorkaround
 
-    mutualRecursionWorkaround.of(
+    val result = mutualRecursionWorkaround.of(
       base.size,
       left.size,
       right.size
     )
+
+    // TODO: this is just debugging cruft, remove it...
+    println(
+      mutualRecursionWorkaround.partialResultsCache.size -> (1L + base.size) * (1L + left.size) * (1L + right.size)
+    )
+    
+    result
   end of
 
   trait Sized[Element]:
