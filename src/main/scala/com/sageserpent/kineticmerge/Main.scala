@@ -20,6 +20,7 @@ import scopt.{DefaultOEffectSetup, OParser}
 
 import scala.annotation.varargs
 import scala.collection.BuildFrom
+import scala.collection.decorators.mapDecorator
 import scala.io.Source
 import scala.util.Try
 
@@ -685,9 +686,6 @@ object Main extends StrictLogging:
         theirChanges: Map[Path, Change]
     ): Workflow[List[(Path, MergeInput)]] =
 
-      // TODO: use `ourChanges.mergeByKey(theirChanges)` if
-      // https://github.com/scala/scala-collection-contrib/issues/239 leads to a
-      // bug-fix.
       val outerJoin = ourChanges.mergeByKey(theirChanges)
 
       outerJoin.toList

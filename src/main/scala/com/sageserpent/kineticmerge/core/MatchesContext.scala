@@ -2,10 +2,10 @@ package com.sageserpent.kineticmerge.core
 
 import com.sageserpent.kineticmerge.core.Match.*
 import com.sageserpent.kineticmerge.core.merge.MergeAlgebra
-import com.sageserpent.kineticmerge.mergeByKeyWith
 import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
 
+import scala.collection.decorators.mapDecorator
 import scala.collection.immutable.MultiDict
 
 class MatchesContext[Element](
