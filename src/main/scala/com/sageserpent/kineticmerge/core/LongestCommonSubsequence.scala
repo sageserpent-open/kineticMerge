@@ -4,7 +4,7 @@ import cats.Eq
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{CommonSubsequenceSize, Contribution}
 import monocle.syntax.all.*
 
-import scala.collection.mutable
+import scala.collection.{Searching, mutable}
 
 case class LongestCommonSubsequence[Element] private (
     base: IndexedSeq[Contribution[Element]],
@@ -141,16 +141,29 @@ object LongestCommonSubsequence:
     val swatheSizeToAccommodatePartialResultsForNeighbouringBaseIndices =
       2 * (1 + left.size) * (1 + right.size)
 
-    val orderingByBaseIndexOnly =
-      Ordering.by[(Int, Int, Int), Int](_._1).reverse
+    type PartialResultKey = (Int, Int, Int)
 
-    var partialResultsCache
-        : mutable.SortedMap[(Int, Int, Int), LongestCommonSubsequence[
-          Element
-        ]] =
-      mutable.SortedMap.empty(
-        orderingByBaseIndexOnly.orElse(summon[Ordering[(Int, Int, Int)]])
-      )
+    type PartialResultsCache =
+      mutable.ArrayDeque[(PartialResultKey, LongestCommonSubsequence[Element])]
+
+    val orderingAligningWithCachePopulationLoop
+        : Ordering[(PartialResultKey, LongestCommonSubsequence[Element])] =
+      // Order by the natural tuple ordering of the key, so base index, then
+      // left index, then right index. This matches the order in which the cache
+      // will be populated.
+      Ordering.by(_._1)
+
+    extension (partialResultsCache: PartialResultsCache)
+      def apply(key: PartialResultKey): LongestCommonSubsequence[Element] =
+        val Searching.Found(index) = partialResultsCache.search(key -> null)(
+          orderingAligningWithCachePopulationLoop
+        ): @unchecked
+
+        partialResultsCache(index)._2
+    end extension
+
+    val partialResultsCache: PartialResultsCache =
+      mutable.ArrayDeque.empty
 
     def ofConsultingCacheForSubProblems(
         onePastBaseIndex: Int,
@@ -366,21 +379,22 @@ object LongestCommonSubsequence:
     // subsequent call of `ofConsultingCacheForSubProblems` using a cached
     // value. Got to love it!
     for
-      onePastBaseIndex <- 0 to base.size
-      _ = partialResultsCache = partialResultsCache.take(
-        swatheSizeToAccommodatePartialResultsForNeighbouringBaseIndices
-      )
+      onePastBaseIndex  <- 0 to base.size
       onePastLeftIndex  <- 0 to left.size
       onePastRightIndex <- 0 to right.size
     do
-      partialResultsCache.update(
-        (onePastBaseIndex, onePastLeftIndex, onePastRightIndex),
-        ofConsultingCacheForSubProblems(
-          onePastBaseIndex,
-          onePastLeftIndex,
-          onePastRightIndex
-        )
+      partialResultsCache.append(
+        (onePastBaseIndex, onePastLeftIndex, onePastRightIndex) ->
+          ofConsultingCacheForSubProblems(
+            onePastBaseIndex,
+            onePastLeftIndex,
+            onePastRightIndex
+          )
       )
+
+      if swatheSizeToAccommodatePartialResultsForNeighbouringBaseIndices < partialResultsCache.size
+      then partialResultsCache.removeHead()
+      end if
     end for
     // TODO: this is just debugging cruft, remove it...
     println(
