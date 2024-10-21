@@ -138,8 +138,11 @@ object LongestCommonSubsequence:
     val equality = summon[Eq[Element]]
     val sized    = summon[Sized[Element]]
 
+    val swatheSizeToAccommodatePartialResultsForNeighbouringBaseIndices =
+      2 * (1 + left.size) * (1 + right.size)
+
     val orderingByBaseIndexOnly =
-      Ordering.by[(Int, Int, Int), Int](_._1)
+      Ordering.by[(Int, Int, Int), Int](_._1).reverse
 
     var partialResultsCache
         : mutable.SortedMap[(Int, Int, Int), LongestCommonSubsequence[
@@ -363,7 +366,10 @@ object LongestCommonSubsequence:
     // subsequent call of `ofConsultingCacheForSubProblems` using a cached
     // value. Got to love it!
     for
-      onePastBaseIndex  <- 0 to base.size
+      onePastBaseIndex <- 0 to base.size
+      _ = partialResultsCache = partialResultsCache.take(
+        swatheSizeToAccommodatePartialResultsForNeighbouringBaseIndices
+      )
       onePastLeftIndex  <- 0 to left.size
       onePastRightIndex <- 0 to right.size
     do
@@ -375,11 +381,6 @@ object LongestCommonSubsequence:
           onePastRightIndex
         )
       )
-
-      val cutoff = onePastBaseIndex - 2
-
-      partialResultsCache =
-        partialResultsCache.rangeFrom((cutoff, cutoff, cutoff))
     end for
     // TODO: this is just debugging cruft, remove it...
     println(
