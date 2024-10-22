@@ -293,15 +293,24 @@ object LongestCommonSubsequence:
                     sized.sizeOf
                   )
               else
-                lazy val resultDroppingTheEndOfTheBase =
+                val leftEqualsRight = equality.eqv(leftElement, rightElement)
+
+                // NOTE: at this point, we can't have any two of
+                // `baseEqualsLeft`, `baseEqualsRight` or `leftEqualsRight`
+                // being true - because by transitive equality, that would imply
+                // all three sides are equal, and thus we should be following
+                // other branch. So we have to use all the next three bindings
+                // one way or the other...
+
+                val resultDroppingTheEndOfTheBase =
                   of(baseIndex, onePastLeftIndex, onePastRightIndex)
                     .addBaseDifference(baseElement)
 
-                lazy val resultDroppingTheEndOfTheLeft =
+                val resultDroppingTheEndOfTheLeft =
                   of(onePastBaseIndex, leftIndex, onePastRightIndex)
                     .addLeftDifference(leftElement)
 
-                lazy val resultDroppingTheEndOfTheRight =
+                val resultDroppingTheEndOfTheRight =
                   of(onePastBaseIndex, onePastLeftIndex, rightIndex)
                     .addRightDifference(rightElement)
 
@@ -332,8 +341,6 @@ object LongestCommonSubsequence:
                     )
                   end if
                 end resultDroppingTheBaseAndRight
-
-                val leftEqualsRight = equality.eqv(leftElement, rightElement)
 
                 val resultDroppingTheLeftAndRight =
                   if leftEqualsRight then
