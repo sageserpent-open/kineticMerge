@@ -138,9 +138,13 @@ object LongestCommonSubsequence:
     val sized    = summon[Sized[Element]]
 
     object mutualRecursionWorkaround:
-      val partialResultsCache
-          : mutable.Map[(Int, Int, Int), LongestCommonSubsequence[Element]] =
-        mutable.Map.empty
+      type PartialResultKey = (Int, Int, Int)
+
+      type PartialResultsCache =
+        mutable.Map[PartialResultKey, LongestCommonSubsequence[Element]]
+
+      // TODO: make ths private again once the debugging cruft is removed.
+      val partialResultsCache: PartialResultsCache = mutable.Map.empty
 
       def of(
           onePastBaseIndex: Int,
@@ -366,7 +370,7 @@ object LongestCommonSubsequence:
     println(
       mutualRecursionWorkaround.partialResultsCache.size -> (1L + base.size) * (1L + left.size) * (1L + right.size)
     )
-    
+
     result
   end of
 
