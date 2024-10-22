@@ -22,17 +22,13 @@ object Bystander:
           index: Int
         ): EvalWithPartialResultState[Bystander] =
     StateT.get.flatMap { partialResultsCache =>
-      val cachedResult = partialResultsCache.get(index)
-
-      cachedResult.fold(
-        ifEmpty = _of(index)
-          .flatMap(computedResult =>
-            StateT
-              .set(
-                partialResultsCache + (index -> computedResult)
-              ) >> StateT.pure(computedResult)
-          )
-      )(StateT.pure)
+      _of(index)
+        .flatMap(computedResult =>
+          StateT
+            .set(
+              partialResultsCache + (index -> computedResult)
+            ) >> StateT.pure(computedResult)
+        )
     }
   end of
 end Bystander
