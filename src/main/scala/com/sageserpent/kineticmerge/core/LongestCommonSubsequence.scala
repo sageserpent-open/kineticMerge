@@ -1,6 +1,8 @@
 package com.sageserpent.kineticmerge.core
 
-import cats.Eq
+import cats.data.StateT
+import cats.syntax.all.{catsSyntaxTuple2Semigroupal, catsSyntaxTuple3Semigroupal}
+import cats.{Eq, Eval}
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{CommonSubsequenceSize, Contribution}
 import monocle.syntax.all.*
 
@@ -141,26 +143,15 @@ object LongestCommonSubsequence:
       type PartialResultKey = (Int, Int, Int)
 
       type PartialResultsCache =
-        mutable.Map[PartialResultKey, LongestCommonSubsequence[Element]]
+        Map[PartialResultKey, LongestCommonSubsequence[Element]]
 
-      // TODO: make ths private again once the debugging cruft is removed.
-      val partialResultsCache: PartialResultsCache = mutable.Map.empty
-
-      def of(
-          onePastBaseIndex: Int,
-          onePastLeftIndex: Int,
-          onePastRightIndex: Int
-      ): LongestCommonSubsequence[Element] =
-        partialResultsCache.getOrElseUpdate(
-          (onePastBaseIndex, onePastLeftIndex, onePastRightIndex),
-          _of(onePastBaseIndex, onePastLeftIndex, onePastRightIndex)
-        )
+      type EvalWithPartialResultState[X] = StateT[Eval, PartialResultsCache, X]
 
       def _of(
           onePastBaseIndex: Int,
           onePastLeftIndex: Int,
           onePastRightIndex: Int
-      ): LongestCommonSubsequence[Element] =
+      ): EvalWithPartialResultState[LongestCommonSubsequence[Element]] =
         assume(0 <= onePastBaseIndex)
         assume(0 <= onePastLeftIndex)
         assume(0 <= onePastRightIndex)
@@ -174,20 +165,22 @@ object LongestCommonSubsequence:
 
         numberOfNonEmptySides match
           case 0 | 1 =>
-            LongestCommonSubsequence(
-              base = Vector.tabulate(onePastBaseIndex)(index =>
-                Contribution.Difference(base(index))
-              ),
-              left = Vector.tabulate(onePastLeftIndex)(index =>
-                Contribution.Difference(left(index))
-              ),
-              right = Vector.tabulate(onePastRightIndex)(index =>
-                Contribution.Difference(right(index))
-              ),
-              commonSubsequenceSize = CommonSubsequenceSize.zero,
-              commonToLeftAndRightOnlySize = CommonSubsequenceSize.zero,
-              commonToBaseAndLeftOnlySize = CommonSubsequenceSize.zero,
-              commonToBaseAndRightOnlySize = CommonSubsequenceSize.zero
+            StateT.pure(
+              LongestCommonSubsequence(
+                base = Vector.tabulate(onePastBaseIndex)(index =>
+                  Contribution.Difference(base(index))
+                ),
+                left = Vector.tabulate(onePastLeftIndex)(index =>
+                  Contribution.Difference(left(index))
+                ),
+                right = Vector.tabulate(onePastRightIndex)(index =>
+                  Contribution.Difference(right(index))
+                ),
+                commonSubsequenceSize = CommonSubsequenceSize.zero,
+                commonToLeftAndRightOnlySize = CommonSubsequenceSize.zero,
+                commonToBaseAndLeftOnlySize = CommonSubsequenceSize.zero,
+                commonToBaseAndRightOnlySize = CommonSubsequenceSize.zero
+              )
             )
           case 2 | 3 =>
             if baseIsExhausted then
@@ -200,20 +193,21 @@ object LongestCommonSubsequence:
               val leftEqualsRight = equality.eqv(leftElement, rightElement)
 
               if leftEqualsRight then
-                of(onePastBaseIndex = 0, leftIndex, rightIndex)
-                  .addCommonLeftAndRight(leftElement, rightElement)(
+                of(onePastBaseIndex = 0, leftIndex, rightIndex).map(
+                  _.addCommonLeftAndRight(leftElement, rightElement)(
                     sized.sizeOf
                   )
+                )
               else
-                val resultDroppingTheEndOfTheLeft =
-                  of(onePastBaseIndex = 0, leftIndex, onePastRightIndex)
-                    .addLeftDifference(leftElement)
+                for
+                  resultDroppingTheEndOfTheLeft <-
+                    of(onePastBaseIndex = 0, leftIndex, onePastRightIndex)
+                      .map(_.addLeftDifference(leftElement))
 
-                val resultDroppingTheEndOfTheRight =
-                  of(onePastBaseIndex = 0, onePastLeftIndex, rightIndex)
-                    .addRightDifference(rightElement)
-
-                orderBySize.max(
+                  resultDroppingTheEndOfTheRight <-
+                    of(onePastBaseIndex = 0, onePastLeftIndex, rightIndex)
+                      .map(_.addRightDifference(rightElement))
+                yield orderBySize.max(
                   resultDroppingTheEndOfTheLeft,
                   resultDroppingTheEndOfTheRight
                 )
@@ -229,19 +223,21 @@ object LongestCommonSubsequence:
 
               if baseEqualsRight then
                 of(baseIndex, onePastLeftIndex = 0, rightIndex)
-                  .addCommonBaseAndRight(baseElement, rightElement)(
-                    sized.sizeOf
+                  .map(
+                    _.addCommonBaseAndRight(baseElement, rightElement)(
+                      sized.sizeOf
+                    )
                   )
               else
-                val resultDroppingTheEndOfTheBase =
-                  of(baseIndex, onePastLeftIndex = 0, onePastRightIndex)
-                    .addBaseDifference(baseElement)
+                for
+                  resultDroppingTheEndOfTheBase <-
+                    of(baseIndex, onePastLeftIndex = 0, onePastRightIndex)
+                      .map(_.addBaseDifference(baseElement))
 
-                val resultDroppingTheEndOfTheRight =
-                  of(onePastBaseIndex, onePastLeftIndex = 0, rightIndex)
-                    .addRightDifference(rightElement)
-
-                orderBySize.max(
+                  resultDroppingTheEndOfTheRight <-
+                    of(onePastBaseIndex, onePastLeftIndex = 0, rightIndex)
+                      .map(_.addRightDifference(rightElement))
+                yield orderBySize.max(
                   resultDroppingTheEndOfTheBase,
                   resultDroppingTheEndOfTheRight
                 )
@@ -257,19 +253,21 @@ object LongestCommonSubsequence:
 
               if baseEqualsLeft then
                 of(baseIndex, leftIndex, onePastRightIndex = 0)
-                  .addCommonBaseAndLeft(baseElement, leftElement)(
-                    sized.sizeOf
+                  .map(
+                    _.addCommonBaseAndLeft(baseElement, leftElement)(
+                      sized.sizeOf
+                    )
                   )
               else
-                val resultDroppingTheEndOfTheBase =
-                  of(baseIndex, onePastLeftIndex, onePastRightIndex = 0)
-                    .addBaseDifference(baseElement)
+                for
+                  resultDroppingTheEndOfTheBase <-
+                    of(baseIndex, onePastLeftIndex, onePastRightIndex = 0)
+                      .map(_.addBaseDifference(baseElement))
 
-                val resultDroppingTheEndOfTheLeft =
-                  of(onePastBaseIndex, leftIndex, onePastRightIndex = 0)
-                    .addLeftDifference(leftElement)
-
-                orderBySize.max(
+                  resultDroppingTheEndOfTheLeft <-
+                    of(onePastBaseIndex, leftIndex, onePastRightIndex = 0)
+                      .map(_.addLeftDifference(leftElement))
+                yield orderBySize.max(
                   resultDroppingTheEndOfTheBase,
                   resultDroppingTheEndOfTheLeft
                 )
@@ -289,47 +287,53 @@ object LongestCommonSubsequence:
               if baseEqualsLeft && baseEqualsRight
               then
                 of(baseIndex, leftIndex, rightIndex)
-                  .addCommon(baseElement, leftElement, rightElement)(
-                    sized.sizeOf
+                  .map(
+                    _.addCommon(baseElement, leftElement, rightElement)(
+                      sized.sizeOf
+                    )
                   )
               else
-                lazy val resultDroppingTheEndOfTheBase =
+                val resultDroppingTheEndOfTheBase =
                   of(baseIndex, onePastLeftIndex, onePastRightIndex)
-                    .addBaseDifference(baseElement)
+                    .map(_.addBaseDifference(baseElement))
 
-                lazy val resultDroppingTheEndOfTheLeft =
+                val resultDroppingTheEndOfTheLeft =
                   of(onePastBaseIndex, leftIndex, onePastRightIndex)
-                    .addLeftDifference(leftElement)
+                    .map(_.addLeftDifference(leftElement))
 
-                lazy val resultDroppingTheEndOfTheRight =
+                val resultDroppingTheEndOfTheRight =
                   of(onePastBaseIndex, onePastLeftIndex, rightIndex)
-                    .addRightDifference(rightElement)
+                    .map(_.addRightDifference(rightElement))
 
                 val resultDroppingTheBaseAndLeft =
                   if baseEqualsLeft then
                     of(baseIndex, leftIndex, onePastRightIndex)
-                      .addCommonBaseAndLeft(baseElement, leftElement)(
-                        sized.sizeOf
+                      .map(
+                        _.addCommonBaseAndLeft(baseElement, leftElement)(
+                          sized.sizeOf
+                        )
                       )
                   else
-                    orderBySize.max(
+                    (
                       resultDroppingTheEndOfTheBase,
                       resultDroppingTheEndOfTheLeft
-                    )
+                    ).mapN(orderBySize.max)
                   end if
                 end resultDroppingTheBaseAndLeft
 
                 val resultDroppingTheBaseAndRight =
                   if baseEqualsRight then
                     of(baseIndex, onePastLeftIndex, rightIndex)
-                      .addCommonBaseAndRight(baseElement, rightElement)(
-                        sized.sizeOf
+                      .map(
+                        _.addCommonBaseAndRight(baseElement, rightElement)(
+                          sized.sizeOf
+                        )
                       )
                   else
-                    orderBySize.max(
+                    (
                       resultDroppingTheEndOfTheBase,
                       resultDroppingTheEndOfTheRight
-                    )
+                    ).mapN(orderBySize.max)
                   end if
                 end resultDroppingTheBaseAndRight
 
@@ -338,37 +342,70 @@ object LongestCommonSubsequence:
                 val resultDroppingTheLeftAndRight =
                   if leftEqualsRight then
                     of(onePastBaseIndex, leftIndex, rightIndex)
-                      .addCommonLeftAndRight(leftElement, rightElement)(
-                        sized.sizeOf
+                      .map(
+                        _.addCommonLeftAndRight(leftElement, rightElement)(
+                          sized.sizeOf
+                        )
                       )
                   else
-                    orderBySize.max(
+                    (
                       resultDroppingTheEndOfTheLeft,
                       resultDroppingTheEndOfTheRight
-                    )
+                    ).mapN(orderBySize.max)
                   end if
                 end resultDroppingTheLeftAndRight
 
-                Iterator(
+                (
                   resultDroppingTheBaseAndLeft,
                   resultDroppingTheBaseAndRight,
                   resultDroppingTheLeftAndRight
-                ).max(orderBySize)
+                ).mapN((first, second, third) =>
+                  orderBySize.max(orderBySize.max(first, second), third)
+                )
               end if
             end if
         end match
       end _of
+
+      def of(
+          onePastBaseIndex: Int,
+          onePastLeftIndex: Int,
+          onePastRightIndex: Int
+      ): EvalWithPartialResultState[LongestCommonSubsequence[Element]] =
+        StateT.get.flatMap { partialResultsCache =>
+          val cachedResult = partialResultsCache.get(
+            (onePastBaseIndex, onePastLeftIndex, onePastRightIndex)
+          )
+
+          cachedResult.fold(
+            ifEmpty = _of(onePastBaseIndex, onePastLeftIndex, onePastRightIndex)
+              .flatMap(computedResult =>
+                StateT
+                  .set(
+                    partialResultsCache + ((
+                      onePastBaseIndex,
+                      onePastLeftIndex,
+                      onePastRightIndex
+                    ) -> computedResult)
+                  ) >> StateT.pure(computedResult)
+              )
+          )(StateT.pure)
+        }
+      end of
     end mutualRecursionWorkaround
 
-    val result = mutualRecursionWorkaround.of(
-      base.size,
-      left.size,
-      right.size
-    )
+    val (partialResultsCache, result) = mutualRecursionWorkaround
+      .of(
+        base.size,
+        left.size,
+        right.size
+      )
+      .run(Map.empty)
+      .value
 
     // TODO: this is just debugging cruft, remove it...
     println(
-      mutualRecursionWorkaround.partialResultsCache.size -> (1L + base.size) * (1L + left.size) * (1L + right.size)
+      partialResultsCache.size -> (1L + base.size) * (1L + left.size) * (1L + right.size)
     )
 
     result
