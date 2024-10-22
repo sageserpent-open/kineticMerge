@@ -7,13 +7,9 @@ case class LongestCommonSubsequence[Element]():
 end LongestCommonSubsequence
 
 object LongestCommonSubsequence:
-  def of[Element](
-      base: IndexedSeq[Element],
-      left: IndexedSeq[Element],
-      right: IndexedSeq[Element]
-  ): LongestCommonSubsequence[Element] =
+  def of[Element](): LongestCommonSubsequence[Element] =
 
-    type PartialResultKey = (Int, Int, Int)
+    type PartialResultKey = Int
 
     type PartialResultsCache =
       Map[PartialResultKey, LongestCommonSubsequence[Element]]
@@ -21,31 +17,21 @@ object LongestCommonSubsequence:
     type EvalWithPartialResultState[X] = StateT[Eval, PartialResultsCache, X]
 
     def _of(
-        onePastBaseIndex: Int,
-        onePastLeftIndex: Int,
-        onePastRightIndex: Int
+        index: Int
     ): EvalWithPartialResultState[LongestCommonSubsequence[Element]] = ???
 
     def of(
-        onePastBaseIndex: Int,
-        onePastLeftIndex: Int,
-        onePastRightIndex: Int
+        index: Int
     ): EvalWithPartialResultState[LongestCommonSubsequence[Element]] =
       StateT.get.flatMap { partialResultsCache =>
-        val cachedResult = partialResultsCache.get(
-          (onePastBaseIndex, onePastLeftIndex, onePastRightIndex)
-        )
+        val cachedResult = partialResultsCache.get(index)
 
         cachedResult.fold(
-          ifEmpty = _of(onePastBaseIndex, onePastLeftIndex, onePastRightIndex)
+          ifEmpty = _of(index)
             .flatMap(computedResult =>
               StateT
                 .set(
-                  partialResultsCache + ((
-                    onePastBaseIndex,
-                    onePastLeftIndex,
-                    onePastRightIndex
-                  ) -> computedResult)
+                  partialResultsCache + (index -> computedResult)
                 ) >> StateT.pure(computedResult)
             )
         )(StateT.pure)
