@@ -2,7 +2,7 @@ package com.sageserpent.kineticmerge.core
 
 import cats.data.StateT
 import cats.syntax.all.{catsSyntaxTuple2Semigroupal, catsSyntaxTuple3Semigroupal}
-import cats.{Eq, Id}
+import cats.{Eq, Eval}
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{CommonSubsequenceSize, Contribution}
 import monocle.syntax.all.*
 
@@ -143,7 +143,7 @@ object LongestCommonSubsequence:
       type PartialResultsCache =
         Map[PartialResultKey, LongestCommonSubsequence[Element]]
 
-      type EvalWithPartialResultState[X] = StateT[Id, PartialResultsCache, X]
+      type EvalWithPartialResultState[X] = StateT[Eval, PartialResultsCache, X]
 
       def of(
           onePastBaseIndex: Int,
@@ -162,7 +162,7 @@ object LongestCommonSubsequence:
                 onePastLeftIndex,
                 onePastRightIndex
               )
-              _ <- StateT.modify[Id, PartialResultsCache](
+              _ <- StateT.modify[Eval, PartialResultsCache](
                 _ + ((
                   onePastBaseIndex,
                   onePastLeftIndex,
@@ -409,6 +409,7 @@ object LongestCommonSubsequence:
         right.size
       )
       .run(Map.empty)
+      .value
 
     // TODO: this is just debugging cruft, remove it...
     println(
