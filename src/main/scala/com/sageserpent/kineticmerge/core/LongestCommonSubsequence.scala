@@ -1,10 +1,11 @@
 package com.sageserpent.kineticmerge.core
 
-import cats.data.StateT
 import cats.syntax.all.{catsSyntaxTuple2Semigroupal, catsSyntaxTuple3Semigroupal}
 import cats.{Eq, Eval}
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{CommonSubsequenceSize, Contribution}
 import monocle.syntax.all.*
+
+import scala.collection.mutable
 
 case class LongestCommonSubsequence[Element] private (
     base: IndexedSeq[Contribution[Element]],
@@ -141,36 +142,35 @@ object LongestCommonSubsequence:
       type PartialResultKey = (Int, Int, Int)
 
       type PartialResultsCache =
-        Map[PartialResultKey, LongestCommonSubsequence[Element]]
+        mutable.Map[PartialResultKey, LongestCommonSubsequence[Element]]
 
-      type EvalWithPartialResultState[X] = StateT[Eval, PartialResultsCache, X]
+      // TODO: make ths private again once the debugging cruft is removed.
+      val partialResultsCache: PartialResultsCache = mutable.Map.empty
 
       def of(
           onePastBaseIndex: Int,
           onePastLeftIndex: Int,
           onePastRightIndex: Int
-      ): EvalWithPartialResultState[LongestCommonSubsequence[Element]] =
-        StateT.get.flatMap { partialResultsCache =>
+      ): Eval[LongestCommonSubsequence[Element]] =
+        Eval.defer {
           val cachedResult = partialResultsCache.get(
             (onePastBaseIndex, onePastLeftIndex, onePastRightIndex)
           )
 
           cachedResult.fold(
-            ifEmpty = for
-              computedResult <- _of(
-                onePastBaseIndex,
-                onePastLeftIndex,
-                onePastRightIndex
-              )
-              _ <- StateT.modify[Eval, PartialResultsCache](
-                _ + ((
+            ifEmpty =
+              for computedResult <- _of(
                   onePastBaseIndex,
                   onePastLeftIndex,
                   onePastRightIndex
-                ) -> computedResult)
-              )
-            yield computedResult
-          )(StateT.pure)
+                )
+              yield
+                partialResultsCache.put(
+                  (onePastBaseIndex, onePastLeftIndex, onePastRightIndex),
+                  computedResult
+                )
+                computedResult
+          )(Eval.now)
         }
       end of
 
@@ -178,7 +178,7 @@ object LongestCommonSubsequence:
           onePastBaseIndex: Int,
           onePastLeftIndex: Int,
           onePastRightIndex: Int
-      ): EvalWithPartialResultState[LongestCommonSubsequence[Element]] =
+      ): Eval[LongestCommonSubsequence[Element]] =
         assume(0 <= onePastBaseIndex)
         assume(0 <= onePastLeftIndex)
         assume(0 <= onePastRightIndex)
@@ -192,7 +192,7 @@ object LongestCommonSubsequence:
 
         numberOfNonEmptySides match
           case 0 | 1 =>
-            StateT.pure(
+            Eval.now(
               LongestCommonSubsequence(
                 base = Vector.tabulate(onePastBaseIndex)(index =>
                   Contribution.Difference(base(index))
@@ -402,18 +402,17 @@ object LongestCommonSubsequence:
       end _of
     end mutualRecursionWorkaround
 
-    val (partialResultsCache, result) = mutualRecursionWorkaround
+    val result = mutualRecursionWorkaround
       .of(
         base.size,
         left.size,
         right.size
       )
-      .run(Map.empty)
       .value
 
     // TODO: this is just debugging cruft, remove it...
     println(
-      partialResultsCache.size -> (1L + base.size) * (1L + left.size) * (1L + right.size)
+      mutualRecursionWorkaround.partialResultsCache.size -> (1L + base.size) * (1L + left.size) * (1L + right.size)
     )
 
     result
