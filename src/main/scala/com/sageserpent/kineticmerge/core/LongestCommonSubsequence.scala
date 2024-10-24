@@ -403,13 +403,8 @@ object LongestCommonSubsequence:
       then partialResultsCache.removeHead()
       end if
     end for
-    // TODO: this is just debugging cruft, remove it...
-    println(
-      partialResultsCache.size -> (1L + base.size) * (1L + left.size) * (1L + right.size)
-    )
 
     partialResultsCache((base.size, left.size, right.size))
-
   end of
 
   trait Sized[Element]:
