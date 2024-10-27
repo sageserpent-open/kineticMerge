@@ -4,6 +4,8 @@ import xerial.sbt.Sonatype.*
 import scala.language.postfixOps
 import scala.sys.process.*
 
+enablePlugins(JmhPlugin)
+
 lazy val javaVersion = "17"
 
 ThisBuild / scalaVersion := "3.3.4"
