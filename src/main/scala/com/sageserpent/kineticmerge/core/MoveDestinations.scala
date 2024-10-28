@@ -14,9 +14,7 @@ import monocle.syntax.all.*
   * possibilities. Divergent and ambiguous.
   *
   * @param sources
-  *   Sources of the moves - may be empty in which case the move is degenerate
-  *   and models matching *insertions* on the left and right hand sides of the
-  *   merge.
+  *   Sources of the moves.
   * @param left
   *   Destinations on the left hand side of the merge.
   * @param right
@@ -31,6 +29,8 @@ case class MoveDestinations[Element](
     right: collection.Set[Element],
     coincident: collection.Set[(Element, Element)]
 ):
+  require(sources.nonEmpty)
+
   require(
     left.nonEmpty || right.nonEmpty || coincident.nonEmpty
   )
@@ -92,26 +92,17 @@ case class MoveDestinations[Element](
         case (true, true, true) =>
           s"${elementSetAsText(left)}\n\n${elementSetAsText(right)}\n\n${elementSetAsText(coincident)}"
 
-    (isAmbiguous, isDivergent, isDegenerate) match
-      case (false, false, false) =>
+    (isAmbiguous, isDivergent) match
+      case (false, false) =>
         s"Single move of:\n${elementSetAsText(sources)}\nto:\n$destinationsAsText."
-      case (false, true, false) =>
+      case (false, true) =>
         s"Divergent move of:\n${elementSetAsText(sources)}\nto:\n$destinationsAsText."
-      case (false, false, true) => s"Insertion of:\n$destinationsAsText."
-      case (false, true, true) =>
-        s"Divergent insertion of:\n$destinationsAsText."
-      case (true, false, false) =>
+      case (true, false) =>
         s"Ambiguous moves of:\n${elementSetAsText(sources)}\nto:\n$destinationsAsText."
-      case (true, true, false) =>
+      case (true, true) =>
         s"Ambiguous divergent moves of:\n${elementSetAsText(sources)}\nto:\n$destinationsAsText."
-      case (true, false, true) =>
-        s"Ambiguous insertions of:\n$destinationsAsText."
-      case (true, true, true) =>
-        s"Ambiguous divergent insertions of:\n$destinationsAsText."
     end match
   end description
-
-  def isDegenerate: Boolean = sources.isEmpty
 
   def isDivergent: Boolean =
     left.nonEmpty && right.nonEmpty

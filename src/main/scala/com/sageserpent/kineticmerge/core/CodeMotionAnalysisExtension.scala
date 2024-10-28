@@ -191,22 +191,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             end match
         }
 
-      // NOTE: have to delay this assumption check until after the complete move
-      // destination report has been finalized, and *not* make it an invariant
-      // of `MoveDestination`. This is because divergent moves are entered as
-      // separate left- and right-moves, so any such invariant could (and does)
-      // break.
-      moveDestinationsReport.moveDestinationsByMatches.values.foreach {
-        moveDestination =>
-          if moveDestination.isDegenerate then
-            // We don't consider left- and right-insertions to be degenerate
-            // moves, as there is no match involved.
-            assume(
-              moveDestination.isDivergent || moveDestination.coincident.nonEmpty
-            )
-          end if
-      }
-
       def isMoveDestinationOnGivenSide(
           section: Section[Element],
           side: Side,
@@ -449,9 +433,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       ): (Path, MergeResult[Section[Element]]) =
         val potentialValidDestinationsForMigratingChangesTo =
           moveDestinationsReport.moveDestinationsByMatches.values
-            .filterNot(moveDestinations =>
-              moveDestinations.isDegenerate || moveDestinations.isDivergent
-            )
+            .filterNot(_.isDivergent)
             .flatMap(moveDestinations =>
               // NOTE: coincident move destinations can't pick up edits as there
               // would be no side to contribute the edit; instead, both of them

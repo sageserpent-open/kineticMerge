@@ -13,13 +13,14 @@ class MatchesContext[Element](
 ):
   val emptyReport: MoveDestinationsReport = MoveDestinationsReport(Map.empty)
 
-  private def sourcesOf(element: Element): collection.Set[Element] =
-    matchesFor(element).flatMap {
+  extension (aMatch: Match[Element])
+    def base: Option[Element] = aMatch match
       case BaseAndLeft(baseElement, _)  => Some(baseElement)
       case BaseAndRight(baseElement, _) => Some(baseElement)
       case LeftAndRight(_, _)           => None
       case AllSides(baseElement, _, _)  => Some(baseElement)
-    }
+    end base
+  end extension
 
   /** @param coreMergeResult
     *   What is says on the tin: a simpler merge result that is delegated to by
@@ -72,14 +73,15 @@ class MatchesContext[Element](
         element: Element
     ): MoveDestinationsReport =
       val matches = matchesFor(element)
+      val sources = matches.flatMap(_.base)
 
-      if matches.nonEmpty then
+      if matches.nonEmpty && sources.nonEmpty then
         MoveDestinationsReport(
           moveDestinationsByMatches.updatedWith(matches) {
             case None =>
               Some(
                 MoveDestinations(
-                  sources = sourcesOf(element),
+                  sources = sources,
                   left = Set(element),
                   right = Set.empty,
                   coincident = Set.empty
@@ -97,14 +99,15 @@ class MatchesContext[Element](
         element: Element
     ): MoveDestinationsReport =
       val matches = matchesFor(element)
+      val sources = matches.flatMap(_.base)
 
-      if matches.nonEmpty then
+      if matches.nonEmpty && sources.nonEmpty then
         MoveDestinationsReport(
           moveDestinationsByMatches.updatedWith(matches) {
             case None =>
               Some(
                 MoveDestinations(
-                  sources = sourcesOf(element),
+                  sources = sources,
                   left = Set.empty,
                   right = Set(element),
                   coincident = Set.empty
@@ -122,14 +125,15 @@ class MatchesContext[Element](
         elementPairAcrossLeftAndRight: (Element, Element)
     ): MoveDestinationsReport =
       val matches = matchesFor(elementPairAcrossLeftAndRight._1)
+      val sources = matches.flatMap(_.base)
 
-      if matches.nonEmpty then
+      if matches.nonEmpty && sources.nonEmpty then
         MoveDestinationsReport(
           moveDestinationsByMatches.updatedWith(matches) {
             case None =>
               Some(
                 MoveDestinations(
-                  sources = sourcesOf(elementPairAcrossLeftAndRight._1),
+                  sources = sources,
                   left = Set.empty,
                   right = Set.empty,
                   coincident = Set(elementPairAcrossLeftAndRight)
