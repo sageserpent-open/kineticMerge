@@ -263,7 +263,7 @@ class MatchesContext[Element](
           val matches = matchesFor(deletedBaseElement).toSeq
 
           matches match
-            case Seq(_: AllSides[Section[Element]], _*) =>
+            case Seq(_: AllSides[Element], _*) =>
               matches.foldLeft(default) {
                 case (
                       partialResult,
@@ -312,7 +312,7 @@ class MatchesContext[Element](
           val matches = matchesFor(deletedBaseElement).toSeq
 
           matches match
-            case Seq(_: AllSides[Section[Element]], _*) =>
+            case Seq(_: AllSides[Element], _*) =>
               matches.foldLeft(default) {
                 case (
                       partialResult,
@@ -355,14 +355,14 @@ class MatchesContext[Element](
           val matches = matchesFor(deletedElement).toSeq
 
           matches match
-            case Seq(_: AllSides[Section[Element]], _*) =>
+            case Seq(_: AllSides[Element], _*) =>
               logger.debug(
                 s"Coincident deletion at origin of moves on both sides."
               )
 
               default
 
-            case Seq(_: BaseAndLeft[Section[Element]], _*) =>
+            case Seq(_: BaseAndLeft[Element], _*) =>
               matches.foldLeft(default) {
                 case (result, BaseAndLeft(_, leftElementAtMoveDestination)) =>
                   logger.debug(
@@ -376,7 +376,7 @@ class MatchesContext[Element](
                     )
               }
 
-            case Seq(_: BaseAndRight[Section[Element]], _*) =>
+            case Seq(_: BaseAndRight[Element], _*) =>
               matches.foldLeft(default) {
                 case (result, BaseAndRight(_, rightElementAtMoveDestination)) =>
                   logger.debug(
@@ -417,7 +417,7 @@ class MatchesContext[Element](
           val matches = matchesFor(editedBaseElement).toSeq
 
           matches match
-            case Seq(_: AllSides[Section[Element]], _*) =>
+            case Seq(_: AllSides[Element], _*) =>
               matches.foldLeft(default) {
                 case (
                       partialResult,
@@ -472,7 +472,7 @@ class MatchesContext[Element](
           val matches = matchesFor(editedBaseElement).toSeq
 
           matches match
-            case Seq(_: AllSides[Section[Element]], _*) =>
+            case Seq(_: AllSides[Element], _*) =>
               matches.foldLeft(default) {
                 case (
                       partialResult,
@@ -523,7 +523,7 @@ class MatchesContext[Element](
             // NOTE: we're not missing the all-sides case below - the default
             // handles it perfectly well, as the left and right contributions to
             // the match are *incoming* moves, so there is nothing to migrate.
-            case Seq(_: BaseAndLeft[Section[Element]], _*) =>
+            case Seq(_: BaseAndLeft[Element], _*) =>
               matches.foldLeft(default) {
                 case (result, BaseAndLeft(_, leftElementAtMoveDestination)) =>
                   logger.debug(
@@ -537,7 +537,7 @@ class MatchesContext[Element](
                     )
               }
 
-            case Seq(_: BaseAndRight[Section[Element]], _*) =>
+            case Seq(_: BaseAndRight[Element], _*) =>
               matches.foldLeft(default) {
                 case (result, BaseAndRight(_, rightElementAtMoveDestination)) =>
                   logger.debug(
@@ -594,7 +594,7 @@ class MatchesContext[Element](
               val matches = matchesFor(baseElement).toSeq
 
               matches match
-                case Seq(_: AllSides[Section[Element]], _*) =>
+                case Seq(_: AllSides[Element], _*) =>
                   val withCoincidentDeletion = result
                     .focus(_.coreMergeResult)
                     .modify(
@@ -612,7 +612,7 @@ class MatchesContext[Element](
 
                   withLeftInsertions
 
-                case Seq(_: BaseAndRight[Section[Element]], _*) =>
+                case Seq(_: BaseAndRight[Element], _*) =>
                   val withCoincidentDeletion = result
                     .focus(_.coreMergeResult)
                     .modify(
@@ -635,7 +635,7 @@ class MatchesContext[Element](
                         )
                   }
 
-                case Seq(_: BaseAndLeft[Section[Element]], _*) =>
+                case Seq(_: BaseAndLeft[Element], _*) =>
                   val withCoincidentDeletion = result
                     .focus(_.coreMergeResult)
                     .modify(
@@ -672,7 +672,7 @@ class MatchesContext[Element](
               val matches = matchesFor(baseElement).toSeq
 
               matches match
-                case Seq(_: AllSides[Section[Element]], _*) =>
+                case Seq(_: AllSides[Element], _*) =>
                   val withCoincidentDeletion = result
                     .focus(_.coreMergeResult)
                     .modify(
@@ -690,7 +690,7 @@ class MatchesContext[Element](
 
                   withRightInsertions
 
-                case Seq(_: BaseAndLeft[Section[Element]], _*) =>
+                case Seq(_: BaseAndLeft[Element], _*) =>
                   val withCoincidentDeletion = result
                     .focus(_.coreMergeResult)
                     .modify(
@@ -715,7 +715,7 @@ class MatchesContext[Element](
                         )
                   }
 
-                case Seq(_: BaseAndRight[Section[Element]], _*) =>
+                case Seq(_: BaseAndRight[Element], _*) =>
                   val withCoincidentDeletion = result
                     .focus(_.coreMergeResult)
                     .modify(
@@ -756,10 +756,10 @@ class MatchesContext[Element](
               val matches = matchesFor(baseElement).toSeq
 
               matches match
-                case Seq(_: AllSides[Section[Element]], _*) =>
+                case Seq(_: AllSides[Element], _*) =>
                   default
 
-                case Seq(_: BaseAndLeft[Section[Element]], _*) =>
+                case Seq(_: BaseAndLeft[Element], _*) =>
                   val withCoincidentDeletion = result
                     .focus(_.coreMergeResult)
                     .modify(
@@ -787,7 +787,7 @@ class MatchesContext[Element](
                         )
                   }
 
-                case Seq(_: BaseAndRight[Section[Element]], _*) =>
+                case Seq(_: BaseAndRight[Element], _*) =>
                   val withCoincidentDeletion = result
                     .focus(_.coreMergeResult)
                     .modify(
