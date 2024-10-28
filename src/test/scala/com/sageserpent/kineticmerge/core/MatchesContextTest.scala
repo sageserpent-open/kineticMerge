@@ -19,7 +19,6 @@ import org.junit.jupiter.api.{Test, TestFactory}
 // outgoing moves aren't included in test expectations; they only participate in the test setup. This
 // is in contrast to noting edit and deletion migrations, where the migration has to picked up at the
 // move source.
-// TODO: perhaps migrations should be associated with the move *source* rather than the destination?
 class MatchesContextTest:
   @TestFactory
   def ourMoveDestinationInsertion: DynamicTests =
@@ -403,7 +402,7 @@ class MatchesContextTest:
 
       assert(
         Set(IndexedSeq.empty) == mergeResult.changesMigratedThroughMotion
-          .get(ourSideOutgoingMoveDestinationElement)
+          .get(baseOutgoingMoveSourceElement)
       )
 
       val Seq((matches, moveDestinations)) =
@@ -658,7 +657,7 @@ class MatchesContextTest:
         Set(
           IndexedSeq(theirSideEditElement)
         ) == mergeResult.changesMigratedThroughMotion
-          .get(ourSideOutgoingMoveDestinationElement)
+          .get(baseOutgoingMoveSourceElement)
       )
 
       val Seq((matches, moveDestinations)) =
@@ -739,7 +738,7 @@ class MatchesContextTest:
 
       assert(
         Set(IndexedSeq.empty) == mergeResult.changesMigratedThroughMotion
-          .get(ourSideOutgoingMoveDestinationElement)
+          .get(baseOutgoingMoveSourceElement)
       )
     }
   end coincidentDeletionWhereBaseHasMovedAwayOnOurSide
@@ -808,7 +807,7 @@ class MatchesContextTest:
         Set(
           IndexedSeq(theirSideEditElement)
         ) == mergeResult.changesMigratedThroughMotion
-          .get(ourSideOutgoingMoveDestinationElement)
+          .get(baseOutgoingMoveSourceElement)
       )
     }
   end ourDeletionVersusTheirEditConflictWhereBaseHasMovedAwayOnOurSide
@@ -906,7 +905,7 @@ class MatchesContextTest:
 
       assert(
         Set(IndexedSeq.empty) == mergeResult.changesMigratedThroughMotion
-          .get(ourSideOutgoingMoveDestinationElement)
+          .get(baseOutgoingMoveSourceElement)
       )
     }
   end ourEditVersusTheirDeletionConflictWhereBaseHasMovedAwayOnOurSide
@@ -1007,7 +1006,7 @@ class MatchesContextTest:
         Set(
           IndexedSeq(theirSideEditElement)
         ) == mergeResult.changesMigratedThroughMotion
-          .get(ourSideOutgoingMoveDestinationElement)
+          .get(baseOutgoingMoveSourceElement)
       )
     }
   end ourEditVersusTheirEditConflictWhereBaseHasMovedAwayOnOurSide
@@ -1097,7 +1096,7 @@ class MatchesContextTest:
 
       assert(
         Set(IndexedSeq.empty) == mergeResult.changesMigratedThroughMotion
-          .get(ourSideOutgoingMoveDestinationElement)
+          .get(baseOutgoingMoveSourceElement)
       )
     }
   end coincidentEditWhereBaseHasMovedAwayOnOurSide
@@ -1212,7 +1211,7 @@ class MatchesContextTest:
         case ResolutionOutcome.LeftChosen =>
           assert(
             !mergeResult.changesMigratedThroughMotion
-              .containsKey(ourSideOutgoingMoveDestinationElement)
+              .containsKey(baseOutgoingMoveSourceElement)
           )
         case ResolutionOutcome.SomethingElseChosen(offset) =>
           if mirrorImage then
@@ -1226,7 +1225,7 @@ class MatchesContextTest:
                   )
                 )
               ) == mergeResult.changesMigratedThroughMotion
-                .get(ourSideOutgoingMoveDestinationElement)
+                .get(baseOutgoingMoveSourceElement)
             )
           else
             assert(
@@ -1239,7 +1238,7 @@ class MatchesContextTest:
                   )
                 )
               ) == mergeResult.changesMigratedThroughMotion
-                .get(ourSideOutgoingMoveDestinationElement)
+                .get(baseOutgoingMoveSourceElement)
             )
           end if
       end match
@@ -1365,7 +1364,7 @@ class MatchesContextTest:
         case ResolutionOutcome.LeftChosen =>
           assert(
             !mergeResult.changesMigratedThroughMotion
-              .containsKey(ourSideOutgoingMoveDestinationElement)
+              .containsKey(baseOutgoingMoveSourceElement)
           )
         case ResolutionOutcome.SomethingElseChosen(offset) =>
           if mirrorImage then
@@ -1379,7 +1378,7 @@ class MatchesContextTest:
                   )
                 )
               ) == mergeResult.changesMigratedThroughMotion
-                .get(ourSideOutgoingMoveDestinationElement)
+                .get(baseOutgoingMoveSourceElement)
             )
           else
             assert(
@@ -1392,7 +1391,7 @@ class MatchesContextTest:
                   )
                 )
               ) == mergeResult.changesMigratedThroughMotion
-                .get(ourSideOutgoingMoveDestinationElement)
+                .get(baseOutgoingMoveSourceElement)
             )
           end if
       end match
@@ -1451,11 +1450,7 @@ class MatchesContextTest:
 
       assert(
         !mergeResult.changesMigratedThroughMotion
-          .containsKey(ourSideOutgoingMoveDestinationElement)
-      )
-      assert(
-        !mergeResult.changesMigratedThroughMotion
-          .containsKey(theirSideOutgoingMoveDestinationElement)
+          .containsKey(baseOutgoingMoveSourceElement)
       )
     }
   end coincidentDeletionWhereBaseHasMovedAwayOnBothSides
@@ -1534,11 +1529,7 @@ class MatchesContextTest:
 
       assert(
         !mergeResult.changesMigratedThroughMotion
-          .containsKey(ourSideOutgoingMoveDestinationElement)
-      )
-      assert(
-        !mergeResult.changesMigratedThroughMotion
-          .containsKey(theirSideOutgoingMoveDestinationElement)
+          .containsKey(baseOutgoingMoveSourceElement)
       )
     }
   end ourEditVersusTheirDeletionConflictWhereBaseHasMovedAwayOnBothSides
@@ -1624,11 +1615,7 @@ class MatchesContextTest:
 
       assert(
         !mergeResult.changesMigratedThroughMotion
-          .containsKey(ourSideOutgoingMoveDestinationElement)
-      )
-      assert(
-        !mergeResult.changesMigratedThroughMotion
-          .containsKey(theirSideOutgoingMoveDestinationElement)
+          .containsKey(baseOutgoingMoveSourceElement)
       )
     }
   end ourEditVersusTheirEditConflictWhereBaseHasMovedAwayOnBothSides
@@ -1763,11 +1750,7 @@ class MatchesContextTest:
 
       assert(
         !mergeResult.changesMigratedThroughMotion
-          .containsKey(ourSideInsertedIncomingMoveDestinationElement)
-      )
-      assert(
-        !mergeResult.changesMigratedThroughMotion
-          .containsKey(theirSideInsertedIncomingMoveDestinationElement)
+          .containsKey(incomingMoveSourceElement)
       )
 
       val Seq((matches, moveDestinations)) =
@@ -1884,11 +1867,7 @@ class MatchesContextTest:
 
       assert(
         !mergeResult.changesMigratedThroughMotion
-          .containsKey(ourSideEditIncomingMoveDestinationElement)
-      )
-      assert(
-        !mergeResult.changesMigratedThroughMotion
-          .containsKey(theirSideEditIncomingMoveDestinationElement)
+          .containsKey(incomingMoveSourceElement)
       )
 
       val Seq((matches, moveDestinations)) =
