@@ -255,32 +255,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
   end issue42BugReproduction
 
-  private def verifyContent(
-      path: FakePath,
-      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
-  )(
-      expectedTokens: IndexedSeq[Token],
-      equality: (Token, Token) => Boolean = Token.equality
-  ): Unit =
-    println(fansi.Color.Yellow(s"Checking $path...\n"))
-    println(fansi.Color.Yellow("Expected..."))
-    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
-
-    mergeResultsByPath(path) match
-      case FullyMerged(result) =>
-        println(fansi.Color.Yellow("Fully merged result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(result)))
-        assert(result.corresponds(expectedTokens)(equality))
-      case MergedWithConflicts(leftResult, rightResult) =>
-        println(fansi.Color.Red(s"Left result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
-        println(fansi.Color.Red(s"Right result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
-
-        fail("Should have seen a clean merge.")
-    end match
-  end verifyContent
-
   @Test
   def codeMotion(): Unit =
     val configuration = Configuration(
@@ -816,6 +790,32 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     end match
   end verifyAbsenceOfContent
 
+  private def verifyContent(
+      path: FakePath,
+      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
+  )(
+      expectedTokens: IndexedSeq[Token],
+      equality: (Token, Token) => Boolean = Token.equality
+  ): Unit =
+    println(fansi.Color.Yellow(s"Checking $path...\n"))
+    println(fansi.Color.Yellow("Expected..."))
+    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
+
+    mergeResultsByPath(path) match
+      case FullyMerged(result) =>
+        println(fansi.Color.Yellow("Fully merged result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(result)))
+        assert(result.corresponds(expectedTokens)(equality))
+      case MergedWithConflicts(leftResult, rightResult) =>
+        println(fansi.Color.Red(s"Left result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+        println(fansi.Color.Red(s"Right result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+        fail("Should have seen a clean merge.")
+    end match
+  end verifyContent
+
   @Test
   def furtherMigrationOfAMigratedEditAsAnInsertion(): Unit =
     val configuration = Configuration(
@@ -873,6 +873,93 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )
 
   end furtherMigrationOfAMigratedEditAsAnInsertion
+
+  @Test
+  def motionAmbiguousWithAPreservation(): Unit =
+    val configuration = Configuration(
+      minimumMatchSize = 2,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0
+    )
+
+    val ehs  = "A".repeat(10)
+    val ease = "e".repeat(11)
+    val ayes = "I".repeat(12)
+    val owes = "o".repeat(13)
+    val ewes = "U".repeat(14)
+    val wise = "y".repeat(5)
+
+    val bees   = "b".repeat(20)
+    val seize  = "c".repeat(21)
+    val peas   = "p".repeat(7)
+    val queues = "q".repeat(22)
+
+    // On the left, the initial `ease` and the `ayes` go to the end, swapping
+    // around. There is however another fixed `ease`, isolated by `peas` being
+    // inserted on the left and `queues` being inserted on the right. The moving
+    // `ease` is edited into `bees`, and the `ayes` anchors the `seize`.
+
+    val baseText = ehs ++ ease ++ ayes ++ owes ++ ewes ++ ease ++ wise
+
+    val leftText = ehs ++ owes ++ ewes ++ peas ++ ease ++ wise ++ ayes ++ ease
+
+    val rightText =
+      ehs ++ bees ++ ayes ++ seize ++ owes ++ ewes ++ ease ++ queues ++ wise
+
+    val expectedMergeText =
+      ehs ++ owes ++ ewes ++ peas ++ ease ++ queues ++ wise ++ ayes ++ seize ++ bees
+
+    val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
+
+    val tokenRegex = raw".".r.anchored
+
+    def stuntDoubleTokens(content: String): Vector[Token] = tokenRegex
+      .findAllMatchIn(content)
+      .map(_.group(0))
+      .map(Token.Significant.apply)
+      .toVector
+
+    val baseSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(
+        placeholderPath -> stuntDoubleTokens(baseText)
+      ),
+      label = "base"
+    )
+
+    val leftSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(
+        placeholderPath -> stuntDoubleTokens(leftText)
+      ),
+      label = "left"
+    )
+
+    val rightSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(
+        placeholderPath -> stuntDoubleTokens(rightText)
+      ),
+      label = "right"
+    )
+
+    val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+      base = baseSources,
+      left = leftSources,
+      right = rightSources
+    )(configuration): @unchecked
+
+    val (mergeResultsByPath, moveDestinationsReport) =
+      codeMotionAnalysis.merge
+
+    println(fansi.Color.Yellow(s"Final move destinations report...\n"))
+    println(
+      fansi.Color
+        .Green(moveDestinationsReport.summarizeInText.mkString("\n"))
+    )
+
+    verifyContent(placeholderPath, mergeResultsByPath)(
+      stuntDoubleTokens(expectedMergeText)
+    )
+  end motionAmbiguousWithAPreservation
+
 end CodeMotionAnalysisExtensionTest
 
 trait ProseExamples:
