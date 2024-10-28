@@ -27,7 +27,7 @@ class MatchesContext[Element](
     *   the operations implemented in
     *   [[MatchesContext.MergeResultDetectingMotion.mergeAlgebra]].
     * @param changesMigratedThroughMotion
-    *   Edits and deletions to be migrated, referenced by move destination.
+    *   Edits and deletions to be migrated, referenced by move <b>source</b>.
     * @param moveDestinationsReport
     * @param insertions
     *   Insertions that may need to be migrated - in contrast to
@@ -267,7 +267,11 @@ class MatchesContext[Element](
               matches.foldLeft(default) {
                 case (
                       partialResult,
-                      AllSides(_, leftElementAtMoveDestination, rightElement)
+                      AllSides(
+                        _,
+                        leftElementAtMoveDestination,
+                        rightElement
+                      )
                     ) if deletedRightElement == rightElement =>
                   val resolved = resolution(
                     Some(deletedBaseElement),
@@ -283,7 +287,7 @@ class MatchesContext[Element](
                     partialResult
                       .focus(_.changesMigratedThroughMotion)
                       .modify(
-                        _ + (leftElementAtMoveDestination -> IndexedSeq(
+                        _ + (deletedBaseElement -> IndexedSeq(
                           resolved
                         ))
                       )
@@ -316,7 +320,11 @@ class MatchesContext[Element](
               matches.foldLeft(default) {
                 case (
                       partialResult,
-                      AllSides(_, leftElement, rightElementAtMoveDestination)
+                      AllSides(
+                        _,
+                        leftElement,
+                        rightElementAtMoveDestination
+                      )
                     ) if deletedLeftElement == leftElement =>
                   val resolved = resolution(
                     Some(deletedBaseElement),
@@ -332,7 +340,7 @@ class MatchesContext[Element](
                     partialResult
                       .focus(_.changesMigratedThroughMotion)
                       .modify(
-                        _ + (rightElementAtMoveDestination -> IndexedSeq(
+                        _ + (deletedBaseElement -> IndexedSeq(
                           resolved
                         ))
                       )
@@ -364,7 +372,10 @@ class MatchesContext[Element](
 
             case Seq(_: BaseAndLeft[Element], _*) =>
               matches.foldLeft(default) {
-                case (result, BaseAndLeft(_, leftElementAtMoveDestination)) =>
+                case (
+                      result,
+                      BaseAndLeft(_, leftElementAtMoveDestination)
+                    ) =>
                   logger.debug(
                     s"Coincident deletion at origin of move: migrating deletion to left move destination ${pprintCustomised(leftElementAtMoveDestination)}."
                   )
@@ -372,13 +383,16 @@ class MatchesContext[Element](
                   result
                     .focus(_.changesMigratedThroughMotion)
                     .modify(
-                      _ + (leftElementAtMoveDestination -> IndexedSeq.empty)
+                      _ + (deletedElement -> IndexedSeq.empty)
                     )
               }
 
             case Seq(_: BaseAndRight[Element], _*) =>
               matches.foldLeft(default) {
-                case (result, BaseAndRight(_, rightElementAtMoveDestination)) =>
+                case (
+                      result,
+                      BaseAndRight(_, rightElementAtMoveDestination)
+                    ) =>
                   logger.debug(
                     s"Coincident deletion at origin of move: migrating deletion to right move destination ${pprintCustomised(rightElementAtMoveDestination)}."
                   )
@@ -386,7 +400,7 @@ class MatchesContext[Element](
                   result
                     .focus(_.changesMigratedThroughMotion)
                     .modify(
-                      _ + (rightElementAtMoveDestination -> IndexedSeq.empty)
+                      _ + (deletedElement -> IndexedSeq.empty)
                     )
               }
 
@@ -421,7 +435,11 @@ class MatchesContext[Element](
               matches.foldLeft(default) {
                 case (
                       partialResult,
-                      AllSides(_, leftElementAtMoveDestination, rightElement)
+                      AllSides(
+                        _,
+                        leftElementAtMoveDestination,
+                        rightElement
+                      )
                     ) if editedRightElement == rightElement =>
                   val resolved = resolution(
                     Some(editedBaseElement),
@@ -437,7 +455,7 @@ class MatchesContext[Element](
                     partialResult
                       .focus(_.changesMigratedThroughMotion)
                       .modify(
-                        _ + (leftElementAtMoveDestination -> IndexedSeq(
+                        _ + (editedBaseElement -> IndexedSeq(
                           resolved
                         ))
                       )
@@ -476,7 +494,11 @@ class MatchesContext[Element](
               matches.foldLeft(default) {
                 case (
                       partialResult,
-                      AllSides(_, leftElement, rightElementAtMoveDestination)
+                      AllSides(
+                        _,
+                        leftElement,
+                        rightElementAtMoveDestination
+                      )
                     ) if editedLeftElement == leftElement =>
                   val resolved = resolution(
                     Some(editedBaseElement),
@@ -492,7 +514,7 @@ class MatchesContext[Element](
                     partialResult
                       .focus(_.changesMigratedThroughMotion)
                       .modify(
-                        _ + (rightElementAtMoveDestination -> IndexedSeq(
+                        _ + (editedBaseElement -> IndexedSeq(
                           resolved
                         ))
                       )
@@ -525,7 +547,10 @@ class MatchesContext[Element](
             // the match are *incoming* moves, so there is nothing to migrate.
             case Seq(_: BaseAndLeft[Element], _*) =>
               matches.foldLeft(default) {
-                case (result, BaseAndLeft(_, leftElementAtMoveDestination)) =>
+                case (
+                      result,
+                      BaseAndLeft(_, leftElementAtMoveDestination)
+                    ) =>
                   logger.debug(
                     s"Coincident edit at origin of move: migrating deletion to left move destination ${pprintCustomised(leftElementAtMoveDestination)}."
                   )
@@ -533,13 +558,16 @@ class MatchesContext[Element](
                   result
                     .focus(_.changesMigratedThroughMotion)
                     .modify(
-                      _ + (leftElementAtMoveDestination -> IndexedSeq.empty)
+                      _ + (editedElement -> IndexedSeq.empty)
                     )
               }
 
             case Seq(_: BaseAndRight[Element], _*) =>
               matches.foldLeft(default) {
-                case (result, BaseAndRight(_, rightElementAtMoveDestination)) =>
+                case (
+                      result,
+                      BaseAndRight(_, rightElementAtMoveDestination)
+                    ) =>
                   logger.debug(
                     s"Coincident edit at origin of move: migrating deletion to right move destination ${pprintCustomised(rightElementAtMoveDestination)}."
                   )
@@ -547,7 +575,7 @@ class MatchesContext[Element](
                   result
                     .focus(_.changesMigratedThroughMotion)
                     .modify(
-                      _ + (rightElementAtMoveDestination -> IndexedSeq.empty)
+                      _ + (editedElement -> IndexedSeq.empty)
                     )
               }
 
@@ -622,7 +650,10 @@ class MatchesContext[Element](
                   matches.foldLeft(withCoincidentDeletion) {
                     case (
                           result,
-                          BaseAndRight(_, rightElementAtMoveDestination)
+                          BaseAndRight(
+                            _,
+                            rightElementAtMoveDestination
+                          )
                         ) =>
                       logger.debug(
                         s"Conflict at origin of move: resolved as a coincident deletion of ${pprintCustomised(baseElement)}; migrating left edit ${pprintCustomised(leftElements)} to right move destination ${pprintCustomised(rightElementAtMoveDestination)}."
@@ -631,7 +662,7 @@ class MatchesContext[Element](
                       result
                         .focus(_.changesMigratedThroughMotion)
                         .modify(
-                          _ + (rightElementAtMoveDestination -> leftElements)
+                          _ + (baseElement -> leftElements)
                         )
                   }
 
@@ -659,7 +690,7 @@ class MatchesContext[Element](
                       partialResult
                         .focus(_.changesMigratedThroughMotion)
                         .modify(
-                          _ + (leftElementAtMoveDestination -> IndexedSeq.empty)
+                          _ + (baseElement -> IndexedSeq.empty)
                         )
                   }
 
@@ -711,7 +742,7 @@ class MatchesContext[Element](
                       result
                         .focus(_.changesMigratedThroughMotion)
                         .modify(
-                          _ + (leftElementAtMoveDestination -> rightElements)
+                          _ + (baseElement -> rightElements)
                         )
                   }
 
@@ -730,7 +761,10 @@ class MatchesContext[Element](
                   matches.foldLeft(withRightInsertions) {
                     case (
                           partialResult,
-                          BaseAndRight(_, rightElementAtMoveDestination)
+                          BaseAndRight(
+                            _,
+                            rightElementAtMoveDestination
+                          )
                         ) =>
                       logger.debug(
                         s"Conflict at origin of move: resolved as a coincident deletion of ${pprintCustomised(baseElement)} and a right insertion of ${pprintCustomised(rightElements)}; migrating deletion to right move destination ${pprintCustomised(rightElementAtMoveDestination)}."
@@ -739,7 +773,7 @@ class MatchesContext[Element](
                       partialResult
                         .focus(_.changesMigratedThroughMotion)
                         .modify(
-                          _ + (rightElementAtMoveDestination -> IndexedSeq.empty)
+                          _ + (baseElement -> IndexedSeq.empty)
                         )
                   }
 
@@ -783,7 +817,7 @@ class MatchesContext[Element](
                       partialResult
                         .focus(_.changesMigratedThroughMotion)
                         .modify(
-                          _ + (leftElementAtMoveDestination -> rightElements)
+                          _ + (baseElement -> rightElements)
                         )
                   }
 
@@ -802,7 +836,10 @@ class MatchesContext[Element](
                   matches.foldLeft(withRightInsertions) {
                     case (
                           partialResult,
-                          BaseAndRight(_, rightElementAtMoveDestination)
+                          BaseAndRight(
+                            _,
+                            rightElementAtMoveDestination
+                          )
                         ) =>
                       logger.debug(
                         s"Conflict at origin of move: resolved as a coincident deletion of ${pprintCustomised(baseElement)} and a right insertion of ${pprintCustomised(rightElements)}; migrating left edit ${pprintCustomised(leftElements)} to right move destination ${pprintCustomised(rightElementAtMoveDestination)}."
@@ -811,7 +848,7 @@ class MatchesContext[Element](
                       partialResult
                         .focus(_.changesMigratedThroughMotion)
                         .modify(
-                          _ + (rightElementAtMoveDestination -> leftElements)
+                          _ + (baseElement -> leftElements)
                         )
                   }
 
