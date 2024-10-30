@@ -6,7 +6,6 @@ import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
 
 import scala.collection.decorators.mapDecorator
-import scala.collection.immutable.MultiDict
 
 class MatchesContext[Element](
     matchesFor: Element => collection.Set[Match[Element]]
@@ -22,27 +21,53 @@ class MatchesContext[Element](
     end base
   end extension
 
+  /** Represents the content migrated through a move.
+    */
+  enum Migration:
+    /** This represents a simple move with no associated changes. We model this
+      * explicitly so that trivial variations of the moved element can be
+      * resolved at the move destination.
+      *
+      * @note
+      *   We only need the side opposite the move destination because a
+      *   migration is keyed by a source element taken from the base. The move
+      *   destination itself completes the three sides' contributions.
+      */
+    case PlainMove(elementOnTheOppositeSideToTheMoveDestination: Element)
+
+    /** If {@code change} is empty, this represents a deletion, otherwise it
+      * represents an edit.
+      */
+    case Change(change: IndexedSeq[Element])
+  end Migration
+
   /** @param coreMergeResult
     *   What is says on the tin: a simpler merge result that is delegated to by
     *   the operations implemented in
     *   [[MatchesContext.MergeResultDetectingMotion.mergeAlgebra]].
-    * @param changesMigratedThroughMotion
-    *   Edits and deletions to be migrated, referenced by move <b>source</b>.
+    * @param migrationsBySource
+    *   Migrations keyed by source element - the source element is taken from
+    *   the <b>base</b> side.
     * @param moveDestinationsReport
     * @param insertions
     *   Insertions that may need to be migrated - in contrast to
-    *   {@code changesMigratedThroughMotion} , these have to be collected
-    *   speculatively upfront and then associated with anchors once the global
-    *   picture of code motion is available.
+    *   {@code migrationsBySource} , these have to be collected speculatively
+    *   upfront and then associated with anchors once the global picture of code
+    *   motion is available.
     * @param oneSidedDeletions
     *   Deletions on just one side that may influence the discovery of anchors
     *   for insertion migration.
     * @tparam CoreResult
     * @tparam Element
+    * @note
+    *   A move source refers to only one migration, although it is quite
+    *   possible for a single source to be part of multiple movements on either
+    *   or both the left and right side. It is also possible for multiple move
+    *   sources (and thus migrations) to converge on the same move destination.
     */
   case class MergeResultDetectingMotion[CoreResult[_], Element](
       coreMergeResult: CoreResult[Element],
-      changesMigratedThroughMotion: MultiDict[Element, IndexedSeq[Element]],
+      migrationsBySource: Map[Element, Migration],
       moveDestinationsReport: MoveDestinationsReport,
       insertions: Seq[Insertion],
       oneSidedDeletions: Set[Element]
@@ -171,8 +196,7 @@ class MatchesContext[Element](
       [Element] =>> MergeResultDetectingMotion[CoreResult, Element]
 
     def mergeAlgebra[CoreResult[_]](
-        coreMergeAlgebra: merge.MergeAlgebra[CoreResult, Element],
-        resolution: Resolution[Element]
+        coreMergeAlgebra: merge.MergeAlgebra[CoreResult, Element]
     ): MergeAlgebra[MergeResultDetectingMotionType[CoreResult], Element] =
       type ConfiguredMergeResultDetectingMotion[Element] =
         MergeResultDetectingMotionType[CoreResult][Element]
@@ -181,7 +205,7 @@ class MatchesContext[Element](
         override def empty: ConfiguredMergeResultDetectingMotion[Element] =
           MergeResultDetectingMotion(
             coreMergeResult = coreMergeAlgebra.empty,
-            changesMigratedThroughMotion = MultiDict.empty,
+            migrationsBySource = Map.empty,
             moveDestinationsReport = emptyReport,
             insertions = Vector.empty,
             oneSidedDeletions = Set.empty
@@ -260,43 +284,16 @@ class MatchesContext[Element](
             .focus(_.oneSidedDeletions)
             .modify(_ + deletedRightElement)
 
-          val matches = matchesFor(deletedBaseElement).toSeq
+          logger.debug(
+            s"Left deletion of ${pprintCustomised(deletedBaseElement)} taken as source of left move."
+          )
 
-          matches match
-            case Seq(_: AllSides[Element], _*) =>
-              matches.foldLeft(default) {
-                case (
-                      partialResult,
-                      AllSides(
-                        _,
-                        leftElementAtMoveDestination,
-                        rightElement
-                      )
-                    ) if deletedRightElement == rightElement =>
-                  val resolved = resolution(
-                    Some(deletedBaseElement),
-                    leftElementAtMoveDestination,
-                    deletedRightElement
-                  )
-
-                  if resolved != leftElementAtMoveDestination then
-                    logger.debug(
-                      s"Left deletion at origin of move: also migrating additional minor edit resolution ${pprintCustomised(resolved)} to left move destination ${pprintCustomised(leftElementAtMoveDestination)}."
-                    )
-
-                    partialResult
-                      .focus(_.changesMigratedThroughMotion)
-                      .modify(
-                        _ + (deletedBaseElement -> IndexedSeq(
-                          resolved
-                        ))
-                      )
-                  else partialResult
-                  end if
-                case (partialResult, _) => partialResult
-              }
-            case _ => default
-          end match
+          default
+            .focus(_.migrationsBySource)
+            .modify(
+              _ + (deletedBaseElement -> Migration
+                .PlainMove(deletedRightElement))
+            )
         end leftDeletion
 
         override def rightDeletion(
@@ -313,43 +310,16 @@ class MatchesContext[Element](
             .focus(_.oneSidedDeletions)
             .modify(_ + deletedLeftElement)
 
-          val matches = matchesFor(deletedBaseElement).toSeq
+          logger.debug(
+            s"Right deletion of ${pprintCustomised(deletedBaseElement)} taken as source of right move."
+          )
 
-          matches match
-            case Seq(_: AllSides[Element], _*) =>
-              matches.foldLeft(default) {
-                case (
-                      partialResult,
-                      AllSides(
-                        _,
-                        leftElement,
-                        rightElementAtMoveDestination
-                      )
-                    ) if deletedLeftElement == leftElement =>
-                  val resolved = resolution(
-                    Some(deletedBaseElement),
-                    deletedLeftElement,
-                    rightElementAtMoveDestination
-                  )
-
-                  if resolved != rightElementAtMoveDestination then
-                    logger.debug(
-                      s"Right deletion at origin of move: also migrating additional minor edit resolution ${pprintCustomised(resolved)} to right move destination ${pprintCustomised(rightElementAtMoveDestination)}."
-                    )
-
-                    partialResult
-                      .focus(_.changesMigratedThroughMotion)
-                      .modify(
-                        _ + (deletedBaseElement -> IndexedSeq(
-                          resolved
-                        ))
-                      )
-                  else partialResult
-                  end if
-                case (partialResult, _) => partialResult
-              }
-            case _ => default
-          end match
+          default
+            .focus(_.migrationsBySource)
+            .modify(
+              _ + (deletedBaseElement -> Migration
+                .PlainMove(deletedLeftElement))
+            )
         end rightDeletion
 
         override def coincidentDeletion(
@@ -365,44 +335,32 @@ class MatchesContext[Element](
           matches match
             case Seq(_: AllSides[Element], _*) =>
               logger.debug(
-                s"Coincident deletion at origin of moves on both sides."
+                s"Coincident deletion of ${pprintCustomised(deletedElement)} taken as source of moves on both sides."
               )
 
               default
 
             case Seq(_: BaseAndLeft[Element], _*) =>
-              matches.foldLeft(default) {
-                case (
-                      result,
-                      BaseAndLeft(_, leftElementAtMoveDestination)
-                    ) =>
-                  logger.debug(
-                    s"Coincident deletion at origin of move: migrating deletion to left move destination ${pprintCustomised(leftElementAtMoveDestination)}."
-                  )
+              logger.debug(
+                s"Coincident deletion of ${pprintCustomised(deletedElement)} taken as source of left move; migrating deletion."
+              )
 
-                  result
-                    .focus(_.changesMigratedThroughMotion)
-                    .modify(
-                      _ + (deletedElement -> IndexedSeq.empty)
-                    )
-              }
+              default
+                .focus(_.migrationsBySource)
+                .modify(
+                  _ + (deletedElement -> Migration.Change(IndexedSeq.empty))
+                )
 
             case Seq(_: BaseAndRight[Element], _*) =>
-              matches.foldLeft(default) {
-                case (
-                      result,
-                      BaseAndRight(_, rightElementAtMoveDestination)
-                    ) =>
-                  logger.debug(
-                    s"Coincident deletion at origin of move: migrating deletion to right move destination ${pprintCustomised(rightElementAtMoveDestination)}."
-                  )
+              logger.debug(
+                s"Coincident deletion of ${pprintCustomised(deletedElement)} taken as source of right move; migrating deletion."
+              )
 
-                  result
-                    .focus(_.changesMigratedThroughMotion)
-                    .modify(
-                      _ + (deletedElement -> IndexedSeq.empty)
-                    )
-              }
+              default
+                .focus(_.migrationsBySource)
+                .modify(
+                  _ + (deletedElement -> Migration.Change(IndexedSeq.empty))
+                )
 
             case Seq() => default
           end match
@@ -428,43 +386,15 @@ class MatchesContext[Element](
             .focus(_.moveDestinationsReport)
             .modify(editElements.foldLeft(_)(_ leftMoveOf _))
 
-          val matches = matchesFor(editedBaseElement).toSeq
+          logger.debug(
+            s"Left edit of ${pprintCustomised(editedBaseElement)} taken as source of left move."
+          )
 
-          matches match
-            case Seq(_: AllSides[Element], _*) =>
-              matches.foldLeft(default) {
-                case (
-                      partialResult,
-                      AllSides(
-                        _,
-                        leftElementAtMoveDestination,
-                        rightElement
-                      )
-                    ) if editedRightElement == rightElement =>
-                  val resolved = resolution(
-                    Some(editedBaseElement),
-                    leftElementAtMoveDestination,
-                    editedRightElement
-                  )
-
-                  if resolved != leftElementAtMoveDestination then
-                    logger.debug(
-                      s"Left edit at origin of move: also migrating additional minor edit resolution ${pprintCustomised(resolved)} to left move destination ${pprintCustomised(leftElementAtMoveDestination)}."
-                    )
-
-                    partialResult
-                      .focus(_.changesMigratedThroughMotion)
-                      .modify(
-                        _ + (editedBaseElement -> IndexedSeq(
-                          resolved
-                        ))
-                      )
-                  else partialResult
-                  end if
-                case (partialResult, _) => partialResult
-              }
-            case _ => default
-          end match
+          default
+            .focus(_.migrationsBySource)
+            .modify(
+              _ + (editedBaseElement -> Migration.PlainMove(editedRightElement))
+            )
         end leftEdit
 
         override def rightEdit(
@@ -487,43 +417,15 @@ class MatchesContext[Element](
             .focus(_.moveDestinationsReport)
             .modify(editElements.foldLeft(_)(_ rightMoveOf _))
 
-          val matches = matchesFor(editedBaseElement).toSeq
+          logger.debug(
+            s"Right edit of ${pprintCustomised(editedBaseElement)} taken as source of right move."
+          )
 
-          matches match
-            case Seq(_: AllSides[Element], _*) =>
-              matches.foldLeft(default) {
-                case (
-                      partialResult,
-                      AllSides(
-                        _,
-                        leftElement,
-                        rightElementAtMoveDestination
-                      )
-                    ) if editedLeftElement == leftElement =>
-                  val resolved = resolution(
-                    Some(editedBaseElement),
-                    editedLeftElement,
-                    rightElementAtMoveDestination
-                  )
-
-                  if resolved != rightElementAtMoveDestination then
-                    logger.debug(
-                      s"Right edit at origin of move: also migrating additional minor edit resolution ${pprintCustomised(resolved)} to right move destination ${pprintCustomised(rightElementAtMoveDestination)}."
-                    )
-
-                    partialResult
-                      .focus(_.changesMigratedThroughMotion)
-                      .modify(
-                        _ + (editedBaseElement -> IndexedSeq(
-                          resolved
-                        ))
-                      )
-                  else partialResult
-                  end if
-                case (partialResult, _) => partialResult
-              }
-            case _ => default
-          end match
+          default
+            .focus(_.migrationsBySource)
+            .modify(
+              _ + (editedBaseElement -> Migration.PlainMove(editedLeftElement))
+            )
         end rightEdit
 
         override def coincidentEdit(
@@ -546,38 +448,26 @@ class MatchesContext[Element](
             // handles it perfectly well, as the left and right contributions to
             // the match are *incoming* moves, so there is nothing to migrate.
             case Seq(_: BaseAndLeft[Element], _*) =>
-              matches.foldLeft(default) {
-                case (
-                      result,
-                      BaseAndLeft(_, leftElementAtMoveDestination)
-                    ) =>
-                  logger.debug(
-                    s"Coincident edit at origin of move: migrating deletion to left move destination ${pprintCustomised(leftElementAtMoveDestination)}."
-                  )
+              logger.debug(
+                s"Coincident edit of ${pprintCustomised(editedElement)} taken as source of left move; migrating deletion."
+              )
 
-                  result
-                    .focus(_.changesMigratedThroughMotion)
-                    .modify(
-                      _ + (editedElement -> IndexedSeq.empty)
-                    )
-              }
+              default
+                .focus(_.migrationsBySource)
+                .modify(
+                  _ + (editedElement -> Migration.Change(IndexedSeq.empty))
+                )
 
             case Seq(_: BaseAndRight[Element], _*) =>
-              matches.foldLeft(default) {
-                case (
-                      result,
-                      BaseAndRight(_, rightElementAtMoveDestination)
-                    ) =>
-                  logger.debug(
-                    s"Coincident edit at origin of move: migrating deletion to right move destination ${pprintCustomised(rightElementAtMoveDestination)}."
-                  )
+              logger.debug(
+                s"Coincident edit of ${pprintCustomised(editedElement)} taken as source of right move; migrating deletion."
+              )
 
-                  result
-                    .focus(_.changesMigratedThroughMotion)
-                    .modify(
-                      _ + (editedElement -> IndexedSeq.empty)
-                    )
-              }
+              default
+                .focus(_.migrationsBySource)
+                .modify(
+                  _ + (editedElement -> Migration.Change(IndexedSeq.empty))
+                )
 
             case Seq() =>
               default
@@ -635,7 +525,7 @@ class MatchesContext[Element](
                   )(leftInsertion)
 
                   logger.debug(
-                    s"Conflict at origin of moves on both sides: resolved as a coincident deletion of ${pprintCustomised(baseElement)} and a left insertion of ${pprintCustomised(leftElements)}."
+                    s"Conflict resolved - coincident deletion of ${pprintCustomised(baseElement)} taken as source of moves on both side and a left insertion of ${pprintCustomised(leftElements)}."
                   )
 
                   withLeftInsertions
@@ -647,24 +537,15 @@ class MatchesContext[Element](
                       coreMergeAlgebra.coincidentDeletion(_, baseElement)
                     )
 
-                  matches.foldLeft(withCoincidentDeletion) {
-                    case (
-                          result,
-                          BaseAndRight(
-                            _,
-                            rightElementAtMoveDestination
-                          )
-                        ) =>
-                      logger.debug(
-                        s"Conflict at origin of move: resolved as a coincident deletion of ${pprintCustomised(baseElement)}; migrating left edit ${pprintCustomised(leftElements)} to right move destination ${pprintCustomised(rightElementAtMoveDestination)}."
-                      )
+                  logger.debug(
+                    s"Conflict resolved - coincident deletion of ${pprintCustomised(baseElement)} taken as source of right move; migrating left edit ${pprintCustomised(leftElements)}."
+                  )
 
-                      result
-                        .focus(_.changesMigratedThroughMotion)
-                        .modify(
-                          _ + (baseElement -> leftElements)
-                        )
-                  }
+                  withCoincidentDeletion
+                    .focus(_.migrationsBySource)
+                    .modify(
+                      _ + (baseElement -> Migration.Change(leftElements))
+                    )
 
                 case Seq(_: BaseAndLeft[Element], _*) =>
                   val withCoincidentDeletion = result
@@ -678,21 +559,15 @@ class MatchesContext[Element](
                     withCoincidentDeletion
                   )(leftInsertion)
 
-                  matches.foldLeft(withLeftInsertions) {
-                    case (
-                          partialResult,
-                          BaseAndLeft(_, leftElementAtMoveDestination)
-                        ) =>
-                      logger.debug(
-                        s"Conflict at origin of move: resolved as a coincident deletion of ${pprintCustomised(baseElement)} and a left insertion of ${pprintCustomised(leftElements)}; migrating deletion to left move destination ${pprintCustomised(leftElementAtMoveDestination)}."
-                      )
+                  logger.debug(
+                    s"Conflict resolved - coincident deletion of ${pprintCustomised(baseElement)} taken as source of left move and a left insertion of ${pprintCustomised(leftElements)}; migrating deletion."
+                  )
 
-                      partialResult
-                        .focus(_.changesMigratedThroughMotion)
-                        .modify(
-                          _ + (baseElement -> IndexedSeq.empty)
-                        )
-                  }
+                  withLeftInsertions
+                    .focus(_.migrationsBySource)
+                    .modify(
+                      _ + (baseElement -> Migration.Change(IndexedSeq.empty))
+                    )
 
                 case Seq() => default
               end match
@@ -716,7 +591,7 @@ class MatchesContext[Element](
                   )(rightInsertion)
 
                   logger.debug(
-                    s"Conflict at origin of moves on both sides: resolved as a coincident deletion of ${pprintCustomised(baseElement)} and a right insertion of ${pprintCustomised(rightElements)}."
+                    s"Conflict resolved - coincident deletion of ${pprintCustomised(baseElement)} taken as source of moves on both side and a right insertion of ${pprintCustomised(rightElements)}."
                   )
 
                   withRightInsertions
@@ -728,23 +603,15 @@ class MatchesContext[Element](
                       coreMergeAlgebra.coincidentDeletion(_, baseElement)
                     )
 
-                  matches.foldLeft(
-                    withCoincidentDeletion
-                  ) {
-                    case (
-                          result,
-                          BaseAndLeft(_, leftElementAtMoveDestination)
-                        ) =>
-                      logger.debug(
-                        s"Conflict at origin of move: resolved as a coincident deletion of ${pprintCustomised(baseElement)}; migrating right edit ${pprintCustomised(rightElements)} to left move destination ${pprintCustomised(leftElementAtMoveDestination)}."
-                      )
+                  logger.debug(
+                    s"Conflict resolved - coincident deletion of ${pprintCustomised(baseElement)} taken as source of left move; migrating right edit ${pprintCustomised(rightElements)}."
+                  )
 
-                      result
-                        .focus(_.changesMigratedThroughMotion)
-                        .modify(
-                          _ + (baseElement -> rightElements)
-                        )
-                  }
+                  withCoincidentDeletion
+                    .focus(_.migrationsBySource)
+                    .modify(
+                      _ + (baseElement -> Migration.Change(rightElements))
+                    )
 
                 case Seq(_: BaseAndRight[Element], _*) =>
                   val withCoincidentDeletion = result
@@ -758,24 +625,15 @@ class MatchesContext[Element](
                     withCoincidentDeletion
                   )(rightInsertion)
 
-                  matches.foldLeft(withRightInsertions) {
-                    case (
-                          partialResult,
-                          BaseAndRight(
-                            _,
-                            rightElementAtMoveDestination
-                          )
-                        ) =>
-                      logger.debug(
-                        s"Conflict at origin of move: resolved as a coincident deletion of ${pprintCustomised(baseElement)} and a right insertion of ${pprintCustomised(rightElements)}; migrating deletion to right move destination ${pprintCustomised(rightElementAtMoveDestination)}."
-                      )
+                  logger.debug(
+                    s"Conflict resolved - coincident deletion of ${pprintCustomised(baseElement)} taken as source of right move and a right insertion of ${pprintCustomised(rightElements)}; migrating deletion."
+                  )
 
-                      partialResult
-                        .focus(_.changesMigratedThroughMotion)
-                        .modify(
-                          _ + (baseElement -> IndexedSeq.empty)
-                        )
-                  }
+                  withRightInsertions
+                    .focus(_.migrationsBySource)
+                    .modify(
+                      _ + (baseElement -> Migration.Change(IndexedSeq.empty))
+                    )
 
                 case Seq() => default
               end match
@@ -805,21 +663,15 @@ class MatchesContext[Element](
                     withCoincidentDeletion
                   )(leftInsertion)
 
-                  matches.foldLeft(withLeftInsertions) {
-                    case (
-                          partialResult,
-                          BaseAndLeft(_, leftElementAtMoveDestination)
-                        ) =>
-                      logger.debug(
-                        s"Conflict at origin of move: resolved as a coincident deletion of ${pprintCustomised(baseElement)} and a left insertion of ${pprintCustomised(leftElements)}; migrating right edit ${pprintCustomised(rightElements)} to left move destination ${pprintCustomised(leftElementAtMoveDestination)}."
-                      )
+                  logger.debug(
+                    s"Conflict resolved - coincident deletion of ${pprintCustomised(baseElement)} taken as source of left move and a left insertion of ${pprintCustomised(leftElements)}; migrating right edit ${pprintCustomised(rightElements)}."
+                  )
 
-                      partialResult
-                        .focus(_.changesMigratedThroughMotion)
-                        .modify(
-                          _ + (baseElement -> rightElements)
-                        )
-                  }
+                  withLeftInsertions
+                    .focus(_.migrationsBySource)
+                    .modify(
+                      _ + (baseElement -> Migration.Change(rightElements))
+                    )
 
                 case Seq(_: BaseAndRight[Element], _*) =>
                   val withCoincidentDeletion = result
@@ -833,24 +685,15 @@ class MatchesContext[Element](
                     withCoincidentDeletion
                   )(rightInsertion)
 
-                  matches.foldLeft(withRightInsertions) {
-                    case (
-                          partialResult,
-                          BaseAndRight(
-                            _,
-                            rightElementAtMoveDestination
-                          )
-                        ) =>
-                      logger.debug(
-                        s"Conflict at origin of move: resolved as a coincident deletion of ${pprintCustomised(baseElement)} and a right insertion of ${pprintCustomised(rightElements)}; migrating left edit ${pprintCustomised(leftElements)} to right move destination ${pprintCustomised(rightElementAtMoveDestination)}."
-                      )
+                  logger.debug(
+                    s"Conflict resolved - coincident deletion of ${pprintCustomised(baseElement)} taken as source of right move and a right insertion of ${pprintCustomised(rightElements)}; migrating left edit ${pprintCustomised(leftElements)}."
+                  )
 
-                      partialResult
-                        .focus(_.changesMigratedThroughMotion)
-                        .modify(
-                          _ + (baseElement -> leftElements)
-                        )
-                  }
+                  withRightInsertions
+                    .focus(_.migrationsBySource)
+                    .modify(
+                      _ + (baseElement -> Migration.Change(leftElements))
+                    )
 
                 case Seq() => default
               end match

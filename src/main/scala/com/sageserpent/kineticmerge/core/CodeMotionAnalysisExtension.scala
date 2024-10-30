@@ -91,12 +91,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       ) =
         paths.foldLeft(
           Map.empty[Path, MergeResult[Section[Element]]],
-          Iterable.empty[
-            (
-                Section[Element],
-                IndexedSeq[Section[Element]]
-            )
-          ],
+          Map.empty[Section[Element], Migration],
           emptyReport,
           Vector.empty[InsertionsAtPath],
           Set.empty[Section[Element]]
@@ -167,8 +162,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     ]] =
                   mergeOf(mergeAlgebra =
                     MergeResultDetectingMotion.mergeAlgebra(
-                      coreMergeAlgebra = MergeResult.mergeAlgebra(resolution),
-                      resolution
+                      coreMergeAlgebra = MergeResult.mergeAlgebra(resolution)
                     )
                   )(
                     base = optionalBaseSections.getOrElse(IndexedSeq.empty),
@@ -178,7 +172,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
                 (
                   mergeResultsByPath + (path -> mergedSectionsResult.coreMergeResult),
-                  changesMigratedThroughMotion ++ mergedSectionsResult.changesMigratedThroughMotion,
+                  changesMigratedThroughMotion ++ mergedSectionsResult.migrationsBySource,
                   moveDestinationsReport.mergeWith(
                     mergedSectionsResult.moveDestinationsReport
                   ),
@@ -222,7 +216,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           .by[InsertionSplice, Seq[Section[Element]]](_.insertions)
           .orElseBy(_.numberOfSkipsToTheAnchor)
 
-      def uniqueItemsFrom[Item](
+      def uniqueSortedItemsFrom[Item](
           items: collection.Set[Item]
       )(using itemOrdering: Ordering[Item]): List[Item] =
         require(items.nonEmpty)
@@ -241,7 +235,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         assume(result.nonEmpty)
 
         result
-      end uniqueItemsFrom
+      end uniqueSortedItemsFrom
 
       enum Anchoring:
         case Predecessor
@@ -431,33 +425,45 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           path: Path,
           mergeResult: MergeResult[Section[Element]]
       ): (Path, MergeResult[Section[Element]]) =
-        val potentialValidDestinationsForMigratingChangesTo =
-          moveDestinationsReport.moveDestinationsByMatches.values
-            .filterNot(_.isDivergent)
-            .flatMap(moveDestinations =>
-              // NOTE: coincident move destinations can't pick up edits as there
-              // would be no side to contribute the edit; instead, both of them
-              // would contribute a move.
-              moveDestinations.left ++ moveDestinations.right
-            )
-            .toSet
-
-        val vettedChangesMigratedThroughMotion =
-          MultiDict.from(changesMigratedThroughMotion.filter {
-            case (potentialDestination, _) =>
-              potentialValidDestinationsForMigratingChangesTo.contains(
-                potentialDestination
-              )
-          })
-
         def substituteFor(
             section: Section[Element]
         ): IndexedSeq[Section[Element]] =
-          val migratedChanges = vettedChangesMigratedThroughMotion
-            .get(section)
+          // TODO: there is no consultation of the move destinations - the old
+          // vetting code has gone. Is this really OK?
+          val migratedChanges =
+            matchesFor(section).flatMap {
+              case Match.BaseAndLeft(baseSection, _) =>
+                changesMigratedThroughMotion.get(baseSection).map {
+                  case Migration.Change(change) => change
+                }
+              case Match.BaseAndRight(baseSection, _) =>
+                changesMigratedThroughMotion.get(baseSection).map {
+                  case Migration.Change(change) => change
+                }
+              case Match.LeftAndRight(_, _) => IndexedSeq.empty
+              case Match.AllSides(baseSection, leftSection, rightSection) =>
+                changesMigratedThroughMotion.get(baseSection).map {
+                  case Migration.PlainMove(
+                        elementOnTheOppositeSideToTheMoveDestination
+                      ) =>
+                    if elementOnTheOppositeSideToTheMoveDestination == leftSection || elementOnTheOppositeSideToTheMoveDestination == rightSection
+                    then
+                      val resolved =
+                        resolution(Some(baseSection), leftSection, rightSection)
+                      if resolved != section then
+                        logger.debug(
+                          s"Applying minor edit resolution ${pprintCustomised(resolved)} at move destination ${pprintCustomised(section)}"
+                        )
+                        IndexedSeq(resolved)
+                      else IndexedSeq(section)
+                      end if
+                    else IndexedSeq.empty
+                  case Migration.Change(change) => change
+                }
+            }
 
           if migratedChanges.nonEmpty then
-            val uniqueMigratedChanges = uniqueItemsFrom(migratedChanges)
+            val uniqueMigratedChanges = uniqueSortedItemsFrom(migratedChanges)
 
             val migratedChange: IndexedSeq[Section[Element]] =
               uniqueMigratedChanges match
@@ -566,7 +572,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 val precedingInsertionSplice =
                   Option.when(precedingMigratedInsertionSplices.nonEmpty) {
                     val uniqueInsertionSplices =
-                      uniqueItemsFrom(precedingMigratedInsertionSplices)
+                      uniqueSortedItemsFrom(precedingMigratedInsertionSplices)
 
                     uniqueInsertionSplices match
                       case head :: Nil => head
@@ -597,7 +603,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 val succeedingInsertionSplice =
                   Option.when(succeedingMigratedInsertionSplices.nonEmpty) {
                     val uniqueInsertionSplices =
-                      uniqueItemsFrom(succeedingMigratedInsertionSplices)
+                      uniqueSortedItemsFrom(succeedingMigratedInsertionSplices)
 
                     uniqueInsertionSplices match
                       case head :: Nil => head

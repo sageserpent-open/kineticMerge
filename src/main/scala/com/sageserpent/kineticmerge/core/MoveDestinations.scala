@@ -14,7 +14,8 @@ import monocle.syntax.all.*
   * possibilities. Divergent and ambiguous.
   *
   * @param sources
-  *   Sources of the moves.
+  *   Sources of the moves - these are taken from the <b>base</b> side of the
+  *   merge.
   * @param left
   *   Destinations on the left hand side of the merge.
   * @param right

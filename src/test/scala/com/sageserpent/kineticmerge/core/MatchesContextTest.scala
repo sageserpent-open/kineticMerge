@@ -6,19 +6,9 @@ import com.sageserpent.americium.junit5.{DynamicTests, given}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.MatchesContextTest.*
 import com.sageserpent.kineticmerge.core.MatchesContextTest.Operation.*
-import com.sageserpent.kineticmerge.core.MatchesContextTest.ResolutionOutcome.SomethingElseChosen
 import com.sageserpent.kineticmerge.core.ResolutionContracts.*
-import eu.timepit.refined.api.Refined
-import eu.timepit.refined.numeric.Positive
-import eu.timepit.refined.refineV
 import org.junit.jupiter.api.{Test, TestFactory}
 
-// NOTE: the majority of the tests use `guardedCoinFlippingResolution` as a stub; this emphasizes
-// the independence of the tests' expected outcomes from the behaviour of the resolution.
-// NOTE: the merge algebra furnished by the `MatchesContext` only tracks *incoming* moves, so any
-// outgoing moves aren't included in test expectations; they only participate in the test setup. This
-// is in contrast to noting edit and deletion migrations, where the migration has to picked up at the
-// move source.
 class MatchesContextTest:
   @TestFactory
   def ourMoveDestinationInsertion: DynamicTests =
@@ -52,10 +42,7 @@ class MatchesContextTest:
         MatchesContext(
           matchesFor(matchesByElement)
         ).MergeResultDetectingMotion
-          .mergeAlgebra(
-            coreMergeAlgebra = auditingCoreMergeAlgebra,
-            guardedCoinFlippingResolution
-          )
+          .mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -130,11 +117,7 @@ class MatchesContextTest:
       val mergeAlgebra =
         MatchesContext(
           matchesFor(matchesByElement)
-        ).MergeResultDetectingMotion
-          .mergeAlgebra(
-            auditingCoreMergeAlgebra,
-            guardedCoinFlippingResolution
-          )
+        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -216,10 +199,7 @@ class MatchesContextTest:
 
       val mergeAlgebra =
         matchesContext.MergeResultDetectingMotion
-          .mergeAlgebra(
-            auditingCoreMergeAlgebra,
-            guardedCoinFlippingResolution
-          )
+          .mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -343,10 +323,7 @@ class MatchesContextTest:
 
       val mergeAlgebra =
         matchesContext.MergeResultDetectingMotion
-          .mergeAlgebra(
-            auditingCoreMergeAlgebra,
-            guardedCoinFlippingResolution
-          )
+          .mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -401,8 +378,8 @@ class MatchesContextTest:
       )
 
       assert(
-        Set(IndexedSeq.empty) == mergeResult.changesMigratedThroughMotion
-          .get(baseOutgoingMoveSourceElement)
+        Migration.Change(IndexedSeq.empty) == mergeResult
+          .migrationsBySource(baseOutgoingMoveSourceElement)
       )
 
       val Seq((matches, moveDestinations)) =
@@ -468,10 +445,7 @@ class MatchesContextTest:
 
       val mergeAlgebra =
         matchesContext.MergeResultDetectingMotion
-          .mergeAlgebra(
-            auditingCoreMergeAlgebra,
-            guardedCoinFlippingResolution
-          )
+          .mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -596,10 +570,7 @@ class MatchesContextTest:
 
       val mergeAlgebra =
         matchesContext.MergeResultDetectingMotion
-          .mergeAlgebra(
-            auditingCoreMergeAlgebra,
-            guardedCoinFlippingResolution
-          )
+          .mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -654,10 +625,9 @@ class MatchesContextTest:
       )
 
       assert(
-        Set(
+        Migration.Change(
           IndexedSeq(theirSideEditElement)
-        ) == mergeResult.changesMigratedThroughMotion
-          .get(baseOutgoingMoveSourceElement)
+        ) == mergeResult.migrationsBySource(baseOutgoingMoveSourceElement)
       )
 
       val Seq((matches, moveDestinations)) =
@@ -715,20 +685,19 @@ class MatchesContextTest:
 
       given Eq[Element] = matchesByElement.equivalent
 
+      val matchesContext = MatchesContext(matchesFor(matchesByElement))
+
       val mergeAlgebra =
-        MatchesContext(
-          matchesFor(matchesByElement)
-        ).MergeResultDetectingMotion
-          .mergeAlgebra(
-            auditingCoreMergeAlgebra,
-            guardedCoinFlippingResolution
-          )
+        matchesContext.MergeResultDetectingMotion
+          .mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         mergeAlgebra.coincidentDeletion(
           mergeAlgebra.empty,
           deletedElement = baseOutgoingMoveSourceElement
         )
+
+      import matchesContext.*
 
       assert(
         Vector(
@@ -737,8 +706,8 @@ class MatchesContextTest:
       )
 
       assert(
-        Set(IndexedSeq.empty) == mergeResult.changesMigratedThroughMotion
-          .get(baseOutgoingMoveSourceElement)
+        Migration.Change(IndexedSeq.empty) == mergeResult
+          .migrationsBySource(baseOutgoingMoveSourceElement)
       )
     }
   end coincidentDeletionWhereBaseHasMovedAwayOnOurSide
@@ -773,13 +742,11 @@ class MatchesContextTest:
 
       given Eq[Element] = matchesByElement.equivalent
 
+      val matchesContext = MatchesContext(matchesFor(matchesByElement))
+
       val mergeAlgebra =
-        MatchesContext(
-          matchesFor(matchesByElement)
-        ).MergeResultDetectingMotion.mergeAlgebra(
-          auditingCoreMergeAlgebra,
-          guardedCoinFlippingResolution
-        )
+        matchesContext.MergeResultDetectingMotion
+          .mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -797,6 +764,8 @@ class MatchesContextTest:
             rightEditElements = IndexedSeq(theirSideEditElement)
           )
 
+      import matchesContext.*
+
       assert(
         Vector(
           CoincidentDeletion(baseOutgoingMoveSourceElement)
@@ -804,10 +773,9 @@ class MatchesContextTest:
       )
 
       assert(
-        Set(
+        Migration.Change(
           IndexedSeq(theirSideEditElement)
-        ) == mergeResult.changesMigratedThroughMotion
-          .get(baseOutgoingMoveSourceElement)
+        ) == mergeResult.migrationsBySource(baseOutgoingMoveSourceElement)
       )
     }
   end ourDeletionVersusTheirEditConflictWhereBaseHasMovedAwayOnOurSide
@@ -848,10 +816,7 @@ class MatchesContextTest:
 
       val mergeAlgebra =
         matchesContext.MergeResultDetectingMotion
-          .mergeAlgebra(
-            auditingCoreMergeAlgebra,
-            guardedCoinFlippingResolution
-          )
+          .mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -904,8 +869,8 @@ class MatchesContextTest:
       )
 
       assert(
-        Set(IndexedSeq.empty) == mergeResult.changesMigratedThroughMotion
-          .get(baseOutgoingMoveSourceElement)
+        Migration.Change(IndexedSeq.empty) == mergeResult
+          .migrationsBySource(baseOutgoingMoveSourceElement)
       )
     }
   end ourEditVersusTheirDeletionConflictWhereBaseHasMovedAwayOnOurSide
@@ -947,10 +912,7 @@ class MatchesContextTest:
 
       val mergeAlgebra =
         matchesContext.MergeResultDetectingMotion
-          .mergeAlgebra(
-            auditingCoreMergeAlgebra,
-            guardedCoinFlippingResolution
-          )
+          .mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -1003,10 +965,9 @@ class MatchesContextTest:
       )
 
       assert(
-        Set(
+        Migration.Change(
           IndexedSeq(theirSideEditElement)
-        ) == mergeResult.changesMigratedThroughMotion
-          .get(baseOutgoingMoveSourceElement)
+        ) == mergeResult.migrationsBySource(baseOutgoingMoveSourceElement)
       )
     }
   end ourEditVersusTheirEditConflictWhereBaseHasMovedAwayOnOurSide
@@ -1041,13 +1002,11 @@ class MatchesContextTest:
 
       given Eq[Element] = matchesByElement.equivalent
 
+      val matchesContext = MatchesContext(matchesFor(matchesByElement))
+
       val mergeAlgebra =
-        MatchesContext(
-          matchesFor(matchesByElement)
-        ).MergeResultDetectingMotion.mergeAlgebra(
-          auditingCoreMergeAlgebra,
-          guardedCoinFlippingResolution
-        )
+        matchesContext.MergeResultDetectingMotion
+          .mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -1066,6 +1025,8 @@ class MatchesContextTest:
               ourSideCoincidentEditElement -> theirSideCoincidentEditElement
             )
           )
+
+      import matchesContext.*
 
       // The reasoning here is that a coincident edit, regardless of whether it
       // is part of a match or not, should stand as it is and not have one side
@@ -1095,24 +1056,15 @@ class MatchesContextTest:
       end if
 
       assert(
-        Set(IndexedSeq.empty) == mergeResult.changesMigratedThroughMotion
-          .get(baseOutgoingMoveSourceElement)
+        Migration.Change(IndexedSeq.empty) == mergeResult
+          .migrationsBySource(baseOutgoingMoveSourceElement)
       )
     }
   end coincidentEditWhereBaseHasMovedAwayOnOurSide
 
   @TestFactory
   def ourSideDeletionWhereBaseHasMovedAwayOnOurSide: DynamicTests =
-    (Trials.api.booleans and Trials.api
-      .integers(1, 10)
-      .options
-      .map(
-        _.fold(ifEmpty = ResolutionOutcome.LeftChosen)(unrefined =>
-          ResolutionOutcome.SomethingElseChosen(
-            refineV[Positive].unsafeFrom(unrefined)
-          )
-        )
-      )).withLimit(10).dynamicTests { (mirrorImage, resolutionOutcome) =>
+    Trials.api.booleans.withLimit(10).dynamicTests { mirrorImage =>
       val baseOutgoingMoveSourceElement: Element         = 1
       val ourSideOutgoingMoveDestinationElement: Element = 2
       val theirSideElement: Element                      = 3
@@ -1165,17 +1117,15 @@ class MatchesContextTest:
         matchesByElement.equivalent(lhs, rhs) || spuriousMatchesByElement
           .equivalent(lhs, rhs)
 
-      val resolution = guardedStubResolution(resolutionOutcome, mirrorImage)
+      val matchesContext = MatchesContext((element: Element) =>
+        matchesFor(matchesByElement)(element) union matchesFor(
+          spuriousMatchesByElement
+        )(element)
+      )
 
       val mergeAlgebra =
-        MatchesContext((element: Element) =>
-          matchesFor(matchesByElement)(element) union matchesFor(
-            spuriousMatchesByElement
-          )(element)
-        ).MergeResultDetectingMotion.mergeAlgebra(
-          auditingCoreMergeAlgebra,
-          resolution
-        )
+        matchesContext.MergeResultDetectingMotion
+          .mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -1193,6 +1143,8 @@ class MatchesContextTest:
               deletedRightElement = theirSideElement
             )
 
+      import matchesContext.*
+
       if mirrorImage then
         assert(
           Vector(
@@ -1207,56 +1159,16 @@ class MatchesContextTest:
         )
       end if
 
-      resolutionOutcome match
-        case ResolutionOutcome.LeftChosen =>
-          assert(
-            !mergeResult.changesMigratedThroughMotion
-              .containsKey(baseOutgoingMoveSourceElement)
-          )
-        case ResolutionOutcome.SomethingElseChosen(offset) =>
-          if mirrorImage then
-            assert(
-              Set(
-                IndexedSeq(
-                  resolution(
-                    Some(baseOutgoingMoveSourceElement),
-                    theirSideElement,
-                    ourSideOutgoingMoveDestinationElement
-                  )
-                )
-              ) == mergeResult.changesMigratedThroughMotion
-                .get(baseOutgoingMoveSourceElement)
-            )
-          else
-            assert(
-              Set(
-                IndexedSeq(
-                  resolution(
-                    Some(baseOutgoingMoveSourceElement),
-                    ourSideOutgoingMoveDestinationElement,
-                    theirSideElement
-                  )
-                )
-              ) == mergeResult.changesMigratedThroughMotion
-                .get(baseOutgoingMoveSourceElement)
-            )
-          end if
-      end match
+      assert(
+        Migration.PlainMove(theirSideElement) == mergeResult
+          .migrationsBySource(baseOutgoingMoveSourceElement)
+      )
     }
   end ourSideDeletionWhereBaseHasMovedAwayOnOurSide
 
   @TestFactory
   def ourSideEditWhereBaseHasMovedAwayOnOurSide: DynamicTests =
-    (Trials.api.booleans and Trials.api
-      .integers(1, 10)
-      .options
-      .map(
-        _.fold(ifEmpty = ResolutionOutcome.LeftChosen)(unrefined =>
-          ResolutionOutcome.SomethingElseChosen(
-            refineV[Positive].unsafeFrom(unrefined)
-          )
-        )
-      )).withLimit(10).dynamicTests { (mirrorImage, resolutionOutcome) =>
+    Trials.api.booleans.withLimit(10).dynamicTests { mirrorImage =>
       val baseOutgoingMoveSourceElement: Element         = 1
       val ourSideOutgoingMoveDestinationElement: Element = 2
       val ourSideEditElement: Element                    = 3
@@ -1310,17 +1222,15 @@ class MatchesContextTest:
         matchesByElement.equivalent(lhs, rhs) || spuriousMatchesByElement
           .equivalent(lhs, rhs)
 
-      val resolution = guardedStubResolution(resolutionOutcome, mirrorImage)
+      val matchesContext = MatchesContext((element: Element) =>
+        matchesFor(matchesByElement)(element) union matchesFor(
+          spuriousMatchesByElement
+        )(element)
+      )
 
       val mergeAlgebra =
-        MatchesContext((element: Element) =>
-          matchesFor(matchesByElement)(element) union matchesFor(
-            spuriousMatchesByElement
-          )(element)
-        ).MergeResultDetectingMotion.mergeAlgebra(
-          auditingCoreMergeAlgebra,
-          resolution
-        )
+        matchesContext.MergeResultDetectingMotion
+          .mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -1337,6 +1247,8 @@ class MatchesContextTest:
             editedRightElement = theirSideElement,
             editElements = IndexedSeq(ourSideEditElement)
           )
+
+      import matchesContext.*
 
       if mirrorImage then
         assert(
@@ -1360,41 +1272,10 @@ class MatchesContextTest:
         )
       end if
 
-      resolutionOutcome match
-        case ResolutionOutcome.LeftChosen =>
-          assert(
-            !mergeResult.changesMigratedThroughMotion
-              .containsKey(baseOutgoingMoveSourceElement)
-          )
-        case ResolutionOutcome.SomethingElseChosen(offset) =>
-          if mirrorImage then
-            assert(
-              Set(
-                IndexedSeq(
-                  resolution(
-                    Some(baseOutgoingMoveSourceElement),
-                    theirSideElement,
-                    ourSideOutgoingMoveDestinationElement
-                  )
-                )
-              ) == mergeResult.changesMigratedThroughMotion
-                .get(baseOutgoingMoveSourceElement)
-            )
-          else
-            assert(
-              Set(
-                IndexedSeq(
-                  resolution(
-                    Some(baseOutgoingMoveSourceElement),
-                    ourSideOutgoingMoveDestinationElement,
-                    theirSideElement
-                  )
-                )
-              ) == mergeResult.changesMigratedThroughMotion
-                .get(baseOutgoingMoveSourceElement)
-            )
-          end if
-      end match
+      assert(
+        Migration.PlainMove(theirSideElement) == mergeResult
+          .migrationsBySource(baseOutgoingMoveSourceElement)
+      )
     }
   end ourSideEditWhereBaseHasMovedAwayOnOurSide
 
@@ -1431,10 +1312,7 @@ class MatchesContextTest:
       val mergeAlgebra =
         MatchesContext(
           matchesFor(matchesByElement)
-        ).MergeResultDetectingMotion.mergeAlgebra(
-          auditingCoreMergeAlgebra,
-          guardedCoinFlippingResolution
-        )
+        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         mergeAlgebra.coincidentDeletion(
@@ -1449,8 +1327,8 @@ class MatchesContextTest:
       )
 
       assert(
-        !mergeResult.changesMigratedThroughMotion
-          .containsKey(baseOutgoingMoveSourceElement)
+        !mergeResult.migrationsBySource
+          .contains(baseOutgoingMoveSourceElement)
       )
     }
   end coincidentDeletionWhereBaseHasMovedAwayOnBothSides
@@ -1490,10 +1368,7 @@ class MatchesContextTest:
       val mergeAlgebra =
         MatchesContext(
           matchesFor(matchesByElement)
-        ).MergeResultDetectingMotion.mergeAlgebra(
-          auditingCoreMergeAlgebra,
-          guardedCoinFlippingResolution
-        )
+        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -1528,8 +1403,8 @@ class MatchesContextTest:
       end if
 
       assert(
-        !mergeResult.changesMigratedThroughMotion
-          .containsKey(baseOutgoingMoveSourceElement)
+        !mergeResult.migrationsBySource
+          .contains(baseOutgoingMoveSourceElement)
       )
     }
   end ourEditVersusTheirDeletionConflictWhereBaseHasMovedAwayOnBothSides
@@ -1570,10 +1445,7 @@ class MatchesContextTest:
       val mergeAlgebra =
         MatchesContext(
           matchesFor(matchesByElement)
-        ).MergeResultDetectingMotion.mergeAlgebra(
-          auditingCoreMergeAlgebra,
-          guardedCoinFlippingResolution
-        )
+        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -1614,14 +1486,14 @@ class MatchesContextTest:
       end if
 
       assert(
-        !mergeResult.changesMigratedThroughMotion
-          .containsKey(baseOutgoingMoveSourceElement)
+        !mergeResult.migrationsBySource
+          .contains(baseOutgoingMoveSourceElement)
       )
     }
   end ourEditVersusTheirEditConflictWhereBaseHasMovedAwayOnBothSides
 
   @Test
-  def leftInsertion: Unit =
+  def leftInsertion(): Unit =
     val ourSideInsertedElement: Element = 1
 
     val matchesByElement = Map.empty[Element, Match[Element]]
@@ -1632,8 +1504,7 @@ class MatchesContextTest:
 
     val mergeAlgebra =
       matchesContext.MergeResultDetectingMotion.mergeAlgebra(
-        auditingCoreMergeAlgebra,
-        guardedCoinFlippingResolution
+        auditingCoreMergeAlgebra
       )
 
     val mergeResult =
@@ -1652,7 +1523,7 @@ class MatchesContextTest:
   end leftInsertion
 
   @Test
-  def rightInsertion: Unit =
+  def rightInsertion(): Unit =
     val theirSideInsertedElement: Element = 1
 
     val matchesByElement = Map.empty[Element, Match[Element]]
@@ -1663,8 +1534,7 @@ class MatchesContextTest:
 
     val mergeAlgebra =
       matchesContext.MergeResultDetectingMotion.mergeAlgebra(
-        auditingCoreMergeAlgebra,
-        guardedCoinFlippingResolution
+        auditingCoreMergeAlgebra
       )
 
     val mergeResult =
@@ -1715,10 +1585,7 @@ class MatchesContextTest:
       val mergeAlgebra =
         MatchesContext(
           matchesFor(matchesByElement)
-        ).MergeResultDetectingMotion.mergeAlgebra(
-          auditingCoreMergeAlgebra,
-          guardedCoinFlippingResolution
-        )
+        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -1749,8 +1616,8 @@ class MatchesContextTest:
       end if
 
       assert(
-        !mergeResult.changesMigratedThroughMotion
-          .containsKey(incomingMoveSourceElement)
+        !mergeResult.migrationsBySource
+          .contains(incomingMoveSourceElement)
       )
 
       val Seq((matches, moveDestinations)) =
@@ -1818,10 +1685,7 @@ class MatchesContextTest:
       val mergeAlgebra =
         MatchesContext(
           matchesFor(matchesByElement)
-        ).MergeResultDetectingMotion.mergeAlgebra(
-          auditingCoreMergeAlgebra,
-          guardedCoinFlippingResolution
-        )
+        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
 
       val mergeResult =
         if mirrorImage then
@@ -1866,8 +1730,8 @@ class MatchesContextTest:
       end if
 
       assert(
-        !mergeResult.changesMigratedThroughMotion
-          .containsKey(incomingMoveSourceElement)
+        !mergeResult.migrationsBySource
+          .contains(incomingMoveSourceElement)
       )
 
       val Seq((matches, moveDestinations)) =
@@ -1913,32 +1777,6 @@ object MatchesContextTest:
     .get(element)
     .fold(ifEmpty = Set.empty[Match[Element]])(Set(_))
 
-  def guardedStubResolution(
-      resolutionOutcome: ResolutionOutcome,
-      mirrorImage: Boolean
-  )(using
-      Eq[Element]
-  ): Resolution[Element] = new StubResolution(resolutionOutcome, mirrorImage)
-    with ResolutionContracts[Element] {}
-
-  trait StubResolution(
-      resolutionOutcome: ResolutionOutcome,
-      mirrorImage: Boolean
-  ) extends Resolution[Element]:
-    override def apply(
-        base: Option[Element],
-        left: Element,
-        right: Element
-    ): Element =
-      val mirroredLeft = if mirrorImage then right else left
-
-      resolutionOutcome match
-        case ResolutionOutcome.LeftChosen => mirroredLeft
-        case SomethingElseChosen(offset)  => mirroredLeft + offset.value
-      end match
-    end apply
-  end StubResolution
-
   enum Operation[X]:
     case Preservation(
         preservedBaseElement: X,
@@ -1969,11 +1807,6 @@ object MatchesContextTest:
     )
 
   end Operation
-
-  enum ResolutionOutcome:
-    case LeftChosen
-    case SomethingElseChosen(offset: Int Refined Positive)
-  end ResolutionOutcome
 
   object auditingCoreMergeAlgebra extends merge.MergeAlgebra[Audit, Element]:
     override def empty: Audit[Element] = Vector.empty
