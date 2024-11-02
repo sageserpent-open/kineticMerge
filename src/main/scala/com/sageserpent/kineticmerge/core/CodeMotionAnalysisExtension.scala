@@ -425,80 +425,99 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           path: Path,
           mergeResult: MergeResult[Section[Element]]
       ): (Path, MergeResult[Section[Element]]) =
+        val potentialValidDestinationsForMigratingChangesTo =
+          moveDestinationsReport.moveDestinationsByMatches.values
+            // NOTE: divergent move destinations can't pick up edits as the
+            // original base content is preserved on either side of the move.
+            .filterNot(_.isDivergent)
+            .flatMap(moveDestinations =>
+              // NOTE: coincident move destinations can't pick up edits as there
+              // would be no side to contribute the edit; instead, both of them
+              // would contribute a move.
+              moveDestinations.left ++ moveDestinations.right
+            )
+            .toSet
+
         def substituteFor(
             section: Section[Element]
         ): IndexedSeq[Section[Element]] =
-          // TODO: there is no consultation of the move destinations - the old
-          // vetting code has gone. Is this really OK?
-          val migratedChanges =
-            matchesFor(section).flatMap {
-              case Match.BaseAndLeft(baseSection, _) =>
-                changesMigratedThroughMotion.get(baseSection).map {
-                  case Migration.Change(change) => change
-                }
-              case Match.BaseAndRight(baseSection, _) =>
-                changesMigratedThroughMotion.get(baseSection).map {
-                  case Migration.Change(change) => change
-                }
-              case Match.LeftAndRight(_, _) => IndexedSeq.empty
-              case Match.AllSides(baseSection, leftSection, rightSection) =>
-                changesMigratedThroughMotion.get(baseSection).map {
-                  case Migration.PlainMove(
-                        elementOnTheOppositeSideToTheMoveDestination
-                      ) =>
-                    if elementOnTheOppositeSideToTheMoveDestination == leftSection || elementOnTheOppositeSideToTheMoveDestination == rightSection
-                    then
-                      val resolved =
-                        resolution(Some(baseSection), leftSection, rightSection)
-                      if resolved != section then
-                        logger.debug(
-                          s"Applying minor edit resolution ${pprintCustomised(resolved)} at move destination ${pprintCustomised(section)}"
-                        )
-                        IndexedSeq(resolved)
-                      else IndexedSeq(section)
-                      end if
-                    else IndexedSeq.empty
-                  case Migration.Change(change) => change
-                }
-            }
+          if potentialValidDestinationsForMigratingChangesTo.contains(section)
+          then
+            val migratedChanges =
+              matchesFor(section).flatMap {
+                case Match.BaseAndLeft(baseSection, _) =>
+                  changesMigratedThroughMotion.get(baseSection).map {
+                    case Migration.Change(change) => change
+                  }
+                case Match.BaseAndRight(baseSection, _) =>
+                  changesMigratedThroughMotion.get(baseSection).map {
+                    case Migration.Change(change) => change
+                  }
+                case Match.LeftAndRight(_, _) => IndexedSeq.empty
+                case Match.AllSides(baseSection, leftSection, rightSection) =>
+                  changesMigratedThroughMotion.get(baseSection).flatMap {
+                    case Migration.PlainMove(
+                          elementOnTheOppositeSideToTheMoveDestination
+                        ) =>
+                      Option.when(
+                        elementOnTheOppositeSideToTheMoveDestination == leftSection || elementOnTheOppositeSideToTheMoveDestination == rightSection
+                      ) {
+                        val resolved =
+                          resolution(
+                            Some(baseSection),
+                            leftSection,
+                            rightSection
+                          )
+                        if resolved != section then
+                          logger.debug(
+                            s"Applying minor edit resolution ${pprintCustomised(resolved)} at move destination ${pprintCustomised(section)}"
+                          )
+                          IndexedSeq(resolved)
+                        else IndexedSeq(section)
+                        end if
+                      }
+                    case Migration.Change(change) => Some(change)
+                  }
+              }
 
-          if migratedChanges.nonEmpty then
-            val uniqueMigratedChanges = uniqueSortedItemsFrom(migratedChanges)
+            if migratedChanges.nonEmpty then
+              val uniqueMigratedChanges = uniqueSortedItemsFrom(migratedChanges)
 
-            val migratedChange: IndexedSeq[Section[Element]] =
-              uniqueMigratedChanges match
-                case head :: Nil => head
-                case _ =>
-                  throw new AdmissibleFailure(
-                    s"""
-                       |Multiple potential changes migrated to destination: $section,
-                       |these are:
-                       |${uniqueMigratedChanges
-                        .map(change =>
-                          if change.isEmpty then "DELETION"
-                          else s"EDIT: $change"
-                        )
-                        .zipWithIndex
-                        .map((change, index) => s"${1 + index}. $change")
-                        .mkString("\n")}
-                       |These are from ambiguous matches of text with the destination.
-                       |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${section.size}.
-                        """.stripMargin
-                  )
+              val migratedChange: IndexedSeq[Section[Element]] =
+                uniqueMigratedChanges match
+                  case head :: Nil => head
+                  case _ =>
+                    throw new AdmissibleFailure(
+                      s"""
+                         |Multiple potential changes migrated to destination: $section,
+                         |these are:
+                         |${uniqueMigratedChanges
+                          .map(change =>
+                            if change.isEmpty then "DELETION"
+                            else s"EDIT: $change"
+                          )
+                          .zipWithIndex
+                          .map((change, index) => s"${1 + index}. $change")
+                          .mkString("\n")}
+                         |These are from ambiguous matches of text with the destination.
+                         |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${section.size}.
+                          """.stripMargin
+                    )
 
-            if migratedChange.isEmpty then
-              logger.debug(
-                s"Applying migrated deletion to move destination: ${pprintCustomised(section)}."
-              )
-            else
-              logger.debug(
-                s"Applying migrated edit into ${pprintCustomised(migratedChange)} to move destination: ${pprintCustomised(section)}."
-              )
+              if migratedChange.isEmpty then
+                logger.debug(
+                  s"Applying migrated deletion to move destination: ${pprintCustomised(section)}."
+                )
+              else
+                logger.debug(
+                  s"Applying migrated edit into ${pprintCustomised(migratedChange)} to move destination: ${pprintCustomised(section)}."
+                )
+              end if
+
+              migratedChange
+            else IndexedSeq(section)
             end if
-
-            migratedChange
           else IndexedSeq(section)
-          end if
         end substituteFor
 
         def removeMigratedInsertions(
