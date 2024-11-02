@@ -525,7 +525,7 @@ class MatchesContext[Element](
                   )(leftInsertion)
 
                   logger.debug(
-                    s"Conflict resolved - coincident deletion of ${pprintCustomised(baseElement)} taken as source of moves on both side and a left insertion of ${pprintCustomised(leftElements)}."
+                    s"Conflict resolved - coincident deletion of ${pprintCustomised(baseElement)} taken as source of moves on both sides and a left insertion of ${pprintCustomised(leftElements)}."
                   )
 
                   withLeftInsertions
@@ -591,7 +591,7 @@ class MatchesContext[Element](
                   )(rightInsertion)
 
                   logger.debug(
-                    s"Conflict resolved - coincident deletion of ${pprintCustomised(baseElement)} taken as source of moves on both side and a right insertion of ${pprintCustomised(rightElements)}."
+                    s"Conflict resolved - coincident deletion of ${pprintCustomised(baseElement)} taken as source of moves on both sides and a right insertion of ${pprintCustomised(rightElements)}."
                   )
 
                   withRightInsertions
