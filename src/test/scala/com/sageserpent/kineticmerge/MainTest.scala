@@ -2116,12 +2116,7 @@ class MainTest:
               )(workingDirectory = path)
 
               assert(os.exists(path / renamedFilename))
-              // TODO: ideally we wouldn't get a conflicted merge (outright
-              // deletion versus modification of the original file), but this is
-              // down to factors unrelated to the bug this test exposes - see:
-              // https://github.com/sageserpent-open/kineticMerge/issues/49. For
-              // the time being, comment out the following assertion...
-              // assert(!os.exists(path / originalFilename))
+              assert(!os.exists(path / originalFilename))
             }
           )
           .unsafeRunSync()
