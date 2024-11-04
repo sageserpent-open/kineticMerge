@@ -36,11 +36,13 @@ case class MoveDestinations[Element](
     left.nonEmpty || right.nonEmpty || coincident.nonEmpty
   )
 
-  require(
-    left.intersect(right).isEmpty && left.intersect(sources).isEmpty && right
-      .intersect(sources)
-      .isEmpty
-  )
+  {
+    val disjoint = all
+
+    require(disjoint.intersect(sources).isEmpty)
+
+    require(disjoint.size == left.size + 2 * coincident.size + right.size)
+  }
 
   def all: collection.Set[Element] = coincident.unzip.match
     case (leftHalves, rightHalves) =>
