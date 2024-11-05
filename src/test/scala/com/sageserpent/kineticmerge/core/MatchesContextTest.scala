@@ -1334,6 +1334,92 @@ class MatchesContextTest:
   end coincidentDeletionWhereBaseHasMovedAwayOnBothSides
 
   @TestFactory
+  def coincidentEditWhereBaseHasMovedAwayOnBothSides: DynamicTests =
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val baseOutgoingMoveSourceElement: Element           = 1
+      val ourSideOutgoingMoveDestinationElement: Element   = 2
+      val theirSideOutgoingMoveDestinationElement: Element = 3
+      val ourSideCoincidentEditElement: Element            = 4
+      val theirSideCoincidentEditElement: Element          = 5
+
+      val baseAndBothSidesOutgoingMoveAllSidesMatch =
+        if mirrorImage then
+          Match.AllSides(
+            baseElement = baseOutgoingMoveSourceElement,
+            leftElement = theirSideOutgoingMoveDestinationElement,
+            rightElement = ourSideOutgoingMoveDestinationElement
+          )
+        else
+          Match.AllSides(
+            baseElement = baseOutgoingMoveSourceElement,
+            leftElement = ourSideOutgoingMoveDestinationElement,
+            rightElement = theirSideOutgoingMoveDestinationElement
+          )
+
+      val matchesByElement =
+        Map(
+          baseOutgoingMoveSourceElement -> baseAndBothSidesOutgoingMoveAllSidesMatch,
+          ourSideOutgoingMoveDestinationElement -> baseAndBothSidesOutgoingMoveAllSidesMatch,
+          theirSideOutgoingMoveDestinationElement -> baseAndBothSidesOutgoingMoveAllSidesMatch
+        )
+
+      given Eq[Element] = matchesByElement.equivalent
+
+      val mergeAlgebra =
+        MatchesContext(
+          matchesFor(matchesByElement)
+        ).MergeResultDetectingMotion.mergeAlgebra(auditingCoreMergeAlgebra)
+
+      val mergeResult =
+        if mirrorImage then
+          mergeAlgebra.coincidentEdit(
+            mergeAlgebra.empty,
+            editedElement = baseOutgoingMoveSourceElement,
+            editElements = IndexedSeq(
+              theirSideCoincidentEditElement -> ourSideCoincidentEditElement
+            )
+          )
+        else
+          mergeAlgebra.coincidentEdit(
+            mergeAlgebra.empty,
+            editedElement = baseOutgoingMoveSourceElement,
+            editElements = IndexedSeq(
+              ourSideCoincidentEditElement -> theirSideCoincidentEditElement
+            )
+          )
+
+      if mirrorImage then
+        assert(
+          Vector(
+            CoincidentEdit(
+              baseOutgoingMoveSourceElement,
+              IndexedSeq(
+                theirSideCoincidentEditElement -> ourSideCoincidentEditElement
+              )
+            )
+          ) == mergeResult.coreMergeResult
+        )
+      else
+        assert(
+          Vector(
+            CoincidentEdit(
+              baseOutgoingMoveSourceElement,
+              IndexedSeq(
+                ourSideCoincidentEditElement -> theirSideCoincidentEditElement
+              )
+            )
+          ) == mergeResult.coreMergeResult
+        )
+      end if
+
+      assert(
+        !mergeResult.migrationsBySource
+          .contains(baseOutgoingMoveSourceElement)
+      )
+    }
+  end coincidentEditWhereBaseHasMovedAwayOnBothSides
+
+  @TestFactory
   def ourEditVersusTheirDeletionConflictWhereBaseHasMovedAwayOnBothSides
       : DynamicTests =
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>

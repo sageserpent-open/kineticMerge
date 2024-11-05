@@ -444,12 +444,16 @@ class MatchesContext[Element](
           val matches = matchesFor(editedElement).toSeq
 
           matches match
-            // NOTE: we're not missing the all-sides case below - the default
-            // handles it perfectly well, as the left and right contributions to
-            // the match are *incoming* moves, so there is nothing to migrate.
+            case Seq(_: AllSides[Section[Element]], _*) =>
+              logger.debug(
+                s"Coincident edit at origin of moves on both sides."
+              )
+
+              default
+
             case Seq(_: BaseAndLeft[Element], _*) =>
               logger.debug(
-                s"Coincident edit of ${pprintCustomised(editedElement)} taken as source of left move; migrating deletion."
+                "Coincident edit of ${pprintCustomised(editedElement)} taken as source of left move; migrating deletion."
               )
 
               default
