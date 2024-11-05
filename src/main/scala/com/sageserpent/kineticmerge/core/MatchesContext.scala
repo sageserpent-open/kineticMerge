@@ -520,9 +520,12 @@ class MatchesContext[Element](
           val matches = matchesFor(editedElement).toSeq
 
           matches match
-            // NOTE: we're not missing the all-sides case below - the default
-            // handles it perfectly well, as the left and right contributions to
-            // the match are *incoming* moves, so there is nothing to migrate.
+            case Seq(_: AllSides[Section[Element]], _*) =>
+              logger.debug(
+                s"Coincident edit at origin of moves on both sides."
+              )
+
+              default
             case Seq(_: BaseAndLeft[Section[Element]], _*) =>
               matches.foldLeft(default) {
                 case (result, BaseAndLeft(_, leftElementAtMoveDestination)) =>
