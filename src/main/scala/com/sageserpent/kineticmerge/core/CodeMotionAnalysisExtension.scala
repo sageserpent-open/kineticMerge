@@ -181,7 +181,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             end match
         }
 
-      val EvaluatedMoves(moveDestinationsReport, destinationPatchesBySource) =
+      val EvaluatedMoves(moveDestinationsReport, substitutions) =
         MoveDestinationsReport.evaluateSpeculativeSourcesAndDestinations(
           speculativeMigrationsBySource,
           speculativeMoveDestinations
@@ -447,13 +447,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         ): IndexedSeq[Section[Element]] =
           if potentialValidDestinationsForMigratingChangesTo.contains(section)
           then
-            val migratedChanges =
-              val sources = matchesFor(section).flatMap(_.base)
-
-              sources
-                .flatMap(destinationPatchesBySource.get)
-                .map(_.apply(section))
-            end migratedChanges
+            val migratedChanges = substitutions.get(section)
 
             if migratedChanges.nonEmpty then
               val uniqueMigratedChanges = uniqueSortedItemsFrom(migratedChanges)

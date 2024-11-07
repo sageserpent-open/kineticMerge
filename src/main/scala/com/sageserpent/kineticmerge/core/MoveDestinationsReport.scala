@@ -78,62 +78,62 @@ object MoveDestinationsReport:
         source -> new MoveDestinations(destinations)
       )
 
-    val destinationPatchesBySource
-        : Map[Element, Element => IndexedSeq[Element]] =
-      moveDestinationsBySource.flatMap((source, moveDestinations) =>
-        (if !moveDestinations.isDivergent && moveDestinations.coincident.isEmpty
-         then
-           val contentMigration = speculativeMigrationsBySource(source)
+    val substitutions: MultiDict[Element, IndexedSeq[Element]] =
+      MultiDict.from(
+        moveDestinationsBySource.toSeq.flatMap((source, moveDestinations) =>
+          if !moveDestinations.isDivergent
+          then
+            val contentMigration = speculativeMigrationsBySource(source)
 
-           if moveDestinations.left.nonEmpty then
-             contentMigration match
-               case PlainMove(elementOnTheOppositeSideToTheMoveDestination) =>
-                 Some((destinationElement: Element) =>
-                   IndexedSeq(
-                     resolution(
-                       Some(source),
-                       destinationElement,
-                       elementOnTheOppositeSideToTheMoveDestination
-                     )
-                   )
-                 )
-               case ContentMigration.Edit(_, rightContent) =>
-                 Some((_: Element) => rightContent)
-               case ContentMigration.Deletion() =>
-                 Some((_: Element) => IndexedSeq.empty)
-           else if moveDestinations.right.nonEmpty then
-             contentMigration match
-               case PlainMove(elementOnTheOppositeSideToTheMoveDestination) =>
-                 Some((destinationElement: Element) =>
-                   IndexedSeq(
-                     resolution(
-                       Some(source),
-                       elementOnTheOppositeSideToTheMoveDestination,
-                       destinationElement
-                     )
-                   )
-                 )
-               case ContentMigration.Edit(leftContent, _) =>
-                 Some((_: Element) => leftContent)
-               case ContentMigration.Deletion() =>
-                 Some((_: Element) => IndexedSeq.empty)
-           else
-             // TODO: this case should be unreachable at runtime, given we've
-             // already excluded having coincident destinations.
-             None
-           end if
-         else None)
-        .map(source -> _)
+            if moveDestinations.left.nonEmpty then
+              contentMigration match
+                case PlainMove(elementOnTheOppositeSideToTheMoveDestination) =>
+                  moveDestinations.left.map(destinationElement =>
+                    destinationElement -> IndexedSeq(
+                      resolution(
+                        Some(source),
+                        destinationElement,
+                        elementOnTheOppositeSideToTheMoveDestination
+                      )
+                    )
+                  )
+                case ContentMigration.Edit(_, rightContent) =>
+                  moveDestinations.left.map(_ -> rightContent)
+                case ContentMigration.Deletion() =>
+                  moveDestinations.left.map(_ -> IndexedSeq.empty)
+            else if moveDestinations.right.nonEmpty then
+              contentMigration match
+                case PlainMove(elementOnTheOppositeSideToTheMoveDestination) =>
+                  moveDestinations.right.map(destinationElement =>
+                    destinationElement -> IndexedSeq(
+                      resolution(
+                        Some(source),
+                        elementOnTheOppositeSideToTheMoveDestination,
+                        destinationElement
+                      )
+                    )
+                  )
+                case ContentMigration.Edit(leftContent, _) =>
+                  moveDestinations.right.map(_ -> leftContent)
+                case ContentMigration.Deletion() =>
+                  moveDestinations.right.map(_ -> IndexedSeq.empty)
+            else
+              assume(moveDestinations.coincident.nonEmpty)
+              Seq.empty
+            end if
+          else Seq.empty
+          end if
+        )
       )
 
     EvaluatedMoves(
       moveDestinationsReport = MoveDestinationsReport(moveDestinationsBySource),
-      destinationPatchesBySource = destinationPatchesBySource
+      substitutions = substitutions
     )
   end evaluateSpeculativeSourcesAndDestinations
 
   case class EvaluatedMoves[Element](
       moveDestinationsReport: MoveDestinationsReport[Element],
-      destinationPatchesBySource: Map[Element, Element => IndexedSeq[Element]]
+      substitutions: MultiDict[Element, IndexedSeq[Element]]
   )
 end MoveDestinationsReport
