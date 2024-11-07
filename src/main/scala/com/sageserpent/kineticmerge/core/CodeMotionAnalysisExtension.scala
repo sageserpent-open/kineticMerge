@@ -3,6 +3,7 @@ package com.sageserpent.kineticmerge.core
 import cats.{Eq, Order}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Sized
+import com.sageserpent.kineticmerge.core.MoveDestinationsReport.EvaluatedMoves
 import com.sageserpent.kineticmerge.core.merge.of as mergeOf
 import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
@@ -24,15 +25,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
   )
     def merge: (
         Map[Path, MergeResult[Element]],
-        MatchesContext[Section[Element]]#MoveDestinationsReport
+        MoveDestinationsReport[Section[Element]]
     ) =
       import codeMotionAnalysis.matchesFor
-
-      val matchesContext = MatchesContext(
-        codeMotionAnalysis.matchesFor
-      )
-
-      import matchesContext.*
 
       given Eq[Section[Element]] with
         /** This is most definitely *not* [[Section.equals]] - we want to use
@@ -58,7 +53,10 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       val paths =
         codeMotionAnalysis.base.keySet ++ codeMotionAnalysis.left.keySet ++ codeMotionAnalysis.right.keySet
 
-      case class InsertionsAtPath(path: Path, insertions: Seq[Insertion])
+      case class InsertionsAtPath(
+          path: Path,
+          insertions: Seq[Insertion[Section[Element]]]
+      )
 
       def resolution(
           baseSection: Option[Section[Element]],
@@ -84,23 +82,23 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
       val (
         mergeResultsByPath,
-        changesMigratedThroughMotion,
-        moveDestinationsReport,
+        speculativeMigrationsBySource,
+        speculativeMoveDestinations,
         insertionsAtPath,
         oneSidedDeletions
       ) =
         paths.foldLeft(
           Map.empty[Path, MergeResult[Section[Element]]],
-          Map.empty[Section[Element], Migration],
-          emptyReport,
+          Map.empty[Section[Element], ContentMigration[Section[Element]]],
+          Set.empty[SpeculativeMoveDestination[Section[Element]]],
           Vector.empty[InsertionsAtPath],
           Set.empty[Section[Element]]
         ) {
           case (
                 (
                   mergeResultsByPath,
-                  changesMigratedThroughMotion,
-                  moveDestinationsReport,
+                  speculativeMigrationsBySource,
+                  speculativeMoveDestinations,
                   insertionsAtPath,
                   oneSidedDeletions
                 ),
@@ -118,9 +116,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   mergeResultsByPath + (path -> FullyMerged(
                     leftSections
                   )),
-                  changesMigratedThroughMotion,
-                  leftSections.foldLeft(moveDestinationsReport)(
-                    _.leftMoveOf(_)
+                  speculativeMigrationsBySource,
+                  leftSections.foldLeft(speculativeMoveDestinations)(
+                    _ + SpeculativeMoveDestination.Left(_)
                   ),
                   insertionsAtPath,
                   oneSidedDeletions
@@ -133,9 +131,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   mergeResultsByPath + (path -> FullyMerged(
                     rightSections
                   )),
-                  changesMigratedThroughMotion,
-                  rightSections.foldLeft(moveDestinationsReport)(
-                    _.rightMoveOf(_)
+                  speculativeMigrationsBySource,
+                  rightSections.foldLeft(speculativeMoveDestinations)(
+                    _ + SpeculativeMoveDestination.Right(_)
                   ),
                   insertionsAtPath,
                   oneSidedDeletions
@@ -172,10 +170,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
                 (
                   mergeResultsByPath + (path -> mergedSectionsResult.coreMergeResult),
-                  changesMigratedThroughMotion ++ mergedSectionsResult.migrationsBySource,
-                  moveDestinationsReport.mergeWith(
-                    mergedSectionsResult.moveDestinationsReport
-                  ),
+                  speculativeMigrationsBySource concat mergedSectionsResult.speculativeMigrationsBySource,
+                  speculativeMoveDestinations union mergedSectionsResult.speculativeMoveDestinations,
                   insertionsAtPath :+ InsertionsAtPath(
                     path,
                     mergedSectionsResult.insertions
@@ -184,6 +180,12 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 )
             end match
         }
+
+      val EvaluatedMoves(moveDestinationsReport, destinationPatchesBySource) =
+        MoveDestinationsReport.evaluateSpeculativeSourcesAndDestinations(
+          speculativeMigrationsBySource,
+          speculativeMoveDestinations
+        )(matchesFor, resolution)
 
       def isMoveDestinationOnGivenSide(
           section: Section[Element],
@@ -314,36 +316,38 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   def testForAnchor(
                       potentialAnchor: Section[Element]
                   ): AnchorTestResult =
-                    val matches = matchesFor(potentialAnchor)
-                    moveDestinationsReport.moveDestinationsByMatches
-                      .get(matches)
-                      .fold(ifEmpty =
-                        if oneSidedDeletions.contains(potentialAnchor) then
-                          // If the potential anchor is a one-sided deletion,
-                          // then it isn't an anchor; however the lack of an
-                          // edit in the same file means we can think of it as
-                          // noise that doesn't affect the validity of a
-                          // subsequent anchor.
-                          AnchorTestResult.SkipOverAndKeepLooking
-                        else
-                          // There is an edit on the other side of the potential
-                          // anchor in the same file, this definitely isn't an
-                          // anchor in itself and will hem in any insertions
-                          // from the possibility of a subsequent anchor.
-                          AnchorTestResult.StopLooking
-                      )(moveDestinations =>
-                        if !isMoveDestinationOnGivenSide(
-                            potentialAnchor,
-                            side,
-                            moveDestinations
-                          )
-                        then
-                          AnchorTestResult.Found(side match
-                            case Side.Left  => moveDestinations.right
-                            case Side.Right => moveDestinations.left
-                          )
-                        else AnchorTestResult.StopLooking
-                      )
+                    val sources = matchesFor(potentialAnchor).flatMap(_.base)
+                    val moveDestinations = sources.flatMap(
+                      moveDestinationsReport.moveDestinationsBySources.get
+                    )
+                    // TODO - this is just plain wrong!
+                    moveDestinations.headOption.fold(ifEmpty =
+                      if oneSidedDeletions.contains(potentialAnchor) then
+                        // If the potential anchor is a one-sided deletion,
+                        // then it isn't an anchor; however the lack of an
+                        // edit in the same file means we can think of it as
+                        // noise that doesn't affect the validity of a
+                        // subsequent anchor.
+                        AnchorTestResult.SkipOverAndKeepLooking
+                      else
+                        // There is an edit on the other side of the potential
+                        // anchor in the same file, this definitely isn't an
+                        // anchor in itself and will hem in any insertions
+                        // from the possibility of a subsequent anchor.
+                        AnchorTestResult.StopLooking
+                    )(moveDestinations =>
+                      if !isMoveDestinationOnGivenSide(
+                          potentialAnchor,
+                          side,
+                          moveDestinations
+                        )
+                      then
+                        AnchorTestResult.Found(side match
+                          case Side.Left  => moveDestinations.right
+                          case Side.Right => moveDestinations.left
+                        )
+                      else AnchorTestResult.StopLooking
+                    )
                   end testForAnchor
 
                   val Searching.Found(indexOfLeadingInsertedSection) =
@@ -414,11 +418,11 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
       val suppressedMoveDestinationsDueToMigratedInsertions =
         migratedInsertions.flatMap { insertion =>
-          val matches = matchesFor(insertion)
+          val sources = matchesFor(insertion).flatMap(_.base)
 
-          moveDestinationsReport.moveDestinationsByMatches
-            .get(matches)
-            .fold(ifEmpty = Set.empty[Section[Element]])(_.all)
+          sources
+            .flatMap(moveDestinationsReport.moveDestinationsBySources.get)
+            .flatMap(_.all)
         }
 
       def applyMigrations(
@@ -426,7 +430,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           mergeResult: MergeResult[Section[Element]]
       ): (Path, MergeResult[Section[Element]]) =
         val potentialValidDestinationsForMigratingChangesTo =
-          moveDestinationsReport.moveDestinationsByMatches.values
+          moveDestinationsReport.moveDestinationsBySources.values
             // NOTE: divergent move destinations can't pick up edits as the
             // original base content is preserved on either side of the move.
             .filterNot(_.isDivergent)
@@ -444,41 +448,12 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           if potentialValidDestinationsForMigratingChangesTo.contains(section)
           then
             val migratedChanges =
-              matchesFor(section).flatMap {
-                case Match.BaseAndLeft(baseSection, _) =>
-                  changesMigratedThroughMotion.get(baseSection).map {
-                    case Migration.Change(change) => change
-                  }
-                case Match.BaseAndRight(baseSection, _) =>
-                  changesMigratedThroughMotion.get(baseSection).map {
-                    case Migration.Change(change) => change
-                  }
-                case Match.LeftAndRight(_, _) => IndexedSeq.empty
-                case Match.AllSides(baseSection, leftSection, rightSection) =>
-                  changesMigratedThroughMotion.get(baseSection).flatMap {
-                    case Migration.PlainMove(
-                          elementOnTheOppositeSideToTheMoveDestination
-                        ) =>
-                      Option.when(
-                        elementOnTheOppositeSideToTheMoveDestination == leftSection || elementOnTheOppositeSideToTheMoveDestination == rightSection
-                      ) {
-                        val resolved =
-                          resolution(
-                            Some(baseSection),
-                            leftSection,
-                            rightSection
-                          )
-                        if resolved != section then
-                          logger.debug(
-                            s"Applying minor edit resolution ${pprintCustomised(resolved)} at move destination ${pprintCustomised(section)}"
-                          )
-                          IndexedSeq(resolved)
-                        else IndexedSeq(section)
-                        end if
-                      }
-                    case Migration.Change(change) => Some(change)
-                  }
-              }
+              val sources = matchesFor(section).flatMap(_.base)
+
+              sources
+                .flatMap(destinationPatchesBySource.get)
+                .map(_.apply(section))
+            end migratedChanges
 
             if migratedChanges.nonEmpty then
               val uniqueMigratedChanges = uniqueSortedItemsFrom(migratedChanges)
