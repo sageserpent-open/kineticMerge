@@ -96,9 +96,10 @@ object MoveDestinationsReport:
                         elementOnTheOppositeSideToTheMoveDestination
                       )
                     )
-                  )
+                  ) + (elementOnTheOppositeSideToTheMoveDestination -> IndexedSeq.empty)
                 case ContentMigration.Edit(_, rightContent) =>
-                  moveDestinations.left.map(_ -> rightContent)
+                  moveDestinations.left.map(_ -> rightContent) ++ rightContent
+                    .map(_ -> IndexedSeq.empty[Element])
                 case ContentMigration.Deletion() =>
                   moveDestinations.left.map(_ -> IndexedSeq.empty)
             else if moveDestinations.right.nonEmpty then
@@ -112,9 +113,10 @@ object MoveDestinationsReport:
                         destinationElement
                       )
                     )
-                  )
+                  ) + (elementOnTheOppositeSideToTheMoveDestination -> IndexedSeq.empty)
                 case ContentMigration.Edit(leftContent, _) =>
-                  moveDestinations.right.map(_ -> leftContent)
+                  moveDestinations.right.map(_ -> leftContent) ++ leftContent
+                    .map(_ -> IndexedSeq.empty[Element])
                 case ContentMigration.Deletion() =>
                   moveDestinations.right.map(_ -> IndexedSeq.empty)
             else
