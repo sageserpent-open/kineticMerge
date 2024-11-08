@@ -187,6 +187,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           speculativeMoveDestinations
         )(matchesFor, resolution)
 
+      val substitutionSites = substitutions.keySet
+
       def isMoveDestinationOnGivenSide(
           section: Section[Element],
           side: Side,
@@ -274,7 +276,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                           insertionRun
                         ),
                         Insertion(side, inserted)
-                      ) =>
+                      ) // Insertions can't be move destinations.
+                      if !substitutionSites.contains(inserted) =>
                     insertionRun match
                       case Some(InsertionRun(previousSide, previouslyInserted))
                           if previousSide == side && previouslyInserted.last.onePastEndOffset == inserted.startOffset =>
@@ -288,6 +291,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                             contiguousInsertions = Vector(inserted)
                           )
                         )
+                  case (passThrough, _) => passThrough
                 }
 
             val insertionRuns = partialResult ++ insertionRun

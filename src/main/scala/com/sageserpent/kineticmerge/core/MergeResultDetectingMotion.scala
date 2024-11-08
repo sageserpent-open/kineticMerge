@@ -4,8 +4,6 @@ import com.sageserpent.kineticmerge.core.merge.MergeAlgebra
 import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
 
-import scala.collection.immutable.MultiDict
-
 /** @param coreMergeResult
   *   What is says on the tin: a simpler merge result that is delegated to by
   *   the operations implemented in
@@ -271,6 +269,10 @@ object MergeResultDetectingMotion extends StrictLogging:
           rightEditElements: IndexedSeq[Element]
       ): ConfiguredMergeResultDetectingMotion[Element] =
         result
+          .focus(_.insertions)
+          .modify(leftEditElements.foldLeft(_)(_ :+ Insertion(Side.Left, _)))
+          .focus(_.insertions)
+          .modify(rightEditElements.foldLeft(_)(_ :+ Insertion(Side.Right, _)))
           .focus(_.coreMergeResult)
           .modify(
             coreMergeAlgebra.conflict(
