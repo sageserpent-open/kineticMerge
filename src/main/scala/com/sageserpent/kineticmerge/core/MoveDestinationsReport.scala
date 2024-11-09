@@ -64,6 +64,10 @@ object MoveDestinationsReport:
       resolution: Resolution[Element]
   ): EvaluatedMoves[Element] =
     val destinationsBySource =
+      // TODO: flip the logic around so that the matches are taken from the
+      // *sources*, and then whittled down by the speculative *destinations*.
+      // That sidesteps the ugliness of having to choose a side for a
+      // speculative coincident destination.
       MultiDict.from(speculativeMoveDestinations.iterator.flatMap {
         speculativeMoveDestination =>
           val sources = matchesFor(speculativeMoveDestination.element)
@@ -121,6 +125,9 @@ object MoveDestinationsReport:
                   moveDestinations.right.map(_ -> IndexedSeq.empty)
             else
               assume(moveDestinations.coincident.nonEmpty)
+              // TODO: can perform the three-way resolutions for coincident
+              // moves here, but left unsaid is what to do about coincident
+              // insertions and edits that are *not* move destinations...
               Seq.empty
             end if
           else Seq.empty
