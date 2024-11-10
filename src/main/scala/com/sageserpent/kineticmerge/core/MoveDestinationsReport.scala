@@ -47,6 +47,8 @@ case class MoveDestinationsReport[Element](
     moveDestinationsBySources.map((source, moveDestinations) =>
       moveDestinations.description(source)
     )
+
+  def all: Set[Element] = moveDestinationsBySources.values.flatMap(_.all).toSet
 end MoveDestinationsReport
 
 object MoveDestinationsReport:
@@ -82,7 +84,7 @@ object MoveDestinationsReport:
         source -> new MoveDestinations(destinations)
       )
 
-    val substitutions: MultiDict[Element, IndexedSeq[Element]] =
+    val substitutionsByDestination: MultiDict[Element, IndexedSeq[Element]] =
       MultiDict.from(
         moveDestinationsBySource.toSeq.flatMap((source, moveDestinations) =>
           if !moveDestinations.isDivergent
@@ -135,14 +137,50 @@ object MoveDestinationsReport:
         )
       )
 
+    val isolatedMoveDestinationsByOppositeSideElement = MultiDict.from(
+      moveDestinationsBySource.toSeq.flatMap((source, moveDestinations) =>
+        if !moveDestinations.isDivergent
+        then
+          val contentMigration = speculativeMigrationsBySource(source)
+
+          if moveDestinations.left.nonEmpty then
+            contentMigration match
+              case PlainMove(elementOnTheOppositeSideToTheMoveDestination) =>
+                moveDestinations.left.map(
+                  elementOnTheOppositeSideToTheMoveDestination -> _
+                )
+              case _ =>
+                Seq.empty
+          else if moveDestinations.right.nonEmpty then
+            contentMigration match
+              case PlainMove(elementOnTheOppositeSideToTheMoveDestination) =>
+                moveDestinations.right.map(
+                  elementOnTheOppositeSideToTheMoveDestination -> _
+                )
+              case _ =>
+                Seq.empty
+          else
+            assume(moveDestinations.coincident.nonEmpty)
+            // TODO: need to decide how anchoring works with coincident move
+            // destinations...
+            Set.empty
+          end if
+        else Seq.empty
+        end if
+      )
+    )
+
     EvaluatedMoves(
       moveDestinationsReport = MoveDestinationsReport(moveDestinationsBySource),
-      substitutions = substitutions
+      substitutionsByDestination = substitutionsByDestination,
+      isolatedMoveDestinationsByOppositeSideElement =
+        isolatedMoveDestinationsByOppositeSideElement
     )
   end evaluateSpeculativeSourcesAndDestinations
 
   case class EvaluatedMoves[Element](
       moveDestinationsReport: MoveDestinationsReport[Element],
-      substitutions: MultiDict[Element, IndexedSeq[Element]]
+      substitutionsByDestination: MultiDict[Element, IndexedSeq[Element]],
+      isolatedMoveDestinationsByOppositeSideElement: MultiDict[Element, Element]
   )
 end MoveDestinationsReport

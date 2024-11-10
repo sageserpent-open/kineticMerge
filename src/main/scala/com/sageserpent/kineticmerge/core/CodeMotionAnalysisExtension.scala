@@ -181,13 +181,17 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             end match
         }
 
-      val EvaluatedMoves(moveDestinationsReport, substitutions) =
+      val EvaluatedMoves(
+        moveDestinationsReport,
+        substitutionsByDestination,
+        isolatedMoveDestinationsByOppositeSideElement
+      ) =
         MoveDestinationsReport.evaluateSpeculativeSourcesAndDestinations(
           speculativeMigrationsBySource,
           speculativeMoveDestinations
         )(matchesFor, resolution)
 
-      val substitutionSites = substitutions.keySet
+      val allMoveDestinations = moveDestinationsReport.all
 
       def isMoveDestinationOnGivenSide(
           section: Section[Element],
@@ -276,8 +280,19 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                           insertionRun
                         ),
                         Insertion(side, inserted)
-                      ) // Insertions can't be move destinations.
-                      if !substitutionSites.contains(inserted) =>
+                      )
+                      // Insertions can't be move destinations, nor can they be
+                      // edits.
+                      
+                      // NASTY HACK: the check against an edit is required only
+                      // because the logic picking up the insertions is so hokey
+                      // regarding how conflicts are dealt with. We really
+                      // should have this sorted out upstream so that only
+                      // genuine insertions make it through here. Come to think
+                      // of it, that should also exclude move destinations too.
+                      if !allMoveDestinations.contains(
+                        inserted
+                      ) && !substitutionsByDestination.containsKey(inserted) =>
                     insertionRun match
                       case Some(InsertionRun(previousSide, previouslyInserted))
                           if previousSide == side && previouslyInserted.last.onePastEndOffset == inserted.startOffset =>
@@ -320,12 +335,12 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   def testForAnchor(
                       potentialAnchor: Section[Element]
                   ): AnchorTestResult =
-                    val sources = matchesFor(potentialAnchor).flatMap(_.base)
-                    val moveDestinations = sources.flatMap(
-                      moveDestinationsReport.moveDestinationsBySources.get
-                    )
-                    // TODO - this is just plain wrong!
-                    moveDestinations.headOption.fold(ifEmpty =
+                    val isolatedMoveDestinations =
+                      isolatedMoveDestinationsByOppositeSideElement.get(
+                        potentialAnchor
+                      )
+
+                    if isolatedMoveDestinations.isEmpty then
                       if oneSidedDeletions.contains(potentialAnchor) then
                         // If the potential anchor is a one-sided deletion,
                         // then it isn't an anchor; however the lack of an
@@ -339,19 +354,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                         // anchor in itself and will hem in any insertions
                         // from the possibility of a subsequent anchor.
                         AnchorTestResult.StopLooking
-                    )(moveDestinations =>
-                      if !isMoveDestinationOnGivenSide(
-                          potentialAnchor,
-                          side,
-                          moveDestinations
-                        )
-                      then
-                        AnchorTestResult.Found(side match
-                          case Side.Left  => moveDestinations.right
-                          case Side.Right => moveDestinations.left
-                        )
-                      else AnchorTestResult.StopLooking
-                    )
+                    else AnchorTestResult.Found(isolatedMoveDestinations)
+                    end if
                   end testForAnchor
 
                   val Searching.Found(indexOfLeadingInsertedSection) =
@@ -436,7 +440,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         def substituteFor(
             section: Section[Element]
         ): IndexedSeq[Section[Element]] =
-          val migratedChanges = substitutions.get(section)
+          val migratedChanges = substitutionsByDestination.get(section)
 
           if migratedChanges.nonEmpty then
             val uniqueMigratedChanges = uniqueSortedItemsFrom(migratedChanges)
