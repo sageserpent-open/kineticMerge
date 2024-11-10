@@ -704,12 +704,14 @@ object CodeMotionAnalysis extends StrictLogging:
         // No match should be redundant - i.e. no match should involve sections
         // that all belong to another match. This goes without saying for
         // all-sides matches, as they any redundancy would imply equivalent
-        // all-asides matches being associated with the same sections - this
+        // all-sides matches being associated with the same sections - this
         // isn't allowed by a `MultiDict` instance. The same applies for
         // pairwise matches of the same kind; pairwise matches of different
         // kinds can't make each other redundant.
-        // What we have to watch out for are pairwise matches having both
-        // sections also belonging to an all-sides match.
+        // What we have to watch out for are pairwise matches having *both*
+        // sections also belonging to an all-sides match. Note that it *is*
+        // legitimate to have a pairwise match sharing just one section with an
+        // all-sides match; they are just ambiguous matches,
 
         val matchesBySectionPairs = sectionsAndTheirMatches.values.foldLeft(
           MultiDict.empty[(Section[Element], Section[Element]), Match[
@@ -1873,6 +1875,48 @@ object CodeMotionAnalysis extends StrictLogging:
         )
 
       Right(new CodeMotionAnalysis[Path, Element]:
+        {
+          // Invariant: the matches are referenced only by their participating
+          // sections.
+          val allMatchKeys = sectionsAndTheirMatches.keySet
+
+          val allParticipatingSections =
+            sectionsAndTheirMatches.values
+              .map {
+                case Match.AllSides(baseSection, leftSection, rightSection) =>
+                  Set(baseSection, leftSection, rightSection)
+                case Match.BaseAndLeft(baseSection, leftSection) =>
+                  Set(baseSection, leftSection)
+                case Match.BaseAndRight(baseSection, rightSection) =>
+                  Set(baseSection, rightSection)
+                case Match.LeftAndRight(leftSection, rightSection) =>
+                  Set(leftSection, rightSection)
+              }
+              .reduceOption(_ union _)
+              .getOrElse(Set.empty)
+
+          require(allMatchKeys == allParticipatingSections)
+
+          // Invariant - every section across all paths on all three sides is
+          // unique. This is vital for `CodeMotionAnalysisExtension` to be able
+          // to work with move sources, destinations and to recognise where to
+          // perform substitutions.
+
+          val allSections =
+            (baseFilesByPath.values ++ leftFilesByPath.values ++ rightFilesByPath.values)
+              .flatMap(_.sections)
+              .toSeq
+
+          val allDistinctSections = allSections.toSet
+
+          require(allSections.size == allDistinctSections.size)
+
+          // Invariant: all the match keys should belong to the breakdown
+          // of sections.
+
+          require(sectionsAndTheirMatches.keySet.subsetOf(allDistinctSections))
+        }
+
         override def matchesFor(
             section: Section[Element]
         ): collection.Set[Match[Section[Element]]] =
