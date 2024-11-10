@@ -283,16 +283,14 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       )
                       // Insertions can't be move destinations, nor can they be
                       // edits.
-                      
+
                       // NASTY HACK: the check against an edit is required only
                       // because the logic picking up the insertions is so hokey
                       // regarding how conflicts are dealt with. We really
                       // should have this sorted out upstream so that only
                       // genuine insertions make it through here. Come to think
                       // of it, that should also exclude move destinations too.
-                      if !allMoveDestinations.contains(
-                        inserted
-                      ) && !substitutionsByDestination.containsKey(inserted) =>
+                      if !substitutionsByDestination.containsKey(inserted) =>
                     insertionRun match
                       case Some(InsertionRun(previousSide, previouslyInserted))
                           if previousSide == side && previouslyInserted.last.onePastEndOffset == inserted.startOffset =>
@@ -425,13 +423,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           .toSet
 
       val suppressedMoveDestinationsDueToMigratedInsertions =
-        migratedInsertions.flatMap { insertion =>
-          val sources = matchesFor(insertion).flatMap(_.base)
-
-          sources
-            .flatMap(moveDestinationsReport.moveDestinationsBySources.get)
-            .flatMap(_.all)
-        }
+        migratedInsertions intersect allMoveDestinations
 
       def applyMigrations(
           path: Path,
