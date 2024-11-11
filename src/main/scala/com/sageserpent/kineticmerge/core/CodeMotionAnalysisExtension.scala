@@ -423,7 +423,15 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           .toSet
 
       val suppressedMoveDestinationsDueToMigratedInsertions =
-        migratedInsertions intersect allMoveDestinations
+        migratedInsertions.flatMap { insertion =>
+          val sources = matchesFor(insertion).flatMap(_.base)
+
+          sources.flatMap(
+            moveDestinationsReport.moveDestinationsBySources
+              .get(_)
+              .fold(ifEmpty = Set.empty[Section[Element]])(_.all)
+          )
+        }
 
       def applyMigrations(
           path: Path,
