@@ -84,6 +84,34 @@ object MoveDestinationsReport:
         source -> new MoveDestinations(destinations)
       )
 
+    val migratedEditSuppressions: Set[Element] =
+      moveDestinationsBySource.toSeq
+        .flatMap((source, moveDestinations) =>
+          if !moveDestinations.isDivergent
+          then
+            val contentMigration = speculativeMigrationsBySource(source)
+
+            if moveDestinations.left.nonEmpty then
+              contentMigration match
+                case ContentMigration.Edit(_, rightContent) =>
+                  rightContent
+                case _ =>
+                  Seq.empty
+            else if moveDestinations.right.nonEmpty then
+              contentMigration match
+                case ContentMigration.Edit(leftContent, _) =>
+                  leftContent
+                case _ =>
+                  Seq.empty
+            else
+              assume(moveDestinations.coincident.nonEmpty)
+              Seq.empty
+            end if
+          else Seq.empty
+          end if
+        )
+        .toSet
+
     val substitutionsByDestination: MultiDict[Element, IndexedSeq[Element]] =
       MultiDict.from(
         moveDestinationsBySource.toSeq.flatMap((source, moveDestinations) =>
@@ -104,8 +132,7 @@ object MoveDestinationsReport:
                     )
                   ) + (elementOnTheOppositeSideToTheMoveDestination -> IndexedSeq.empty)
                 case ContentMigration.Edit(_, rightContent) =>
-                  moveDestinations.left.map(_ -> rightContent) ++ rightContent
-                    .map(_ -> IndexedSeq.empty[Element])
+                  moveDestinations.left.map(_ -> rightContent)
                 case ContentMigration.Deletion() =>
                   moveDestinations.left.map(_ -> IndexedSeq.empty)
             else if moveDestinations.right.nonEmpty then
@@ -121,8 +148,7 @@ object MoveDestinationsReport:
                     )
                   ) + (elementOnTheOppositeSideToTheMoveDestination -> IndexedSeq.empty)
                 case ContentMigration.Edit(leftContent, _) =>
-                  moveDestinations.right.map(_ -> leftContent) ++ leftContent
-                    .map(_ -> IndexedSeq.empty[Element])
+                  moveDestinations.right.map(_ -> leftContent)
                 case ContentMigration.Deletion() =>
                   moveDestinations.right.map(_ -> IndexedSeq.empty)
             else
@@ -172,6 +198,7 @@ object MoveDestinationsReport:
 
     EvaluatedMoves(
       moveDestinationsReport = MoveDestinationsReport(moveDestinationsBySource),
+      migratedEditSuppressions = migratedEditSuppressions,
       substitutionsByDestination = substitutionsByDestination,
       isolatedMoveDestinationsByOppositeSideElement =
         isolatedMoveDestinationsByOppositeSideElement
@@ -180,6 +207,7 @@ object MoveDestinationsReport:
 
   case class EvaluatedMoves[Element](
       moveDestinationsReport: MoveDestinationsReport[Element],
+      migratedEditSuppressions: Set[Element],
       substitutionsByDestination: MultiDict[Element, IndexedSeq[Element]],
       isolatedMoveDestinationsByOppositeSideElement: MultiDict[Element, Element]
   )

@@ -183,6 +183,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
       val EvaluatedMoves(
         moveDestinationsReport,
+        migratedEditSuppressions,
         substitutionsByDestination,
         isolatedMoveDestinationsByOppositeSideElement
       ) =
@@ -191,25 +192,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           speculativeMoveDestinations
         )(matchesFor, resolution)
 
-      val allMoveDestinations = moveDestinationsReport.all
-
-      def isMoveDestinationOnGivenSide(
-          section: Section[Element],
-          side: Side,
-          moveDestinations: MoveDestinations[Section[Element]]
-      ) =
-        side match
-          case Side.Left =>
-            moveDestinations.left.contains(
-              section
-            ) || moveDestinations.coincident.exists { case (leftPart, _) =>
-              section == leftPart
-            }
-          case Side.Right =>
-            moveDestinations.right
-              .contains(section) || moveDestinations.coincident.exists {
-              case (_, rightPart) => section == rightPart
-            }
+      val allAnchorDestinations =
+        isolatedMoveDestinationsByOppositeSideElement.values.toSet
 
       given sectionRunOrdering[Sequence[Item] <: Seq[Item]]
           : Ordering[Sequence[Section[Element]]] =
@@ -281,16 +265,17 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                         ),
                         Insertion(side, inserted)
                       )
-                      // Insertions can't be move destinations, nor can they be
-                      // edits.
+                      // Insertions can't be anchors, nor can they be spurious
+                      // conflicts caused by migrated edits.
 
-                      // NASTY HACK: the check against an edit is required only
-                      // because the logic picking up the insertions is so hokey
-                      // regarding how conflicts are dealt with. We really
-                      // should have this sorted out upstream so that only
-                      // genuine insertions make it through here. Come to think
-                      // of it, that should also exclude move destinations too.
-                      if !substitutionsByDestination.containsKey(inserted) =>
+                      // NASTY HACK: the is required only because the logic
+                      // picking up the insertions is so hokey regarding how
+                      // conflicts are dealt with. We really should have this
+                      // sorted out upstream so that only genuine insertions
+                      // make it through here.
+                      if !allAnchorDestinations.contains(
+                        inserted
+                      ) && !migratedEditSuppressions.contains(inserted) =>
                     insertionRun match
                       case Some(InsertionRun(previousSide, previouslyInserted))
                           if previousSide == side && previouslyInserted.last.onePastEndOffset == inserted.startOffset =>
@@ -304,7 +289,14 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                             contiguousInsertions = Vector(inserted)
                           )
                         )
-                  case (passThrough, _) => passThrough
+                  case (
+                        (
+                          partialResult,
+                          insertionRun
+                        ),
+                        _
+                      ) =>
+                    (partialResult ++ insertionRun) -> None
                 }
 
             val insertionRuns = partialResult ++ insertionRun
@@ -352,7 +344,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                         // anchor in itself and will hem in any insertions
                         // from the possibility of a subsequent anchor.
                         AnchorTestResult.StopLooking
-                    else AnchorTestResult.Found(isolatedMoveDestinations)
+                    else if !allAnchorDestinations.contains(potentialAnchor)
+                    then AnchorTestResult.Found(isolatedMoveDestinations)
+                    else AnchorTestResult.StopLooking
                     end if
                   end testForAnchor
 
@@ -432,6 +426,12 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               .fold(ifEmpty = Set.empty[Section[Element]])(_.all)
           )
         }
+
+      def removeMigratedEdits(
+          sections: IndexedSeq[Section[Element]]
+      ): IndexedSeq[Section[Element]] =
+        sections
+          .filterNot(migratedEditSuppressions.contains)
 
       def applyMigrations(
           path: Path,
@@ -796,16 +796,16 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           case FullyMerged(sections) =>
             FullyMerged(elements =
               migrateInsertionsAndApplySubstitutions(
-                removeMigratedInsertions(sections)
+                removeMigratedInsertions(removeMigratedEdits(sections))
               )
             )
           case MergedWithConflicts(leftSections, rightSections) =>
             MergedWithConflicts(
               migrateInsertionsAndApplySubstitutions(
-                removeMigratedInsertions(leftSections)
+                removeMigratedInsertions(removeMigratedEdits(leftSections))
               ),
               migrateInsertionsAndApplySubstitutions(
-                removeMigratedInsertions(rightSections)
+                removeMigratedInsertions(removeMigratedEdits(rightSections))
               )
             )
         )
