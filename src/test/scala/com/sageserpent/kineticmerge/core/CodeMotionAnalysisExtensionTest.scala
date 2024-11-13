@@ -495,9 +495,17 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
   @TestFactory
   def whitespaceOnlyEditingWithCodeMotion(): DynamicTests =
-    (Trials.api.booleans and Trials.api.booleans and Trials.api.booleans)
-      .withLimit(8)
-      .dynamicTests { (leftEdited, rightEdited, swapRenamedSide) =>
+    enum RenamingSide:
+      case Left
+      case Right
+      case Both
+    end RenamingSide
+
+    (Trials.api.booleans and Trials.api.booleans and Trials.api.choose(
+      RenamingSide.values
+    ))
+      .withLimit(12)
+      .dynamicTests { (leftEdited, rightEdited, renamingSide) =>
         val configuration = Configuration(
           minimumMatchSize = 4,
           thresholdSizeFractionForMatching = 0.1,
@@ -514,8 +522,11 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         )
 
         val (leftPath, rightPath) =
-          if swapRenamedSide then renamedForCodeMotionPath -> originalPath
-          else originalPath -> renamedForCodeMotionPath
+          renamingSide match
+            case RenamingSide.Left => renamedForCodeMotionPath -> originalPath
+            case RenamingSide.Right => originalPath -> renamedForCodeMotionPath
+            case RenamingSide.Both =>
+              renamedForCodeMotionPath -> renamedForCodeMotionPath
 
         val leftSources = MappedContentSourcesOfTokens(
           contentsByPath = Map(
