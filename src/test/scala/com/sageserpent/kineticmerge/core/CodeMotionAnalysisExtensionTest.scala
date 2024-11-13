@@ -76,32 +76,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )
   end issue23BugReproduction
 
-  private def verifyContent(
-      path: FakePath,
-      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
-  )(
-      expectedTokens: IndexedSeq[Token],
-      equality: (Token, Token) => Boolean = Token.equality
-  ): Unit =
-    println(fansi.Color.Yellow(s"Checking $path...\n"))
-    println(fansi.Color.Yellow("Expected..."))
-    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
-
-    mergeResultsByPath(path) match
-      case FullyMerged(result) =>
-        println(fansi.Color.Yellow("Fully merged result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(result)))
-        assert(result.corresponds(expectedTokens)(equality))
-      case MergedWithConflicts(leftResult, rightResult) =>
-        println(fansi.Color.Red(s"Left result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
-        println(fansi.Color.Red(s"Right result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
-
-        fail("Should have seen a clean merge.")
-    end match
-  end verifyContent
-
   @TestFactory
   def codeMotionWithPropagatedInsertion(): DynamicTests =
     val configuration = Configuration(
@@ -368,6 +342,32 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )
   end codeMotionWithSplit
 
+  private def verifyContent(
+      path: FakePath,
+      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
+  )(
+      expectedTokens: IndexedSeq[Token],
+      equality: (Token, Token) => Boolean = Token.equality
+  ): Unit =
+    println(fansi.Color.Yellow(s"Checking $path...\n"))
+    println(fansi.Color.Yellow("Expected..."))
+    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
+
+    mergeResultsByPath(path) match
+      case FullyMerged(result) =>
+        println(fansi.Color.Yellow("Fully merged result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(result)))
+        assert(result.corresponds(expectedTokens)(equality))
+      case MergedWithConflicts(leftResult, rightResult) =>
+        println(fansi.Color.Red(s"Left result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+        println(fansi.Color.Red(s"Right result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+        fail("Should have seen a clean merge.")
+    end match
+  end verifyContent
+
   @TestFactory
   def merging(): DynamicTests =
     val minimumMatchSizes = Trials.api.integers(2, 10)
@@ -495,8 +495,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
   @TestFactory
   def whitespaceOnlyEditingWithCodeMotion(): DynamicTests =
-    (Trials.api.booleans and Trials.api.booleans).withLimit(4).dynamicTests {
-      (leftEdited, rightEdited) =>
+    (Trials.api.booleans and Trials.api.booleans and Trials.api.booleans)
+      .withLimit(8)
+      .dynamicTests { (leftEdited, rightEdited, swapRenamedSide) =>
         val configuration = Configuration(
           minimumMatchSize = 4,
           thresholdSizeFractionForMatching = 0.1,
@@ -511,9 +512,14 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
             Map(originalPath -> tokens(whitespaceOnlyChangeExampleBase).get),
           label = "base"
         )
+
+        val (leftPath, rightPath) =
+          if swapRenamedSide then renamedForCodeMotionPath -> originalPath
+          else originalPath -> renamedForCodeMotionPath
+
         val leftSources = MappedContentSourcesOfTokens(
           contentsByPath = Map(
-            originalPath -> tokens(
+            leftPath -> tokens(
               if leftEdited then whitespaceOnlyChangeExampleLeftEdited
               else whitespaceOnlyChangeExampleBase
             ).get
@@ -522,7 +528,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         )
         val rightSources = MappedContentSourcesOfTokens(
           contentsByPath = Map(
-            renamedForCodeMotionPath -> tokens(
+            rightPath -> tokens(
               if rightEdited then whitespaceOnlyChangeExampleRightEdited
               else whitespaceOnlyChangeExampleBase
             ).get
@@ -557,7 +563,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           expected,
           _ == _
         )
-    }
+      }
   end whitespaceOnlyEditingWithCodeMotion
 
   @TestFactory
