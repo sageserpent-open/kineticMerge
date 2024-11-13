@@ -153,10 +153,25 @@ object MoveDestinationsReport:
                   moveDestinations.right.map(_ -> IndexedSeq.empty)
             else
               assume(moveDestinations.coincident.nonEmpty)
-              // TODO: can perform the three-way resolutions for coincident
-              // moves here, but left unsaid is what to do about coincident
-              // insertions and edits that are *not* move destinations...
-              Seq.empty
+              contentMigration match
+                case ContentMigration.Deletion() =>
+                  moveDestinations.coincident.flatMap {
+                    case (leftDestinationElement, rightDestinationElement) =>
+                      val resolved = IndexedSeq(
+                        resolution(
+                          Some(source),
+                          leftDestinationElement,
+                          rightDestinationElement
+                        )
+                      )
+
+                      Seq(
+                        leftDestinationElement  -> resolved,
+                        rightDestinationElement -> resolved
+                      )
+                  }
+                case _ => Seq.empty
+              end match
             end if
           else Seq.empty
           end if
