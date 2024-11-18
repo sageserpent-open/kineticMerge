@@ -2,6 +2,7 @@ package com.sageserpent.kineticmerge.core
 
 import cats.{Eq, Order}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
+import com.sageserpent.kineticmerge.core.FirstPassMergeResult.Recording
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Sized
 import com.sageserpent.kineticmerge.core.MoveDestinationsReport.EvaluatedMoves
 import com.sageserpent.kineticmerge.core.merge.of as mergeOf
@@ -80,15 +81,18 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         end match
       }
 
+      type SecondPassInput =
+        Either[FullyMerged[Section[Element]], Recording[Section[Element]]]
+
       val (
-        mergeResultsByPath,
+        secondPassInputsByPath,
         speculativeMigrationsBySource,
         speculativeMoveDestinations,
         insertionsAtPath,
         oneSidedDeletions
       ) =
         paths.foldLeft(
-          Map.empty[Path, MergeResult[Section[Element]]],
+          Map.empty[Path, SecondPassInput],
           Map.empty[Section[Element], ContentMigration[Section[Element]]],
           Set.empty[SpeculativeMoveDestination[Section[Element]]],
           Vector.empty[InsertionsAtPath],
@@ -96,7 +100,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         ) {
           case (
                 (
-                  mergeResultsByPath,
+                  secondPassInputsByPath,
                   speculativeMigrationsBySource,
                   speculativeMoveDestinations,
                   insertionsAtPath,
@@ -110,11 +114,12 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
             (base, left, right) match
               case (None, Some(leftSections), None) =>
-                // File added only on the left; pass through as there is neither
-                // anything to merge nor any sources of edits or deletions...
+                // File added only on the left...
                 (
-                  mergeResultsByPath + (path -> FullyMerged(
-                    leftSections
+                  secondPassInputsByPath + (path -> Left(
+                    FullyMerged(
+                      leftSections
+                    )
                   )),
                   speculativeMigrationsBySource,
                   leftSections.foldLeft(speculativeMoveDestinations)(
@@ -124,12 +129,12 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   oneSidedDeletions
                 )
               case (None, None, Some(rightSections)) =>
-                // File added only on the right; pass through as there is
-                // neither anything to merge nor any sources of edits or
-                // deletions...
+                // File added only on the right...
                 (
-                  mergeResultsByPath + (path -> FullyMerged(
-                    rightSections
+                  secondPassInputsByPath + (path -> Left(
+                    FullyMerged(
+                      rightSections
+                    )
                   )),
                   speculativeMigrationsBySource,
                   rightSections.foldLeft(speculativeMoveDestinations)(
@@ -154,29 +159,25 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
                 given Sized[Section[Element]] = _.size
 
-                val mergedSectionsResult
-                    : MergeResultDetectingMotion[MergeResult, Section[
-                      Element
-                    ]] =
-                  mergeOf(mergeAlgebra =
-                    MergeResultDetectingMotion.mergeAlgebra(
-                      coreMergeAlgebra = MergeResult.mergeAlgebra(resolution)
-                    )
-                  )(
+                val firstPassMergeResult
+                    : FirstPassMergeResult[Section[Element]] =
+                  mergeOf(mergeAlgebra = FirstPassMergeResult.mergeAlgebra())(
                     base = optionalBaseSections.getOrElse(IndexedSeq.empty),
                     left = optionalLeftSections.getOrElse(IndexedSeq.empty),
                     right = optionalRightSections.getOrElse(IndexedSeq.empty)
                   )
 
                 (
-                  mergeResultsByPath + (path -> mergedSectionsResult.coreMergeResult),
-                  speculativeMigrationsBySource concat mergedSectionsResult.speculativeMigrationsBySource,
-                  speculativeMoveDestinations union mergedSectionsResult.speculativeMoveDestinations,
+                  secondPassInputsByPath + (path -> Right(
+                    firstPassMergeResult.recording
+                  )),
+                  speculativeMigrationsBySource concat firstPassMergeResult.speculativeMigrationsBySource,
+                  speculativeMoveDestinations union firstPassMergeResult.speculativeMoveDestinations,
                   insertionsAtPath :+ InsertionsAtPath(
                     path,
-                    mergedSectionsResult.insertions
+                    firstPassMergeResult.insertions
                   ),
-                  oneSidedDeletions union mergedSectionsResult.oneSidedDeletions
+                  oneSidedDeletions union firstPassMergeResult.oneSidedDeletions
                 )
             end match
         }
@@ -191,6 +192,23 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           speculativeMigrationsBySource,
           speculativeMoveDestinations
         )(matchesFor, resolution)
+
+      val secondPassMergeResultsByPath
+          : Map[Path, MergeResult[Section[Element]]] =
+        secondPassInputsByPath.map {
+          case (path, Right(recording)) =>
+            val mergedSectionsResult
+                : SecondPassMergeResult[MergeResult, Section[Element]] =
+              recording.playback(
+                SecondPassMergeResult.mergeAlgebra(
+                  coreMergeAlgebra = MergeResult.mergeAlgebra(resolution),
+                  migratedEditSuppressions
+                )
+              )
+
+            path -> mergedSectionsResult.coreMergeResult
+          case (path, Left(fullyMerged)) => path -> fullyMerged
+        }
 
       val allAnchorDestinations =
         isolatedMoveDestinationsByOppositeSideElement.values.toSet
@@ -426,12 +444,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               .fold(ifEmpty = Set.empty[Section[Element]])(_.all)
           )
         }
-
-      def removeMigratedEdits(
-          sections: IndexedSeq[Section[Element]]
-      ): IndexedSeq[Section[Element]] =
-        sections
-          .filterNot(migratedEditSuppressions.contains)
 
       def applyMigrations(
           path: Path,
@@ -796,16 +808,16 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           case FullyMerged(sections) =>
             FullyMerged(elements =
               migrateInsertionsAndApplySubstitutions(
-                removeMigratedInsertions(removeMigratedEdits(sections))
+                removeMigratedInsertions(sections)
               )
             )
           case MergedWithConflicts(leftSections, rightSections) =>
             MergedWithConflicts(
               migrateInsertionsAndApplySubstitutions(
-                removeMigratedInsertions(removeMigratedEdits(leftSections))
+                removeMigratedInsertions(leftSections)
               ),
               migrateInsertionsAndApplySubstitutions(
-                removeMigratedInsertions(removeMigratedEdits(rightSections))
+                removeMigratedInsertions(rightSections)
               )
             )
         )
@@ -837,7 +849,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         )
       end explodeSections
 
-      mergeResultsByPath
+      secondPassMergeResultsByPath
         .map(applyMigrations)
         .map(explodeSections) -> moveDestinationsReport
     end merge

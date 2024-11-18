@@ -8,60 +8,28 @@ import monocle.syntax.all.*
   *   What is says on the tin: a simpler merge result that is delegated to by
   *   the operations implemented in
   *   [[MatchesContext.MergeResultDetectingMotion.mergeAlgebra]].
-  * @param speculativeMigrationsBySource
-  *   Migrations keyed by source element - the source element is taken from the
-  *   <b>base</b> side.
-  * @param speculativeMoveDestinations
-  * @param insertions
-  *   Insertions that may need to be migrated, these have to be collected
-  *   speculatively upfront and then associated with anchors once the global
-  *   picture of code motion is available.
-  * @param oneSidedDeletions
-  *   Deletions on just one side that may influence the discovery of anchors for
-  *   insertion migration.
   * @tparam CoreResult
   * @tparam Element
-  * @note
-  *   A move source refers to only one migration, although it is quite possible
-  *   for a single source to be part of multiple movements on either or both the
-  *   left and right side. It is also possible for multiple move sources (and
-  *   thus migrations) to converge on the same move destination.
   */
-case class MergeResultDetectingMotion[CoreResult[_], Element](
-    coreMergeResult: CoreResult[Element],
-    speculativeMigrationsBySource: Map[Element, ContentMigration[
-      Element
-    ]],
-    speculativeMoveDestinations: Set[SpeculativeMoveDestination[Element]],
-    insertions: Seq[Insertion[Element]],
-    oneSidedDeletions: Set[Element]
+case class SecondPassMergeResult[CoreResult[_], Element](
+    coreMergeResult: CoreResult[Element]
 )
 
-enum Side:
-  case Left
-  case Right
-end Side
-
-case class Insertion[Element](side: Side, inserted: Element)
-
-object MergeResultDetectingMotion extends StrictLogging:
+object SecondPassMergeResult extends StrictLogging:
   private type MergeResultDetectingMotionType[CoreResult[_]] =
-    [Element] =>> MergeResultDetectingMotion[CoreResult, Element]
+    [Element] =>> SecondPassMergeResult[CoreResult, Element]
 
   def mergeAlgebra[CoreResult[_], Element](
-      coreMergeAlgebra: merge.MergeAlgebra[CoreResult, Element]
+      coreMergeAlgebra: merge.MergeAlgebra[CoreResult, Element],
+      migratedEditSuppressions: Set[Element]
   ): MergeAlgebra[MergeResultDetectingMotionType[CoreResult], Element] =
     type ConfiguredMergeResultDetectingMotion[Element] =
       MergeResultDetectingMotionType[CoreResult][Element]
 
     new MergeAlgebra[MergeResultDetectingMotionType[CoreResult], Element]:
       override def empty: ConfiguredMergeResultDetectingMotion[Element] =
-        MergeResultDetectingMotion(
-          coreMergeResult = coreMergeAlgebra.empty,
-          speculativeMigrationsBySource = Map.empty,
-          speculativeMoveDestinations = Set.empty,
-          insertions = Vector.empty,
-          oneSidedDeletions = Set.empty
+        SecondPassMergeResult(
+          coreMergeResult = coreMergeAlgebra.empty
         )
 
       override def preservation(
@@ -71,9 +39,9 @@ object MergeResultDetectingMotion extends StrictLogging:
           preservedElementOnRight: Element
       ): ConfiguredMergeResultDetectingMotion[Element] = result
         .focus(_.coreMergeResult)
-        .modify((result: CoreResult[Element]) =>
+        .modify(
           coreMergeAlgebra.preservation(
-            result,
+            _,
             preservedBaseElement,
             preservedElementOnLeft,
             preservedElementOnRight
@@ -85,12 +53,8 @@ object MergeResultDetectingMotion extends StrictLogging:
           insertedElement: Element
       ): ConfiguredMergeResultDetectingMotion[Element] =
         result
-          .focus(_.insertions)
-          .modify(_ :+ Insertion(Side.Left, insertedElement))
           .focus(_.coreMergeResult)
           .modify(coreMergeAlgebra.leftInsertion(_, insertedElement))
-          .focus(_.speculativeMoveDestinations)
-          .modify(_ + SpeculativeMoveDestination.Left(insertedElement))
       end leftInsertion
 
       override def rightInsertion(
@@ -98,12 +62,8 @@ object MergeResultDetectingMotion extends StrictLogging:
           insertedElement: Element
       ): ConfiguredMergeResultDetectingMotion[Element] =
         result
-          .focus(_.insertions)
-          .modify(_ :+ Insertion(Side.Right, insertedElement))
           .focus(_.coreMergeResult)
           .modify(coreMergeAlgebra.rightInsertion(_, insertedElement))
-          .focus(_.speculativeMoveDestinations)
-          .modify(_ + SpeculativeMoveDestination.Right(insertedElement))
 
       override def coincidentInsertion(
           result: MergeResultDetectingMotionType[CoreResult][Element],
@@ -111,17 +71,11 @@ object MergeResultDetectingMotion extends StrictLogging:
           insertedElementOnRight: Element
       ): ConfiguredMergeResultDetectingMotion[Element] = result
         .focus(_.coreMergeResult)
-        .modify((result: CoreResult[Element]) =>
+        .modify(
           coreMergeAlgebra.coincidentInsertion(
-            result,
+            _,
             insertedElementOnLeft,
             insertedElementOnRight
-          )
-        )
-        .focus(_.speculativeMoveDestinations)
-        .modify(
-          _ + SpeculativeMoveDestination.Coincident(
-            insertedElementOnLeft -> insertedElementOnRight
           )
         )
 
@@ -136,13 +90,6 @@ object MergeResultDetectingMotion extends StrictLogging:
             coreMergeAlgebra
               .leftDeletion(_, deletedBaseElement, deletedRightElement)
           )
-          .focus(_.oneSidedDeletions)
-          .modify(_ + deletedRightElement)
-          .focus(_.speculativeMigrationsBySource)
-          .modify(
-            _ + (deletedBaseElement -> ContentMigration
-              .PlainMove(deletedRightElement))
-          )
       end leftDeletion
 
       override def rightDeletion(
@@ -156,13 +103,6 @@ object MergeResultDetectingMotion extends StrictLogging:
             coreMergeAlgebra
               .rightDeletion(_, deletedBaseElement, deletedLeftElement)
           )
-          .focus(_.oneSidedDeletions)
-          .modify(_ + deletedLeftElement)
-          .focus(_.speculativeMigrationsBySource)
-          .modify(
-            _ + (deletedBaseElement -> ContentMigration
-              .PlainMove(deletedLeftElement))
-          )
       end rightDeletion
 
       override def coincidentDeletion(
@@ -172,10 +112,6 @@ object MergeResultDetectingMotion extends StrictLogging:
         result
           .focus(_.coreMergeResult)
           .modify(coreMergeAlgebra.coincidentDeletion(_, deletedElement))
-          .focus(_.speculativeMigrationsBySource)
-          .modify(
-            _ + (deletedElement -> ContentMigration.Deletion())
-          )
       end coincidentDeletion
 
       override def leftEdit(
@@ -194,16 +130,6 @@ object MergeResultDetectingMotion extends StrictLogging:
                 editedRightElement,
                 editElements
               )
-          )
-          .focus(_.speculativeMigrationsBySource)
-          .modify(
-            _ + (editedBaseElement -> ContentMigration.PlainMove(
-              editedRightElement
-            ))
-          )
-          .focus(_.speculativeMoveDestinations)
-          .modify(
-            editElements.foldLeft(_)(_ + SpeculativeMoveDestination.Left(_))
           )
       end leftEdit
 
@@ -224,16 +150,6 @@ object MergeResultDetectingMotion extends StrictLogging:
                 editElements
               )
           )
-          .focus(_.speculativeMigrationsBySource)
-          .modify(
-            _ + (editedBaseElement -> ContentMigration.PlainMove(
-              editedLeftElement
-            ))
-          )
-          .focus(_.speculativeMoveDestinations)
-          .modify(
-            editElements.foldLeft(_)(_ + SpeculativeMoveDestination.Right(_))
-          )
       end rightEdit
 
       override def coincidentEdit(
@@ -246,20 +162,6 @@ object MergeResultDetectingMotion extends StrictLogging:
           .modify(
             coreMergeAlgebra.coincidentEdit(_, editedElement, editElements)
           )
-          .focus(_.speculativeMigrationsBySource)
-          // NOTE: the edit elements are *never* taken as content to be
-          // migrated, because they have arrived at the same place on both
-          // sides; we don't break up the paired content (and indeed regard it
-          // as a potential coincident move destination).
-          .modify(
-            _ + (editedElement -> ContentMigration.Deletion())
-          )
-          .focus(_.speculativeMoveDestinations)
-          .modify(
-            editElements.foldLeft(_)(
-              _ + SpeculativeMoveDestination.Coincident(_)
-            )
-          )
       end coincidentEdit
 
       override def conflict(
@@ -268,41 +170,64 @@ object MergeResultDetectingMotion extends StrictLogging:
           leftEditElements: IndexedSeq[Element],
           rightEditElements: IndexedSeq[Element]
       ): ConfiguredMergeResultDetectingMotion[Element] =
-        result
-          .focus(_.insertions)
-          .modify(leftEditElements.foldLeft(_)(_ :+ Insertion(Side.Left, _)))
-          .focus(_.insertions)
-          .modify(rightEditElements.foldLeft(_)(_ :+ Insertion(Side.Right, _)))
-          .focus(_.coreMergeResult)
-          .modify(
-            coreMergeAlgebra.conflict(
-              _,
-              editedElements,
-              leftEditElements,
-              rightEditElements
+        val vettedLeftElements =
+          leftEditElements.filterNot(migratedEditSuppressions.contains)
+        val vettedRightElements =
+          rightEditElements.filterNot(migratedEditSuppressions.contains)
+
+        if vettedLeftElements.isEmpty || vettedRightElements.isEmpty then
+          val withCoincidentDeletions =
+            editedElements.foldLeft(result)((partialResult, editedElement) =>
+              partialResult
+                .focus(_.coreMergeResult)
+                .modify(
+                  coreMergeAlgebra.coincidentDeletion(
+                    _,
+                    editedElement
+                  )
+                )
             )
-          )
-          .focus(_.speculativeMigrationsBySource)
-          .modify(
-            editedElements.foldLeft(_)((partialResult, editedElement) =>
-              partialResult + (editedElement -> ContentMigration
-                .Edit(leftEditElements, rightEditElements))
+
+          if vettedLeftElements.nonEmpty then
+            vettedLeftElements.foldLeft(withCoincidentDeletions)(
+              (partialResult, editedElement) =>
+                partialResult
+                  .focus(_.coreMergeResult)
+                  .modify(
+                    coreMergeAlgebra.leftInsertion(
+                      _,
+                      editedElement
+                    )
+                  )
             )
-          )
-          .focus(_.speculativeMoveDestinations)
-          .modify(
-            leftEditElements.foldLeft(_)(
-              _ + SpeculativeMoveDestination.Left(_)
+          else if vettedRightElements.nonEmpty then
+            vettedRightElements.foldLeft(withCoincidentDeletions)(
+              (partialResult, editedElement) =>
+                partialResult
+                  .focus(_.coreMergeResult)
+                  .modify(
+                    coreMergeAlgebra.rightInsertion(
+                      _,
+                      editedElement
+                    )
+                  )
             )
-          )
-          .focus(_.speculativeMoveDestinations)
-          .modify(
-            rightEditElements.foldLeft(_)(
-              _ + SpeculativeMoveDestination.Right(_)
+          else withCoincidentDeletions
+          end if
+        else
+          result
+            .focus(_.coreMergeResult)
+            .modify(
+              coreMergeAlgebra.conflict(
+                _,
+                editedElements,
+                leftEditElements,
+                rightEditElements
+              )
             )
-          )
+        end if
 
       end conflict
     end new
   end mergeAlgebra
-end MergeResultDetectingMotion
+end SecondPassMergeResult
