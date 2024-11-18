@@ -16,10 +16,10 @@ object merge extends StrictLogging:
     * @param mergeAlgebra
     *   Carries out the merge operations determined by the merge algorithm. This
     *   allows a pluggable backend for deciding which element takes precedence
-    *   when say, elements from either side compare equal via {@code equality} ,
-    *   but may not actually be the same via their natural equality. It can also
-    *   support propagation of edits and insertions, as well as contract
-    *   checking when testing.
+    *   when say, elements from either side compare equal via [[Eq]], but may
+    *   not actually be the same via their natural equality. It can also support
+    *   propagation of edits and insertions, as well as contract checking when
+    *   testing.
     * @param base
     *   {@code left} and {@code right} are considered modified versions of this
     *   sequence.
@@ -88,8 +88,6 @@ object merge extends StrictLogging:
       left: IndexedSeq[Element],
       right: IndexedSeq[Element]
   ): Result[Element] =
-    val equality = summon[Eq[Element]]
-
     def rightEditNotMaroonedByPriorCoincidentInsertion(
         leftTail: Seq[Contribution[Element]]
     ) =
