@@ -20,6 +20,7 @@ import scopt.{DefaultOEffectSetup, OParser}
 
 import scala.annotation.varargs
 import scala.collection.BuildFrom
+import scala.collection.decorators.mapDecorator
 import scala.io.Source
 import scala.util.Try
 
@@ -78,18 +79,6 @@ object Main extends StrictLogging:
       apply(progressRecording = ConsoleProgressRecording, commandLineArguments*)
     )
   end main
-
-  /** @param commandLineArguments
-    *   Command line arguments as varargs.
-    * @return
-    *   The exit code as a plain integer, suitable for consumption by both Scala
-    *   and Java client code.
-    */
-  @varargs
-  def apply(commandLineArguments: String*): Int = apply(
-    progressRecording = NoProgressRecording,
-    commandLineArguments = commandLineArguments*
-  )
 
   /** @param progressRecording
     * @param commandLineArguments
@@ -271,7 +260,6 @@ object Main extends StrictLogging:
       minimumMatchSize,
       thresholdSizeFractionForMatching,
       minimumAmbiguousMatchSize,
-      propagateExceptions = false,
       progressRecording = progressRecording
     )
 
@@ -387,6 +375,9 @@ object Main extends StrictLogging:
     exitCode
   end mergeTheirBranch
 
+  private def right[Payload](payload: Payload): Workflow[Payload] =
+    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
+
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
       EitherT
@@ -396,6 +387,7 @@ object Main extends StrictLogging:
           // TODO: something pure, functional and wholesome that could be seen
           // at high church...
           logger.error(exception.getMessage)
+          exception.printStackTrace()
           errorMessage.taggedWith[Tags.ErrorMessage]
         )
   end extension
@@ -405,11 +397,20 @@ object Main extends StrictLogging:
       workflow.semiflatTap(_ => WriterT.tell(List(Right(message))))
   end extension
 
-  private def right[Payload](payload: Payload): Workflow[Payload] =
-    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
-
   private def underline(anything: Any): Str =
     fansi.Underlined.On(anything.toString)
+
+  /** @param commandLineArguments
+    *   Command line arguments as varargs.
+    * @return
+    *   The exit code as a plain integer, suitable for consumption by both Scala
+    *   and Java client code.
+    */
+  @varargs
+  def apply(commandLineArguments: String*): Int = apply(
+    progressRecording = NoProgressRecording,
+    commandLineArguments = commandLineArguments*
+  )
 
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](
@@ -685,9 +686,6 @@ object Main extends StrictLogging:
         theirChanges: Map[Path, Change]
     ): Workflow[List[(Path, MergeInput)]] =
 
-      // TODO: use `ourChanges.mergeByKey(theirChanges)` if
-      // https://github.com/scala/scala-collection-contrib/issues/239 leads to a
-      // bug-fix.
       val outerJoin = ourChanges.mergeByKey(theirChanges)
 
       outerJoin.toList

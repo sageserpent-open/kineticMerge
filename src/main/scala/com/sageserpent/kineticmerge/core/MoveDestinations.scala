@@ -13,10 +13,6 @@ import monocle.syntax.all.*
   * move to the right. Divergent, but not ambiguous. <p>9. All other
   * possibilities. Divergent and ambiguous.
   *
-  * @param sources
-  *   Sources of the moves - may be empty in which case the move is degenerate
-  *   and models matching *insertions* on the left and right hand sides of the
-  *   merge.
   * @param left
   *   Destinations on the left hand side of the merge.
   * @param right
@@ -26,7 +22,6 @@ import monocle.syntax.all.*
   * @tparam Element
   */
 case class MoveDestinations[Element](
-    sources: collection.Set[Element],
     left: collection.Set[Element],
     right: collection.Set[Element],
     coincident: collection.Set[(Element, Element)]
@@ -35,25 +30,30 @@ case class MoveDestinations[Element](
     left.nonEmpty || right.nonEmpty || coincident.nonEmpty
   )
 
-  require(
-    left.intersect(right).isEmpty && left.intersect(sources).isEmpty && right
-      .intersect(sources)
-      .isEmpty
-  )
+  require(all.size == left.size + 2 * coincident.size + right.size)
+
+  def this(isolatedMoveDestinations: Set[SpeculativeMoveDestination[Element]]) =
+    this(
+      isolatedMoveDestinations.collect {
+        case SpeculativeMoveDestination.Left(leftElement) => leftElement
+      },
+      isolatedMoveDestinations.collect {
+        case SpeculativeMoveDestination.Right(rightElement) => rightElement
+      },
+      isolatedMoveDestinations.collect {
+        case SpeculativeMoveDestination.Coincident(
+              elementPairAcrossLeftAndRight
+            ) =>
+          elementPairAcrossLeftAndRight
+      }
+    )
+  end this
 
   def all: collection.Set[Element] = coincident.unzip.match
     case (leftHalves, rightHalves) =>
       left union right union leftHalves union rightHalves
 
-  def mergeWith(another: MoveDestinations[Element]): MoveDestinations[Element] =
-    MoveDestinations(
-      sources = this.sources union another.sources,
-      left = this.left union another.left,
-      right = this.right union another.right,
-      coincident = this.coincident union another.coincident
-    )
-
-  def description: String =
+  def description(source: Element): String =
     // What to report?
     // 1. The unambiguous and non-divergent moves.
     // 2. The ambiguous and non-divergent moves.
@@ -92,26 +92,17 @@ case class MoveDestinations[Element](
         case (true, true, true) =>
           s"${elementSetAsText(left)}\n\n${elementSetAsText(right)}\n\n${elementSetAsText(coincident)}"
 
-    (isAmbiguous, isDivergent, isDegenerate) match
-      case (false, false, false) =>
-        s"Single move of:\n${elementSetAsText(sources)}\nto:\n$destinationsAsText."
-      case (false, true, false) =>
-        s"Divergent move of:\n${elementSetAsText(sources)}\nto:\n$destinationsAsText."
-      case (false, false, true) => s"Insertion of:\n$destinationsAsText."
-      case (false, true, true) =>
-        s"Divergent insertion of:\n$destinationsAsText."
-      case (true, false, false) =>
-        s"Ambiguous moves of:\n${elementSetAsText(sources)}\nto:\n$destinationsAsText."
-      case (true, true, false) =>
-        s"Ambiguous divergent moves of:\n${elementSetAsText(sources)}\nto:\n$destinationsAsText."
-      case (true, false, true) =>
-        s"Ambiguous insertions of:\n$destinationsAsText."
-      case (true, true, true) =>
-        s"Ambiguous divergent insertions of:\n$destinationsAsText."
+    (isAmbiguous, isDivergent) match
+      case (false, false) =>
+        s"Single move of:\n${pprintCustomised(source)}\nto:\n$destinationsAsText."
+      case (false, true) =>
+        s"Divergent move of:\n${pprintCustomised(source)}\nto:\n$destinationsAsText."
+      case (true, false) =>
+        s"Ambiguous moves of:\n${pprintCustomised(source)}\nto:\n$destinationsAsText."
+      case (true, true) =>
+        s"Ambiguous divergent moves of:\n${pprintCustomised(source)}\nto:\n$destinationsAsText."
     end match
   end description
-
-  def isDegenerate: Boolean = sources.isEmpty
 
   def isDivergent: Boolean =
     left.nonEmpty && right.nonEmpty

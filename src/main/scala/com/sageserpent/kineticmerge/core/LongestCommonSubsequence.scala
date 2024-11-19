@@ -1,13 +1,10 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.Eq
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
-  CommonSubsequenceSize,
-  Contribution
-}
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{CommonSubsequenceSize, Contribution}
 import monocle.syntax.all.*
 
-import scala.collection.mutable
+import scala.collection.{Searching, mutable}
 
 case class LongestCommonSubsequence[Element] private (
     base: IndexedSeq[Contribution[Element]],
@@ -123,7 +120,6 @@ case class LongestCommonSubsequence[Element] private (
 end LongestCommonSubsequence
 
 object LongestCommonSubsequence:
-  private val sentinelIndexForExhaustion = -1
 
   def defaultElementSize[Element](irrelevant: Element): Int = 1
 
@@ -142,11 +138,34 @@ object LongestCommonSubsequence:
     val equality = summon[Eq[Element]]
     val sized    = summon[Sized[Element]]
 
-    val partialResultsCache
-        : mutable.Map[(Int, Int, Int), LongestCommonSubsequence[Element]] =
-      mutable.Map.empty
+    val swatheSizeToAccommodatePartialResultsForNeighbouringBaseIndices =
+      2 * (1 + left.size) * (1 + right.size)
 
-    def of(
+    type PartialResultKey = (Int, Int, Int)
+
+    type PartialResultsCache =
+      mutable.ArrayDeque[(PartialResultKey, LongestCommonSubsequence[Element])]
+
+    val orderingAligningWithCachePopulationLoop
+        : Ordering[(PartialResultKey, LongestCommonSubsequence[Element])] =
+      // Order by the natural tuple ordering of the key, so base index, then
+      // left index, then right index. This matches the order in which the cache
+      // will be populated.
+      Ordering.by(_._1)
+
+    extension (partialResultsCache: PartialResultsCache)
+      def apply(key: PartialResultKey): LongestCommonSubsequence[Element] =
+        val Searching.Found(index) = partialResultsCache.search(key -> null)(
+          orderingAligningWithCachePopulationLoop
+        ): @unchecked
+
+        partialResultsCache(index)._2
+    end extension
+
+    val partialResultsCache: PartialResultsCache =
+      mutable.ArrayDeque.empty
+
+    def ofConsultingCacheForSubProblems(
         onePastBaseIndex: Int,
         onePastLeftIndex: Int,
         onePastRightIndex: Int
@@ -187,31 +206,27 @@ object LongestCommonSubsequence:
             val leftElement  = left(leftIndex)
             val rightElement = right(rightIndex)
 
-            partialResultsCache.getOrElseUpdate(
-              (sentinelIndexForExhaustion, leftIndex, rightIndex), {
-                val leftEqualsRight = equality.eqv(leftElement, rightElement)
+            val leftEqualsRight = equality.eqv(leftElement, rightElement)
 
-                if leftEqualsRight then
-                  of(onePastBaseIndex = 0, leftIndex, rightIndex)
-                    .addCommonLeftAndRight(leftElement, rightElement)(
-                      sized.sizeOf
-                    )
-                else
-                  val resultDroppingTheEndOfTheLeft =
-                    of(onePastBaseIndex = 0, leftIndex, onePastRightIndex)
-                      .addLeftDifference(leftElement)
+            if leftEqualsRight then
+              partialResultsCache((0, leftIndex, rightIndex))
+                .addCommonLeftAndRight(leftElement, rightElement)(
+                  sized.sizeOf
+                )
+            else
+              val resultDroppingTheEndOfTheLeft =
+                partialResultsCache((0, leftIndex, onePastRightIndex))
+                  .addLeftDifference(leftElement)
 
-                  val resultDroppingTheEndOfTheRight =
-                    of(onePastBaseIndex = 0, onePastLeftIndex, rightIndex)
-                      .addRightDifference(rightElement)
+              val resultDroppingTheEndOfTheRight =
+                partialResultsCache((0, onePastLeftIndex, rightIndex))
+                  .addRightDifference(rightElement)
 
-                  orderBySize.max(
-                    resultDroppingTheEndOfTheLeft,
-                    resultDroppingTheEndOfTheRight
-                  )
-                end if
-              }
-            )
+              orderBySize.max(
+                resultDroppingTheEndOfTheLeft,
+                resultDroppingTheEndOfTheRight
+              )
+            end if
           else if leftIsExhausted then
             val baseIndex  = onePastBaseIndex - 1
             val rightIndex = onePastRightIndex - 1
@@ -219,31 +234,27 @@ object LongestCommonSubsequence:
             val baseElement  = base(baseIndex)
             val rightElement = right(rightIndex)
 
-            partialResultsCache.getOrElseUpdate(
-              (baseIndex, sentinelIndexForExhaustion, rightIndex), {
-                val baseEqualsRight = equality.eqv(baseElement, rightElement)
+            val baseEqualsRight = equality.eqv(baseElement, rightElement)
 
-                if baseEqualsRight then
-                  of(baseIndex, onePastLeftIndex = 0, rightIndex)
-                    .addCommonBaseAndRight(baseElement, rightElement)(
-                      sized.sizeOf
-                    )
-                else
-                  val resultDroppingTheEndOfTheBase =
-                    of(baseIndex, onePastLeftIndex = 0, onePastRightIndex)
-                      .addBaseDifference(baseElement)
+            if baseEqualsRight then
+              partialResultsCache((baseIndex, 0, rightIndex))
+                .addCommonBaseAndRight(baseElement, rightElement)(
+                  sized.sizeOf
+                )
+            else
+              val resultDroppingTheEndOfTheBase =
+                partialResultsCache((baseIndex, 0, onePastRightIndex))
+                  .addBaseDifference(baseElement)
 
-                  val resultDroppingTheEndOfTheRight =
-                    of(onePastBaseIndex, onePastLeftIndex = 0, rightIndex)
-                      .addRightDifference(rightElement)
+              val resultDroppingTheEndOfTheRight =
+                partialResultsCache((onePastBaseIndex, 0, rightIndex))
+                  .addRightDifference(rightElement)
 
-                  orderBySize.max(
-                    resultDroppingTheEndOfTheBase,
-                    resultDroppingTheEndOfTheRight
-                  )
-                end if
-              }
-            )
+              orderBySize.max(
+                resultDroppingTheEndOfTheBase,
+                resultDroppingTheEndOfTheRight
+              )
+            end if
           else if rightIsExhausted then
             val baseIndex = onePastBaseIndex - 1
             val leftIndex = onePastLeftIndex - 1
@@ -251,31 +262,27 @@ object LongestCommonSubsequence:
             val baseElement = base(baseIndex)
             val leftElement = left(leftIndex)
 
-            partialResultsCache.getOrElseUpdate(
-              (baseIndex, leftIndex, sentinelIndexForExhaustion), {
-                val baseEqualsLeft = equality.eqv(baseElement, leftElement)
+            val baseEqualsLeft = equality.eqv(baseElement, leftElement)
 
-                if baseEqualsLeft then
-                  of(baseIndex, leftIndex, onePastRightIndex = 0)
-                    .addCommonBaseAndLeft(baseElement, leftElement)(
-                      sized.sizeOf
-                    )
-                else
-                  val resultDroppingTheEndOfTheBase =
-                    of(baseIndex, onePastLeftIndex, onePastRightIndex = 0)
-                      .addBaseDifference(baseElement)
+            if baseEqualsLeft then
+              partialResultsCache((baseIndex, leftIndex, 0))
+                .addCommonBaseAndLeft(baseElement, leftElement)(
+                  sized.sizeOf
+                )
+            else
+              val resultDroppingTheEndOfTheBase =
+                partialResultsCache((baseIndex, onePastLeftIndex, 0))
+                  .addBaseDifference(baseElement)
 
-                  val resultDroppingTheEndOfTheLeft =
-                    of(onePastBaseIndex, leftIndex, onePastRightIndex = 0)
-                      .addLeftDifference(leftElement)
+              val resultDroppingTheEndOfTheLeft =
+                partialResultsCache((onePastBaseIndex, leftIndex, 0))
+                  .addLeftDifference(leftElement)
 
-                  orderBySize.max(
-                    resultDroppingTheEndOfTheBase,
-                    resultDroppingTheEndOfTheLeft
-                  )
-                end if
-              }
-            )
+              orderBySize.max(
+                resultDroppingTheEndOfTheBase,
+                resultDroppingTheEndOfTheLeft
+              )
+            end if
           else
             val baseIndex  = onePastBaseIndex - 1
             val leftIndex  = onePastLeftIndex - 1
@@ -285,92 +292,119 @@ object LongestCommonSubsequence:
             val leftElement  = left(leftIndex)
             val rightElement = right(rightIndex)
 
-            partialResultsCache.getOrElseUpdate(
-              (baseIndex, leftIndex, rightIndex), {
-                val baseEqualsLeft  = equality.eqv(baseElement, leftElement)
-                val baseEqualsRight = equality.eqv(baseElement, rightElement)
+            val baseEqualsLeft  = equality.eqv(baseElement, leftElement)
+            val baseEqualsRight = equality.eqv(baseElement, rightElement)
 
-                if baseEqualsLeft && baseEqualsRight
-                then
-                  of(baseIndex, leftIndex, rightIndex)
-                    .addCommon(baseElement, leftElement, rightElement)(
+            if baseEqualsLeft && baseEqualsRight
+            then
+              partialResultsCache((baseIndex, leftIndex, rightIndex))
+                .addCommon(baseElement, leftElement, rightElement)(
+                  sized.sizeOf
+                )
+            else
+              val leftEqualsRight = equality.eqv(leftElement, rightElement)
+
+              // NOTE: at this point, we can't have any two of
+              // `baseEqualsLeft`, `baseEqualsRight` or `leftEqualsRight`
+              // being true - because by transitive equality, that would imply
+              // all three sides are equal, and thus we should be following
+              // other branch. So we have to use all the next three bindings
+              // one way or the other...
+
+              val resultDroppingTheEndOfTheBase =
+                partialResultsCache(
+                  (baseIndex, onePastLeftIndex, onePastRightIndex)
+                )
+                  .addBaseDifference(baseElement)
+
+              val resultDroppingTheEndOfTheLeft =
+                partialResultsCache(
+                  (onePastBaseIndex, leftIndex, onePastRightIndex)
+                )
+                  .addLeftDifference(leftElement)
+
+              val resultDroppingTheEndOfTheRight =
+                partialResultsCache(
+                  (onePastBaseIndex, onePastLeftIndex, rightIndex)
+                )
+                  .addRightDifference(rightElement)
+
+              val resultDroppingTheBaseAndLeft =
+                if baseEqualsLeft then
+                  partialResultsCache((baseIndex, leftIndex, onePastRightIndex))
+                    .addCommonBaseAndLeft(baseElement, leftElement)(
                       sized.sizeOf
                     )
                 else
-                  lazy val resultDroppingTheEndOfTheBase =
-                    of(baseIndex, onePastLeftIndex, onePastRightIndex)
-                      .addBaseDifference(baseElement)
-
-                  lazy val resultDroppingTheEndOfTheLeft =
-                    of(onePastBaseIndex, leftIndex, onePastRightIndex)
-                      .addLeftDifference(leftElement)
-
-                  lazy val resultDroppingTheEndOfTheRight =
-                    of(onePastBaseIndex, onePastLeftIndex, rightIndex)
-                      .addRightDifference(rightElement)
-
-                  val resultDroppingTheBaseAndLeft =
-                    if baseEqualsLeft then
-                      of(baseIndex, leftIndex, onePastRightIndex)
-                        .addCommonBaseAndLeft(baseElement, leftElement)(
-                          sized.sizeOf
-                        )
-                    else
-                      orderBySize.max(
-                        resultDroppingTheEndOfTheBase,
-                        resultDroppingTheEndOfTheLeft
-                      )
-                    end if
-                  end resultDroppingTheBaseAndLeft
-
-                  val resultDroppingTheBaseAndRight =
-                    if baseEqualsRight then
-                      of(baseIndex, onePastLeftIndex, rightIndex)
-                        .addCommonBaseAndRight(baseElement, rightElement)(
-                          sized.sizeOf
-                        )
-                    else
-                      orderBySize.max(
-                        resultDroppingTheEndOfTheBase,
-                        resultDroppingTheEndOfTheRight
-                      )
-                    end if
-                  end resultDroppingTheBaseAndRight
-
-                  val leftEqualsRight = equality.eqv(leftElement, rightElement)
-
-                  val resultDroppingTheLeftAndRight =
-                    if leftEqualsRight then
-                      of(onePastBaseIndex, leftIndex, rightIndex)
-                        .addCommonLeftAndRight(leftElement, rightElement)(
-                          sized.sizeOf
-                        )
-                    else
-                      orderBySize.max(
-                        resultDroppingTheEndOfTheLeft,
-                        resultDroppingTheEndOfTheRight
-                      )
-                    end if
-                  end resultDroppingTheLeftAndRight
-
-                  Iterator(
-                    resultDroppingTheBaseAndLeft,
-                    resultDroppingTheBaseAndRight,
-                    resultDroppingTheLeftAndRight
-                  ).max(orderBySize)
+                  orderBySize.max(
+                    resultDroppingTheEndOfTheBase,
+                    resultDroppingTheEndOfTheLeft
+                  )
                 end if
-              }
-            )
+              end resultDroppingTheBaseAndLeft
+
+              val resultDroppingTheBaseAndRight =
+                if baseEqualsRight then
+                  partialResultsCache((baseIndex, onePastLeftIndex, rightIndex))
+                    .addCommonBaseAndRight(baseElement, rightElement)(
+                      sized.sizeOf
+                    )
+                else
+                  orderBySize.max(
+                    resultDroppingTheEndOfTheBase,
+                    resultDroppingTheEndOfTheRight
+                  )
+                end if
+              end resultDroppingTheBaseAndRight
+
+              val resultDroppingTheLeftAndRight =
+                if leftEqualsRight then
+                  partialResultsCache((onePastBaseIndex, leftIndex, rightIndex))
+                    .addCommonLeftAndRight(leftElement, rightElement)(
+                      sized.sizeOf
+                    )
+                else
+                  orderBySize.max(
+                    resultDroppingTheEndOfTheLeft,
+                    resultDroppingTheEndOfTheRight
+                  )
+                end if
+              end resultDroppingTheLeftAndRight
+
+              Iterator(
+                resultDroppingTheBaseAndLeft,
+                resultDroppingTheBaseAndRight,
+                resultDroppingTheLeftAndRight
+              ).max(orderBySize)
+            end if
           end if
       end match
-    end of
+    end ofConsultingCacheForSubProblems
 
-    of(
-      base.size,
-      left.size,
-      right.size
-    )
+    // Brute-forced and ignorant dynamic programming. Completely unsafe reliance
+    // on this imperative loop priming the `partialResultsCache` prior to each
+    // subsequent call of `ofConsultingCacheForSubProblems` using a cached
+    // value. Got to love it!
+    for
+      onePastBaseIndex  <- 0 to base.size
+      onePastLeftIndex  <- 0 to left.size
+      onePastRightIndex <- 0 to right.size
+    do
+      partialResultsCache.append(
+        (onePastBaseIndex, onePastLeftIndex, onePastRightIndex) ->
+          ofConsultingCacheForSubProblems(
+            onePastBaseIndex,
+            onePastLeftIndex,
+            onePastRightIndex
+          )
+      )
 
+      if swatheSizeToAccommodatePartialResultsForNeighbouringBaseIndices < partialResultsCache.size
+      then partialResultsCache.removeHead()
+      end if
+    end for
+
+    partialResultsCache((base.size, left.size, right.size))
   end of
 
   trait Sized[Element]:

@@ -1,7 +1,10 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.{Eq, Order}
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
+import com.sageserpent.kineticmerge.core.FirstPassMergeResult.Recording
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Sized
+import com.sageserpent.kineticmerge.core.MoveDestinationsReport.EvaluatedMoves
 import com.sageserpent.kineticmerge.core.merge.of as mergeOf
 import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
@@ -23,15 +26,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
   )
     def merge: (
         Map[Path, MergeResult[Element]],
-        MatchesContext[Section[Element]]#MoveDestinationsReport
+        MoveDestinationsReport[Section[Element]]
     ) =
       import codeMotionAnalysis.matchesFor
-
-      val matchesContext = MatchesContext(
-        codeMotionAnalysis.matchesFor
-      )
-
-      import matchesContext.*
 
       given Eq[Section[Element]] with
         /** This is most definitely *not* [[Section.equals]] - we want to use
@@ -57,7 +54,10 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       val paths =
         codeMotionAnalysis.base.keySet ++ codeMotionAnalysis.left.keySet ++ codeMotionAnalysis.right.keySet
 
-      case class InsertionsAtPath(path: Path, insertions: Seq[Insertion])
+      case class InsertionsAtPath(
+          path: Path,
+          insertions: Seq[Insertion[Section[Element]]]
+      )
 
       def resolution(
           baseSection: Option[Section[Element]],
@@ -81,30 +81,28 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         end match
       }
 
+      type SecondPassInput =
+        Either[FullyMerged[Section[Element]], Recording[Section[Element]]]
+
       val (
-        mergeResultsByPath,
-        changesMigratedThroughMotion,
-        moveDestinationsReport,
+        secondPassInputsByPath,
+        speculativeMigrationsBySource,
+        speculativeMoveDestinations,
         insertionsAtPath,
         oneSidedDeletions
       ) =
         paths.foldLeft(
-          Map.empty[Path, MergeResult[Section[Element]]],
-          Iterable.empty[
-            (
-                Section[Element],
-                IndexedSeq[Section[Element]]
-            )
-          ],
-          emptyReport,
+          Map.empty[Path, SecondPassInput],
+          Map.empty[Section[Element], ContentMigration[Section[Element]]],
+          Set.empty[SpeculativeMoveDestination[Section[Element]]],
           Vector.empty[InsertionsAtPath],
           Set.empty[Section[Element]]
         ) {
           case (
                 (
-                  mergeResultsByPath,
-                  changesMigratedThroughMotion,
-                  moveDestinationsReport,
+                  secondPassInputsByPath,
+                  speculativeMigrationsBySource,
+                  speculativeMoveDestinations,
                   insertionsAtPath,
                   oneSidedDeletions
                 ),
@@ -116,30 +114,31 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
             (base, left, right) match
               case (None, Some(leftSections), None) =>
-                // File added only on the left; pass through as there is neither
-                // anything to merge nor any sources of edits or deletions...
+                // File added only on the left...
                 (
-                  mergeResultsByPath + (path -> FullyMerged(
-                    leftSections
+                  secondPassInputsByPath + (path -> Left(
+                    FullyMerged(
+                      leftSections
+                    )
                   )),
-                  changesMigratedThroughMotion,
-                  leftSections.foldLeft(moveDestinationsReport)(
-                    _.leftMoveOf(_)
+                  speculativeMigrationsBySource,
+                  leftSections.foldLeft(speculativeMoveDestinations)(
+                    _ + SpeculativeMoveDestination.Left(_)
                   ),
                   insertionsAtPath,
                   oneSidedDeletions
                 )
               case (None, None, Some(rightSections)) =>
-                // File added only on the right; pass through as there is
-                // neither anything to merge nor any sources of edits or
-                // deletions...
+                // File added only on the right...
                 (
-                  mergeResultsByPath + (path -> FullyMerged(
-                    rightSections
+                  secondPassInputsByPath + (path -> Left(
+                    FullyMerged(
+                      rightSections
+                    )
                   )),
-                  changesMigratedThroughMotion,
-                  rightSections.foldLeft(moveDestinationsReport)(
-                    _.rightMoveOf(_)
+                  speculativeMigrationsBySource,
+                  rightSections.foldLeft(speculativeMoveDestinations)(
+                    _ + SpeculativeMoveDestination.Right(_)
                   ),
                   insertionsAtPath,
                   oneSidedDeletions
@@ -160,69 +159,59 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
                 given Sized[Section[Element]] = _.size
 
-                val mergedSectionsResult
-                    : MergeResultDetectingMotion[MergeResult, Section[
-                      Element
-                    ]] =
-                  mergeOf(mergeAlgebra =
-                    MergeResultDetectingMotion.mergeAlgebra(
-                      coreMergeAlgebra = MergeResult.mergeAlgebra(resolution),
-                      resolution
-                    )
-                  )(
+                val firstPassMergeResult
+                    : FirstPassMergeResult[Section[Element]] =
+                  mergeOf(mergeAlgebra = FirstPassMergeResult.mergeAlgebra())(
                     base = optionalBaseSections.getOrElse(IndexedSeq.empty),
                     left = optionalLeftSections.getOrElse(IndexedSeq.empty),
                     right = optionalRightSections.getOrElse(IndexedSeq.empty)
                   )
 
                 (
-                  mergeResultsByPath + (path -> mergedSectionsResult.coreMergeResult),
-                  changesMigratedThroughMotion ++ mergedSectionsResult.changesMigratedThroughMotion,
-                  moveDestinationsReport.mergeWith(
-                    mergedSectionsResult.moveDestinationsReport
-                  ),
+                  secondPassInputsByPath + (path -> Right(
+                    firstPassMergeResult.recording
+                  )),
+                  speculativeMigrationsBySource concat firstPassMergeResult.speculativeMigrationsBySource,
+                  speculativeMoveDestinations union firstPassMergeResult.speculativeMoveDestinations,
                   insertionsAtPath :+ InsertionsAtPath(
                     path,
-                    mergedSectionsResult.insertions
+                    firstPassMergeResult.insertions
                   ),
-                  oneSidedDeletions union mergedSectionsResult.oneSidedDeletions
+                  oneSidedDeletions union firstPassMergeResult.oneSidedDeletions
                 )
             end match
         }
 
-      // NOTE: have to delay this assumption check until after the complete move
-      // destination report has been finalized, and *not* make it an invariant
-      // of `MoveDestination`. This is because divergent moves are entered as
-      // separate left- and right-moves, so any such invariant could (and does)
-      // break.
-      moveDestinationsReport.moveDestinationsByMatches.values.foreach {
-        moveDestination =>
-          if moveDestination.isDegenerate then
-            // We don't consider left- and right-insertions to be degenerate
-            // moves, as there is no match involved.
-            assume(
-              moveDestination.isDivergent || moveDestination.coincident.nonEmpty
-            )
-          end if
-      }
-
-      def isMoveDestinationOnGivenSide(
-          section: Section[Element],
-          side: Side,
-          moveDestinations: MoveDestinations[Section[Element]]
+      val EvaluatedMoves(
+        moveDestinationsReport,
+        migratedEditSuppressions,
+        substitutionsByDestination,
+        isolatedMoveDestinationsByOppositeSideElement
       ) =
-        side match
-          case Side.Left =>
-            moveDestinations.left.contains(
-              section
-            ) || moveDestinations.coincident.exists { case (leftPart, _) =>
-              section == leftPart
-            }
-          case Side.Right =>
-            moveDestinations.right
-              .contains(section) || moveDestinations.coincident.exists {
-              case (_, rightPart) => section == rightPart
-            }
+        MoveDestinationsReport.evaluateSpeculativeSourcesAndDestinations(
+          speculativeMigrationsBySource,
+          speculativeMoveDestinations
+        )(matchesFor, resolution)
+
+      val secondPassMergeResultsByPath
+          : Map[Path, MergeResult[Section[Element]]] =
+        secondPassInputsByPath.map {
+          case (path, Right(recording)) =>
+            val mergedSectionsResult
+                : SecondPassMergeResult[MergeResult, Section[Element]] =
+              recording.playback(
+                SecondPassMergeResult.mergeAlgebra(
+                  coreMergeAlgebra = MergeResult.mergeAlgebra(resolution),
+                  migratedEditSuppressions
+                )
+              )
+
+            path -> mergedSectionsResult.coreMergeResult
+          case (path, Left(fullyMerged)) => path -> fullyMerged
+        }
+
+      val allAnchorDestinations =
+        isolatedMoveDestinationsByOppositeSideElement.values.toSet
 
       given sectionRunOrdering[Sequence[Item] <: Seq[Item]]
           : Ordering[Sequence[Section[Element]]] =
@@ -237,7 +226,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           .by[InsertionSplice, Seq[Section[Element]]](_.insertions)
           .orElseBy(_.numberOfSkipsToTheAnchor)
 
-      def uniqueItemsFrom[Item](
+      def uniqueSortedItemsFrom[Item](
           items: collection.Set[Item]
       )(using itemOrdering: Ordering[Item]): List[Item] =
         require(items.nonEmpty)
@@ -256,7 +245,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         assume(result.nonEmpty)
 
         result
-      end uniqueItemsFrom
+      end uniqueSortedItemsFrom
 
       enum Anchoring:
         case Predecessor
@@ -293,7 +282,18 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                           insertionRun
                         ),
                         Insertion(side, inserted)
-                      ) =>
+                      )
+                      // Insertions can't be anchors, nor can they be spurious
+                      // conflicts caused by migrated edits.
+
+                      // NASTY HACK: the is required only because the logic
+                      // picking up the insertions is so hokey regarding how
+                      // conflicts are dealt with. We really should have this
+                      // sorted out upstream so that only genuine insertions
+                      // make it through here.
+                      if !allAnchorDestinations.contains(
+                        inserted
+                      ) && !migratedEditSuppressions.contains(inserted) =>
                     insertionRun match
                       case Some(InsertionRun(previousSide, previouslyInserted))
                           if previousSide == side && previouslyInserted.last.onePastEndOffset == inserted.startOffset =>
@@ -307,6 +307,14 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                             contiguousInsertions = Vector(inserted)
                           )
                         )
+                  case (
+                        (
+                          partialResult,
+                          insertionRun
+                        ),
+                        _
+                      ) =>
+                    (partialResult ++ insertionRun) -> None
                 }
 
             val insertionRuns = partialResult ++ insertionRun
@@ -335,36 +343,29 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   def testForAnchor(
                       potentialAnchor: Section[Element]
                   ): AnchorTestResult =
-                    val matches = matchesFor(potentialAnchor)
-                    moveDestinationsReport.moveDestinationsByMatches
-                      .get(matches)
-                      .fold(ifEmpty =
-                        if oneSidedDeletions.contains(potentialAnchor) then
-                          // If the potential anchor is a one-sided deletion,
-                          // then it isn't an anchor; however the lack of an
-                          // edit in the same file means we can think of it as
-                          // noise that doesn't affect the validity of a
-                          // subsequent anchor.
-                          AnchorTestResult.SkipOverAndKeepLooking
-                        else
-                          // There is an edit on the other side of the potential
-                          // anchor in the same file, this definitely isn't an
-                          // anchor in itself and will hem in any insertions
-                          // from the possibility of a subsequent anchor.
-                          AnchorTestResult.StopLooking
-                      )(moveDestinations =>
-                        if !isMoveDestinationOnGivenSide(
-                            potentialAnchor,
-                            side,
-                            moveDestinations
-                          )
-                        then
-                          AnchorTestResult.Found(side match
-                            case Side.Left  => moveDestinations.right
-                            case Side.Right => moveDestinations.left
-                          )
-                        else AnchorTestResult.StopLooking
+                    val isolatedMoveDestinations =
+                      isolatedMoveDestinationsByOppositeSideElement.get(
+                        potentialAnchor
                       )
+
+                    if isolatedMoveDestinations.isEmpty then
+                      if oneSidedDeletions.contains(potentialAnchor) then
+                        // If the potential anchor is a one-sided deletion,
+                        // then it isn't an anchor; however the lack of an
+                        // edit in the same file means we can think of it as
+                        // noise that doesn't affect the validity of a
+                        // subsequent anchor.
+                        AnchorTestResult.SkipOverAndKeepLooking
+                      else
+                        // There is an edit on the other side of the potential
+                        // anchor in the same file, this definitely isn't an
+                        // anchor in itself and will hem in any insertions
+                        // from the possibility of a subsequent anchor.
+                        AnchorTestResult.StopLooking
+                    else if !allAnchorDestinations.contains(potentialAnchor)
+                    then AnchorTestResult.Found(isolatedMoveDestinations)
+                    else AnchorTestResult.StopLooking
+                    end if
                   end testForAnchor
 
                   val Searching.Found(indexOfLeadingInsertedSection) =
@@ -435,56 +436,36 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
       val suppressedMoveDestinationsDueToMigratedInsertions =
         migratedInsertions.flatMap { insertion =>
-          val matches = matchesFor(insertion)
+          val sources = matchesFor(insertion).flatMap(_.base)
 
-          moveDestinationsReport.moveDestinationsByMatches
-            .get(matches)
-            .fold(ifEmpty = Set.empty[Section[Element]])(_.all)
+          sources.flatMap(
+            moveDestinationsReport.moveDestinationsBySources
+              .get(_)
+              .fold(ifEmpty = Set.empty[Section[Element]])(_.all)
+          )
         }
 
       def applyMigrations(
           path: Path,
           mergeResult: MergeResult[Section[Element]]
       ): (Path, MergeResult[Section[Element]]) =
-        val potentialValidDestinationsForMigratingChangesTo =
-          moveDestinationsReport.moveDestinationsByMatches.values
-            .filterNot(moveDestinations =>
-              moveDestinations.isDegenerate || moveDestinations.isDivergent
-            )
-            .flatMap(moveDestinations =>
-              // NOTE: coincident move destinations can't pick up edits as there
-              // would be no side to contribute the edit; instead, both of them
-              // would contribute a move.
-              moveDestinations.left ++ moveDestinations.right
-            )
-            .toSet
-
-        val vettedChangesMigratedThroughMotion =
-          MultiDict.from(changesMigratedThroughMotion.filter {
-            case (potentialDestination, _) =>
-              potentialValidDestinationsForMigratingChangesTo.contains(
-                potentialDestination
-              )
-          })
-
         def substituteFor(
             section: Section[Element]
         ): IndexedSeq[Section[Element]] =
-          val migratedChanges = vettedChangesMigratedThroughMotion
-            .get(section)
+          val migratedChanges = substitutionsByDestination.get(section)
 
           if migratedChanges.nonEmpty then
-            val uniqueMigratedChanges = uniqueItemsFrom(migratedChanges)
+            val uniqueMigratedChanges = uniqueSortedItemsFrom(migratedChanges)
 
             val migratedChange: IndexedSeq[Section[Element]] =
               uniqueMigratedChanges match
                 case head :: Nil => head
                 case _ =>
-                  throw new RuntimeException(
+                  throw new AdmissibleFailure(
                     s"""
-                       |Multiple potential changes migrated to destination: $section,
-                       |these are:
-                       |${uniqueMigratedChanges
+                         |Multiple potential changes migrated to destination: $section,
+                         |these are:
+                         |${uniqueMigratedChanges
                         .map(change =>
                           if change.isEmpty then "DELETION"
                           else s"EDIT: $change"
@@ -492,9 +473,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                         .zipWithIndex
                         .map((change, index) => s"${1 + index}. $change")
                         .mkString("\n")}
-                       |These are from ambiguous matches of text with the destination.
-                       |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${section.size}.
-                        """.stripMargin
+                         |These are from ambiguous matches of text with the destination.
+                         |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${section.size}.
+                          """.stripMargin
                   )
 
             if migratedChange.isEmpty then
@@ -583,12 +564,12 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 val precedingInsertionSplice =
                   Option.when(precedingMigratedInsertionSplices.nonEmpty) {
                     val uniqueInsertionSplices =
-                      uniqueItemsFrom(precedingMigratedInsertionSplices)
+                      uniqueSortedItemsFrom(precedingMigratedInsertionSplices)
 
                     uniqueInsertionSplices match
                       case head :: Nil => head
                       case _ =>
-                        throw new RuntimeException(
+                        throw new AdmissibleFailure(
                           s"""
                              |Multiple potential insertions migrated before destination: $candidateAnchorDestination,
                              |these are:
@@ -614,12 +595,12 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 val succeedingInsertionSplice =
                   Option.when(succeedingMigratedInsertionSplices.nonEmpty) {
                     val uniqueInsertionSplices =
-                      uniqueItemsFrom(succeedingMigratedInsertionSplices)
+                      uniqueSortedItemsFrom(succeedingMigratedInsertionSplices)
 
                     uniqueInsertionSplices match
                       case head :: Nil => head
                       case _ =>
-                        throw new RuntimeException(
+                        throw new AdmissibleFailure(
                           s"""
                              |Multiple potential insertions migrated after destination: $candidateAnchorDestination,
                              |these are:
@@ -868,7 +849,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         )
       end explodeSections
 
-      mergeResultsByPath
+      secondPassMergeResultsByPath
         .map(applyMigrations)
         .map(explodeSections) -> moveDestinationsReport
     end merge
