@@ -10,6 +10,9 @@ import monocle.syntax.all.*
   *   [[MatchesContext.MergeResultDetectingMotion.mergeAlgebra]].
   * @tparam CoreResult
   * @tparam Element
+  * @todo
+  *   Consider just using [[CoreResult]] if nothing else makes it way into this
+  *   class.
   */
 case class SecondPassMergeResult[CoreResult[_], Element](
     coreMergeResult: CoreResult[Element]
@@ -19,6 +22,18 @@ object SecondPassMergeResult extends StrictLogging:
   private type MergeResultDetectingMotionType[CoreResult[_]] =
     [Element] =>> SecondPassMergeResult[CoreResult, Element]
 
+  /** This delegates to {@code coreMergeAlgebra} , but will resolve conflicts
+    * that turn out to be where an edit or deletion migration was picked up.
+    *
+    * @param coreMergeAlgebra
+    *   Operations are delegated to this to do the real work.
+    * @param migratedEditSuppressions
+    *   Conflicts are vetted against these in case they are just the sites of
+    *   edit or deletions that need to be migrated.
+    * @tparam CoreResult
+    * @tparam Element
+    * @return
+    */
   def mergeAlgebra[CoreResult[_], Element](
       coreMergeAlgebra: merge.MergeAlgebra[CoreResult, Element],
       migratedEditSuppressions: Set[Element]
@@ -175,6 +190,9 @@ object SecondPassMergeResult extends StrictLogging:
         val vettedRightElements =
           rightEditElements.filterNot(migratedEditSuppressions.contains)
 
+        // NOTE: in what follows, we allow coincident deletions to be followed
+        // by one-sided insertions; these would not be permitted by the
+        // `merge.of`, but are OK as a post-processing step here.
         if vettedLeftElements.isEmpty || vettedRightElements.isEmpty then
           val withCoincidentDeletions =
             editedElements.foldLeft(result)((partialResult, editedElement) =>
