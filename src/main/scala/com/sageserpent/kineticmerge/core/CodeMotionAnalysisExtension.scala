@@ -562,20 +562,20 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     candidateAnchorDestination
                   ) =>
                 val precedingMigrationAlternatives =
-                  mergesByAnchoredMoveDestination.get(
-                    candidateAnchorDestination -> Anchoring.Successor
-                  )
+                  mergesByAnchoredMoveDestination
+                    .get(
+                      candidateAnchorDestination -> Anchoring.Successor
+                    )
+                    // TODO: this is just to get things to compile; need to
+                    // address handling of conflicted anchored merges...
+                    .collect { case FullyMerged(sections) =>
+                      sections
+                    }
 
                 val precedingMigration =
                   Option.when(precedingMigrationAlternatives.nonEmpty) {
                     val uniqueMigrations =
-                      uniqueSortedItemsFrom(
-                        // TODO: this is just to get things to compile; need to
-                        // address handling of conflicted anchored merges...
-                        precedingMigrationAlternatives.collect {
-                          case FullyMerged(sections) => sections
-                        }
-                      )
+                      uniqueSortedItemsFrom(precedingMigrationAlternatives)
 
                     uniqueMigrations match
                       case head :: Nil => head
@@ -599,20 +599,20 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   }
 
                 val succeedingMigrationAlternatives =
-                  mergesByAnchoredMoveDestination.get(
-                    candidateAnchorDestination -> Anchoring.Predecessor
-                  )
+                  mergesByAnchoredMoveDestination
+                    .get(
+                      candidateAnchorDestination -> Anchoring.Predecessor
+                    )
+                    // TODO: this is just to get things to compile; need to
+                    // address handling of conflicted anchored merges...
+                    .collect { case FullyMerged(sections) =>
+                      sections
+                    }
 
                 val succeedingMigration =
                   Option.when(succeedingMigrationAlternatives.nonEmpty) {
                     val uniqueMigrations =
-                      uniqueSortedItemsFrom(
-                        // TODO: this is just to get things to compile; need to
-                        // address handling of conflicted anchored merges...
-                        succeedingMigrationAlternatives.collect {
-                          case FullyMerged(sections) => sections
-                        }
-                      )
+                      uniqueSortedItemsFrom(succeedingMigrationAlternatives)
 
                     uniqueMigrations match
                       case head :: Nil => head
