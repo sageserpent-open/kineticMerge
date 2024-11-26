@@ -236,11 +236,16 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           speculativeMoveDestinations
         )(matchesFor, resolution)
 
-      val vettedInsertions =
+      val insertionMigrationCandidates =
         // The insertions are picked up eagerly by the first pass merge when it
         // handles conflicts; if these turn out to be migrated edits, then they
         // shouldn't be counted as insertions.
-        insertions diff migratedEditSuppressions
+        // Furthermore, move destinations that turn out to be anchors shouldn't
+        // be treated as candidates for migration; it's their job to drag the
+        // migrated content with them, not to be dragged.
+        insertions diff migratedEditSuppressions diff anchoredMoves.map(
+          _.moveDestination
+        )
 
       given sectionRunOrdering[Sequence[Item] <: Seq[Item]]
           : Ordering[Sequence[Section[Element]]] =
@@ -335,7 +340,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             .take(indexOfSection)
             .reverse
             .takeWhile(candidate =>
-              vettedInsertions.contains(
+              insertionMigrationCandidates.contains(
                 candidate
               ) || oneSidedDeletionsFromOppositeSide.contains(candidate)
             )
@@ -354,7 +359,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           file.sections.view
             .drop(1 + indexOfSection)
             .takeWhile(candidate =>
-              vettedInsertions.contains(
+              insertionMigrationCandidates.contains(
                 candidate
               ) || oneSidedDeletionsFromOppositeSide.contains(candidate)
             )
@@ -387,7 +392,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           file.sections.view
             .take(indexOfSection)
             .reverse
-            .takeWhile(vettedInsertions.contains)
+            .takeWhile(insertionMigrationCandidates.contains)
             // At this point, we only have a plain view rather than an indexed
             // one...
             .toIndexedSeq
@@ -400,7 +405,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
           file.sections.view
             .drop(1 + indexOfSection)
-            .takeWhile(vettedInsertions.contains)
+            .takeWhile(insertionMigrationCandidates.contains)
             // At this point, we only have a plain view rather than an indexed
             // one...
             .toIndexedSeq
