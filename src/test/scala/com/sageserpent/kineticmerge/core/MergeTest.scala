@@ -2361,7 +2361,8 @@ object MergeTest:
     case class AugmentedMergeResult[Element](
         state: State,
         coreMergeResult: MergeResult[Element]
-    ) extends MergeResult[Element]
+    ) extends MergeResult[Element]:
+      export coreMergeResult.transformElementsEnMasse
 
   end DelegatingMergeAlgebraWithContracts
 

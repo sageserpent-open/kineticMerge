@@ -17,9 +17,11 @@ import monocle.syntax.all.*
   *   Insertions that may need to be migrated, these have to be collected
   *   speculatively upfront and then associated with anchors once the global
   *   picture of code motion is available.
-  * @param oneSidedDeletions
-  *   Deletions on just one side that may influence the discovery of anchors for
-  *   insertion migration.
+  * @param oneSidedDeletionsFromBase
+  *   Deleted elements from the base, where the deletion is on just one of the
+  *   left or right side.
+  * @param oneSidedDeletionsFromOppositeSide
+  *   Deleted elements from the side opposite to the deletion.
   * @tparam CoreResult
   * @tparam Element
   * @note
@@ -29,21 +31,20 @@ import monocle.syntax.all.*
   *   thus migrations) to converge on the same move destination.
   */
 case class FirstPassMergeResult[Element](
+    recording: Recording[Element],
     speculativeMigrationsBySource: Map[Element, ContentMigration[
       Element
     ]],
     speculativeMoveDestinations: Set[SpeculativeMoveDestination[Element]],
-    insertions: Seq[Insertion[Element]],
-    oneSidedDeletions: Set[Element],
-    recording: Recording[Element]
+    insertions: Set[Element],
+    oneSidedDeletionsFromBase: Set[Element],
+    oneSidedDeletionsFromOppositeSide: Set[Element]
 )
 
 enum Side:
   case Left
   case Right
 end Side
-
-case class Insertion[Element](side: Side, inserted: Element)
 
 object FirstPassMergeResult extends StrictLogging:
   opaque type Recording[Element] =
@@ -61,15 +62,18 @@ object FirstPassMergeResult extends StrictLogging:
     end playback
   end extension
 
+  // TODO: should coincident insertions be recorded as insertions too? What
+  // about edits, for that matter?
   def mergeAlgebra[Element](): MergeAlgebra[FirstPassMergeResult, Element] =
     new MergeAlgebra[FirstPassMergeResult, Element]:
       override def empty: FirstPassMergeResult[Element] =
         FirstPassMergeResult(
+          recording = Vector.empty,
           speculativeMigrationsBySource = Map.empty,
           speculativeMoveDestinations = Set.empty,
-          insertions = Vector.empty,
-          oneSidedDeletions = Set.empty,
-          recording = Vector.empty
+          insertions = Set.empty,
+          oneSidedDeletionsFromBase = Set.empty,
+          oneSidedDeletionsFromOppositeSide = Set.empty
         )
 
       override def preservation(
@@ -91,16 +95,13 @@ object FirstPassMergeResult extends StrictLogging:
               )
           )
         )
+      end preservation
 
       override def leftInsertion(
           result: FirstPassMergeResult[Element],
           insertedElement: Element
       ): FirstPassMergeResult[Element] =
         result
-          .focus(_.insertions)
-          .modify(_ :+ Insertion(Side.Left, insertedElement))
-          .focus(_.speculativeMoveDestinations)
-          .modify(_ + SpeculativeMoveDestination.Left(insertedElement))
           .focus(_.recording)
           .modify(
             _.appended(
@@ -112,6 +113,10 @@ object FirstPassMergeResult extends StrictLogging:
                 )
             )
           )
+          .focus(_.insertions)
+          .modify(_ + insertedElement)
+          .focus(_.speculativeMoveDestinations)
+          .modify(_ + SpeculativeMoveDestination.Left(insertedElement))
       end leftInsertion
 
       override def rightInsertion(
@@ -119,10 +124,6 @@ object FirstPassMergeResult extends StrictLogging:
           insertedElement: Element
       ): FirstPassMergeResult[Element] =
         result
-          .focus(_.insertions)
-          .modify(_ :+ Insertion(Side.Right, insertedElement))
-          .focus(_.speculativeMoveDestinations)
-          .modify(_ + SpeculativeMoveDestination.Right(insertedElement))
           .focus(_.recording)
           .modify(
             _.appended(
@@ -134,18 +135,17 @@ object FirstPassMergeResult extends StrictLogging:
                 )
             )
           )
+          .focus(_.insertions)
+          .modify(_ + insertedElement)
+          .focus(_.speculativeMoveDestinations)
+          .modify(_ + SpeculativeMoveDestination.Right(insertedElement))
+      end rightInsertion
 
       override def coincidentInsertion(
           result: FirstPassMergeResult[Element],
           insertedElementOnLeft: Element,
           insertedElementOnRight: Element
       ): FirstPassMergeResult[Element] = result
-        .focus(_.speculativeMoveDestinations)
-        .modify(
-          _ + SpeculativeMoveDestination.Coincident(
-            insertedElementOnLeft -> insertedElementOnRight
-          )
-        )
         .focus(_.recording)
         .modify(
           _.appended(
@@ -158,6 +158,13 @@ object FirstPassMergeResult extends StrictLogging:
               )
           )
         )
+        .focus(_.speculativeMoveDestinations)
+        .modify(
+          _ + SpeculativeMoveDestination.Coincident(
+            insertedElementOnLeft -> insertedElementOnRight
+          )
+        )
+      end coincidentInsertion
 
       override def leftDeletion(
           result: FirstPassMergeResult[Element],
@@ -165,13 +172,6 @@ object FirstPassMergeResult extends StrictLogging:
           deletedRightElement: Element
       ): FirstPassMergeResult[Element] =
         result
-          .focus(_.oneSidedDeletions)
-          .modify(_ + deletedRightElement)
-          .focus(_.speculativeMigrationsBySource)
-          .modify(
-            _ + (deletedBaseElement -> ContentMigration
-              .PlainMove(deletedRightElement))
-          )
           .focus(_.recording)
           .modify(
             _.appended(
@@ -184,6 +184,15 @@ object FirstPassMergeResult extends StrictLogging:
                 )
             )
           )
+          .focus(_.oneSidedDeletionsFromBase)
+          .modify(_ + deletedBaseElement)
+          .focus(_.oneSidedDeletionsFromOppositeSide)
+          .modify(_ + deletedRightElement)
+          .focus(_.speculativeMigrationsBySource)
+          .modify(
+            _ + (deletedBaseElement -> ContentMigration
+              .PlainMove(deletedRightElement))
+          )
       end leftDeletion
 
       override def rightDeletion(
@@ -192,13 +201,6 @@ object FirstPassMergeResult extends StrictLogging:
           deletedLeftElement: Element
       ): FirstPassMergeResult[Element] =
         result
-          .focus(_.oneSidedDeletions)
-          .modify(_ + deletedLeftElement)
-          .focus(_.speculativeMigrationsBySource)
-          .modify(
-            _ + (deletedBaseElement -> ContentMigration
-              .PlainMove(deletedLeftElement))
-          )
           .focus(_.recording)
           .modify(
             _.appended(
@@ -211,6 +213,15 @@ object FirstPassMergeResult extends StrictLogging:
                 )
             )
           )
+          .focus(_.oneSidedDeletionsFromBase)
+          .modify(_ + deletedBaseElement)
+          .focus(_.oneSidedDeletionsFromOppositeSide)
+          .modify(_ + deletedLeftElement)
+          .focus(_.speculativeMigrationsBySource)
+          .modify(
+            _ + (deletedBaseElement -> ContentMigration
+              .PlainMove(deletedLeftElement))
+          )
       end rightDeletion
 
       override def coincidentDeletion(
@@ -218,10 +229,6 @@ object FirstPassMergeResult extends StrictLogging:
           deletedElement: Element
       ): FirstPassMergeResult[Element] =
         result
-          .focus(_.speculativeMigrationsBySource)
-          .modify(
-            _ + (deletedElement -> ContentMigration.Deletion())
-          )
           .focus(_.recording)
           .modify(
             _.appended(
@@ -233,6 +240,10 @@ object FirstPassMergeResult extends StrictLogging:
                 )
             )
           )
+          .focus(_.speculativeMigrationsBySource)
+          .modify(
+            _ + (deletedElement -> ContentMigration.Deletion())
+          )
       end coincidentDeletion
 
       override def leftEdit(
@@ -242,16 +253,6 @@ object FirstPassMergeResult extends StrictLogging:
           editElements: IndexedSeq[Element]
       ): FirstPassMergeResult[Element] =
         result
-          .focus(_.speculativeMigrationsBySource)
-          .modify(
-            _ + (editedBaseElement -> ContentMigration.PlainMove(
-              editedRightElement
-            ))
-          )
-          .focus(_.speculativeMoveDestinations)
-          .modify(
-            editElements.foldLeft(_)(_ + SpeculativeMoveDestination.Left(_))
-          )
           .focus(_.recording)
           .modify(
             _.appended(
@@ -265,6 +266,16 @@ object FirstPassMergeResult extends StrictLogging:
                 )
             )
           )
+          .focus(_.speculativeMigrationsBySource)
+          .modify(
+            _ + (editedBaseElement -> ContentMigration.PlainMove(
+              editedRightElement
+            ))
+          )
+          .focus(_.speculativeMoveDestinations)
+          .modify(
+            editElements.foldLeft(_)(_ + SpeculativeMoveDestination.Left(_))
+          )
       end leftEdit
 
       override def rightEdit(
@@ -274,16 +285,6 @@ object FirstPassMergeResult extends StrictLogging:
           editElements: IndexedSeq[Element]
       ): FirstPassMergeResult[Element] =
         result
-          .focus(_.speculativeMigrationsBySource)
-          .modify(
-            _ + (editedBaseElement -> ContentMigration.PlainMove(
-              editedLeftElement
-            ))
-          )
-          .focus(_.speculativeMoveDestinations)
-          .modify(
-            editElements.foldLeft(_)(_ + SpeculativeMoveDestination.Right(_))
-          )
           .focus(_.recording)
           .modify(
             _.appended(
@@ -297,6 +298,16 @@ object FirstPassMergeResult extends StrictLogging:
                 )
             )
           )
+          .focus(_.speculativeMigrationsBySource)
+          .modify(
+            _ + (editedBaseElement -> ContentMigration.PlainMove(
+              editedLeftElement
+            ))
+          )
+          .focus(_.speculativeMoveDestinations)
+          .modify(
+            editElements.foldLeft(_)(_ + SpeculativeMoveDestination.Right(_))
+          )
       end rightEdit
 
       override def coincidentEdit(
@@ -305,6 +316,18 @@ object FirstPassMergeResult extends StrictLogging:
           editElements: IndexedSeq[(Element, Element)]
       ): FirstPassMergeResult[Element] =
         result
+          .focus(_.recording)
+          .modify(
+            _.appended(
+              [Result[_]] =>
+                (mergeAlgebra: MergeAlgebra[Result, Element]) =>
+                  mergeAlgebra.coincidentEdit(
+                    _,
+                    editedElement,
+                    editElements
+                )
+            )
+          )
           .focus(_.speculativeMigrationsBySource)
           // NOTE: the edit elements are *never* taken as content to be
           // migrated, because they have arrived at the same place on both
@@ -319,18 +342,6 @@ object FirstPassMergeResult extends StrictLogging:
               _ + SpeculativeMoveDestination.Coincident(_)
             )
           )
-          .focus(_.recording)
-          .modify(
-            _.appended(
-              [Result[_]] =>
-                (mergeAlgebra: MergeAlgebra[Result, Element]) =>
-                  mergeAlgebra.coincidentEdit(
-                    _,
-                    editedElement,
-                    editElements
-                )
-            )
-          )
       end coincidentEdit
 
       override def conflict(
@@ -340,10 +351,23 @@ object FirstPassMergeResult extends StrictLogging:
           rightEditElements: IndexedSeq[Element]
       ): FirstPassMergeResult[Element] =
         result
+          .focus(_.recording)
+          .modify(
+            _.appended(
+              [Result[_]] =>
+                (mergeAlgebra: MergeAlgebra[Result, Element]) =>
+                  mergeAlgebra.conflict(
+                    _,
+                    editedElements,
+                    leftEditElements,
+                    rightEditElements
+                )
+            )
+          )
           .focus(_.insertions)
-          .modify(leftEditElements.foldLeft(_)(_ :+ Insertion(Side.Left, _)))
+          .modify(leftEditElements.foldLeft(_)(_ + _))
           .focus(_.insertions)
-          .modify(rightEditElements.foldLeft(_)(_ :+ Insertion(Side.Right, _)))
+          .modify(rightEditElements.foldLeft(_)(_ + _))
           .focus(_.speculativeMigrationsBySource)
           .modify(
             editedElements.foldLeft(_)((partialResult, editedElement) =>
@@ -361,19 +385,6 @@ object FirstPassMergeResult extends StrictLogging:
           .modify(
             rightEditElements.foldLeft(_)(
               _ + SpeculativeMoveDestination.Right(_)
-            )
-          )
-          .focus(_.recording)
-          .modify(
-            _.appended(
-              [Result[_]] =>
-                (mergeAlgebra: MergeAlgebra[Result, Element]) =>
-                  mergeAlgebra.conflict(
-                    _,
-                    editedElements,
-                    leftEditElements,
-                    rightEditElements
-                )
             )
           )
       end conflict

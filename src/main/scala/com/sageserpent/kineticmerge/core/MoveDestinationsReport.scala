@@ -43,6 +43,8 @@ end SpeculativeMoveDestination
 case class MoveDestinationsReport[Element](
     moveDestinationsBySources: Map[Element, MoveDestinations[Element]]
 ):
+  def sources: Set[Element] = moveDestinationsBySources.keySet
+
   def summarizeInText: Iterable[String] =
     moveDestinationsBySources.map((source, moveDestinations) =>
       moveDestinations.description(source)
@@ -178,52 +180,72 @@ object MoveDestinationsReport:
         )
       )
 
-    val isolatedMoveDestinationsByOppositeSideElement = MultiDict.from(
-      moveDestinationsBySource.toSeq.flatMap((source, moveDestinations) =>
-        if !moveDestinations.isDivergent
-        then
-          val contentMigration = speculativeMigrationsBySource(source)
+    val anchoredMoves: Set[AnchoredMove[Element]] =
+      moveDestinationsBySource.toSeq
+        .flatMap((source, moveDestinations) =>
+          if !moveDestinations.isDivergent
+          then
+            val contentMigration = speculativeMigrationsBySource(source)
 
-          if moveDestinations.left.nonEmpty then
-            contentMigration match
-              case PlainMove(elementOnTheOppositeSideToTheMoveDestination) =>
-                moveDestinations.left.map(
-                  elementOnTheOppositeSideToTheMoveDestination -> _
-                )
-              case _ =>
-                Seq.empty
-          else if moveDestinations.right.nonEmpty then
-            contentMigration match
-              case PlainMove(elementOnTheOppositeSideToTheMoveDestination) =>
-                moveDestinations.right.map(
-                  elementOnTheOppositeSideToTheMoveDestination -> _
-                )
-              case _ =>
-                Seq.empty
-          else
-            assume(moveDestinations.coincident.nonEmpty)
-            // TODO: need to decide how anchoring works with coincident move
-            // destinations...
-            Set.empty
+            if moveDestinations.left.nonEmpty then
+              contentMigration match
+                case PlainMove(elementOnTheOppositeSideToTheMoveDestination) =>
+                  moveDestinations.left.map(moveDestination =>
+                    AnchoredMove(
+                      moveDestinationSide = Side.Left,
+                      moveDestination = moveDestination,
+                      oppositeSideElement =
+                        elementOnTheOppositeSideToTheMoveDestination,
+                      source = source
+                    )
+                  )
+                case _ =>
+                  Seq.empty
+            else if moveDestinations.right.nonEmpty then
+              contentMigration match
+                case PlainMove(elementOnTheOppositeSideToTheMoveDestination) =>
+                  moveDestinations.right.map(moveDestination =>
+                    AnchoredMove(
+                      moveDestinationSide = Side.Right,
+                      moveDestination = moveDestination,
+                      oppositeSideElement =
+                        elementOnTheOppositeSideToTheMoveDestination,
+                      source = source
+                    )
+                  )
+                case _ =>
+                  Seq.empty
+            else
+              assume(moveDestinations.coincident.nonEmpty)
+              /* Coincident moves are not anchors: they can't pick up insertions
+               * from just one side and don't need to, because any such
+               * insertions would be dealt with by the initial merge anyway. */
+              Seq.empty
+            end if
+          else Seq.empty
           end if
-        else Seq.empty
-        end if
-      )
-    )
+        )
+        .toSet
 
     EvaluatedMoves(
       moveDestinationsReport = MoveDestinationsReport(moveDestinationsBySource),
       migratedEditSuppressions = migratedEditSuppressions,
       substitutionsByDestination = substitutionsByDestination,
-      isolatedMoveDestinationsByOppositeSideElement =
-        isolatedMoveDestinationsByOppositeSideElement
+      anchoredMoves = anchoredMoves
     )
   end evaluateSpeculativeSourcesAndDestinations
+
+  case class AnchoredMove[Element](
+      moveDestinationSide: Side,
+      moveDestination: Element,
+      oppositeSideElement: Element,
+      source: Element
+  )
 
   case class EvaluatedMoves[Element](
       moveDestinationsReport: MoveDestinationsReport[Element],
       migratedEditSuppressions: Set[Element],
       substitutionsByDestination: MultiDict[Element, IndexedSeq[Element]],
-      isolatedMoveDestinationsByOppositeSideElement: MultiDict[Element, Element]
+      anchoredMoves: Set[AnchoredMove[Element]]
   )
 end MoveDestinationsReport

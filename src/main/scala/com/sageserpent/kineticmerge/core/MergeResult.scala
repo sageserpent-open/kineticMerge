@@ -1,5 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
+import cats.Eq
 import com.sageserpent.kineticmerge.core.merge.MergeAlgebra
 
 object MergeResult:
@@ -165,10 +166,19 @@ object MergeResult:
             )
 end MergeResult
 
-trait MergeResult[Element]
+trait MergeResult[Element]:
+  def transformElementsEnMasse[TransformedElement](
+      transform: IndexedSeq[Element] => IndexedSeq[TransformedElement]
+  )(using equality: Eq[TransformedElement]): MergeResult[TransformedElement]
+end MergeResult
 
 case class FullyMerged[Element](elements: IndexedSeq[Element])
-    extends MergeResult[Element]
+    extends MergeResult[Element]:
+  override def transformElementsEnMasse[TransformedElement](
+      transform: IndexedSeq[Element] => IndexedSeq[TransformedElement]
+  )(using equality: Eq[TransformedElement]): MergeResult[TransformedElement] =
+    FullyMerged(transform(elements))
+end FullyMerged
 
 /** @param leftElements
   *   The left hand form of the merge. Has all the clean merges, plus the left
@@ -181,4 +191,25 @@ case class FullyMerged[Element](elements: IndexedSeq[Element])
 case class MergedWithConflicts[Element](
     leftElements: IndexedSeq[Element],
     rightElements: IndexedSeq[Element]
-) extends MergeResult[Element]
+) extends MergeResult[Element]:
+  require(leftElements != rightElements)
+
+  override def transformElementsEnMasse[TransformedElement](
+      transform: IndexedSeq[Element] => IndexedSeq[TransformedElement]
+  )(using equality: Eq[TransformedElement]): MergeResult[TransformedElement] =
+    val transformedLeftElements  = transform(leftElements)
+    val transformedRightElements = transform(rightElements)
+
+    // Just in case the conflict was resolved by the migrated changes...
+    if transformedLeftElements.corresponds(transformedRightElements)(
+        equality.eqv
+      )
+    then FullyMerged(transformedLeftElements)
+    else
+      MergedWithConflicts(
+        transformedLeftElements,
+        transformedRightElements
+      )
+    end if
+  end transformElementsEnMasse
+end MergedWithConflicts

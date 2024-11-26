@@ -63,9 +63,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )
 
     val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-      base = baseSources,
-      left = leftSources,
-      right = rightSources
+      baseSources = baseSources,
+      leftSources = leftSources,
+      rightSources = rightSources
     )(configuration): @unchecked
 
     val (mergeResultsByPath, _) =
@@ -144,9 +144,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           )
 
           val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-            base = baseSources,
-            left = leftSources,
-            right = rightSources
+            baseSources = baseSources,
+            leftSources = leftSources,
+            rightSources = rightSources
           )(configuration): @unchecked
 
           val (mergeResultsByPath, _) =
@@ -240,9 +240,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           )
 
           val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-            base = baseSources,
-            left = leftSources,
-            right = rightSources
+            baseSources = baseSources,
+            leftSources = leftSources,
+            rightSources = rightSources
           )(configuration): @unchecked
 
           val (mergeResultsByPath, _) =
@@ -282,9 +282,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )
 
     val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-      base = baseSources,
-      left = leftSources,
-      right = rightSources
+      baseSources = baseSources,
+      leftSources = leftSources,
+      rightSources = rightSources
     )(configuration): @unchecked
 
     val (mergeResultsByPath, _) =
@@ -325,9 +325,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )
 
     val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-      base = baseSources,
-      left = leftSources,
-      right = rightSources
+      baseSources = baseSources,
+      leftSources = leftSources,
+      rightSources = rightSources
     )(configuration): @unchecked
 
     val (mergeResultsByPath, _) =
@@ -382,9 +382,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         )
 
       val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-        base = baseSources,
-        left = leftSources,
-        right = rightSources
+        baseSources = baseSources,
+        leftSources = leftSources,
+        rightSources = rightSources
       )(configuration): @unchecked
 
       val (mergeResultsByPath, _) = codeMotionAnalysis.merge
@@ -443,9 +443,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         )
 
         val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-          base = baseSources,
-          left = leftSources,
-          right = rightSources
+          baseSources = baseSources,
+          leftSources = leftSources,
+          rightSources = rightSources
         )(configuration): @unchecked
 
         val expected = tokens(
@@ -522,9 +522,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         )
 
         val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-          base = baseSources,
-          left = leftSources,
-          right = rightSources
+          baseSources = baseSources,
+          leftSources = leftSources,
+          rightSources = rightSources
         )(configuration): @unchecked
 
         val expected = tokens(
@@ -640,9 +640,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           )
 
           val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-            base = baseSources,
-            left = if swapSides then rightSources else leftSources,
-            right = if swapSides then leftSources else rightSources
+            baseSources = baseSources,
+            leftSources = if swapSides then rightSources else leftSources,
+            rightSources = if swapSides then leftSources else rightSources
           )(configuration): @unchecked
 
           val (mergeResultsByPath, moveDestinationsReport) =
@@ -784,9 +784,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           )
 
           val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-            base = baseSources,
-            left = leftSources,
-            right = rightSources
+            baseSources = baseSources,
+            leftSources = leftSources,
+            rightSources = rightSources
           )(configuration): @unchecked
 
           val (mergeResultsByPath, moveDestinationsReport) =
@@ -842,9 +842,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )
 
     val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-      base = baseSources,
-      left = leftSources,
-      right = rightSources
+      baseSources = baseSources,
+      leftSources = leftSources,
+      rightSources = rightSources
     )(configuration): @unchecked
 
     val (mergeResultsByPath, moveDestinationsReport) =
@@ -933,9 +933,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )
 
     val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-      base = baseSources,
-      left = leftSources,
-      right = rightSources
+      baseSources = baseSources,
+      leftSources = leftSources,
+      rightSources = rightSources
     )(configuration): @unchecked
 
     val (mergeResultsByPath, moveDestinationsReport) =
@@ -1002,9 +1002,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )
 
     val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-      base = baseSources,
-      left = leftSources,
-      right = rightSources
+      baseSources = baseSources,
+      leftSources = leftSources,
+      rightSources = rightSources
     )(configuration): @unchecked
 
     val (mergeResultsByPath, _) =

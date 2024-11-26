@@ -6,7 +6,12 @@ import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction}
 import com.sageserpent.kineticmerge
-import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording, ProgressRecordingSession, core}
+import com.sageserpent.kineticmerge.{
+  NoProgressRecording,
+  ProgressRecording,
+  ProgressRecordingSession,
+  core
+}
 import com.typesafe.scalalogging.StrictLogging
 import de.sciss.fingertree.RangedSeq
 import monocle.syntax.all.*
@@ -26,6 +31,10 @@ trait CodeMotionAnalysis[Path, Element]:
   def matchesFor(
       section: Section[Element]
   ): collection.Set[Match[Section[Element]]]
+
+  def basePathFor(baseSection: Section[Element]): Path
+  def leftPathFor(leftSection: Section[Element]): Path
+  def rightPathFor(rightSection: Section[Element]): Path
 end CodeMotionAnalysis
 
 object CodeMotionAnalysis extends StrictLogging:
@@ -41,12 +50,12 @@ object CodeMotionAnalysis extends StrictLogging:
     *   if the same section is added into both the left and right sources as a
     *   coincidental insertion (so not present in the base sources), this is
     *   treated as a match across the left and right sources anyway.
-    * @param base
+    * @param baseSources
     *   The common base sources from which the left and right sources are
     *   derived.
-    * @param left
+    * @param leftSources
     *   'Our' sources, from the Git standpoint...
-    * @param right
+    * @param rightSources
     *   'Their' sources, from the Git standpoint...
     * @param configuration
     *   [[Configuration]] parameter object.
@@ -57,9 +66,9 @@ object CodeMotionAnalysis extends StrictLogging:
     *   sources.
     */
   def of[Path, Element: Eq: Order: Funnel](
-      base: Sources[Path, Element],
-      left: Sources[Path, Element],
-      right: Sources[Path, Element]
+      baseSources: Sources[Path, Element],
+      leftSources: Sources[Path, Element],
+      rightSources: Sources[Path, Element]
   )(
       configuration: Configuration
   )(using
@@ -73,7 +82,7 @@ object CodeMotionAnalysis extends StrictLogging:
 
     val newline = "\n"
 
-    val baseSizesByPath = base.filesByPath.map { case (path, file) =>
+    val baseSizesByPath = baseSources.filesByPath.map { case (path, file) =>
       path -> file.size
     }
 
@@ -81,7 +90,7 @@ object CodeMotionAnalysis extends StrictLogging:
       s"Analysis considering base paths:\n\n${baseSizesByPath.mkString(newline)}\n"
     )
 
-    val leftSizesByPath = left.filesByPath.map { case (path, file) =>
+    val leftSizesByPath = leftSources.filesByPath.map { case (path, file) =>
       path -> file.size
     }
 
@@ -89,7 +98,7 @@ object CodeMotionAnalysis extends StrictLogging:
       s"Analysis considering left paths:\n\n${leftSizesByPath.mkString(newline)}\n"
     )
 
-    val rightSizesByPath = right.filesByPath.map { case (path, file) =>
+    val rightSizesByPath = rightSources.filesByPath.map { case (path, file) =>
       path -> file.size
     }
 
@@ -681,24 +690,24 @@ object CodeMotionAnalysis extends StrictLogging:
         case PairwiseMatch => PairwiseMatch
 
       private val subsumesOnBase: Section[Element] => Boolean =
-        subsumesSection(base, baseSectionsByPath)
+        subsumesSection(baseSources, baseSectionsByPath)
       private val subsumesOnLeft: Section[Element] => Boolean =
-        subsumesSection(left, leftSectionsByPath)
+        subsumesSection(leftSources, leftSectionsByPath)
       private val subsumesOnRight: Section[Element] => Boolean =
-        subsumesSection(right, rightSectionsByPath)
+        subsumesSection(rightSources, rightSectionsByPath)
       private val overlapsOrIsSubsumedByOnBase: Section[Element] => Boolean =
-        overlapsOrIsSubsumedBySection(base, baseSectionsByPath)
+        overlapsOrIsSubsumedBySection(baseSources, baseSectionsByPath)
       private val overlapsOrIsSubsumedByOnLeft: Section[Element] => Boolean =
-        overlapsOrIsSubsumedBySection(left, leftSectionsByPath)
+        overlapsOrIsSubsumedBySection(leftSources, leftSectionsByPath)
       private val overlapsOrIsSubsumedByOnRight: Section[Element] => Boolean =
-        overlapsOrIsSubsumedBySection(right, rightSectionsByPath)
+        overlapsOrIsSubsumedBySection(rightSources, rightSectionsByPath)
       private val withBaseSection: Section[Element] => Map[Path, SectionsSeen] =
-        withSection(base, baseSectionsByPath)
+        withSection(baseSources, baseSectionsByPath)
       private val withLeftSection: Section[Element] => Map[Path, SectionsSeen] =
-        withSection(left, leftSectionsByPath)
+        withSection(leftSources, leftSectionsByPath)
       private val withRightSection
           : Section[Element] => Map[Path, SectionsSeen] =
-        withSection(right, rightSectionsByPath)
+        withSection(rightSources, rightSectionsByPath)
 
       def checkInvariant(): Unit =
         // No match should be redundant - i.e. no match should involve sections
@@ -938,9 +947,9 @@ object CodeMotionAnalysis extends StrictLogging:
           leftSectionsByFingerprint,
           rightSectionsByFingerprint
         ) = FingerprintSectionsAcrossSides(
-          baseSectionsByFingerprint = fingerprintSections(base),
-          leftSectionsByFingerprint = fingerprintSections(left),
-          rightSectionsByFingerprint = fingerprintSections(right)
+          baseSectionsByFingerprint = fingerprintSections(baseSources),
+          leftSectionsByFingerprint = fingerprintSections(leftSources),
+          rightSectionsByFingerprint = fingerprintSections(rightSources)
         )
 
         @tailrec
@@ -1399,21 +1408,21 @@ object CodeMotionAnalysis extends StrictLogging:
         ): Set[PairwiseMatch] =
           val subsumingOnBase =
             subsumingPairwiseMatches(sectionsAndTheirMatches)(
-              base,
+              baseSources,
               baseSectionsByPath
             )(
               allSides.baseElement
             )
           val subsumingOnLeft =
             subsumingPairwiseMatches(sectionsAndTheirMatches)(
-              left,
+              leftSources,
               leftSectionsByPath
             )(
               allSides.leftElement
             )
           val subsumingOnRight =
             subsumingPairwiseMatches(sectionsAndTheirMatches)(
-              right,
+              rightSources,
               rightSectionsByPath
             )(
               allSides.rightElement
@@ -1443,24 +1452,33 @@ object CodeMotionAnalysis extends StrictLogging:
                 val fragmentsFromPairwiseMatch: Seq[PairwiseMatch] =
                   pairwiseMatch match
                     case Match.BaseAndLeft(baseSection, leftSection) =>
-                      (eatIntoSection(base, bites.map(_.baseElement))(
+                      (eatIntoSection(baseSources, bites.map(_.baseElement))(
                         baseSection
-                      ) zip eatIntoSection(left, bites.map(_.leftElement))(
+                      ) zip eatIntoSection(
+                        leftSources,
+                        bites.map(_.leftElement)
+                      )(
                         leftSection
                       ))
                         .map(Match.BaseAndLeft.apply)
 
                     case Match.BaseAndRight(baseSection, rightSection) =>
-                      (eatIntoSection(base, bites.map(_.baseElement))(
+                      (eatIntoSection(baseSources, bites.map(_.baseElement))(
                         baseSection
-                      ) zip eatIntoSection(right, bites.map(_.rightElement))(
+                      ) zip eatIntoSection(
+                        rightSources,
+                        bites.map(_.rightElement)
+                      )(
                         rightSection
                       )).map(Match.BaseAndRight.apply)
 
                     case Match.LeftAndRight(leftSection, rightSection) =>
-                      (eatIntoSection(left, bites.map(_.leftElement))(
+                      (eatIntoSection(leftSources, bites.map(_.leftElement))(
                         leftSection
-                      ) zip eatIntoSection(right, bites.map(_.rightElement))(
+                      ) zip eatIntoSection(
+                        rightSources,
+                        bites.map(_.rightElement)
+                      )(
                         rightSection
                       )).map(Match.LeftAndRight.apply)
 
@@ -1574,21 +1592,21 @@ object CodeMotionAnalysis extends StrictLogging:
               ) && !overlapsOrIsSubsumedByOnRight(rightSection) =>
             val subsumingOnBase =
               subsumingMatches(sectionsAndTheirMatches)(
-                base,
+                baseSources,
                 baseSectionsByPath
               )(
                 baseSection
               )
             val subsumingOnLeft =
               subsumingMatches(sectionsAndTheirMatches)(
-                left,
+                leftSources,
                 leftSectionsByPath
               )(
                 leftSection
               )
             val subsumingOnRight =
               subsumingMatches(sectionsAndTheirMatches)(
-                right,
+                rightSources,
                 rightSectionsByPath
               )(
                 rightSection
@@ -1694,9 +1712,9 @@ object CodeMotionAnalysis extends StrictLogging:
                   rightSection
                 )
               ) =>
-            val basePath  = base.pathFor(baseSection)
-            val leftPath  = left.pathFor(leftSection)
-            val rightPath = right.pathFor(rightSection)
+            val basePath  = baseSources.pathFor(baseSection)
+            val leftPath  = leftSources.pathFor(leftSection)
+            val rightPath = rightSources.pathFor(rightSection)
             matchesAndTheirSections
               .focus(_.baseSectionsByPath)
               .modify(_.updatedWith(basePath) { case Some(sectionsSeen) =>
@@ -1721,8 +1739,8 @@ object CodeMotionAnalysis extends StrictLogging:
                 matchesAndTheirSections,
                 baseAndLeft @ Match.BaseAndLeft(baseSection, leftSection)
               ) =>
-            val basePath = base.pathFor(baseSection)
-            val leftPath = left.pathFor(leftSection)
+            val basePath = baseSources.pathFor(baseSection)
+            val leftPath = leftSources.pathFor(leftSection)
             matchesAndTheirSections
               .focus(_.baseSectionsByPath)
               .modify(_.updatedWith(basePath) { case Some(sectionsSeen) =>
@@ -1742,8 +1760,8 @@ object CodeMotionAnalysis extends StrictLogging:
                 matchesAndTheirSections,
                 baseAndRight @ Match.BaseAndRight(baseSection, rightSection)
               ) =>
-            val basePath  = base.pathFor(baseSection)
-            val rightPath = right.pathFor(rightSection)
+            val basePath  = baseSources.pathFor(baseSection)
+            val rightPath = rightSources.pathFor(rightSection)
             matchesAndTheirSections
               .focus(_.baseSectionsByPath)
               .modify(_.updatedWith(basePath) { case Some(sectionsSeen) =>
@@ -1763,8 +1781,8 @@ object CodeMotionAnalysis extends StrictLogging:
                 matchesAndTheirSections,
                 leftAndRight @ Match.LeftAndRight(leftSection, rightSection)
               ) =>
-            val leftPath  = left.pathFor(leftSection)
-            val rightPath = right.pathFor(rightSection)
+            val leftPath  = leftSources.pathFor(leftSection)
+            val rightPath = rightSources.pathFor(rightSection)
             matchesAndTheirSections
               .focus(_.leftSectionsByPath)
               .modify(_.updatedWith(leftPath) { case Some(sectionsSeen) =>
@@ -1845,7 +1863,7 @@ object CodeMotionAnalysis extends StrictLogging:
         matchesAndTheirSections.sectionsAndTheirMatches
 
       val baseFilesByPath =
-        base.filesByPathUtilising(
+        baseSources.filesByPathUtilising(
           mandatorySections = matchesAndTheirSections.baseSections
         )
 
@@ -1864,12 +1882,12 @@ object CodeMotionAnalysis extends StrictLogging:
       }
 
       val leftFilesByPath =
-        left.filesByPathUtilising(
+        leftSources.filesByPathUtilising(
           mandatorySections = matchesAndTheirSections.leftSections,
           candidateGapChunksByPath = candidateGapChunksByPath
         )
       val rightFilesByPath =
-        right.filesByPathUtilising(
+        rightSources.filesByPathUtilising(
           mandatorySections = matchesAndTheirSections.rightSections,
           candidateGapChunksByPath = candidateGapChunksByPath
         )
@@ -1917,16 +1935,20 @@ object CodeMotionAnalysis extends StrictLogging:
           require(sectionsAndTheirMatches.keySet.subsetOf(allDistinctSections))
         }
 
-        override def matchesFor(
-            section: Section[Element]
-        ): collection.Set[Match[Section[Element]]] =
-          sectionsAndTheirMatches.get(section)
-
         override def base: Map[Path, File[Element]] = baseFilesByPath
 
         override def left: Map[Path, File[Element]] = leftFilesByPath
 
         override def right: Map[Path, File[Element]] = rightFilesByPath
+
+        override def matchesFor(
+            section: Section[Element]
+        ): collection.Set[Match[Section[Element]]] =
+          sectionsAndTheirMatches.get(section)
+
+        export baseSources.pathFor as basePathFor
+        export leftSources.pathFor as leftPathFor
+        export rightSources.pathFor as rightPathFor
       )
     catch
       // NOTE: don't convert this to use of `Try` with a subsequent `.toEither`
