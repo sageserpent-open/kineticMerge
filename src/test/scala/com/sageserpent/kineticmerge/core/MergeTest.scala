@@ -2362,7 +2362,7 @@ object MergeTest:
         state: State,
         coreMergeResult: MergeResult[Element]
     ) extends MergeResult[Element]:
-      export coreMergeResult.transformElementsEnMasse
+      export coreMergeResult.*
 
   end DelegatingMergeAlgebraWithContracts
 

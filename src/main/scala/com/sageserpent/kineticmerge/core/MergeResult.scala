@@ -167,6 +167,8 @@ object MergeResult:
 end MergeResult
 
 trait MergeResult[Element]:
+  def isEmpty: Boolean
+
   def transformElementsEnMasse[TransformedElement](
       transform: IndexedSeq[Element] => IndexedSeq[TransformedElement]
   )(using equality: Eq[TransformedElement]): MergeResult[TransformedElement]
@@ -174,6 +176,8 @@ end MergeResult
 
 case class FullyMerged[Element](elements: IndexedSeq[Element])
     extends MergeResult[Element]:
+  override def isEmpty: Boolean = elements.isEmpty
+
   override def transformElementsEnMasse[TransformedElement](
       transform: IndexedSeq[Element] => IndexedSeq[TransformedElement]
   )(using equality: Eq[TransformedElement]): MergeResult[TransformedElement] =
@@ -193,6 +197,8 @@ case class MergedWithConflicts[Element](
     rightElements: IndexedSeq[Element]
 ) extends MergeResult[Element]:
   require(leftElements != rightElements)
+
+  override def isEmpty: Boolean = false // The invariant guarantees this.
 
   override def transformElementsEnMasse[TransformedElement](
       transform: IndexedSeq[Element] => IndexedSeq[TransformedElement]

@@ -514,13 +514,17 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               succeedingMerge
             ) = mergesFrom(anchoredMove)
 
-            partialKeyedMerges :+ ((
-              anchoredMove.moveDestination,
-              Anchoring.Successor
-            ) -> precedingMerge) :+ ((
-              anchoredMove.moveDestination,
-              Anchoring.Predecessor
-            ) -> succeedingMerge)
+            partialKeyedMerges ++ Option.unless(precedingMerge.isEmpty)(
+              (
+                anchoredMove.moveDestination,
+                Anchoring.Successor
+              ) -> precedingMerge
+            ) ++ Option.unless(succeedingMerge.isEmpty)(
+              (
+                anchoredMove.moveDestination,
+                Anchoring.Predecessor
+              ) -> succeedingMerge
+            )
         }
       }
 
