@@ -4,7 +4,10 @@ import cats.{Eq, Order}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
 import com.sageserpent.kineticmerge.core.FirstPassMergeResult.Recording
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Sized
-import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{AnchoredMove, EvaluatedMoves}
+import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{
+  AnchoredMove,
+  EvaluatedMoves
+}
 import com.sageserpent.kineticmerge.core.merge.of as mergeOf
 import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
@@ -233,6 +236,14 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           speculativeMoveDestinations
         )(matchesFor, resolution)
 
+      val vettedOneSidedDeletionsFromBase =
+        oneSidedDeletionsFromBase diff moveDestinationsReport.sources
+
+      val vettedOneSidedDeletionsFromOppositeSide =
+        oneSidedDeletionsFromOppositeSide diff anchoredMoves.map(
+          _.oppositeSideElement
+        )
+
       val insertionCandidatesForOppositeSideOfAnchoredMoveDestination =
         // The insertions are picked up eagerly by the first pass merge when it
         // handles conflicts; if these turn out to be migrated edits, then they
@@ -296,7 +307,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           file.sections.view
             .take(indexOfSection)
             .reverse
-            .takeWhile(oneSidedDeletionsFromBase.contains)
+            .takeWhile(vettedOneSidedDeletionsFromBase.contains)
             // At this point, we only have a plain view rather than an indexed
             // one...
             .toIndexedSeq
@@ -309,7 +320,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
           file.sections.view
             .drop(1 + indexOfSection)
-            .takeWhile(oneSidedDeletionsFromBase.contains)
+            .takeWhile(vettedOneSidedDeletionsFromBase.contains)
             // At this point, we only have a plain view rather than an indexed
             // one...
             .toIndexedSeq
@@ -345,7 +356,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               insertionCandidatesForOppositeSideOfAnchoredMoveDestination
                 .contains(
                   candidate
-                ) || oneSidedDeletionsFromOppositeSide.contains(candidate)
+                ) || vettedOneSidedDeletionsFromOppositeSide.contains(candidate)
             )
             // At this point, we only have a plain view rather than an indexed
             // one...
@@ -365,7 +376,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               insertionCandidatesForOppositeSideOfAnchoredMoveDestination
                 .contains(
                   candidate
-                ) || oneSidedDeletionsFromOppositeSide.contains(candidate)
+                ) || vettedOneSidedDeletionsFromOppositeSide.contains(candidate)
             )
             // At this point, we only have a plain view rather than an indexed
             // one...
