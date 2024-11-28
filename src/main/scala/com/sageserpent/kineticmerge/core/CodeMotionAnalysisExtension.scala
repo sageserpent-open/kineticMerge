@@ -4,7 +4,10 @@ import cats.{Eq, Order}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
 import com.sageserpent.kineticmerge.core.FirstPassMergeResult.Recording
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Sized
-import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{AnchoredMove, EvaluatedMoves}
+import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{
+  AnchoredMove,
+  EvaluatedMoves
+}
 import com.sageserpent.kineticmerge.core.merge.of as mergeOf
 import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
@@ -256,7 +259,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       val oppositeSideToMoveDestinationAnchors =
         anchoredMoves.map(_.oppositeSideElement)
       val moveDestinationAnchors = anchoredMoves.map(_.moveDestination)
-      
+
       val allSources = moveDestinationsReport.sources
 
       given sectionRunOrdering[Sequence[Item] <: Seq[Item]]
@@ -307,9 +310,11 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             .take(indexOfSection)
             .reverse
             .takeWhile(candidate =>
-              // NOTE: anchor sources are included in `allSources`.
-              !basePreservations.contains(candidate) && !allSources.contains(candidate)
+              !basePreservations.contains(candidate) && !sourceAnchors.contains(
+                candidate
+              )
             )
+            .filterNot(allSources.contains)
             // At this point, we only have a plain view rather than an indexed
             // one...
             .toIndexedSeq
@@ -323,9 +328,11 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           file.sections.view
             .drop(1 + indexOfSection)
             .takeWhile(candidate =>
-              // NOTE: anchor sources are included in `allSources`.
-              !basePreservations.contains(candidate) && !allSources.contains(candidate)
+              !basePreservations.contains(candidate) && !sourceAnchors.contains(
+                candidate
+              )
             )
+            .filterNot(allSources.contains)
             // At this point, we only have a plain view rather than an indexed
             // one...
             .toIndexedSeq
@@ -357,15 +364,13 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           file.sections.view
             .take(indexOfSection)
             .reverse
-            .filterNot(migratedEditSuppressions.contains)
             .takeWhile(candidate =>
               (moveDestinationSide match
                 case Side.Left  => !rightPreservations.contains(candidate)
                 case Side.Right => !leftPreservations.contains(candidate)
-              ) && !oppositeSideToMoveDestinationAnchors.contains(
-                candidate
-              ) && !migratedEditSuppressions.contains(candidate)
+              ) && !oppositeSideToMoveDestinationAnchors.contains(candidate)
             )
+            .filterNot(migratedEditSuppressions.contains)
             // At this point, we only have a plain view rather than an indexed
             // one...
             .toIndexedSeq
@@ -380,15 +385,13 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
           file.sections.view
             .drop(1 + indexOfSection)
-            .filterNot(migratedEditSuppressions.contains)
             .takeWhile(candidate =>
               (moveDestinationSide match
                 case Side.Left  => !rightPreservations.contains(candidate)
                 case Side.Right => !leftPreservations.contains(candidate)
-              ) && !oppositeSideToMoveDestinationAnchors.contains(
-                candidate
-              ) && !migratedEditSuppressions.contains(candidate)
+              ) && !oppositeSideToMoveDestinationAnchors.contains(candidate)
             )
+            .filterNot(migratedEditSuppressions.contains)
             // At this point, we only have a plain view rather than an indexed
             // one...
             .toIndexedSeq
