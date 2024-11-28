@@ -89,6 +89,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           speculativeMoveDestinations: Set[
             SpeculativeMoveDestination[Section[Element]]
           ],
+          basePreservations: Set[Section[Element]],
+          leftPreservations: Set[Section[Element]],
+          rightPreservations: Set[Section[Element]],
           insertions: Set[Section[Element]],
           oneSidedDeletionsFromBase: Set[Section[Element]],
           oneSidedDeletionsFromOppositeSide: Set[Section[Element]]
@@ -152,6 +155,12 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             .modify(_ concat firstPassMergeResult.speculativeMigrationsBySource)
             .focus(_.speculativeMoveDestinations)
             .modify(_ union firstPassMergeResult.speculativeMoveDestinations)
+            .focus(_.basePreservations)
+            .modify(_ union firstPassMergeResult.basePreservations)
+            .focus(_.leftPreservations)
+            .modify(_ union firstPassMergeResult.leftPreservations)
+            .focus(_.rightPreservations)
+            .modify(_ union firstPassMergeResult.rightPreservations)
             .focus(_.insertions)
             .modify(
               _ union firstPassMergeResult.insertions
@@ -169,6 +178,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           secondPassInputsByPath = Map.empty,
           speculativeMigrationsBySource = Map.empty,
           speculativeMoveDestinations = Set.empty,
+          basePreservations = Set.empty,
+          leftPreservations = Set.empty,
+          rightPreservations = Set.empty,
           insertions = Set.empty,
           oneSidedDeletionsFromBase = Set.empty,
           oneSidedDeletionsFromOppositeSide = Set.empty
@@ -179,6 +191,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         secondPassInputsByPath,
         speculativeMigrationsBySource,
         speculativeMoveDestinations,
+        basePreservations,
+        leftPreservations,
+        rightPreservations,
         insertions,
         oneSidedDeletionsFromBase,
         oneSidedDeletionsFromOppositeSide
@@ -237,24 +252,12 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           speculativeMoveDestinations
         )(matchesFor, resolution)
 
-      val vettedOneSidedDeletionsFromBase =
-        oneSidedDeletionsFromBase diff moveDestinationsReport.sources
-
-      val vettedOneSidedDeletionsFromOppositeSide =
-        oneSidedDeletionsFromOppositeSide diff anchoredMoves.map(
-          _.oppositeSideElement
-        )
-
-      val vettedInsertionCandidates =
-        // The insertions are picked up eagerly by the first pass merge when it
-        // handles conflicts; if these turn out to be migrated edits, then they
-        // shouldn't be counted as insertions.
-        // Furthermore, move destinations that turn out to be anchors shouldn't
-        // be treated as candidates for migration; it's their job to drag the
-        // migrated content with them, not to be dragged.
-        insertions diff migratedEditSuppressions diff anchoredMoves.map(
-          _.moveDestination
-        )
+      val sourceAnchors = anchoredMoves.map(_.source)
+      val oppositeSideToMoveDestinationAnchors =
+        anchoredMoves.map(_.oppositeSideElement)
+      val moveDestinationAnchors = anchoredMoves.map(_.moveDestination)
+      
+      val allSources = moveDestinationsReport.sources
 
       given sectionRunOrdering[Sequence[Item] <: Seq[Item]]
           : Ordering[Sequence[Section[Element]]] =
@@ -303,7 +306,10 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           file.sections.view
             .take(indexOfSection)
             .reverse
-            .takeWhile(vettedOneSidedDeletionsFromBase.contains)
+            .takeWhile(candidate =>
+              // NOTE: anchor sources are included in `allSources`.
+              !basePreservations.contains(candidate) && !allSources.contains(candidate)
+            )
             // At this point, we only have a plain view rather than an indexed
             // one...
             .toIndexedSeq
@@ -316,7 +322,10 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
           file.sections.view
             .drop(1 + indexOfSection)
-            .takeWhile(vettedOneSidedDeletionsFromBase.contains)
+            .takeWhile(candidate =>
+              // NOTE: anchor sources are included in `allSources`.
+              !basePreservations.contains(candidate) && !allSources.contains(candidate)
+            )
             // At this point, we only have a plain view rather than an indexed
             // one...
             .toIndexedSeq
@@ -350,10 +359,12 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             .reverse
             .filterNot(migratedEditSuppressions.contains)
             .takeWhile(candidate =>
-              vettedInsertionCandidates
-                .contains(
-                  candidate
-                ) || vettedOneSidedDeletionsFromOppositeSide.contains(candidate)
+              (moveDestinationSide match
+                case Side.Left  => !rightPreservations.contains(candidate)
+                case Side.Right => !leftPreservations.contains(candidate)
+              ) && !oppositeSideToMoveDestinationAnchors.contains(
+                candidate
+              ) && !migratedEditSuppressions.contains(candidate)
             )
             // At this point, we only have a plain view rather than an indexed
             // one...
@@ -371,10 +382,12 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             .drop(1 + indexOfSection)
             .filterNot(migratedEditSuppressions.contains)
             .takeWhile(candidate =>
-              vettedInsertionCandidates
-                .contains(
-                  candidate
-                ) || vettedOneSidedDeletionsFromOppositeSide.contains(candidate)
+              (moveDestinationSide match
+                case Side.Left  => !rightPreservations.contains(candidate)
+                case Side.Right => !leftPreservations.contains(candidate)
+              ) && !oppositeSideToMoveDestinationAnchors.contains(
+                candidate
+              ) && !migratedEditSuppressions.contains(candidate)
             )
             // At this point, we only have a plain view rather than an indexed
             // one...
@@ -405,8 +418,13 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           file.sections.view
             .take(indexOfSection)
             .reverse
-            .takeWhile(
-              vettedInsertionCandidates.contains
+            .takeWhile(candidate =>
+              (moveDestinationSide match
+                case Side.Left  => !leftPreservations.contains(candidate)
+                case Side.Right => !rightPreservations.contains(candidate)
+              ) && !moveDestinationAnchors.contains(
+                candidate
+              )
             )
             // At this point, we only have a plain view rather than an indexed
             // one...
@@ -420,8 +438,13 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
           file.sections.view
             .drop(1 + indexOfSection)
-            .takeWhile(
-              vettedInsertionCandidates.contains
+            .takeWhile(candidate =>
+              (moveDestinationSide match
+                case Side.Left  => !leftPreservations.contains(candidate)
+                case Side.Right => !rightPreservations.contains(candidate)
+              ) && !moveDestinationAnchors.contains(
+                candidate
+              )
             )
             // At this point, we only have a plain view rather than an indexed
             // one...

@@ -36,6 +36,9 @@ case class FirstPassMergeResult[Element](
       Element
     ]],
     speculativeMoveDestinations: Set[SpeculativeMoveDestination[Element]],
+    basePreservations: Set[Element],
+    leftPreservations: Set[Element],
+    rightPreservations: Set[Element],
     insertions: Set[Element],
     oneSidedDeletionsFromBase: Set[Element],
     oneSidedDeletionsFromOppositeSide: Set[Element]
@@ -71,6 +74,9 @@ object FirstPassMergeResult extends StrictLogging:
           recording = Vector.empty,
           speculativeMigrationsBySource = Map.empty,
           speculativeMoveDestinations = Set.empty,
+          basePreservations = Set.empty,
+          rightPreservations = Set.empty,
+          leftPreservations = Set.empty,
           insertions = Set.empty,
           oneSidedDeletionsFromBase = Set.empty,
           oneSidedDeletionsFromOppositeSide = Set.empty
@@ -95,6 +101,12 @@ object FirstPassMergeResult extends StrictLogging:
               )
           )
         )
+        .focus(_.basePreservations)
+        .modify(_ + preservedBaseElement)
+        .focus(_.leftPreservations)
+        .modify(_ + preservedElementOnLeft)
+        .focus(_.rightPreservations)
+        .modify(_ + preservedElementOnRight)
       end preservation
 
       override def leftInsertion(
