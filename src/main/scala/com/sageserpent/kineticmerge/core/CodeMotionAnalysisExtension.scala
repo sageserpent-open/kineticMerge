@@ -4,10 +4,7 @@ import cats.{Eq, Order}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
 import com.sageserpent.kineticmerge.core.FirstPassMergeResult.Recording
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Sized
-import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{
-  AnchoredMove,
-  EvaluatedMoves
-}
+import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{AnchoredMove, EvaluatedMoves}
 import com.sageserpent.kineticmerge.core.merge.of as mergeOf
 import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
@@ -314,7 +311,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 candidate
               )
             )
-            .filterNot(allSources.contains)
             // At this point, we only have a plain view rather than an indexed
             // one...
             .toIndexedSeq
@@ -332,7 +328,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 candidate
               )
             )
-            .filterNot(allSources.contains)
             // At this point, we only have a plain view rather than an indexed
             // one...
             .toIndexedSeq
