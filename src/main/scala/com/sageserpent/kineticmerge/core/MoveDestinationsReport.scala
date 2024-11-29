@@ -124,15 +124,20 @@ object MoveDestinationsReport:
             if moveDestinations.left.nonEmpty then
               contentMigration match
                 case PlainMove(elementOnTheOppositeSideToTheMoveDestination) =>
-                  moveDestinations.left.map(destinationElement =>
-                    destinationElement -> IndexedSeq(
-                      resolution(
+                  moveDestinations.left
+                    .map(destinationElement =>
+                      val resolved = resolution(
                         Some(source),
                         destinationElement,
                         elementOnTheOppositeSideToTheMoveDestination
                       )
+                      destinationElement -> resolved
                     )
-                  ) + (elementOnTheOppositeSideToTheMoveDestination -> IndexedSeq.empty)
+                    .collect {
+                      case (destinationElement, resolved)
+                          if destinationElement != resolved =>
+                        destinationElement -> IndexedSeq(resolved)
+                    }
                 case ContentMigration.Edit(_, rightContent) =>
                   moveDestinations.left.map(_ -> rightContent)
                 case ContentMigration.Deletion() =>
@@ -140,15 +145,20 @@ object MoveDestinationsReport:
             else if moveDestinations.right.nonEmpty then
               contentMigration match
                 case PlainMove(elementOnTheOppositeSideToTheMoveDestination) =>
-                  moveDestinations.right.map(destinationElement =>
-                    destinationElement -> IndexedSeq(
-                      resolution(
+                  moveDestinations.right
+                    .map(destinationElement =>
+                      val resolved = resolution(
                         Some(source),
                         elementOnTheOppositeSideToTheMoveDestination,
                         destinationElement
                       )
+                      destinationElement -> resolved
                     )
-                  ) + (elementOnTheOppositeSideToTheMoveDestination -> IndexedSeq.empty)
+                    .collect {
+                      case (destinationElement, resolved)
+                          if destinationElement != resolved =>
+                        destinationElement -> IndexedSeq(resolved)
+                    }
                 case ContentMigration.Edit(leftContent, _) =>
                   moveDestinations.right.map(_ -> leftContent)
                 case ContentMigration.Deletion() =>
@@ -159,18 +169,20 @@ object MoveDestinationsReport:
                 case ContentMigration.Deletion() =>
                   moveDestinations.coincident.flatMap {
                     case (leftDestinationElement, rightDestinationElement) =>
-                      val resolved = IndexedSeq(
-                        resolution(
-                          Some(source),
-                          leftDestinationElement,
-                          rightDestinationElement
-                        )
+                      val resolved = resolution(
+                        Some(source),
+                        leftDestinationElement,
+                        rightDestinationElement
                       )
 
                       Seq(
                         leftDestinationElement  -> resolved,
                         rightDestinationElement -> resolved
-                      )
+                      ).collect {
+                        case (destinationElement, resolved)
+                            if destinationElement != resolved =>
+                          destinationElement -> IndexedSeq(resolved)
+                      }
                   }
                 case _ => Seq.empty
               end match
@@ -247,5 +259,46 @@ object MoveDestinationsReport:
       migratedEditSuppressions: Set[Element],
       substitutionsByDestination: MultiDict[Element, IndexedSeq[Element]],
       anchoredMoves: Set[AnchoredMove[Element]]
-  )
+  ):
+    {
+      val anchorSources       = anchoredMoves.map(_.source)
+      val anchorOppositeSides = anchoredMoves.map(_.oppositeSideElement)
+      val anchorDestinations  = anchoredMoves.map(_.moveDestination)
+      val substitutionDestinations: collection.Set[Element] =
+        substitutionsByDestination.keySet
+      val substitutions       = substitutionsByDestination.values.flatten.toSet
+      val allMoveDestinations = moveDestinationsReport.all
+      val allMoveSources      = moveDestinationsReport.sources
+
+      require(
+        anchorSources subsetOf allMoveSources,
+        message =
+          s"Anchor sources: ${pprintCustomised(anchorSources)}, all move sources: ${pprintCustomised(allMoveSources)}."
+      )
+
+      require(
+        anchorDestinations subsetOf allMoveDestinations,
+        message =
+          s"Anchor destinations: ${pprintCustomised(anchorDestinations)}, all move destinations: ${pprintCustomised(allMoveDestinations)}."
+      )
+
+      require(
+        substitutionDestinations subsetOf allMoveDestinations,
+        message =
+          s"Substitution destinations: ${pprintCustomised(substitutionDestinations)}, all move destinations: ${pprintCustomised(allMoveDestinations)}."
+      )
+
+      require(
+        (migratedEditSuppressions intersect anchorOppositeSides).isEmpty,
+        message =
+          s"Migrated edit suppressions: ${pprintCustomised(migratedEditSuppressions)}, opposite side elements for plain moves: ${pprintCustomised(anchorOppositeSides)}."
+      )
+
+      require(
+        (substitutionDestinations intersect substitutions).isEmpty,
+        message =
+          s"Substitution destinations: ${pprintCustomised(substitutionDestinations)}, substitutions: ${pprintCustomised(substitutions)}."
+      )
+    }
+  end EvaluatedMoves
 end MoveDestinationsReport
