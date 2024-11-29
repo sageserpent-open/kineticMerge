@@ -122,15 +122,20 @@ object MoveDestinationsReport:
             if moveDestinations.left.nonEmpty then
               contentMigration match
                 case PlainMove(elementOnTheOppositeSideToTheMoveDestination) =>
-                  moveDestinations.left.map(destinationElement =>
-                    destinationElement -> IndexedSeq(
-                      resolution(
+                  moveDestinations.left
+                    .map(destinationElement =>
+                      val resolved = resolution(
                         Some(source),
                         destinationElement,
                         elementOnTheOppositeSideToTheMoveDestination
                       )
+                      destinationElement -> resolved
                     )
-                  ) + (elementOnTheOppositeSideToTheMoveDestination -> IndexedSeq.empty)
+                    .collect {
+                      case (destinationElement, resolved)
+                          if destinationElement != resolved =>
+                        destinationElement -> IndexedSeq(resolved)
+                    }
                 case ContentMigration.Edit(_, rightContent) =>
                   moveDestinations.left.map(_ -> rightContent)
                 case ContentMigration.Deletion() =>
@@ -138,15 +143,20 @@ object MoveDestinationsReport:
             else if moveDestinations.right.nonEmpty then
               contentMigration match
                 case PlainMove(elementOnTheOppositeSideToTheMoveDestination) =>
-                  moveDestinations.right.map(destinationElement =>
-                    destinationElement -> IndexedSeq(
-                      resolution(
+                  moveDestinations.right
+                    .map(destinationElement =>
+                      val resolved = resolution(
                         Some(source),
                         elementOnTheOppositeSideToTheMoveDestination,
                         destinationElement
                       )
+                      destinationElement -> resolved
                     )
-                  ) + (elementOnTheOppositeSideToTheMoveDestination -> IndexedSeq.empty)
+                    .collect {
+                      case (destinationElement, resolved)
+                          if destinationElement != resolved =>
+                        destinationElement -> IndexedSeq(resolved)
+                    }
                 case ContentMigration.Edit(leftContent, _) =>
                   moveDestinations.right.map(_ -> leftContent)
                 case ContentMigration.Deletion() =>
@@ -157,18 +167,20 @@ object MoveDestinationsReport:
                 case ContentMigration.Deletion() =>
                   moveDestinations.coincident.flatMap {
                     case (leftDestinationElement, rightDestinationElement) =>
-                      val resolved = IndexedSeq(
-                        resolution(
-                          Some(source),
-                          leftDestinationElement,
-                          rightDestinationElement
-                        )
+                      val resolved = resolution(
+                        Some(source),
+                        leftDestinationElement,
+                        rightDestinationElement
                       )
 
                       Seq(
                         leftDestinationElement  -> resolved,
                         rightDestinationElement -> resolved
-                      )
+                      ).collect {
+                        case (destinationElement, resolved)
+                            if destinationElement != resolved =>
+                          destinationElement -> IndexedSeq(resolved)
+                      }
                   }
                 case _ => Seq.empty
               end match
