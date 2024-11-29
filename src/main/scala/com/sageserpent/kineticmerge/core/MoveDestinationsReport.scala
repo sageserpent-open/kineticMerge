@@ -225,5 +225,31 @@ object MoveDestinationsReport:
       migratedEditSuppressions: Set[Element],
       substitutionsByDestination: MultiDict[Element, IndexedSeq[Element]],
       isolatedMoveDestinationsByOppositeSideElement: MultiDict[Element, Element]
-  )
+  ):
+    {
+      val substitutionDestinations: collection.Set[Element] =
+        substitutionsByDestination.keySet
+      val oppositeSideElements =
+        isolatedMoveDestinationsByOppositeSideElement.keySet
+      val substitutions = substitutionsByDestination.values.flatten.toSet
+
+      require(
+        substitutionDestinations subsetOf moveDestinationsReport.all,
+        message =
+          s"Substitution destinations: ${pprintCustomised(substitutionDestinations)}, all move destinations: ${pprintCustomised(moveDestinationsReport.all)}."
+      )
+
+      require(
+        (migratedEditSuppressions intersect oppositeSideElements).isEmpty,
+        message =
+          s"Migrated edit suppressions: ${pprintCustomised(migratedEditSuppressions)}, opposite side elements for plain moves: ${pprintCustomised(oppositeSideElements)}."
+      )
+
+      require(
+        (substitutionDestinations intersect substitutions).isEmpty,
+        message =
+          s"Substitution destinations: ${pprintCustomised(substitutionDestinations)}, substitutions: ${pprintCustomised(substitutions)}."
+      )
+    }
+  end EvaluatedMoves
 end MoveDestinationsReport
