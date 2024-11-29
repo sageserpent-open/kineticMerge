@@ -312,6 +312,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             .take(indexOfSection)
             .reverse
             .takeWhile(inclusionCriterion)
+            .filterNot(allSources.contains)
             // At this point, we only have a plain view rather than an indexed
             // one...
             .toIndexedSeq
@@ -325,6 +326,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           file.sections.view
             .drop(1 + indexOfSection)
             .takeWhile(inclusionCriterion)
+            .filterNot(allSources.contains)
             // At this point, we only have a plain view rather than an indexed
             // one...
             .toIndexedSeq
