@@ -299,6 +299,11 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         val file =
           codeMotionAnalysis.base(codeMotionAnalysis.basePathFor(source))
 
+        def inclusionCriterion(candidate: Section[Element]): Boolean =
+          !basePreservations.contains(candidate) && !sourceAnchors.contains(
+            candidate
+          )
+
         val precedingAnchoredRun =
           val Searching.Found(indexOfSection) =
             file.searchByStartOffset(source.startOffset): @unchecked
@@ -306,11 +311,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           file.sections.view
             .take(indexOfSection)
             .reverse
-            .takeWhile(candidate =>
-              !basePreservations.contains(candidate) && !sourceAnchors.contains(
-                candidate
-              )
-            )
+            .takeWhile(inclusionCriterion)
             // At this point, we only have a plain view rather than an indexed
             // one...
             .toIndexedSeq
@@ -323,11 +324,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
           file.sections.view
             .drop(1 + indexOfSection)
-            .takeWhile(candidate =>
-              !basePreservations.contains(candidate) && !sourceAnchors.contains(
-                candidate
-              )
-            )
+            .takeWhile(inclusionCriterion)
             // At this point, we only have a plain view rather than an indexed
             // one...
             .toIndexedSeq
@@ -350,6 +347,12 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               codeMotionAnalysis.leftPathFor(oppositeSideSection)
             )
 
+        def inclusionCriterion(candidate: Section[Element]): Boolean =
+          (moveDestinationSide match
+            case Side.Left  => !rightPreservations.contains(candidate)
+            case Side.Right => !leftPreservations.contains(candidate)
+          ) && !oppositeSideToMoveDestinationAnchors.contains(candidate)
+
         val precedingAnchoredRun =
           val Searching.Found(indexOfSection) =
             file.searchByStartOffset(
@@ -359,12 +362,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           file.sections.view
             .take(indexOfSection)
             .reverse
-            .takeWhile(candidate =>
-              (moveDestinationSide match
-                case Side.Left  => !rightPreservations.contains(candidate)
-                case Side.Right => !leftPreservations.contains(candidate)
-              ) && !oppositeSideToMoveDestinationAnchors.contains(candidate)
-            )
+            .takeWhile(inclusionCriterion)
             .filterNot(migratedEditSuppressions.contains)
             // At this point, we only have a plain view rather than an indexed
             // one...
@@ -380,12 +378,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
           file.sections.view
             .drop(1 + indexOfSection)
-            .takeWhile(candidate =>
-              (moveDestinationSide match
-                case Side.Left  => !rightPreservations.contains(candidate)
-                case Side.Right => !leftPreservations.contains(candidate)
-              ) && !oppositeSideToMoveDestinationAnchors.contains(candidate)
-            )
+            .takeWhile(inclusionCriterion)
             .filterNot(migratedEditSuppressions.contains)
             // At this point, we only have a plain view rather than an indexed
             // one...
@@ -409,6 +402,14 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               codeMotionAnalysis.rightPathFor(moveDestination)
             )
 
+        def inclusionCriterion(candidate: Section[Element]): Boolean =
+          (moveDestinationSide match
+            case Side.Left  => !leftPreservations.contains(candidate)
+            case Side.Right => !rightPreservations.contains(candidate)
+          ) && !moveDestinationAnchors.contains(
+            candidate
+          )
+
         val precedingAnchoredRun =
           val Searching.Found(indexOfSection) =
             file.searchByStartOffset(moveDestination.startOffset): @unchecked
@@ -416,14 +417,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           file.sections.view
             .take(indexOfSection)
             .reverse
-            .takeWhile(candidate =>
-              (moveDestinationSide match
-                case Side.Left  => !leftPreservations.contains(candidate)
-                case Side.Right => !rightPreservations.contains(candidate)
-              ) && !moveDestinationAnchors.contains(
-                candidate
-              )
-            )
+            .takeWhile(inclusionCriterion)
             // At this point, we only have a plain view rather than an indexed
             // one...
             .toIndexedSeq
@@ -436,14 +430,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
           file.sections.view
             .drop(1 + indexOfSection)
-            .takeWhile(candidate =>
-              (moveDestinationSide match
-                case Side.Left  => !leftPreservations.contains(candidate)
-                case Side.Right => !rightPreservations.contains(candidate)
-              ) && !moveDestinationAnchors.contains(
-                candidate
-              )
-            )
+            .takeWhile(inclusionCriterion)
             // At this point, we only have a plain view rather than an indexed
             // one...
             .toIndexedSeq
@@ -454,7 +441,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
       case class MergedAnchoredRuns(
           precedingMerge: IndexedSeq[Section[Element]],
-          succeedingMerge: IndexedSeq[Section[Element]]
+          succeedingMerge: IndexedSeq[Section[Element]],
+          anchoredRunSuppressions: Set[Section[Element]]
       )
 
       def mergesFrom(
@@ -478,6 +466,10 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           anchoredMove.moveDestinationSide,
           anchoredMove.moveDestination
         )
+
+        val anchoredRunSuppressions =
+          (precedingAnchoredRunFromSideOppositeToMoveDestination
+            ++ succeedingAnchoredRunFromSideOppositeToMoveDestination).toSet
 
         anchoredMove.moveDestinationSide match
           case Side.Left =>
@@ -503,7 +495,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
             MergedAnchoredRuns(
               precedingMerge,
-              succeedingMerge
+              succeedingMerge,
+              anchoredRunSuppressions
             )
           case Side.Right =>
             val precedingMerge =
@@ -528,41 +521,60 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
             MergedAnchoredRuns(
               precedingMerge,
-              succeedingMerge
+              succeedingMerge,
+              anchoredRunSuppressions
             )
         end match
       end mergesFrom
 
+      val (
+        // TODO: perhaps Sir would like to try a better name...?
+        thingie: Seq[
+          (
+              (Section[Element], Anchoring),
+              IndexedSeq[
+                Section[Element]
+              ]
+          )
+        ],
+        anchoredRunSuppressions: Set[Section[Element]]
+      ) = anchoredMoves.foldLeft(
+        Seq.empty[
+          (
+              (Section[Element], Anchoring),
+              IndexedSeq[
+                Section[Element]
+              ]
+          )
+        ] -> Set.empty[Section[Element]]
+      ) {
+        case (
+              (partialKeyedMerges, partialAnchoredRunSuppressions),
+              anchoredMove
+            ) =>
+          val MergedAnchoredRuns(
+            precedingMerge,
+            succeedingMerge,
+            anchoredRunSuppressions
+          ) = mergesFrom(anchoredMove)
+
+          partialKeyedMerges ++ Option.unless(precedingMerge.isEmpty)(
+            (
+              anchoredMove.moveDestination,
+              Anchoring.Successor
+            ) -> precedingMerge
+          ) ++ Option.unless(succeedingMerge.isEmpty)(
+            (
+              anchoredMove.moveDestination,
+              Anchoring.Predecessor
+            ) -> succeedingMerge
+          ) -> (partialAnchoredRunSuppressions union anchoredRunSuppressions)
+      }
+
       val mergesByAnchoredMoveDestination
           : MultiDict[(Section[Element], Anchoring), IndexedSeq[
             Section[Element]
-          ]] = MultiDict.from {
-        anchoredMoves.foldLeft(Seq.empty) {
-          case (
-                partialKeyedMerges,
-                anchoredMove
-              ) =>
-            val MergedAnchoredRuns(
-              precedingMerge,
-              succeedingMerge
-            ) = mergesFrom(anchoredMove)
-
-            partialKeyedMerges ++ Option.unless(precedingMerge.isEmpty)(
-              (
-                anchoredMove.moveDestination,
-                Anchoring.Successor
-              ) -> precedingMerge
-            ) ++ Option.unless(succeedingMerge.isEmpty)(
-              (
-                anchoredMove.moveDestination,
-                Anchoring.Predecessor
-              ) -> succeedingMerge
-            )
-        }
-      }
-
-      val anchoredMergeSuppressions =
-        mergesByAnchoredMoveDestination.values.flatten.toSet
+          ]] = MultiDict.from(thingie)
 
       // TODO: remove this once the dust has settled...
       println("*** DEBUGGING...")
@@ -576,7 +588,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         // Apply the suppressions....
 
         val withSuppressions = mergeResult.transformElementsEnMasse(
-          _.filterNot(anchoredMergeSuppressions.contains)
+          _.filterNot(anchoredRunSuppressions.contains)
         )
 
         // Insert the anchored migrations....
