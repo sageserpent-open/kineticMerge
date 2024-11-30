@@ -20,6 +20,6 @@ case class File[Element](
   def content: IndexedSeq[Element] =
     sections.foldLeft(IndexedSeq.empty)(_ ++ _.content)
 
-  def searchByStartOffset(startIndex: Int): Searching.SearchResult =
-    sections.view.map(_.startOffset).search(startIndex)
+  def searchByStartOffset(startOffset: Int): Searching.SearchResult =
+    sections.view.map(_.startOffset).search(startOffset)
 end File
