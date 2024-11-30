@@ -38,10 +38,7 @@ case class FirstPassMergeResult[Element](
     speculativeMoveDestinations: Set[SpeculativeMoveDestination[Element]],
     basePreservations: Set[Element],
     leftPreservations: Set[Element],
-    rightPreservations: Set[Element],
-    insertions: Set[Element],
-    oneSidedDeletionsFromBase: Set[Element],
-    oneSidedDeletionsFromOppositeSide: Set[Element]
+    rightPreservations: Set[Element]
 )
 
 enum Side:
@@ -76,10 +73,7 @@ object FirstPassMergeResult extends StrictLogging:
           speculativeMoveDestinations = Set.empty,
           basePreservations = Set.empty,
           rightPreservations = Set.empty,
-          leftPreservations = Set.empty,
-          insertions = Set.empty,
-          oneSidedDeletionsFromBase = Set.empty,
-          oneSidedDeletionsFromOppositeSide = Set.empty
+          leftPreservations = Set.empty
         )
 
       override def preservation(
@@ -125,8 +119,6 @@ object FirstPassMergeResult extends StrictLogging:
                 )
             )
           )
-          .focus(_.insertions)
-          .modify(_ + insertedElement)
           .focus(_.speculativeMoveDestinations)
           .modify(_ + SpeculativeMoveDestination.Left(insertedElement))
       end leftInsertion
@@ -147,8 +139,6 @@ object FirstPassMergeResult extends StrictLogging:
                 )
             )
           )
-          .focus(_.insertions)
-          .modify(_ + insertedElement)
           .focus(_.speculativeMoveDestinations)
           .modify(_ + SpeculativeMoveDestination.Right(insertedElement))
       end rightInsertion
@@ -196,10 +186,6 @@ object FirstPassMergeResult extends StrictLogging:
                 )
             )
           )
-          .focus(_.oneSidedDeletionsFromBase)
-          .modify(_ + deletedBaseElement)
-          .focus(_.oneSidedDeletionsFromOppositeSide)
-          .modify(_ + deletedRightElement)
           .focus(_.speculativeMigrationsBySource)
           .modify(
             _ + (deletedBaseElement -> ContentMigration
@@ -225,10 +211,6 @@ object FirstPassMergeResult extends StrictLogging:
                 )
             )
           )
-          .focus(_.oneSidedDeletionsFromBase)
-          .modify(_ + deletedBaseElement)
-          .focus(_.oneSidedDeletionsFromOppositeSide)
-          .modify(_ + deletedLeftElement)
           .focus(_.speculativeMigrationsBySource)
           .modify(
             _ + (deletedBaseElement -> ContentMigration
@@ -376,10 +358,6 @@ object FirstPassMergeResult extends StrictLogging:
                 )
             )
           )
-          .focus(_.insertions)
-          .modify(leftEditElements.foldLeft(_)(_ + _))
-          .focus(_.insertions)
-          .modify(rightEditElements.foldLeft(_)(_ + _))
           .focus(_.speculativeMigrationsBySource)
           .modify(
             editedElements.foldLeft(_)((partialResult, editedElement) =>

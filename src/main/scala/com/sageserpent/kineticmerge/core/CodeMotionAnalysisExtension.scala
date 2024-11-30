@@ -91,10 +91,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           ],
           basePreservations: Set[Section[Element]],
           leftPreservations: Set[Section[Element]],
-          rightPreservations: Set[Section[Element]],
-          insertions: Set[Section[Element]],
-          oneSidedDeletionsFromBase: Set[Section[Element]],
-          oneSidedDeletionsFromOppositeSide: Set[Section[Element]]
+          rightPreservations: Set[Section[Element]]
       ):
         def recordContentOfFileAddedOnLeft(
             path: Path,
@@ -115,8 +112,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 _ + SpeculativeMoveDestination.Left(_)
               )
             )
-            .focus(_.insertions)
-            .modify(_ ++ leftSections)
 
         def recordContentOfFileAddedOnRight(
             path: Path,
@@ -137,8 +132,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 _ + SpeculativeMoveDestination.Right(_)
               )
             )
-            .focus(_.insertions)
-            .modify(_ ++ rightSections)
 
         def aggregate(
             path: Path,
@@ -161,16 +154,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             .modify(_ union firstPassMergeResult.leftPreservations)
             .focus(_.rightPreservations)
             .modify(_ union firstPassMergeResult.rightPreservations)
-            .focus(_.insertions)
-            .modify(
-              _ union firstPassMergeResult.insertions
-            )
-            .focus(_.oneSidedDeletionsFromBase)
-            .modify(_ union firstPassMergeResult.oneSidedDeletionsFromBase)
-            .focus(_.oneSidedDeletionsFromOppositeSide)
-            .modify(
-              _ union firstPassMergeResult.oneSidedDeletionsFromOppositeSide
-            )
       end AggregatedInitialMergeResult
 
       object AggregatedInitialMergeResult:
@@ -180,10 +163,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           speculativeMoveDestinations = Set.empty,
           basePreservations = Set.empty,
           leftPreservations = Set.empty,
-          rightPreservations = Set.empty,
-          insertions = Set.empty,
-          oneSidedDeletionsFromBase = Set.empty,
-          oneSidedDeletionsFromOppositeSide = Set.empty
+          rightPreservations = Set.empty
         )
       end AggregatedInitialMergeResult
 
@@ -193,10 +173,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         speculativeMoveDestinations,
         basePreservations,
         leftPreservations,
-        rightPreservations,
-        insertions,
-        oneSidedDeletionsFromBase,
-        oneSidedDeletionsFromOppositeSide
+        rightPreservations
       ) =
         paths.foldLeft(AggregatedInitialMergeResult.empty) {
           case (partialMergeResult, path) =>
