@@ -257,7 +257,15 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         anchoredMoves.map(_.oppositeSideElement)
       val moveDestinationAnchors = anchoredMoves.map(_.moveDestination)
 
-      val allSources = moveDestinationsReport.sources
+      val changeMigrationSources =
+        // TODO: this should probably be part of `EvaluatedMoves`, and perhaps
+        // computed in a way that relies less on inference...
+        (moveDestinationsReport.sources diff sourceAnchors).filterNot(
+          candidate =>
+            val moveDestinations =
+              moveDestinationsReport.moveDestinationsBySources(candidate)
+            moveDestinations.isDivergent || moveDestinations.coincident.nonEmpty
+        )
 
       given sectionRunOrdering[Sequence[Item] <: Seq[Item]]
           : Ordering[Sequence[Section[Element]]] =
@@ -312,7 +320,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             .take(indexOfSection)
             .reverse
             .takeWhile(inclusionCriterion)
-            .filterNot(allSources.contains)
+            .filterNot(changeMigrationSources.contains)
             // At this point, we only have a plain view rather than an indexed
             // one...
             .toIndexedSeq
@@ -326,7 +334,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           file.sections.view
             .drop(1 + indexOfSection)
             .takeWhile(inclusionCriterion)
-            .filterNot(allSources.contains)
+            .filterNot(changeMigrationSources.contains)
             // At this point, we only have a plain view rather than an indexed
             // one...
             .toIndexedSeq
