@@ -471,7 +471,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
         val anchoredRunSuppressions =
           (precedingAnchoredRunFromSideOppositeToMoveDestination
-            ++ succeedingAnchoredRunFromSideOppositeToMoveDestination).toSet
+            ++ precedingAnchoredRunFromMoveDestinationSide
+            ++ succeedingAnchoredRunFromSideOppositeToMoveDestination
+            ++ succeedingAnchoredRunFromMoveDestinationSide).toSet
 
         anchoredMove.moveDestinationSide match
           case Side.Left =>
