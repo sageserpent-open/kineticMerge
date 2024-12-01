@@ -4,12 +4,15 @@ import cats.{Eq, Order}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
 import com.sageserpent.kineticmerge.core.FirstPassMergeResult.Recording
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Sized
-import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{AnchoredMove, EvaluatedMoves}
+import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{
+  AnchoredMove,
+  EvaluatedMoves
+}
 import com.sageserpent.kineticmerge.core.merge.of as mergeOf
 import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
 
-import scala.collection.Searching
+import scala.collection.{IndexedSeqView, Searching}
 import scala.collection.immutable.MultiDict
 
 object CodeMotionAnalysisExtension extends StrictLogging:
@@ -278,46 +281,47 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         case Successor
       end Anchoring
 
+      def anchoredRunsUsingSelection(
+          file: File[Element],
+          anchor: Section[Element]
+      )(
+          selectAnchoredRun: IndexedSeqView[Section[Element]] => IndexedSeq[
+            Section[Element]
+          ]
+      ) =
+        val Searching.Found(indexOfSection) =
+          file.searchByStartOffset(anchor.startOffset): @unchecked
+
+        val precedingAnchoredRun =
+          selectAnchoredRun(
+            file.sections.view.take(indexOfSection).reverse
+          ).reverse
+
+        val succeedingAnchoredRun =
+          selectAnchoredRun(file.sections.view.drop(1 + indexOfSection))
+
+        precedingAnchoredRun -> succeedingAnchoredRun
+      end anchoredRunsUsingSelection
+
       def anchoredRunsFromSource(
           source: Section[Element]
       ): (IndexedSeq[Section[Element]], IndexedSeq[Section[Element]]) =
         val file =
           codeMotionAnalysis.base(codeMotionAnalysis.basePathFor(source))
 
-        def inclusionCriterion(candidate: Section[Element]): Boolean =
-          !basePreservations.contains(candidate) && !sourceAnchors.contains(
-            candidate
-          )
-
-        val precedingAnchoredRun =
-          val Searching.Found(indexOfSection) =
-            file.searchByStartOffset(source.startOffset): @unchecked
-
-          file.sections.view
-            .take(indexOfSection)
-            .reverse
-            .takeWhile(inclusionCriterion)
+        anchoredRunsUsingSelection(file, anchor = source)(candidates =>
+          candidates
+            .takeWhile(candidate =>
+              !basePreservations.contains(candidate) && !sourceAnchors
+                .contains(
+                  candidate
+                )
+            )
             .filterNot(changeMigrationSources.contains)
             // At this point, we only have a plain view rather than an indexed
             // one...
             .toIndexedSeq
-            .reverse
-        end precedingAnchoredRun
-
-        val succeedingAnchoredRun =
-          val Searching.Found(indexOfSection) =
-            file.searchByStartOffset(source.startOffset): @unchecked
-
-          file.sections.view
-            .drop(1 + indexOfSection)
-            .takeWhile(inclusionCriterion)
-            .filterNot(changeMigrationSources.contains)
-            // At this point, we only have a plain view rather than an indexed
-            // one...
-            .toIndexedSeq
-        end succeedingAnchoredRun
-
-        precedingAnchoredRun -> succeedingAnchoredRun
+        )
       end anchoredRunsFromSource
 
       def anchoredRunsFromSideOppositeToMoveDestination(
@@ -334,45 +338,20 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               codeMotionAnalysis.leftPathFor(oppositeSideSection)
             )
 
-        def inclusionCriterion(candidate: Section[Element]): Boolean =
-          (moveDestinationSide match
-            case Side.Left  => !rightPreservations.contains(candidate)
-            case Side.Right => !leftPreservations.contains(candidate)
-          ) && !oppositeSideToMoveDestinationAnchors.contains(candidate)
-
-        val precedingAnchoredRun =
-          val Searching.Found(indexOfSection) =
-            file.searchByStartOffset(
-              oppositeSideSection.startOffset
-            ): @unchecked
-
-          file.sections.view
-            .take(indexOfSection)
-            .reverse
-            .takeWhile(inclusionCriterion)
-            .filterNot(migratedEditSuppressions.contains)
-            // At this point, we only have a plain view rather than an indexed
-            // one...
-            .toIndexedSeq
-            .reverse
-        end precedingAnchoredRun
-
-        val succeedingAnchoredRun =
-          val Searching.Found(indexOfSection) =
-            file.searchByStartOffset(
-              oppositeSideSection.startOffset
-            ): @unchecked
-
-          file.sections.view
-            .drop(1 + indexOfSection)
-            .takeWhile(inclusionCriterion)
-            .filterNot(migratedEditSuppressions.contains)
-            // At this point, we only have a plain view rather than an indexed
-            // one...
-            .toIndexedSeq
-        end succeedingAnchoredRun
-
-        precedingAnchoredRun -> succeedingAnchoredRun
+        anchoredRunsUsingSelection(file, anchor = oppositeSideSection)(
+          candidates =>
+            candidates
+              .takeWhile(candidate =>
+                (moveDestinationSide match
+                  case Side.Left  => !rightPreservations.contains(candidate)
+                  case Side.Right => !leftPreservations.contains(candidate)
+                ) && !oppositeSideToMoveDestinationAnchors.contains(candidate)
+              )
+              .filterNot(migratedEditSuppressions.contains)
+              // At this point, we only have a plain view rather than an indexed
+              // one...
+              .toIndexedSeq
+        )
       end anchoredRunsFromSideOppositeToMoveDestination
 
       def anchoredRunsFromModeDestinationSide(
@@ -389,41 +368,20 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               codeMotionAnalysis.rightPathFor(moveDestination)
             )
 
-        def inclusionCriterion(candidate: Section[Element]): Boolean =
-          (moveDestinationSide match
-            case Side.Left  => !leftPreservations.contains(candidate)
-            case Side.Right => !rightPreservations.contains(candidate)
-          ) && !moveDestinationAnchors.contains(
-            candidate
-          )
-
-        val precedingAnchoredRun =
-          val Searching.Found(indexOfSection) =
-            file.searchByStartOffset(moveDestination.startOffset): @unchecked
-
-          file.sections.view
-            .take(indexOfSection)
-            .reverse
-            .takeWhile(inclusionCriterion)
+        anchoredRunsUsingSelection(file, anchor = moveDestination)(candidates =>
+          candidates
+            .takeWhile(candidate =>
+              (moveDestinationSide match
+                case Side.Left  => !leftPreservations.contains(candidate)
+                case Side.Right => !rightPreservations.contains(candidate)
+              ) && !moveDestinationAnchors.contains(
+                candidate
+              )
+            )
             // At this point, we only have a plain view rather than an indexed
             // one...
             .toIndexedSeq
-            .reverse
-        end precedingAnchoredRun
-
-        val succeedingAnchoredRun =
-          val Searching.Found(indexOfSection) =
-            file.searchByStartOffset(moveDestination.startOffset): @unchecked
-
-          file.sections.view
-            .drop(1 + indexOfSection)
-            .takeWhile(inclusionCriterion)
-            // At this point, we only have a plain view rather than an indexed
-            // one...
-            .toIndexedSeq
-        end succeedingAnchoredRun
-
-        precedingAnchoredRun -> succeedingAnchoredRun
+        )
       end anchoredRunsFromModeDestinationSide
 
       case class MergedAnchoredRuns(
