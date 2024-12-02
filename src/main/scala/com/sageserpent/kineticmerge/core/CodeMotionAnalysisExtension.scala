@@ -390,6 +390,12 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           anchoredRunSuppressions: Set[Section[Element]]
       )
 
+      val secondPassMergeAlgebra =
+        SecondPassMergeResult.mergeAlgebra(
+          coreMergeAlgebra = MergeResult.mergeAlgebra(resolution),
+          migratedEditSuppressions
+        )
+
       def mergesFrom(
           anchoredMove: AnchoredMove[Section[Element]]
       ): MergedAnchoredRuns =
@@ -421,21 +427,21 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         anchoredMove.moveDestinationSide match
           case Side.Left =>
             val precedingMerge =
-              mergeOf(mergeAlgebra = MergeResult.mergeAlgebra(resolution))(
+              mergeOf(mergeAlgebra = secondPassMergeAlgebra)(
                 base = precedingAnchoredRunFromSource,
                 left = precedingAnchoredRunFromMoveDestinationSide,
                 right = precedingAnchoredRunFromSideOppositeToMoveDestination
-              ) match
+              ).coreMergeResult match
                 case FullyMerged(sections) => sections
                 case MergedWithConflicts(leftSections, rightSections) =>
                   leftSections ++ rightSections
 
             val succeedingMerge =
-              mergeOf(mergeAlgebra = MergeResult.mergeAlgebra(resolution))(
+              mergeOf(mergeAlgebra = secondPassMergeAlgebra)(
                 base = succeedingAnchoredRunFromSource,
                 left = succeedingAnchoredRunFromMoveDestinationSide,
                 right = succeedingAnchoredRunFromSideOppositeToMoveDestination
-              ) match
+              ).coreMergeResult match
                 case FullyMerged(sections) => sections
                 case MergedWithConflicts(leftSections, rightSections) =>
                   rightSections ++ leftSections
@@ -447,21 +453,21 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             )
           case Side.Right =>
             val precedingMerge =
-              mergeOf(mergeAlgebra = MergeResult.mergeAlgebra(resolution))(
+              mergeOf(mergeAlgebra = secondPassMergeAlgebra)(
                 base = precedingAnchoredRunFromSource,
                 left = precedingAnchoredRunFromSideOppositeToMoveDestination,
                 right = precedingAnchoredRunFromMoveDestinationSide
-              ) match
+              ).coreMergeResult match
                 case FullyMerged(sections) => sections
                 case MergedWithConflicts(leftSections, rightSections) =>
                   rightSections ++ leftSections
 
             val succeedingMerge =
-              mergeOf(mergeAlgebra = MergeResult.mergeAlgebra(resolution))(
+              mergeOf(mergeAlgebra = secondPassMergeAlgebra)(
                 base = succeedingAnchoredRunFromSource,
                 left = succeedingAnchoredRunFromSideOppositeToMoveDestination,
                 right = succeedingAnchoredRunFromMoveDestinationSide
-              ) match
+              ).coreMergeResult match
                 case FullyMerged(sections) => sections
                 case MergedWithConflicts(leftSections, rightSections) =>
                   leftSections ++ rightSections
@@ -788,10 +794,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             val mergedSectionsResult
                 : SecondPassMergeResult[MergeResult, Section[Element]] =
               recording.playback(
-                SecondPassMergeResult.mergeAlgebra(
-                  coreMergeAlgebra = MergeResult.mergeAlgebra(resolution),
-                  migratedEditSuppressions
-                )
+                secondPassMergeAlgebra
               )
 
             path -> mergedSectionsResult.coreMergeResult

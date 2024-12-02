@@ -11,7 +11,7 @@ import monocle.syntax.all.*
   * @tparam CoreResult
   * @tparam Element
   * @todo
-  *   Consider just using [[CoreResult]] if nothing else makes it way into this
+  *   Consider just using [[CoreResult]] if nothing else makes its way into this
   *   class.
   */
 case class SecondPassMergeResult[CoreResult[_], Element](
