@@ -12,8 +12,8 @@ import com.sageserpent.kineticmerge.core.merge.of as mergeOf
 import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
 
-import scala.collection.{IndexedSeqView, Searching}
 import scala.collection.immutable.MultiDict
+import scala.collection.{IndexedSeqView, Searching}
 
 object CodeMotionAnalysisExtension extends StrictLogging:
 
@@ -481,25 +481,17 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       end mergesFrom
 
       val (
-        // TODO: perhaps Sir would like to try a better name...?
-        thingie: Seq[
-          (
-              (Section[Element], Anchoring),
-              IndexedSeq[
-                Section[Element]
-              ]
-          )
+        mergesByAnchoredMoveDestination: MultiDict[
+          (Section[Element], Anchoring),
+          IndexedSeq[
+            Section[Element]
+          ]
         ],
         anchoredRunSuppressions: Set[Section[Element]]
       ) = anchoredMoves.foldLeft(
-        Seq.empty[
-          (
-              (Section[Element], Anchoring),
-              IndexedSeq[
-                Section[Element]
-              ]
-          )
-        ] -> Set.empty[Section[Element]]
+        MultiDict.empty[(Section[Element], Anchoring), IndexedSeq[
+          Section[Element]
+        ]] -> Set.empty[Section[Element]]
       ) {
         case (
               (partialKeyedMerges, partialAnchoredRunSuppressions),
@@ -511,28 +503,33 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             anchoredRunSuppressions
           ) = mergesFrom(anchoredMove)
 
-          partialKeyedMerges ++ Option.unless(precedingMerge.isEmpty)(
-            (
-              anchoredMove.moveDestination,
-              Anchoring.Successor
-            ) -> precedingMerge
-          ) ++ Option.unless(succeedingMerge.isEmpty)(
-            (
-              anchoredMove.moveDestination,
-              Anchoring.Predecessor
-            ) -> succeedingMerge
+          // NOTE: yes, this looks horrible, but try writing it using
+          // `Option.unless` with flattening, or with `Option.fold`, or with
+          // filters and folds, or a pattern match. Does it look any better?
+          (if precedingMerge.isEmpty && succeedingMerge.isEmpty then
+             partialKeyedMerges
+           else if precedingMerge.isEmpty then
+             partialKeyedMerges.add(
+               anchoredMove.moveDestination -> Anchoring.Predecessor,
+               succeedingMerge
+             )
+           else if succeedingMerge.isEmpty then
+             partialKeyedMerges.add(
+               anchoredMove.moveDestination -> Anchoring.Successor,
+               precedingMerge
+             )
+           else
+             partialKeyedMerges
+               .add(
+                 anchoredMove.moveDestination -> Anchoring.Predecessor,
+                 succeedingMerge
+               )
+               .add(
+                 anchoredMove.moveDestination -> Anchoring.Successor,
+                 precedingMerge
+               )
           ) -> (partialAnchoredRunSuppressions union anchoredRunSuppressions)
       }
-
-      val mergesByAnchoredMoveDestination
-          : MultiDict[(Section[Element], Anchoring), IndexedSeq[
-            Section[Element]
-          ]] = MultiDict.from(thingie)
-
-      // TODO: remove this once the dust has settled...
-      println("*** DEBUGGING...")
-      pprintCustomised.pprintln(mergesByAnchoredMoveDestination)
-      println("... normal service will be resumed as soon as possible.")
 
       def applyAnchoredMerges(
           path: Path,
