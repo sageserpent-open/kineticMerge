@@ -6,7 +6,11 @@ import com.sageserpent.americium.Trials
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.Configuration
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtension.*
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtensionTest.{FakePath, reconstituteTextFrom, given}
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtensionTest.{
+  FakePath,
+  reconstituteTextFrom,
+  given
+}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.Token.tokens
 import org.junit.jupiter.api.Assertions.fail
@@ -661,38 +665,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       }
   end codeMotionAcrossAFileRename
 
-  private def verifyAbsenceOfContent(
-      path: FakePath,
-      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
-  ): Unit =
-    mergeResultsByPath(path) match
-      case FullyMerged(result) =>
-        assert(
-          result.isEmpty,
-          fansi.Color
-            .Yellow(
-              s"\nShould not have this content at $path...\n"
-            )
-            .render + fansi.Color
-            .Green(
-              reconstituteTextFrom(result)
-            )
-            .render
-        )
-      case MergedWithConflicts(leftResult, rightResult) =>
-        fail(
-          fansi.Color
-            .Yellow(
-              s"\nShould not have this content at $path...\n"
-            )
-            .render + fansi.Color.Red(s"\nLeft result...\n")
-            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
-            + fansi.Color.Red(s"\nRight result...\n").render
-            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
-        )
-    end match
-  end verifyAbsenceOfContent
-
   @TestFactory
   def codeMotionAcrossTwoFilesWhoseContentIsCombinedTogetherToMakeANewReplacementFile()
       : DynamicTests =
@@ -806,6 +778,38 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           verifyAbsenceOfContent(palindromesPath, mergeResultsByPath)
       }
   end codeMotionAcrossTwoFilesWhoseContentIsCombinedTogetherToMakeANewReplacementFile
+
+  private def verifyAbsenceOfContent(
+      path: FakePath,
+      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
+  ): Unit =
+    mergeResultsByPath(path) match
+      case FullyMerged(result) =>
+        assert(
+          result.isEmpty,
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render + fansi.Color
+            .Green(
+              reconstituteTextFrom(result)
+            )
+            .render
+        )
+      case MergedWithConflicts(leftResult, rightResult) =>
+        fail(
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render + fansi.Color.Red(s"\nLeft result...\n")
+            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
+            + fansi.Color.Red(s"\nRight result...\n").render
+            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
+        )
+    end match
+  end verifyAbsenceOfContent
 
   @Test
   def furtherMigrationOfAMigratedEditAsAnInsertion(): Unit =
@@ -2665,7 +2669,7 @@ trait ProseExamples:
       : String =
     """
       |A bird in hand is worth two in the bush.
-      |A stitch in time saves nine (but you aren't going to need it).
+      |A stitch in time saves nine (but you aren't going to need it)..
       |A man, a plan (but you aren't going to need it), a canal, Panama
       |(but you aren't going to need it)
       |Fools rush in.
@@ -2694,7 +2698,7 @@ trait ProseExamples:
       : String =
     """
       |A bird in hand is worth two in the bush.
-      |A stitch in time saves (but you aren't going to need it).
+      |A stitch in time saves (but you aren't going to need it)..
       |A man, a plan (but you aren't going to need it), a canal, Panama
       |(but you aren't going to need it)
       |Fools rush in.
@@ -2717,7 +2721,7 @@ trait ProseExamples:
   protected val leftoverProverbsWithEdit: String =
     """Fools rush in.
       |All's well that ends well.
-      |Better eat gram flour, not the damned flowers!
+      |Better eat gram flour, not the damned flowers.
       |""".stripMargin
 
   protected val excisedProverbs: String =
@@ -2729,7 +2733,7 @@ trait ProseExamples:
   protected val excisedProverbsExpectedMerge: String =
     """
       |A bird in hand is worth two in the bush.
-      |Better eat gram flour, not the damned flowers!
+      |Better eat gram flour, not the damned flowers.
       |A stitch in time saves nine.
       |""".stripMargin
 
