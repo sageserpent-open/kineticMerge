@@ -1,6 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.{Eq, Order}
+import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
 import com.sageserpent.kineticmerge.core.FirstPassMergeResult.Recording
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Sized
@@ -390,6 +391,40 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       val conflictResolvingMergeAlgebra =
         new ConflictResolvingMergeAlgebra(resolution, migratedEditSuppressions)
 
+      object CachedMergeResult:
+        private case class MergeInput(
+            anchoredRunFromSource: IndexedSeq[Section[Element]],
+            anchoredRunFromSideOppositeToMoveDestination: IndexedSeq[
+              Section[Element]
+            ],
+            anchoredRunFromMoveDestinationSide: IndexedSeq[Section[Element]]
+        )
+
+        private val resultsCache: Cache[MergeInput, MergeResult[
+          Section[Element]
+        ]] = Caffeine.newBuilder().build()
+
+        def of(
+            anchoredRunFromSource: IndexedSeq[Section[Element]],
+            anchoredRunFromSideOppositeToMoveDestination: IndexedSeq[
+              Section[Element]
+            ],
+            anchoredRunFromMoveDestinationSide: IndexedSeq[Section[Element]]
+        ): MergeResult[Section[Element]] = resultsCache.get(
+          MergeInput(
+            anchoredRunFromSource,
+            anchoredRunFromSideOppositeToMoveDestination,
+            anchoredRunFromMoveDestinationSide
+          ),
+          _ =>
+            mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
+              anchoredRunFromSource,
+              anchoredRunFromSideOppositeToMoveDestination,
+              anchoredRunFromMoveDestinationSide
+            )
+        )
+      end CachedMergeResult
+
       def mergesFrom(
           anchoredMove: AnchoredMove[Section[Element]]
       ): MergedAnchoredRuns =
@@ -421,21 +456,23 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         anchoredMove.moveDestinationSide match
           case Side.Left =>
             val precedingMerge =
-              mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
-                base = precedingAnchoredRunFromSource,
-                left = precedingAnchoredRunFromMoveDestinationSide,
-                right = precedingAnchoredRunFromSideOppositeToMoveDestination
-              ) match
+              CachedMergeResult
+                .of(
+                  precedingAnchoredRunFromSource,
+                  precedingAnchoredRunFromMoveDestinationSide,
+                  precedingAnchoredRunFromSideOppositeToMoveDestination
+                ) match
                 case FullyMerged(sections) => sections
                 case MergedWithConflicts(leftSections, rightSections) =>
                   leftSections ++ rightSections
 
             val succeedingMerge =
-              mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
-                base = succeedingAnchoredRunFromSource,
-                left = succeedingAnchoredRunFromMoveDestinationSide,
-                right = succeedingAnchoredRunFromSideOppositeToMoveDestination
-              ) match
+              CachedMergeResult
+                .of(
+                  succeedingAnchoredRunFromSource,
+                  succeedingAnchoredRunFromMoveDestinationSide,
+                  succeedingAnchoredRunFromSideOppositeToMoveDestination
+                ) match
                 case FullyMerged(sections) => sections
                 case MergedWithConflicts(leftSections, rightSections) =>
                   rightSections ++ leftSections
@@ -447,21 +484,23 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             )
           case Side.Right =>
             val precedingMerge =
-              mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
-                base = precedingAnchoredRunFromSource,
-                left = precedingAnchoredRunFromSideOppositeToMoveDestination,
-                right = precedingAnchoredRunFromMoveDestinationSide
-              ) match
+              CachedMergeResult
+                .of(
+                  precedingAnchoredRunFromSource,
+                  precedingAnchoredRunFromSideOppositeToMoveDestination,
+                  precedingAnchoredRunFromMoveDestinationSide
+                ) match
                 case FullyMerged(sections) => sections
                 case MergedWithConflicts(leftSections, rightSections) =>
                   rightSections ++ leftSections
 
             val succeedingMerge =
-              mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
-                base = succeedingAnchoredRunFromSource,
-                left = succeedingAnchoredRunFromSideOppositeToMoveDestination,
-                right = succeedingAnchoredRunFromMoveDestinationSide
-              ) match
+              CachedMergeResult
+                .of(
+                  succeedingAnchoredRunFromSource,
+                  succeedingAnchoredRunFromSideOppositeToMoveDestination,
+                  succeedingAnchoredRunFromMoveDestinationSide
+                ) match
                 case FullyMerged(sections) => sections
                 case MergedWithConflicts(leftSections, rightSections) =>
                   leftSections ++ rightSections
