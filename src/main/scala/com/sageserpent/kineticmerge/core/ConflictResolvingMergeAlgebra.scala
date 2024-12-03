@@ -58,8 +58,8 @@ class ConflictResolvingMergeAlgebra[Element](
       super.conflict(
         result,
         editedElements,
-        leftEditElements,
-        rightEditElements
+        vettedLeftElements,
+        vettedRightElements
       )
     end if
 
