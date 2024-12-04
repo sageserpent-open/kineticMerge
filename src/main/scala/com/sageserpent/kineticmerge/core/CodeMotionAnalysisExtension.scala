@@ -219,6 +219,14 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             end match
         }
 
+      val (
+        coincidentInsertionsOrEditsOnLeft,
+        coincidentInsertionsOrEditsOnRight
+      ) = speculativeMoveDestinations.collect {
+        case SpeculativeMoveDestination.Coincident(leftSection, rightSection) =>
+          leftSection -> rightSection
+      }.unzip
+
       val EvaluatedMoves(
         moveDestinationsReport,
         migratedEditSuppressions,
@@ -330,24 +338,34 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           moveDestinationSide: Side,
           oppositeSideAnchor: OppositeSideAnchor[Section[Element]]
       ): (IndexedSeq[Section[Element]], IndexedSeq[Section[Element]]) =
-        val file = moveDestinationSide match
-          case Side.Left =>
-            codeMotionAnalysis.right(
-              codeMotionAnalysis.rightPathFor(oppositeSideAnchor.element)
-            )
-          case Side.Right =>
-            codeMotionAnalysis.left(
-              codeMotionAnalysis.leftPathFor(oppositeSideAnchor.element)
-            )
+        val (file, preservations, coincidentInsertionsOrEdits) =
+          moveDestinationSide match
+            case Side.Left =>
+              (
+                codeMotionAnalysis.right(
+                  codeMotionAnalysis.rightPathFor(oppositeSideAnchor.element)
+                ),
+                rightPreservations,
+                coincidentInsertionsOrEditsOnRight
+              )
+            case Side.Right =>
+              (
+                codeMotionAnalysis.left(
+                  codeMotionAnalysis.leftPathFor(oppositeSideAnchor.element)
+                ),
+                leftPreservations,
+                coincidentInsertionsOrEditsOnLeft
+              )
 
         def selection(
             candidates: IndexedSeqView[Section[Element]]
         ): IndexedSeq[Section[Element]] = candidates
           .takeWhile(candidate =>
-            (moveDestinationSide match
-              case Side.Left  => !rightPreservations.contains(candidate)
-              case Side.Right => !leftPreservations.contains(candidate)
-            ) && !oppositeSideToMoveDestinationAnchors.contains(candidate)
+            !preservations.contains(
+              candidate
+            ) && !oppositeSideToMoveDestinationAnchors.contains(
+              candidate
+            ) && !coincidentInsertionsOrEdits.contains(candidate)
           )
           // At this point, we only have a plain view rather than an indexed
           // one...
@@ -394,26 +412,34 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           moveDestinationSide: Side,
           moveDestinationAnchor: Section[Element]
       ): (IndexedSeq[Section[Element]], IndexedSeq[Section[Element]]) =
-        val file = moveDestinationSide match
-          case Side.Left =>
-            codeMotionAnalysis.left(
-              codeMotionAnalysis.leftPathFor(moveDestinationAnchor)
-            )
-          case Side.Right =>
-            codeMotionAnalysis.right(
-              codeMotionAnalysis.rightPathFor(moveDestinationAnchor)
-            )
+        val (file, preservations, coincidentInsertionsOrEdits) =
+          moveDestinationSide match
+            case Side.Left =>
+              (
+                codeMotionAnalysis.left(
+                  codeMotionAnalysis.leftPathFor(moveDestinationAnchor)
+                ),
+                leftPreservations,
+                coincidentInsertionsOrEditsOnLeft
+              )
+            case Side.Right =>
+              (
+                codeMotionAnalysis.right(
+                  codeMotionAnalysis.rightPathFor(moveDestinationAnchor)
+                ),
+                rightPreservations,
+                coincidentInsertionsOrEditsOnRight
+              )
 
         def selection(
             candidates: IndexedSeqView[Section[Element]]
         ): IndexedSeq[Section[Element]] = candidates
           .takeWhile(candidate =>
-            (moveDestinationSide match
-              case Side.Left  => !leftPreservations.contains(candidate)
-              case Side.Right => !rightPreservations.contains(candidate)
+            !preservations.contains(
+              candidate
             ) && !moveDestinationAnchors.contains(
               candidate
-            )
+            ) && !coincidentInsertionsOrEdits.contains(candidate)
           )
           // At this point, we only have a plain view rather than an indexed
           // one...

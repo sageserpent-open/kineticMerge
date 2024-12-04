@@ -353,8 +353,9 @@ object MoveDestinationsReport:
         case OppositeSideAnchor.Plain(element) => element
       }
       val oppositeSideAnchorsForMigratedEdits = anchorOppositeSides.collect {
-        case OppositeSideAnchor.FirstInMigratedEdit(element) => element
-        case OppositeSideAnchor.LastInMigratedEdit(element)  => element
+        case OppositeSideAnchor.OnlyOneInMigratedEdit(element) => element
+        case OppositeSideAnchor.FirstInMigratedEdit(element)   => element
+        case OppositeSideAnchor.LastInMigratedEdit(element)    => element
       }
 
       require(
