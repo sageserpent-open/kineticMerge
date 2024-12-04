@@ -5,7 +5,7 @@ import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
 import com.sageserpent.kineticmerge.core.FirstPassMergeResult.Recording
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Sized
-import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{AnchoredMove, EvaluatedMoves}
+import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{AnchoredMove, EvaluatedMoves, OppositeSideAnchor}
 import com.sageserpent.kineticmerge.core.merge.of as mergeOf
 import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
@@ -230,10 +230,10 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           speculativeMoveDestinations
         )(matchesFor, resolution)
 
-      val sourceAnchors = anchoredMoves.map(_.source)
+      val sourceAnchors = anchoredMoves.map(_.sourceAnchor)
       val oppositeSideToMoveDestinationAnchors =
-        anchoredMoves.map(_.oppositeSideElement)
-      val moveDestinationAnchors = anchoredMoves.map(_.moveDestination)
+        anchoredMoves.map(_.oppositeSideAnchor.element)
+      val moveDestinationAnchors = anchoredMoves.map(_.moveDestinationAnchor)
 
       val changeMigrationSources =
         // TODO: this should probably be part of `EvaluatedMoves`, and perhaps
@@ -279,7 +279,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         case Successor
       end Anchoring
 
-      def anchoredRunsUsingSelection(
+      def precedingAnchoredRunUsingSelection(
           file: File[Element],
           anchor: Section[Element]
       )(
@@ -290,24 +290,34 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         val Searching.Found(indexOfSection) =
           file.searchByStartOffset(anchor.startOffset): @unchecked
 
-        val precedingAnchoredRun =
-          selectAnchoredRun(
-            file.sections.view.take(indexOfSection).reverse
-          ).reverse
+        selectAnchoredRun(
+          file.sections.view.take(indexOfSection).reverse
+        ).reverse
+      end precedingAnchoredRunUsingSelection
 
-        val succeedingAnchoredRun =
-          selectAnchoredRun(file.sections.view.drop(1 + indexOfSection))
+      def succeedingAnchoredRunUsingSelection(
+          file: File[Element],
+          anchor: Section[Element]
+      )(
+          selectAnchoredRun: IndexedSeqView[Section[Element]] => IndexedSeq[
+            Section[Element]
+          ]
+      ) =
+        val Searching.Found(indexOfSection) =
+          file.searchByStartOffset(anchor.startOffset): @unchecked
 
-        precedingAnchoredRun -> succeedingAnchoredRun
-      end anchoredRunsUsingSelection
+        selectAnchoredRun(file.sections.view.drop(1 + indexOfSection))
+      end succeedingAnchoredRunUsingSelection
 
       def anchoredRunsFromSource(
-          source: Section[Element]
+          sourceAnchor: Section[Element]
       ): (IndexedSeq[Section[Element]], IndexedSeq[Section[Element]]) =
         val file =
-          codeMotionAnalysis.base(codeMotionAnalysis.basePathFor(source))
+          codeMotionAnalysis.base(codeMotionAnalysis.basePathFor(sourceAnchor))
 
-        anchoredRunsUsingSelection(file, anchor = source)(candidates =>
+        def selection(
+            candidates: IndexedSeqView[Section[Element]]
+        ): IndexedSeq[Section[Element]] =
           candidates
             .takeWhile(candidate =>
               !basePreservations.contains(candidate) && !sourceAnchors
@@ -319,66 +329,83 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             // At this point, we only have a plain view rather than an indexed
             // one...
             .toIndexedSeq
+
+        precedingAnchoredRunUsingSelection(file, sourceAnchor)(
+          selection
+        ) -> succeedingAnchoredRunUsingSelection(file, sourceAnchor)(
+          selection
         )
       end anchoredRunsFromSource
 
       def anchoredRunsFromSideOppositeToMoveDestination(
           moveDestinationSide: Side,
-          oppositeSideSection: Section[Element]
+          oppositeSideAnchor: OppositeSideAnchor[Section[Element]]
       ): (IndexedSeq[Section[Element]], IndexedSeq[Section[Element]]) =
         val file = moveDestinationSide match
           case Side.Left =>
             codeMotionAnalysis.right(
-              codeMotionAnalysis.rightPathFor(oppositeSideSection)
+              codeMotionAnalysis.rightPathFor(oppositeSideAnchor.element)
             )
           case Side.Right =>
             codeMotionAnalysis.left(
-              codeMotionAnalysis.leftPathFor(oppositeSideSection)
+              codeMotionAnalysis.leftPathFor(oppositeSideAnchor.element)
             )
 
-        anchoredRunsUsingSelection(file, anchor = oppositeSideSection)(
-          candidates =>
-            candidates
-              .takeWhile(candidate =>
-                (moveDestinationSide match
-                  case Side.Left  => !rightPreservations.contains(candidate)
-                  case Side.Right => !leftPreservations.contains(candidate)
-                ) && !oppositeSideToMoveDestinationAnchors.contains(candidate)
-              )
-              .filterNot(migratedEditSuppressions.contains)
-              // At this point, we only have a plain view rather than an indexed
-              // one...
-              .toIndexedSeq
-        )
+        def selection(
+            candidates: IndexedSeqView[Section[Element]]
+        ): IndexedSeq[Section[Element]] = candidates
+          .takeWhile(candidate =>
+            (moveDestinationSide match
+              case Side.Left  => !rightPreservations.contains(candidate)
+              case Side.Right => !leftPreservations.contains(candidate)
+            ) && !oppositeSideToMoveDestinationAnchors.contains(candidate)
+          )
+          .filterNot(migratedEditSuppressions.contains)
+          // At this point, we only have a plain view rather than an indexed
+          // one...
+          .toIndexedSeq
+
+        precedingAnchoredRunUsingSelection(file, oppositeSideAnchor.element)(
+          selection
+        ) -> succeedingAnchoredRunUsingSelection(
+          file,
+          oppositeSideAnchor.element
+        )(selection)
       end anchoredRunsFromSideOppositeToMoveDestination
 
       def anchoredRunsFromModeDestinationSide(
           moveDestinationSide: Side,
-          moveDestination: Section[Element]
+          moveDestinationAnchor: Section[Element]
       ): (IndexedSeq[Section[Element]], IndexedSeq[Section[Element]]) =
         val file = moveDestinationSide match
           case Side.Left =>
             codeMotionAnalysis.left(
-              codeMotionAnalysis.leftPathFor(moveDestination)
+              codeMotionAnalysis.leftPathFor(moveDestinationAnchor)
             )
           case Side.Right =>
             codeMotionAnalysis.right(
-              codeMotionAnalysis.rightPathFor(moveDestination)
+              codeMotionAnalysis.rightPathFor(moveDestinationAnchor)
             )
 
-        anchoredRunsUsingSelection(file, anchor = moveDestination)(candidates =>
-          candidates
-            .takeWhile(candidate =>
-              (moveDestinationSide match
-                case Side.Left  => !leftPreservations.contains(candidate)
-                case Side.Right => !rightPreservations.contains(candidate)
-              ) && !moveDestinationAnchors.contains(
-                candidate
-              )
+        def selection(
+            candidates: IndexedSeqView[Section[Element]]
+        ): IndexedSeq[Section[Element]] = candidates
+          .takeWhile(candidate =>
+            (moveDestinationSide match
+              case Side.Left  => !leftPreservations.contains(candidate)
+              case Side.Right => !rightPreservations.contains(candidate)
+            ) && !moveDestinationAnchors.contains(
+              candidate
             )
-            // At this point, we only have a plain view rather than an indexed
-            // one...
-            .toIndexedSeq
+          )
+          // At this point, we only have a plain view rather than an indexed
+          // one...
+          .toIndexedSeq
+
+        precedingAnchoredRunUsingSelection(file, moveDestinationAnchor)(
+          selection
+        ) -> succeedingAnchoredRunUsingSelection(file, moveDestinationAnchor)(
+          selection
         )
       end anchoredRunsFromModeDestinationSide
 
@@ -429,14 +456,14 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           anchoredMove: AnchoredMove[Section[Element]]
       ): MergedAnchoredRuns =
         val (precedingAnchoredRunFromSource, succeedingAnchoredRunFromSource) =
-          anchoredRunsFromSource(anchoredMove.source)
+          anchoredRunsFromSource(anchoredMove.sourceAnchor)
 
         val (
           precedingAnchoredRunFromSideOppositeToMoveDestination,
           succeedingAnchoredRunFromSideOppositeToMoveDestination
         ) = anchoredRunsFromSideOppositeToMoveDestination(
           anchoredMove.moveDestinationSide,
-          anchoredMove.oppositeSideElement
+          anchoredMove.oppositeSideAnchor
         )
 
         val (
@@ -444,7 +471,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           succeedingAnchoredRunFromMoveDestinationSide
         ) = anchoredRunsFromModeDestinationSide(
           anchoredMove.moveDestinationSide,
-          anchoredMove.moveDestination
+          anchoredMove.moveDestinationAnchor
         )
 
         val anchoredRunSuppressions =
@@ -543,22 +570,22 @@ object CodeMotionAnalysisExtension extends StrictLogging:
              partialKeyedMerges
            else if precedingMerge.isEmpty then
              partialKeyedMerges.add(
-               anchoredMove.moveDestination -> Anchoring.Predecessor,
+               anchoredMove.moveDestinationAnchor -> Anchoring.Predecessor,
                succeedingMerge
              )
            else if succeedingMerge.isEmpty then
              partialKeyedMerges.add(
-               anchoredMove.moveDestination -> Anchoring.Successor,
+               anchoredMove.moveDestinationAnchor -> Anchoring.Successor,
                precedingMerge
              )
            else
              partialKeyedMerges
                .add(
-                 anchoredMove.moveDestination -> Anchoring.Predecessor,
+                 anchoredMove.moveDestinationAnchor -> Anchoring.Predecessor,
                  succeedingMerge
                )
                .add(
-                 anchoredMove.moveDestination -> Anchoring.Successor,
+                 anchoredMove.moveDestinationAnchor -> Anchoring.Successor,
                  precedingMerge
                )
           ) -> (partialAnchoredRunSuppressions union anchoredRunSuppressions)

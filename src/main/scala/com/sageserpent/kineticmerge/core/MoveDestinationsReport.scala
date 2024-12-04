@@ -205,10 +205,11 @@ object MoveDestinationsReport:
                   moveDestinations.left.map(moveDestination =>
                     AnchoredMove(
                       moveDestinationSide = Side.Left,
-                      moveDestination = moveDestination,
-                      oppositeSideElement =
-                        elementOnTheOppositeSideToTheMoveDestination,
-                      source = source
+                      moveDestinationAnchor = moveDestination,
+                      oppositeSideAnchor = OppositeSideAnchor.Plain(
+                        elementOnTheOppositeSideToTheMoveDestination
+                      ),
+                      sourceAnchor = source
                     )
                   )
                 case _ =>
@@ -219,10 +220,11 @@ object MoveDestinationsReport:
                   moveDestinations.right.map(moveDestination =>
                     AnchoredMove(
                       moveDestinationSide = Side.Right,
-                      moveDestination = moveDestination,
-                      oppositeSideElement =
-                        elementOnTheOppositeSideToTheMoveDestination,
-                      source = source
+                      moveDestinationAnchor = moveDestination,
+                      oppositeSideAnchor = OppositeSideAnchor.Plain(
+                        elementOnTheOppositeSideToTheMoveDestination
+                      ),
+                      sourceAnchor = source
                     )
                   )
                 case _ =>
@@ -247,11 +249,18 @@ object MoveDestinationsReport:
     )
   end evaluateSpeculativeSourcesAndDestinations
 
+  enum OppositeSideAnchor[Element]:
+    def element: Element
+    case Plain(element: Element)
+    case FirstInMigratedEdit(element: Element)
+    case LastInMigratedEdit(element: Element)
+  end OppositeSideAnchor
+
   case class AnchoredMove[Element](
       moveDestinationSide: Side,
-      moveDestination: Element,
-      oppositeSideElement: Element,
-      source: Element
+      moveDestinationAnchor: Element,
+      oppositeSideAnchor: OppositeSideAnchor[Element],
+      sourceAnchor: Element
   )
 
   case class EvaluatedMoves[Element](
@@ -261,14 +270,21 @@ object MoveDestinationsReport:
       anchoredMoves: Set[AnchoredMove[Element]]
   ):
     {
-      val anchorSources       = anchoredMoves.map(_.source)
-      val anchorOppositeSides = anchoredMoves.map(_.oppositeSideElement)
-      val anchorDestinations  = anchoredMoves.map(_.moveDestination)
+      val anchorSources       = anchoredMoves.map(_.sourceAnchor)
+      val anchorOppositeSides = anchoredMoves.map(_.oppositeSideAnchor)
+      val anchorDestinations  = anchoredMoves.map(_.moveDestinationAnchor)
       val substitutionDestinations: collection.Set[Element] =
         substitutionsByDestination.keySet
       val substitutions       = substitutionsByDestination.values.flatten.toSet
       val allMoveDestinations = moveDestinationsReport.all
       val allMoveSources      = moveDestinationsReport.sources
+      val oppositeSideAnchorsForPlainMoves = anchorOppositeSides.collect {
+        case OppositeSideAnchor.Plain(element) => element
+      }
+      val oppositeSideAnchorsForMigratedEdits = anchorOppositeSides.collect {
+        case OppositeSideAnchor.FirstInMigratedEdit(element) => element
+        case OppositeSideAnchor.LastInMigratedEdit(element)  => element
+      }
 
       require(
         anchorSources subsetOf allMoveSources,
@@ -289,9 +305,15 @@ object MoveDestinationsReport:
       )
 
       require(
-        (migratedEditSuppressions intersect anchorOppositeSides).isEmpty,
+        (migratedEditSuppressions intersect oppositeSideAnchorsForPlainMoves).isEmpty,
         message =
-          s"Migrated edit suppressions: ${pprintCustomised(migratedEditSuppressions)}, opposite side elements for plain moves: ${pprintCustomised(anchorOppositeSides)}."
+          s"Migrated edit suppressions: ${pprintCustomised(migratedEditSuppressions)}, opposite side elements for plain moves: ${pprintCustomised(oppositeSideAnchorsForPlainMoves)}."
+      )
+
+      require(
+        oppositeSideAnchorsForMigratedEdits subsetOf migratedEditSuppressions,
+        message =
+          s"Migrated edit suppressions: ${pprintCustomised(migratedEditSuppressions)}, opposite side elements for migrated edits: ${pprintCustomised(oppositeSideAnchorsForMigratedEdits)}."
       )
 
       require(
