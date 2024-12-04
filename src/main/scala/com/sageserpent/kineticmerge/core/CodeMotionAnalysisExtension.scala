@@ -235,16 +235,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         anchoredMoves.map(_.oppositeSideAnchor.element)
       val moveDestinationAnchors = anchoredMoves.map(_.moveDestinationAnchor)
 
-      val changeMigrationSources =
-        // TODO: this should probably be part of `EvaluatedMoves`, and perhaps
-        // computed in a way that relies less on inference...
-        (moveDestinationsReport.sources diff sourceAnchors).filterNot(
-          candidate =>
-            val moveDestinations =
-              moveDestinationsReport.moveDestinationsBySources(candidate)
-            moveDestinations.isDivergent || moveDestinations.coincident.nonEmpty
-        )
-
       given sectionRunOrdering[Sequence[Item] <: Seq[Item]]
           : Ordering[Sequence[Section[Element]]] =
         Ordering.Implicits.seqOrdering(
@@ -325,7 +315,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   candidate
                 )
             )
-            .filterNot(changeMigrationSources.contains)
             // At this point, we only have a plain view rather than an indexed
             // one...
             .toIndexedSeq
@@ -360,7 +349,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               case Side.Right => !leftPreservations.contains(candidate)
             ) && !oppositeSideToMoveDestinationAnchors.contains(candidate)
           )
-          .filterNot(migratedEditSuppressions.contains)
           // At this point, we only have a plain view rather than an indexed
           // one...
           .toIndexedSeq
