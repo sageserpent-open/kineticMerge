@@ -212,6 +212,29 @@ object MoveDestinationsReport:
                       sourceAnchor = source
                     )
                   )
+                case ContentMigration.Edit(_, rightContent) =>
+                  moveDestinations.left.flatMap(moveDestination =>
+                    Seq(
+                      AnchoredMove(
+                        moveDestinationSide = Side.Left,
+                        moveDestinationAnchor = moveDestination,
+                        oppositeSideAnchor =
+                          OppositeSideAnchor.FirstInMigratedEdit(
+                            rightContent.head
+                          ),
+                        sourceAnchor = source
+                      ),
+                      AnchoredMove(
+                        moveDestinationSide = Side.Left,
+                        moveDestinationAnchor = moveDestination,
+                        oppositeSideAnchor =
+                          OppositeSideAnchor.LastInMigratedEdit(
+                            rightContent.last
+                          ),
+                        sourceAnchor = source
+                      )
+                    )
+                  )
                 case _ =>
                   Seq.empty
             else if moveDestinations.right.nonEmpty then
@@ -225,6 +248,29 @@ object MoveDestinationsReport:
                         elementOnTheOppositeSideToTheMoveDestination
                       ),
                       sourceAnchor = source
+                    )
+                  )
+                case ContentMigration.Edit(leftContent, _) =>
+                  moveDestinations.right.flatMap(moveDestination =>
+                    Seq(
+                      AnchoredMove(
+                        moveDestinationSide = Side.Right,
+                        moveDestinationAnchor = moveDestination,
+                        oppositeSideAnchor =
+                          OppositeSideAnchor.FirstInMigratedEdit(
+                            leftContent.head
+                          ),
+                        sourceAnchor = source
+                      ),
+                      AnchoredMove(
+                        moveDestinationSide = Side.Right,
+                        moveDestinationAnchor = moveDestination,
+                        oppositeSideAnchor =
+                          OppositeSideAnchor.LastInMigratedEdit(
+                            leftContent.last
+                          ),
+                        sourceAnchor = source
+                      )
                     )
                   )
                 case _ =>

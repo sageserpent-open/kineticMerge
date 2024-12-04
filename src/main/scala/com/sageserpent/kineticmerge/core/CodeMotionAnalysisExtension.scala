@@ -353,12 +353,31 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           // one...
           .toIndexedSeq
 
-        precedingAnchoredRunUsingSelection(file, oppositeSideAnchor.element)(
-          selection
-        ) -> succeedingAnchoredRunUsingSelection(
-          file,
-          oppositeSideAnchor.element
-        )(selection)
+        oppositeSideAnchor match
+          case OppositeSideAnchor.Plain(element) =>
+            precedingAnchoredRunUsingSelection(
+              file,
+              element
+            )(
+              selection
+            ) -> succeedingAnchoredRunUsingSelection(
+              file,
+              element
+            )(selection)
+          case OppositeSideAnchor.FirstInMigratedEdit(element) =>
+            precedingAnchoredRunUsingSelection(
+              file,
+              element
+            )(
+              selection
+            ) -> IndexedSeq.empty
+          case OppositeSideAnchor.LastInMigratedEdit(element) =>
+            IndexedSeq.empty -> succeedingAnchoredRunUsingSelection(
+              file,
+              element
+            )(selection)
+        end match
+
       end anchoredRunsFromSideOppositeToMoveDestination
 
       def anchoredRunsFromModeDestinationSide(
