@@ -364,6 +364,16 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               file,
               element
             )(selection)
+          case OppositeSideAnchor.OnlyOneInMigratedEdit(element) =>
+            precedingAnchoredRunUsingSelection(
+              file,
+              element
+            )(
+              selection
+            ) -> succeedingAnchoredRunUsingSelection(
+              file,
+              element
+            )(selection)
           case OppositeSideAnchor.FirstInMigratedEdit(element) =>
             precedingAnchoredRunUsingSelection(
               file,

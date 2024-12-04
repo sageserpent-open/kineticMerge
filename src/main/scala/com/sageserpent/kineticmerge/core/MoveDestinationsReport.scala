@@ -212,6 +212,18 @@ object MoveDestinationsReport:
                       sourceAnchor = source
                     )
                   )
+                case ContentMigration.Edit(_, IndexedSeq(loneRightElement)) =>
+                  moveDestinations.left.map(moveDestination =>
+                    AnchoredMove(
+                      moveDestinationSide = Side.Left,
+                      moveDestinationAnchor = moveDestination,
+                      oppositeSideAnchor =
+                        OppositeSideAnchor.OnlyOneInMigratedEdit(
+                          loneRightElement
+                        ),
+                      sourceAnchor = source
+                    )
+                  )
                 case ContentMigration.Edit(_, rightContent) =>
                   moveDestinations.left.flatMap(moveDestination =>
                     Seq(
@@ -247,6 +259,18 @@ object MoveDestinationsReport:
                       oppositeSideAnchor = OppositeSideAnchor.Plain(
                         elementOnTheOppositeSideToTheMoveDestination
                       ),
+                      sourceAnchor = source
+                    )
+                  )
+                case ContentMigration.Edit(IndexedSeq(loneLeftElement), _) =>
+                  moveDestinations.right.map(moveDestination =>
+                    AnchoredMove(
+                      moveDestinationSide = Side.Right,
+                      moveDestinationAnchor = moveDestination,
+                      oppositeSideAnchor =
+                        OppositeSideAnchor.OnlyOneInMigratedEdit(
+                          loneLeftElement
+                        ),
                       sourceAnchor = source
                     )
                   )
@@ -298,6 +322,7 @@ object MoveDestinationsReport:
   enum OppositeSideAnchor[Element]:
     def element: Element
     case Plain(element: Element)
+    case OnlyOneInMigratedEdit(element: Element)
     case FirstInMigratedEdit(element: Element)
     case LastInMigratedEdit(element: Element)
   end OppositeSideAnchor
