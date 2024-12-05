@@ -834,6 +834,32 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
   end furtherMigrationOfAMigratedEditAsAnInsertion
 
+  private def verifyContent(
+      path: FakePath,
+      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
+  )(
+      expectedTokens: IndexedSeq[Token],
+      equality: (Token, Token) => Boolean = Token.equality
+  ): Unit =
+    println(fansi.Color.Yellow(s"Checking $path...\n"))
+    println(fansi.Color.Yellow("Expected..."))
+    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
+
+    mergeResultsByPath(path) match
+      case FullyMerged(result) =>
+        println(fansi.Color.Yellow("Fully merged result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(result)))
+        assert(result.corresponds(expectedTokens)(equality))
+      case MergedWithConflicts(leftResult, rightResult) =>
+        println(fansi.Color.Red(s"Left result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+        println(fansi.Color.Red(s"Right result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+        fail("Should have seen a clean merge.")
+    end match
+  end verifyContent
+
   @Test
   def codeMotionAmbiguousWithAPreservation(): Unit =
     val configuration = Configuration(
@@ -986,24 +1012,24 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         ),
         (
           "Edit migration preceded by a pure move.",
-          "Anchor1 Edited",
-          "Anchor1 Edited",
-          "Anchor1 MigratedEdit",
-          "Anchor1 MigratedEdit"
+          "PrecedingAnchor Edited",
+          "PrecedingAnchor Edited",
+          "PrecedingAnchor MigratedEdit",
+          "PrecedingAnchor MigratedEdit"
         ),
         (
           "Edit migration succeeded by a pure move.",
-          "Edited Anchor2",
-          "Edited Anchor2",
-          "MigratedEdit Anchor2",
-          "MigratedEdit Anchor2"
+          "Edited SucceedingAnchor",
+          "Edited SucceedingAnchor",
+          "MigratedEdit SucceedingAnchor",
+          "MigratedEdit SucceedingAnchor"
         ),
         (
           "Edit migration surrounded by pure moves.",
-          "Anchor1 Edited Anchor2",
-          "Anchor1 Edited Anchor2",
-          "Anchor1 MigratedEdit Anchor2",
-          "Anchor1 MigratedEdit Anchor2"
+          "PrecedingAnchor Edited SucceedingAnchor",
+          "PrecedingAnchor Edited SucceedingAnchor",
+          "PrecedingAnchor MigratedEdit SucceedingAnchor",
+          "PrecedingAnchor MigratedEdit SucceedingAnchor"
         ),
         (
           "Edit capture.",
@@ -1014,28 +1040,84 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         ),
         (
           "Edit capture preceded by a pure move.",
-          "Anchor1 Edited",
-          "Anchor1 CapturedEdit",
-          "Anchor1 Edited",
-          "Anchor1 CapturedEdit"
+          "PrecedingAnchor Edited",
+          "PrecedingAnchor CapturedEdit",
+          "PrecedingAnchor Edited",
+          "PrecedingAnchor CapturedEdit"
         ),
         (
           "Edit capture succeeded by a pure move.",
-          "Edited Anchor2",
-          "CapturedEdit Anchor2",
-          "Edited Anchor2",
-          "CapturedEdit Anchor2"
+          "Edited SucceedingAnchor",
+          "CapturedEdit SucceedingAnchor",
+          "Edited SucceedingAnchor",
+          "CapturedEdit SucceedingAnchor"
         ),
         (
           "Edit capture surrounded by pure moves.",
-          "Anchor1 Edited Anchor2",
-          "Anchor1 CapturedEdit Anchor2",
-          "Anchor1 Edited Anchor2",
-          "Anchor1 CapturedEdit Anchor2"
+          "PrecedingAnchor Edited SucceedingAnchor",
+          "PrecedingAnchor CapturedEdit SucceedingAnchor",
+          "PrecedingAnchor Edited SucceedingAnchor",
+          "PrecedingAnchor CapturedEdit SucceedingAnchor"
+        ),
+        (
+          "Deletion migration.",
+          "Deleted",
+          "Deleted",
+          "",
+          ""
+        ),
+        (
+          "Deletion migration preceded by a pure move.",
+          "PrecedingAnchor Deleted",
+          "PrecedingAnchor Deleted",
+          "PrecedingAnchor",
+          "PrecedingAnchor"
+        ),
+        (
+          "Deletion migration succeeded by a pure move.",
+          "Deleted SucceedingAnchor",
+          "Deleted SucceedingAnchor",
+          "MigratedEdit",
+          "MigratedEdit"
+        ),
+        (
+          "Deletion migration surrounded by pure moves.",
+          "PrecedingAnchor Deleted SucceedingAnchor",
+          "PrecedingAnchor Deleted SucceedingAnchor",
+          "PrecedingAnchor SucceedingAnchor",
+          "PrecedingAnchor SucceedingAnchor"
+        ),
+        (
+          "Deletion capture.",
+          "Deleted",
+          "",
+          "Deleted",
+          ""
+        ),
+        (
+          "Deletion capture preceded by a pure move.",
+          "PrecedingAnchor Deleted",
+          "PrecedingAnchor",
+          "PrecedingAnchor Deleted",
+          "PrecedingAnchor"
+        ),
+        (
+          "Deletion capture succeeded by a pure move.",
+          "Deleted SucceedingAnchor",
+          "SucceedingAnchor",
+          "Deleted SucceedingAnchor",
+          "SucceedingAnchor"
+        ),
+        (
+          "Deletion capture surrounded by pure moves.",
+          "PrecedingAnchor Deleted SucceedingAnchor",
+          "PrecedingAnchor SucceedingAnchor",
+          "PrecedingAnchor Deleted SucceedingAnchor",
+          "PrecedingAnchor SucceedingAnchor"
         )
       )
       .and(Trials.api.booleans)
-      .withLimit(30)
+      .withLimit(100)
       .dynamicTests {
         case (
               (
@@ -1094,32 +1176,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           verifyAbsenceOfContent(originalPath, mergeResultsByPath)
       }
   end simpleCodeMotionAcrossAFileRenameExamples
-
-  private def verifyContent(
-      path: FakePath,
-      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
-  )(
-      expectedTokens: IndexedSeq[Token],
-      equality: (Token, Token) => Boolean = Token.equality
-  ): Unit =
-    println(fansi.Color.Yellow(s"Checking $path...\n"))
-    println(fansi.Color.Yellow("Expected..."))
-    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
-
-    mergeResultsByPath(path) match
-      case FullyMerged(result) =>
-        println(fansi.Color.Yellow("Fully merged result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(result)))
-        assert(result.corresponds(expectedTokens)(equality))
-      case MergedWithConflicts(leftResult, rightResult) =>
-        println(fansi.Color.Red(s"Left result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
-        println(fansi.Color.Red(s"Right result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
-
-        fail("Should have seen a clean merge.")
-    end match
-  end verifyContent
 
   private def verifyAbsenceOfContent(
       path: FakePath,
