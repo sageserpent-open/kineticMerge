@@ -1114,6 +1114,48 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           "PrecedingAnchor SucceedingAnchor",
           "PrecedingAnchor Deleted SucceedingAnchor",
           "PrecedingAnchor SucceedingAnchor"
+        ),
+        (
+          "Insertion migration preceded by a pure move.",
+          "PrecedingAnchor",
+          "PrecedingAnchor",
+          "PrecedingAnchor MigratedInsertion",
+          "PrecedingAnchor MigratedInsertion"
+        ),
+        (
+          "Insertion migration succeeded by a pure move.",
+          "SucceedingAnchor",
+          "SucceedingAnchor",
+          "MigratedInsertion SucceedingAnchor",
+          "MigratedInsertion SucceedingAnchor"
+        ),
+        (
+          "Insertion migration surrounded by pure moves.",
+          "PrecedingAnchor SucceedingAnchor",
+          "PrecedingAnchor SucceedingAnchor",
+          "PrecedingAnchor MigratedInsertion SucceedingAnchor",
+          "PrecedingAnchor MigratedInsertion SucceedingAnchor"
+        ),
+        (
+          "Insertion capture preceded by a pure move.",
+          "PrecedingAnchor",
+          "PrecedingAnchor CapturedInsertion",
+          "PrecedingAnchor",
+          "PrecedingAnchor CapturedInsertion"
+        ),
+        (
+          "Insertion capture succeeded by a pure move.",
+          "SucceedingAnchor",
+          "CapturedInsertion SucceedingAnchor",
+          "SucceedingAnchor",
+          "CapturedInsertion SucceedingAnchor"
+        ),
+        (
+          "Insertion capture surrounded by pure moves.",
+          "PrecedingAnchor SucceedingAnchor",
+          "PrecedingAnchor CapturedInsertion SucceedingAnchor",
+          "PrecedingAnchor SucceedingAnchor",
+          "PrecedingAnchor CapturedInsertion SucceedingAnchor"
         )
       )
       .and(Trials.api.booleans)
