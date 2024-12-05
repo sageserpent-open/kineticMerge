@@ -229,7 +229,23 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           leftSection -> rightSection
       }.unzip
 
-      val MoveEvaluation(
+      logger.debug(
+        s"Base preservations: ${pprintCustomised(basePreservations)}."
+      )
+      logger.debug(
+        s"Left preservations: ${pprintCustomised(leftPreservations)}."
+      )
+      logger.debug(
+        s"Right preservations: ${pprintCustomised(rightPreservations)}."
+      )
+      logger.debug(
+        s"Coincident insertions or edits on left: ${pprintCustomised(coincidentInsertionsOrEditsOnLeft)}."
+      )
+      logger.debug(
+        s"Coincident insertions or edits on right: ${pprintCustomised(coincidentInsertionsOrEditsOnRight)}."
+      )
+
+      val moveEvaluation @ MoveEvaluation(
         moveDestinationsReport,
         migratedEditSuppressions,
         substitutionsByDestination,
@@ -239,6 +255,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           speculativeMigrationsBySource,
           speculativeMoveDestinations
         )(matchesFor, resolution)
+
+      logger.debug(s"Move evaluation: ${pprintCustomised(moveEvaluation)}.")
 
       val sourceAnchors = anchoredMoves.map(_.sourceAnchor)
       val oppositeSideAnchors =
@@ -479,29 +497,50 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         ]] = Caffeine.newBuilder().build()
 
         def of(
-            anchoredRunFromSource: IndexedSeq[Section[Element]],
-            anchoredRunFromSideOppositeToMoveDestination: IndexedSeq[
+            anchoredContentFromSource: IndexedSeq[Section[Element]],
+            anchoredContentFromOppositeSide: IndexedSeq[
               Section[Element]
             ],
-            anchoredRunFromMoveDestinationSide: IndexedSeq[Section[Element]]
-        ): MergeResult[Section[Element]] = resultsCache.get(
-          MergeInput(
-            anchoredRunFromSource,
-            anchoredRunFromSideOppositeToMoveDestination,
-            anchoredRunFromMoveDestinationSide
-          ),
-          _ =>
-            mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
-              anchoredRunFromSource,
-              anchoredRunFromSideOppositeToMoveDestination,
-              anchoredRunFromMoveDestinationSide
-            )
-        )
+            anchoredContentFromMoveDestinationSide: IndexedSeq[Section[Element]]
+        ): MergeResult[Section[Element]] =
+          logger.debug(
+            s"Requesting merge of anchored content, source: ${pprintCustomised(anchoredContentFromSource)}, opposite side: ${pprintCustomised(anchoredContentFromOppositeSide)}, move destination: ${pprintCustomised(anchoredContentFromMoveDestinationSide)}"
+          )
+
+          // NASTY HACK: how would you do it better?
+          var updatedCache = false
+
+          val cached = resultsCache.get(
+            MergeInput(
+              anchoredContentFromSource,
+              anchoredContentFromOppositeSide,
+              anchoredContentFromMoveDestinationSide
+            ),
+            _ =>
+              updatedCache = true
+
+              mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
+                anchoredContentFromSource,
+                anchoredContentFromOppositeSide,
+                anchoredContentFromMoveDestinationSide
+              )
+          )
+
+          if !updatedCache then
+            logger.debug(s"Retrieved cached merge: ${pprintCustomised(cached)}")
+          end if
+
+          cached
+        end of
       end CachedAnchoredContentMerges
 
       def mergesFrom(
           anchoredMove: AnchoredMove[Section[Element]]
       ): MigrationSplices =
+        logger.debug(
+          s"Merging anchored content on behalf of anchored move: ${pprintCustomised(anchoredMove)}."
+        )
+
         val (
           precedingAnchoredContentFromSource,
           succeedingAnchoredContentFromSource
@@ -639,6 +678,13 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           )
           -> (partialSpliceMigrationSuppressions union spliceMigrationSuppressions)
       }
+
+      logger.debug(
+        s"Splices by anchored move destination: ${pprintCustomised(splicesByAnchoredMoveDestination)}."
+      )
+      logger.debug(
+        s"Splice migration suppressions: ${pprintCustomised(spliceMigrationSuppressions)}."
+      )
 
       def applySplices(
           path: Path,

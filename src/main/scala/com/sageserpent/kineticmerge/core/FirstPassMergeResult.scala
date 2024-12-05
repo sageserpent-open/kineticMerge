@@ -2,7 +2,6 @@ package com.sageserpent.kineticmerge.core
 
 import com.sageserpent.kineticmerge.core.FirstPassMergeResult.Recording
 import com.sageserpent.kineticmerge.core.merge.MergeAlgebra
-import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
 
 /** @param recording
@@ -46,7 +45,7 @@ enum Side:
   case Right
 end Side
 
-object FirstPassMergeResult extends StrictLogging:
+object FirstPassMergeResult:
   opaque type Recording[Element] =
     Vector[[Result[_]] => MergeAlgebra[Result, Element] => Result[
       Element
