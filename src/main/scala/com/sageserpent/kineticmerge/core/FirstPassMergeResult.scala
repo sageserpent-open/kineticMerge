@@ -32,7 +32,7 @@ import monocle.syntax.all.*
   */
 case class FirstPassMergeResult[Element](
     recording: Recording[Element],
-    speculativeMigrationsBySource: Map[Element, ContentMigration[
+    speculativeMigrationsBySource: Map[Element, SpeculativeContentMigration[
       Element
     ]],
     speculativeMoveDestinations: Set[SpeculativeMoveDestination[Element]],
@@ -188,7 +188,7 @@ object FirstPassMergeResult extends StrictLogging:
           )
           .focus(_.speculativeMigrationsBySource)
           .modify(
-            _ + (deletedBaseElement -> ContentMigration
+            _ + (deletedBaseElement -> SpeculativeContentMigration
               .PlainMove(deletedRightElement))
           )
       end leftDeletion
@@ -213,7 +213,7 @@ object FirstPassMergeResult extends StrictLogging:
           )
           .focus(_.speculativeMigrationsBySource)
           .modify(
-            _ + (deletedBaseElement -> ContentMigration
+            _ + (deletedBaseElement -> SpeculativeContentMigration
               .PlainMove(deletedLeftElement))
           )
       end rightDeletion
@@ -236,7 +236,7 @@ object FirstPassMergeResult extends StrictLogging:
           )
           .focus(_.speculativeMigrationsBySource)
           .modify(
-            _ + (deletedElement -> ContentMigration.Deletion())
+            _ + (deletedElement -> SpeculativeContentMigration.Deletion())
           )
       end coincidentDeletion
 
@@ -262,7 +262,7 @@ object FirstPassMergeResult extends StrictLogging:
           )
           .focus(_.speculativeMigrationsBySource)
           .modify(
-            _ + (editedBaseElement -> ContentMigration.PlainMove(
+            _ + (editedBaseElement -> SpeculativeContentMigration.PlainMove(
               editedRightElement
             ))
           )
@@ -294,7 +294,7 @@ object FirstPassMergeResult extends StrictLogging:
           )
           .focus(_.speculativeMigrationsBySource)
           .modify(
-            _ + (editedBaseElement -> ContentMigration.PlainMove(
+            _ + (editedBaseElement -> SpeculativeContentMigration.PlainMove(
               editedLeftElement
             ))
           )
@@ -328,7 +328,7 @@ object FirstPassMergeResult extends StrictLogging:
           // sides; we don't break up the paired content (and indeed regard it
           // as a potential coincident move destination).
           .modify(
-            _ + (editedElement -> ContentMigration.Deletion())
+            _ + (editedElement -> SpeculativeContentMigration.Deletion())
           )
           .focus(_.speculativeMoveDestinations)
           .modify(
@@ -361,7 +361,7 @@ object FirstPassMergeResult extends StrictLogging:
           .focus(_.speculativeMigrationsBySource)
           .modify(
             editedElements.foldLeft(_)((partialResult, editedElement) =>
-              partialResult + (editedElement -> ContentMigration
+              partialResult + (editedElement -> SpeculativeContentMigration
                 .Edit(leftEditElements, rightEditElements))
             )
           )

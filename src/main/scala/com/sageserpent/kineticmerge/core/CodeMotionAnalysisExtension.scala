@@ -5,7 +5,7 @@ import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
 import com.sageserpent.kineticmerge.core.FirstPassMergeResult.Recording
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Sized
-import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{AnchoredMove, EvaluatedMoves, OppositeSideAnchor}
+import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{AnchoredMove, MoveEvaluation, OppositeSideAnchor}
 import com.sageserpent.kineticmerge.core.merge.of as mergeOf
 import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
@@ -84,7 +84,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
       case class AggregatedInitialMergeResult(
           secondPassInputsByPath: Map[Path, SecondPassInput],
-          speculativeMigrationsBySource: Map[Section[Element], ContentMigration[
+          speculativeMigrationsBySource: Map[Section[
+            Element
+          ], SpeculativeContentMigration[
             Section[Element]
           ]],
           speculativeMoveDestinations: Set[
@@ -227,7 +229,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           leftSection -> rightSection
       }.unzip
 
-      val EvaluatedMoves(
+      val MoveEvaluation(
         moveDestinationsReport,
         migratedEditSuppressions,
         substitutionsByDestination,
@@ -239,7 +241,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         )(matchesFor, resolution)
 
       val sourceAnchors = anchoredMoves.map(_.sourceAnchor)
-      val oppositeSideToMoveDestinationAnchors =
+      val oppositeSideAnchors =
         anchoredMoves.map(_.oppositeSideAnchor.element)
       val moveDestinationAnchors = anchoredMoves.map(_.moveDestinationAnchor)
 
@@ -272,42 +274,42 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         result
       end uniqueSortedItemsFrom
 
-      enum Anchoring:
+      enum AnchoringSense:
         case Predecessor
         case Successor
-      end Anchoring
+      end AnchoringSense
 
-      def precedingAnchoredRunUsingSelection(
+      def precedingAnchoredContentUsingSelection(
           file: File[Element],
           anchor: Section[Element]
       )(
-          selectAnchoredRun: IndexedSeqView[Section[Element]] => IndexedSeq[
+          selection: IndexedSeqView[Section[Element]] => IndexedSeq[
             Section[Element]
           ]
       ) =
         val Searching.Found(indexOfSection) =
           file.searchByStartOffset(anchor.startOffset): @unchecked
 
-        selectAnchoredRun(
+        selection(
           file.sections.view.take(indexOfSection).reverse
         ).reverse
-      end precedingAnchoredRunUsingSelection
+      end precedingAnchoredContentUsingSelection
 
-      def succeedingAnchoredRunUsingSelection(
+      def succeedingAnchoredContentUsingSelection(
           file: File[Element],
           anchor: Section[Element]
       )(
-          selectAnchoredRun: IndexedSeqView[Section[Element]] => IndexedSeq[
+          selection: IndexedSeqView[Section[Element]] => IndexedSeq[
             Section[Element]
           ]
       ) =
         val Searching.Found(indexOfSection) =
           file.searchByStartOffset(anchor.startOffset): @unchecked
 
-        selectAnchoredRun(file.sections.view.drop(1 + indexOfSection))
-      end succeedingAnchoredRunUsingSelection
+        selection(file.sections.view.drop(1 + indexOfSection))
+      end succeedingAnchoredContentUsingSelection
 
-      def anchoredRunsFromSource(
+      def anchoredContentFromSource(
           sourceAnchor: Section[Element]
       ): (IndexedSeq[Section[Element]], IndexedSeq[Section[Element]]) =
         val file =
@@ -327,14 +329,14 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             // one...
             .toIndexedSeq
 
-        precedingAnchoredRunUsingSelection(file, sourceAnchor)(
+        precedingAnchoredContentUsingSelection(file, sourceAnchor)(
           selection
-        ) -> succeedingAnchoredRunUsingSelection(file, sourceAnchor)(
+        ) -> succeedingAnchoredContentUsingSelection(file, sourceAnchor)(
           selection
         )
-      end anchoredRunsFromSource
+      end anchoredContentFromSource
 
-      def anchoredRunsFromSideOppositeToMoveDestination(
+      def anchoredContentFromOppositeSide(
           moveDestinationSide: Side,
           oppositeSideAnchor: OppositeSideAnchor[Section[Element]]
       ): (IndexedSeq[Section[Element]], IndexedSeq[Section[Element]]) =
@@ -363,7 +365,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           .takeWhile(candidate =>
             !preservations.contains(
               candidate
-            ) && !oppositeSideToMoveDestinationAnchors.contains(
+            ) && !oppositeSideAnchors.contains(
               candidate
             ) && !coincidentInsertionsOrEdits.contains(candidate)
           )
@@ -373,42 +375,41 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
         oppositeSideAnchor match
           case OppositeSideAnchor.Plain(element) =>
-            precedingAnchoredRunUsingSelection(
+            precedingAnchoredContentUsingSelection(
               file,
               element
             )(
               selection
-            ) -> succeedingAnchoredRunUsingSelection(
+            ) -> succeedingAnchoredContentUsingSelection(
               file,
               element
             )(selection)
           case OppositeSideAnchor.OnlyOneInMigratedEdit(element) =>
-            precedingAnchoredRunUsingSelection(
+            precedingAnchoredContentUsingSelection(
               file,
               element
             )(
               selection
-            ) -> succeedingAnchoredRunUsingSelection(
+            ) -> succeedingAnchoredContentUsingSelection(
               file,
               element
             )(selection)
           case OppositeSideAnchor.FirstInMigratedEdit(element) =>
-            precedingAnchoredRunUsingSelection(
+            precedingAnchoredContentUsingSelection(
               file,
               element
             )(
               selection
             ) -> IndexedSeq.empty
           case OppositeSideAnchor.LastInMigratedEdit(element) =>
-            IndexedSeq.empty -> succeedingAnchoredRunUsingSelection(
+            IndexedSeq.empty -> succeedingAnchoredContentUsingSelection(
               file,
               element
             )(selection)
         end match
+      end anchoredContentFromOppositeSide
 
-      end anchoredRunsFromSideOppositeToMoveDestination
-
-      def anchoredRunsFromModeDestinationSide(
+      def anchoredContentFromModeDestinationSide(
           moveDestinationSide: Side,
           moveDestinationAnchor: Section[Element]
       ): (IndexedSeq[Section[Element]], IndexedSeq[Section[Element]]) =
@@ -445,29 +446,32 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           // one...
           .toIndexedSeq
 
-        precedingAnchoredRunUsingSelection(file, moveDestinationAnchor)(
+        precedingAnchoredContentUsingSelection(file, moveDestinationAnchor)(
           selection
-        ) -> succeedingAnchoredRunUsingSelection(file, moveDestinationAnchor)(
+        ) -> succeedingAnchoredContentUsingSelection(
+          file,
+          moveDestinationAnchor
+        )(
           selection
         )
-      end anchoredRunsFromModeDestinationSide
+      end anchoredContentFromModeDestinationSide
 
-      case class MergedAnchoredRuns(
-          precedingMerge: IndexedSeq[Section[Element]],
-          succeedingMerge: IndexedSeq[Section[Element]],
-          anchoredRunSuppressions: Set[Section[Element]]
+      case class MigrationSplices(
+          precedingSplice: IndexedSeq[Section[Element]],
+          succeedingSplice: IndexedSeq[Section[Element]],
+          spliceMigrationSuppressions: Set[Section[Element]]
       )
 
       val conflictResolvingMergeAlgebra =
         new ConflictResolvingMergeAlgebra(resolution, migratedEditSuppressions)
 
-      object CachedMergeResult:
+      object CachedAnchoredContentMerges:
         private case class MergeInput(
-            anchoredRunFromSource: IndexedSeq[Section[Element]],
-            anchoredRunFromSideOppositeToMoveDestination: IndexedSeq[
+            anchoredContentFromSource: IndexedSeq[Section[Element]],
+            anchoredContentFromOppositeSide: IndexedSeq[
               Section[Element]
             ],
-            anchoredRunFromMoveDestinationSide: IndexedSeq[Section[Element]]
+            anchoredContentFromMoveDestinationSide: IndexedSeq[Section[Element]]
         )
 
         private val resultsCache: Cache[MergeInput, MergeResult[
@@ -493,185 +497,184 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               anchoredRunFromMoveDestinationSide
             )
         )
-      end CachedMergeResult
+      end CachedAnchoredContentMerges
 
       def mergesFrom(
           anchoredMove: AnchoredMove[Section[Element]]
-      ): MergedAnchoredRuns =
-        val (precedingAnchoredRunFromSource, succeedingAnchoredRunFromSource) =
-          anchoredRunsFromSource(anchoredMove.sourceAnchor)
+      ): MigrationSplices =
+        val (
+          precedingAnchoredContentFromSource,
+          succeedingAnchoredContentFromSource
+        ) =
+          anchoredContentFromSource(anchoredMove.sourceAnchor)
 
         val (
-          precedingAnchoredRunFromSideOppositeToMoveDestination,
-          succeedingAnchoredRunFromSideOppositeToMoveDestination
-        ) = anchoredRunsFromSideOppositeToMoveDestination(
+          precedingAnchoredContentFromOppositeSide,
+          succeedingAnchoredContentFromOppositeSide
+        ) = anchoredContentFromOppositeSide(
           anchoredMove.moveDestinationSide,
           anchoredMove.oppositeSideAnchor
         )
 
         val (
-          precedingAnchoredRunFromMoveDestinationSide,
-          succeedingAnchoredRunFromMoveDestinationSide
-        ) = anchoredRunsFromModeDestinationSide(
+          precedingAnchoredContentFromMoveDestinationSide,
+          succeedingAnchoredContentFromMoveDestinationSide
+        ) = anchoredContentFromModeDestinationSide(
           anchoredMove.moveDestinationSide,
           anchoredMove.moveDestinationAnchor
         )
 
-        val anchoredRunSuppressions =
-          (precedingAnchoredRunFromSideOppositeToMoveDestination
-            ++ precedingAnchoredRunFromMoveDestinationSide
-            ++ succeedingAnchoredRunFromSideOppositeToMoveDestination
-            ++ succeedingAnchoredRunFromMoveDestinationSide).toSet
+        val spliceMigrationSuppressions =
+          (precedingAnchoredContentFromOppositeSide
+            ++ precedingAnchoredContentFromMoveDestinationSide
+            ++ succeedingAnchoredContentFromOppositeSide
+            ++ succeedingAnchoredContentFromMoveDestinationSide).toSet
 
         anchoredMove.moveDestinationSide match
           case Side.Left =>
-            val precedingMerge =
-              CachedMergeResult
+            val precedingSplice =
+              CachedAnchoredContentMerges
                 .of(
-                  precedingAnchoredRunFromSource,
-                  precedingAnchoredRunFromMoveDestinationSide,
-                  precedingAnchoredRunFromSideOppositeToMoveDestination
+                  precedingAnchoredContentFromSource,
+                  precedingAnchoredContentFromMoveDestinationSide,
+                  precedingAnchoredContentFromOppositeSide
                 ) match
                 case FullyMerged(sections) => sections
                 case MergedWithConflicts(leftSections, rightSections) =>
                   leftSections ++ rightSections
 
-            val succeedingMerge =
-              CachedMergeResult
+            val succeedingSplice =
+              CachedAnchoredContentMerges
                 .of(
-                  succeedingAnchoredRunFromSource,
-                  succeedingAnchoredRunFromMoveDestinationSide,
-                  succeedingAnchoredRunFromSideOppositeToMoveDestination
+                  succeedingAnchoredContentFromSource,
+                  succeedingAnchoredContentFromMoveDestinationSide,
+                  succeedingAnchoredContentFromOppositeSide
                 ) match
                 case FullyMerged(sections) => sections
                 case MergedWithConflicts(leftSections, rightSections) =>
                   rightSections ++ leftSections
 
-            MergedAnchoredRuns(
-              precedingMerge,
-              succeedingMerge,
-              anchoredRunSuppressions
+            MigrationSplices(
+              precedingSplice,
+              succeedingSplice,
+              spliceMigrationSuppressions
             )
           case Side.Right =>
             val precedingMerge =
-              CachedMergeResult
+              CachedAnchoredContentMerges
                 .of(
-                  precedingAnchoredRunFromSource,
-                  precedingAnchoredRunFromSideOppositeToMoveDestination,
-                  precedingAnchoredRunFromMoveDestinationSide
+                  precedingAnchoredContentFromSource,
+                  precedingAnchoredContentFromOppositeSide,
+                  precedingAnchoredContentFromMoveDestinationSide
                 ) match
                 case FullyMerged(sections) => sections
                 case MergedWithConflicts(leftSections, rightSections) =>
                   rightSections ++ leftSections
 
             val succeedingMerge =
-              CachedMergeResult
+              CachedAnchoredContentMerges
                 .of(
-                  succeedingAnchoredRunFromSource,
-                  succeedingAnchoredRunFromSideOppositeToMoveDestination,
-                  succeedingAnchoredRunFromMoveDestinationSide
+                  succeedingAnchoredContentFromSource,
+                  succeedingAnchoredContentFromOppositeSide,
+                  succeedingAnchoredContentFromMoveDestinationSide
                 ) match
                 case FullyMerged(sections) => sections
                 case MergedWithConflicts(leftSections, rightSections) =>
                   leftSections ++ rightSections
 
-            MergedAnchoredRuns(
+            MigrationSplices(
               precedingMerge,
               succeedingMerge,
-              anchoredRunSuppressions
+              spliceMigrationSuppressions
             )
         end match
       end mergesFrom
 
       val (
-        mergesByAnchoredMoveDestination: MultiDict[
-          (Section[Element], Anchoring),
-          IndexedSeq[
-            Section[Element]
-          ]
+        splicesByAnchoredMoveDestination: MultiDict[
+          (Section[Element], AnchoringSense),
+          IndexedSeq[Section[Element]]
         ],
-        anchoredRunSuppressions: Set[Section[Element]]
+        spliceMigrationSuppressions: Set[Section[Element]]
       ) = anchoredMoves.foldLeft(
-        MultiDict.empty[(Section[Element], Anchoring), IndexedSeq[
+        MultiDict.empty[(Section[Element], AnchoringSense), IndexedSeq[
           Section[Element]
         ]] -> Set.empty[Section[Element]]
       ) {
         case (
-              (partialKeyedMerges, partialAnchoredRunSuppressions),
+              (partialKeyedSplices, partialSpliceMigrationSuppressions),
               anchoredMove
             ) =>
-          val MergedAnchoredRuns(
-            precedingMerge,
-            succeedingMerge,
-            anchoredRunSuppressions
+          val MigrationSplices(
+            precedingSplice,
+            succeedingSplice,
+            spliceMigrationSuppressions
           ) = mergesFrom(anchoredMove)
 
           // NOTE: yes, this looks horrible, but try writing it using
           // `Option.unless` with flattening, or with `Option.fold`, or with
           // filters and folds, or a pattern match. Does it look any better?
-          (if precedingMerge.isEmpty && succeedingMerge.isEmpty then
-             partialKeyedMerges
-           else if precedingMerge.isEmpty then
-             partialKeyedMerges.add(
-               anchoredMove.moveDestinationAnchor -> Anchoring.Predecessor,
-               succeedingMerge
+          (if precedingSplice.isEmpty && succeedingSplice.isEmpty then
+             partialKeyedSplices
+           else if precedingSplice.isEmpty then
+             partialKeyedSplices.add(
+               anchoredMove.moveDestinationAnchor -> AnchoringSense.Predecessor,
+               succeedingSplice
              )
-           else if succeedingMerge.isEmpty then
-             partialKeyedMerges.add(
-               anchoredMove.moveDestinationAnchor -> Anchoring.Successor,
-               precedingMerge
+           else if succeedingSplice.isEmpty then
+             partialKeyedSplices.add(
+               anchoredMove.moveDestinationAnchor -> AnchoringSense.Successor,
+               precedingSplice
              )
            else
-             partialKeyedMerges
+             partialKeyedSplices
                .add(
-                 anchoredMove.moveDestinationAnchor -> Anchoring.Predecessor,
-                 succeedingMerge
+                 anchoredMove.moveDestinationAnchor -> AnchoringSense.Predecessor,
+                 succeedingSplice
                )
                .add(
-                 anchoredMove.moveDestinationAnchor -> Anchoring.Successor,
-                 precedingMerge
+                 anchoredMove.moveDestinationAnchor -> AnchoringSense.Successor,
+                 precedingSplice
                )
-          ) -> (partialAnchoredRunSuppressions union anchoredRunSuppressions)
+          )
+          -> (partialSpliceMigrationSuppressions union spliceMigrationSuppressions)
       }
 
-      def applyAnchoredMerges(
+      def applySplices(
           path: Path,
           mergeResult: MergeResult[Section[Element]]
       ): (Path, MergeResult[Section[Element]]) =
         // Apply the suppressions....
 
         val withSuppressions = mergeResult.transformElementsEnMasse(
-          _.filterNot(anchoredRunSuppressions.contains)
+          _.filterNot(spliceMigrationSuppressions.contains)
         )
 
-        // Insert the anchored migrations....
+        // Insert the splices....
 
         // Plan:
-        // 1. Any anchored merge should be placed right next to the anchor; if
-        // there was a conflict at the same place to start with, then the merge
-        // suppression is applied first, possibly resolving the conflict, then
-        // the merge is spliced in.
-        // 2. There has to be just one unique merge to splice in.
+        // 1. Any anchored splice should be placed right next to the anchor.
+        // 2. There has to be just one unique splice.
         // 3. If two anchors are adjacent and the predecessor shares the same
-        // merge with the successor, just splice in one copy of the merge.
+        // splice with the successor, just splice in one copy.
 
         extension (sections: IndexedSeq[Section[Element]])
-          private def appendMigratedInsertions(
-              migratedInsertions: Seq[Section[Element]]
+          private def appendMigratedSplices(
+              migratedSplice: Seq[Section[Element]]
           ): IndexedSeq[Section[Element]] =
-            if migratedInsertions.nonEmpty then
+            if migratedSplice.nonEmpty then
               if sections.nonEmpty then
                 logger.debug(
-                  s"Applying migrated insertion of ${pprintCustomised(migratedInsertions)} after destination: ${pprintCustomised(sections.last)}."
+                  s"Applying migrated splice of ${pprintCustomised(migratedSplice)} after destination: ${pprintCustomised(sections.last)}."
                 )
               else
                 logger.debug(
-                  s"Applying migrated insertion of ${pprintCustomised(migratedInsertions)} at the start."
+                  s"Applying migrated splice of ${pprintCustomised(migratedSplice)} at the start."
                 )
             end if
-            sections ++ migratedInsertions
+            sections ++ migratedSplice
 
-        def insertAnchoredMigrations(
+        def insertAnchoredSplices(
             sections: IndexedSeq[Section[Element]]
         ): IndexedSeq[Section[Element]] =
           sections
@@ -680,33 +683,31 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 .empty[Section[Element]]
             ) {
               case (
-                    (partialResult, deferredMigration),
+                    (partialResult, deferredSplice),
                     candidateAnchorDestination
                   ) =>
-                val precedingMigrationAlternatives =
-                  mergesByAnchoredMoveDestination
+                val precedingSpliceAlternatives =
+                  splicesByAnchoredMoveDestination
                     .get(
-                      candidateAnchorDestination -> Anchoring.Successor
+                      candidateAnchorDestination -> AnchoringSense.Successor
                     )
 
-                val precedingMigration =
-                  Option.when(precedingMigrationAlternatives.nonEmpty) {
-                    val uniqueMigrations =
-                      uniqueSortedItemsFrom(precedingMigrationAlternatives)
+                val precedingSplice =
+                  Option.when(precedingSpliceAlternatives.nonEmpty) {
+                    val uniqueSplices =
+                      uniqueSortedItemsFrom(precedingSpliceAlternatives)
 
-                    uniqueMigrations match
+                    uniqueSplices match
                       case head :: Nil => head
                       case _ =>
                         throw new AdmissibleFailure(
                           s"""
-                               |Multiple potential migrations before destination: $candidateAnchorDestination,
+                               |Multiple potential splices before destination: $candidateAnchorDestination,
                                |these are:
-                               |${uniqueMigrations
-                              .map(migration => s"PRE-INSERTED: $migration")
+                               |${uniqueSplices
+                              .map(splice => s"PRE-INSERTED: $splice")
                               .zipWithIndex
-                              .map((migration, index) =>
-                                s"${1 + index}. $migration"
-                              )
+                              .map((splice, index) => s"${1 + index}. $splice")
                               .mkString("\n")}
                                |These are from ambiguous matches of anchor text with the destination.
                                |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${candidateAnchorDestination.size}.
@@ -715,30 +716,28 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     end match
                   }
 
-                val succeedingMigrationAlternatives =
-                  mergesByAnchoredMoveDestination
+                val succeedingSpliceAlternatives =
+                  splicesByAnchoredMoveDestination
                     .get(
-                      candidateAnchorDestination -> Anchoring.Predecessor
+                      candidateAnchorDestination -> AnchoringSense.Predecessor
                     )
 
-                val succeedingMigration =
-                  Option.when(succeedingMigrationAlternatives.nonEmpty) {
-                    val uniqueMigrations =
-                      uniqueSortedItemsFrom(succeedingMigrationAlternatives)
+                val succeedingSplice =
+                  Option.when(succeedingSpliceAlternatives.nonEmpty) {
+                    val uniqueSplices =
+                      uniqueSortedItemsFrom(succeedingSpliceAlternatives)
 
-                    uniqueMigrations match
+                    uniqueSplices match
                       case head :: Nil => head
                       case _ =>
                         throw new AdmissibleFailure(
                           s"""
-                               |Multiple potential migrations after destination: $candidateAnchorDestination,
+                               |Multiple potential splices after destination: $candidateAnchorDestination,
                                |these are:
-                               |${uniqueMigrations
-                              .map(migration => s"POST-INSERTION: $migration")
+                               |${uniqueSplices
+                              .map(splice => s"POST-INSERTION: $splice")
                               .zipWithIndex
-                              .map((migration, index) =>
-                                s"${1 + index}. $migration"
-                              )
+                              .map((splice, index) => s"${1 + index}. $splice")
                               .mkString("\n")}
                                |These are from ambiguous matches of anchor text with the destination.
                                |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${candidateAnchorDestination.size}.
@@ -747,20 +746,20 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     end match
                   }
 
-                precedingMigration.foreach(splice =>
+                precedingSplice.foreach(splice =>
                   logger.debug(
                     s"Encountered succeeding anchor destination: ${pprintCustomised(candidateAnchorDestination)} with associated preceding migration splice: ${pprintCustomised(splice)}."
                   )
                 )
-                succeedingMigration.foreach(splice =>
+                succeedingSplice.foreach(splice =>
                   logger.debug(
                     s"Encountered preceding anchor destination: ${pprintCustomised(candidateAnchorDestination)} with associated following migration splice: ${pprintCustomised(splice)}."
                   )
                 )
 
                 (
-                  precedingMigration,
-                  succeedingMigration
+                  precedingSplice,
+                  succeedingSplice
                 ) match
                   // NOTE: avoid use of lenses in the cases below when we
                   // already have to pattern match deeply anyway...
@@ -772,8 +771,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     // so we can splice in the deferred migration from the
                     // previous preceding anchor
                     (partialResult
-                      .appendMigratedInsertions(
-                        deferredMigration
+                      .appendMigratedSplices(
+                        deferredSplice
                       ) :+ candidateAnchorDestination) -> IndexedSeq.empty
 
                   case (
@@ -782,7 +781,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       ) =>
                     // We have encountered a succeeding anchor...
                     if sectionRunOrdering.equiv(
-                        deferredMigration,
+                        deferredSplice,
                         precedingMigrationSplice
                       )
                     then
@@ -790,21 +789,21 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       // anchor and the succeeding anchor just encountered
                       // bracket the same migration.
                       (partialResult
-                        .appendMigratedInsertions(
-                          deferredMigration
-                        ) :+ candidateAnchorDestination) -> succeedingMigration
+                        .appendMigratedSplices(
+                          deferredSplice
+                        ) :+ candidateAnchorDestination) -> succeedingSplice
                         .getOrElse(IndexedSeq.empty)
                     else
                       // The deferred migration from the previous preceding
                       // anchor and the succeeding anchor each contribute their
                       // own migration.
                       (partialResult
-                        .appendMigratedInsertions(
-                          deferredMigration
+                        .appendMigratedSplices(
+                          deferredSplice
                         )
-                        .appendMigratedInsertions(
+                        .appendMigratedSplices(
                           precedingMigrationSplice
-                        ) :+ candidateAnchorDestination) -> succeedingMigration
+                        ) :+ candidateAnchorDestination) -> succeedingSplice
                         .getOrElse(IndexedSeq.empty)
                     end if
 
@@ -815,18 +814,18 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     // We have encountered a preceding anchor, so the deferred
                     // migration from the previous preceding anchor can finally
                     // be added to the partial result.
-                    (partialResult.appendMigratedInsertions(
-                      deferredMigration
+                    (partialResult.appendMigratedSplices(
+                      deferredSplice
                     ) :+ candidateAnchorDestination) -> succeedingMigrationSplice
                 end match
             } match
             case (partialResult, deferredMigration) =>
-              partialResult.appendMigratedInsertions(deferredMigration)
+              partialResult.appendMigratedSplices(deferredMigration)
 
         path -> withSuppressions.transformElementsEnMasse(
-          insertAnchoredMigrations
+          insertAnchoredSplices
         )
-      end applyAnchoredMerges
+      end applySplices
 
       def applySubstitutions(
           path: Path,
@@ -896,7 +895,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         }
 
       secondPassMergeResultsByPath
-        .map(applyAnchoredMerges)
+        .map(applySplices)
         .map(applySubstitutions)
         .map(explodeSections) -> moveDestinationsReport
     end merge

@@ -1,12 +1,10 @@
 package com.sageserpent.kineticmerge.core
 
-import com.sageserpent.kineticmerge.core.ContentMigration.PlainMove
-
 import scala.collection.immutable.MultiDict
 
 /** Represents the content migrated through a move.
   */
-enum ContentMigration[Element]:
+enum SpeculativeContentMigration[Element]:
   this match
     case Edit(leftContent, rightContent) =>
       require(leftContent.nonEmpty || rightContent.nonEmpty)
@@ -24,7 +22,7 @@ enum ContentMigration[Element]:
   case PlainMove(elementOnTheOppositeSideToTheMoveDestination: Element)
   case Edit(leftContent: IndexedSeq[Element], rightContent: IndexedSeq[Element])
   case Deletion()
-end ContentMigration
+end SpeculativeContentMigration
 
 enum SpeculativeMoveDestination[Element]:
   def element: Element = this match
@@ -59,14 +57,14 @@ object MoveDestinationsReport:
   )
 
   def evaluateSpeculativeSourcesAndDestinations[Element](
-      speculativeMigrationsBySource: Map[Element, ContentMigration[
+      speculativeMigrationsBySource: Map[Element, SpeculativeContentMigration[
         Element
       ]],
       speculativeMoveDestinations: Set[SpeculativeMoveDestination[Element]]
   )(
       matchesFor: Element => collection.Set[Match[Element]],
       resolution: Resolution[Element]
-  ): EvaluatedMoves[Element] =
+  ): MoveEvaluation[Element] =
     val destinationsBySource =
       // TODO: flip the logic around so that the matches are taken from the
       // *sources*, and then whittled down by the speculative *destinations*.
@@ -95,13 +93,13 @@ object MoveDestinationsReport:
 
             if moveDestinations.left.nonEmpty then
               contentMigration match
-                case ContentMigration.Edit(_, rightContent) =>
+                case SpeculativeContentMigration.Edit(_, rightContent) =>
                   rightContent
                 case _ =>
                   Seq.empty
             else if moveDestinations.right.nonEmpty then
               contentMigration match
-                case ContentMigration.Edit(leftContent, _) =>
+                case SpeculativeContentMigration.Edit(leftContent, _) =>
                   leftContent
                 case _ =>
                   Seq.empty
@@ -123,7 +121,9 @@ object MoveDestinationsReport:
 
             if moveDestinations.left.nonEmpty then
               contentMigration match
-                case PlainMove(elementOnTheOppositeSideToTheMoveDestination) =>
+                case SpeculativeContentMigration.PlainMove(
+                      elementOnTheOppositeSideToTheMoveDestination
+                    ) =>
                   moveDestinations.left
                     .map(destinationElement =>
                       val resolved = resolution(
@@ -138,13 +138,15 @@ object MoveDestinationsReport:
                           if destinationElement != resolved =>
                         destinationElement -> IndexedSeq(resolved)
                     }
-                case ContentMigration.Edit(_, rightContent) =>
+                case SpeculativeContentMigration.Edit(_, rightContent) =>
                   moveDestinations.left.map(_ -> rightContent)
-                case ContentMigration.Deletion() =>
+                case SpeculativeContentMigration.Deletion() =>
                   moveDestinations.left.map(_ -> IndexedSeq.empty)
             else if moveDestinations.right.nonEmpty then
               contentMigration match
-                case PlainMove(elementOnTheOppositeSideToTheMoveDestination) =>
+                case SpeculativeContentMigration.PlainMove(
+                      elementOnTheOppositeSideToTheMoveDestination
+                    ) =>
                   moveDestinations.right
                     .map(destinationElement =>
                       val resolved = resolution(
@@ -159,14 +161,14 @@ object MoveDestinationsReport:
                           if destinationElement != resolved =>
                         destinationElement -> IndexedSeq(resolved)
                     }
-                case ContentMigration.Edit(leftContent, _) =>
+                case SpeculativeContentMigration.Edit(leftContent, _) =>
                   moveDestinations.right.map(_ -> leftContent)
-                case ContentMigration.Deletion() =>
+                case SpeculativeContentMigration.Deletion() =>
                   moveDestinations.right.map(_ -> IndexedSeq.empty)
             else
               assume(moveDestinations.coincident.nonEmpty)
               contentMigration match
-                case ContentMigration.Deletion() =>
+                case SpeculativeContentMigration.Deletion() =>
                   moveDestinations.coincident.flatMap {
                     case (leftDestinationElement, rightDestinationElement) =>
                       val resolved = resolution(
@@ -201,7 +203,9 @@ object MoveDestinationsReport:
 
             if moveDestinations.left.nonEmpty then
               contentMigration match
-                case PlainMove(elementOnTheOppositeSideToTheMoveDestination) =>
+                case SpeculativeContentMigration.PlainMove(
+                      elementOnTheOppositeSideToTheMoveDestination
+                    ) =>
                   moveDestinations.left.map(moveDestination =>
                     AnchoredMove(
                       moveDestinationSide = Side.Left,
@@ -212,7 +216,8 @@ object MoveDestinationsReport:
                       sourceAnchor = source
                     )
                   )
-                case ContentMigration.Edit(_, IndexedSeq(loneRightElement)) =>
+                case SpeculativeContentMigration
+                      .Edit(_, IndexedSeq(loneRightElement)) =>
                   moveDestinations.left.map(moveDestination =>
                     AnchoredMove(
                       moveDestinationSide = Side.Left,
@@ -224,7 +229,7 @@ object MoveDestinationsReport:
                       sourceAnchor = source
                     )
                   )
-                case ContentMigration.Edit(_, rightContent) =>
+                case SpeculativeContentMigration.Edit(_, rightContent) =>
                   moveDestinations.left.flatMap(moveDestination =>
                     Seq(
                       AnchoredMove(
@@ -251,7 +256,9 @@ object MoveDestinationsReport:
                   Seq.empty
             else if moveDestinations.right.nonEmpty then
               contentMigration match
-                case PlainMove(elementOnTheOppositeSideToTheMoveDestination) =>
+                case SpeculativeContentMigration.PlainMove(
+                      elementOnTheOppositeSideToTheMoveDestination
+                    ) =>
                   moveDestinations.right.map(moveDestination =>
                     AnchoredMove(
                       moveDestinationSide = Side.Right,
@@ -262,7 +269,8 @@ object MoveDestinationsReport:
                       sourceAnchor = source
                     )
                   )
-                case ContentMigration.Edit(IndexedSeq(loneLeftElement), _) =>
+                case SpeculativeContentMigration
+                      .Edit(IndexedSeq(loneLeftElement), _) =>
                   moveDestinations.right.map(moveDestination =>
                     AnchoredMove(
                       moveDestinationSide = Side.Right,
@@ -274,7 +282,7 @@ object MoveDestinationsReport:
                       sourceAnchor = source
                     )
                   )
-                case ContentMigration.Edit(leftContent, _) =>
+                case SpeculativeContentMigration.Edit(leftContent, _) =>
                   moveDestinations.right.flatMap(moveDestination =>
                     Seq(
                       AnchoredMove(
@@ -311,7 +319,7 @@ object MoveDestinationsReport:
         )
         .toSet
 
-    EvaluatedMoves(
+    MoveEvaluation(
       moveDestinationsReport = MoveDestinationsReport(moveDestinationsBySource),
       migratedEditSuppressions = migratedEditSuppressions,
       substitutionsByDestination = substitutionsByDestination,
@@ -327,6 +335,21 @@ object MoveDestinationsReport:
     case LastInMigratedEdit(element: Element)
   end OppositeSideAnchor
 
+  /** Represents a move that is anchored; this means there is an anchor element
+    * on all three sides of the overall merge that can be used to merge
+    * surrounding content on each side to make a migration splice. This is *not*
+    * the same as an all-sides match, although there is some overlap between the
+    * two concepts.<p>For one thing, not all all-sides matches turn out to be
+    * moves - they are usually just straight preservations in the per-file
+    * initial merges. The other thing is that migrated edits are also moves with
+    * the edit standing in as an anchor; this is particularly useful as it keeps
+    * migrated edits out of the anchored runs.
+    * @param moveDestinationSide
+    * @param moveDestinationAnchor
+    * @param oppositeSideAnchor
+    * @param sourceAnchor
+    * @tparam Element
+    */
   case class AnchoredMove[Element](
       moveDestinationSide: Side,
       moveDestinationAnchor: Element,
@@ -334,7 +357,7 @@ object MoveDestinationsReport:
       sourceAnchor: Element
   )
 
-  case class EvaluatedMoves[Element](
+  case class MoveEvaluation[Element](
       moveDestinationsReport: MoveDestinationsReport[Element],
       migratedEditSuppressions: Set[Element],
       substitutionsByDestination: MultiDict[Element, IndexedSeq[Element]],
@@ -394,5 +417,5 @@ object MoveDestinationsReport:
           s"Substitution destinations: ${pprintCustomised(substitutionDestinations)}, substitutions: ${pprintCustomised(substitutions)}."
       )
     }
-  end EvaluatedMoves
+  end MoveEvaluation
 end MoveDestinationsReport
