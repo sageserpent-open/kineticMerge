@@ -551,6 +551,38 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       }
   end whitespaceOnlyEditingWithCodeMotion
 
+  private def verifyAbsenceOfContent(
+      path: FakePath,
+      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
+  ): Unit =
+    mergeResultsByPath(path) match
+      case FullyMerged(result) =>
+        assert(
+          result.isEmpty,
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render + fansi.Color
+            .Green(
+              reconstituteTextFrom(result)
+            )
+            .render
+        )
+      case MergedWithConflicts(leftResult, rightResult) =>
+        fail(
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render + fansi.Color.Red(s"\nLeft result...\n")
+            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
+            + fansi.Color.Red(s"\nRight result...\n").render
+            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
+        )
+    end match
+  end verifyAbsenceOfContent
+
   @TestFactory
   def codeMotionAcrossAFileRename(): DynamicTests =
     val configuration = Configuration(
@@ -834,32 +866,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
   end furtherMigrationOfAMigratedEditAsAnInsertion
 
-  private def verifyContent(
-      path: FakePath,
-      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
-  )(
-      expectedTokens: IndexedSeq[Token],
-      equality: (Token, Token) => Boolean = Token.equality
-  ): Unit =
-    println(fansi.Color.Yellow(s"Checking $path...\n"))
-    println(fansi.Color.Yellow("Expected..."))
-    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
-
-    mergeResultsByPath(path) match
-      case FullyMerged(result) =>
-        println(fansi.Color.Yellow("Fully merged result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(result)))
-        assert(result.corresponds(expectedTokens)(equality))
-      case MergedWithConflicts(leftResult, rightResult) =>
-        println(fansi.Color.Red(s"Left result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
-        println(fansi.Color.Red(s"Right result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
-
-        fail("Should have seen a clean merge.")
-    end match
-  end verifyContent
-
   @Test
   def codeMotionAmbiguousWithAPreservation(): Unit =
     val configuration = Configuration(
@@ -945,6 +951,32 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       stuntDoubleTokens(expectedMergeText)
     )
   end codeMotionAmbiguousWithAPreservation
+
+  private def verifyContent(
+      path: FakePath,
+      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
+  )(
+      expectedTokens: IndexedSeq[Token],
+      equality: (Token, Token) => Boolean = Token.equality
+  ): Unit =
+    println(fansi.Color.Yellow(s"Checking $path...\n"))
+    println(fansi.Color.Yellow("Expected..."))
+    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
+
+    mergeResultsByPath(path) match
+      case FullyMerged(result) =>
+        println(fansi.Color.Yellow("Fully merged result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(result)))
+        assert(result.corresponds(expectedTokens)(equality))
+      case MergedWithConflicts(leftResult, rightResult) =>
+        println(fansi.Color.Red(s"Left result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+        println(fansi.Color.Red(s"Right result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+        fail("Should have seen a clean merge.")
+    end match
+  end verifyContent
 
   @Test
   def coincidences(): Unit =
@@ -1164,10 +1196,10 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         case (
               (
                 label,
-                baseContent,
-                leftContent,
-                rightContent,
-                expectedMergeContent
+                baseOriginalContent,
+                leftRenamedContent,
+                rightOriginalContent,
+                expectedRenamedMergeContent
               ),
               swapSides
             ) =>
@@ -1175,14 +1207,14 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
           val baseSources = MappedContentSourcesOfTokens(
             contentsByPath = Map(
-              originalPath -> tokens(baseContent).get
+              originalPath -> tokens(baseOriginalContent).get
             ),
             label = "base"
           )
 
           val leftSources = MappedContentSourcesOfTokens(
             contentsByPath = Map(
-              renamedPath -> tokens(leftContent).get
+              renamedPath -> tokens(leftRenamedContent).get
             ),
             label = "left"
           )
@@ -1190,7 +1222,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           val rightSources = MappedContentSourcesOfTokens(
             contentsByPath = Map(
               originalPath -> tokens(
-                rightContent
+                rightOriginalContent
               ).get
             ),
             label = "right"
@@ -1212,44 +1244,113 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           )
 
           verifyContent(renamedPath, mergeResultsByPath)(
-            tokens(expectedMergeContent).get
+            tokens(expectedRenamedMergeContent).get
           )
 
           verifyAbsenceOfContent(originalPath, mergeResultsByPath)
       }
   end simpleCodeMotionAcrossAFileRenameExamples
 
-  private def verifyAbsenceOfContent(
-      path: FakePath,
-      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
-  ): Unit =
-    mergeResultsByPath(path) match
-      case FullyMerged(result) =>
-        assert(
-          result.isEmpty,
-          fansi.Color
-            .Yellow(
-              s"\nShould not have this content at $path...\n"
-            )
-            .render + fansi.Color
-            .Green(
-              reconstituteTextFrom(result)
-            )
-            .render
+  @TestFactory
+  def forwardingThroughCodeMotionAcrossAFileRenameExamples(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0
+    )
+
+    val originalPath: FakePath  = "*** ORIGINAL ***"
+    val renamedPath: FakePath   = "*** RENAMED ***"
+    val forwardedPath: FakePath = "*** FORWARDED ***"
+
+    Trials.api
+      .choose(
+        (
+          "Forwarded pure move preceded by a pure move.",
+          ("PrecedingAnchor", "Forwarded"),
+          ("PrecedingAnchor", "Forwarded"),
+          "PrecedingAnchor Forwarded",
+          "PrecedingAnchor Forwarded"
+        ),
+        (
+          "Forwarded pure move succeeded by a pure move.",
+          ("SucceedingAnchor", "Forwarded"),
+          ("SucceedingAnchor", "Forwarded"),
+          "Forwarded SucceedingAnchor",
+          "Forwarded SucceedingAnchor"
+        ),
+        (
+          "Forwarded pure move surrounded by pure moves.",
+          ("PrecedingAnchor SucceedingAnchor", "Forwarded"),
+          ("PrecedingAnchor SucceedingAnchor", "Forwarded"),
+          "PrecedingAnchor Forwarded SucceedingAnchor",
+          "PrecedingAnchor Forwarded SucceedingAnchor"
         )
-      case MergedWithConflicts(leftResult, rightResult) =>
-        fail(
-          fansi.Color
-            .Yellow(
-              s"\nShould not have this content at $path...\n"
-            )
-            .render + fansi.Color.Red(s"\nLeft result...\n")
-            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
-            + fansi.Color.Red(s"\nRight result...\n").render
-            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
-        )
-    end match
-  end verifyAbsenceOfContent
+      )
+      .and(Trials.api.booleans)
+      .withLimit(100)
+      .dynamicTests {
+        case (
+              (
+                label,
+                (baseOriginalContent, baseForwardedContent),
+                (leftRenamedContent, leftForwardedContent),
+                rightOriginalContent,
+                expectedRenamedMergeContent
+              ),
+              swapSides
+            ) =>
+          println(fansi.Color.Yellow(s"*** $label ***"))
+
+          val baseSources = MappedContentSourcesOfTokens(
+            contentsByPath = Map(
+              originalPath  -> tokens(baseOriginalContent).get,
+              forwardedPath -> tokens(baseForwardedContent).get
+            ),
+            label = "base"
+          )
+
+          val leftSources = MappedContentSourcesOfTokens(
+            contentsByPath = Map(
+              renamedPath   -> tokens(leftRenamedContent).get,
+              forwardedPath -> tokens(leftForwardedContent).get
+            ),
+            label = "left"
+          )
+
+          val rightSources = MappedContentSourcesOfTokens(
+            contentsByPath = Map(
+              originalPath -> tokens(
+                rightOriginalContent
+              ).get
+            ),
+            label = "right"
+          )
+
+          val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+            baseSources = baseSources,
+            leftSources = if swapSides then rightSources else leftSources,
+            rightSources = if swapSides then leftSources else rightSources
+          )(configuration): @unchecked
+
+          val (mergeResultsByPath, moveDestinationsReport) =
+            codeMotionAnalysis.merge
+
+          println(fansi.Color.Yellow(s"Final move destinations report...\n"))
+          println(
+            fansi.Color
+              .Green(moveDestinationsReport.summarizeInText.mkString("\n"))
+          )
+
+          verifyContent(renamedPath, mergeResultsByPath)(
+            tokens(expectedRenamedMergeContent).get
+          )
+
+          verifyAbsenceOfContent(originalPath, mergeResultsByPath)
+
+          verifyAbsenceOfContent(forwardedPath, mergeResultsByPath)
+      }
+  end forwardingThroughCodeMotionAcrossAFileRenameExamples
 
 end CodeMotionAnalysisExtensionTest
 
