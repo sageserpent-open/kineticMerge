@@ -369,7 +369,6 @@ object MoveDestinationsReport:
       val anchorDestinations  = anchoredMoves.map(_.moveDestinationAnchor)
       val substitutionDestinations: collection.Set[Element] =
         substitutionsByDestination.keySet
-      val substitutions       = substitutionsByDestination.values.flatten.toSet
       val allMoveDestinations = moveDestinationsReport.all
       val allMoveSources      = moveDestinationsReport.sources
       val oppositeSideAnchorsForPlainMoves = anchorOppositeSides.collect {
@@ -380,6 +379,10 @@ object MoveDestinationsReport:
         case OppositeSideAnchor.FirstInMigratedEdit(element)   => element
         case OppositeSideAnchor.LastInMigratedEdit(element)    => element
       }
+
+      // NOTE: don't be tempted to assert that substitution destinations and
+      // their substitutions form disjoint sets - that assumption does not hold
+      // when edits are forwarded.
 
       require(
         anchorSources subsetOf allMoveSources,
@@ -399,6 +402,14 @@ object MoveDestinationsReport:
           s"Substitution destinations: ${pprintCustomised(substitutionDestinations)}, all move destinations: ${pprintCustomised(allMoveDestinations)}."
       )
 
+      substitutionsByDestination.foreach {
+        case (substitutionDestination, substitution) =>
+          require(
+            !substitution.contains(substitutionDestination),
+            s"Substitution destination: ${pprintCustomised(substitutionDestination)}, substitution: ${pprintCustomised(substitution)}."
+          )
+      }
+
       require(
         (migratedEditSuppressions intersect oppositeSideAnchorsForPlainMoves).isEmpty,
         message =
@@ -409,12 +420,6 @@ object MoveDestinationsReport:
         oppositeSideAnchorsForMigratedEdits subsetOf migratedEditSuppressions,
         message =
           s"Migrated edit suppressions: ${pprintCustomised(migratedEditSuppressions)}, opposite side elements for migrated edits: ${pprintCustomised(oppositeSideAnchorsForMigratedEdits)}."
-      )
-
-      require(
-        (substitutionDestinations intersect substitutions).isEmpty,
-        message =
-          s"Substitution destinations: ${pprintCustomised(substitutionDestinations)}, substitutions: ${pprintCustomised(substitutions)}."
       )
     }
   end MoveEvaluation
