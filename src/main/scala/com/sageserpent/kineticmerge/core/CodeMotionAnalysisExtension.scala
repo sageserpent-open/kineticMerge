@@ -485,6 +485,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
       object CachedAnchoredContentMerges:
         private case class MergeInput(
+            moveDestinationSide: Side,
             anchoredContentFromSource: IndexedSeq[Section[Element]],
             anchoredContentFromOppositeSide: IndexedSeq[
               Section[Element]
@@ -497,21 +498,44 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         ]] = Caffeine.newBuilder().build()
 
         def of(
+            moveDestinationSide: Side,
             anchoredContentFromSource: IndexedSeq[Section[Element]],
-            anchoredContentFromOppositeSide: IndexedSeq[
-              Section[Element]
-            ],
+            anchoredContentFromOppositeSide: IndexedSeq[Section[Element]],
             anchoredContentFromMoveDestinationSide: IndexedSeq[Section[Element]]
         ): MergeResult[Section[Element]] =
-          logger.debug(
-            s"Requesting merge of anchored content, source: ${pprintCustomised(anchoredContentFromSource)}, opposite side: ${pprintCustomised(anchoredContentFromOppositeSide)}, move destination: ${pprintCustomised(anchoredContentFromMoveDestinationSide)}"
-          )
+          moveDestinationSide match
+            case Side.Left =>
+              logger.debug(
+                s"""Requesting merge of anchored content,\nsource:\n${pprintCustomised(
+                    anchoredContentFromSource
+                  )}, 
+                   |left is the anchored move destination side:\n${pprintCustomised(
+                    anchoredContentFromMoveDestinationSide
+                  )}, 
+                   |right side:\n${pprintCustomised(
+                    anchoredContentFromOppositeSide
+                  )}""".stripMargin
+              )
+            case Side.Right =>
+              logger.debug(
+                s"""Requesting merge of anchored content,\nsource:\n${pprintCustomised(
+                    anchoredContentFromSource
+                  )}, 
+                   |left side:\n${pprintCustomised(
+                    anchoredContentFromOppositeSide
+                  )}, 
+                   |right is the anchored move destination side:\n${pprintCustomised(
+                    anchoredContentFromMoveDestinationSide
+                  )}""".stripMargin
+              )
 
+          end match
           // NASTY HACK: how would you do it better?
           var updatedCache = false
 
           val cached = resultsCache.get(
             MergeInput(
+              moveDestinationSide,
               anchoredContentFromSource,
               anchoredContentFromOppositeSide,
               anchoredContentFromMoveDestinationSide
@@ -519,11 +543,20 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             _ =>
               updatedCache = true
 
-              mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
-                anchoredContentFromSource,
-                anchoredContentFromOppositeSide,
-                anchoredContentFromMoveDestinationSide
-              )
+              moveDestinationSide match
+                case Side.Left =>
+                  mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
+                    base = anchoredContentFromSource,
+                    left = anchoredContentFromMoveDestinationSide,
+                    right = anchoredContentFromOppositeSide
+                  )
+                case Side.Right =>
+                  mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
+                    base = anchoredContentFromSource,
+                    left = anchoredContentFromOppositeSide,
+                    right = anchoredContentFromMoveDestinationSide
+                  )
+              end match
           )
 
           if !updatedCache then
@@ -569,26 +602,32 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             ++ succeedingAnchoredContentFromOppositeSide
             ++ succeedingAnchoredContentFromMoveDestinationSide).toSet
 
+        val precedingMerge = CachedAnchoredContentMerges
+          .of(
+            anchoredMove.moveDestinationSide,
+            precedingAnchoredContentFromSource,
+            precedingAnchoredContentFromOppositeSide,
+            precedingAnchoredContentFromMoveDestinationSide
+          )
+
+        val succeedingMerge = CachedAnchoredContentMerges
+          .of(
+            anchoredMove.moveDestinationSide,
+            succeedingAnchoredContentFromSource,
+            succeedingAnchoredContentFromOppositeSide,
+            succeedingAnchoredContentFromMoveDestinationSide
+          )
+
         anchoredMove.moveDestinationSide match
           case Side.Left =>
             val precedingSplice =
-              CachedAnchoredContentMerges
-                .of(
-                  precedingAnchoredContentFromSource,
-                  precedingAnchoredContentFromMoveDestinationSide,
-                  precedingAnchoredContentFromOppositeSide
-                ) match
+              precedingMerge match
                 case FullyMerged(sections) => sections
                 case MergedWithConflicts(leftSections, rightSections) =>
                   leftSections ++ rightSections
 
             val succeedingSplice =
-              CachedAnchoredContentMerges
-                .of(
-                  succeedingAnchoredContentFromSource,
-                  succeedingAnchoredContentFromMoveDestinationSide,
-                  succeedingAnchoredContentFromOppositeSide
-                ) match
+              succeedingMerge match
                 case FullyMerged(sections) => sections
                 case MergedWithConflicts(leftSections, rightSections) =>
                   rightSections ++ leftSections
@@ -599,31 +638,21 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               spliceMigrationSuppressions
             )
           case Side.Right =>
-            val precedingMerge =
-              CachedAnchoredContentMerges
-                .of(
-                  precedingAnchoredContentFromSource,
-                  precedingAnchoredContentFromOppositeSide,
-                  precedingAnchoredContentFromMoveDestinationSide
-                ) match
+            val precedingSplice =
+              precedingMerge match
                 case FullyMerged(sections) => sections
                 case MergedWithConflicts(leftSections, rightSections) =>
                   rightSections ++ leftSections
 
-            val succeedingMerge =
-              CachedAnchoredContentMerges
-                .of(
-                  succeedingAnchoredContentFromSource,
-                  succeedingAnchoredContentFromOppositeSide,
-                  succeedingAnchoredContentFromMoveDestinationSide
-                ) match
+            val succeedingSplice =
+              succeedingMerge match
                 case FullyMerged(sections) => sections
                 case MergedWithConflicts(leftSections, rightSections) =>
                   leftSections ++ rightSections
 
             MigrationSplices(
-              precedingMerge,
-              succeedingMerge,
+              precedingSplice,
+              succeedingSplice,
               spliceMigrationSuppressions
             )
         end match
