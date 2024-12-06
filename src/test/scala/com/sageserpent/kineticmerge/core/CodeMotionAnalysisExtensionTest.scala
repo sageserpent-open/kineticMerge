@@ -1351,6 +1351,16 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           ("PrecedingAnchor SucceedingAnchor", "ForwardedEdit"),
           "PrecedingAnchor ForwardedDeleted ForwardedEdited SucceedingAnchor",
           "PrecedingAnchor ForwardedEdit SucceedingAnchor"
+        ),
+        (
+          "Crazy mixed bag preceded by a pure move.",
+          (
+            "PrecedingAnchor Deleted EditedOne EditedTwo EditedThree",
+            "ForwardedEdited ForwardedDeleted"
+          ),
+          ("PrecedingAnchor EditedOne EditedTwo CapturedEdit", "ForwardedEdit"),
+          "PrecedingAnchor Inserted Deleted ForwardedDeleted EditOne ForwardedEdited EditTwo EditedThree",
+          "PrecedingAnchor Inserted ForwardedEdit EditOne EditTwo CapturedEdit"
         )
       )
       .and(Trials.api.booleans)
