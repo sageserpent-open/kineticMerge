@@ -951,7 +951,13 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           end if
         end substituteFor
 
-        path -> mergeResult.transformElementsEnMasse(_.flatMap(substituteFor))
+        path -> mergeResult.transformElementsEnMasse(
+          _.flatMap(section =>
+            // NOTE: the substitution has to be further substituted in case we
+            // have a forwarded edit or deletion from the opposite side in it.
+            substituteFor(section).flatMap(substituteFor)
+          )
+        )
       end applySubstitutions
 
       def explodeSections(
