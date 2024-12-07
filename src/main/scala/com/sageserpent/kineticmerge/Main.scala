@@ -1232,15 +1232,15 @@ object Main extends StrictLogging:
           .fromEither[WorkflowLogWriter] {
 
             CodeMotionAnalysis.of(
-              base = MappedContentSourcesOfTokens(
+              baseSources = MappedContentSourcesOfTokens(
                 baseContentsByPath,
                 label = s"BASE: ${bestAncestorCommitId.take(8)}"
               ),
-              left = MappedContentSourcesOfTokens(
+              leftSources = MappedContentSourcesOfTokens(
                 leftContentsByPath,
                 label = s"OURS: $ourBranchHead"
               ),
-              right = MappedContentSourcesOfTokens(
+              rightSources = MappedContentSourcesOfTokens(
                 rightContentsByPath,
                 label = s"THEIRS: $theirBranchHead"
               )

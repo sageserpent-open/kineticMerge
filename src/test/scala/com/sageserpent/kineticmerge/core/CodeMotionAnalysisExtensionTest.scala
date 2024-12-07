@@ -63,9 +63,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )
 
     val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-      base = baseSources,
-      left = leftSources,
-      right = rightSources
+      baseSources = baseSources,
+      leftSources = leftSources,
+      rightSources = rightSources
     )(configuration): @unchecked
 
     val (mergeResultsByPath, _) =
@@ -144,9 +144,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           )
 
           val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-            base = baseSources,
-            left = leftSources,
-            right = rightSources
+            baseSources = baseSources,
+            leftSources = leftSources,
+            rightSources = rightSources
           )(configuration): @unchecked
 
           val (mergeResultsByPath, _) =
@@ -240,9 +240,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           )
 
           val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-            base = baseSources,
-            left = leftSources,
-            right = rightSources
+            baseSources = baseSources,
+            leftSources = leftSources,
+            rightSources = rightSources
           )(configuration): @unchecked
 
           val (mergeResultsByPath, _) =
@@ -282,9 +282,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )
 
     val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-      base = baseSources,
-      left = leftSources,
-      right = rightSources
+      baseSources = baseSources,
+      leftSources = leftSources,
+      rightSources = rightSources
     )(configuration): @unchecked
 
     val (mergeResultsByPath, _) =
@@ -325,9 +325,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )
 
     val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-      base = baseSources,
-      left = leftSources,
-      right = rightSources
+      baseSources = baseSources,
+      leftSources = leftSources,
+      rightSources = rightSources
     )(configuration): @unchecked
 
     val (mergeResultsByPath, _) =
@@ -382,9 +382,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         )
 
       val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-        base = baseSources,
-        left = leftSources,
-        right = rightSources
+        baseSources = baseSources,
+        leftSources = leftSources,
+        rightSources = rightSources
       )(configuration): @unchecked
 
       val (mergeResultsByPath, _) = codeMotionAnalysis.merge
@@ -443,9 +443,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         )
 
         val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-          base = baseSources,
-          left = leftSources,
-          right = rightSources
+          baseSources = baseSources,
+          leftSources = leftSources,
+          rightSources = rightSources
         )(configuration): @unchecked
 
         val expected = tokens(
@@ -466,6 +466,32 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         verifyContent(placeholderPath, mergeResultsByPath)(expected, _ == _)
     }
   end whitespaceOnlyEditing
+
+  private def verifyContent(
+      path: FakePath,
+      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
+  )(
+      expectedTokens: IndexedSeq[Token],
+      equality: (Token, Token) => Boolean = Token.equality
+  ): Unit =
+    println(fansi.Color.Yellow(s"Checking $path...\n"))
+    println(fansi.Color.Yellow("Expected..."))
+    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
+
+    mergeResultsByPath(path) match
+      case FullyMerged(result) =>
+        println(fansi.Color.Yellow("Fully merged result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(result)))
+        assert(result.corresponds(expectedTokens)(equality))
+      case MergedWithConflicts(leftResult, rightResult) =>
+        println(fansi.Color.Red(s"Left result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+        println(fansi.Color.Red(s"Right result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+        fail("Should have seen a clean merge.")
+    end match
+  end verifyContent
 
   @TestFactory
   def whitespaceOnlyEditingWithCodeMotion(): DynamicTests =
@@ -522,9 +548,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         )
 
         val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-          base = baseSources,
-          left = leftSources,
-          right = rightSources
+          baseSources = baseSources,
+          leftSources = leftSources,
+          rightSources = rightSources
         )(configuration): @unchecked
 
         val expected = tokens(
@@ -550,6 +576,38 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         )
       }
   end whitespaceOnlyEditingWithCodeMotion
+
+  private def verifyAbsenceOfContent(
+      path: FakePath,
+      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
+  ): Unit =
+    mergeResultsByPath(path) match
+      case FullyMerged(result) =>
+        assert(
+          result.isEmpty,
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render + fansi.Color
+            .Green(
+              reconstituteTextFrom(result)
+            )
+            .render
+        )
+      case MergedWithConflicts(leftResult, rightResult) =>
+        fail(
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render + fansi.Color.Red(s"\nLeft result...\n")
+            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
+            + fansi.Color.Red(s"\nRight result...\n").render
+            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
+        )
+    end match
+  end verifyAbsenceOfContent
 
   @TestFactory
   def codeMotionAcrossAFileRename(): DynamicTests =
@@ -585,7 +643,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           heyDiddleDiddleWithIntraFileMoveAndSurroundingInsertions,
           heyDiddleDiddleWithIntraFileMoveAndSurroundingInsertionsExpectedMerge
         ),
-        // TODO - reinstate this, probably with the expected merge amended...
+        // This has been thrown into the Too-Hard-Basket once again...
 //        (
 //          "Intra-file code motion migrated across the file rename - variation.",
 //          heyDiddleDiddleInModernForm,
@@ -640,9 +698,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           )
 
           val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-            base = baseSources,
-            left = if swapSides then rightSources else leftSources,
-            right = if swapSides then leftSources else rightSources
+            baseSources = baseSources,
+            leftSources = if swapSides then rightSources else leftSources,
+            rightSources = if swapSides then leftSources else rightSources
           )(configuration): @unchecked
 
           val (mergeResultsByPath, moveDestinationsReport) =
@@ -661,64 +719,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           verifyAbsenceOfContent(originalPath, mergeResultsByPath)
       }
   end codeMotionAcrossAFileRename
-
-  private def verifyAbsenceOfContent(
-      path: FakePath,
-      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
-  ): Unit =
-    mergeResultsByPath(path) match
-      case FullyMerged(result) =>
-        assert(
-          result.isEmpty,
-          fansi.Color
-            .Yellow(
-              s"\nShould not have this content at $path...\n"
-            )
-            .render + fansi.Color
-            .Green(
-              reconstituteTextFrom(result)
-            )
-            .render
-        )
-      case MergedWithConflicts(leftResult, rightResult) =>
-        fail(
-          fansi.Color
-            .Yellow(
-              s"\nShould not have this content at $path...\n"
-            )
-            .render + fansi.Color.Red(s"\nLeft result...\n")
-            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
-            + fansi.Color.Red(s"\nRight result...\n").render
-            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
-        )
-    end match
-  end verifyAbsenceOfContent
-
-  private def verifyContent(
-      path: FakePath,
-      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
-  )(
-      expectedTokens: IndexedSeq[Token],
-      equality: (Token, Token) => Boolean = Token.equality
-  ): Unit =
-    println(fansi.Color.Yellow(s"Checking $path...\n"))
-    println(fansi.Color.Yellow("Expected..."))
-    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
-
-    mergeResultsByPath(path) match
-      case FullyMerged(result) =>
-        println(fansi.Color.Yellow("Fully merged result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(result)))
-        assert(result.corresponds(expectedTokens)(equality))
-      case MergedWithConflicts(leftResult, rightResult) =>
-        println(fansi.Color.Red(s"Left result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
-        println(fansi.Color.Red(s"Right result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
-
-        fail("Should have seen a clean merge.")
-    end match
-  end verifyContent
 
   @TestFactory
   def codeMotionAcrossTwoFilesWhoseContentIsCombinedTogetherToMakeANewReplacementFile()
@@ -810,9 +810,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           )
 
           val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-            base = baseSources,
-            left = leftSources,
-            right = rightSources
+            baseSources = baseSources,
+            leftSources = leftSources,
+            rightSources = rightSources
           )(configuration): @unchecked
 
           val (mergeResultsByPath, moveDestinationsReport) =
@@ -868,9 +868,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )
 
     val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-      base = baseSources,
-      left = leftSources,
-      right = rightSources
+      baseSources = baseSources,
+      leftSources = leftSources,
+      rightSources = rightSources
     )(configuration): @unchecked
 
     val (mergeResultsByPath, moveDestinationsReport) =
@@ -959,9 +959,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )
 
     val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-      base = baseSources,
-      left = leftSources,
-      right = rightSources
+      baseSources = baseSources,
+      leftSources = leftSources,
+      rightSources = rightSources
     )(configuration): @unchecked
 
     val (mergeResultsByPath, moveDestinationsReport) =
@@ -1002,9 +1002,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )
 
     val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-      base = baseSources,
-      left = leftSources,
-      right = rightSources
+      baseSources = baseSources,
+      leftSources = leftSources,
+      rightSources = rightSources
     )(configuration): @unchecked
 
     val (mergeResultsByPath, _) =
@@ -1014,6 +1014,482 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       tokens(coincidencesExpectedMerge).get
     )
   end coincidences
+
+  @TestFactory
+  def simpleCodeMotionAcrossAFileRenameExamples(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0
+    )
+
+    val originalPath: FakePath = "*** ORIGINAL ***"
+    val renamedPath: FakePath  = "*** RENAMED ***"
+
+    Trials.api
+      .choose(
+        (
+          "Pure move.",
+          "Anchor",
+          "Anchor",
+          "Anchor",
+          "Anchor"
+        ),
+        (
+          "Edit migration.",
+          "Edited",
+          "Edited",
+          "MigratedEdit",
+          "MigratedEdit"
+        ),
+        (
+          "Edit migration preceded by a pure move.",
+          "PrecedingAnchor Edited",
+          "PrecedingAnchor Edited",
+          "PrecedingAnchor MigratedEdit",
+          "PrecedingAnchor MigratedEdit"
+        ),
+        (
+          "Edit migration succeeded by a pure move.",
+          "Edited SucceedingAnchor",
+          "Edited SucceedingAnchor",
+          "MigratedEdit SucceedingAnchor",
+          "MigratedEdit SucceedingAnchor"
+        ),
+        (
+          "Edit migration surrounded by pure moves.",
+          "PrecedingAnchor Edited SucceedingAnchor",
+          "PrecedingAnchor Edited SucceedingAnchor",
+          "PrecedingAnchor MigratedEdit SucceedingAnchor",
+          "PrecedingAnchor MigratedEdit SucceedingAnchor"
+        ),
+        (
+          "Edit capture.",
+          "Edited",
+          "CapturedEdit",
+          "Edited",
+          "CapturedEdit"
+        ),
+        (
+          "Edit capture preceded by a pure move.",
+          "PrecedingAnchor Edited",
+          "PrecedingAnchor CapturedEdit",
+          "PrecedingAnchor Edited",
+          "PrecedingAnchor CapturedEdit"
+        ),
+        (
+          "Edit capture succeeded by a pure move.",
+          "Edited SucceedingAnchor",
+          "CapturedEdit SucceedingAnchor",
+          "Edited SucceedingAnchor",
+          "CapturedEdit SucceedingAnchor"
+        ),
+        (
+          "Edit capture surrounded by pure moves.",
+          "PrecedingAnchor Edited SucceedingAnchor",
+          "PrecedingAnchor CapturedEdit SucceedingAnchor",
+          "PrecedingAnchor Edited SucceedingAnchor",
+          "PrecedingAnchor CapturedEdit SucceedingAnchor"
+        ),
+        (
+          "Deletion migration.",
+          "Deleted",
+          "Deleted",
+          "",
+          ""
+        ),
+        (
+          "Deletion migration preceded by a pure move.",
+          "PrecedingAnchor Deleted",
+          "PrecedingAnchor Deleted",
+          "PrecedingAnchor",
+          "PrecedingAnchor"
+        ),
+        (
+          "Deletion migration succeeded by a pure move.",
+          "Deleted SucceedingAnchor",
+          "Deleted SucceedingAnchor",
+          "MigratedEdit",
+          "MigratedEdit"
+        ),
+        (
+          "Deletion migration surrounded by pure moves.",
+          "PrecedingAnchor Deleted SucceedingAnchor",
+          "PrecedingAnchor Deleted SucceedingAnchor",
+          "PrecedingAnchor SucceedingAnchor",
+          "PrecedingAnchor SucceedingAnchor"
+        ),
+        (
+          "Deletion capture.",
+          "Deleted",
+          "",
+          "Deleted",
+          ""
+        ),
+        (
+          "Deletion capture preceded by a pure move.",
+          "PrecedingAnchor Deleted",
+          "PrecedingAnchor",
+          "PrecedingAnchor Deleted",
+          "PrecedingAnchor"
+        ),
+        (
+          "Deletion capture succeeded by a pure move.",
+          "Deleted SucceedingAnchor",
+          "SucceedingAnchor",
+          "Deleted SucceedingAnchor",
+          "SucceedingAnchor"
+        ),
+        (
+          "Deletion capture surrounded by pure moves.",
+          "PrecedingAnchor Deleted SucceedingAnchor",
+          "PrecedingAnchor SucceedingAnchor",
+          "PrecedingAnchor Deleted SucceedingAnchor",
+          "PrecedingAnchor SucceedingAnchor"
+        ),
+        (
+          "Insertion migration preceded by a pure move.",
+          "PrecedingAnchor",
+          "PrecedingAnchor",
+          "PrecedingAnchor MigratedInsertion",
+          "PrecedingAnchor MigratedInsertion"
+        ),
+        (
+          "Insertion migration succeeded by a pure move.",
+          "SucceedingAnchor",
+          "SucceedingAnchor",
+          "MigratedInsertion SucceedingAnchor",
+          "MigratedInsertion SucceedingAnchor"
+        ),
+        (
+          "Insertion migration surrounded by pure moves.",
+          "PrecedingAnchor SucceedingAnchor",
+          "PrecedingAnchor SucceedingAnchor",
+          "PrecedingAnchor MigratedInsertion SucceedingAnchor",
+          "PrecedingAnchor MigratedInsertion SucceedingAnchor"
+        ),
+        (
+          "Insertion capture preceded by a pure move.",
+          "PrecedingAnchor",
+          "PrecedingAnchor CapturedInsertion",
+          "PrecedingAnchor",
+          "PrecedingAnchor CapturedInsertion"
+        ),
+        (
+          "Insertion capture succeeded by a pure move.",
+          "SucceedingAnchor",
+          "CapturedInsertion SucceedingAnchor",
+          "SucceedingAnchor",
+          "CapturedInsertion SucceedingAnchor"
+        ),
+        (
+          "Insertion capture surrounded by pure moves.",
+          "PrecedingAnchor SucceedingAnchor",
+          "PrecedingAnchor CapturedInsertion SucceedingAnchor",
+          "PrecedingAnchor SucceedingAnchor",
+          "PrecedingAnchor CapturedInsertion SucceedingAnchor"
+        )
+      )
+      .and(Trials.api.booleans)
+      .withLimit(100)
+      .dynamicTests {
+        case (
+              (
+                label,
+                baseOriginalContent,
+                leftRenamedContent,
+                rightOriginalContent,
+                expectedRenamedMergeContent
+              ),
+              swapSides
+            ) =>
+          println(fansi.Color.Yellow(s"*** $label ***"))
+
+          val baseSources = MappedContentSourcesOfTokens(
+            contentsByPath = Map(
+              originalPath -> tokens(baseOriginalContent).get
+            ),
+            label = "base"
+          )
+
+          val leftSources = MappedContentSourcesOfTokens(
+            contentsByPath = Map(
+              renamedPath -> tokens(leftRenamedContent).get
+            ),
+            label = "left"
+          )
+
+          val rightSources = MappedContentSourcesOfTokens(
+            contentsByPath = Map(
+              originalPath -> tokens(
+                rightOriginalContent
+              ).get
+            ),
+            label = "right"
+          )
+
+          val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+            baseSources = baseSources,
+            leftSources = if swapSides then rightSources else leftSources,
+            rightSources = if swapSides then leftSources else rightSources
+          )(configuration): @unchecked
+
+          val (mergeResultsByPath, moveDestinationsReport) =
+            codeMotionAnalysis.merge
+
+          println(fansi.Color.Yellow(s"Final move destinations report...\n"))
+          println(
+            fansi.Color
+              .Green(moveDestinationsReport.summarizeInText.mkString("\n"))
+          )
+
+          verifyContent(renamedPath, mergeResultsByPath)(
+            tokens(expectedRenamedMergeContent).get
+          )
+
+          verifyAbsenceOfContent(originalPath, mergeResultsByPath)
+      }
+  end simpleCodeMotionAcrossAFileRenameExamples
+
+  @TestFactory
+  def forwardingThroughCodeMotionAcrossAFileRenameExamples(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0
+    )
+
+    val originalPath: FakePath  = "*** ORIGINAL ***"
+    val renamedPath: FakePath   = "*** RENAMED ***"
+    val forwardedPath: FakePath = "*** FORWARDED ***"
+
+    Trials.api
+      .choose(
+        (
+          "Forwarded pure move preceded by a pure move.",
+          ("PrecedingAnchor", "Forwarded"),
+          ("PrecedingAnchor", "Forwarded"),
+          "PrecedingAnchor Forwarded",
+          "PrecedingAnchor Forwarded"
+        ),
+        (
+          "Forwarded pure move succeeded by a pure move.",
+          ("SucceedingAnchor", "Forwarded"),
+          ("SucceedingAnchor", "Forwarded"),
+          "Forwarded SucceedingAnchor",
+          "Forwarded SucceedingAnchor"
+        ),
+        (
+          "Forwarded pure move surrounded by pure moves.",
+          ("PrecedingAnchor SucceedingAnchor", "Forwarded"),
+          ("PrecedingAnchor SucceedingAnchor", "Forwarded"),
+          "PrecedingAnchor Forwarded SucceedingAnchor",
+          "PrecedingAnchor Forwarded SucceedingAnchor"
+        ),
+        (
+          "Forwarded edit preceded by a pure move.",
+          ("PrecedingAnchor", "ForwardedEdited"),
+          ("PrecedingAnchor", "ForwardedEdit"),
+          "PrecedingAnchor ForwardedEdited",
+          "PrecedingAnchor ForwardedEdit"
+        ),
+        (
+          "Forwarded edit succeeded by a pure move.",
+          ("SucceedingAnchor", "ForwardedEdited"),
+          ("SucceedingAnchor", "ForwardedEdit"),
+          "ForwardedEdited SucceedingAnchor",
+          "ForwardedEdit SucceedingAnchor"
+        ),
+        (
+          "Forwarded edit surrounded by pure moves.",
+          ("PrecedingAnchor SucceedingAnchor", "ForwardedEdited"),
+          ("PrecedingAnchor SucceedingAnchor", "ForwardedEdit"),
+          "PrecedingAnchor ForwardedEdited SucceedingAnchor",
+          "PrecedingAnchor ForwardedEdit SucceedingAnchor"
+        ),
+        (
+          "Forwarded deletion preceded by a pure move.",
+          ("PrecedingAnchor", "ForwardedDeleted"),
+          ("PrecedingAnchor", ""),
+          "PrecedingAnchor ForwardedDeleted",
+          "PrecedingAnchor"
+        ),
+        (
+          "Forwarded deletion succeeded by a pure move.",
+          ("SucceedingAnchor", "ForwardedDeleted"),
+          ("SucceedingAnchor", ""),
+          "ForwardedDeleted SucceedingAnchor",
+          "SucceedingAnchor"
+        ),
+        (
+          "Forwarded deletion surrounded by pure moves.",
+          ("PrecedingAnchor SucceedingAnchor", "ForwardedDeleted"),
+          ("PrecedingAnchor SucceedingAnchor", ""),
+          "PrecedingAnchor ForwardedDeleted SucceedingAnchor",
+          "PrecedingAnchor SucceedingAnchor"
+        ),
+        (
+          "Combined forwarded edit and deletion preceded by a pure move.",
+          ("PrecedingAnchor", "ForwardedEdited ForwardedDeleted"),
+          ("PrecedingAnchor", "ForwardedEdit"),
+          "PrecedingAnchor ForwardedDeleted ForwardedEdited",
+          "PrecedingAnchor ForwardedEdit"
+        ),
+        (
+          "Combined forwarded edit and deletion succeeded by a pure move.",
+          ("SucceedingAnchor", "ForwardedEdited ForwardedDeleted"),
+          ("SucceedingAnchor", "ForwardedEdit"),
+          "ForwardedDeleted ForwardedEdited SucceedingAnchor",
+          "ForwardedEdit SucceedingAnchor"
+        ),
+        (
+          "Combined forwarded edit and deletion surrounded by pure moves.",
+          (
+            "PrecedingAnchor SucceedingAnchor",
+            "ForwardedEdited ForwardedDeleted"
+          ),
+          ("PrecedingAnchor SucceedingAnchor", "ForwardedEdit"),
+          "PrecedingAnchor ForwardedDeleted ForwardedEdited SucceedingAnchor",
+          "PrecedingAnchor ForwardedEdit SucceedingAnchor"
+        ),
+        (
+          "Crazy mixed bag preceded by a pure move.",
+          (
+            "PrecedingAnchor Deleted EditedOne EditedTwo",
+            "ForwardedEdited ForwardedDeleted"
+          ),
+          ("PrecedingAnchor EditedOne CapturedEdit", "ForwardedEdit"),
+          "PrecedingAnchor Inserted Deleted ForwardedDeleted Edit ForwardedEdited EditedTwo",
+          "PrecedingAnchor Inserted Edit ForwardedEdit CapturedEdit"
+        ),
+        (
+          "Crazy mixed bag succeeded by a pure move.",
+          (
+            "Deleted EditedOne EditedTwo SucceedingAnchor",
+            "ForwardedEdited ForwardedDeleted"
+          ),
+          ("EditedOne CapturedEdit SucceedingAnchor", "ForwardedEdit"),
+          "Inserted Deleted ForwardedDeleted Edit ForwardedEdited EditedTwo SucceedingAnchor",
+          "Inserted Edit ForwardedEdit CapturedEdit SucceedingAnchor"
+        ),
+        (
+          "Crazy mixed bag surrounded by pure moves.",
+          (
+            "PrecedingAnchor Deleted EditedOne EditedTwo SucceedingAnchor",
+            "ForwardedEdited ForwardedDeleted"
+          ),
+          (
+            "PrecedingAnchor EditedOne CapturedEdit SucceedingAnchor",
+            "ForwardedEdit"
+          ),
+          "PrecedingAnchor Inserted Deleted ForwardedDeleted Edit ForwardedEdited EditedTwo SucceedingAnchor",
+          "PrecedingAnchor Inserted Edit ForwardedEdit CapturedEdit SucceedingAnchor"
+        ),
+        (
+          "Multiple forwarded pure moves landing in migrated edit.",
+          ("Edited", "ForwardedMoveOne ForwardedMoveTwo ForwardedMoveThree"),
+          ("Edited", "ForwardedMoveOne ForwardedMoveTwo ForwardedMoveThree"),
+          "ForwardedMoveThree ForwardedMoveTwo ForwardedMoveOne",
+          "ForwardedMoveThree ForwardedMoveTwo ForwardedMoveOne"
+        ),
+        (
+          "Combined forwarded edit landing in migrated edit.",
+          (
+            "Edited",
+            "ForwardedEditedOne ForwardedEditedTwo ForwardedEditedThree"
+          ),
+          ("Edited", "CombinedForwardedEdit"),
+          "ForwardedEditedThree ForwardedEditedTwo ForwardedEditedOne",
+          "CombinedForwardedEdit"
+        ),
+        (
+          "Combined forwarded deletions landing in migrated edit.",
+          (
+            "Edited",
+            "ForwardedDeletedOne ForwardedDeletedTwo ForwardedDeletedThree"
+          ),
+          ("Edited", ""),
+          "ForwardedDeletedThree ForwardedDeletedTwo ForwardedDeletedOne",
+          ""
+        ),
+        (
+          "Multiple double-forwarded edits landing in migrated edit.",
+          (
+            "Edited ForwardedEditOne ForwardedEditTwo ForwardedEditThree",
+            "ForwardedEditedOne DeletedOne ForwardedEditedTwo DeletedTwo ForwardedEditedThree"
+          ),
+          (
+            "Edited",
+            "ForwardedEditOne DeletedOne ForwardedEditTwo DeletedTwo ForwardedEditThree"
+          ),
+          "ForwardedEditedThree ForwardedEditedTwo ForwardedEditedOne",
+          "ForwardedEditThree ForwardedEditTwo ForwardedEditOne"
+        )
+      )
+      .and(Trials.api.booleans)
+      .withLimit(100)
+      .dynamicTests {
+        case (
+              (
+                label,
+                (baseOriginalContent, baseForwardedContent),
+                (leftRenamedContent, leftForwardedContent),
+                rightOriginalContent,
+                expectedRenamedMergeContent
+              ),
+              swapSides
+            ) =>
+          println(fansi.Color.Yellow(s"*** $label ***"))
+
+          val baseSources = MappedContentSourcesOfTokens(
+            contentsByPath = Map(
+              originalPath  -> tokens(baseOriginalContent).get,
+              forwardedPath -> tokens(baseForwardedContent).get
+            ),
+            label = "base"
+          )
+
+          val leftSources = MappedContentSourcesOfTokens(
+            contentsByPath = Map(
+              renamedPath   -> tokens(leftRenamedContent).get,
+              forwardedPath -> tokens(leftForwardedContent).get
+            ),
+            label = "left"
+          )
+
+          val rightSources = MappedContentSourcesOfTokens(
+            contentsByPath = Map(
+              originalPath -> tokens(
+                rightOriginalContent
+              ).get
+            ),
+            label = "right"
+          )
+
+          val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+            baseSources = baseSources,
+            leftSources = if swapSides then rightSources else leftSources,
+            rightSources = if swapSides then leftSources else rightSources
+          )(configuration): @unchecked
+
+          val (mergeResultsByPath, moveDestinationsReport) =
+            codeMotionAnalysis.merge
+
+          println(fansi.Color.Yellow(s"Final move destinations report...\n"))
+          println(
+            fansi.Color
+              .Green(moveDestinationsReport.summarizeInText.mkString("\n"))
+          )
+
+          verifyContent(renamedPath, mergeResultsByPath)(
+            tokens(expectedRenamedMergeContent).get
+          )
+
+          verifyAbsenceOfContent(originalPath, mergeResultsByPath)
+
+          verifyAbsenceOfContent(forwardedPath, mergeResultsByPath)
+      }
+  end forwardingThroughCodeMotionAcrossAFileRenameExamples
 
 end CodeMotionAnalysisExtensionTest
 
@@ -2499,8 +2975,6 @@ trait ProseExamples:
       |And the fork ran away with the spoon.
       |""".stripMargin
 
-  // TODO: review the expected merge in the context of
-  // https://github.com/sageserpent-open/kineticMerge/issues/83...
   protected val heyDiddleDiddleInPsychoticFormExpectedMerge: String =
     """
       |Hey diddle diddle,
@@ -2666,7 +3140,7 @@ trait ProseExamples:
       : String =
     """
       |A bird in hand is worth two in the bush.
-      |A stitch in time saves nine (but you aren't going to need it).
+      |A stitch in time saves nine (but you aren't going to need it)..
       |A man, a plan (but you aren't going to need it), a canal, Panama
       |(but you aren't going to need it)
       |Fools rush in.
@@ -2693,14 +3167,9 @@ trait ProseExamples:
 
   protected val makeLeadingLinesFromBothHalvesAdjacentWithSomeLeadingDeletionWordPlayExpectedMerge
       : String =
-    // NASTY HACK: note the line:
-    // "A stitch in time saves. (but you aren't going to need it)".
-    // This is to acknowledge that when a preceding anchor ("a stitch in time
-    // saves") is followed by another preceding anchor ("A man, a plan"), then
-    // the handling of deferred content at the destination is really clumsy.
     """
       |A bird in hand is worth two in the bush.
-      |A stitch in time saves. (but you aren't going to need it)
+      |A stitch in time saves (but you aren't going to need it)..
       |A man, a plan (but you aren't going to need it), a canal, Panama
       |(but you aren't going to need it)
       |Fools rush in.
@@ -2721,9 +3190,6 @@ trait ProseExamples:
       |""".stripMargin
 
   protected val leftoverProverbsWithEdit: String =
-    // FIXME: once https://github.com/sageserpent-open/kineticMerge/issues/83 is
-    // in, amend the *last* line to end in an exclamation mark instead of a full
-    // stop.
     """Fools rush in.
       |All's well that ends well.
       |Better eat gram flour, not the damned flowers.
@@ -2736,9 +3202,6 @@ trait ProseExamples:
       |""".stripMargin
 
   protected val excisedProverbsExpectedMerge: String =
-    // FIXME: once https://github.com/sageserpent-open/kineticMerge/issues/83 is
-    // in, amend the *second* line to end in an exclamation mark instead of a
-    // full stop.
     """
       |A bird in hand is worth two in the bush.
       |Better eat gram flour, not the damned flowers.
