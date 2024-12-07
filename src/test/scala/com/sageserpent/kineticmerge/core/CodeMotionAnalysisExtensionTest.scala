@@ -662,6 +662,64 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       }
   end codeMotionAcrossAFileRename
 
+  private def verifyAbsenceOfContent(
+      path: FakePath,
+      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
+  ): Unit =
+    mergeResultsByPath(path) match
+      case FullyMerged(result) =>
+        assert(
+          result.isEmpty,
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render + fansi.Color
+            .Green(
+              reconstituteTextFrom(result)
+            )
+            .render
+        )
+      case MergedWithConflicts(leftResult, rightResult) =>
+        fail(
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render + fansi.Color.Red(s"\nLeft result...\n")
+            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
+            + fansi.Color.Red(s"\nRight result...\n").render
+            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
+        )
+    end match
+  end verifyAbsenceOfContent
+
+  private def verifyContent(
+      path: FakePath,
+      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
+  )(
+      expectedTokens: IndexedSeq[Token],
+      equality: (Token, Token) => Boolean = Token.equality
+  ): Unit =
+    println(fansi.Color.Yellow(s"Checking $path...\n"))
+    println(fansi.Color.Yellow("Expected..."))
+    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
+
+    mergeResultsByPath(path) match
+      case FullyMerged(result) =>
+        println(fansi.Color.Yellow("Fully merged result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(result)))
+        assert(result.corresponds(expectedTokens)(equality))
+      case MergedWithConflicts(leftResult, rightResult) =>
+        println(fansi.Color.Red(s"Left result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+        println(fansi.Color.Red(s"Right result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+        fail("Should have seen a clean merge.")
+    end match
+  end verifyContent
+
   @TestFactory
   def codeMotionAcrossTwoFilesWhoseContentIsCombinedTogetherToMakeANewReplacementFile()
       : DynamicTests =
@@ -775,38 +833,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           verifyAbsenceOfContent(palindromesPath, mergeResultsByPath)
       }
   end codeMotionAcrossTwoFilesWhoseContentIsCombinedTogetherToMakeANewReplacementFile
-
-  private def verifyAbsenceOfContent(
-      path: FakePath,
-      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
-  ): Unit =
-    mergeResultsByPath(path) match
-      case FullyMerged(result) =>
-        assert(
-          result.isEmpty,
-          fansi.Color
-            .Yellow(
-              s"\nShould not have this content at $path...\n"
-            )
-            .render + fansi.Color
-            .Green(
-              reconstituteTextFrom(result)
-            )
-            .render
-        )
-      case MergedWithConflicts(leftResult, rightResult) =>
-        fail(
-          fansi.Color
-            .Yellow(
-              s"\nShould not have this content at $path...\n"
-            )
-            .render + fansi.Color.Red(s"\nLeft result...\n")
-            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
-            + fansi.Color.Red(s"\nRight result...\n").render
-            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
-        )
-    end match
-  end verifyAbsenceOfContent
 
   @Test
   def furtherMigrationOfAMigratedEditAsAnInsertion(): Unit =
@@ -951,32 +977,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       stuntDoubleTokens(expectedMergeText)
     )
   end codeMotionAmbiguousWithAPreservation
-
-  private def verifyContent(
-      path: FakePath,
-      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
-  )(
-      expectedTokens: IndexedSeq[Token],
-      equality: (Token, Token) => Boolean = Token.equality
-  ): Unit =
-    println(fansi.Color.Yellow(s"Checking $path...\n"))
-    println(fansi.Color.Yellow("Expected..."))
-    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
-
-    mergeResultsByPath(path) match
-      case FullyMerged(result) =>
-        println(fansi.Color.Yellow("Fully merged result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(result)))
-        assert(result.corresponds(expectedTokens)(equality))
-      case MergedWithConflicts(leftResult, rightResult) =>
-        println(fansi.Color.Red(s"Left result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
-        println(fansi.Color.Red(s"Right result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
-
-        fail("Should have seen a clean merge.")
-    end match
-  end verifyContent
 
   @Test
   def coincidences(): Unit =
@@ -1537,7 +1537,7 @@ trait ProseExamples:
       |object ExpectyFlavouredAssert:
       |  val assert: Expecty = new Expecty:
       |    override val showLocation: Boolean = true
-      |    override val showTypes: Boolean    = /* TODO - remove this comment, it's here to force propagation of the edit on the right. */ true
+      |    override val showTypes: Boolean    = true
       |  end assert
       |end ExpectyFlavouredAssert
       |""".stripMargin
@@ -1552,7 +1552,7 @@ trait ProseExamples:
       |object ExpectyFlavouredAssert:
       |  val assert: Expecty = new Expecty:
       |    // Swapped the next two lines around...
-      |    override val showTypes: Boolean    = /* TODO - remove this comment, it's here to force propagation of the edit on the right. */ true
+      |    override val showTypes: Boolean    = true
       |    override val showLocation: Boolean = true
       |
       |  end assert
@@ -1568,7 +1568,7 @@ trait ProseExamples:
       |object ExpectyFlavouredAssert:
       |  val assert: Expecty = new Expecty:
       |    override val showLocation: Boolean = true
-      |    override val showTypes: Boolean    = false // This edit should migrate.
+      |    override val showTypes: Boolean    = false
       |  end assert
       |end ExpectyFlavouredAssert
       |  // Using Kinetic Merge will improve your software engineering practices...
@@ -1583,7 +1583,7 @@ trait ProseExamples:
       |object ExpectyFlavouredAssert:
       |  val assert: Expecty = new Expecty:
       |    // Swapped the next two lines around...
-      |    override val showTypes: Boolean    = false // This edit should migrate.
+      |    override val showTypes: Boolean    = false
       |    override val showLocation: Boolean = true
       |
       |  end assert
@@ -1813,11 +1813,11 @@ trait ProseExamples:
       |     */
       |    static CasesLimitStrategy timed(final Duration timeBudget) {
       |        return new CasesLimitStrategy() {
-      |            Instant deadline = null; // This edit should migrate.
+      |            Instant deadline = null;
       |
       |            @Override
       |            public boolean moreCasesToDo() {
-      |                if (null == deadline /* This edit should migrate. */) {
+      |                if (null == deadline) {
       |                    deadline = Instant.now().plus(timeBudget);
       |                }
       |
@@ -2249,11 +2249,11 @@ trait ProseExamples:
       |     */
       |    static CasesLimitStrategy timed(final Duration timeBudget) {
       |        return new CasesLimitStrategy() {
-      |            Instant deadline = null; // This edit should migrate.
+      |            Instant deadline = null;
       |
       |            @Override
       |            public boolean moreCasesToDo() {
-      |                if (null == deadline /* This edit should migrate. */) {
+      |                if (null == deadline) {
       |                    deadline = Instant.now().plus(timeBudget);
       |                }
       |
