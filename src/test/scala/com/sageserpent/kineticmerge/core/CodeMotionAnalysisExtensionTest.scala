@@ -1387,9 +1387,42 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         ),
         (
           "Multiple forwarded pure moves landing in migrated edit.",
-          ("Edited", "ForwardedEditOne ForwardedEditTwo ForwardedEditThree"),
-          ("Edited", "ForwardedEditOne ForwardedEditTwo ForwardedEditThree"),
-          "ForwardedEditThree ForwardedEditTwo ForwardedEditOne",
+          ("Edited", "ForwardedMoveOne ForwardedMoveTwo ForwardedMoveThree"),
+          ("Edited", "ForwardedMoveOne ForwardedMoveTwo ForwardedMoveThree"),
+          "ForwardedMoveThree ForwardedMoveTwo ForwardedMoveOne",
+          "ForwardedMoveThree ForwardedMoveTwo ForwardedMoveOne"
+        ),
+        (
+          "Combined forwarded edit landing in migrated edit.",
+          (
+            "Edited",
+            "ForwardedEditedOne ForwardedEditedTwo ForwardedEditedThree"
+          ),
+          ("Edited", "CombinedForwardedEdit"),
+          "ForwardedEditedThree ForwardedEditedTwo ForwardedEditedOne",
+          "CombinedForwardedEdit"
+        ),
+        (
+          "Combined forwarded deletions landing in migrated edit.",
+          (
+            "Edited",
+            "ForwardedDeletedOne ForwardedDeletedTwo ForwardedDeletedThree"
+          ),
+          ("Edited", ""),
+          "ForwardedDeletedThree ForwardedDeletedTwo ForwardedDeletedOne",
+          ""
+        ),
+        (
+          "Multiple double-forwarded edits landing in migrated edit.",
+          (
+            "Edited ForwardedEditOne ForwardedEditTwo ForwardedEditThree",
+            "ForwardedEditedOne DeletedOne ForwardedEditedTwo DeletedTwo ForwardedEditedThree"
+          ),
+          (
+            "Edited",
+            "ForwardedEditOne DeletedOne ForwardedEditTwo DeletedTwo ForwardedEditThree"
+          ),
+          "ForwardedEditedThree ForwardedEditedTwo ForwardedEditedOne",
           "ForwardedEditThree ForwardedEditTwo ForwardedEditOne"
         )
       )
