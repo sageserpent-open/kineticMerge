@@ -60,9 +60,7 @@ object FirstPassMergeResult:
       )
     end playback
   end extension
-
-  // TODO: should coincident insertions be recorded as insertions too? What
-  // about edits, for that matter?
+  
   def mergeAlgebra[Element](): MergeAlgebra[FirstPassMergeResult, Element] =
     new MergeAlgebra[FirstPassMergeResult, Element]:
       override def empty: FirstPassMergeResult[Element] =

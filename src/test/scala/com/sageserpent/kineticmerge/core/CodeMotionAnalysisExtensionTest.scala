@@ -2974,9 +2974,7 @@ trait ProseExamples:
       |To see such craft,
       |And the fork ran away with the spoon.
       |""".stripMargin
-
-  // TODO: review the expected merge in the context of
-  // https://github.com/sageserpent-open/kineticMerge/issues/83...
+  
   protected val heyDiddleDiddleInPsychoticFormExpectedMerge: String =
     """
       |Hey diddle diddle,
