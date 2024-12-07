@@ -25,14 +25,6 @@ enum SpeculativeContentMigration[Element]:
 end SpeculativeContentMigration
 
 enum SpeculativeMoveDestination[Element]:
-  def element: Element = this match
-    case Left(leftElement)          => leftElement
-    case Right(rightElement)        => rightElement
-    case Coincident(leftElement, _) =>
-      // TODO: throwing away the right element seems sloppy. What are we really
-      // trying to achieve?
-      leftElement
-
   case Left(leftElement: Element)
   case Right(rightElement: Element)
   case Coincident(elementPairAcrossLeftAndRight: (Element, Element))
@@ -66,17 +58,26 @@ object MoveDestinationsReport:
       resolution: Resolution[Element]
   ): MoveEvaluation[Element] =
     val destinationsBySource =
-      // TODO: flip the logic around so that the matches are taken from the
-      // *sources*, and then whittled down by the speculative *destinations*.
-      // That sidesteps the ugliness of having to choose a side for a
-      // speculative coincident destination.
-      MultiDict.from(speculativeMoveDestinations.iterator.flatMap {
-        speculativeMoveDestination =>
-          val sources = matchesFor(speculativeMoveDestination.element)
-            .flatMap(_.base)
-            .intersect(speculativeMigrationsBySource.keySet)
+      MultiDict.from(speculativeMigrationsBySource.keys.flatMap {
+        speculativeSource =>
+          val destinations = matchesFor(speculativeSource)
+            .flatMap {
+              case Match.AllSides(_, leftElement, rightElement) =>
+                Seq(
+                  SpeculativeMoveDestination.Left(leftElement),
+                  SpeculativeMoveDestination.Right(rightElement),
+                  SpeculativeMoveDestination
+                    .Coincident(leftElement, rightElement)
+                )
+              case Match.BaseAndLeft(_, leftElement) =>
+                Seq(SpeculativeMoveDestination.Left(leftElement))
+              case Match.BaseAndRight(_, rightElement) =>
+                Seq(SpeculativeMoveDestination.Right(rightElement))
+              case _: Match.LeftAndRight[Element] => Seq.empty
+            }
+            .intersect(speculativeMoveDestinations)
 
-          sources.map(_ -> speculativeMoveDestination)
+          destinations.map(speculativeSource -> _)
       })
 
     val moveDestinationsBySource =
