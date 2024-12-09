@@ -170,23 +170,32 @@ object MoveDestinationsReport:
               assume(moveDestinations.coincident.nonEmpty)
               contentMigration match
                 case SpeculativeContentMigration.Deletion() =>
-                  moveDestinations.coincident.flatMap {
-                    case (leftDestinationElement, rightDestinationElement) =>
-                      val resolved = resolution(
-                        Some(source),
-                        leftDestinationElement,
-                        rightDestinationElement
-                      )
+                  moveDestinations.coincident
+                    .map {
+                      case (leftDestinationElement, rightDestinationElement) =>
+                        val resolved = resolution(
+                          Some(source),
+                          leftDestinationElement,
+                          rightDestinationElement
+                        )
 
-                      Seq(
-                        leftDestinationElement  -> resolved,
-                        rightDestinationElement -> resolved
-                      ).collect {
-                        case (destinationElement, resolved)
-                            if destinationElement != resolved =>
-                          destinationElement -> IndexedSeq(resolved)
-                      }
-                  }
+                        // NASTY HACK: this relies on external context, namely
+                        // that `CoreMergeAlgebra` has made a two-way resolution
+                        // that has turned out to be wrong in the light of
+                        // discovering a coincident move.
+                        val inaccuratelyResolvedBecauseOfCoreMerge = resolution(
+                          None,
+                          leftDestinationElement,
+                          rightDestinationElement
+                        )
+
+                        inaccuratelyResolvedBecauseOfCoreMerge -> resolved
+                    }
+                    .collect {
+                      case (destinationElement, resolved)
+                          if destinationElement != resolved =>
+                        destinationElement -> IndexedSeq(resolved)
+                    }
                 case _ => Seq.empty
               end match
             end if
