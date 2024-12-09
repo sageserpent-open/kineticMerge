@@ -3,6 +3,7 @@ package com.sageserpent.kineticmerge.core
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
+import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.Merged
 import com.sageserpent.kineticmerge.core.FirstPassMergeResult.Recording
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Sized
 import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{AnchoredMove, MoveEvaluation, OppositeSideAnchor}
@@ -57,27 +58,35 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       val paths =
         codeMotionAnalysis.base.keySet ++ codeMotionAnalysis.left.keySet ++ codeMotionAnalysis.right.keySet
 
-      def resolution(
-          baseSection: Option[Section[Element]],
-          leftSection: Section[Element],
-          rightSection: Section[Element]
-      ): Section[Element] = baseSection.fold(ifEmpty =
-        // Break the symmetry - choose the left.
-        leftSection
-      ) { payload =>
-        // Look at the content and use *exact* comparison.
-
-        val lhsIsCompletelyUnchanged = payload.content == leftSection.content
-        val rhsIsCompletelyUnchanged = payload.content == rightSection.content
-
-        (lhsIsCompletelyUnchanged, rhsIsCompletelyUnchanged) match
-          case (false, true) => leftSection
-          case (true, false) => rightSection
-          case _             =>
+      val resolution: Resolution[Section[Element]] =
+        new Resolution[Section[Element]]:
+          override def coincident(
+              leftElement: Section[Element],
+              rightElement: Section[Element]
+          ): Section[Element] =
             // Break the symmetry - choose the left.
-            leftSection
-        end match
-      }
+            leftElement
+
+          override def preserved(
+              baseElement: Section[Element],
+              leftElement: Section[Element],
+              rightElement: Section[Element]
+          ): Section[Element] =
+            // Look at the content and use *exact* comparison.
+
+            val lhsIsCompletelyUnchanged =
+              baseElement.content == leftElement.content
+            val rhsIsCompletelyUnchanged =
+              baseElement.content == rightElement.content
+
+            (lhsIsCompletelyUnchanged, rhsIsCompletelyUnchanged) match
+              case (false, true) => leftElement
+              case (true, false) => rightElement
+              case _             =>
+                // Break the symmetry - choose the left.
+                leftElement
+            end match
+          end preserved
 
       type SecondPassInput =
         Either[FullyMerged[Section[Element]], Recording[Section[Element]]]
@@ -254,7 +263,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         MoveDestinationsReport.evaluateSpeculativeSourcesAndDestinations(
           speculativeMigrationsBySource,
           speculativeMoveDestinations
-        )(matchesFor, resolution)
+        )(matchesFor)
 
       logger.debug(s"Move evaluation: ${pprintCustomised(moveEvaluation)}.")
 
@@ -481,7 +490,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       )
 
       val conflictResolvingMergeAlgebra =
-        new ConflictResolvingMergeAlgebra(resolution, migratedEditSuppressions)
+        new ConflictResolvingMergeAlgebra(migratedEditSuppressions)
 
       object CachedAnchoredContentMerges:
         private case class MergeInput(
@@ -549,13 +558,13 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     base = anchoredContentFromSource,
                     left = anchoredContentFromMoveDestinationSide,
                     right = anchoredContentFromOppositeSide
-                  )
+                  ).resolveUsing(resolution)
                 case Side.Right =>
                   mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
                     base = anchoredContentFromSource,
                     left = anchoredContentFromOppositeSide,
                     right = anchoredContentFromMoveDestinationSide
-                  )
+                  ).resolveUsing(resolution)
               end match
           )
 
@@ -909,7 +918,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         def substituteFor(
             section: Section[Element]
         ): IndexedSeq[Section[Element]] =
-          val substitutions = substitutionsByDestination.get(section)
+          val substitutions = substitutionsByDestination
+            .get(section)
+            .map(_.map(_.resolveUsing(resolution)))
 
           if substitutions.nonEmpty then
             val uniqueSubstitutions = uniqueSortedItemsFrom(substitutions)
@@ -971,7 +982,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           : Map[Path, MergeResult[Section[Element]]] =
         secondPassInputsByPath.map {
           case (path, Right(recording)) =>
-            path -> recording.playback(conflictResolvingMergeAlgebra)
+            path -> recording
+              .playback(conflictResolvingMergeAlgebra)
+              .resolveUsing(resolution)
           case (path, Left(fullyMerged)) => path -> fullyMerged
         }
 

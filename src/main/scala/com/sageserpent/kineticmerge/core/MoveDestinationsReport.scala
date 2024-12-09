@@ -1,5 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
+import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.Merged
+
 import scala.collection.immutable.MultiDict
 
 /** Represents the content migrated through a move.
@@ -54,8 +56,7 @@ object MoveDestinationsReport:
       ]],
       speculativeMoveDestinations: Set[SpeculativeMoveDestination[Element]]
   )(
-      matchesFor: Element => collection.Set[Match[Element]],
-      resolution: Resolution[Element]
+      matchesFor: Element => collection.Set[Match[Element]]
   ): MoveEvaluation[Element] =
     val destinationsBySource =
       MultiDict.from(speculativeMigrationsBySource.keys.flatMap {
@@ -113,7 +114,8 @@ object MoveDestinationsReport:
         )
         .toSet
 
-    val substitutionsByDestination: MultiDict[Element, IndexedSeq[Element]] =
+    val substitutionsByDestination
+        : MultiDict[Element, IndexedSeq[Merged[Element]]] =
       MultiDict.from(
         moveDestinationsBySource.toSeq.flatMap((source, moveDestinations) =>
           if !moveDestinations.isDivergent
@@ -127,20 +129,17 @@ object MoveDestinationsReport:
                     ) =>
                   moveDestinations.left
                     .map(destinationElement =>
-                      val resolved = resolution(
-                        Some(source),
+                      val preserved = Merged.Preserved(
+                        source,
                         destinationElement,
                         elementOnTheOppositeSideToTheMoveDestination
                       )
-                      destinationElement -> resolved
+                      destinationElement -> IndexedSeq(preserved)
                     )
-                    .collect {
-                      case (destinationElement, resolved)
-                          if destinationElement != resolved =>
-                        destinationElement -> IndexedSeq(resolved)
-                    }
                 case SpeculativeContentMigration.Edit(_, rightContent) =>
-                  moveDestinations.left.map(_ -> rightContent)
+                  moveDestinations.left.map(
+                    _ -> rightContent.map(Merged.Resolved.apply)
+                  )
                 case SpeculativeContentMigration.Deletion() =>
                   moveDestinations.left.map(_ -> IndexedSeq.empty)
             else if moveDestinations.right.nonEmpty then
@@ -150,20 +149,17 @@ object MoveDestinationsReport:
                     ) =>
                   moveDestinations.right
                     .map(destinationElement =>
-                      val resolved = resolution(
-                        Some(source),
+                      val preserved = Merged.Preserved(
+                        source,
                         elementOnTheOppositeSideToTheMoveDestination,
                         destinationElement
                       )
-                      destinationElement -> resolved
+                      destinationElement -> IndexedSeq(preserved)
                     )
-                    .collect {
-                      case (destinationElement, resolved)
-                          if destinationElement != resolved =>
-                        destinationElement -> IndexedSeq(resolved)
-                    }
                 case SpeculativeContentMigration.Edit(leftContent, _) =>
-                  moveDestinations.right.map(_ -> leftContent)
+                  moveDestinations.right.map(
+                    _ -> leftContent.map(Merged.Resolved.apply)
+                  )
                 case SpeculativeContentMigration.Deletion() =>
                   moveDestinations.right.map(_ -> IndexedSeq.empty)
             else
@@ -172,20 +168,17 @@ object MoveDestinationsReport:
                 case SpeculativeContentMigration.Deletion() =>
                   moveDestinations.coincident.flatMap {
                     case (leftDestinationElement, rightDestinationElement) =>
-                      val resolved = resolution(
-                        Some(source),
+                      val preserved = Merged.Preserved(
+                        source,
                         leftDestinationElement,
                         rightDestinationElement
                       )
 
+                      val substitution = IndexedSeq(preserved)
                       Seq(
-                        leftDestinationElement  -> resolved,
-                        rightDestinationElement -> resolved
-                      ).collect {
-                        case (destinationElement, resolved)
-                            if destinationElement != resolved =>
-                          destinationElement -> IndexedSeq(resolved)
-                      }
+                        leftDestinationElement  -> substitution,
+                        rightDestinationElement -> substitution
+                      )
                   }
                 case _ => Seq.empty
               end match
@@ -361,7 +354,9 @@ object MoveDestinationsReport:
   case class MoveEvaluation[Element](
       moveDestinationsReport: MoveDestinationsReport[Element],
       migratedEditSuppressions: Set[Element],
-      substitutionsByDestination: MultiDict[Element, IndexedSeq[Element]],
+      substitutionsByDestination: MultiDict[Element, IndexedSeq[
+        Merged[Element]
+      ]],
       anchoredMoves: Set[AnchoredMove[Element]]
   ):
     {

@@ -1,5 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
+import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.UnresolvedMergeResult
+
 /** This embellishes [[CoreMergeAlgebra]], resolving conflicts that turn out to
   * be where an edit or deletion migration was picked up.
   *
@@ -10,15 +12,14 @@ package com.sageserpent.kineticmerge.core
   * @return
   */
 class ConflictResolvingMergeAlgebra[Element](
-    resolution: Resolution[Element],
     migratedEditSuppressions: Set[Element]
-) extends CoreMergeAlgebra[Element](resolution):
+) extends CoreMergeAlgebra[Element]:
   override def conflict(
-      result: MergeResult[Element],
+      result: UnresolvedMergeResult[Element],
       editedElements: IndexedSeq[Element],
       leftEditElements: IndexedSeq[Element],
       rightEditElements: IndexedSeq[Element]
-  ): MergeResult[Element] =
+  ): UnresolvedMergeResult[Element] =
     val vettedLeftElements =
       leftEditElements.filterNot(migratedEditSuppressions.contains)
     val vettedRightElements =
