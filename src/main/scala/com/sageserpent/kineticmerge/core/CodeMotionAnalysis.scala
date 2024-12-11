@@ -986,7 +986,8 @@ object CodeMotionAnalysis extends StrictLogging:
             baseFingerprints: Iterable[PotentialMatchKey],
             leftFingerprints: Iterable[PotentialMatchKey],
             rightFingerprints: Iterable[PotentialMatchKey],
-            matches: Set[GenericMatch]
+            matches: Set[GenericMatch],
+            haveTrimmedMatches: Boolean
         ): MatchingResult =
           // NOTE: when looking for matches, forbid any that would overlap or
           // subsume an existing match at a larger or smaller window size. It is
@@ -1031,25 +1032,33 @@ object CodeMotionAnalysis extends StrictLogging:
                       leftSection,
                       rightSection
                     ) #:: remainingMatches =>
+                  val (withAdditionalMatches, haveTrimmedAdditionalMatches) =
+                    if allowAmbiguousMatches
+                    then
+                      (matches ++ potentialMatchesForSynchronisedFingerprint
+                        .map(Match.AllSides.apply)) -> false
+                    else if remainingMatches.isEmpty then
+                      (matches + Match
+                        .AllSides(
+                          baseSection,
+                          leftSection,
+                          rightSection
+                        ))       -> false
+                    else matches -> true
                   matchingFingerprintsAcrossSides(
                     baseFingerprints.tail,
                     leftFingerprints.tail,
                     rightFingerprints.tail,
-                    if allowAmbiguousMatches
-                    then
-                      matches ++ potentialMatchesForSynchronisedFingerprint
-                        .map(Match.AllSides.apply)
-                    else if remainingMatches.isEmpty then
-                      matches + Match
-                        .AllSides(baseSection, leftSection, rightSection)
-                    else matches
+                    withAdditionalMatches,
+                    haveTrimmedMatches || haveTrimmedAdditionalMatches
                   )
                 case _ =>
                   matchingFingerprintsAcrossSides(
                     baseFingerprints.tail,
                     leftFingerprints.tail,
                     rightFingerprints.tail,
-                    matches
+                    matches,
+                    haveTrimmedMatches
                   )
               end match
 
@@ -1067,7 +1076,8 @@ object CodeMotionAnalysis extends StrictLogging:
                 baseFingerprints,
                 leftFingerprints,
                 rightFingerprints.tail,
-                matches
+                matches,
+                haveTrimmedMatches
               )
 
             case (Some(baseHead), Some(leftHead), _)
@@ -1091,24 +1101,31 @@ object CodeMotionAnalysis extends StrictLogging:
 
               potentialMatchesForSynchronisedFingerprint match
                 case (baseSection, leftSection) #:: remainingMatches =>
+                  val (withAdditionalMatches, haveTrimmedAdditionalMatches) =
+                    if allowAmbiguousMatches
+                    then
+                      (matches ++ potentialMatchesForSynchronisedFingerprint
+                        .map(Match.BaseAndLeft.apply)) -> false
+                    else if remainingMatches.isEmpty then
+                      (matches + Match.BaseAndLeft(
+                        baseSection,
+                        leftSection
+                      ))         -> false
+                    else matches -> true
                   matchingFingerprintsAcrossSides(
                     baseFingerprints.tail,
                     leftFingerprints.tail,
                     rightFingerprints,
-                    if allowAmbiguousMatches
-                    then
-                      matches ++ potentialMatchesForSynchronisedFingerprint
-                        .map(Match.BaseAndLeft.apply)
-                    else if remainingMatches.isEmpty then
-                      matches + Match.BaseAndLeft(baseSection, leftSection)
-                    else matches
+                    withAdditionalMatches,
+                    haveTrimmedMatches || haveTrimmedAdditionalMatches
                   )
                 case _ =>
                   matchingFingerprintsAcrossSides(
                     baseFingerprints.tail,
                     leftFingerprints.tail,
                     rightFingerprints,
-                    matches
+                    matches,
+                    haveTrimmedMatches
                   )
               end match
 
@@ -1126,7 +1143,8 @@ object CodeMotionAnalysis extends StrictLogging:
                 baseFingerprints,
                 leftFingerprints.tail,
                 rightFingerprints,
-                matches
+                matches,
+                haveTrimmedMatches
               )
 
             case (Some(baseHead), _, Some(rightHead))
@@ -1150,24 +1168,31 @@ object CodeMotionAnalysis extends StrictLogging:
 
               potentialMatchesForSynchronisedFingerprint match
                 case (baseSection, rightSection) #:: remainingMatches =>
+                  val (withAdditionalMatches, haveTrimmedAdditionalMatches) =
+                    if allowAmbiguousMatches
+                    then
+                      (matches ++ potentialMatchesForSynchronisedFingerprint
+                        .map(Match.BaseAndRight.apply)) -> false
+                    else if remainingMatches.isEmpty then
+                      (matches + Match.BaseAndRight(
+                        baseSection,
+                        rightSection
+                      ))         -> false
+                    else matches -> true
                   matchingFingerprintsAcrossSides(
                     baseFingerprints.tail,
                     leftFingerprints,
                     rightFingerprints.tail,
-                    if allowAmbiguousMatches
-                    then
-                      matches ++ potentialMatchesForSynchronisedFingerprint
-                        .map(Match.BaseAndRight.apply)
-                    else if remainingMatches.isEmpty then
-                      matches + Match.BaseAndRight(baseSection, rightSection)
-                    else matches
+                    withAdditionalMatches,
+                    haveTrimmedMatches || haveTrimmedAdditionalMatches
                   )
                 case _ =>
                   matchingFingerprintsAcrossSides(
                     baseFingerprints.tail,
                     leftFingerprints,
                     rightFingerprints.tail,
-                    matches
+                    matches,
+                    haveTrimmedMatches
                   )
               end match
 
@@ -1185,7 +1210,8 @@ object CodeMotionAnalysis extends StrictLogging:
                 baseFingerprints.tail,
                 leftFingerprints,
                 rightFingerprints,
-                matches
+                matches,
+                haveTrimmedMatches
               )
 
             case (_, Some(leftHead), Some(rightHead))
@@ -1209,24 +1235,31 @@ object CodeMotionAnalysis extends StrictLogging:
 
               potentialMatchesForSynchronisedFingerprint match
                 case (leftSection, rightSection) #:: remainingMatches =>
+                  val (withAdditionalMatches, haveTrimmedAdditionalMatches) =
+                    if allowAmbiguousMatches
+                    then
+                      (matches ++ potentialMatchesForSynchronisedFingerprint
+                        .map(Match.LeftAndRight.apply)) -> false
+                    else if remainingMatches.isEmpty then
+                      (matches + Match.LeftAndRight(
+                        leftSection,
+                        rightSection
+                      ))         -> false
+                    else matches -> true
                   matchingFingerprintsAcrossSides(
                     baseFingerprints,
                     leftFingerprints.tail,
                     rightFingerprints.tail,
-                    if allowAmbiguousMatches
-                    then
-                      matches ++ potentialMatchesForSynchronisedFingerprint
-                        .map(Match.LeftAndRight.apply)
-                    else if remainingMatches.isEmpty then
-                      matches + Match.LeftAndRight(leftSection, rightSection)
-                    else matches
+                    withAdditionalMatches,
+                    haveTrimmedMatches || haveTrimmedAdditionalMatches
                   )
                 case _ =>
                   matchingFingerprintsAcrossSides(
                     baseFingerprints,
                     leftFingerprints.tail,
                     rightFingerprints.tail,
-                    matches
+                    matches,
+                    haveTrimmedMatches
                   )
               end match
 
@@ -1251,7 +1284,8 @@ object CodeMotionAnalysis extends StrictLogging:
                   baseFingerprints,
                   leftFingerprints.tail,
                   rightFingerprints,
-                  matches
+                  matches,
+                  haveTrimmedMatches
                 )
               // NOTE: just use `==` as we have already looked inside the
               // `PotentialMatchKey` instances - we just want to know which one
@@ -1262,14 +1296,16 @@ object CodeMotionAnalysis extends StrictLogging:
                   baseFingerprints,
                   leftFingerprints,
                   rightFingerprints.tail,
-                  matches
+                  matches,
+                  haveTrimmedMatches
                 )
               else
                 matchingFingerprintsAcrossSides(
                   baseFingerprints.tail,
                   leftFingerprints,
                   rightFingerprints,
-                  matches
+                  matches,
+                  haveTrimmedMatches
                 )
               end if
 
@@ -1283,14 +1319,16 @@ object CodeMotionAnalysis extends StrictLogging:
                   baseFingerprints.tail,
                   leftFingerprints,
                   rightFingerprints,
-                  matches
+                  matches,
+                  haveTrimmedMatches
                 )
               else
                 matchingFingerprintsAcrossSides(
                   baseFingerprints,
                   leftFingerprints.tail,
                   rightFingerprints,
-                  matches
+                  matches,
+                  haveTrimmedMatches
                 )
 
             case (Some(baseHead), None, Some(rightHead)) =>
@@ -1303,14 +1341,16 @@ object CodeMotionAnalysis extends StrictLogging:
                   baseFingerprints.tail,
                   leftFingerprints,
                   rightFingerprints,
-                  matches
+                  matches,
+                  haveTrimmedMatches
                 )
               else
                 matchingFingerprintsAcrossSides(
                   baseFingerprints,
                   leftFingerprints,
                   rightFingerprints.tail,
-                  matches
+                  matches,
+                  haveTrimmedMatches
                 )
 
             case (None, Some(leftHead), Some(rightHead)) =>
@@ -1323,20 +1363,22 @@ object CodeMotionAnalysis extends StrictLogging:
                   baseFingerprints,
                   leftFingerprints.tail,
                   rightFingerprints,
-                  matches
+                  matches,
+                  haveTrimmedMatches
                 )
               else
                 matchingFingerprintsAcrossSides(
                   baseFingerprints,
                   leftFingerprints,
                   rightFingerprints.tail,
-                  matches
+                  matches,
+                  haveTrimmedMatches
                 )
 
             case _ =>
               // There are no more opportunities to match a full triple or
               // just a pair, so this terminates the recursion.
-              withMatches(matches, windowSize, allowAmbiguousMatches)
+              withMatches(matches, windowSize, haveTrimmedMatches)
           end match
         end matchingFingerprintsAcrossSides
 
@@ -1344,14 +1386,15 @@ object CodeMotionAnalysis extends StrictLogging:
           baseSectionsByFingerprint.keySet,
           leftSectionsByFingerprint.keySet,
           rightSectionsByFingerprint.keySet,
-          matches = Set.empty
+          matches = Set.empty,
+          haveTrimmedMatches = false
         )
       end matchesForWindowSize
 
       private def withMatches(
           matches: collection.Set[GenericMatch],
           windowSize: Int,
-          allowAmbiguousMatches: Boolean
+          haveTrimmedMatches: Boolean
       ): MatchingResult =
         val (paredDownMatches, stabilized) =
           eatIntoLargerPairwiseMatchesUntilStabilized(windowSize)(
@@ -1375,7 +1418,7 @@ object CodeMotionAnalysis extends StrictLogging:
             .withoutRedundantPairwiseMatchesIn(paredDownMatches)
 
         val pathInclusions =
-          if allowAmbiguousMatches then
+          if !haveTrimmedMatches then
             case class PathInclusionsImplementation(
                 basePaths: Set[Path],
                 leftPaths: Set[Path],
