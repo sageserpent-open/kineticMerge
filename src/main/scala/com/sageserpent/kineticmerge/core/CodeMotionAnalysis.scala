@@ -1336,7 +1336,7 @@ object CodeMotionAnalysis extends StrictLogging:
             case _ =>
               // There are no more opportunities to match a full triple or
               // just a pair, so this terminates the recursion.
-              withMatches(matches, windowSize)
+              withMatches(matches, windowSize, allowAmbiguousMatches)
           end match
         end matchingFingerprintsAcrossSides
 
@@ -1350,7 +1350,8 @@ object CodeMotionAnalysis extends StrictLogging:
 
       private def withMatches(
           matches: collection.Set[GenericMatch],
-          windowSize: Int
+          windowSize: Int,
+          allowAmbiguousMatches: Boolean
       ): MatchingResult =
         val (paredDownMatches, stabilized) =
           eatIntoLargerPairwiseMatchesUntilStabilized(windowSize)(
@@ -1373,56 +1374,61 @@ object CodeMotionAnalysis extends StrictLogging:
             // afterwards.
             .withoutRedundantPairwiseMatchesIn(paredDownMatches)
 
-        case class PathInclusionsImplementation(
-            basePaths: Set[Path],
-            leftPaths: Set[Path],
-            rightPaths: Set[Path]
-        ) extends PathInclusions:
-          override def isIncludedOnBase(basePath: Path): Boolean =
-            basePaths.contains(basePath)
+        val pathInclusions =
+          if allowAmbiguousMatches then
+            case class PathInclusionsImplementation(
+                basePaths: Set[Path],
+                leftPaths: Set[Path],
+                rightPaths: Set[Path]
+            ) extends PathInclusions:
+              override def isIncludedOnBase(basePath: Path): Boolean =
+                basePaths.contains(basePath)
 
-          override def isIncludedOnLeft(leftPath: Path): Boolean =
-            leftPaths.contains(leftPath)
+              override def isIncludedOnLeft(leftPath: Path): Boolean =
+                leftPaths.contains(leftPath)
 
-          override def isIncludedOnRight(rightPath: Path): Boolean =
-            rightPaths.contains(rightPath)
+              override def isIncludedOnRight(rightPath: Path): Boolean =
+                rightPaths.contains(rightPath)
 
-          def addPathOnBaseFor(
-              baseSection: Section[Element]
-          ): PathInclusionsImplementation =
-            copy(basePaths = basePaths + baseSources.pathFor(baseSection))
-          def addPathOnLeftFor(
-              leftSection: Section[Element]
-          ): PathInclusionsImplementation =
-            copy(leftPaths = leftPaths + leftSources.pathFor(leftSection))
-          def addPathOnRightFor(
-              rightSection: Section[Element]
-          ): PathInclusionsImplementation =
-            copy(rightPaths = rightPaths + rightSources.pathFor(rightSection))
-        end PathInclusionsImplementation
+              def addPathOnBaseFor(
+                  baseSection: Section[Element]
+              ): PathInclusionsImplementation =
+                copy(basePaths = basePaths + baseSources.pathFor(baseSection))
+              def addPathOnLeftFor(
+                  leftSection: Section[Element]
+              ): PathInclusionsImplementation =
+                copy(leftPaths = leftPaths + leftSources.pathFor(leftSection))
+              def addPathOnRightFor(
+                  rightSection: Section[Element]
+              ): PathInclusionsImplementation =
+                copy(rightPaths =
+                  rightPaths + rightSources.pathFor(rightSection)
+                )
+            end PathInclusionsImplementation
 
-        val pathInclusions = paredDownMatches.foldLeft(
-          PathInclusionsImplementation(Set.empty, Set.empty, Set.empty)
-        )((partialPathInclusions, aMatch) =>
-          aMatch match
-            case Match.AllSides(baseSection, leftSection, rightSection) =>
-              partialPathInclusions
-                .addPathOnBaseFor(baseSection)
-                .addPathOnLeftFor(leftSection)
-                .addPathOnRightFor(rightSection)
-            case Match.BaseAndLeft(baseSection, leftSection) =>
-              partialPathInclusions
-                .addPathOnBaseFor(baseSection)
-                .addPathOnLeftFor(leftSection)
-            case Match.BaseAndRight(baseSection, rightSection) =>
-              partialPathInclusions
-                .addPathOnBaseFor(baseSection)
-                .addPathOnRightFor(rightSection)
-            case Match.LeftAndRight(leftSection, rightSection) =>
-              partialPathInclusions
-                .addPathOnLeftFor(leftSection)
-                .addPathOnRightFor(rightSection)
-        )
+            paredDownMatches.foldLeft(
+              PathInclusionsImplementation(Set.empty, Set.empty, Set.empty)
+            )((partialPathInclusions, aMatch) =>
+              aMatch match
+                case Match.AllSides(baseSection, leftSection, rightSection) =>
+                  partialPathInclusions
+                    .addPathOnBaseFor(baseSection)
+                    .addPathOnLeftFor(leftSection)
+                    .addPathOnRightFor(rightSection)
+                case Match.BaseAndLeft(baseSection, leftSection) =>
+                  partialPathInclusions
+                    .addPathOnBaseFor(baseSection)
+                    .addPathOnLeftFor(leftSection)
+                case Match.BaseAndRight(baseSection, rightSection) =>
+                  partialPathInclusions
+                    .addPathOnBaseFor(baseSection)
+                    .addPathOnRightFor(rightSection)
+                case Match.LeftAndRight(leftSection, rightSection) =>
+                  partialPathInclusions
+                    .addPathOnLeftFor(leftSection)
+                    .addPathOnRightFor(rightSection)
+            )
+          else PathInclusions.all
 
         MatchingResult(
           matchesAndTheirSections = updatedMatchesAndTheirSections,
