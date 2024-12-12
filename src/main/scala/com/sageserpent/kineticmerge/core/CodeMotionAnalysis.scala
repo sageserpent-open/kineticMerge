@@ -851,10 +851,11 @@ object CodeMotionAnalysis extends StrictLogging:
         val allowAmbiguousMatches =
           minimumAmbiguousMatchSize <= windowSize
 
-        val maximumNumberOfMatchesForAGivenContent =
-          if !allowAmbiguousMatches then 1 else 200
+        val maximumNumberOfMatchesSharingContent =
+          if !allowAmbiguousMatches then 1
+          else ambiguousMatchesThreshold
 
-        assume(1 <= maximumNumberOfMatchesForAGivenContent)
+        assume(1 <= maximumNumberOfMatchesSharingContent)
 
         def fingerprintStartIndices(
             elements: IndexedSeq[Element]
@@ -992,7 +993,7 @@ object CodeMotionAnalysis extends StrictLogging:
 
               val (permitted, superfluous) =
                 potentialMatchesForSynchronisedFingerprint.splitAt(
-                  maximumNumberOfMatchesForAGivenContent
+                  maximumNumberOfMatchesSharingContent
                 )
 
               matchingFingerprintsAcrossSides(
@@ -1003,7 +1004,7 @@ object CodeMotionAnalysis extends StrictLogging:
                   matches ++ permitted.map(Match.AllSides.apply)
                 else
                   logger.warn(
-                    s"Discarding ambiguous all-sides matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesForAGivenContent matches."
+                    s"Discarding ambiguous all-sides matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesSharingContent matches."
                   )
                   matches
               )
@@ -1046,7 +1047,7 @@ object CodeMotionAnalysis extends StrictLogging:
 
               val (permitted, superfluous) =
                 potentialMatchesForSynchronisedFingerprint.splitAt(
-                  maximumNumberOfMatchesForAGivenContent
+                  maximumNumberOfMatchesSharingContent
                 )
 
               matchingFingerprintsAcrossSides(
@@ -1057,7 +1058,7 @@ object CodeMotionAnalysis extends StrictLogging:
                   matches ++ permitted.map(Match.BaseAndLeft.apply)
                 else
                   logger.warn(
-                    s"Discarding ambiguous all-sides matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesForAGivenContent matches."
+                    s"Discarding ambiguous all-sides matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesSharingContent matches."
                   )
                   matches
               )
@@ -1100,7 +1101,7 @@ object CodeMotionAnalysis extends StrictLogging:
 
               val (permitted, superfluous) =
                 potentialMatchesForSynchronisedFingerprint.splitAt(
-                  maximumNumberOfMatchesForAGivenContent
+                  maximumNumberOfMatchesSharingContent
                 )
 
               matchingFingerprintsAcrossSides(
@@ -1111,7 +1112,7 @@ object CodeMotionAnalysis extends StrictLogging:
                   matches ++ permitted.map(Match.BaseAndRight.apply)
                 else
                   logger.warn(
-                    s"Discarding ambiguous all-sides matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesForAGivenContent matches."
+                    s"Discarding ambiguous all-sides matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesSharingContent matches."
                   )
                   matches
               )
@@ -1154,7 +1155,7 @@ object CodeMotionAnalysis extends StrictLogging:
 
               val (permitted, superfluous) =
                 potentialMatchesForSynchronisedFingerprint.splitAt(
-                  maximumNumberOfMatchesForAGivenContent
+                  maximumNumberOfMatchesSharingContent
                 )
 
               matchingFingerprintsAcrossSides(
@@ -1165,7 +1166,7 @@ object CodeMotionAnalysis extends StrictLogging:
                   matches ++ permitted.map(Match.LeftAndRight.apply)
                 else
                   logger.warn(
-                    s"Discarding ambiguous all-sides matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesForAGivenContent matches."
+                    s"Discarding ambiguous all-sides matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesSharingContent matches."
                   )
                   matches
               )
@@ -1928,11 +1929,13 @@ object CodeMotionAnalysis extends StrictLogging:
       minimumMatchSize: Int,
       thresholdSizeFractionForMatching: Double,
       minimumAmbiguousMatchSize: Int,
+      ambiguousMatchesThreshold: Int,
       progressRecording: ProgressRecording = NoProgressRecording
   ):
     require(0 <= minimumMatchSize)
     require(0 <= thresholdSizeFractionForMatching)
     require(1 >= thresholdSizeFractionForMatching)
     require(0 <= minimumAmbiguousMatchSize)
+    require(1 <= ambiguousMatchesThreshold)
   end Configuration
 end CodeMotionAnalysis

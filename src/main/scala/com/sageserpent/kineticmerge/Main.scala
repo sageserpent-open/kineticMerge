@@ -180,6 +180,18 @@ object Main extends StrictLogging:
           .text(
             "Minimum number of tokens for an ambiguous match to be considered."
           ),
+        opt[Int](name = "ambiguous-matches-threshold")
+          .validate(ambiguousMatchesThreshold =>
+            if 0 < ambiguousMatchesThreshold then success
+            else failure(s"Ambiguous matches threshold must be positive.")
+          )
+          .action((ambiguousMatchesThreshold, commandLineArguments) =>
+            commandLineArguments
+              .copy(ambiguousMatchesThreshold = ambiguousMatchesThreshold)
+          )
+          .text(
+            "Maximum number of matches of the same kind that can refer to the same matched content."
+          ),
         arg[String](name = "<their branch to merge into ours>")
           .action((theirBranch, commandLineArguments) =>
             commandLineArguments.copy(theirBranchHead =
@@ -260,6 +272,7 @@ object Main extends StrictLogging:
       minimumMatchSize,
       thresholdSizeFractionForMatching,
       minimumAmbiguousMatchSize,
+      ambiguousMatchesThreshold,
       progressRecording = progressRecording
     )
 
@@ -445,7 +458,8 @@ object Main extends StrictLogging:
         // better merge as well.
         4,
       thresholdSizeFractionForMatching: Double = 0,
-      minimumAmbiguousMatchSize: Int = 10
+      minimumAmbiguousMatchSize: Int = 10,
+      ambiguousMatchesThreshold: Int = 200
   )
 
   enum Change:

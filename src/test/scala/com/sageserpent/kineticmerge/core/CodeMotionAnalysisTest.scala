@@ -80,7 +80,8 @@ class CodeMotionAnalysisTest:
           val configuration = Configuration(
             minimumMatchSize = 2,
             thresholdSizeFractionForMatching = minimumSizeFraction,
-            minimumAmbiguousMatchSize = 0
+            minimumAmbiguousMatchSize = 0,
+            ambiguousMatchesThreshold = 10
           )
 
           CodeMotionAnalysis.of(base, left, right)(
@@ -425,7 +426,7 @@ class CodeMotionAnalysisTest:
       )
       .dynamicTests { testPlan =>
 
-        import testPlan.*
+      import testPlan.*
 
         println(
           s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
@@ -443,7 +444,8 @@ class CodeMotionAnalysisTest:
           minimumMatchSize = minimumPossibleExpectedMatchSize,
           thresholdSizeFractionForMatching =
             minimumSizeFractionForMotionDetection,
-          minimumAmbiguousMatchSize = 0
+          minimumAmbiguousMatchSize = 0,
+          ambiguousMatchesThreshold = 10
         )
 
         CodeMotionAnalysis.of(
@@ -711,7 +713,8 @@ class CodeMotionAnalysisTest:
     val configuration = Configuration(
       minimumMatchSize = 10,
       thresholdSizeFractionForMatching = 0,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
     )
 
     val prefix                        = 0 until 10
@@ -858,7 +861,8 @@ class CodeMotionAnalysisTest:
       // Low enough to allow the all-sides match to be considered, except in
       // path 2 on the base side...
       thresholdSizeFractionForMatching = 0.3,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
     )
 
     val Right(
@@ -901,7 +905,8 @@ class CodeMotionAnalysisTest:
     val configuration = Configuration(
       minimumMatchSize = 10,
       thresholdSizeFractionForMatching = 0,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
     )
 
     // This is an even more pathological situation - we have overlapping matches
@@ -1030,7 +1035,8 @@ class CodeMotionAnalysisTest:
       // Low enough to allow the all-sides match to be considered, except in
       // path 1 on the base side...
       thresholdSizeFractionForMatching = 0.4,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
     )
 
     val Right(
@@ -1119,7 +1125,8 @@ class CodeMotionAnalysisTest:
     val configuration = Configuration(
       minimumMatchSize = 10,
       thresholdSizeFractionForMatching = 0,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
     )
 
     val Right(

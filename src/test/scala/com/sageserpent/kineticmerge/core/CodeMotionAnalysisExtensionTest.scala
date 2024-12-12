@@ -33,7 +33,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val configuration = Configuration(
       minimumMatchSize = 4,
       thresholdSizeFractionForMatching = 0.1,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
     )
 
     val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
@@ -81,7 +82,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val configuration = Configuration(
       minimumMatchSize = 2,
       thresholdSizeFractionForMatching = 0,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
     )
 
     val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
@@ -164,7 +166,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val configuration = Configuration(
       minimumMatchSize = 2,
       thresholdSizeFractionForMatching = 0,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
     )
 
     val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
@@ -260,7 +263,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val configuration = Configuration(
       minimumMatchSize = 4,
       thresholdSizeFractionForMatching = 0,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
     )
 
     val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
@@ -300,7 +304,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val configuration = Configuration(
       minimumMatchSize = 4,
       thresholdSizeFractionForMatching = 0,
-      minimumAmbiguousMatchSize = 5
+      minimumAmbiguousMatchSize = 5,
+      ambiguousMatchesThreshold = 10
     )
 
     val originalPath: FakePath = "*** ORIGINAL ***"
@@ -350,7 +355,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       val configuration = Configuration(
         minimumMatchSize = minimumMatchSize,
         thresholdSizeFractionForMatching = 0,
-        minimumAmbiguousMatchSize = 4
+        minimumAmbiguousMatchSize = 4,
+        ambiguousMatchesThreshold = 10
       )
 
       val prosePath: FakePath    = "prose"
@@ -413,7 +419,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         val configuration = Configuration(
           minimumMatchSize = 4,
           thresholdSizeFractionForMatching = 0.1,
-          minimumAmbiguousMatchSize = 0
+          minimumAmbiguousMatchSize = 0,
+          ambiguousMatchesThreshold = 10
         )
 
         val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
@@ -509,7 +516,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         val configuration = Configuration(
           minimumMatchSize = 4,
           thresholdSizeFractionForMatching = 0.1,
-          minimumAmbiguousMatchSize = 0
+          minimumAmbiguousMatchSize = 0,
+          ambiguousMatchesThreshold = 10
         )
 
         val originalPath: FakePath             = "*** ORIGINAL ***"
@@ -614,7 +622,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val configuration = Configuration(
       minimumMatchSize = 2,
       thresholdSizeFractionForMatching = 0,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
     )
 
     val originalPath: FakePath = "*** ORIGINAL ***"
@@ -726,7 +735,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val configuration = Configuration(
       minimumMatchSize = 2,
       thresholdSizeFractionForMatching = 0,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
     )
 
     val proverbsPath: FakePath    = "*** PROVERBS ***"
@@ -839,7 +849,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val configuration = Configuration(
       minimumMatchSize = 2,
       thresholdSizeFractionForMatching = 0,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
     )
 
     val proverbsPath: FakePath        = "*** PROVERBS ***"
@@ -897,7 +908,11 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val configuration = Configuration(
       minimumMatchSize = 2,
       thresholdSizeFractionForMatching = 0,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      // Need a large value for this, as the single-character tokenization
+      // yields runs of repeated tokens, thus causing lots of ambiguous
+      // overlaps.
+      ambiguousMatchesThreshold = 200
     )
 
     val ehs  = "A".repeat(10)
@@ -983,7 +998,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val configuration = Configuration(
       minimumMatchSize = 4,
       thresholdSizeFractionForMatching = 0,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
     )
 
     val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
@@ -1020,7 +1036,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val configuration = Configuration(
       minimumMatchSize = 1,
       thresholdSizeFractionForMatching = 0,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
     )
 
     val originalPath: FakePath = "*** ORIGINAL ***"
@@ -1256,7 +1273,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val configuration = Configuration(
       minimumMatchSize = 1,
       thresholdSizeFractionForMatching = 0,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
     )
 
     val originalPath: FakePath  = "*** ORIGINAL ***"
