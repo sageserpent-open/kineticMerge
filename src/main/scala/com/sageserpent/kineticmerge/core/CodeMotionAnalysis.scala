@@ -851,8 +851,10 @@ object CodeMotionAnalysis extends StrictLogging:
         val allowAmbiguousMatches =
           minimumAmbiguousMatchSize <= windowSize
 
-        val maximumNumberOfAmbiguousMatches =
+        val maximumNumberOfMatchesForAGivenContent =
           if !allowAmbiguousMatches then 1 else 200
+
+        assume(1 <= maximumNumberOfMatchesForAGivenContent)
 
         def fingerprintStartIndices(
             elements: IndexedSeq[Element]
@@ -990,7 +992,7 @@ object CodeMotionAnalysis extends StrictLogging:
 
               val (permitted, superfluous) =
                 potentialMatchesForSynchronisedFingerprint.splitAt(
-                  maximumNumberOfAmbiguousMatches
+                  maximumNumberOfMatchesForAGivenContent
                 )
 
               matchingFingerprintsAcrossSides(
@@ -999,7 +1001,11 @@ object CodeMotionAnalysis extends StrictLogging:
                 rightFingerprints.tail,
                 if superfluous.isEmpty then
                   matches ++ permitted.map(Match.AllSides.apply)
-                else matches
+                else
+                  logger.warn(
+                    s"Discarding ambiguous all-sides matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesForAGivenContent matches."
+                  )
+                  matches
               )
 
             case (Some(baseHead), Some(leftHead), Some(rightHead))
@@ -1040,7 +1046,7 @@ object CodeMotionAnalysis extends StrictLogging:
 
               val (permitted, superfluous) =
                 potentialMatchesForSynchronisedFingerprint.splitAt(
-                  maximumNumberOfAmbiguousMatches
+                  maximumNumberOfMatchesForAGivenContent
                 )
 
               matchingFingerprintsAcrossSides(
@@ -1049,7 +1055,11 @@ object CodeMotionAnalysis extends StrictLogging:
                 rightFingerprints,
                 if superfluous.isEmpty then
                   matches ++ permitted.map(Match.BaseAndLeft.apply)
-                else matches
+                else
+                  logger.warn(
+                    s"Discarding ambiguous all-sides matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesForAGivenContent matches."
+                  )
+                  matches
               )
 
             case (Some(baseHead), Some(leftHead), Some(rightHead))
@@ -1090,7 +1100,7 @@ object CodeMotionAnalysis extends StrictLogging:
 
               val (permitted, superfluous) =
                 potentialMatchesForSynchronisedFingerprint.splitAt(
-                  maximumNumberOfAmbiguousMatches
+                  maximumNumberOfMatchesForAGivenContent
                 )
 
               matchingFingerprintsAcrossSides(
@@ -1099,7 +1109,11 @@ object CodeMotionAnalysis extends StrictLogging:
                 rightFingerprints.tail,
                 if superfluous.isEmpty then
                   matches ++ permitted.map(Match.BaseAndRight.apply)
-                else matches
+                else
+                  logger.warn(
+                    s"Discarding ambiguous all-sides matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesForAGivenContent matches."
+                  )
+                  matches
               )
 
             case (Some(baseHead), Some(leftHead), Some(rightHead))
@@ -1140,7 +1154,7 @@ object CodeMotionAnalysis extends StrictLogging:
 
               val (permitted, superfluous) =
                 potentialMatchesForSynchronisedFingerprint.splitAt(
-                  maximumNumberOfAmbiguousMatches
+                  maximumNumberOfMatchesForAGivenContent
                 )
 
               matchingFingerprintsAcrossSides(
@@ -1149,7 +1163,11 @@ object CodeMotionAnalysis extends StrictLogging:
                 rightFingerprints.tail,
                 if superfluous.isEmpty then
                   matches ++ permitted.map(Match.LeftAndRight.apply)
-                else matches
+                else
+                  logger.warn(
+                    s"Discarding ambiguous all-sides matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesForAGivenContent matches."
+                  )
+                  matches
               )
 
             case (Some(baseHead), Some(leftHead), Some(rightHead)) =>
