@@ -859,7 +859,7 @@ object CodeMotionAnalysis extends StrictLogging:
 
         def fingerprintStartIndices(
             elements: IndexedSeq[Element]
-        ): SortedMultiDict[BigInt, Int] =
+        ): collection.Seq[(BigInt, Int)] =
           require(elements.size >= windowSize)
 
           val rollingHashFactory = rollingHashFactoryCache.get(
@@ -881,7 +881,7 @@ object CodeMotionAnalysis extends StrictLogging:
 
           val rollingHash = rollingHashFactory()
 
-          val accumulatingResults = mutable.SortedMultiDict.empty[BigInt, Int]
+          val accumulatingResults = mutable.Buffer.empty[(BigInt, Int)]
 
           def updateFingerprint(elementIndex: Int): Unit =
             val elementBytes =
@@ -918,29 +918,27 @@ object CodeMotionAnalysis extends StrictLogging:
         def fingerprintSections(
             sources: Sources[Path, Element]
         ): SortedMultiDict[PotentialMatchKey, Section[Element]] =
-          sources.filesByPath
-            .filter { case (_, file) =>
-              val fileSize          = file.size
-              val minimumWindowSize = thresholdSizeForMatching(fileSize)
+          SortedMultiDict.from(
+            sources.filesByPath
+              .filter { case (_, file) =>
+                val fileSize          = file.size
+                val minimumWindowSize = thresholdSizeForMatching(fileSize)
 
-              minimumWindowSize to fileSize contains windowSize
-            }
-            .par
-            .map { case (path, file) =>
-              fingerprintStartIndices(file.content).map(
-                (fingerprint, fingerprintStartIndex) =>
-                  val section = sources
-                    .section(path)(fingerprintStartIndex, windowSize)
-                  PotentialMatchKey(
-                    fingerprint,
-                    impliedContent = section
-                  ) -> section
-              )
-            }
-            // This isn't quite the same as flat-mapping / flattening, because
-            // we want the type of the result to be a `SortedMultiDict`...
-            .reduceOption(_ concat _)
-            .getOrElse(SortedMultiDict.empty)
+                minimumWindowSize to fileSize contains windowSize
+              }
+              .par
+              .flatMap { case (path, file) =>
+                fingerprintStartIndices(file.content).map(
+                  (fingerprint, fingerprintStartIndex) =>
+                    val section = sources
+                      .section(path)(fingerprintStartIndex, windowSize)
+                    PotentialMatchKey(
+                      fingerprint,
+                      impliedContent = section
+                    ) -> section
+                )
+              }
+          )
         end fingerprintSections
 
         val baseSectionsByFingerprint  = fingerprintSections(baseSources)
