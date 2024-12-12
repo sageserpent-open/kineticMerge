@@ -174,10 +174,28 @@ object CodeMotionAnalysis extends StrictLogging:
       private val rollingHashFactoryCache: Cache[Int, RollingHash.Factory] =
         Caffeine.newBuilder().build()
 
-      def sizeOf(aMatch: PairwiseMatch): Int = aMatch match
-        case Match.BaseAndLeft(baseSection, _)  => baseSection.size
-        case Match.BaseAndRight(baseSection, _) => baseSection.size
-        case Match.LeftAndRight(leftSection, _) => leftSection.size
+      trait PathInclusions:
+        def isIncludedOnBase(basePath: Path): Boolean
+
+        def isIncludedOnLeft(leftPath: Path): Boolean
+
+        def isIncludedOnRight(rightPath: Path): Boolean
+      end PathInclusions
+
+      object PathInclusions:
+        val all: PathInclusions = new PathInclusions:
+          override def isIncludedOnBase(
+              basePath: Path
+          ): Boolean = true
+
+          override def isIncludedOnLeft(
+              leftPath: Path
+          ): Boolean = true
+
+          override def isIncludedOnRight(
+              rightPath: Path
+          ): Boolean = true
+      end PathInclusions
 
       // TODO - move this to the actual class, by analogy with
       // `withAllSmallFryMatches`...
@@ -211,7 +229,8 @@ object CodeMotionAnalysis extends StrictLogging:
             bestMatchSize: Int,
             looseExclusiveUpperBoundOnMaximumMatchSize: Int,
             guessAtOptimalMatchSize: Option[Int],
-            fallbackImprovedState: MatchesAndTheirSections
+            fallbackImprovedState: MatchesAndTheirSections,
+            pathInclusions: PathInclusions
         ): MatchesAndTheirSections =
           require(
             bestMatchSize < looseExclusiveUpperBoundOnMaximumMatchSize
@@ -252,9 +271,11 @@ object CodeMotionAnalysis extends StrictLogging:
             val MatchingResult(
               stateAfterTryingCandidate,
               numberOfMatchesForTheGivenWindowSize,
-              estimatedWindowSizeForOptimalMatch
+              estimatedWindowSizeForOptimalMatch,
+              pathInclusionsAfterTryingCandidate
             ) = matchesAndTheirSections.matchesForWindowSize(
-              candidateWindowSize
+              candidateWindowSize,
+              pathInclusions
             )
 
             estimatedWindowSizeForOptimalMatch match
@@ -262,11 +283,12 @@ object CodeMotionAnalysis extends StrictLogging:
                 // Failed to improve the match size, try again with the
                 // contracted upper bound.
                 keepTryingToImproveThis(
-                  bestMatchSize,
+                  bestMatchSize = bestMatchSize,
                   looseExclusiveUpperBoundOnMaximumMatchSize =
                     candidateWindowSize,
                   guessAtOptimalMatchSize = None,
-                  fallbackImprovedState
+                  fallbackImprovedState = fallbackImprovedState,
+                  pathInclusions = pathInclusions
                 )
               case Some(estimate)
                   if estimate == candidateWindowSize || 1 == numberOfMatchesForTheGivenWindowSize =>
@@ -295,7 +317,8 @@ object CodeMotionAnalysis extends StrictLogging:
                     bestMatchSize = candidateWindowSize,
                     looseExclusiveUpperBoundOnMaximumMatchSize,
                     guessAtOptimalMatchSize = Some(estimate),
-                    fallbackImprovedState = stateAfterTryingCandidate
+                    fallbackImprovedState = stateAfterTryingCandidate,
+                    pathInclusions = pathInclusionsAfterTryingCandidate
                   )
                 else
                   logger.debug(
@@ -305,7 +328,8 @@ object CodeMotionAnalysis extends StrictLogging:
                     bestMatchSize = candidateWindowSize,
                     looseExclusiveUpperBoundOnMaximumMatchSize,
                     guessAtOptimalMatchSize = None,
-                    fallbackImprovedState = stateAfterTryingCandidate
+                    fallbackImprovedState = stateAfterTryingCandidate,
+                    pathInclusions = pathInclusionsAfterTryingCandidate
                   )
                 end if
             end match
@@ -341,7 +365,8 @@ object CodeMotionAnalysis extends StrictLogging:
             minimumSureFireWindowSizeAcrossAllFilesOverAllSides - 1,
           looseExclusiveUpperBoundOnMaximumMatchSize,
           guessAtOptimalMatchSize = None,
-          fallbackImprovedState = matchesAndTheirSections
+          fallbackImprovedState = matchesAndTheirSections,
+          pathInclusions = PathInclusions.all
         )
       end withAllMatchesOfAtLeastTheSureFireWindowSize
 
@@ -665,7 +690,8 @@ object CodeMotionAnalysis extends StrictLogging:
       case class MatchingResult(
           matchesAndTheirSections: MatchesAndTheirSections,
           numberOfMatchesForTheGivenWindowSize: Int,
-          estimatedWindowSizeForOptimalMatch: Option[Int]
+          estimatedWindowSizeForOptimalMatch: Option[Int],
+          pathInclusions: PathInclusions
       ):
         matchesAndTheirSections.checkInvariant()
       end MatchingResult
@@ -808,9 +834,10 @@ object CodeMotionAnalysis extends StrictLogging:
         val MatchingResult(
           stateAfterTryingCandidate,
           numberOfMatchesForTheGivenWindowSize,
+          _,
           _
         ) =
-          this.matchesForWindowSize(candidateWindowSize)
+          this.matchesForWindowSize(candidateWindowSize, PathInclusions.all)
 
         if candidateWindowSize > minimumWindowSizeAcrossAllFilesOverAllSides
         then
@@ -844,7 +871,8 @@ object CodeMotionAnalysis extends StrictLogging:
       end withAllSmallFryMatches
 
       private def matchesForWindowSize(
-          windowSize: Int
+          windowSize: Int,
+          pathInclusions: PathInclusions
       ): MatchingResult =
         require(0 < windowSize)
 
@@ -916,15 +944,18 @@ object CodeMotionAnalysis extends StrictLogging:
         end fingerprintStartIndices
 
         def fingerprintSections(
-            sources: Sources[Path, Element]
+            sources: Sources[Path, Element],
+            pathIsIncluded: Path => Boolean
         ): SortedMultiDict[PotentialMatchKey, Section[Element]] =
           SortedMultiDict.from(
             sources.filesByPath
-              .filter { case (_, file) =>
-                val fileSize          = file.size
-                val minimumWindowSize = thresholdSizeForMatching(fileSize)
+              .filter { case (path, file) =>
+                pathIsIncluded(path) && {
+                  val fileSize          = file.size
+                  val minimumWindowSize = thresholdSizeForMatching(fileSize)
 
-                minimumWindowSize to fileSize contains windowSize
+                  minimumWindowSize to fileSize contains windowSize
+                }
               }
               .par
               .flatMap { case (path, file) =>
@@ -941,16 +972,20 @@ object CodeMotionAnalysis extends StrictLogging:
           )
         end fingerprintSections
 
-        val baseSectionsByFingerprint  = fingerprintSections(baseSources)
-        val leftSectionsByFingerprint  = fingerprintSections(leftSources)
-        val rightSectionsByFingerprint = fingerprintSections(rightSources)
+        val baseSectionsByFingerprint =
+          fingerprintSections(baseSources, pathInclusions.isIncludedOnBase)
+        val leftSectionsByFingerprint =
+          fingerprintSections(leftSources, pathInclusions.isIncludedOnLeft)
+        val rightSectionsByFingerprint =
+          fingerprintSections(rightSources, pathInclusions.isIncludedOnRight)
 
         @tailrec
         def matchingFingerprintsAcrossSides(
             baseFingerprints: Iterable[PotentialMatchKey],
             leftFingerprints: Iterable[PotentialMatchKey],
             rightFingerprints: Iterable[PotentialMatchKey],
-            matches: Set[GenericMatch]
+            matches: Set[GenericMatch],
+            haveTrimmedMatches: Boolean
         ): MatchingResult =
           // NOTE: when looking for matches, forbid any that would overlap or
           // subsume an existing match at a larger or smaller window size. It is
@@ -994,17 +1029,21 @@ object CodeMotionAnalysis extends StrictLogging:
                   maximumNumberOfMatchesSharingContent
                 )
 
-              matchingFingerprintsAcrossSides(
-                baseFingerprints.tail,
-                leftFingerprints.tail,
-                rightFingerprints.tail,
+              val (withAdditionalMatches, haveTrimmedAdditionalMatches) =
                 if superfluous.isEmpty then
-                  matches ++ permitted.map(Match.AllSides.apply)
+                  (matches ++ permitted.map(Match.AllSides.apply)) -> false
                 else
                   logger.warn(
                     s"Discarding ambiguous all-sides matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesSharingContent matches."
                   )
-                  matches
+                  matches -> true
+
+              matchingFingerprintsAcrossSides(
+                baseFingerprints.tail,
+                leftFingerprints.tail,
+                rightFingerprints.tail,
+                withAdditionalMatches,
+                haveTrimmedMatches || haveTrimmedAdditionalMatches
               )
 
             case (Some(baseHead), Some(leftHead), Some(rightHead))
@@ -1021,7 +1060,8 @@ object CodeMotionAnalysis extends StrictLogging:
                 baseFingerprints,
                 leftFingerprints,
                 rightFingerprints.tail,
-                matches
+                matches,
+                haveTrimmedMatches
               )
 
             case (Some(baseHead), Some(leftHead), _)
@@ -1048,17 +1088,21 @@ object CodeMotionAnalysis extends StrictLogging:
                   maximumNumberOfMatchesSharingContent
                 )
 
-              matchingFingerprintsAcrossSides(
-                baseFingerprints.tail,
-                leftFingerprints.tail,
-                rightFingerprints,
+              val (withAdditionalMatches, haveTrimmedAdditionalMatches) =
                 if superfluous.isEmpty then
-                  matches ++ permitted.map(Match.BaseAndLeft.apply)
+                  (matches ++ permitted.map(Match.BaseAndLeft.apply)) -> false
                 else
                   logger.warn(
                     s"Discarding ambiguous all-sides matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesSharingContent matches."
                   )
-                  matches
+                  matches -> true
+
+              matchingFingerprintsAcrossSides(
+                baseFingerprints.tail,
+                leftFingerprints.tail,
+                rightFingerprints,
+                withAdditionalMatches,
+                haveTrimmedMatches || haveTrimmedAdditionalMatches
               )
 
             case (Some(baseHead), Some(leftHead), Some(rightHead))
@@ -1075,7 +1119,8 @@ object CodeMotionAnalysis extends StrictLogging:
                 baseFingerprints,
                 leftFingerprints.tail,
                 rightFingerprints,
-                matches
+                matches,
+                haveTrimmedMatches
               )
 
             case (Some(baseHead), _, Some(rightHead))
@@ -1102,17 +1147,21 @@ object CodeMotionAnalysis extends StrictLogging:
                   maximumNumberOfMatchesSharingContent
                 )
 
-              matchingFingerprintsAcrossSides(
-                baseFingerprints.tail,
-                leftFingerprints,
-                rightFingerprints.tail,
+              val (withAdditionalMatches, haveTrimmedAdditionalMatches) =
                 if superfluous.isEmpty then
-                  matches ++ permitted.map(Match.BaseAndRight.apply)
+                  (matches ++ permitted.map(Match.BaseAndRight.apply)) -> false
                 else
                   logger.warn(
                     s"Discarding ambiguous all-sides matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesSharingContent matches."
                   )
-                  matches
+                  matches -> true
+
+              matchingFingerprintsAcrossSides(
+                baseFingerprints.tail,
+                leftFingerprints,
+                rightFingerprints.tail,
+                withAdditionalMatches,
+                haveTrimmedMatches || haveTrimmedAdditionalMatches
               )
 
             case (Some(baseHead), Some(leftHead), Some(rightHead))
@@ -1129,7 +1178,8 @@ object CodeMotionAnalysis extends StrictLogging:
                 baseFingerprints.tail,
                 leftFingerprints,
                 rightFingerprints,
-                matches
+                matches,
+                haveTrimmedMatches
               )
 
             case (_, Some(leftHead), Some(rightHead))
@@ -1156,17 +1206,21 @@ object CodeMotionAnalysis extends StrictLogging:
                   maximumNumberOfMatchesSharingContent
                 )
 
-              matchingFingerprintsAcrossSides(
-                baseFingerprints,
-                leftFingerprints.tail,
-                rightFingerprints.tail,
+              val (withAdditionalMatches, haveTrimmedAdditionalMatches) =
                 if superfluous.isEmpty then
-                  matches ++ permitted.map(Match.LeftAndRight.apply)
+                  (matches ++ permitted.map(Match.LeftAndRight.apply)) -> false
                 else
                   logger.warn(
                     s"Discarding ambiguous all-sides matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesSharingContent matches."
                   )
-                  matches
+                  matches -> true
+
+              matchingFingerprintsAcrossSides(
+                baseFingerprints,
+                leftFingerprints.tail,
+                rightFingerprints.tail,
+                withAdditionalMatches,
+                haveTrimmedMatches || haveTrimmedAdditionalMatches
               )
 
             case (Some(baseHead), Some(leftHead), Some(rightHead)) =>
@@ -1190,7 +1244,8 @@ object CodeMotionAnalysis extends StrictLogging:
                   baseFingerprints,
                   leftFingerprints.tail,
                   rightFingerprints,
-                  matches
+                  matches,
+                  haveTrimmedMatches
                 )
               // NOTE: just use `==` as we have already looked inside the
               // `PotentialMatchKey` instances - we just want to know which one
@@ -1201,14 +1256,16 @@ object CodeMotionAnalysis extends StrictLogging:
                   baseFingerprints,
                   leftFingerprints,
                   rightFingerprints.tail,
-                  matches
+                  matches,
+                  haveTrimmedMatches
                 )
               else
                 matchingFingerprintsAcrossSides(
                   baseFingerprints.tail,
                   leftFingerprints,
                   rightFingerprints,
-                  matches
+                  matches,
+                  haveTrimmedMatches
                 )
               end if
 
@@ -1222,14 +1279,16 @@ object CodeMotionAnalysis extends StrictLogging:
                   baseFingerprints.tail,
                   leftFingerprints,
                   rightFingerprints,
-                  matches
+                  matches,
+                  haveTrimmedMatches
                 )
               else
                 matchingFingerprintsAcrossSides(
                   baseFingerprints,
                   leftFingerprints.tail,
                   rightFingerprints,
-                  matches
+                  matches,
+                  haveTrimmedMatches
                 )
 
             case (Some(baseHead), None, Some(rightHead)) =>
@@ -1242,14 +1301,16 @@ object CodeMotionAnalysis extends StrictLogging:
                   baseFingerprints.tail,
                   leftFingerprints,
                   rightFingerprints,
-                  matches
+                  matches,
+                  haveTrimmedMatches
                 )
               else
                 matchingFingerprintsAcrossSides(
                   baseFingerprints,
                   leftFingerprints,
                   rightFingerprints.tail,
-                  matches
+                  matches,
+                  haveTrimmedMatches
                 )
 
             case (None, Some(leftHead), Some(rightHead)) =>
@@ -1262,20 +1323,22 @@ object CodeMotionAnalysis extends StrictLogging:
                   baseFingerprints,
                   leftFingerprints.tail,
                   rightFingerprints,
-                  matches
+                  matches,
+                  haveTrimmedMatches
                 )
               else
                 matchingFingerprintsAcrossSides(
                   baseFingerprints,
                   leftFingerprints,
                   rightFingerprints.tail,
-                  matches
+                  matches,
+                  haveTrimmedMatches
                 )
 
             case _ =>
               // There are no more opportunities to match a full triple or
               // just a pair, so this terminates the recursion.
-              withMatches(matches, windowSize)
+              withMatches(matches, windowSize, haveTrimmedMatches)
           end match
         end matchingFingerprintsAcrossSides
 
@@ -1283,13 +1346,15 @@ object CodeMotionAnalysis extends StrictLogging:
           baseSectionsByFingerprint.keySet,
           leftSectionsByFingerprint.keySet,
           rightSectionsByFingerprint.keySet,
-          matches = Set.empty
+          matches = Set.empty,
+          haveTrimmedMatches = false
         )
       end matchesForWindowSize
 
       private def withMatches(
           matches: collection.Set[GenericMatch],
-          windowSize: Int
+          windowSize: Int,
+          haveTrimmedMatches: Boolean
       ): MatchingResult =
         val (paredDownMatches, stabilized) =
           eatIntoLargerPairwiseMatchesUntilStabilized(windowSize)(
@@ -1312,12 +1377,69 @@ object CodeMotionAnalysis extends StrictLogging:
             // afterwards.
             .withoutRedundantPairwiseMatchesIn(paredDownMatches)
 
+        val pathInclusions =
+          if !haveTrimmedMatches then
+            case class PathInclusionsImplementation(
+                basePaths: Set[Path],
+                leftPaths: Set[Path],
+                rightPaths: Set[Path]
+            ) extends PathInclusions:
+              override def isIncludedOnBase(basePath: Path): Boolean =
+                basePaths.contains(basePath)
+
+              override def isIncludedOnLeft(leftPath: Path): Boolean =
+                leftPaths.contains(leftPath)
+
+              override def isIncludedOnRight(rightPath: Path): Boolean =
+                rightPaths.contains(rightPath)
+
+              def addPathOnBaseFor(
+                  baseSection: Section[Element]
+              ): PathInclusionsImplementation =
+                copy(basePaths = basePaths + baseSources.pathFor(baseSection))
+              def addPathOnLeftFor(
+                  leftSection: Section[Element]
+              ): PathInclusionsImplementation =
+                copy(leftPaths = leftPaths + leftSources.pathFor(leftSection))
+              def addPathOnRightFor(
+                  rightSection: Section[Element]
+              ): PathInclusionsImplementation =
+                copy(rightPaths =
+                  rightPaths + rightSources.pathFor(rightSection)
+                )
+            end PathInclusionsImplementation
+
+            paredDownMatches.foldLeft(
+              PathInclusionsImplementation(Set.empty, Set.empty, Set.empty)
+            )((partialPathInclusions, aMatch) =>
+              aMatch match
+                case Match.AllSides(baseSection, leftSection, rightSection) =>
+                  partialPathInclusions
+                    .addPathOnBaseFor(baseSection)
+                    .addPathOnLeftFor(leftSection)
+                    .addPathOnRightFor(rightSection)
+                case Match.BaseAndLeft(baseSection, leftSection) =>
+                  partialPathInclusions
+                    .addPathOnBaseFor(baseSection)
+                    .addPathOnLeftFor(leftSection)
+                case Match.BaseAndRight(baseSection, rightSection) =>
+                  partialPathInclusions
+                    .addPathOnBaseFor(baseSection)
+                    .addPathOnRightFor(rightSection)
+                case Match.LeftAndRight(leftSection, rightSection) =>
+                  partialPathInclusions
+                    .addPathOnLeftFor(leftSection)
+                    .addPathOnRightFor(rightSection)
+            )
+          else PathInclusions.all
+
         MatchingResult(
           matchesAndTheirSections = updatedMatchesAndTheirSections,
           numberOfMatchesForTheGivenWindowSize =
             matchesWithoutRedundantPairwiseMatches.size,
           estimatedWindowSizeForOptimalMatch =
-            estimateOptimalMatchSize(matchesWithoutRedundantPairwiseMatches)
+            estimateOptimalMatchSize(matchesWithoutRedundantPairwiseMatches),
+          pathInclusions = pathInclusions
         )
       end withMatches
 
