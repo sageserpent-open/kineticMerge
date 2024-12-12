@@ -459,7 +459,7 @@ object Main extends StrictLogging:
         4,
       thresholdSizeFractionForMatching: Double = 0,
       minimumAmbiguousMatchSize: Int = 10,
-      ambiguousMatchesThreshold: Int = 200
+      ambiguousMatchesThreshold: Int = 20
   )
 
   enum Change:
