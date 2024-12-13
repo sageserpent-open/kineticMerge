@@ -239,7 +239,14 @@ object MoveDestinationsReport:
                       sourceAnchor = source
                     )
                   )
-                case SpeculativeContentMigration.Edit(_, rightContent) =>
+                case SpeculativeContentMigration.Edit(_, rightContent)
+                    // NOTE: have to be careful here, as both a migrated
+                    // deletion with an edit on the same side as the move and a
+                    // migrated edit look like an edit versus deletion conflict.
+                    // If the content on the *opposite* side of the move is
+                    // empty, it is the former situation; we handle that with
+                    // the default.
+                    if rightContent.nonEmpty =>
                   moveDestinations.left.flatMap(moveDestination =>
                     Seq(
                       AnchoredMove(
@@ -292,7 +299,14 @@ object MoveDestinationsReport:
                       sourceAnchor = source
                     )
                   )
-                case SpeculativeContentMigration.Edit(leftContent, _) =>
+                case SpeculativeContentMigration.Edit(leftContent, _)
+                    // NOTE: have to be careful here, as both a migrated
+                    // deletion with an edit on the same side as the move and a
+                    // migrated edit look like an edit versus deletion conflict.
+                    // If the content on the *opposite* side of the move is
+                    // empty, it is the former situation; we handle that with
+                    // the default.
+                    if leftContent.nonEmpty =>
                   moveDestinations.right.flatMap(moveDestination =>
                     Seq(
                       AnchoredMove(
