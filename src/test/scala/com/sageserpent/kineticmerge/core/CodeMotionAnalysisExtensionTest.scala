@@ -28,6 +28,142 @@ object CodeMotionAnalysisExtensionTest:
 end CodeMotionAnalysisExtensionTest
 
 class CodeMotionAnalysisExtensionTest extends ProseExamples:
+  @TestFactory
+  def migrationScenariosFromExcalidrawDocuments(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0
+    )
+
+    Trials.api
+      .choose(
+        (
+          "ATheStripedMoverBC",
+          "ABCTheStripedMover",
+          "ABCTheStripedMover",
+          "ABCTheStripedMover",
+          "https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/coincidentMove.excalidraw.svg"
+        ),
+        (
+          "ATheStripedMoverBC",
+          "ABCTheStripedMover",
+          "TheStripedMoverABC",
+          "TheStripedMoverABCTheStripedMover",
+          "https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/divergentMoves.excalidraw.svg"
+        ),
+        (
+          "ATheStripedMoverBC",
+          "ABCTheStripedMover",
+          "ABC",
+          "ABC",
+          "https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/migratingADeletion.excalidraw.svg"
+        ),
+        (
+          "ATheStripedMoverBC",
+          "ATheCoincidentStripedEditBCTheStripedMover",
+          "ATheCoincidentStripedEditBC",
+          "ATheCoincidentStripedEditBC",
+          "https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/migratingADeletionWithACoincidentEdit.excalidraw.svg"
+        ),
+        (
+          "ATheStripedMoverBC",
+          "APBCTheStripedMover",
+          "ABC",
+          "APBC",
+          "https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/migratingADeletionWithAnEditOnTheMoveSide.excalidraw.svg"
+        ),
+        (
+          "ATheStripedMoverBC",
+          "ABCTheStripedMover",
+          "APBC",
+          "ABCP",
+          "https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/migratingAnEdit.excalidraw.svg"
+        ),
+        (
+          "ATheStripedMoverBC",
+          "APBCTheStripedMover",
+          "AQBC",
+          "APBCQ",
+          "https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/migratingAnEditWithAnEditOnTheMoveSide.excalidraw.svg"
+        ),
+        (
+          "ATheStripedMoverBC",
+          "ABCTheStripedMover",
+          "ATheStripedMoverBC",
+          "ABCTheStripedMover",
+          "https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/simpleMoveWithADeletionOnTheMoveSide.excalidraw.svg"
+        ),
+        (
+          "ATheStripedMoverBC",
+          "APBCTheStripedMover",
+          "ATheStripedMoverBC",
+          "APBCTheStripedMover",
+          "https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/simpleMoveWithAnEditOnTheMoveSide.excalidraw.svg"
+        )
+      )
+      .and(Trials.api.booleans)
+      .withLimit(20)
+      .dynamicTests {
+        case (
+              (baseText, leftText, rightText, expectedMergeText, link),
+              swapSides
+            ) =>
+          println(s"See: $link")
+
+          val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
+
+          val tokenRegex =
+            raw"TheStripedMover|TheCoincidentStripedEdit|.".r.anchored
+
+          def stuntDoubleTokens(content: String): Vector[Token] = tokenRegex
+            .findAllMatchIn(content)
+            .map(_.group(0))
+            .map(Token.Significant.apply)
+            .toVector
+
+          val baseSources = MappedContentSourcesOfTokens(
+            contentsByPath = Map(
+              placeholderPath -> stuntDoubleTokens(baseText)
+            ),
+            label = "base"
+          )
+
+          val leftSources = MappedContentSourcesOfTokens(
+            contentsByPath = Map(
+              placeholderPath -> stuntDoubleTokens(leftText)
+            ),
+            label = "left"
+          )
+
+          val rightSources = MappedContentSourcesOfTokens(
+            contentsByPath = Map(
+              placeholderPath -> stuntDoubleTokens(rightText)
+            ),
+            label = "right"
+          )
+
+          val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+            baseSources = baseSources,
+            leftSources = if swapSides then rightSources else leftSources,
+            rightSources = if swapSides then leftSources else rightSources
+          )(configuration): @unchecked
+
+          val (mergeResultsByPath, moveDestinationsReport) =
+            codeMotionAnalysis.merge
+
+          println(fansi.Color.Yellow(s"Final move destinations report...\n"))
+          println(
+            fansi.Color
+              .Green(moveDestinationsReport.summarizeInText.mkString("\n"))
+          )
+
+          verifyContent(placeholderPath, mergeResultsByPath)(
+            stuntDoubleTokens(expectedMergeText)
+          )
+      }
+  end migrationScenariosFromExcalidrawDocuments
+
   @Test
   def issue23BugReproduction(): Unit =
     val configuration = Configuration(
@@ -466,32 +602,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         verifyContent(placeholderPath, mergeResultsByPath)(expected, _ == _)
     }
   end whitespaceOnlyEditing
-
-  private def verifyContent(
-      path: FakePath,
-      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
-  )(
-      expectedTokens: IndexedSeq[Token],
-      equality: (Token, Token) => Boolean = Token.equality
-  ): Unit =
-    println(fansi.Color.Yellow(s"Checking $path...\n"))
-    println(fansi.Color.Yellow("Expected..."))
-    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
-
-    mergeResultsByPath(path) match
-      case FullyMerged(result) =>
-        println(fansi.Color.Yellow("Fully merged result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(result)))
-        assert(result.corresponds(expectedTokens)(equality))
-      case MergedWithConflicts(leftResult, rightResult) =>
-        println(fansi.Color.Red(s"Left result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
-        println(fansi.Color.Red(s"Right result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
-
-        fail("Should have seen a clean merge.")
-    end match
-  end verifyContent
 
   @TestFactory
   def whitespaceOnlyEditingWithCodeMotion(): DynamicTests =
@@ -1014,6 +1124,32 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       tokens(coincidencesExpectedMerge).get
     )
   end coincidences
+
+  private def verifyContent(
+      path: FakePath,
+      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
+  )(
+      expectedTokens: IndexedSeq[Token],
+      equality: (Token, Token) => Boolean = Token.equality
+  ): Unit =
+    println(fansi.Color.Yellow(s"Checking $path...\n"))
+    println(fansi.Color.Yellow("Expected..."))
+    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
+
+    mergeResultsByPath(path) match
+      case FullyMerged(result) =>
+        println(fansi.Color.Yellow("Fully merged result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(result)))
+        assert(result.corresponds(expectedTokens)(equality))
+      case MergedWithConflicts(leftResult, rightResult) =>
+        println(fansi.Color.Red(s"Left result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+        println(fansi.Color.Red(s"Right result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+        fail("Should have seen a clean merge.")
+    end match
+  end verifyContent
 
   @TestFactory
   def simpleCodeMotionAcrossAFileRenameExamples(): DynamicTests =
