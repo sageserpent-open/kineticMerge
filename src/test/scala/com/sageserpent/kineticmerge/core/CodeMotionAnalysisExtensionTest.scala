@@ -107,7 +107,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       .dynamicTests {
         case (
               (baseText, leftText, rightText, expectedMergeText, link),
-              swapSides
+              mirrorImage
             ) =>
           println(s"See: $link")
 
@@ -131,22 +131,26 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
           val leftSources = MappedContentSourcesOfTokens(
             contentsByPath = Map(
-              placeholderPath -> stuntDoubleTokens(leftText)
+              placeholderPath -> stuntDoubleTokens(
+                if mirrorImage then rightText else leftText
+              )
             ),
             label = "left"
           )
 
           val rightSources = MappedContentSourcesOfTokens(
             contentsByPath = Map(
-              placeholderPath -> stuntDoubleTokens(rightText)
+              placeholderPath -> stuntDoubleTokens(
+                if mirrorImage then leftText else rightText
+              )
             ),
             label = "right"
           )
 
           val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
             baseSources = baseSources,
-            leftSources = if swapSides then rightSources else leftSources,
-            rightSources = if swapSides then leftSources else rightSources
+            leftSources = leftSources,
+            rightSources = rightSources
           )(configuration): @unchecked
 
           val (mergeResultsByPath, moveDestinationsReport) =
@@ -780,7 +784,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
                 rightContent,
                 expectedMergeContent
               ),
-              swapSides
+              mirrorImage
             ) =>
           println(fansi.Color.Yellow(s"*** $label ***"))
 
@@ -793,7 +797,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
           val leftSources = MappedContentSourcesOfTokens(
             contentsByPath = Map(
-              renamedPath -> tokens(leftContent).get
+              renamedPath -> tokens(
+                if mirrorImage then rightContent else leftContent
+              ).get
             ),
             label = "left"
           )
@@ -801,7 +807,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           val rightSources = MappedContentSourcesOfTokens(
             contentsByPath = Map(
               originalPath -> tokens(
-                rightContent
+                if mirrorImage then leftContent else rightContent
               ).get
             ),
             label = "right"
@@ -809,8 +815,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
           val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
             baseSources = baseSources,
-            leftSources = if swapSides then rightSources else leftSources,
-            rightSources = if swapSides then leftSources else rightSources
+            leftSources = leftSources,
+            rightSources = rightSources
           )(configuration): @unchecked
 
           val (mergeResultsByPath, moveDestinationsReport) =
@@ -1337,7 +1343,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
                 rightOriginalContent,
                 expectedRenamedMergeContent
               ),
-              swapSides
+              mirrorImage
             ) =>
           println(fansi.Color.Yellow(s"*** $label ***"))
 
@@ -1350,7 +1356,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
           val leftSources = MappedContentSourcesOfTokens(
             contentsByPath = Map(
-              renamedPath -> tokens(leftRenamedContent).get
+              renamedPath -> tokens(
+                if mirrorImage then rightOriginalContent else leftRenamedContent
+              ).get
             ),
             label = "left"
           )
@@ -1358,7 +1366,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           val rightSources = MappedContentSourcesOfTokens(
             contentsByPath = Map(
               originalPath -> tokens(
-                rightOriginalContent
+                if mirrorImage then leftRenamedContent else rightOriginalContent
               ).get
             ),
             label = "right"
@@ -1366,8 +1374,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
           val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
             baseSources = baseSources,
-            leftSources = if swapSides then rightSources else leftSources,
-            rightSources = if swapSides then leftSources else rightSources
+            leftSources = leftSources,
+            rightSources = rightSources
           )(configuration): @unchecked
 
           val (mergeResultsByPath, moveDestinationsReport) =
@@ -1573,7 +1581,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
                 rightOriginalContent,
                 expectedRenamedMergeContent
               ),
-              swapSides
+              mirrorImage
             ) =>
           println(fansi.Color.Yellow(s"*** $label ***"))
 
@@ -1585,27 +1593,48 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
             label = "base"
           )
 
-          val leftSources = MappedContentSourcesOfTokens(
-            contentsByPath = Map(
-              renamedPath   -> tokens(leftRenamedContent).get,
-              forwardedPath -> tokens(leftForwardedContent).get
-            ),
-            label = "left"
-          )
-
-          val rightSources = MappedContentSourcesOfTokens(
-            contentsByPath = Map(
-              originalPath -> tokens(
-                rightOriginalContent
-              ).get
-            ),
-            label = "right"
-          )
+          val (leftSources, rightSources) =
+            if mirrorImage then
+              (
+                MappedContentSourcesOfTokens(
+                  contentsByPath = Map(
+                    originalPath -> tokens(
+                      rightOriginalContent
+                    ).get
+                  ),
+                  label = "left"
+                ),
+                MappedContentSourcesOfTokens(
+                  contentsByPath = Map(
+                    renamedPath   -> tokens(leftRenamedContent).get,
+                    forwardedPath -> tokens(leftForwardedContent).get
+                  ),
+                  label = "right"
+                )
+              )
+            else
+              (
+                MappedContentSourcesOfTokens(
+                  contentsByPath = Map(
+                    renamedPath   -> tokens(leftRenamedContent).get,
+                    forwardedPath -> tokens(leftForwardedContent).get
+                  ),
+                  label = "left"
+                ),
+                MappedContentSourcesOfTokens(
+                  contentsByPath = Map(
+                    originalPath -> tokens(
+                      rightOriginalContent
+                    ).get
+                  ),
+                  label = "right"
+                )
+              )
 
           val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
             baseSources = baseSources,
-            leftSources = if swapSides then rightSources else leftSources,
-            rightSources = if swapSides then leftSources else rightSources
+            leftSources = leftSources,
+            rightSources = rightSources
           )(configuration): @unchecked
 
           val (mergeResultsByPath, moveDestinationsReport) =
