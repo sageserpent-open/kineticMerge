@@ -115,7 +115,7 @@ lazy val root = (project in file("."))
     libraryDependencies +=
       "org.scala-lang.modules" %% "scala-parallel-collections" % "1.0.4",
     libraryDependencies += "eu.timepit"      %% "refined"   % "0.11.2",
-    libraryDependencies += "com.sageserpent" %% "americium" % "1.19.8" % Test,
+    libraryDependencies += "com.sageserpent" %% "americium" % "1.19.9" % Test,
     libraryDependencies += "com.eed3si9n.expecty" %% "expecty" % "0.17.0" % Test,
     libraryDependencies += "com.github.sbt.junit" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
     Test / test / logLevel    := Level.Error,
