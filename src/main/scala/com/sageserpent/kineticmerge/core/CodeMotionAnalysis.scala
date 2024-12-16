@@ -14,8 +14,8 @@ import monocle.syntax.all.*
 import java.lang.Byte as JavaByte
 import scala.annotation.tailrec
 import scala.collection.immutable.{MultiDict, SortedMultiSet}
+import scala.collection.mutable
 import scala.collection.parallel.CollectionConverters.*
-import scala.collection.{SortedMultiDict, mutable}
 import scala.util.Using
 
 trait CodeMotionAnalysis[Path, Element]:
@@ -946,8 +946,8 @@ object CodeMotionAnalysis extends StrictLogging:
         def sectionsByPotentialMatchKey(
             sources: Sources[Path, Element],
             pathIsIncluded: Path => Boolean
-        ): SortedMultiDict[PotentialMatchKey, Section[Element]] =
-          SortedMultiDict.from(
+        ): MultiDict[PotentialMatchKey, Section[Element]] =
+          MultiDict.from(
             sources.filesByPath
               .filter { case (path, file) =>
                 pathIsIncluded(path) && {
@@ -988,387 +988,244 @@ object CodeMotionAnalysis extends StrictLogging:
             pathInclusions.isIncludedOnRight
           )
 
-        @tailrec
         def matchKeysAcrossSides(
-            basePotentialMatchKeys: Iterable[PotentialMatchKey],
-            leftPotentialMatchKeys: Iterable[PotentialMatchKey],
-            rightPotentialMatchKeys: Iterable[PotentialMatchKey],
-            matches: Set[GenericMatch],
+            basePotentialMatchKeys: collection.Set[PotentialMatchKey],
+            leftPotentialMatchKeys: collection.Set[PotentialMatchKey],
+            rightPotentialMatchKeys: collection.Set[PotentialMatchKey],
             haveTrimmedMatches: Boolean
         ): MatchingResult =
-          // NOTE: when looking for matches, forbid any that would overlap or
-          // subsume an existing match at a larger or smaller window size. It is
-          // expected to find overlapping matches at the same window size,
-          // especially when the optimal match size being searched for is
-          // greater than `windowSize`.
-          (
-            basePotentialMatchKeys.headOption,
-            leftPotentialMatchKeys.headOption,
-            rightPotentialMatchKeys.headOption
-          ) match
-            case (
-                  Some(basePotentialMatchKey),
-                  Some(leftPotentialMatchKey),
-                  Some(rightPotentialMatchKey)
+          val acrossBaseAndLeft =
+            if basePotentialMatchKeys.size < leftPotentialMatchKeys.size then
+              basePotentialMatchKeys intersect leftPotentialMatchKeys
+            else leftPotentialMatchKeys intersect basePotentialMatchKeys
+
+          val acrossBaseAndRight =
+            if basePotentialMatchKeys.size < rightPotentialMatchKeys.size then
+              basePotentialMatchKeys intersect rightPotentialMatchKeys
+            else rightPotentialMatchKeys intersect basePotentialMatchKeys
+
+          val acrossLeftAndRight =
+            if leftPotentialMatchKeys.size < rightPotentialMatchKeys.size then
+              leftPotentialMatchKeys intersect rightPotentialMatchKeys
+            else rightPotentialMatchKeys intersect leftPotentialMatchKeys
+
+          val Seq(smallest, intermediate, largest) = Seq(
+            acrossBaseAndLeft,
+            acrossBaseAndRight,
+            acrossLeftAndRight
+          ).sortBy(_.size)
+
+          val acrossAllSides = smallest intersect intermediate intersect largest
+
+          val acrossJustBaseAndLeft = acrossBaseAndLeft diff acrossAllSides
+
+          val acrossJustBaseAndRight = acrossBaseAndRight diff acrossAllSides
+
+          val acrossJustLeftAndRight = acrossLeftAndRight diff acrossAllSides
+
+          case class MatchesFold(
+              matches: Set[GenericMatch],
+              haveTrimmedMatches: Boolean
+          )
+
+          object MatchesFold:
+            def empty: MatchesFold =
+              MatchesFold(matches = Set.empty, haveTrimmedMatches = false)
+          end MatchesFold
+
+          def allSidesMatchesFrom(
+              fold: MatchesFold,
+              matchKeyAcrossAllSides: PotentialMatchKey
+          ): MatchesFold =
+            val potentialMatchesForSynchronisedFingerprint =
+              val baseSectionsThatDoNotOverlap = LazyList
+                .from(
+                  baseSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
                 )
-                if potentialMatchKeyOrder.eqv(
-                  basePotentialMatchKey,
-                  leftPotentialMatchKey
-                ) && potentialMatchKeyOrder.eqv(
-                  basePotentialMatchKey,
-                  rightPotentialMatchKey
-                ) =>
-              // Synchronised the fingerprints across all three sides...
-              val potentialMatchesForSynchronisedFingerprint =
-                val baseSectionsThatDoNotOverlap = LazyList
-                  .from(
-                    baseSectionsByPotentialMatchKey.get(basePotentialMatchKey)
-                  )
-                  .filterNot(overlapsOrIsSubsumedByOnBase)
+                .filterNot(overlapsOrIsSubsumedByOnBase)
 
-                val leftSectionsThatDoNotOverlap = LazyList
-                  .from(
-                    leftSectionsByPotentialMatchKey.get(leftPotentialMatchKey)
-                  )
-                  .filterNot(overlapsOrIsSubsumedByOnLeft)
-
-                val rightSectionsThatDoNotOverlap = LazyList
-                  .from(
-                    rightSectionsByPotentialMatchKey.get(rightPotentialMatchKey)
-                  )
-                  .filterNot(overlapsOrIsSubsumedByOnRight)
-
-                for
-                  baseSection  <- baseSectionsThatDoNotOverlap
-                  leftSection  <- leftSectionsThatDoNotOverlap
-                  rightSection <- rightSectionsThatDoNotOverlap
-                yield (baseSection, leftSection, rightSection)
-                end for
-              end potentialMatchesForSynchronisedFingerprint
-
-              val (permitted, superfluous) =
-                potentialMatchesForSynchronisedFingerprint.splitAt(
-                  maximumNumberOfMatchesSharingContent
+              val leftSectionsThatDoNotOverlap = LazyList
+                .from(
+                  leftSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
                 )
+                .filterNot(overlapsOrIsSubsumedByOnLeft)
 
-              val (withAdditionalMatches, haveTrimmedAdditionalMatches) =
-                if superfluous.isEmpty then
-                  (matches ++ permitted.map(Match.AllSides.apply)) -> false
-                else
-                  logger.warn(
-                    s"Discarding ambiguous all-sides matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesSharingContent matches."
-                  )
-                  matches -> true
+              val rightSectionsThatDoNotOverlap = LazyList
+                .from(
+                  rightSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
+                )
+                .filterNot(overlapsOrIsSubsumedByOnRight)
 
-              matchKeysAcrossSides(
-                basePotentialMatchKeys.tail,
-                leftPotentialMatchKeys.tail,
-                rightPotentialMatchKeys.tail,
-                withAdditionalMatches,
-                haveTrimmedMatches || haveTrimmedAdditionalMatches
+              for
+                baseSection  <- baseSectionsThatDoNotOverlap
+                leftSection  <- leftSectionsThatDoNotOverlap
+                rightSection <- rightSectionsThatDoNotOverlap
+              yield (baseSection, leftSection, rightSection)
+              end for
+            end potentialMatchesForSynchronisedFingerprint
+
+            val (permitted, superfluous) =
+              potentialMatchesForSynchronisedFingerprint.splitAt(
+                maximumNumberOfMatchesSharingContent
               )
 
-            case (Some(baseHead), Some(leftHead), Some(rightHead))
-                if potentialMatchKeyOrder.eqv(
-                  baseHead,
-                  leftHead
-                ) && potentialMatchKeyOrder.gt(
-                  baseHead,
-                  rightHead
-                ) =>
-              // Tentatively synchronised the fingerprints between the base and
-              // left, need to advance the right to resolve ...
-              matchKeysAcrossSides(
-                basePotentialMatchKeys,
-                leftPotentialMatchKeys,
-                rightPotentialMatchKeys.tail,
-                matches,
-                haveTrimmedMatches
+            if superfluous.isEmpty then
+              fold.copy(matches =
+                fold.matches ++ permitted.map(Match.AllSides.apply)
+              )
+            else
+              logger.warn(
+                s"Discarding ambiguous all-sides matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesSharingContent matches."
+              )
+              fold.copy(haveTrimmedMatches = true)
+            end if
+          end allSidesMatchesFrom
+
+          def baseAndLeftMatchesFrom(
+              fold: MatchesFold,
+              matchKeyAcrossAllSides: PotentialMatchKey
+          ): MatchesFold =
+            val potentialMatchesForSynchronisedFingerprint =
+              val baseSectionsThatDoNotOverlap = LazyList
+                .from(
+                  baseSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
+                )
+                .filterNot(overlapsOrIsSubsumedByOnBase)
+
+              val leftSectionsThatDoNotOverlap = LazyList
+                .from(
+                  leftSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
+                )
+                .filterNot(overlapsOrIsSubsumedByOnLeft)
+
+              for
+                baseSection <- baseSectionsThatDoNotOverlap
+                leftSection <- leftSectionsThatDoNotOverlap
+              yield (baseSection, leftSection)
+              end for
+            end potentialMatchesForSynchronisedFingerprint
+
+            val (permitted, superfluous) =
+              potentialMatchesForSynchronisedFingerprint.splitAt(
+                maximumNumberOfMatchesSharingContent
               )
 
-            case (Some(baseHead), Some(leftHead), _)
-                if potentialMatchKeyOrder.eqv(baseHead, leftHead) =>
-              // Synchronised the fingerprints between the base and left...
-              val potentialMatchesForSynchronisedFingerprint =
-                val baseSectionsThatDoNotOverlap = LazyList
-                  .from(baseSectionsByPotentialMatchKey.get(baseHead))
-                  .filterNot(overlapsOrIsSubsumedByOnBase)
+            if superfluous.isEmpty then
+              fold.copy(matches =
+                fold.matches ++ permitted.map(Match.BaseAndLeft.apply)
+              )
+            else
+              logger.warn(
+                s"Discarding ambiguous base-left matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesSharingContent matches."
+              )
+              fold.copy(haveTrimmedMatches = true)
+            end if
+          end baseAndLeftMatchesFrom
 
-                val leftSectionsThatDoNotOverlap = LazyList
-                  .from(leftSectionsByPotentialMatchKey.get(leftHead))
-                  .filterNot(overlapsOrIsSubsumedByOnLeft)
-
-                for
-                  baseSection <- baseSectionsThatDoNotOverlap
-                  leftSection <- leftSectionsThatDoNotOverlap
-                yield (baseSection, leftSection)
-                end for
-              end potentialMatchesForSynchronisedFingerprint
-
-              val (permitted, superfluous) =
-                potentialMatchesForSynchronisedFingerprint.splitAt(
-                  maximumNumberOfMatchesSharingContent
+          def baseAndRightMatchesFrom(
+              fold: MatchesFold,
+              matchKeyAcrossAllSides: PotentialMatchKey
+          ): MatchesFold =
+            val potentialMatchesForSynchronisedFingerprint =
+              val baseSectionsThatDoNotOverlap = LazyList
+                .from(
+                  baseSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
                 )
+                .filterNot(overlapsOrIsSubsumedByOnBase)
 
-              val (withAdditionalMatches, haveTrimmedAdditionalMatches) =
-                if superfluous.isEmpty then
-                  (matches ++ permitted.map(Match.BaseAndLeft.apply)) -> false
-                else
-                  logger.warn(
-                    s"Discarding ambiguous all-sides matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesSharingContent matches."
+              val rightSectionsThatDoNotOverlap = LazyList
+                .from(
+                  rightSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
+                )
+                .filterNot(overlapsOrIsSubsumedByOnRight)
+
+              for
+                baseSection  <- baseSectionsThatDoNotOverlap
+                rightSection <- rightSectionsThatDoNotOverlap
+              yield (baseSection, rightSection)
+              end for
+            end potentialMatchesForSynchronisedFingerprint
+
+            val (permitted, superfluous) =
+              potentialMatchesForSynchronisedFingerprint.splitAt(
+                maximumNumberOfMatchesSharingContent
+              )
+
+            if superfluous.isEmpty then
+              fold.copy(matches =
+                fold.matches ++ permitted.map(Match.BaseAndRight.apply)
+              )
+            else
+              logger.warn(
+                s"Discarding ambiguous base-right matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesSharingContent matches."
+              )
+              fold.copy(haveTrimmedMatches = true)
+            end if
+          end baseAndRightMatchesFrom
+
+          def leftAndRightMatchesFrom(
+              fold: MatchesFold,
+              matchKeyAcrossAllSides: PotentialMatchKey
+          ): MatchesFold =
+            val potentialMatchesForSynchronisedFingerprint =
+              val leftSectionsThatDoNotOverlap = LazyList
+                .from(
+                  leftSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
+                )
+                .filterNot(overlapsOrIsSubsumedByOnLeft)
+
+              val rightSectionsThatDoNotOverlap = LazyList
+                .from(
+                  rightSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
+                )
+                .filterNot(overlapsOrIsSubsumedByOnRight)
+
+              for
+                leftSection  <- leftSectionsThatDoNotOverlap
+                rightSection <- rightSectionsThatDoNotOverlap
+              yield (leftSection, rightSection)
+              end for
+            end potentialMatchesForSynchronisedFingerprint
+
+            val (permitted, superfluous) =
+              potentialMatchesForSynchronisedFingerprint.splitAt(
+                maximumNumberOfMatchesSharingContent
+              )
+
+            if superfluous.isEmpty then
+              fold.copy(matches =
+                fold.matches ++ permitted.map(Match.LeftAndRight.apply)
+              )
+            else
+              logger.warn(
+                s"Discarding ambiguous left-right matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesSharingContent matches."
+              )
+              fold.copy(haveTrimmedMatches = true)
+            end if
+          end leftAndRightMatchesFrom
+
+          val withAllMatches =
+            acrossJustLeftAndRight.foldLeft(
+              acrossJustBaseAndRight.foldLeft(
+                acrossJustBaseAndLeft.foldLeft(
+                  acrossAllSides.foldLeft(MatchesFold.empty)(
+                    allSidesMatchesFrom
                   )
-                  matches -> true
+                )(baseAndLeftMatchesFrom)
+              )(baseAndRightMatchesFrom)
+            )(leftAndRightMatchesFrom)
 
-              matchKeysAcrossSides(
-                basePotentialMatchKeys.tail,
-                leftPotentialMatchKeys.tail,
-                rightPotentialMatchKeys,
-                withAdditionalMatches,
-                haveTrimmedMatches || haveTrimmedAdditionalMatches
-              )
-
-            case (Some(baseHead), Some(leftHead), Some(rightHead))
-                if potentialMatchKeyOrder.eqv(
-                  baseHead,
-                  rightHead
-                ) && potentialMatchKeyOrder.gt(
-                  baseHead,
-                  leftHead
-                ) =>
-              // Tentatively synchronised the fingerprints between the base and
-              // right, need to advance the left to resolve ...
-              matchKeysAcrossSides(
-                basePotentialMatchKeys,
-                leftPotentialMatchKeys.tail,
-                rightPotentialMatchKeys,
-                matches,
-                haveTrimmedMatches
-              )
-
-            case (Some(baseHead), _, Some(rightHead))
-                if potentialMatchKeyOrder.eqv(baseHead, rightHead) =>
-              // Synchronised the fingerprints between the base and right...
-              val potentialMatchesForSynchronisedFingerprint =
-                val baseSectionsThatDoNotOverlap = LazyList
-                  .from(baseSectionsByPotentialMatchKey.get(baseHead))
-                  .filterNot(overlapsOrIsSubsumedByOnBase)
-
-                val rightSectionsThatDoNotOverlap = LazyList
-                  .from(rightSectionsByPotentialMatchKey.get(rightHead))
-                  .filterNot(overlapsOrIsSubsumedByOnRight)
-
-                for
-                  baseSection  <- baseSectionsThatDoNotOverlap
-                  rightSection <- rightSectionsThatDoNotOverlap
-                yield (baseSection, rightSection)
-                end for
-              end potentialMatchesForSynchronisedFingerprint
-
-              val (permitted, superfluous) =
-                potentialMatchesForSynchronisedFingerprint.splitAt(
-                  maximumNumberOfMatchesSharingContent
-                )
-
-              val (withAdditionalMatches, haveTrimmedAdditionalMatches) =
-                if superfluous.isEmpty then
-                  (matches ++ permitted.map(Match.BaseAndRight.apply)) -> false
-                else
-                  logger.warn(
-                    s"Discarding ambiguous all-sides matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesSharingContent matches."
-                  )
-                  matches -> true
-
-              matchKeysAcrossSides(
-                basePotentialMatchKeys.tail,
-                leftPotentialMatchKeys,
-                rightPotentialMatchKeys.tail,
-                withAdditionalMatches,
-                haveTrimmedMatches || haveTrimmedAdditionalMatches
-              )
-
-            case (Some(baseHead), Some(leftHead), Some(rightHead))
-                if potentialMatchKeyOrder.eqv(
-                  leftHead,
-                  rightHead
-                ) && potentialMatchKeyOrder.gt(
-                  leftHead,
-                  baseHead
-                ) =>
-              // Tentatively synchronised the fingerprints between the left and
-              // right, need to advance the base to resolve ...
-              matchKeysAcrossSides(
-                basePotentialMatchKeys.tail,
-                leftPotentialMatchKeys,
-                rightPotentialMatchKeys,
-                matches,
-                haveTrimmedMatches
-              )
-
-            case (_, Some(leftHead), Some(rightHead))
-                if potentialMatchKeyOrder.eqv(leftHead, rightHead) =>
-              // Synchronised the fingerprints between the left and right...
-              val potentialMatchesForSynchronisedFingerprint =
-                val leftSectionsThatDoNotOverlap = LazyList
-                  .from(leftSectionsByPotentialMatchKey.get(leftHead))
-                  .filterNot(overlapsOrIsSubsumedByOnLeft)
-
-                val rightSectionsThatDoNotOverlap = LazyList
-                  .from(rightSectionsByPotentialMatchKey.get(rightHead))
-                  .filterNot(overlapsOrIsSubsumedByOnRight)
-
-                for
-                  leftSection  <- leftSectionsThatDoNotOverlap
-                  rightSection <- rightSectionsThatDoNotOverlap
-                yield (leftSection, rightSection)
-                end for
-              end potentialMatchesForSynchronisedFingerprint
-
-              val (permitted, superfluous) =
-                potentialMatchesForSynchronisedFingerprint.splitAt(
-                  maximumNumberOfMatchesSharingContent
-                )
-
-              val (withAdditionalMatches, haveTrimmedAdditionalMatches) =
-                if superfluous.isEmpty then
-                  (matches ++ permitted.map(Match.LeftAndRight.apply)) -> false
-                else
-                  logger.warn(
-                    s"Discarding ambiguous all-sides matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesSharingContent matches."
-                  )
-                  matches -> true
-
-              matchKeysAcrossSides(
-                basePotentialMatchKeys,
-                leftPotentialMatchKeys.tail,
-                rightPotentialMatchKeys.tail,
-                withAdditionalMatches,
-                haveTrimmedMatches || haveTrimmedAdditionalMatches
-              )
-
-            case (Some(baseHead), Some(leftHead), Some(rightHead)) =>
-              // All the fingerprints disagree, so advance the side with the
-              // minimum fingerprint to see if it can catch up and
-              // synchronise...
-
-              val minimumFingerprint =
-                potentialMatchKeyOrder.min(
-                  baseHead,
-                  potentialMatchKeyOrder
-                    .min(leftHead, rightHead)
-                )
-
-              // NOTE: just use `==` as we have already looked inside the
-              // `PotentialMatchKey` instances - we just want to know which one
-              // was the minimum.
-              if leftHead == minimumFingerprint
-              then
-                matchKeysAcrossSides(
-                  basePotentialMatchKeys,
-                  leftPotentialMatchKeys.tail,
-                  rightPotentialMatchKeys,
-                  matches,
-                  haveTrimmedMatches
-                )
-              // NOTE: just use `==` as we have already looked inside the
-              // `PotentialMatchKey` instances - we just want to know which one
-              // was the minimum.
-              else if rightHead == minimumFingerprint
-              then
-                matchKeysAcrossSides(
-                  basePotentialMatchKeys,
-                  leftPotentialMatchKeys,
-                  rightPotentialMatchKeys.tail,
-                  matches,
-                  haveTrimmedMatches
-                )
-              else
-                matchKeysAcrossSides(
-                  basePotentialMatchKeys.tail,
-                  leftPotentialMatchKeys,
-                  rightPotentialMatchKeys,
-                  matches,
-                  haveTrimmedMatches
-                )
-              end if
-
-            case (Some(baseHead), Some(leftHead), None) =>
-              // The base and left fingerprints disagree, so advance the side
-              // with the minimum fingerprint to see if it can catch up and
-              // synchronise...
-              if potentialMatchKeyOrder.lt(baseHead, leftHead)
-              then
-                matchKeysAcrossSides(
-                  basePotentialMatchKeys.tail,
-                  leftPotentialMatchKeys,
-                  rightPotentialMatchKeys,
-                  matches,
-                  haveTrimmedMatches
-                )
-              else
-                matchKeysAcrossSides(
-                  basePotentialMatchKeys,
-                  leftPotentialMatchKeys.tail,
-                  rightPotentialMatchKeys,
-                  matches,
-                  haveTrimmedMatches
-                )
-
-            case (Some(baseHead), None, Some(rightHead)) =>
-              // The base and right fingerprints disagree, so advance the side
-              // with the minimum fingerprint to see if it can catch up and
-              // synchronise...
-              if potentialMatchKeyOrder.lt(baseHead, rightHead)
-              then
-                matchKeysAcrossSides(
-                  basePotentialMatchKeys.tail,
-                  leftPotentialMatchKeys,
-                  rightPotentialMatchKeys,
-                  matches,
-                  haveTrimmedMatches
-                )
-              else
-                matchKeysAcrossSides(
-                  basePotentialMatchKeys,
-                  leftPotentialMatchKeys,
-                  rightPotentialMatchKeys.tail,
-                  matches,
-                  haveTrimmedMatches
-                )
-
-            case (None, Some(leftHead), Some(rightHead)) =>
-              // The left and right fingerprints disagree, so advance the side
-              // with the minimum fingerprint to see if it can catch up and
-              // synchronise...
-              if potentialMatchKeyOrder.lt(leftHead, rightHead)
-              then
-                matchKeysAcrossSides(
-                  basePotentialMatchKeys,
-                  leftPotentialMatchKeys.tail,
-                  rightPotentialMatchKeys,
-                  matches,
-                  haveTrimmedMatches
-                )
-              else
-                matchKeysAcrossSides(
-                  basePotentialMatchKeys,
-                  leftPotentialMatchKeys,
-                  rightPotentialMatchKeys.tail,
-                  matches,
-                  haveTrimmedMatches
-                )
-
-            case _ =>
-              // There are no more opportunities to match a full triple or
-              // just a pair, so this terminates the recursion.
-              withMatches(matches, windowSize, haveTrimmedMatches)
-          end match
+          withMatches(
+            withAllMatches.matches,
+            windowSize,
+            withAllMatches.haveTrimmedMatches
+          )
         end matchKeysAcrossSides
 
         matchKeysAcrossSides(
           baseSectionsByPotentialMatchKey.keySet,
           leftSectionsByPotentialMatchKey.keySet,
           rightSectionsByPotentialMatchKey.keySet,
-          matches = Set.empty,
           haveTrimmedMatches = false
         )
       end matchesForWindowSize
@@ -1913,17 +1770,12 @@ object CodeMotionAnalysis extends StrictLogging:
       end withoutTheseMatches
     end MatchesAndTheirSections
 
-    given potentialMatchKeyOrder: Order[PotentialMatchKey] =
-      Order.whenEqual(
-        Order.by(_.fingerprint),
-        // NOTE: need the pesky type ascription because `Order` is invariant on
-        // its type parameter.
-        Order.by(
-          _.impliedContent.content
-            .take(tiebreakContentSamplingLimit): Seq[Element]
+    object PotentialMatchKey:
+      val impliedContentEquality: Eq[Section[Element]] =
+        Eq.by[Section[Element], Seq[Element]](
+          _.content.take(tiebreakContentSamplingLimit)
         )
-      )
-    end potentialMatchKeyOrder
+    end PotentialMatchKey
 
     // NOTE: this is subtle - this type is used as an ordered key to find
     // matches across sides; fingerprints can and do collide, so we need the
@@ -1942,7 +1794,31 @@ object CodeMotionAnalysis extends StrictLogging:
     case class PotentialMatchKey(
         fingerprint: BigInt,
         impliedContent: Section[Element]
-    )
+    ):
+      lazy private val cachedHashCode: Int =
+        val hasher = hashFunction.newHasher()
+
+        hasher.putBytes(fingerprint.toByteArray)
+
+        impliedContent.content
+          .take(tiebreakContentSamplingLimit)
+          .foreach(hasher.putObject(_, summon[Funnel[Element]]))
+
+        hasher.hash().asInt()
+      end cachedHashCode
+
+      override def equals(another: Any): Boolean =
+        another.asInstanceOf[Matchable] match
+          case PotentialMatchKey(anotherFingerprint, anotherImpliedContent) =>
+            fingerprint == anotherFingerprint && PotentialMatchKey.impliedContentEquality
+              .eqv(
+                impliedContent,
+                anotherImpliedContent
+              )
+          case _ => false
+
+      override def hashCode(): Int = cachedHashCode
+    end PotentialMatchKey
 
     val matchesAndTheirSections =
       val withAllMatchesOfAtLeastTheSureFireWindowSize =
