@@ -1009,13 +1009,13 @@ object CodeMotionAnalysis extends StrictLogging:
               leftPotentialMatchKeys intersect rightPotentialMatchKeys
             else rightPotentialMatchKeys intersect leftPotentialMatchKeys
 
-          val Seq(smallest, intermediate, largest) = Seq(
+          val Seq(smallest, intermediate, _) = Seq(
             acrossBaseAndLeft,
             acrossBaseAndRight,
             acrossLeftAndRight
           ).sortBy(_.size)
 
-          val acrossAllSides = smallest intersect intermediate intersect largest
+          val acrossAllSides = smallest intersect intermediate
 
           val acrossJustBaseAndLeft = acrossBaseAndLeft diff acrossAllSides
 
