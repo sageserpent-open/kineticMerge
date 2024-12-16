@@ -6,12 +6,7 @@ import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction}
 import com.sageserpent.kineticmerge
-import com.sageserpent.kineticmerge.{
-  NoProgressRecording,
-  ProgressRecording,
-  ProgressRecordingSession,
-  core
-}
+import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording, ProgressRecordingSession, core}
 import com.typesafe.scalalogging.StrictLogging
 import de.sciss.fingertree.RangedSeq
 import monocle.syntax.all.*
@@ -914,7 +909,7 @@ object CodeMotionAnalysis extends StrictLogging:
           accumulatingResults
         end fingerprintStartIndices
 
-        def fingerprintSections(
+        def sectionsByPotentialMatchKey(
             sources: Sources[Path, Element]
         ): SortedMultiDict[PotentialMatchKey, Section[Element]] =
           sources.filesByPath
@@ -940,23 +935,26 @@ object CodeMotionAnalysis extends StrictLogging:
             // we want the type of the result to be a `SortedMultiDict`...
             .reduceOption(_ concat _)
             .getOrElse(SortedMultiDict.empty)
-        end fingerprintSections
+        end sectionsByPotentialMatchKey
 
         val FingerprintSectionsAcrossSides(
-          baseSectionsByFingerprint,
-          leftSectionsByFingerprint,
-          rightSectionsByFingerprint
+          baseSectionsByPotentialMatchKey,
+          leftSectionsByPotentialMatchKey,
+          rightSectionsByPotentialMatchKey
         ) = FingerprintSectionsAcrossSides(
-          baseSectionsByFingerprint = fingerprintSections(baseSources),
-          leftSectionsByFingerprint = fingerprintSections(leftSources),
-          rightSectionsByFingerprint = fingerprintSections(rightSources)
+          baseSectionsByPotentialMatchKey =
+            sectionsByPotentialMatchKey(baseSources),
+          leftSectionsByPotentialMatchKey =
+            sectionsByPotentialMatchKey(leftSources),
+          rightSectionsByPotentialMatchKey =
+            sectionsByPotentialMatchKey(rightSources)
         )
 
         @tailrec
-        def matchingFingerprintsAcrossSides(
-            baseFingerprints: Iterable[PotentialMatchKey],
-            leftFingerprints: Iterable[PotentialMatchKey],
-            rightFingerprints: Iterable[PotentialMatchKey],
+        def matchKeysAcrossSides(
+            basePotentialMatchKeys: Iterable[PotentialMatchKey],
+            leftPotentialMatchKeys: Iterable[PotentialMatchKey],
+            rightPotentialMatchKeys: Iterable[PotentialMatchKey],
             matches: Set[GenericMatch]
         ): MatchingResult =
           // NOTE: when looking for matches, forbid any that would overlap or
@@ -965,27 +963,40 @@ object CodeMotionAnalysis extends StrictLogging:
           // especially when the optimal match size being searched for is
           // greater than `windowSize`.
           (
-            baseFingerprints.headOption,
-            leftFingerprints.headOption,
-            rightFingerprints.headOption
+            basePotentialMatchKeys.headOption,
+            leftPotentialMatchKeys.headOption,
+            rightPotentialMatchKeys.headOption
           ) match
-            case (Some(baseHead), Some(leftHead), Some(rightHead))
+            case (
+                  Some(basePotentialMatchKey),
+                  Some(leftPotentialMatchKey),
+                  Some(rightPotentialMatchKey)
+                )
                 if potentialMatchKeyOrder.eqv(
-                  baseHead,
-                  leftHead
-                ) && potentialMatchKeyOrder.eqv(baseHead, rightHead) =>
+                  basePotentialMatchKey,
+                  leftPotentialMatchKey
+                ) && potentialMatchKeyOrder.eqv(
+                  basePotentialMatchKey,
+                  rightPotentialMatchKey
+                ) =>
               // Synchronised the fingerprints across all three sides...
               val potentialMatchesForSynchronisedFingerprint =
                 val baseSectionsThatDoNotOverlap = LazyList
-                  .from(baseSectionsByFingerprint.get(baseHead))
+                  .from(
+                    baseSectionsByPotentialMatchKey.get(basePotentialMatchKey)
+                  )
                   .filterNot(overlapsOrIsSubsumedByOnBase)
 
                 val leftSectionsThatDoNotOverlap = LazyList
-                  .from(leftSectionsByFingerprint.get(leftHead))
+                  .from(
+                    leftSectionsByPotentialMatchKey.get(leftPotentialMatchKey)
+                  )
                   .filterNot(overlapsOrIsSubsumedByOnLeft)
 
                 val rightSectionsThatDoNotOverlap = LazyList
-                  .from(rightSectionsByFingerprint.get(rightHead))
+                  .from(
+                    rightSectionsByPotentialMatchKey.get(rightPotentialMatchKey)
+                  )
                   .filterNot(overlapsOrIsSubsumedByOnRight)
 
                 for
@@ -1002,10 +1013,10 @@ object CodeMotionAnalysis extends StrictLogging:
                       leftSection,
                       rightSection
                     ) #:: remainingMatches =>
-                  matchingFingerprintsAcrossSides(
-                    baseFingerprints.tail,
-                    leftFingerprints.tail,
-                    rightFingerprints.tail,
+                  matchKeysAcrossSides(
+                    basePotentialMatchKeys.tail,
+                    leftPotentialMatchKeys.tail,
+                    rightPotentialMatchKeys.tail,
                     if allowAmbiguousMatches
                     then
                       matches ++ potentialMatchesForSynchronisedFingerprint
@@ -1016,10 +1027,10 @@ object CodeMotionAnalysis extends StrictLogging:
                     else matches
                   )
                 case _ =>
-                  matchingFingerprintsAcrossSides(
-                    baseFingerprints.tail,
-                    leftFingerprints.tail,
-                    rightFingerprints.tail,
+                  matchKeysAcrossSides(
+                    basePotentialMatchKeys.tail,
+                    leftPotentialMatchKeys.tail,
+                    rightPotentialMatchKeys.tail,
                     matches
                   )
               end match
@@ -1034,10 +1045,10 @@ object CodeMotionAnalysis extends StrictLogging:
                 ) =>
               // Tentatively synchronised the fingerprints between the base and
               // left, need to advance the right to resolve ...
-              matchingFingerprintsAcrossSides(
-                baseFingerprints,
-                leftFingerprints,
-                rightFingerprints.tail,
+              matchKeysAcrossSides(
+                basePotentialMatchKeys,
+                leftPotentialMatchKeys,
+                rightPotentialMatchKeys.tail,
                 matches
               )
 
@@ -1046,11 +1057,11 @@ object CodeMotionAnalysis extends StrictLogging:
               // Synchronised the fingerprints between the base and left...
               val potentialMatchesForSynchronisedFingerprint =
                 val baseSectionsThatDoNotOverlap = LazyList
-                  .from(baseSectionsByFingerprint.get(baseHead))
+                  .from(baseSectionsByPotentialMatchKey.get(baseHead))
                   .filterNot(overlapsOrIsSubsumedByOnBase)
 
                 val leftSectionsThatDoNotOverlap = LazyList
-                  .from(leftSectionsByFingerprint.get(leftHead))
+                  .from(leftSectionsByPotentialMatchKey.get(leftHead))
                   .filterNot(overlapsOrIsSubsumedByOnLeft)
 
                 for
@@ -1062,10 +1073,10 @@ object CodeMotionAnalysis extends StrictLogging:
 
               potentialMatchesForSynchronisedFingerprint match
                 case (baseSection, leftSection) #:: remainingMatches =>
-                  matchingFingerprintsAcrossSides(
-                    baseFingerprints.tail,
-                    leftFingerprints.tail,
-                    rightFingerprints,
+                  matchKeysAcrossSides(
+                    basePotentialMatchKeys.tail,
+                    leftPotentialMatchKeys.tail,
+                    rightPotentialMatchKeys,
                     if allowAmbiguousMatches
                     then
                       matches ++ potentialMatchesForSynchronisedFingerprint
@@ -1075,10 +1086,10 @@ object CodeMotionAnalysis extends StrictLogging:
                     else matches
                   )
                 case _ =>
-                  matchingFingerprintsAcrossSides(
-                    baseFingerprints.tail,
-                    leftFingerprints.tail,
-                    rightFingerprints,
+                  matchKeysAcrossSides(
+                    basePotentialMatchKeys.tail,
+                    leftPotentialMatchKeys.tail,
+                    rightPotentialMatchKeys,
                     matches
                   )
               end match
@@ -1093,10 +1104,10 @@ object CodeMotionAnalysis extends StrictLogging:
                 ) =>
               // Tentatively synchronised the fingerprints between the base and
               // right, need to advance the left to resolve ...
-              matchingFingerprintsAcrossSides(
-                baseFingerprints,
-                leftFingerprints.tail,
-                rightFingerprints,
+              matchKeysAcrossSides(
+                basePotentialMatchKeys,
+                leftPotentialMatchKeys.tail,
+                rightPotentialMatchKeys,
                 matches
               )
 
@@ -1105,11 +1116,11 @@ object CodeMotionAnalysis extends StrictLogging:
               // Synchronised the fingerprints between the base and right...
               val potentialMatchesForSynchronisedFingerprint =
                 val baseSectionsThatDoNotOverlap = LazyList
-                  .from(baseSectionsByFingerprint.get(baseHead))
+                  .from(baseSectionsByPotentialMatchKey.get(baseHead))
                   .filterNot(overlapsOrIsSubsumedByOnBase)
 
                 val rightSectionsThatDoNotOverlap = LazyList
-                  .from(rightSectionsByFingerprint.get(rightHead))
+                  .from(rightSectionsByPotentialMatchKey.get(rightHead))
                   .filterNot(overlapsOrIsSubsumedByOnRight)
 
                 for
@@ -1121,10 +1132,10 @@ object CodeMotionAnalysis extends StrictLogging:
 
               potentialMatchesForSynchronisedFingerprint match
                 case (baseSection, rightSection) #:: remainingMatches =>
-                  matchingFingerprintsAcrossSides(
-                    baseFingerprints.tail,
-                    leftFingerprints,
-                    rightFingerprints.tail,
+                  matchKeysAcrossSides(
+                    basePotentialMatchKeys.tail,
+                    leftPotentialMatchKeys,
+                    rightPotentialMatchKeys.tail,
                     if allowAmbiguousMatches
                     then
                       matches ++ potentialMatchesForSynchronisedFingerprint
@@ -1134,10 +1145,10 @@ object CodeMotionAnalysis extends StrictLogging:
                     else matches
                   )
                 case _ =>
-                  matchingFingerprintsAcrossSides(
-                    baseFingerprints.tail,
-                    leftFingerprints,
-                    rightFingerprints.tail,
+                  matchKeysAcrossSides(
+                    basePotentialMatchKeys.tail,
+                    leftPotentialMatchKeys,
+                    rightPotentialMatchKeys.tail,
                     matches
                   )
               end match
@@ -1152,10 +1163,10 @@ object CodeMotionAnalysis extends StrictLogging:
                 ) =>
               // Tentatively synchronised the fingerprints between the left and
               // right, need to advance the base to resolve ...
-              matchingFingerprintsAcrossSides(
-                baseFingerprints.tail,
-                leftFingerprints,
-                rightFingerprints,
+              matchKeysAcrossSides(
+                basePotentialMatchKeys.tail,
+                leftPotentialMatchKeys,
+                rightPotentialMatchKeys,
                 matches
               )
 
@@ -1164,11 +1175,11 @@ object CodeMotionAnalysis extends StrictLogging:
               // Synchronised the fingerprints between the left and right...
               val potentialMatchesForSynchronisedFingerprint =
                 val leftSectionsThatDoNotOverlap = LazyList
-                  .from(leftSectionsByFingerprint.get(leftHead))
+                  .from(leftSectionsByPotentialMatchKey.get(leftHead))
                   .filterNot(overlapsOrIsSubsumedByOnLeft)
 
                 val rightSectionsThatDoNotOverlap = LazyList
-                  .from(rightSectionsByFingerprint.get(rightHead))
+                  .from(rightSectionsByPotentialMatchKey.get(rightHead))
                   .filterNot(overlapsOrIsSubsumedByOnRight)
 
                 for
@@ -1180,10 +1191,10 @@ object CodeMotionAnalysis extends StrictLogging:
 
               potentialMatchesForSynchronisedFingerprint match
                 case (leftSection, rightSection) #:: remainingMatches =>
-                  matchingFingerprintsAcrossSides(
-                    baseFingerprints,
-                    leftFingerprints.tail,
-                    rightFingerprints.tail,
+                  matchKeysAcrossSides(
+                    basePotentialMatchKeys,
+                    leftPotentialMatchKeys.tail,
+                    rightPotentialMatchKeys.tail,
                     if allowAmbiguousMatches
                     then
                       matches ++ potentialMatchesForSynchronisedFingerprint
@@ -1193,10 +1204,10 @@ object CodeMotionAnalysis extends StrictLogging:
                     else matches
                   )
                 case _ =>
-                  matchingFingerprintsAcrossSides(
-                    baseFingerprints,
-                    leftFingerprints.tail,
-                    rightFingerprints.tail,
+                  matchKeysAcrossSides(
+                    basePotentialMatchKeys,
+                    leftPotentialMatchKeys.tail,
+                    rightPotentialMatchKeys.tail,
                     matches
                   )
               end match
@@ -1218,10 +1229,10 @@ object CodeMotionAnalysis extends StrictLogging:
               // was the minimum.
               if leftHead == minimumFingerprint
               then
-                matchingFingerprintsAcrossSides(
-                  baseFingerprints,
-                  leftFingerprints.tail,
-                  rightFingerprints,
+                matchKeysAcrossSides(
+                  basePotentialMatchKeys,
+                  leftPotentialMatchKeys.tail,
+                  rightPotentialMatchKeys,
                   matches
                 )
               // NOTE: just use `==` as we have already looked inside the
@@ -1229,17 +1240,17 @@ object CodeMotionAnalysis extends StrictLogging:
               // was the minimum.
               else if rightHead == minimumFingerprint
               then
-                matchingFingerprintsAcrossSides(
-                  baseFingerprints,
-                  leftFingerprints,
-                  rightFingerprints.tail,
+                matchKeysAcrossSides(
+                  basePotentialMatchKeys,
+                  leftPotentialMatchKeys,
+                  rightPotentialMatchKeys.tail,
                   matches
                 )
               else
-                matchingFingerprintsAcrossSides(
-                  baseFingerprints.tail,
-                  leftFingerprints,
-                  rightFingerprints,
+                matchKeysAcrossSides(
+                  basePotentialMatchKeys.tail,
+                  leftPotentialMatchKeys,
+                  rightPotentialMatchKeys,
                   matches
                 )
               end if
@@ -1250,17 +1261,17 @@ object CodeMotionAnalysis extends StrictLogging:
               // synchronise...
               if potentialMatchKeyOrder.lt(baseHead, leftHead)
               then
-                matchingFingerprintsAcrossSides(
-                  baseFingerprints.tail,
-                  leftFingerprints,
-                  rightFingerprints,
+                matchKeysAcrossSides(
+                  basePotentialMatchKeys.tail,
+                  leftPotentialMatchKeys,
+                  rightPotentialMatchKeys,
                   matches
                 )
               else
-                matchingFingerprintsAcrossSides(
-                  baseFingerprints,
-                  leftFingerprints.tail,
-                  rightFingerprints,
+                matchKeysAcrossSides(
+                  basePotentialMatchKeys,
+                  leftPotentialMatchKeys.tail,
+                  rightPotentialMatchKeys,
                   matches
                 )
 
@@ -1270,17 +1281,17 @@ object CodeMotionAnalysis extends StrictLogging:
               // synchronise...
               if potentialMatchKeyOrder.lt(baseHead, rightHead)
               then
-                matchingFingerprintsAcrossSides(
-                  baseFingerprints.tail,
-                  leftFingerprints,
-                  rightFingerprints,
+                matchKeysAcrossSides(
+                  basePotentialMatchKeys.tail,
+                  leftPotentialMatchKeys,
+                  rightPotentialMatchKeys,
                   matches
                 )
               else
-                matchingFingerprintsAcrossSides(
-                  baseFingerprints,
-                  leftFingerprints,
-                  rightFingerprints.tail,
+                matchKeysAcrossSides(
+                  basePotentialMatchKeys,
+                  leftPotentialMatchKeys,
+                  rightPotentialMatchKeys.tail,
                   matches
                 )
 
@@ -1290,17 +1301,17 @@ object CodeMotionAnalysis extends StrictLogging:
               // synchronise...
               if potentialMatchKeyOrder.lt(leftHead, rightHead)
               then
-                matchingFingerprintsAcrossSides(
-                  baseFingerprints,
-                  leftFingerprints.tail,
-                  rightFingerprints,
+                matchKeysAcrossSides(
+                  basePotentialMatchKeys,
+                  leftPotentialMatchKeys.tail,
+                  rightPotentialMatchKeys,
                   matches
                 )
               else
-                matchingFingerprintsAcrossSides(
-                  baseFingerprints,
-                  leftFingerprints,
-                  rightFingerprints.tail,
+                matchKeysAcrossSides(
+                  basePotentialMatchKeys,
+                  leftPotentialMatchKeys,
+                  rightPotentialMatchKeys.tail,
                   matches
                 )
 
@@ -1309,12 +1320,12 @@ object CodeMotionAnalysis extends StrictLogging:
               // just a pair, so this terminates the recursion.
               withMatches(matches, windowSize)
           end match
-        end matchingFingerprintsAcrossSides
+        end matchKeysAcrossSides
 
-        matchingFingerprintsAcrossSides(
-          baseSectionsByFingerprint.keySet,
-          leftSectionsByFingerprint.keySet,
-          rightSectionsByFingerprint.keySet,
+        matchKeysAcrossSides(
+          baseSectionsByPotentialMatchKey.keySet,
+          leftSectionsByPotentialMatchKey.keySet,
+          rightSectionsByPotentialMatchKey.keySet,
           matches = Set.empty
         )
       end matchesForWindowSize
@@ -1833,15 +1844,24 @@ object CodeMotionAnalysis extends StrictLogging:
     )
 
     case class FingerprintSectionsAcrossSides(
-        baseSectionsByFingerprint: SortedMultiDict[PotentialMatchKey, Section[
-          Element
-        ]],
-        leftSectionsByFingerprint: SortedMultiDict[PotentialMatchKey, Section[
-          Element
-        ]],
-        rightSectionsByFingerprint: SortedMultiDict[PotentialMatchKey, Section[
-          Element
-        ]]
+        baseSectionsByPotentialMatchKey: SortedMultiDict[
+          PotentialMatchKey,
+          Section[
+            Element
+          ]
+        ],
+        leftSectionsByPotentialMatchKey: SortedMultiDict[
+          PotentialMatchKey,
+          Section[
+            Element
+          ]
+        ],
+        rightSectionsByPotentialMatchKey: SortedMultiDict[
+          PotentialMatchKey,
+          Section[
+            Element
+          ]
+        ]
     )
 
     val matchesAndTheirSections =
