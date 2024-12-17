@@ -957,6 +957,13 @@ object CodeMotionAnalysis extends StrictLogging:
                   minimumWindowSize to fileSize contains windowSize
                 }
               }
+              // NOTE: the devil is in the details - `PotentialMatchKey`
+              // instances that refer to the same content, but are associated
+              // with different sections will collide if put into a map. We want
+              // to keep such associations distinct so that they can go into the
+              // `MultiDict`, so we change the type ascription to pick up the
+              // overload of `flatMap` that will build a sequence, *not* a map.
+              .toSeq
               .par
               .flatMap { case (path, file) =>
                 fingerprintStartIndices(file.content).map(
