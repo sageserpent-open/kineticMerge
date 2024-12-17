@@ -1656,57 +1656,67 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       }
   end forwardingThroughCodeMotionAcrossAFileRenameExamples
 
-  @Test
-  def issue126BugReproduction(): Unit =
+  @TestFactory
+  def issue126BugReproduction(): DynamicTests =
     val configuration = Configuration(
       minimumMatchSize = 1,
       thresholdSizeFractionForMatching = 0,
       minimumAmbiguousMatchSize = 0
     )
 
-    val baseText = "AmbiguousABCAmbiguousDE"
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val baseText = "AmbiguousABCAmbiguousDE"
 
-    val leftText = "AmbiguousABCDEAmbiguous"
+      val leftText = "AmbiguousABCDEAmbiguous"
 
-    val rightText = "EditABCAmbiguousDE"
+      val rightText = "EditABCAmbiguousDE"
 
-    val expectedMergeText = "EditABCDEAmbiguous"
+      val expectedMergeText = "EditABCDEAmbiguous"
 
-    val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
+      val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
 
-    val tokenRegex = raw"Ambiguous|Edit|A|B|C|D|E".r.anchored
+      val tokenRegex = raw"Ambiguous|Edit|A|B|C|D|E".r.anchored
 
-    def stuntDoubleTokens(content: String): Vector[Token] = tokenRegex
-      .findAllMatchIn(content)
-      .map(_.group(0))
-      .map(Token.Significant.apply)
-      .toVector
+      def stuntDoubleTokens(content: String): Vector[Token] = tokenRegex
+        .findAllMatchIn(content)
+        .map(_.group(0))
+        .map(Token.Significant.apply)
+        .toVector
 
-    val baseSources = MappedContentSourcesOfTokens(
-      contentsByPath = Map(placeholderPath -> stuntDoubleTokens(baseText)),
-      label = "base"
-    )
-    val leftSources = MappedContentSourcesOfTokens(
-      contentsByPath = Map(placeholderPath -> stuntDoubleTokens(leftText)),
-      label = "left"
-    )
-    val rightSources = MappedContentSourcesOfTokens(
-      contentsByPath = Map(placeholderPath -> stuntDoubleTokens(rightText)),
-      label = "right"
-    )
+      val baseSources = MappedContentSourcesOfTokens(
+        contentsByPath = Map(placeholderPath -> stuntDoubleTokens(baseText)),
+        label = "base"
+      )
+      val leftSources = MappedContentSourcesOfTokens(
+        contentsByPath = Map(
+          placeholderPath -> stuntDoubleTokens(
+            if mirrorImage then rightText else leftText
+          )
+        ),
+        label = "left"
+      )
+      val rightSources = MappedContentSourcesOfTokens(
+        contentsByPath = Map(
+          placeholderPath -> stuntDoubleTokens(
+            if mirrorImage then leftText else rightText
+          )
+        ),
+        label = "right"
+      )
 
-    val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-      baseSources = baseSources,
-      leftSources = leftSources,
-      rightSources = rightSources
-    )(configuration): @unchecked
+      val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+        baseSources = baseSources,
+        leftSources = leftSources,
+        rightSources = rightSources
+      )(configuration): @unchecked
 
-    val (mergeResultsByPath, _) =
-      codeMotionAnalysis.merge
+      val (mergeResultsByPath, _) =
+        codeMotionAnalysis.merge
 
-    verifyContent(placeholderPath, mergeResultsByPath)(
-      stuntDoubleTokens(expectedMergeText)
-    )
+      verifyContent(placeholderPath, mergeResultsByPath)(
+        stuntDoubleTokens(expectedMergeText)
+      )
+    }
   end issue126BugReproduction
 
 end CodeMotionAnalysisExtensionTest
