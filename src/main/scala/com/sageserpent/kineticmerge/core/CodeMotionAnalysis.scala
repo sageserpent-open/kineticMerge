@@ -161,7 +161,7 @@ object CodeMotionAnalysis extends StrictLogging:
 
     type MatchedSections = MultiDict[Section[Element], GenericMatch]
 
-    val tiebreakContentSamplingLimit = 10
+    val tiebreakContentSamplingLimit = 5
 
     object MatchesAndTheirSections:
       private lazy val empty = MatchesAndTheirSections(
@@ -1802,7 +1802,10 @@ object CodeMotionAnalysis extends StrictLogging:
         fingerprint: BigInt,
         impliedContent: Section[Element]
     ):
-      lazy private val cachedHashCode: Int =
+      // NOTE: instances of `PotentialMatchKey` are intended to be put into sets
+      // using hashing, so we may as well get on with it and compute the
+      // inevitable hash code.
+      private val cachedHashCode: Int =
         val hasher = hashFunction.newHasher()
 
         hasher.putBytes(fingerprint.toByteArray)
