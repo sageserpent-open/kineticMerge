@@ -19,7 +19,10 @@ enum SpeculativeContentMigration[Element]:
     *   is keyed by a source element taken from the base. The move destination
     *   itself completes the three sides' contributions.
     */
-  case PlainMove(elementOnTheOppositeSideToTheMoveDestination: Element)
+  case PlainMove(
+      elementOnTheOppositeSideToTheMoveDestination: Element,
+      oppositeToMoveDestinationSide: Side
+  )
   case Edit(leftContent: IndexedSeq[Element], rightContent: IndexedSeq[Element])
   case Deletion()
 end SpeculativeContentMigration
@@ -122,8 +125,11 @@ object MoveDestinationsReport:
 
             if moveDestinations.left.nonEmpty then
               contentMigration match
+                case SpeculativeContentMigration.PlainMove(_, Side.Left) =>
+                  Seq.empty
                 case SpeculativeContentMigration.PlainMove(
-                      elementOnTheOppositeSideToTheMoveDestination
+                      elementOnTheOppositeSideToTheMoveDestination,
+                      Side.Right
                     ) =>
                   moveDestinations.left
                     .map(destinationElement =>
@@ -145,8 +151,11 @@ object MoveDestinationsReport:
                   moveDestinations.left.map(_ -> IndexedSeq.empty)
             else if moveDestinations.right.nonEmpty then
               contentMigration match
+                case SpeculativeContentMigration.PlainMove(_, Side.Right) =>
+                  Seq.empty
                 case SpeculativeContentMigration.PlainMove(
-                      elementOnTheOppositeSideToTheMoveDestination
+                      elementOnTheOppositeSideToTheMoveDestination,
+                      Side.Left
                     ) =>
                   moveDestinations.right
                     .map(destinationElement =>
@@ -214,7 +223,8 @@ object MoveDestinationsReport:
             if moveDestinations.left.nonEmpty then
               contentMigration match
                 case SpeculativeContentMigration.PlainMove(
-                      elementOnTheOppositeSideToTheMoveDestination
+                      elementOnTheOppositeSideToTheMoveDestination,
+                      Side.Right
                     ) =>
                   moveDestinations.left.map(moveDestination =>
                     AnchoredMove(
@@ -274,7 +284,8 @@ object MoveDestinationsReport:
             else if moveDestinations.right.nonEmpty then
               contentMigration match
                 case SpeculativeContentMigration.PlainMove(
-                      elementOnTheOppositeSideToTheMoveDestination
+                      elementOnTheOppositeSideToTheMoveDestination,
+                      Side.Left
                     ) =>
                   moveDestinations.right.map(moveDestination =>
                     AnchoredMove(
