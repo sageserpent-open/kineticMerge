@@ -60,7 +60,7 @@ object FirstPassMergeResult:
       )
     end playback
   end extension
-  
+
   def mergeAlgebra[Element](): MergeAlgebra[FirstPassMergeResult, Element] =
     new MergeAlgebra[FirstPassMergeResult, Element]:
       override def empty: FirstPassMergeResult[Element] =
@@ -186,7 +186,11 @@ object FirstPassMergeResult:
           .focus(_.speculativeMigrationsBySource)
           .modify(
             _ + (deletedBaseElement -> SpeculativeContentMigration
-              .PlainMove(deletedRightElement))
+              .PlainMove(
+                elementOnTheOppositeSideToTheMoveDestination =
+                  deletedRightElement,
+                oppositeToMoveDestinationSide = Side.Right
+              ))
           )
       end leftDeletion
 
@@ -211,7 +215,11 @@ object FirstPassMergeResult:
           .focus(_.speculativeMigrationsBySource)
           .modify(
             _ + (deletedBaseElement -> SpeculativeContentMigration
-              .PlainMove(deletedLeftElement))
+              .PlainMove(
+                elementOnTheOppositeSideToTheMoveDestination =
+                  deletedLeftElement,
+                oppositeToMoveDestinationSide = Side.Left
+              ))
           )
       end rightDeletion
 
@@ -260,7 +268,8 @@ object FirstPassMergeResult:
           .focus(_.speculativeMigrationsBySource)
           .modify(
             _ + (editedBaseElement -> SpeculativeContentMigration.PlainMove(
-              editedRightElement
+              elementOnTheOppositeSideToTheMoveDestination = editedRightElement,
+              oppositeToMoveDestinationSide = Side.Right
             ))
           )
           .focus(_.speculativeMoveDestinations)
@@ -292,7 +301,8 @@ object FirstPassMergeResult:
           .focus(_.speculativeMigrationsBySource)
           .modify(
             _ + (editedBaseElement -> SpeculativeContentMigration.PlainMove(
-              editedLeftElement
+              elementOnTheOppositeSideToTheMoveDestination = editedLeftElement,
+              oppositeToMoveDestinationSide = Side.Left
             ))
           )
           .focus(_.speculativeMoveDestinations)
