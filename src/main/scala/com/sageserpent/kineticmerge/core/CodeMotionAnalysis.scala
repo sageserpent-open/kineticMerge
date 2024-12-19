@@ -1,5 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
+import cats.collections.{Diet, Range as CatsInclusiveRange}
 import cats.implicits.catsKernelOrderingForOrder
 import cats.instances.seq.*
 import cats.{Eq, Order}
@@ -161,14 +162,33 @@ object CodeMotionAnalysis extends StrictLogging:
 
     type MatchedSections = MultiDict[Section[Element], GenericMatch]
 
+    type FingerprintedInclusions = Diet[Int]
+
     val tiebreakContentSamplingLimit = 10
 
     object MatchesAndTheirSections:
+      private def fingerprintedInclusionsByPath(
+          sources: Sources[Path, Element]
+      ): Map[Path, FingerprintedInclusions] = sources.filesByPath.collect {
+        case (path, file) if 0 < file.size =>
+          // To start with, any non-empty file is completely covered by one
+          // fingerprinted inclusion.
+          path -> Diet.fromRange(
+            CatsInclusiveRange(start = 0, end = file.size - 1)
+          )
+      }
+
       private lazy val empty = MatchesAndTheirSections(
         baseSectionsByPath = Map.empty,
         leftSectionsByPath = Map.empty,
         rightSectionsByPath = Map.empty,
-        sectionsAndTheirMatches = MultiDict.empty
+        sectionsAndTheirMatches = MultiDict.empty,
+        baseFingerprintedInclusionsByPath =
+          fingerprintedInclusionsByPath(baseSources),
+        leftFingerprintedInclusionsByPath =
+          fingerprintedInclusionsByPath(leftSources),
+        rightFingerprintedInclusionsByPath =
+          fingerprintedInclusionsByPath(rightSources)
       )
 
       private val rollingHashFactoryCache: Cache[Int, RollingHash.Factory] =
@@ -471,6 +491,9 @@ object CodeMotionAnalysis extends StrictLogging:
           baseSectionsByPath,
           leftSectionsByPath,
           rightSectionsByPath,
+          _,
+          _,
+          _,
           _
         ) = matches.foldLeft(empty)(_.withMatch(_))
 
@@ -702,7 +725,10 @@ object CodeMotionAnalysis extends StrictLogging:
         baseSectionsByPath: Map[Path, SectionsSeen],
         leftSectionsByPath: Map[Path, SectionsSeen],
         rightSectionsByPath: Map[Path, SectionsSeen],
-        sectionsAndTheirMatches: MatchedSections
+        sectionsAndTheirMatches: MatchedSections,
+        baseFingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions],
+        leftFingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions],
+        rightFingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions]
     ):
       import MatchesAndTheirSections.*
 
@@ -944,9 +970,11 @@ object CodeMotionAnalysis extends StrictLogging:
         end fingerprintStartIndices
 
         def sectionsByPotentialMatchKey(
-            sources: Sources[Path, Element],
             pathIsIncluded: Path => Boolean
-        ): SortedMultiDict[PotentialMatchKey, Section[Element]] =
+        )(
+            sources: Sources[Path, Element],
+            fingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions]
+        ) =
           SortedMultiDict.from(
             sources.filesByPath
               .filter { case (path, file) =>
@@ -959,33 +987,47 @@ object CodeMotionAnalysis extends StrictLogging:
               }
               .par
               .flatMap { case (path, file) =>
-                fingerprintStartIndices(file.content).map(
-                  (fingerprint, fingerprintStartIndex) =>
-                    val section = sources
-                      .section(path)(fingerprintStartIndex, windowSize)
-                    PotentialMatchKey(
-                      fingerprint,
-                      impliedContent = section
-                    ) -> section
-                )
+                val fingerprintedInclusions =
+                  fingerprintedInclusionsByPath(path)
+
+                fingerprintedInclusions.toIterator
+                  .filter(inclusion =>
+                    // The inclusion has to large enough to acccomodate the
+                    // window size.
+                    windowSize + inclusion.start <= 1 + inclusion.end
+                  )
+                  .flatMap { case CatsInclusiveRange(start, end) =>
+                    fingerprintStartIndices(file.content.slice(start, 1 + end))
+                      .map((fingerprint, fingerprintStartIndex) =>
+                        val section = sources
+                          .section(path)(
+                            start + fingerprintStartIndex,
+                            windowSize
+                          )
+                        PotentialMatchKey(
+                          fingerprint,
+                          impliedContent = section
+                        ) -> section
+                      )
+                  }
               }
           )
         end sectionsByPotentialMatchKey
 
         val baseSectionsByPotentialMatchKey =
-          sectionsByPotentialMatchKey(
+          sectionsByPotentialMatchKey(pathInclusions.isIncludedOnBase)(
             baseSources,
-            pathInclusions.isIncludedOnBase
+            baseFingerprintedInclusionsByPath
           )
         val leftSectionsByPotentialMatchKey =
-          sectionsByPotentialMatchKey(
+          sectionsByPotentialMatchKey(pathInclusions.isIncludedOnLeft)(
             leftSources,
-            pathInclusions.isIncludedOnLeft
+            leftFingerprintedInclusionsByPath
           )
         val rightSectionsByPotentialMatchKey =
-          sectionsByPotentialMatchKey(
+          sectionsByPotentialMatchKey(pathInclusions.isIncludedOnRight)(
             rightSources,
-            pathInclusions.isIncludedOnRight
+            rightFingerprintedInclusionsByPath
           )
 
         @tailrec
@@ -1661,12 +1703,50 @@ object CodeMotionAnalysis extends StrictLogging:
       ): MatchesAndTheirSections =
         aMatch match
           case Match.AllSides(baseSection, leftSection, rightSection) =>
+            def knockOutFromFingerprintedInclusions(
+                sources: Sources[Path, Element]
+            )(
+                fingerprintedInclusionsByPath: Map[
+                  Path,
+                  FingerprintedInclusions
+                ],
+                knockedOut: Section[Element]
+            ): Map[Path, FingerprintedInclusions] =
+              val path = sources.pathFor(knockedOut)
+
+              fingerprintedInclusionsByPath.updatedWith(path)(
+                _.map(
+                  _.removeRange(
+                    CatsInclusiveRange(
+                      start = knockedOut.startOffset,
+                      end = knockedOut.onePastEndOffset - 1
+                    )
+                  )
+                )
+              )
+            end knockOutFromFingerprintedInclusions
+
             copy(
               baseSectionsByPath = withBaseSection(baseSection),
               leftSectionsByPath = withLeftSection(leftSection),
               rightSectionsByPath = withRightSection(rightSection),
               sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch) + (rightSection -> aMatch)
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch) + (rightSection -> aMatch),
+              baseFingerprintedInclusionsByPath =
+                knockOutFromFingerprintedInclusions(baseSources)(
+                  baseFingerprintedInclusionsByPath,
+                  baseSection
+                ),
+              leftFingerprintedInclusionsByPath =
+                knockOutFromFingerprintedInclusions(leftSources)(
+                  leftFingerprintedInclusionsByPath,
+                  leftSection
+                ),
+              rightFingerprintedInclusionsByPath =
+                knockOutFromFingerprintedInclusions(rightSources)(
+                  rightFingerprintedInclusionsByPath,
+                  rightSection
+                )
             )
           case Match.BaseAndLeft(baseSection, leftSection) =>
             copy(
@@ -2074,6 +2154,7 @@ object CodeMotionAnalysis extends StrictLogging:
       ambiguousMatchesThreshold: Int,
       progressRecording: ProgressRecording = NoProgressRecording
   ):
+    // TODO: why would `minimumMatchSize` be zero?
     require(0 <= minimumMatchSize)
     require(0 <= thresholdSizeFractionForMatching)
     require(1 >= thresholdSizeFractionForMatching)
