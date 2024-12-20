@@ -991,8 +991,7 @@ object CodeMotionAnalysis extends StrictLogging:
             // `MultiDict`, so we change the type ascription to pick up the
             // overload of `flatMap` that will build a sequence, *not* a map.
             .toSeq
-            .par
-            .flatMap { case (path, file) =>
+            .flatMap { case passThrough @ (path, _) =>
               val fingerprintedInclusions =
                 fingerprintedInclusionsByPath(path)
 
@@ -1002,23 +1001,23 @@ object CodeMotionAnalysis extends StrictLogging:
                   // window size.
                   windowSize + inclusion.start <= 1 + inclusion.end
                 )
-                .toSeq
-                .par
-                .flatMap { case CatsInclusiveRange(start, end) =>
-                  fingerprintStartIndices(
-                    file.content.slice(start, 1 + end)
-                  ).map((fingerprint, fingerprintStartIndex) =>
-                    val section = sources
-                      .section(path)(
-                        start + fingerprintStartIndex,
-                        windowSize
-                      )
-                    PotentialMatchKey(
-                      fingerprint,
-                      impliedContent = section
-                    ) -> section
+                .map(passThrough -> _)
+            }
+            .par
+            .flatMap { case ((path, file), CatsInclusiveRange(start, end)) =>
+              fingerprintStartIndices(
+                file.content.slice(start, 1 + end)
+              ).map((fingerprint, fingerprintStartIndex) =>
+                val section = sources
+                  .section(path)(
+                    start + fingerprintStartIndex,
+                    windowSize
                   )
-                }
+                PotentialMatchKey(
+                  fingerprint,
+                  impliedContent = section
+                ) -> section
+              )
             }
         )
         end sectionsByPotentialMatchKey
