@@ -1985,7 +1985,12 @@ object CodeMotionAnalysis extends StrictLogging:
     *   A section's size must be at least this fraction of its containing file's
     *   size to qualify for matching.
     * @param minimumAmbiguousMatchSize
-    * @param propagateAllExceptions
+    * @param ambiguousMatchesThreshold
+    *   The maximum number of ambiguous matches that may refer to the same
+    *   content. If the threshold is exceeded, that content results in no
+    *   matches at all.
+    * @param progressRecording
+    *   Used to record progress during matching.
     */
   case class Configuration(
       minimumMatchSize: Int,
