@@ -139,6 +139,9 @@ object CodeMotionAnalysis extends StrictLogging:
         maximumFileSizeAcrossAllFilesOverAllSides
       ))
 
+    val maximumSwatheSize =
+      1 max (maximumFileSizeAcrossAllFilesOverAllSides / largestFileSwatheSubdivision)
+
     logger.debug(
       s"Minimum match window size across all files over all sides: $minimumWindowSizeAcrossAllFilesOverAllSides"
     )
@@ -1002,22 +1005,67 @@ object CodeMotionAnalysis extends StrictLogging:
                   // window size.
                   windowSize + inclusion.start <= 1 + inclusion.end
                 )
-                .toSeq
-                .par
-                .flatMap { case CatsInclusiveRange(start, end) =>
-                  fingerprintStartIndices(
-                    file.content.slice(start, 1 + end)
-                  ).map((fingerprint, fingerprintStartIndex) =>
-                    val section = sources
-                      .section(path)(
-                        start + fingerprintStartIndex,
-                        windowSize
+                .flatMap {
+                  case CatsInclusiveRange(
+                        inclusionStartIndex,
+                        inclusionEndIndex
+                      ) =>
+                    val fingerprintedContent = file.content
+                      .slice(inclusionStartIndex, 1 + inclusionEndIndex)
+
+                    val swathes: Vector[(IndexedSeq[Element], Int)] =
+                      if maximumSwatheSize >= 2 * windowSize then
+                        val swathesInReverseIndexOrder = fingerprintedContent
+                          .sliding(
+                            // NOTE: each window in the slide has to overlap the
+                            // next so that the fingerprints cover all the
+                            // slice's content.
+                            size = maximumSwatheSize + windowSize - 1,
+                            step = maximumSwatheSize
+                          )
+                          .zipWithIndex
+                          .map((slice, index) =>
+                            slice -> (inclusionStartIndex + maximumSwatheSize * index)
+                          )
+                          .toVector
+                          .reverse
+
+                        assume(swathesInReverseIndexOrder.nonEmpty)
+
+                        val (potentialOffCut, _) =
+                          swathesInReverseIndexOrder.head
+
+                        val fullSizeSwathesInReverseIndexOrder =
+                          swathesInReverseIndexOrder.tail
+
+                        fullSizeSwathesInReverseIndexOrder.headOption
+                          .fold(ifEmpty = swathesInReverseIndexOrder)(
+                            fullSizeSwathePrecedingOffCutInIndexOrder =>
+                              if potentialOffCut.size < windowSize then
+                                val coalescedSwathe =
+                                  fullSizeSwathePrecedingOffCutInIndexOrder match
+                                    case (fullSizeContent, startIndex) =>
+                                      (fullSizeContent ++ potentialOffCut) -> startIndex
+
+                                coalescedSwathe +: fullSizeSwathesInReverseIndexOrder.tail
+                              else swathesInReverseIndexOrder
+                          )
+                      else Vector(fingerprintedContent -> inclusionStartIndex)
+
+                    swathes.par.flatMap((content, startIndex) =>
+                      fingerprintStartIndices(content).map(
+                        (fingerprint, fingerprintStartIndex) =>
+                          val section = sources
+                            .section(path)(
+                              startIndex + fingerprintStartIndex,
+                              windowSize
+                            )
+                          PotentialMatchKey(
+                            fingerprint,
+                            impliedContent = section
+                          ) -> section
                       )
-                    PotentialMatchKey(
-                      fingerprint,
-                      impliedContent = section
-                    ) -> section
-                  )
+                    )
                 }
             }
         )
@@ -2037,6 +2085,10 @@ object CodeMotionAnalysis extends StrictLogging:
     *   The maximum number of ambiguous matches that may refer to the same
     *   content. If the threshold is exceeded, that content results in no
     *   matches at all.
+    * @param largestFileSwatheSubdivision
+    *   The number of parallel swathes used to analyse fingerprints in the
+    *   largest file. This controls the maximum size a swathe can take across
+    *   *all* files.
     * @param progressRecording
     *   Used to record progress during matching.
     */
@@ -2045,6 +2097,7 @@ object CodeMotionAnalysis extends StrictLogging:
       thresholdSizeFractionForMatching: Double,
       minimumAmbiguousMatchSize: Int,
       ambiguousMatchesThreshold: Int,
+      largestFileSwatheSubdivision: Int = 2,
       progressRecording: ProgressRecording = NoProgressRecording
   ):
     // TODO: why would `minimumMatchSize` be zero?
@@ -2053,5 +2106,6 @@ object CodeMotionAnalysis extends StrictLogging:
     require(1 >= thresholdSizeFractionForMatching)
     require(0 <= minimumAmbiguousMatchSize)
     require(1 <= ambiguousMatchesThreshold)
+    require(1 <= largestFileSwatheSubdivision)
   end Configuration
 end CodeMotionAnalysis
