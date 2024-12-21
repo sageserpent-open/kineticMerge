@@ -778,13 +778,13 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                         throw new AdmissibleFailure(
                           s"""
                                |Multiple potential splices before destination: $candidateAnchorDestination,
-                               |these are:
+                               |these are: 
                                |${uniqueSplices
                               .map(splice => s"PRE-INSERTED: $splice")
                               .zipWithIndex
                               .map((splice, index) => s"${1 + index}. $splice")
                               .mkString("\n")}
-                               |These are from ambiguous matches of anchor text with the destination.
+                               |These are from ambiguous matches of anchor text with the destination. 
                                |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${candidateAnchorDestination.size}.
                                 """.stripMargin
                         )
@@ -807,14 +807,14 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       case _ =>
                         throw new AdmissibleFailure(
                           s"""
-                               |Multiple potential splices after destination: $candidateAnchorDestination,
-                               |these are:
+                               |Multiple potential splices after destination: $candidateAnchorDestination, 
+                               |these are: 
                                |${uniqueSplices
                               .map(splice => s"POST-INSERTION: $splice")
                               .zipWithIndex
                               .map((splice, index) => s"${1 + index}. $splice")
                               .mkString("\n")}
-                               |These are from ambiguous matches of anchor text with the destination.
+                               |These are from ambiguous matches of anchor text with the destination. 
                                |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${candidateAnchorDestination.size}.
                                 """.stripMargin
                         )
@@ -920,8 +920,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 case _ =>
                   throw new AdmissibleFailure(
                     s"""
-                       |Multiple potential changes migrated to destination: $section,
-                       |these are:
+                       |Multiple potential changes migrated to destination: $section, 
+                       |these are: 
                        |${uniqueSubstitutions
                         .map(change =>
                           if change.isEmpty then "DELETION"
@@ -930,7 +930,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                         .zipWithIndex
                         .map((change, index) => s"${1 + index}. $change")
                         .mkString("\n")}
-                       |These are from ambiguous matches of text with the destination.
+                       |These are from ambiguous matches of text with the destination. 
                        |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${section.size}.
                             """.stripMargin
                   )

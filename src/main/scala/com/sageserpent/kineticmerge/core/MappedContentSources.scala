@@ -205,7 +205,9 @@ trait MappedContentSources[Path, Element]
           size = first.onePastEndOffset - second.startOffset
         )
 
-        s"Overlapping section detected on side: $label at path: $path, $first (content: ${first.content}) overlaps with start of section: $second (content: ${second.content}), overlap content: ${overlap.content}."
+        s"""Overlapping section detected on side: $label at path: $path, $first (content: ${first.content}) 
+       |overlaps with start of section: $second (content: ${second.content}), overlap content: ${overlap.content}. 
+       |Consider setting the command line parameter `--minimum-match-size` to something larger than ${first.size min second.size}.""".stripMargin
       }):
 
   end OverlappingSections
