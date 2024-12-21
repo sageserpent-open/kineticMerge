@@ -7,7 +7,12 @@ import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction}
 import com.sageserpent.kineticmerge
-import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording, ProgressRecordingSession, core}
+import com.sageserpent.kineticmerge.{
+  NoProgressRecording,
+  ProgressRecording,
+  ProgressRecordingSession,
+  core
+}
 import com.typesafe.scalalogging.StrictLogging
 import de.sciss.fingertree.RangedSeq
 import monocle.syntax.all.*
@@ -138,6 +143,11 @@ object CodeMotionAnalysis extends StrictLogging:
       maximumPossibleMatchSize min (minimumMatchSize max thresholdSizeForMatching(
         maximumFileSizeAcrossAllFilesOverAllSides
       ))
+
+    val maximumSwatheSize = Option(System.getProperty("maximum-swathe-size"))
+      .fold(ifEmpty = 20)(_.toInt) // 1000
+
+    println(s"Maximum swathe size: $maximumSwatheSize")
 
     logger.debug(
       s"Minimum match window size across all files over all sides: $minimumWindowSizeAcrossAllFilesOverAllSides"
@@ -991,7 +1001,7 @@ object CodeMotionAnalysis extends StrictLogging:
             // `MultiDict`, so we change the type ascription to pick up the
             // overload of `flatMap` that will build a sequence, *not* a map.
             .toSeq
-            .flatMap { case passThrough @ (path, _) =>
+            .flatMap { case (path, file) =>
               val fingerprintedInclusions =
                 fingerprintedInclusionsByPath(path)
 
@@ -1001,22 +1011,69 @@ object CodeMotionAnalysis extends StrictLogging:
                   // window size.
                   windowSize + inclusion.start <= 1 + inclusion.end
                 )
-                .map(passThrough -> _)
+                .flatMap {
+                  case CatsInclusiveRange(
+                        inclusionStartIndex,
+                        inclusionEndIndex
+                      ) =>
+                    val fingerprintedContent = file.content
+                      .slice(inclusionStartIndex, 1 + inclusionEndIndex)
+
+                    val swathes: Vector[(IndexedSeq[Element], Int)] =
+                      if maximumSwatheSize >= 2 * windowSize then
+                        val swathesInReverseIndexOrder = fingerprintedContent
+                          .sliding(
+                            // NOTE: each window in the slide has to overlap the
+                            // next so that the fingerprints cover all the
+                            // slice's content.
+                            size = maximumSwatheSize + windowSize - 1,
+                            step = maximumSwatheSize
+                          )
+                          .zipWithIndex
+                          .map((slice, index) =>
+                            slice -> (inclusionStartIndex + maximumSwatheSize * index)
+                          )
+                          .toVector
+                          .reverse
+
+                        assume(swathesInReverseIndexOrder.nonEmpty)
+
+                        val (potentialOffCut, _) =
+                          swathesInReverseIndexOrder.head
+
+                        val fullSizeSwathesInReverseIndexOrder =
+                          swathesInReverseIndexOrder.tail
+
+                        fullSizeSwathesInReverseIndexOrder.headOption
+                          .fold(ifEmpty = swathesInReverseIndexOrder)(
+                            fullSizeSwathePrecedingOffCutInIndexOrder =>
+                              if potentialOffCut.size < windowSize then
+                                val coalescedSwathe =
+                                  fullSizeSwathePrecedingOffCutInIndexOrder match
+                                    case (fullSizeContent, startIndex) =>
+                                      (fullSizeContent ++ potentialOffCut) -> startIndex
+
+                                coalescedSwathe +: fullSizeSwathesInReverseIndexOrder.tail
+                              else swathesInReverseIndexOrder
+                          )
+                      else Vector(fingerprintedContent -> inclusionStartIndex)
+
+                    swathes.map(path -> _)
+                }
             }
             .par
-            .flatMap { case ((path, file), CatsInclusiveRange(start, end)) =>
-              fingerprintStartIndices(
-                file.content.slice(start, 1 + end)
-              ).map((fingerprint, fingerprintStartIndex) =>
-                val section = sources
-                  .section(path)(
-                    start + fingerprintStartIndex,
-                    windowSize
-                  )
-                PotentialMatchKey(
-                  fingerprint,
-                  impliedContent = section
-                ) -> section
+            .flatMap { case (path, (content, startIndex)) =>
+              fingerprintStartIndices(content).map(
+                (fingerprint, fingerprintStartIndex) =>
+                  val section = sources
+                    .section(path)(
+                      startIndex + fingerprintStartIndex,
+                      windowSize
+                    )
+                  PotentialMatchKey(
+                    fingerprint,
+                    impliedContent = section
+                  ) -> section
               )
             }
         )
