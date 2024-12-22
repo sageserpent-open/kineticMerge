@@ -757,6 +757,16 @@ object CodeMotionAnalysis extends StrictLogging:
         withSection(rightSources, rightSectionsByPath)
 
       def checkInvariant(): Unit =
+        baseSectionsByPath.values.flatMap(_.iterator).foreach { baseSection =>
+          assert(!subsumesOnBase(baseSection))
+        }
+        leftSectionsByPath.values.flatMap(_.iterator).foreach { leftSection =>
+          assert(!subsumesOnLeft(leftSection))
+        }
+        rightSectionsByPath.values.flatMap(_.iterator).foreach { rightSection =>
+          assert(!subsumesOnRight(rightSection))
+        }
+
         // No match should be redundant - i.e. no match should involve sections
         // that all belong to another match. This goes without saying for
         // all-sides matches, as they any redundancy would imply equivalent
