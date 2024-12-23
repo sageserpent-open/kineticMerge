@@ -392,7 +392,7 @@ object CodeMotionAnalysis extends StrictLogging:
 
       // NOTE: this is partially applied in the class so that it means: "is
       // there anything on the given side that subsumes `section`".
-      private def subsumesSection(
+      private def subsumes(
           side: Sources[Path, Element],
           sectionsByPath: Map[Path, SectionsSeen]
       )(section: Section[Element]): Boolean =
@@ -438,7 +438,7 @@ object CodeMotionAnalysis extends StrictLogging:
       // NOTE: this is partially applied in the class so that it means: "is
       // there anything on the given side that overlaps or is subsumed by
       // `section`".
-      private def overlapsOrIsSubsumedBySection(
+      private def overlapsOrIsSubsumedBy(
           side: Sources[Path, Element],
           sectionsByPath: Map[Path, SectionsSeen]
       )(section: Section[Element]): Boolean =
@@ -454,7 +454,7 @@ object CodeMotionAnalysis extends StrictLogging:
               )
           )
 
-      private def withSection(
+      private def including(
           side: Sources[Path, Element],
           sectionsByPath: Map[Path, SectionsSeen]
       )(
@@ -475,7 +475,7 @@ object CodeMotionAnalysis extends StrictLogging:
               RangedSeq(section)(_.closedOpenInterval, Ordering.Int)
             )
         }
-      end withSection
+      end including
 
       // When the window size used to calculate matches is lower than the
       // optimal match size, overlapping matches will be made that cover the
@@ -736,35 +736,34 @@ object CodeMotionAnalysis extends StrictLogging:
         case GenericMatch  => GenericMatch
         case PairwiseMatch => PairwiseMatch
 
-      private val subsumesOnBase: Section[Element] => Boolean =
-        subsumesSection(baseSources, baseSectionsByPath)
-      private val subsumesOnLeft: Section[Element] => Boolean =
-        subsumesSection(leftSources, leftSectionsByPath)
-      private val subsumesOnRight: Section[Element] => Boolean =
-        subsumesSection(rightSources, rightSectionsByPath)
-      private val overlapsOrIsSubsumedByOnBase: Section[Element] => Boolean =
-        overlapsOrIsSubsumedBySection(baseSources, baseSectionsByPath)
-      private val overlapsOrIsSubsumedByOnLeft: Section[Element] => Boolean =
-        overlapsOrIsSubsumedBySection(leftSources, leftSectionsByPath)
-      private val overlapsOrIsSubsumedByOnRight: Section[Element] => Boolean =
-        overlapsOrIsSubsumedBySection(rightSources, rightSectionsByPath)
-      private val withBaseSection: Section[Element] => Map[Path, SectionsSeen] =
-        withSection(baseSources, baseSectionsByPath)
-      private val withLeftSection: Section[Element] => Map[Path, SectionsSeen] =
-        withSection(leftSources, leftSectionsByPath)
-      private val withRightSection
-          : Section[Element] => Map[Path, SectionsSeen] =
-        withSection(rightSources, rightSectionsByPath)
+      private val baseSubsumes: Section[Element] => Boolean =
+        subsumes(baseSources, baseSectionsByPath)
+      private val leftSubsumes: Section[Element] => Boolean =
+        subsumes(leftSources, leftSectionsByPath)
+      private val rightSubsumes: Section[Element] => Boolean =
+        subsumes(rightSources, rightSectionsByPath)
+      private val baseOverlapsOrIsSubsumedBy: Section[Element] => Boolean =
+        overlapsOrIsSubsumedBy(baseSources, baseSectionsByPath)
+      private val leftOverlapsOrIsSubsumedBy: Section[Element] => Boolean =
+        overlapsOrIsSubsumedBy(leftSources, leftSectionsByPath)
+      private val rightOverlapsOrIsSubsumedBy: Section[Element] => Boolean =
+        overlapsOrIsSubsumedBy(rightSources, rightSectionsByPath)
+      private val baseIncluding: Section[Element] => Map[Path, SectionsSeen] =
+        including(baseSources, baseSectionsByPath)
+      private val leftIncluding: Section[Element] => Map[Path, SectionsSeen] =
+        including(leftSources, leftSectionsByPath)
+      private val rightIncluding: Section[Element] => Map[Path, SectionsSeen] =
+        including(rightSources, rightSectionsByPath)
 
       def checkInvariant(): Unit =
         baseSectionsByPath.values.flatMap(_.iterator).foreach { baseSection =>
-          assert(!subsumesOnBase(baseSection))
+          assert(!baseSubsumes(baseSection))
         }
         leftSectionsByPath.values.flatMap(_.iterator).foreach { leftSection =>
-          assert(!subsumesOnLeft(leftSection))
+          assert(!leftSubsumes(leftSection))
         }
         rightSectionsByPath.values.flatMap(_.iterator).foreach { rightSection =>
-          assert(!subsumesOnRight(rightSection))
+          assert(!rightSubsumes(rightSection))
         }
 
         // No match should be redundant - i.e. no match should involve sections
@@ -1102,19 +1101,19 @@ object CodeMotionAnalysis extends StrictLogging:
                 .from(
                   baseSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
                 )
-                .filterNot(overlapsOrIsSubsumedByOnBase)
+                .filterNot(baseOverlapsOrIsSubsumedBy)
 
               val leftSectionsThatDoNotOverlap = LazyList
                 .from(
                   leftSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
                 )
-                .filterNot(overlapsOrIsSubsumedByOnLeft)
+                .filterNot(leftOverlapsOrIsSubsumedBy)
 
               val rightSectionsThatDoNotOverlap = LazyList
                 .from(
                   rightSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
                 )
-                .filterNot(overlapsOrIsSubsumedByOnRight)
+                .filterNot(rightOverlapsOrIsSubsumedBy)
 
               for
                 baseSection  <- baseSectionsThatDoNotOverlap
@@ -1150,13 +1149,13 @@ object CodeMotionAnalysis extends StrictLogging:
                 .from(
                   baseSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
                 )
-                .filterNot(overlapsOrIsSubsumedByOnBase)
+                .filterNot(baseOverlapsOrIsSubsumedBy)
 
               val leftSectionsThatDoNotOverlap = LazyList
                 .from(
                   leftSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
                 )
-                .filterNot(overlapsOrIsSubsumedByOnLeft)
+                .filterNot(leftOverlapsOrIsSubsumedBy)
 
               for
                 baseSection <- baseSectionsThatDoNotOverlap
@@ -1191,13 +1190,13 @@ object CodeMotionAnalysis extends StrictLogging:
                 .from(
                   baseSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
                 )
-                .filterNot(overlapsOrIsSubsumedByOnBase)
+                .filterNot(baseOverlapsOrIsSubsumedBy)
 
               val rightSectionsThatDoNotOverlap = LazyList
                 .from(
                   rightSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
                 )
-                .filterNot(overlapsOrIsSubsumedByOnRight)
+                .filterNot(rightOverlapsOrIsSubsumedBy)
 
               for
                 baseSection  <- baseSectionsThatDoNotOverlap
@@ -1232,13 +1231,13 @@ object CodeMotionAnalysis extends StrictLogging:
                 .from(
                   leftSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
                 )
-                .filterNot(overlapsOrIsSubsumedByOnLeft)
+                .filterNot(leftOverlapsOrIsSubsumedBy)
 
               val rightSectionsThatDoNotOverlap = LazyList
                 .from(
                   rightSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
                 )
-                .filterNot(overlapsOrIsSubsumedByOnRight)
+                .filterNot(rightOverlapsOrIsSubsumedBy)
 
               for
                 leftSection  <- leftSectionsThatDoNotOverlap
@@ -1602,9 +1601,9 @@ object CodeMotionAnalysis extends StrictLogging:
             end knockOutFromFingerprintedInclusions
 
             copy(
-              baseSectionsByPath = withBaseSection(baseSection),
-              leftSectionsByPath = withLeftSection(leftSection),
-              rightSectionsByPath = withRightSection(rightSection),
+              baseSectionsByPath = baseIncluding(baseSection),
+              leftSectionsByPath = leftIncluding(leftSection),
+              rightSectionsByPath = rightIncluding(rightSection),
               sectionsAndTheirMatches =
                 sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch) + (rightSection -> aMatch),
               baseFingerprintedInclusionsByPath =
@@ -1625,22 +1624,22 @@ object CodeMotionAnalysis extends StrictLogging:
             )
           case Match.BaseAndLeft(baseSection, leftSection) =>
             copy(
-              baseSectionsByPath = withBaseSection(baseSection),
-              leftSectionsByPath = withLeftSection(leftSection),
+              baseSectionsByPath = baseIncluding(baseSection),
+              leftSectionsByPath = leftIncluding(leftSection),
               sectionsAndTheirMatches =
                 sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch)
             )
           case Match.BaseAndRight(baseSection, rightSection) =>
             copy(
-              baseSectionsByPath = withBaseSection(baseSection),
-              rightSectionsByPath = withRightSection(rightSection),
+              baseSectionsByPath = baseIncluding(baseSection),
+              rightSectionsByPath = rightIncluding(rightSection),
               sectionsAndTheirMatches =
                 sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch)
             )
           case Match.LeftAndRight(leftSection, rightSection) =>
             copy(
-              leftSectionsByPath = withLeftSection(leftSection),
-              rightSectionsByPath = withRightSection(rightSection),
+              leftSectionsByPath = leftIncluding(leftSection),
+              rightSectionsByPath = rightIncluding(rightSection),
               sectionsAndTheirMatches =
                 sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch)
             )
@@ -1652,11 +1651,11 @@ object CodeMotionAnalysis extends StrictLogging:
       ): Option[ParedDownMatch[MatchType]] =
         aMatch match
           case Match.AllSides(baseSection, leftSection, rightSection)
-              if !overlapsOrIsSubsumedByOnBase(
+              if !baseOverlapsOrIsSubsumedBy(
                 baseSection
-              ) && !overlapsOrIsSubsumedByOnLeft(
+              ) && !leftOverlapsOrIsSubsumedBy(
                 leftSection
-              ) && !overlapsOrIsSubsumedByOnRight(rightSection) =>
+              ) && !rightOverlapsOrIsSubsumedBy(rightSection) =>
             val subsumingOnBase =
               subsumingMatches(sectionsAndTheirMatches)(
                 baseSources,
@@ -1710,19 +1709,19 @@ object CodeMotionAnalysis extends StrictLogging:
                 case (false, false, false) => Some(aMatch)
                 case (true, false, false) =>
                   Option.unless(
-                    subsumesOnLeft(leftSection) || subsumesOnRight(
+                    leftSubsumes(leftSection) || rightSubsumes(
                       rightSection
                     )
                   )(Match.LeftAndRight(leftSection, rightSection))
                 case (false, true, false) =>
                   Option.unless(
-                    subsumesOnBase(baseSection) || subsumesOnRight(
+                    baseSubsumes(baseSection) || rightSubsumes(
                       rightSection
                     )
                   )(Match.BaseAndRight(baseSection, rightSection))
                 case (false, false, true) =>
                   Option.unless(
-                    subsumesOnBase(baseSection) || subsumesOnLeft(
+                    baseSubsumes(baseSection) || leftSubsumes(
                       leftSection
                     )
                   )(Match.BaseAndLeft(baseSection, leftSection))
@@ -1732,33 +1731,33 @@ object CodeMotionAnalysis extends StrictLogging:
             end if
 
           case Match.BaseAndLeft(baseSection, leftSection)
-              if !overlapsOrIsSubsumedByOnBase(
+              if !baseOverlapsOrIsSubsumedBy(
                 baseSection
-              ) && !overlapsOrIsSubsumedByOnLeft(
+              ) && !leftOverlapsOrIsSubsumedBy(
                 leftSection
               ) =>
             Option.unless(
-              subsumesOnBase(baseSection) || subsumesOnLeft(
+              baseSubsumes(baseSection) || leftSubsumes(
                 leftSection
               )
             )(aMatch)
 
           case Match.BaseAndRight(baseSection, rightSection)
-              if !overlapsOrIsSubsumedByOnBase(
+              if !baseOverlapsOrIsSubsumedBy(
                 baseSection
-              ) && !overlapsOrIsSubsumedByOnRight(rightSection) =>
+              ) && !rightOverlapsOrIsSubsumedBy(rightSection) =>
             Option.unless(
-              subsumesOnBase(baseSection) || subsumesOnRight(
+              baseSubsumes(baseSection) || rightSubsumes(
                 rightSection
               )
             )(aMatch)
 
           case Match.LeftAndRight(leftSection, rightSection)
-              if !overlapsOrIsSubsumedByOnLeft(
+              if !leftOverlapsOrIsSubsumedBy(
                 leftSection
-              ) && !overlapsOrIsSubsumedByOnRight(rightSection) =>
+              ) && !rightOverlapsOrIsSubsumedBy(rightSection) =>
             Option.unless(
-              subsumesOnLeft(leftSection) || subsumesOnRight(
+              leftSubsumes(leftSection) || rightSubsumes(
                 rightSection
               )
             )(aMatch)
