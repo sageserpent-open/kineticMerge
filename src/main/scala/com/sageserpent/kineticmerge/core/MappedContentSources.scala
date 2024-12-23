@@ -170,8 +170,8 @@ trait MappedContentSources[Path, Element]
 
   override def paths: Set[Path] = contentsByPath.keySet
 
-  class SectionImplementation(
-      val path: Path,
+  case class SectionImplementation(
+      path: Path,
       override val startOffset: Int,
       override val size: Int
   ) extends Section[Element]:

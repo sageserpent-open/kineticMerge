@@ -399,7 +399,12 @@ object CodeMotionAnalysis extends StrictLogging:
         sectionsByPath
           .get(side.pathFor(section))
           .fold(ifEmpty = false)(
-            _.filterIncludes(section.closedOpenInterval).exists(_ != section)
+            _.filterIncludes(section.closedOpenInterval)
+              // NOTE: use `ne` and not `==`, because we consider *other*
+              // sections to trivially subsume `section` if they cover the same
+              // content, but are OK with the instance subsuming itself when
+              // checking the invariant.
+              .exists(_ ne section)
           )
 
       private def subsumingPairwiseMatches(
@@ -428,7 +433,11 @@ object CodeMotionAnalysis extends StrictLogging:
           .get(side.pathFor(section))
           .fold(ifEmpty = Set.empty)(
             _.filterIncludes(section.closedOpenInterval)
-              .filter(_ != section)
+              // NOTE: use `ne` and not `==`, because we consider *other*
+              // sections to trivially subsume `section` if they cover the same
+              // content, but are OK with the instance subsuming itself when
+              // checking the invariant.
+              .filter(_ ne section)
               .flatMap(sectionsAndTheirMatches.get)
               // NOTE: convert to a set at this point as we expect sections to
               // be duplicated when involved in ambiguous matches.
