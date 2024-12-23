@@ -776,7 +776,7 @@ object CodeMotionAnalysis extends StrictLogging:
         // What we have to watch out for are pairwise matches having *both*
         // sections also belonging to an all-sides match. Note that it *is*
         // legitimate to have a pairwise match sharing just one section with an
-        // all-sides match; they are just ambiguous matches,
+        // all-sides match; they are just ambiguous matches.
 
         val matchesBySectionPairs = sectionsAndTheirMatches.values.foldLeft(
           MultiDict.empty[(Section[Element], Section[Element]), Match[
@@ -1294,12 +1294,16 @@ object CodeMotionAnalysis extends StrictLogging:
           windowSize: Int,
           haveTrimmedMatches: Boolean
       ): MatchingResult =
+        checkInvariant()
+
         val (paredDownMatches, stabilized) =
           eatIntoLargerPairwiseMatchesUntilStabilized(windowSize)(
             matches = matches,
             phase = 0,
             accumulatedParedDownMatches = Set.empty
           )
+
+        stabilized.checkInvariant()
 
         val (
           updatedMatchesAndTheirSections,
@@ -1314,6 +1318,8 @@ object CodeMotionAnalysis extends StrictLogging:
             // matches first unconditionally and then vet the pairwise ones
             // afterwards.
             .withoutRedundantPairwiseMatchesIn(paredDownMatches)
+
+        updatedMatchesAndTheirSections.checkInvariant()
 
         val pathInclusions =
           if !haveTrimmedMatches then
