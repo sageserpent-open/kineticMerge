@@ -66,7 +66,8 @@ object CodeMotionAnalysis extends StrictLogging:
       leftSources: Sources[Path, Element],
       rightSources: Sources[Path, Element]
   )(
-      configuration: Configuration
+      configuration: Configuration,
+      suppressMatchesInvolvingOverlappingSections: Boolean = true
   )(using
       hashFunction: HashFunction
   ): Either[Throwable, CodeMotionAnalysis[Path, Element]] =
@@ -1434,6 +1435,41 @@ object CodeMotionAnalysis extends StrictLogging:
         withoutTheseMatches(redundantMatches) -> usefulMatches
       end withoutRedundantPairwiseMatchesIn
 
+      def purgedOfMatchesWithOverlappingSections(
+          enabled: Boolean
+      ): MatchesAndTheirSections =
+        if enabled then
+          def overlapsWithSomethingElse(aMatch: GenericMatch): Boolean =
+            // NOTE: the invariant already guarantees that nothing will be
+            // subsumed by the match's sections, so this is only testing for
+            // overlaps.
+            aMatch match
+              case Match.AllSides(baseSection, leftSection, rightSection) =>
+                baseOverlapsOrIsSubsumedBy(baseSection) ||
+                leftOverlapsOrIsSubsumedBy(
+                  leftSection
+                ) || rightOverlapsOrIsSubsumedBy(rightSection)
+              case Match.BaseAndLeft(baseSection, leftSection) =>
+                baseOverlapsOrIsSubsumedBy(baseSection) ||
+                leftOverlapsOrIsSubsumedBy(
+                  leftSection
+                )
+              case Match.BaseAndRight(baseSection, rightSection) =>
+                baseOverlapsOrIsSubsumedBy(
+                  baseSection
+                ) || rightOverlapsOrIsSubsumedBy(rightSection)
+              case Match.LeftAndRight(leftSection, rightSection) =>
+                leftOverlapsOrIsSubsumedBy(
+                  leftSection
+                ) || rightOverlapsOrIsSubsumedBy(rightSection)
+
+          val overlapping =
+            sectionsAndTheirMatches.values.filter(overlapsWithSomethingElse)
+
+          withoutTheseMatches(overlapping)
+        else this
+      end purgedOfMatchesWithOverlappingSections
+
       @tailrec
       private def eatIntoLargerPairwiseMatchesUntilStabilized(windowSize: Int)(
           matches: collection.Set[GenericMatch],
@@ -1939,12 +1975,14 @@ object CodeMotionAnalysis extends StrictLogging:
       val withAllMatchesOfAtLeastTheSureFireWindowSize =
         MatchesAndTheirSections.withAllMatchesOfAtLeastTheSureFireWindowSize()
 
-      if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > minimumWindowSizeAcrossAllFilesOverAllSides
-      then
-        withAllMatchesOfAtLeastTheSureFireWindowSize
-          .withAllSmallFryMatches()
-      else withAllMatchesOfAtLeastTheSureFireWindowSize
-      end if
+      (if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > minimumWindowSizeAcrossAllFilesOverAllSides
+       then
+         withAllMatchesOfAtLeastTheSureFireWindowSize
+           .withAllSmallFryMatches()
+       else withAllMatchesOfAtLeastTheSureFireWindowSize)
+        .purgedOfMatchesWithOverlappingSections(
+          suppressMatchesInvolvingOverlappingSections
+        )
     end matchesAndTheirSections
 
     matchesAndTheirSections.checkInvariant()

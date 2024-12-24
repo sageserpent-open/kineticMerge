@@ -452,7 +452,14 @@ class CodeMotionAnalysisTest:
           baseSources,
           leftSources,
           rightSources
-        )(configuration) match
+        )(
+          configuration,
+          // NOTE: the test cases can exhibit matches with overlapping sections
+          // that intrude on the content the test is checking, so rather than
+          // quietly suppressing the matches, we let admissible failures for
+          // overlapping sections occur and reject the test case.
+          suppressMatchesInvolvingOverlappingSections = false
+        ) match
           case Right(analysis) =>
             // Check that all matches are consistent with the base sections...
             analysis.base.values.flatMap(_.sections).foreach { baseSection =>
@@ -1178,6 +1185,123 @@ class CodeMotionAnalysisTest:
       )
     )
   end eatingIntoTwoPairwiseMatchesWhenBothHaveCommonContent
+
+  @Test
+  def matchesWithOverlappingSections(): Unit =
+    val someContentThatMatchesWithoutOverlap  = 0 until 10
+    val otherContentThatMatchesWithoutOverlap = 10 until 20
+    val contentThatMatchesWithOverlap         = IndexedSeq.fill(10)(-1)
+
+    val baseSources = new FakeSources(
+      Map(
+        1 -> (someContentThatMatchesWithoutOverlap ++ otherContentThatMatchesWithoutOverlap ++ contentThatMatchesWithOverlap)
+      ),
+      "base"
+    ) with SourcesContracts[Path, Element]
+
+    val leftSources = new FakeSources(
+      Map(
+        1 -> (someContentThatMatchesWithoutOverlap ++ contentThatMatchesWithOverlap ++ contentThatMatchesWithOverlap ++ otherContentThatMatchesWithoutOverlap)
+      ),
+      "left"
+    ) with SourcesContracts[Path, Element]
+
+    val rightSources = new FakeSources(
+      Map(
+        1 -> (contentThatMatchesWithOverlap ++ someContentThatMatchesWithoutOverlap ++ otherContentThatMatchesWithoutOverlap)
+      ),
+      "right"
+    ) with SourcesContracts[Path, Element]
+
+    val configuration = Configuration(
+      minimumMatchSize = 10,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold =
+        // We have two adjacent occurrences of the overlapping content on the
+        // left, so we can slide across each element in the first occurrence and
+        // then get an extra match with the second occurrence.
+        1 + contentThatMatchesWithOverlap.size
+    )
+
+    val Right(
+      analysis: CodeMotionAnalysis[Path, Element]
+    ) =
+      Assertions.assertDoesNotThrow(() =>
+        CodeMotionAnalysis.of(
+          baseSources,
+          leftSources,
+          rightSources
+        )(configuration, suppressMatchesInvolvingOverlappingSections = true)
+      ): @unchecked
+    end val
+
+    val someMatchedContentBaseSection = baseSources.section(1)(
+      startOffset = 0,
+      size = someContentThatMatchesWithoutOverlap.size
+    )
+    val someMatchedContentLeftSection = leftSources.section(1)(
+      startOffset = 0,
+      size = someContentThatMatchesWithoutOverlap.size
+    )
+    val someMatchedContentRightSection = rightSources.section(1)(
+      startOffset = contentThatMatchesWithOverlap.size,
+      size = someContentThatMatchesWithoutOverlap.size
+    )
+
+    val otherMatchedContentBaseSection = baseSources.section(1)(
+      startOffset = someContentThatMatchesWithoutOverlap.size,
+      size = otherContentThatMatchesWithoutOverlap.size
+    )
+    val otherMatchedContentLeftSection = leftSources.section(1)(
+      startOffset =
+        someContentThatMatchesWithoutOverlap.size + contentThatMatchesWithOverlap.size + contentThatMatchesWithOverlap.size,
+      size = otherContentThatMatchesWithoutOverlap.size
+    )
+    val otherMatchedContentRightSection = rightSources.section(1)(
+      startOffset =
+        contentThatMatchesWithOverlap.size + someContentThatMatchesWithoutOverlap.size,
+      size = otherContentThatMatchesWithoutOverlap.size
+    )
+
+    assert(
+      Set(
+        Match.AllSides(
+          someMatchedContentBaseSection,
+          someMatchedContentLeftSection,
+          someMatchedContentRightSection
+        )
+      ) == analysis.matchesFor(
+        someMatchedContentBaseSection
+      )
+    )
+
+    assert(
+      Set(
+        Match.AllSides(
+          otherMatchedContentBaseSection,
+          otherMatchedContentLeftSection,
+          otherMatchedContentRightSection
+        )
+      ) == analysis.matchesFor(
+        otherMatchedContentBaseSection
+      )
+    )
+
+    val Left(exception) =
+      CodeMotionAnalysis.of(
+        baseSources,
+        leftSources,
+        rightSources
+      )(
+        configuration,
+        suppressMatchesInvolvingOverlappingSections = false
+      ): @unchecked
+
+    assert(exception.isInstanceOf[FakeSources#OverlappingSections])
+
+  end matchesWithOverlappingSections
+
 end CodeMotionAnalysisTest
 
 object CodeMotionAnalysisTest:
