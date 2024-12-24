@@ -1190,25 +1190,27 @@ class CodeMotionAnalysisTest:
   def matchesWithOverlappingSections(): Unit =
     val someContentThatMatchesWithoutOverlap  = 0 until 10
     val otherContentThatMatchesWithoutOverlap = 10 until 20
-    val contentThatMatchesWithOverlap         = IndexedSeq.fill(10)(-1)
+    val overlappingMatchesTargetContent       = -1 to -50 by -1
+    val overlappingMatchesSources =
+      (-1 to -41 by -1).flatMap(start => start until start - 10 by -1)
 
     val baseSources = new FakeSources(
       Map(
-        1 -> (someContentThatMatchesWithoutOverlap ++ otherContentThatMatchesWithoutOverlap ++ contentThatMatchesWithOverlap)
+        1 -> (someContentThatMatchesWithoutOverlap ++ otherContentThatMatchesWithoutOverlap ++ overlappingMatchesSources)
       ),
       "base"
     ) with SourcesContracts[Path, Element]
 
     val leftSources = new FakeSources(
       Map(
-        1 -> (someContentThatMatchesWithoutOverlap ++ contentThatMatchesWithOverlap ++ contentThatMatchesWithOverlap ++ otherContentThatMatchesWithoutOverlap)
+        1 -> (someContentThatMatchesWithoutOverlap ++ overlappingMatchesTargetContent ++ otherContentThatMatchesWithoutOverlap)
       ),
       "left"
     ) with SourcesContracts[Path, Element]
 
     val rightSources = new FakeSources(
       Map(
-        1 -> (contentThatMatchesWithOverlap ++ someContentThatMatchesWithoutOverlap ++ otherContentThatMatchesWithoutOverlap)
+        1 -> (overlappingMatchesSources ++ someContentThatMatchesWithoutOverlap ++ otherContentThatMatchesWithoutOverlap)
       ),
       "right"
     ) with SourcesContracts[Path, Element]
@@ -1217,11 +1219,7 @@ class CodeMotionAnalysisTest:
       minimumMatchSize = 10,
       thresholdSizeFractionForMatching = 0,
       minimumAmbiguousMatchSize = 0,
-      ambiguousMatchesThreshold =
-        // We have two adjacent occurrences of the overlapping content on the
-        // left, so we can slide across each element in the first occurrence and
-        // then get an extra match with the second occurrence.
-        1 + contentThatMatchesWithOverlap.size
+      ambiguousMatchesThreshold = 1
     )
 
     val Right(
@@ -1245,7 +1243,7 @@ class CodeMotionAnalysisTest:
       size = someContentThatMatchesWithoutOverlap.size
     )
     val someMatchedContentRightSection = rightSources.section(1)(
-      startOffset = contentThatMatchesWithOverlap.size,
+      startOffset = overlappingMatchesSources.size,
       size = someContentThatMatchesWithoutOverlap.size
     )
 
@@ -1255,12 +1253,12 @@ class CodeMotionAnalysisTest:
     )
     val otherMatchedContentLeftSection = leftSources.section(1)(
       startOffset =
-        someContentThatMatchesWithoutOverlap.size + contentThatMatchesWithOverlap.size + contentThatMatchesWithOverlap.size,
+        someContentThatMatchesWithoutOverlap.size + overlappingMatchesTargetContent.size,
       size = otherContentThatMatchesWithoutOverlap.size
     )
     val otherMatchedContentRightSection = rightSources.section(1)(
       startOffset =
-        contentThatMatchesWithOverlap.size + someContentThatMatchesWithoutOverlap.size,
+        overlappingMatchesSources.size + someContentThatMatchesWithoutOverlap.size,
       size = otherContentThatMatchesWithoutOverlap.size
     )
 
