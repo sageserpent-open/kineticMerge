@@ -1304,19 +1304,15 @@ object CodeMotionAnalysis extends StrictLogging:
           windowSize: Int,
           haveTrimmedMatches: Boolean
       ): MatchingResult =
-        checkInvariant()
-
         val (
           updatedMatchesAndTheirSections,
-          matchesWithoutRedundantPairwiseMatches
+          reconciledMatches
         ) =
           reconcileMatchesWithExistingState(windowSize)(
             matches = matches,
             phase = 0,
-            accumulatedParedDownMatches = Set.empty
+            allSidesMatchesThatHaveAlreadyBeenAddedToTheState = Set.empty
           )
-
-        updatedMatchesAndTheirSections.checkInvariant()
 
         val pathInclusions =
           if !haveTrimmedMatches then
@@ -1350,7 +1346,7 @@ object CodeMotionAnalysis extends StrictLogging:
                 )
             end PathInclusionsImplementation
 
-            matchesWithoutRedundantPairwiseMatches.foldLeft(
+            reconciledMatches.foldLeft(
               PathInclusionsImplementation(Set.empty, Set.empty, Set.empty)
             )((partialPathInclusions, aMatch) =>
               aMatch match
@@ -1376,10 +1372,9 @@ object CodeMotionAnalysis extends StrictLogging:
 
         MatchingResult(
           matchesAndTheirSections = updatedMatchesAndTheirSections,
-          numberOfMatchesForTheGivenWindowSize =
-            matchesWithoutRedundantPairwiseMatches.size,
+          numberOfMatchesForTheGivenWindowSize = reconciledMatches.size,
           estimatedWindowSizeForOptimalMatch =
-            estimateOptimalMatchSize(matchesWithoutRedundantPairwiseMatches),
+            estimateOptimalMatchSize(reconciledMatches),
           pathInclusions = pathInclusions
         )
       end withMatches
@@ -1461,7 +1456,7 @@ object CodeMotionAnalysis extends StrictLogging:
       private def reconcileMatchesWithExistingState(windowSize: Int)(
           matches: collection.Set[GenericMatch],
           phase: Int,
-          accumulatedParedDownMatches: Set[GenericMatch]
+          allSidesMatchesThatHaveAlreadyBeenAddedToTheState: Set[GenericMatch]
       ): (MatchesAndTheirSections, collection.Set[GenericMatch]) =
         val paredDownMatches = matches.flatMap(pareDownOrSuppressCompletely)
 
@@ -1603,31 +1598,22 @@ object CodeMotionAnalysis extends StrictLogging:
           updatedThis.reconcileMatchesWithExistingState(windowSize)(
             matches = matches diff allSidesMatchesThatAteIntoAPairwiseMatch,
             phase = numberOfAttempts,
-            accumulatedParedDownMatches =
-              accumulatedParedDownMatches union allSidesMatchesThatAteIntoAPairwiseMatch
+            allSidesMatchesThatHaveAlreadyBeenAddedToTheState =
+              allSidesMatchesThatHaveAlreadyBeenAddedToTheState union allSidesMatchesThatAteIntoAPairwiseMatch
           )
         else
+          val (updatedThisWithoutRedundantPairwiseMatches, usefulMatches) =
+            paredDownMatches
+              .foldLeft(this)(_ withMatch _)
+              // NOTE: this looks terrible - why add all the matches in
+              // unconditionally beforehand and *then* take out the redundant
+              // pairwise ones? The answer is because the matches being added
+              // are in no particular order - so we would have to add all the
+              // all-sides matches first unconditionally and then vet the
+              // pairwise ones afterwards.
+              .withoutRedundantPairwiseMatchesIn(paredDownMatches)
 
-          paredDownMatches
-            .foldLeft(this)(_ withMatch _)
-            // NOTE: this looks terrible - why add all the matches in
-            // unconditionally beforehand and *then* take out the redundant
-            // pairwise ones? The answer is because the matches being added are
-            // in no particular order - so we would have to add all the
-            // all-sides matches first unconditionally and then vet the pairwise
-            // ones afterwards.
-            // TODO: why do we need to take the union of
-            // `accumulatedParedDownMatches` and `paredDownMatches`? Shouldn't
-            // `paredDownMatches` do by itself? Answer - because that method is
-            // expected to yield the matches that aren't redundant! Need to tidy
-            // this up, it's a mess...
-            // Consider passing `paredDownMatches` to
-            // `withoutRedundantPairwiseMatchesIn` and directly yielding
-            // `accumulatedParedDownMatches union paredDownMatches` from this
-            // method...
-            .withoutRedundantPairwiseMatchesIn(
-              accumulatedParedDownMatches union paredDownMatches
-            )
+          updatedThisWithoutRedundantPairwiseMatches -> (allSidesMatchesThatHaveAlreadyBeenAddedToTheState union usefulMatches)
         end if
       end reconcileMatchesWithExistingState
 
