@@ -494,23 +494,41 @@ object CodeMotionAnalysis extends StrictLogging:
       private def estimateOptimalMatchSize(
           matches: collection.Set[GenericMatch]
       ): Option[Int] =
-        // Deconstruct a throwaway instance of `MatchesAndTheirSections` made
-        // from just `matches` as a quick-and-dirty way of organising the
-        // matches' sections.
-        val MatchesAndTheirSections(
-          baseSectionsByPath,
-          leftSectionsByPath,
-          rightSectionsByPath,
-          _,
-          _,
-          _,
-          _
-        ) = matches.foldLeft(empty)(_.withMatch(_))
+        val (baseSections, leftSections, rightSections) = matches.toSeq.map {
+          case Match.AllSides(baseSection, leftSection, rightSection) =>
+            (Some(baseSection), Some(leftSection), Some(rightSection))
+          case Match.BaseAndLeft(baseSection, leftSection) =>
+            (Some(baseSection), Some(leftSection), None)
+          case Match.BaseAndRight(baseSection, rightSection) =>
+            (Some(baseSection), None, Some(rightSection))
+          case Match.LeftAndRight(leftSection, rightSection) =>
+            (None, Some(leftSection), Some(rightSection))
 
-        val sectionsSeenOnAllPathsAcrossAllSides =
-          baseSectionsByPath.values ++ leftSectionsByPath.values ++ rightSectionsByPath.values
+        }.unzip3
 
-        sectionsSeenOnAllPathsAcrossAllSides
+        def sectionsGroupedByPathAndSorted(
+            sources: Sources[Path, Element],
+            sections: Seq[Section[Element]]
+        ) =
+          sections
+            .groupBy(sources.pathFor)
+            .map((_, sharingTheSamePath) =>
+              sharingTheSamePath.sortBy(_.startOffset)
+            )
+
+        val sectionGroupsForAllPathsAcrossAllSides =
+          sectionsGroupedByPathAndSorted(
+            baseSources,
+            baseSections.flatten
+          ) ++ sectionsGroupedByPathAndSorted(
+            leftSources,
+            leftSections.flatten
+          ) ++ sectionsGroupedByPathAndSorted(
+            rightSources,
+            rightSections.flatten
+          )
+
+        sectionGroupsForAllPathsAcrossAllSides
           .flatMap(maximumSizeOfCoalescedSections)
           .maxOption
       end estimateOptimalMatchSize
@@ -518,10 +536,8 @@ object CodeMotionAnalysis extends StrictLogging:
       // Coalesces runs of overlapping sections together and reports the size of
       // the largest coalescence.
       private def maximumSizeOfCoalescedSections(
-          sectionsSeen: SectionsSeen
+          sectionsInOrderOfStartOffset: Seq[Section[Element]]
       ): Option[Int] =
-        val sectionsInOrderOfStartOffset = sectionsSeen.iterator.toSeq
-
         case class PutativeCoalescence(
             startOffset: Int,
             onePastEndOffset: Int
