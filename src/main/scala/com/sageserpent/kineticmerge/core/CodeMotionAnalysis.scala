@@ -1316,7 +1316,7 @@ object CodeMotionAnalysis extends StrictLogging:
       end matchesForWindowSize
 
       private def withMatches(
-          matches: collection.Set[GenericMatch],
+          matches: Set[GenericMatch],
           windowSize: Int,
           haveTrimmedMatches: Boolean
       ): MatchingResult =
@@ -1470,10 +1470,10 @@ object CodeMotionAnalysis extends StrictLogging:
 
       @tailrec
       private def reconcileMatchesWithExistingState(windowSize: Int)(
-          matches: collection.Set[GenericMatch],
+          matches: Set[GenericMatch],
           phase: Int,
           allSidesMatchesThatHaveAlreadyBeenAddedToTheState: Set[GenericMatch]
-      ): (MatchesAndTheirSections, collection.Set[GenericMatch]) =
+      ): (MatchesAndTheirSections, Set[GenericMatch]) =
         val paredDownMatches = matches.flatMap(pareDownOrSuppressCompletely)
 
         val allSidesMatches = paredDownMatches.collect {
