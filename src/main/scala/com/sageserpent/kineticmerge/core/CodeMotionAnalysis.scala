@@ -1474,7 +1474,9 @@ object CodeMotionAnalysis extends StrictLogging:
           phase: Int,
           allSidesMatchesThatHaveAlreadyBeenAddedToTheState: Set[GenericMatch]
       ): (MatchesAndTheirSections, Set[GenericMatch]) =
-        val paredDownMatches = matches.flatMap(pareDownOrSuppressCompletely)
+        val paredDownMatches = matches.flatMap(
+          pareDownOrSuppressCompletely(_, skipOverlapsOrSubsumedBy = 0 == phase)
+        )
 
         val allSidesMatches = paredDownMatches.collect {
           case allSides: Match.AllSides[Section[Element]] => allSides
@@ -1578,7 +1580,11 @@ object CodeMotionAnalysis extends StrictLogging:
           val paredDownFragments =
             fragments.toSeq
               .flatMap(
-                withoutThePairwiseMatchesThatWereEatenInto.pareDownOrSuppressCompletely
+                withoutThePairwiseMatchesThatWereEatenInto
+                  .pareDownOrSuppressCompletely(
+                    _,
+                    skipOverlapsOrSubsumedBy = 0 == phase
+                  )
               )
 
           // NOTE: those parentheses are necessary to mark an unchecked pattern
@@ -1708,15 +1714,19 @@ object CodeMotionAnalysis extends StrictLogging:
       end withMatch
 
       private def pareDownOrSuppressCompletely[MatchType <: GenericMatch](
-          aMatch: MatchType
+          aMatch: MatchType,
+          // This relies on the helper `sectionsByPotentialMatchKey` already
+          // having vetted the matches' sections, and is only valid for the
+          // initial phase of recursion in `reconcileMatchesWithExistingState`.
+          skipOverlapsOrSubsumedBy: Boolean
       ): Option[ParedDownMatch[MatchType]] =
         aMatch match
           case Match.AllSides(baseSection, leftSection, rightSection)
-              if !baseOverlapsOrIsSubsumedBy(
+              if skipOverlapsOrSubsumedBy || (!baseOverlapsOrIsSubsumedBy(
                 baseSection
               ) && !leftOverlapsOrIsSubsumedBy(
                 leftSection
-              ) && !rightOverlapsOrIsSubsumedBy(rightSection) =>
+              ) && !rightOverlapsOrIsSubsumedBy(rightSection)) =>
             val subsumingOnBase =
               subsumingMatches(sectionsAndTheirMatches)(
                 baseSources,
@@ -1792,11 +1802,11 @@ object CodeMotionAnalysis extends StrictLogging:
             end if
 
           case Match.BaseAndLeft(baseSection, leftSection)
-              if !baseOverlapsOrIsSubsumedBy(
+              if skipOverlapsOrSubsumedBy || (!baseOverlapsOrIsSubsumedBy(
                 baseSection
               ) && !leftOverlapsOrIsSubsumedBy(
                 leftSection
-              ) =>
+              )) =>
             Option.unless(
               baseSubsumes(baseSection) || leftSubsumes(
                 leftSection
@@ -1804,9 +1814,9 @@ object CodeMotionAnalysis extends StrictLogging:
             )(aMatch)
 
           case Match.BaseAndRight(baseSection, rightSection)
-              if !baseOverlapsOrIsSubsumedBy(
+              if skipOverlapsOrSubsumedBy || (!baseOverlapsOrIsSubsumedBy(
                 baseSection
-              ) && !rightOverlapsOrIsSubsumedBy(rightSection) =>
+              ) && !rightOverlapsOrIsSubsumedBy(rightSection)) =>
             Option.unless(
               baseSubsumes(baseSection) || rightSubsumes(
                 rightSection
@@ -1814,9 +1824,9 @@ object CodeMotionAnalysis extends StrictLogging:
             )(aMatch)
 
           case Match.LeftAndRight(leftSection, rightSection)
-              if !leftOverlapsOrIsSubsumedBy(
+              if skipOverlapsOrSubsumedBy || (!leftOverlapsOrIsSubsumedBy(
                 leftSection
-              ) && !rightOverlapsOrIsSubsumedBy(rightSection) =>
+              ) && !rightOverlapsOrIsSubsumedBy(rightSection)) =>
             Option.unless(
               leftSubsumes(leftSection) || rightSubsumes(
                 rightSection
