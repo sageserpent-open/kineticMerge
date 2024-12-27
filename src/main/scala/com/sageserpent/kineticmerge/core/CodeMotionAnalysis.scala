@@ -408,13 +408,13 @@ object CodeMotionAnalysis extends StrictLogging:
           )
       end subsumes
 
-      private def subsumingPairwiseMatches(
+      private def subsumingPairwiseMatchesIncludingTriviallySubsuming(
           sectionsAndTheirMatches: MatchedSections
       )(
           side: Sources[Path, Element],
           sectionsByPath: Map[Path, SectionsSeen]
       )(section: Section[Element]): Set[PairwiseMatch] =
-        subsumingOrSameSizeMatches(sectionsAndTheirMatches)(
+        subsumingMatchesIncludingTriviallySubsuming(sectionsAndTheirMatches)(
           side,
           sectionsByPath
         )(section)
@@ -427,7 +427,7 @@ object CodeMotionAnalysis extends StrictLogging:
               leftAndRight: PairwiseMatch
           }
 
-      private def subsumingOrSameSizeMatches(
+      private def subsumingMatchesIncludingTriviallySubsuming(
           sectionsAndTheirMatches: MatchedSections
       )(
           side: Sources[Path, Element],
@@ -1485,21 +1485,27 @@ object CodeMotionAnalysis extends StrictLogging:
             allSides: Match.AllSides[Section[Element]]
         ): Set[PairwiseMatch] =
           val subsumingOnBase =
-            subsumingPairwiseMatches(sectionsAndTheirMatches)(
+            subsumingPairwiseMatchesIncludingTriviallySubsuming(
+              sectionsAndTheirMatches
+            )(
               baseSources,
               baseSectionsByPath
             )(
               allSides.baseElement
             )
           val subsumingOnLeft =
-            subsumingPairwiseMatches(sectionsAndTheirMatches)(
+            subsumingPairwiseMatchesIncludingTriviallySubsuming(
+              sectionsAndTheirMatches
+            )(
               leftSources,
               leftSectionsByPath
             )(
               allSides.leftElement
             )
           val subsumingOnRight =
-            subsumingPairwiseMatches(sectionsAndTheirMatches)(
+            subsumingPairwiseMatchesIncludingTriviallySubsuming(
+              sectionsAndTheirMatches
+            )(
               rightSources,
               rightSectionsByPath
             )(
@@ -1722,6 +1728,15 @@ object CodeMotionAnalysis extends StrictLogging:
           // initial phase of recursion in `reconcileMatchesWithExistingState`.
           skipOverlapsOrSubsumedBy: Boolean
       ): Option[ParedDownMatch[MatchType]] =
+        // NOTE: one thing to watch out is when fragments resulting from
+        // larger pairwise matches being eaten into collide with equivalent
+        // pairwise matches found by fingerprint matching.
+        // This can take the form of the fragments coming first due to larger
+        // all-sides matches, or the pairwise matches from fingerprint matching
+        // can be followed by fragmentation if the all-sides eating into the
+        // larger pairwise matches also come from the same fingerprinting that
+        // yielded the pairwise matching. Intercepting this here addresses both
+        // cases.
         aMatch match
           case Match.AllSides(baseSection, leftSection, rightSection)
               if skipOverlapsOrSubsumedBy || (!baseOverlapsOrIsSubsumedBy(
@@ -1741,7 +1756,9 @@ object CodeMotionAnalysis extends StrictLogging:
             end isTriviallySubsumed
 
             val subsumingOnBase =
-              subsumingOrSameSizeMatches(sectionsAndTheirMatches)(
+              subsumingMatchesIncludingTriviallySubsuming(
+                sectionsAndTheirMatches
+              )(
                 baseSources,
                 baseSectionsByPath
               )(
@@ -1749,7 +1766,9 @@ object CodeMotionAnalysis extends StrictLogging:
               ).filterNot(isTriviallySubsumed)
 
             val subsumingOnLeft =
-              subsumingOrSameSizeMatches(sectionsAndTheirMatches)(
+              subsumingMatchesIncludingTriviallySubsuming(
+                sectionsAndTheirMatches
+              )(
                 leftSources,
                 leftSectionsByPath
               )(
@@ -1757,7 +1776,9 @@ object CodeMotionAnalysis extends StrictLogging:
               ).filterNot(isTriviallySubsumed)
 
             val subsumingOnRight =
-              subsumingOrSameSizeMatches(sectionsAndTheirMatches)(
+              subsumingMatchesIncludingTriviallySubsuming(
+                sectionsAndTheirMatches
+              )(
                 rightSources,
                 rightSectionsByPath
               )(
