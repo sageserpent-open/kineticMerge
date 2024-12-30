@@ -362,7 +362,7 @@ object LongestCommonSubsequence extends StrictLogging:
               for
                 ceiling <-
                   (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
-                leftIndex <- 1 to maximumShortIndex
+                leftIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
                 rightIndex = ceiling - leftIndex
               do
                 action(
@@ -411,8 +411,8 @@ object LongestCommonSubsequence extends StrictLogging:
               // Evaluate along final short diagonals decreasing in length...
               for
                 ceiling <-
-                  (1 + maximumLongIndex) until (maximumShortIndex + maximumLongIndex)
-                rightIndex <- 1 to maximumShortIndex
+                  (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
+                rightIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
                 leftIndex = ceiling - rightIndex
               do
                 action(
@@ -473,7 +473,7 @@ object LongestCommonSubsequence extends StrictLogging:
               for
                 ceiling <-
                   (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
-                baseIndex <- 1 to maximumShortIndex
+                baseIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
                 rightIndex = ceiling - baseIndex
               do
                 action(
@@ -522,8 +522,8 @@ object LongestCommonSubsequence extends StrictLogging:
               // Evaluate along final short diagonals decreasing in length...
               for
                 ceiling <-
-                  (1 + maximumLongIndex) until (maximumShortIndex + maximumLongIndex)
-                rightIndex <- 1 to maximumShortIndex
+                  (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
+                rightIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
                 baseIndex = ceiling - rightIndex
               do
                 action(
@@ -584,7 +584,7 @@ object LongestCommonSubsequence extends StrictLogging:
               for
                 ceiling <-
                   (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
-                baseIndex <- 1 to maximumShortIndex
+                baseIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
                 leftIndex = ceiling - baseIndex
               do
                 action(
@@ -633,8 +633,8 @@ object LongestCommonSubsequence extends StrictLogging:
               // Evaluate along final short diagonals decreasing in length...
               for
                 ceiling <-
-                  (1 + maximumLongIndex) until (maximumShortIndex + maximumLongIndex)
-                leftIndex <- 1 to maximumShortIndex
+                  (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
+                leftIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
                 baseIndex = ceiling - leftIndex
               do
                 action(
