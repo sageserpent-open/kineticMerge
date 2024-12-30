@@ -2,9 +2,8 @@ package com.sageserpent.kineticmerge.core
 
 import cats.Eq
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{CommonSubsequenceSize, Contribution}
+import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
-
-import scala.collection.{Searching, mutable}
 
 case class LongestCommonSubsequence[Element] private (
     base: IndexedSeq[Contribution[Element]],
@@ -119,7 +118,7 @@ case class LongestCommonSubsequence[Element] private (
     commonSubsequenceSize -> (commonToLeftAndRightOnlySize plus commonToBaseAndLeftOnlySize plus commonToBaseAndRightOnlySize)
 end LongestCommonSubsequence
 
-object LongestCommonSubsequence:
+object LongestCommonSubsequence extends StrictLogging:
 
   def defaultElementSize[Element](irrelevant: Element): Int = 1
 
@@ -138,38 +137,604 @@ object LongestCommonSubsequence:
     val equality = summon[Eq[Element]]
     val sized    = summon[Sized[Element]]
 
-    val swatheSizeToAccommodatePartialResultsForNeighbouringBaseIndices =
-      2 * (1 + left.size) * (1 + right.size)
-
+    // TODO: maybe this should be unpacked into three parameters where it is
+    // used?
     type PartialResultKey = (Int, Int, Int)
 
-    type PartialResultsCache =
-      mutable.ArrayDeque[(PartialResultKey, LongestCommonSubsequence[Element])]
+    /** [[PartialResultKey]] keys and their associated
+      * [[LongestCommonSubsequence]] solutions are organised into swathes, where
+      * each swathe is populated by keys that all share at least one index
+      * taking the value of the swathe's labelling index; all other indices in a
+      * swathe's keys are lower than the swathe index.<p> For example, the
+      * swathe of index 0 contains an entry using indices (0, 0, 0).<p> The
+      * swathe of index 1 contains entries using indices (1, 1, 1), (1, 1, 0),
+      * (1, 0, 1), (1, 0, 0).<p>This breakdown of keys means that a dynamic
+      * programming approach can work up through the swathes, calculating
+      * sub-problem solutions that depend only on solutions from within the
+      * leading swathe and its predecessor.
+      */
+    trait Swathes:
+      def consultRelevantSwatheForSolution(
+          partialResultKey: PartialResultKey
+      ): LongestCommonSubsequence[Element]
 
-    val orderingAligningWithCachePopulationLoop
-        : Ordering[(PartialResultKey, LongestCommonSubsequence[Element])] =
-      // Order by the natural tuple ordering of the key, so base index, then
-      // left index, then right index. This matches the order in which the cache
-      // will be populated.
-      Ordering.by(_._1)
+      def storeSolutionInLeadingSwathe(
+          partialResultKey: PartialResultKey,
+          longestCommonSubsequence: LongestCommonSubsequence[Element]
+      ): Unit
+    end Swathes
 
-    extension (partialResultsCache: PartialResultsCache)
-      def apply(key: PartialResultKey): LongestCommonSubsequence[Element] =
-        val Searching.Found(index) = partialResultsCache.search(key -> null)(
-          orderingAligningWithCachePopulationLoop
-        ): @unchecked
+    object Swathes:
+      private val maximumSwatheIndex =
+        base.size max left.size max right.size
 
-        partialResultsCache(index)._2
-    end extension
+      def evaluateSolutionsInDependencyOrder(
+          action: (Swathes, PartialResultKey) => Unit
+      ): LongestCommonSubsequence[Element] =
+        object swathes extends Swathes:
+          private val upperBoundOfSwatheSizes =
+            // Just use a single upper bound for all swathes, which means it is
+            // an overestimate for all but the final swathe.
+            1 + (1 + base.size) * (1 + left.size) + (1 + base.size) * (1 + right.size) + (1 + left.size) * (1 + right.size)
 
-    val partialResultsCache: PartialResultsCache =
-      mutable.ArrayDeque.empty
+          private val offsetInStorageEntriesWithAllEqualToSwatheIndex = 0
+
+          private val offsetInStorageEntriesWithLeftEqualToSwatheIndex =
+            offsetInStorageEntriesWithAllEqualToSwatheIndex + 1
+
+          private val offsetInStorageEntriesWithRightEqualToSwatheIndex =
+            offsetInStorageEntriesWithLeftEqualToSwatheIndex + (1 + base.size) * (1 + right.size)
+
+          private val offsetInStorageEntriesWithBaseEqualToSwatheIndex =
+            offsetInStorageEntriesWithRightEqualToSwatheIndex + (1 + base.size) * (1 + left.size)
+
+          private val twoLotsOfStorage = Array(newStorage, newStorage)
+
+          private val notYetAdvanced = -1
+
+          private var _indexOfLeadingSwathe: Int = notYetAdvanced
+
+          def advanceToNextLeadingSwathe(): Boolean =
+            val resultSnapshotPriorToMutation = notYetReachedFinalSwathe
+
+            if resultSnapshotPriorToMutation then _indexOfLeadingSwathe += 1
+
+            resultSnapshotPriorToMutation
+          end advanceToNextLeadingSwathe
+
+          def topLevelSolution: LongestCommonSubsequence[Element] =
+            require(!notYetReachedFinalSwathe)
+
+            twoLotsOfStorage(storageLotForLeadingSwathe)(
+              indexFor(
+                _indexOfLeadingSwathe,
+                (base.size, left.size, right.size)
+              )
+            )
+          end topLevelSolution
+
+          private def notYetReachedFinalSwathe =
+            maximumSwatheIndex > _indexOfLeadingSwathe
+
+          def consultRelevantSwatheForSolution(
+              partialResultKey: PartialResultKey
+          ): LongestCommonSubsequence[Element] =
+            require(_indexOfLeadingSwathe != notYetAdvanced)
+
+            logger.debug(s"Consulting solution for $partialResultKey.")
+
+            partialResultKey match
+              case (onePastBaseIndex, _, _)
+                  if indexOfLeadingSwathe == onePastBaseIndex =>
+                twoLotsOfStorage(storageLotForLeadingSwathe)(
+                  indexFor(_indexOfLeadingSwathe, partialResultKey)
+                )
+              case (_, onePastLeftIndex, _)
+                  if indexOfLeadingSwathe == onePastLeftIndex =>
+                twoLotsOfStorage(storageLotForLeadingSwathe)(
+                  indexFor(_indexOfLeadingSwathe, partialResultKey)
+                )
+              case (_, _, onePastRightIndex)
+                  if indexOfLeadingSwathe == onePastRightIndex =>
+                twoLotsOfStorage(storageLotForLeadingSwathe)(
+                  indexFor(_indexOfLeadingSwathe, partialResultKey)
+                )
+              case _ =>
+                twoLotsOfStorage(storageLotForPrecedingSwathe)(
+                  indexFor(_indexOfLeadingSwathe - 1, partialResultKey)
+                )
+            end match
+          end consultRelevantSwatheForSolution
+
+          inline private def storageLotForPrecedingSwathe =
+            logger.debug(s"Selecting preceding swathe.")
+            (1 + _indexOfLeadingSwathe) % 2
+          end storageLotForPrecedingSwathe
+
+          def indexOfLeadingSwathe: Int = _indexOfLeadingSwathe
+
+          inline private def storageLotForLeadingSwathe =
+            logger.debug(s"Selecting leading swathe.")
+            _indexOfLeadingSwathe % 2
+          end storageLotForLeadingSwathe
+
+          inline private def indexFor(
+              swatheIndex: Int,
+              partialResultKey: PartialResultKey
+          ) =
+            val result = partialResultKey match
+              case (onePastBaseIndex, onePastLeftIndex, onePastRightIndex) =>
+                val swatheIndexOnBase =
+                  swatheIndex == onePastBaseIndex
+                val swatheIndexOnLeft =
+                  swatheIndex == onePastLeftIndex
+                val swatheIndexOnRight =
+                  swatheIndex == onePastRightIndex
+                if swatheIndexOnBase && swatheIndexOnLeft && swatheIndexOnRight
+                then offsetInStorageEntriesWithAllEqualToSwatheIndex
+                else if swatheIndexOnLeft then
+                  offsetInStorageEntriesWithLeftEqualToSwatheIndex + onePastBaseIndex * (1 + right.size) + onePastRightIndex
+                else if swatheIndexOnRight then
+                  offsetInStorageEntriesWithRightEqualToSwatheIndex + onePastBaseIndex * (1 + left.size) + onePastLeftIndex
+                else
+                  offsetInStorageEntriesWithBaseEqualToSwatheIndex + onePastLeftIndex * (1 + right.size) + onePastRightIndex
+                end if
+
+            logger.debug(s"Index for solution: $result.")
+
+            result
+          end indexFor
+
+          def storeSolutionInLeadingSwathe(
+              partialResultKey: PartialResultKey,
+              longestCommonSubsequence: LongestCommonSubsequence[Element]
+          ): Unit =
+            require(_indexOfLeadingSwathe != notYetAdvanced)
+
+            logger.debug(s"Storing solution for $partialResultKey.")
+
+            twoLotsOfStorage(storageLotForLeadingSwathe)(
+              indexFor(_indexOfLeadingSwathe, partialResultKey)
+            ) = longestCommonSubsequence
+          end storeSolutionInLeadingSwathe
+
+          inline private def newStorage =
+            Array.ofDim[LongestCommonSubsequence[Element]](
+              upperBoundOfSwatheSizes
+            )
+        end swathes
+
+        while swathes.advanceToNextLeadingSwathe() do
+          logger.debug(
+            s"Advanced to swathe of index: ${swathes.indexOfLeadingSwathe}\n"
+          )
+
+          val maximumLesserBaseIndex =
+            base.size min (swathes.indexOfLeadingSwathe - 1)
+          val maximumLesserLeftIndex =
+            left.size min (swathes.indexOfLeadingSwathe - 1)
+          val maximumLesserRightIndex =
+            right.size min (swathes.indexOfLeadingSwathe - 1)
+
+          if base.size >= swathes.indexOfLeadingSwathe then
+            logger.debug(
+              s"Holding base index at: ${swathes.indexOfLeadingSwathe}."
+            )
+
+            // Hold the base index at the maximum for this swathe and evaluate
+            // all solutions with lesser left and right indices in dependency
+            // order within this swathe...
+            if maximumLesserLeftIndex < maximumLesserRightIndex then
+              val maximumShortIndex = maximumLesserLeftIndex
+              val maximumLongIndex  = maximumLesserRightIndex
+
+              // Evaluate along initial short diagonals increasing in length...
+              for
+                ceiling   <- 0 until maximumShortIndex
+                leftIndex <- 0 to ceiling
+                rightIndex = ceiling - leftIndex
+              do
+                action(
+                  swathes,
+                  (
+                    swathes.indexOfLeadingSwathe,
+                    leftIndex,
+                    rightIndex
+                  )
+                )
+              end for
+              // Evaluate along full-length diagonals...
+              for
+                ceiling   <- maximumShortIndex to maximumLongIndex
+                leftIndex <- 0 to maximumShortIndex
+                rightIndex = ceiling - leftIndex
+              do
+                action(
+                  swathes,
+                  (
+                    swathes.indexOfLeadingSwathe,
+                    leftIndex,
+                    rightIndex
+                  )
+                )
+              end for
+              // Evaluate along final short diagonals decreasing in length...
+              for
+                ceiling <-
+                  (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
+                leftIndex <- 1 to maximumShortIndex
+                rightIndex = ceiling - leftIndex
+              do
+                action(
+                  swathes,
+                  (
+                    swathes.indexOfLeadingSwathe,
+                    leftIndex,
+                    rightIndex
+                  )
+                )
+              end for
+            else
+              val maximumShortIndex = maximumLesserRightIndex
+              val maximumLongIndex  = maximumLesserLeftIndex
+
+              // Evaluate along initial short diagonals increasing in length...
+              for
+                ceiling    <- 0 until maximumShortIndex
+                rightIndex <- 0 to ceiling
+                leftIndex = ceiling - rightIndex
+              do
+                action(
+                  swathes,
+                  (
+                    swathes.indexOfLeadingSwathe,
+                    leftIndex,
+                    rightIndex
+                  )
+                )
+              end for
+              // Evaluate along full-length diagonals...
+              for
+                ceiling    <- maximumShortIndex to maximumLongIndex
+                rightIndex <- 0 to maximumShortIndex
+                leftIndex = ceiling - rightIndex
+              do
+                action(
+                  swathes,
+                  (
+                    swathes.indexOfLeadingSwathe,
+                    leftIndex,
+                    rightIndex
+                  )
+                )
+              end for
+              // Evaluate along final short diagonals decreasing in length...
+              for
+                ceiling <-
+                  (1 + maximumLongIndex) until (maximumShortIndex + maximumLongIndex)
+                rightIndex <- 1 to maximumShortIndex
+                leftIndex = ceiling - rightIndex
+              do
+                action(
+                  swathes,
+                  (
+                    swathes.indexOfLeadingSwathe,
+                    leftIndex,
+                    rightIndex
+                  )
+                )
+              end for
+            end if
+          end if
+
+          if left.size >= swathes.indexOfLeadingSwathe then
+            logger.debug(
+              s"Holding left index at: ${swathes.indexOfLeadingSwathe}."
+            )
+
+            // Hold the left index at the maximum for this swathe and evaluate
+            // all solutions with lesser base and right indices in dependency
+            // order within this swathe...
+            if maximumLesserBaseIndex < maximumLesserRightIndex then
+              val maximumShortIndex = maximumLesserBaseIndex
+              val maximumLongIndex  = maximumLesserRightIndex
+
+              // Evaluate along initial short diagonals increasing in length...
+              for
+                ceiling   <- 0 until maximumShortIndex
+                baseIndex <- 0 to ceiling
+                rightIndex = ceiling - baseIndex
+              do
+                action(
+                  swathes,
+                  (
+                    baseIndex,
+                    swathes.indexOfLeadingSwathe,
+                    rightIndex
+                  )
+                )
+              end for
+              // Evaluate along full-length diagonals...
+              for
+                ceiling   <- maximumShortIndex to maximumLongIndex
+                baseIndex <- 0 to maximumShortIndex
+                rightIndex = ceiling - baseIndex
+              do
+                action(
+                  swathes,
+                  (
+                    baseIndex,
+                    swathes.indexOfLeadingSwathe,
+                    rightIndex
+                  )
+                )
+              end for
+              // Evaluate along final short diagonals decreasing in length...
+              for
+                ceiling <-
+                  (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
+                baseIndex <- 1 to maximumShortIndex
+                rightIndex = ceiling - baseIndex
+              do
+                action(
+                  swathes,
+                  (
+                    baseIndex,
+                    swathes.indexOfLeadingSwathe,
+                    rightIndex
+                  )
+                )
+              end for
+            else
+              val maximumShortIndex = maximumLesserRightIndex
+              val maximumLongIndex  = maximumLesserBaseIndex
+
+              // Evaluate along initial short diagonals increasing in length...
+              for
+                ceiling    <- 0 until maximumShortIndex
+                rightIndex <- 0 to ceiling
+                baseIndex = ceiling - rightIndex
+              do
+                action(
+                  swathes,
+                  (
+                    baseIndex,
+                    swathes.indexOfLeadingSwathe,
+                    rightIndex
+                  )
+                )
+              end for
+              // Evaluate along full-length diagonals...
+              for
+                ceiling    <- maximumShortIndex to maximumLongIndex
+                rightIndex <- 0 to maximumShortIndex
+                baseIndex = ceiling - rightIndex
+              do
+                action(
+                  swathes,
+                  (
+                    baseIndex,
+                    swathes.indexOfLeadingSwathe,
+                    rightIndex
+                  )
+                )
+              end for
+              // Evaluate along final short diagonals decreasing in length...
+              for
+                ceiling <-
+                  (1 + maximumLongIndex) until (maximumShortIndex + maximumLongIndex)
+                rightIndex <- 1 to maximumShortIndex
+                baseIndex = ceiling - rightIndex
+              do
+                action(
+                  swathes,
+                  (
+                    baseIndex,
+                    swathes.indexOfLeadingSwathe,
+                    rightIndex
+                  )
+                )
+              end for
+            end if
+          end if
+
+          if right.size >= swathes.indexOfLeadingSwathe then
+            logger.debug(
+              s"Holding right index at: ${swathes.indexOfLeadingSwathe}."
+            )
+
+            // Hold the right index at the maximum for this swathe and evaluate
+            // all solutions with lesser base and left indices in dependency
+            // order within this swathe...
+            if maximumLesserBaseIndex < maximumLesserLeftIndex then
+              val maximumShortIndex = maximumLesserBaseIndex
+              val maximumLongIndex  = maximumLesserLeftIndex
+
+              // Evaluate along initial short diagonals increasing in length...
+              for
+                ceiling   <- 0 until maximumShortIndex
+                baseIndex <- 0 to ceiling
+                leftIndex = ceiling - baseIndex
+              do
+                action(
+                  swathes,
+                  (
+                    baseIndex,
+                    leftIndex,
+                    swathes.indexOfLeadingSwathe
+                  )
+                )
+              end for
+              // Evaluate along full-length diagonals...
+              for
+                ceiling   <- maximumShortIndex to maximumLongIndex
+                baseIndex <- 0 to maximumShortIndex
+                leftIndex = ceiling - baseIndex
+              do
+                action(
+                  swathes,
+                  (
+                    baseIndex,
+                    leftIndex,
+                    swathes.indexOfLeadingSwathe
+                  )
+                )
+              end for
+              // Evaluate along final short diagonals decreasing in length...
+              for
+                ceiling <-
+                  (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
+                baseIndex <- 1 to maximumShortIndex
+                leftIndex = ceiling - baseIndex
+              do
+                action(
+                  swathes,
+                  (
+                    baseIndex,
+                    leftIndex,
+                    swathes.indexOfLeadingSwathe
+                  )
+                )
+              end for
+            else
+              val maximumShortIndex = maximumLesserLeftIndex
+              val maximumLongIndex  = maximumLesserBaseIndex
+
+              // Evaluate along initial short diagonals increasing in length...
+              for
+                ceiling   <- 0 until maximumShortIndex
+                leftIndex <- 0 to ceiling
+                baseIndex = ceiling - leftIndex
+              do
+                action(
+                  swathes,
+                  (
+                    baseIndex,
+                    leftIndex,
+                    swathes.indexOfLeadingSwathe
+                  )
+                )
+              end for
+              // Evaluate along full-length diagonals...
+              for
+                ceiling   <- maximumShortIndex to maximumLongIndex
+                leftIndex <- 0 to maximumShortIndex
+                baseIndex = ceiling - leftIndex
+              do
+                action(
+                  swathes,
+                  (
+                    baseIndex,
+                    leftIndex,
+                    swathes.indexOfLeadingSwathe
+                  )
+                )
+              end for
+              // Evaluate along final short diagonals decreasing in length...
+              for
+                ceiling <-
+                  (1 + maximumLongIndex) until (maximumShortIndex + maximumLongIndex)
+                leftIndex <- 1 to maximumShortIndex
+                baseIndex = ceiling - leftIndex
+              do
+                action(
+                  swathes,
+                  (
+                    baseIndex,
+                    leftIndex,
+                    swathes.indexOfLeadingSwathe
+                  )
+                )
+              end for
+            end if
+          end if
+
+          if base.size >= swathes.indexOfLeadingSwathe && left.size >= swathes.indexOfLeadingSwathe
+          then
+            logger.debug(
+              s"Holding base and left indices at: ${swathes.indexOfLeadingSwathe}"
+            )
+
+            for rightIndex <- 0 to maximumLesserRightIndex do
+              action(
+                swathes,
+                (
+                  swathes.indexOfLeadingSwathe,
+                  swathes.indexOfLeadingSwathe,
+                  rightIndex
+                )
+              )
+            end for
+          end if
+
+          if base.size >= swathes.indexOfLeadingSwathe && right.size >= swathes.indexOfLeadingSwathe
+          then
+            logger.debug(
+              s"Holding base and right indices at: ${swathes.indexOfLeadingSwathe}"
+            )
+
+            for leftIndex <- 0 to maximumLesserLeftIndex do
+              action(
+                swathes,
+                (
+                  swathes.indexOfLeadingSwathe,
+                  leftIndex,
+                  swathes.indexOfLeadingSwathe
+                )
+              )
+            end for
+          end if
+
+          if left.size >= swathes.indexOfLeadingSwathe && right.size >= swathes.indexOfLeadingSwathe
+          then
+            logger.debug(
+              s"Holding left and right indices at: ${swathes.indexOfLeadingSwathe}"
+            )
+
+            for baseIndex <- 0 to maximumLesserBaseIndex do
+              action(
+                swathes,
+                (
+                  baseIndex,
+                  swathes.indexOfLeadingSwathe,
+                  swathes.indexOfLeadingSwathe
+                )
+              )
+            end for
+          end if
+
+          logger.debug(
+            s"Top-level solution for: ${(swathes.indexOfLeadingSwathe, swathes.indexOfLeadingSwathe, swathes.indexOfLeadingSwathe)}."
+          )
+
+          if base.size >= swathes.indexOfLeadingSwathe && left.size >= swathes.indexOfLeadingSwathe && right.size >= swathes.indexOfLeadingSwathe
+          then
+            // Top-level solution for the leading swathe...
+            action(
+              swathes,
+              (
+                swathes.indexOfLeadingSwathe,
+                swathes.indexOfLeadingSwathe,
+                swathes.indexOfLeadingSwathe
+              )
+            )
+          end if
+        end while
+
+        swathes.topLevelSolution
+      end evaluateSolutionsInDependencyOrder
+    end Swathes
 
     def ofConsultingCacheForSubProblems(
+        swathes: Swathes,
         onePastBaseIndex: Int,
         onePastLeftIndex: Int,
         onePastRightIndex: Int
     ): LongestCommonSubsequence[Element] =
+      logger.debug(
+        s"Calculating solution for ${(onePastBaseIndex, onePastLeftIndex, onePastRightIndex)}."
+      )
+
       assume(0 <= onePastBaseIndex)
       assume(0 <= onePastLeftIndex)
       assume(0 <= onePastRightIndex)
@@ -209,17 +774,24 @@ object LongestCommonSubsequence:
           val leftEqualsRight = equality.eqv(leftElement, rightElement)
 
           if leftEqualsRight then
-            partialResultsCache((0, leftIndex, rightIndex))
+            swathes
+              .consultRelevantSwatheForSolution((0, leftIndex, rightIndex))
               .addCommonLeftAndRight(leftElement, rightElement)(
                 sized.sizeOf
               )
           else
             val resultDroppingTheEndOfTheLeft =
-              partialResultsCache((0, leftIndex, onePastRightIndex))
+              swathes
+                .consultRelevantSwatheForSolution(
+                  (0, leftIndex, onePastRightIndex)
+                )
                 .addLeftDifference(leftElement)
 
             val resultDroppingTheEndOfTheRight =
-              partialResultsCache((0, onePastLeftIndex, rightIndex))
+              swathes
+                .consultRelevantSwatheForSolution(
+                  (0, onePastLeftIndex, rightIndex)
+                )
                 .addRightDifference(rightElement)
 
             orderBySize.max(
@@ -239,17 +811,24 @@ object LongestCommonSubsequence:
           val baseEqualsRight = equality.eqv(baseElement, rightElement)
 
           if baseEqualsRight then
-            partialResultsCache((baseIndex, 0, rightIndex))
+            swathes
+              .consultRelevantSwatheForSolution((baseIndex, 0, rightIndex))
               .addCommonBaseAndRight(baseElement, rightElement)(
                 sized.sizeOf
               )
           else
             val resultDroppingTheEndOfTheBase =
-              partialResultsCache((baseIndex, 0, onePastRightIndex))
+              swathes
+                .consultRelevantSwatheForSolution(
+                  (baseIndex, 0, onePastRightIndex)
+                )
                 .addBaseDifference(baseElement)
 
             val resultDroppingTheEndOfTheRight =
-              partialResultsCache((onePastBaseIndex, 0, rightIndex))
+              swathes
+                .consultRelevantSwatheForSolution(
+                  (onePastBaseIndex, 0, rightIndex)
+                )
                 .addRightDifference(rightElement)
 
             orderBySize.max(
@@ -269,17 +848,24 @@ object LongestCommonSubsequence:
           val baseEqualsLeft = equality.eqv(baseElement, leftElement)
 
           if baseEqualsLeft then
-            partialResultsCache((baseIndex, leftIndex, 0))
+            swathes
+              .consultRelevantSwatheForSolution((baseIndex, leftIndex, 0))
               .addCommonBaseAndLeft(baseElement, leftElement)(
                 sized.sizeOf
               )
           else
             val resultDroppingTheEndOfTheBase =
-              partialResultsCache((baseIndex, onePastLeftIndex, 0))
+              swathes
+                .consultRelevantSwatheForSolution(
+                  (baseIndex, onePastLeftIndex, 0)
+                )
                 .addBaseDifference(baseElement)
 
             val resultDroppingTheEndOfTheLeft =
-              partialResultsCache((onePastBaseIndex, leftIndex, 0))
+              swathes
+                .consultRelevantSwatheForSolution(
+                  (onePastBaseIndex, leftIndex, 0)
+                )
                 .addLeftDifference(leftElement)
 
             orderBySize.max(
@@ -303,7 +889,10 @@ object LongestCommonSubsequence:
 
           if baseEqualsLeft && baseEqualsRight
           then
-            partialResultsCache((baseIndex, leftIndex, rightIndex))
+            swathes
+              .consultRelevantSwatheForSolution(
+                (baseIndex, leftIndex, rightIndex)
+              )
               .addCommon(baseElement, leftElement, rightElement)(
                 sized.sizeOf
               )
@@ -318,26 +907,32 @@ object LongestCommonSubsequence:
             // one way or the other...
 
             val resultDroppingTheEndOfTheBase =
-              partialResultsCache(
-                (baseIndex, onePastLeftIndex, onePastRightIndex)
-              )
+              swathes
+                .consultRelevantSwatheForSolution(
+                  (baseIndex, onePastLeftIndex, onePastRightIndex)
+                )
                 .addBaseDifference(baseElement)
 
             val resultDroppingTheEndOfTheLeft =
-              partialResultsCache(
-                (onePastBaseIndex, leftIndex, onePastRightIndex)
-              )
+              swathes
+                .consultRelevantSwatheForSolution(
+                  (onePastBaseIndex, leftIndex, onePastRightIndex)
+                )
                 .addLeftDifference(leftElement)
 
             val resultDroppingTheEndOfTheRight =
-              partialResultsCache(
-                (onePastBaseIndex, onePastLeftIndex, rightIndex)
-              )
+              swathes
+                .consultRelevantSwatheForSolution(
+                  (onePastBaseIndex, onePastLeftIndex, rightIndex)
+                )
                 .addRightDifference(rightElement)
 
             val resultDroppingTheBaseAndLeft =
               if baseEqualsLeft then
-                partialResultsCache((baseIndex, leftIndex, onePastRightIndex))
+                swathes
+                  .consultRelevantSwatheForSolution(
+                    (baseIndex, leftIndex, onePastRightIndex)
+                  )
                   .addCommonBaseAndLeft(baseElement, leftElement)(
                     sized.sizeOf
                   )
@@ -351,7 +946,10 @@ object LongestCommonSubsequence:
 
             val resultDroppingTheBaseAndRight =
               if baseEqualsRight then
-                partialResultsCache((baseIndex, onePastLeftIndex, rightIndex))
+                swathes
+                  .consultRelevantSwatheForSolution(
+                    (baseIndex, onePastLeftIndex, rightIndex)
+                  )
                   .addCommonBaseAndRight(baseElement, rightElement)(
                     sized.sizeOf
                   )
@@ -365,7 +963,10 @@ object LongestCommonSubsequence:
 
             val resultDroppingTheLeftAndRight =
               if leftEqualsRight then
-                partialResultsCache((onePastBaseIndex, leftIndex, rightIndex))
+                swathes
+                  .consultRelevantSwatheForSolution(
+                    (onePastBaseIndex, leftIndex, rightIndex)
+                  )
                   .addCommonLeftAndRight(leftElement, rightElement)(
                     sized.sizeOf
                   )
@@ -387,29 +988,27 @@ object LongestCommonSubsequence:
     end ofConsultingCacheForSubProblems
 
     // Brute-forced and ignorant dynamic programming. Completely unsafe reliance
-    // on this imperative loop priming the `partialResultsCache` prior to each
-    // subsequent call of `ofConsultingCacheForSubProblems` using a cached
-    // value. Got to love it!
-    for
-      onePastBaseIndex  <- 0 to base.size
-      onePastLeftIndex  <- 0 to left.size
-      onePastRightIndex <- 0 to right.size
-    do
-      partialResultsCache.append(
-        (onePastBaseIndex, onePastLeftIndex, onePastRightIndex) ->
+    // on imperative updates priming each sub-problem solution in the leading
+    // swathe prior to its use. Got to love it!
+    Swathes.evaluateSolutionsInDependencyOrder {
+      case (
+            swathes,
+            partialResultKey @ (
+              onePastBaseIndex,
+              onePastLeftIndex,
+              onePastRightIndex
+            )
+          ) =>
+        swathes.storeSolutionInLeadingSwathe(
+          partialResultKey,
           ofConsultingCacheForSubProblems(
+            swathes,
             onePastBaseIndex,
             onePastLeftIndex,
             onePastRightIndex
           )
-      )
-
-      if swatheSizeToAccommodatePartialResultsForNeighbouringBaseIndices < partialResultsCache.size
-      then partialResultsCache.removeHead()
-      end if
-    end for
-
-    partialResultsCache((base.size, left.size, right.size))
+        )
+    }
   end of
 
   trait Sized[Element]:
