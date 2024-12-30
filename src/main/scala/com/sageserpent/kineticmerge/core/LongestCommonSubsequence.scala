@@ -2,7 +2,6 @@ package com.sageserpent.kineticmerge.core
 
 import cats.Eq
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{CommonSubsequenceSize, Contribution}
-import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
 
 case class LongestCommonSubsequence[Element] private (
@@ -118,7 +117,7 @@ case class LongestCommonSubsequence[Element] private (
     commonSubsequenceSize -> (commonToLeftAndRightOnlySize plus commonToBaseAndLeftOnlySize plus commonToBaseAndRightOnlySize)
 end LongestCommonSubsequence
 
-object LongestCommonSubsequence extends StrictLogging:
+object LongestCommonSubsequence:
 
   def defaultElementSize[Element](irrelevant: Element): Int = 1
 
@@ -221,8 +220,6 @@ object LongestCommonSubsequence extends StrictLogging:
           ): LongestCommonSubsequence[Element] =
             require(_indexOfLeadingSwathe != notYetAdvanced)
 
-            logger.debug(s"Consulting solution for $partialResultKey.")
-
             partialResultKey match
               case (onePastBaseIndex, _, _)
                   if indexOfLeadingSwathe == onePastBaseIndex =>
@@ -247,14 +244,12 @@ object LongestCommonSubsequence extends StrictLogging:
           end consultRelevantSwatheForSolution
 
           inline private def storageLotForPrecedingSwathe =
-            logger.debug(s"Selecting preceding swathe.")
             (1 + _indexOfLeadingSwathe) % 2
           end storageLotForPrecedingSwathe
 
           def indexOfLeadingSwathe: Int = _indexOfLeadingSwathe
 
           inline private def storageLotForLeadingSwathe =
-            logger.debug(s"Selecting leading swathe.")
             _indexOfLeadingSwathe % 2
           end storageLotForLeadingSwathe
 
@@ -262,7 +257,7 @@ object LongestCommonSubsequence extends StrictLogging:
               swatheIndex: Int,
               partialResultKey: PartialResultKey
           ) =
-            val result = partialResultKey match
+            partialResultKey match
               case (onePastBaseIndex, onePastLeftIndex, onePastRightIndex) =>
                 val swatheIndexOnBase =
                   swatheIndex == onePastBaseIndex
@@ -279,10 +274,6 @@ object LongestCommonSubsequence extends StrictLogging:
                 else
                   offsetInStorageEntriesWithBaseEqualToSwatheIndex + onePastLeftIndex * (1 + right.size) + onePastRightIndex
                 end if
-
-            logger.debug(s"Index for solution: $result.")
-
-            result
           end indexFor
 
           def storeSolutionInLeadingSwathe(
@@ -290,8 +281,6 @@ object LongestCommonSubsequence extends StrictLogging:
               longestCommonSubsequence: LongestCommonSubsequence[Element]
           ): Unit =
             require(_indexOfLeadingSwathe != notYetAdvanced)
-
-            logger.debug(s"Storing solution for $partialResultKey.")
 
             twoLotsOfStorage(storageLotForLeadingSwathe)(
               indexFor(_indexOfLeadingSwathe, partialResultKey)
@@ -305,10 +294,6 @@ object LongestCommonSubsequence extends StrictLogging:
         end swathes
 
         while swathes.advanceToNextLeadingSwathe() do
-          logger.debug(
-            s"Advanced to swathe of index: ${swathes.indexOfLeadingSwathe}\n"
-          )
-
           val maximumLesserBaseIndex =
             base.size min (swathes.indexOfLeadingSwathe - 1)
           val maximumLesserLeftIndex =
@@ -317,10 +302,6 @@ object LongestCommonSubsequence extends StrictLogging:
             right.size min (swathes.indexOfLeadingSwathe - 1)
 
           if base.size >= swathes.indexOfLeadingSwathe then
-            logger.debug(
-              s"Holding base index at: ${swathes.indexOfLeadingSwathe}."
-            )
-
             // Hold the base index at the maximum for this swathe and evaluate
             // all solutions with lesser left and right indices in dependency
             // order within this swathe...
@@ -428,10 +409,6 @@ object LongestCommonSubsequence extends StrictLogging:
           end if
 
           if left.size >= swathes.indexOfLeadingSwathe then
-            logger.debug(
-              s"Holding left index at: ${swathes.indexOfLeadingSwathe}."
-            )
-
             // Hold the left index at the maximum for this swathe and evaluate
             // all solutions with lesser base and right indices in dependency
             // order within this swathe...
@@ -539,10 +516,6 @@ object LongestCommonSubsequence extends StrictLogging:
           end if
 
           if right.size >= swathes.indexOfLeadingSwathe then
-            logger.debug(
-              s"Holding right index at: ${swathes.indexOfLeadingSwathe}."
-            )
-
             // Hold the right index at the maximum for this swathe and evaluate
             // all solutions with lesser base and left indices in dependency
             // order within this swathe...
@@ -651,10 +624,6 @@ object LongestCommonSubsequence extends StrictLogging:
 
           if base.size >= swathes.indexOfLeadingSwathe && left.size >= swathes.indexOfLeadingSwathe
           then
-            logger.debug(
-              s"Holding base and left indices at: ${swathes.indexOfLeadingSwathe}"
-            )
-
             for rightIndex <- 0 to maximumLesserRightIndex do
               action(
                 swathes,
@@ -669,10 +638,6 @@ object LongestCommonSubsequence extends StrictLogging:
 
           if base.size >= swathes.indexOfLeadingSwathe && right.size >= swathes.indexOfLeadingSwathe
           then
-            logger.debug(
-              s"Holding base and right indices at: ${swathes.indexOfLeadingSwathe}"
-            )
-
             for leftIndex <- 0 to maximumLesserLeftIndex do
               action(
                 swathes,
@@ -687,10 +652,6 @@ object LongestCommonSubsequence extends StrictLogging:
 
           if left.size >= swathes.indexOfLeadingSwathe && right.size >= swathes.indexOfLeadingSwathe
           then
-            logger.debug(
-              s"Holding left and right indices at: ${swathes.indexOfLeadingSwathe}"
-            )
-
             for baseIndex <- 0 to maximumLesserBaseIndex do
               action(
                 swathes,
@@ -702,10 +663,6 @@ object LongestCommonSubsequence extends StrictLogging:
               )
             end for
           end if
-
-          logger.debug(
-            s"Top-level solution for: ${(swathes.indexOfLeadingSwathe, swathes.indexOfLeadingSwathe, swathes.indexOfLeadingSwathe)}."
-          )
 
           if base.size >= swathes.indexOfLeadingSwathe && left.size >= swathes.indexOfLeadingSwathe && right.size >= swathes.indexOfLeadingSwathe
           then
@@ -731,10 +688,6 @@ object LongestCommonSubsequence extends StrictLogging:
         onePastLeftIndex: Int,
         onePastRightIndex: Int
     ): LongestCommonSubsequence[Element] =
-      logger.debug(
-        s"Calculating solution for ${(onePastBaseIndex, onePastLeftIndex, onePastRightIndex)}."
-      )
-
       assume(0 <= onePastBaseIndex)
       assume(0 <= onePastLeftIndex)
       assume(0 <= onePastRightIndex)
