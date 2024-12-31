@@ -329,6 +329,60 @@ object LongestCommonSubsequence:
           val maximumLesserRightIndex =
             right.size min (swathes.indexOfLeadingSwathe - 1)
 
+          enum IndexPermutation:
+            def apply(shortIndex: Int, longIndex: Int): Unit =
+              this match
+                case BaseHeldLeftIsShort =>
+                  action(
+                    swathes,
+                    swathes.indexOfLeadingSwathe,
+                    shortIndex,
+                    longIndex
+                  )
+                case BaseHeldRightIsShort =>
+                  action(
+                    swathes,
+                    swathes.indexOfLeadingSwathe,
+                    longIndex,
+                    shortIndex
+                  )
+                case LeftHeldBaseIsShort =>
+                  action(
+                    swathes,
+                    shortIndex,
+                    swathes.indexOfLeadingSwathe,
+                    longIndex
+                  )
+                case LeftHeldRightIsShort =>
+                  action(
+                    swathes,
+                    longIndex,
+                    swathes.indexOfLeadingSwathe,
+                    shortIndex
+                  )
+                case RightHeldBaseIsShort =>
+                  action(
+                    swathes,
+                    shortIndex,
+                    longIndex,
+                    swathes.indexOfLeadingSwathe
+                  )
+                case RightHeldLeftIsShort =>
+                  action(
+                    swathes,
+                    longIndex,
+                    shortIndex,
+                    swathes.indexOfLeadingSwathe
+                  )
+
+            case BaseHeldLeftIsShort
+            case BaseHeldRightIsShort
+            case LeftHeldBaseIsShort
+            case LeftHeldRightIsShort
+            case RightHeldBaseIsShort
+            case RightHeldLeftIsShort
+          end IndexPermutation
+
           if base.size >= swathes.indexOfLeadingSwathe then
             // Hold the base index at the maximum for this swathe and evaluate
             // all solutions with lesser left and right indices in dependency
@@ -336,32 +390,21 @@ object LongestCommonSubsequence:
             if maximumLesserLeftIndex < maximumLesserRightIndex then
               val maximumShortIndex = maximumLesserLeftIndex
               val maximumLongIndex  = maximumLesserRightIndex
+              val indexPermutation  = IndexPermutation.BaseHeldLeftIsShort
 
               // Evaluate along initial short diagonals increasing in length...
               for
                 ceiling    <- 0 until maximumShortIndex
                 shortIndex <- 0 to ceiling
                 longIndex = ceiling - shortIndex
-              do
-                action(
-                  swathes,
-                  swathes.indexOfLeadingSwathe,
-                  shortIndex,
-                  longIndex
-                )
+              do indexPermutation(shortIndex, longIndex)
               end for
               // Evaluate along full-length diagonals...
               for
                 ceiling    <- maximumShortIndex to maximumLongIndex
                 shortIndex <- 0 to maximumShortIndex
                 longIndex = ceiling - shortIndex
-              do
-                action(
-                  swathes,
-                  swathes.indexOfLeadingSwathe,
-                  shortIndex,
-                  longIndex
-                )
+              do indexPermutation(shortIndex, longIndex)
               end for
               // Evaluate along final short diagonals decreasing in length...
               for
@@ -369,43 +412,26 @@ object LongestCommonSubsequence:
                   (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
                 shortIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
                 longIndex = ceiling - shortIndex
-              do
-                action(
-                  swathes,
-                  swathes.indexOfLeadingSwathe,
-                  shortIndex,
-                  longIndex
-                )
+              do indexPermutation(shortIndex, longIndex)
               end for
             else
               val maximumShortIndex = maximumLesserRightIndex
               val maximumLongIndex  = maximumLesserLeftIndex
+              val indexPermutation  = IndexPermutation.BaseHeldRightIsShort
 
               // Evaluate along initial short diagonals increasing in length...
               for
                 ceiling    <- 0 until maximumShortIndex
                 shortIndex <- 0 to ceiling
                 longIndex = ceiling - shortIndex
-              do
-                action(
-                  swathes,
-                  swathes.indexOfLeadingSwathe,
-                  longIndex,
-                  shortIndex
-                )
+              do indexPermutation(shortIndex, longIndex)
               end for
               // Evaluate along full-length diagonals...
               for
                 ceiling    <- maximumShortIndex to maximumLongIndex
                 shortIndex <- 0 to maximumShortIndex
                 longIndex = ceiling - shortIndex
-              do
-                action(
-                  swathes,
-                  swathes.indexOfLeadingSwathe,
-                  longIndex,
-                  shortIndex
-                )
+              do indexPermutation(shortIndex, longIndex)
               end for
               // Evaluate along final short diagonals decreasing in length...
               for
@@ -413,13 +439,7 @@ object LongestCommonSubsequence:
                   (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
                 shortIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
                 longIndex = ceiling - shortIndex
-              do
-                action(
-                  swathes,
-                  swathes.indexOfLeadingSwathe,
-                  longIndex,
-                  shortIndex
-                )
+              do indexPermutation(shortIndex, longIndex)
               end for
             end if
           end if
@@ -431,32 +451,21 @@ object LongestCommonSubsequence:
             if maximumLesserBaseIndex < maximumLesserRightIndex then
               val maximumShortIndex = maximumLesserBaseIndex
               val maximumLongIndex  = maximumLesserRightIndex
+              val indexPermutation  = IndexPermutation.LeftHeldBaseIsShort
 
               // Evaluate along initial short diagonals increasing in length...
               for
                 ceiling    <- 0 until maximumShortIndex
                 shortIndex <- 0 to ceiling
                 longIndex = ceiling - shortIndex
-              do
-                action(
-                  swathes,
-                  shortIndex,
-                  swathes.indexOfLeadingSwathe,
-                  longIndex
-                )
+              do indexPermutation(shortIndex, longIndex)
               end for
               // Evaluate along full-length diagonals...
               for
                 ceiling    <- maximumShortIndex to maximumLongIndex
                 shortIndex <- 0 to maximumShortIndex
                 longIndex = ceiling - shortIndex
-              do
-                action(
-                  swathes,
-                  shortIndex,
-                  swathes.indexOfLeadingSwathe,
-                  longIndex
-                )
+              do indexPermutation(shortIndex, longIndex)
               end for
               // Evaluate along final short diagonals decreasing in length...
               for
@@ -464,43 +473,26 @@ object LongestCommonSubsequence:
                   (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
                 shortIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
                 longIndex = ceiling - shortIndex
-              do
-                action(
-                  swathes,
-                  shortIndex,
-                  swathes.indexOfLeadingSwathe,
-                  longIndex
-                )
+              do indexPermutation(shortIndex, longIndex)
               end for
             else
               val maximumShortIndex = maximumLesserRightIndex
               val maximumLongIndex  = maximumLesserBaseIndex
+              val indexPermutation  = IndexPermutation.LeftHeldRightIsShort
 
               // Evaluate along initial short diagonals increasing in length...
               for
                 ceiling    <- 0 until maximumShortIndex
                 shortIndex <- 0 to ceiling
                 longIndex = ceiling - shortIndex
-              do
-                action(
-                  swathes,
-                  longIndex,
-                  swathes.indexOfLeadingSwathe,
-                  shortIndex
-                )
+              do indexPermutation(shortIndex, longIndex)
               end for
               // Evaluate along full-length diagonals...
               for
                 ceiling    <- maximumShortIndex to maximumLongIndex
                 shortIndex <- 0 to maximumShortIndex
                 longIndex = ceiling - shortIndex
-              do
-                action(
-                  swathes,
-                  longIndex,
-                  swathes.indexOfLeadingSwathe,
-                  shortIndex
-                )
+              do indexPermutation(shortIndex, longIndex)
               end for
               // Evaluate along final short diagonals decreasing in length...
               for
@@ -508,13 +500,7 @@ object LongestCommonSubsequence:
                   (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
                 shortIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
                 longIndex = ceiling - shortIndex
-              do
-                action(
-                  swathes,
-                  longIndex,
-                  swathes.indexOfLeadingSwathe,
-                  shortIndex
-                )
+              do indexPermutation(shortIndex, longIndex)
               end for
             end if
           end if
@@ -526,32 +512,21 @@ object LongestCommonSubsequence:
             if maximumLesserBaseIndex < maximumLesserLeftIndex then
               val maximumShortIndex = maximumLesserBaseIndex
               val maximumLongIndex  = maximumLesserLeftIndex
+              val indexPermutation  = IndexPermutation.RightHeldBaseIsShort
 
               // Evaluate along initial short diagonals increasing in length...
               for
                 ceiling    <- 0 until maximumShortIndex
                 shortIndex <- 0 to ceiling
                 longIndex = ceiling - shortIndex
-              do
-                action(
-                  swathes,
-                  shortIndex,
-                  longIndex,
-                  swathes.indexOfLeadingSwathe
-                )
+              do indexPermutation(shortIndex, longIndex)
               end for
               // Evaluate along full-length diagonals...
               for
                 ceiling    <- maximumShortIndex to maximumLongIndex
                 shortIndex <- 0 to maximumShortIndex
                 longIndex = ceiling - shortIndex
-              do
-                action(
-                  swathes,
-                  shortIndex,
-                  longIndex,
-                  swathes.indexOfLeadingSwathe
-                )
+              do indexPermutation(shortIndex, longIndex)
               end for
               // Evaluate along final short diagonals decreasing in length...
               for
@@ -559,43 +534,26 @@ object LongestCommonSubsequence:
                   (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
                 shortIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
                 longIndex = ceiling - shortIndex
-              do
-                action(
-                  swathes,
-                  shortIndex,
-                  longIndex,
-                  swathes.indexOfLeadingSwathe
-                )
+              do indexPermutation(shortIndex, longIndex)
               end for
             else
               val maximumShortIndex = maximumLesserLeftIndex
               val maximumLongIndex  = maximumLesserBaseIndex
+              val indexPermutation  = IndexPermutation.RightHeldLeftIsShort
 
               // Evaluate along initial short diagonals increasing in length...
               for
                 ceiling    <- 0 until maximumShortIndex
                 shortIndex <- 0 to ceiling
                 longIndex = ceiling - shortIndex
-              do
-                action(
-                  swathes,
-                  longIndex,
-                  shortIndex,
-                  swathes.indexOfLeadingSwathe
-                )
+              do indexPermutation(shortIndex, longIndex)
               end for
               // Evaluate along full-length diagonals...
               for
                 ceiling    <- maximumShortIndex to maximumLongIndex
                 shortIndex <- 0 to maximumShortIndex
                 longIndex = ceiling - shortIndex
-              do
-                action(
-                  swathes,
-                  longIndex,
-                  shortIndex,
-                  swathes.indexOfLeadingSwathe
-                )
+              do indexPermutation(shortIndex, longIndex)
               end for
               // Evaluate along final short diagonals decreasing in length...
               for
@@ -603,13 +561,7 @@ object LongestCommonSubsequence:
                   (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
                 shortIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
                 longIndex = ceiling - shortIndex
-              do
-                action(
-                  swathes,
-                  longIndex,
-                  shortIndex,
-                  swathes.indexOfLeadingSwathe
-                )
+              do indexPermutation(shortIndex, longIndex)
               end for
             end if
           end if
