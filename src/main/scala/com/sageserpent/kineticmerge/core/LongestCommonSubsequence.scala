@@ -330,7 +330,7 @@ object LongestCommonSubsequence:
             right.size min (swathes.indexOfLeadingSwathe - 1)
 
           enum IndexPermutation:
-            def apply(shortIndex: Int, longIndex: Int): Unit =
+            def evaluateAt(shortIndex: Int, longIndex: Int): Unit =
               this match
                 case BaseHeldLeftIsShort =>
                   action(
@@ -383,64 +383,51 @@ object LongestCommonSubsequence:
             case RightHeldLeftIsShort
           end IndexPermutation
 
+          def traverseInDiagonalStripes(
+              maximumShortIndex: Int,
+              maximumLongIndex: Int,
+              indexPermutation: IndexPermutation
+          ): Unit =
+            // Evaluate along initial short diagonals increasing in length...
+            for
+              ceiling    <- 0 until maximumShortIndex
+              shortIndex <- 0 to ceiling
+              longIndex = ceiling - shortIndex
+            do indexPermutation.evaluateAt(shortIndex, longIndex)
+            end for
+            // Evaluate along full-length diagonals...
+            for
+              ceiling    <- maximumShortIndex to maximumLongIndex
+              shortIndex <- 0 to maximumShortIndex
+              longIndex = ceiling - shortIndex
+            do indexPermutation.evaluateAt(shortIndex, longIndex)
+            end for
+            // Evaluate along final short diagonals decreasing in length...
+            for
+              ceiling <-
+                (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
+              shortIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
+              longIndex = ceiling - shortIndex
+            do indexPermutation.evaluateAt(shortIndex, longIndex)
+            end for
+          end traverseInDiagonalStripes
+
           if base.size >= swathes.indexOfLeadingSwathe then
             // Hold the base index at the maximum for this swathe and evaluate
             // all solutions with lesser left and right indices in dependency
             // order within this swathe...
             if maximumLesserLeftIndex < maximumLesserRightIndex then
-              val maximumShortIndex = maximumLesserLeftIndex
-              val maximumLongIndex  = maximumLesserRightIndex
-              val indexPermutation  = IndexPermutation.BaseHeldLeftIsShort
-
-              // Evaluate along initial short diagonals increasing in length...
-              for
-                ceiling    <- 0 until maximumShortIndex
-                shortIndex <- 0 to ceiling
-                longIndex = ceiling - shortIndex
-              do indexPermutation(shortIndex, longIndex)
-              end for
-              // Evaluate along full-length diagonals...
-              for
-                ceiling    <- maximumShortIndex to maximumLongIndex
-                shortIndex <- 0 to maximumShortIndex
-                longIndex = ceiling - shortIndex
-              do indexPermutation(shortIndex, longIndex)
-              end for
-              // Evaluate along final short diagonals decreasing in length...
-              for
-                ceiling <-
-                  (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
-                shortIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
-                longIndex = ceiling - shortIndex
-              do indexPermutation(shortIndex, longIndex)
-              end for
+              traverseInDiagonalStripes(
+                maximumShortIndex = maximumLesserLeftIndex,
+                maximumLongIndex = maximumLesserRightIndex,
+                indexPermutation = IndexPermutation.BaseHeldLeftIsShort
+              )
             else
-              val maximumShortIndex = maximumLesserRightIndex
-              val maximumLongIndex  = maximumLesserLeftIndex
-              val indexPermutation  = IndexPermutation.BaseHeldRightIsShort
-
-              // Evaluate along initial short diagonals increasing in length...
-              for
-                ceiling    <- 0 until maximumShortIndex
-                shortIndex <- 0 to ceiling
-                longIndex = ceiling - shortIndex
-              do indexPermutation(shortIndex, longIndex)
-              end for
-              // Evaluate along full-length diagonals...
-              for
-                ceiling    <- maximumShortIndex to maximumLongIndex
-                shortIndex <- 0 to maximumShortIndex
-                longIndex = ceiling - shortIndex
-              do indexPermutation(shortIndex, longIndex)
-              end for
-              // Evaluate along final short diagonals decreasing in length...
-              for
-                ceiling <-
-                  (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
-                shortIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
-                longIndex = ceiling - shortIndex
-              do indexPermutation(shortIndex, longIndex)
-              end for
+              traverseInDiagonalStripes(
+                maximumShortIndex = maximumLesserRightIndex,
+                maximumLongIndex = maximumLesserLeftIndex,
+                indexPermutation = IndexPermutation.BaseHeldRightIsShort
+              )
             end if
           end if
 
@@ -449,59 +436,17 @@ object LongestCommonSubsequence:
             // all solutions with lesser base and right indices in dependency
             // order within this swathe...
             if maximumLesserBaseIndex < maximumLesserRightIndex then
-              val maximumShortIndex = maximumLesserBaseIndex
-              val maximumLongIndex  = maximumLesserRightIndex
-              val indexPermutation  = IndexPermutation.LeftHeldBaseIsShort
-
-              // Evaluate along initial short diagonals increasing in length...
-              for
-                ceiling    <- 0 until maximumShortIndex
-                shortIndex <- 0 to ceiling
-                longIndex = ceiling - shortIndex
-              do indexPermutation(shortIndex, longIndex)
-              end for
-              // Evaluate along full-length diagonals...
-              for
-                ceiling    <- maximumShortIndex to maximumLongIndex
-                shortIndex <- 0 to maximumShortIndex
-                longIndex = ceiling - shortIndex
-              do indexPermutation(shortIndex, longIndex)
-              end for
-              // Evaluate along final short diagonals decreasing in length...
-              for
-                ceiling <-
-                  (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
-                shortIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
-                longIndex = ceiling - shortIndex
-              do indexPermutation(shortIndex, longIndex)
-              end for
+              traverseInDiagonalStripes(
+                maximumShortIndex = maximumLesserBaseIndex,
+                maximumLongIndex = maximumLesserRightIndex,
+                indexPermutation = IndexPermutation.LeftHeldBaseIsShort
+              )
             else
-              val maximumShortIndex = maximumLesserRightIndex
-              val maximumLongIndex  = maximumLesserBaseIndex
-              val indexPermutation  = IndexPermutation.LeftHeldRightIsShort
-
-              // Evaluate along initial short diagonals increasing in length...
-              for
-                ceiling    <- 0 until maximumShortIndex
-                shortIndex <- 0 to ceiling
-                longIndex = ceiling - shortIndex
-              do indexPermutation(shortIndex, longIndex)
-              end for
-              // Evaluate along full-length diagonals...
-              for
-                ceiling    <- maximumShortIndex to maximumLongIndex
-                shortIndex <- 0 to maximumShortIndex
-                longIndex = ceiling - shortIndex
-              do indexPermutation(shortIndex, longIndex)
-              end for
-              // Evaluate along final short diagonals decreasing in length...
-              for
-                ceiling <-
-                  (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
-                shortIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
-                longIndex = ceiling - shortIndex
-              do indexPermutation(shortIndex, longIndex)
-              end for
+              traverseInDiagonalStripes(
+                maximumShortIndex = maximumLesserRightIndex,
+                maximumLongIndex = maximumLesserBaseIndex,
+                indexPermutation = IndexPermutation.LeftHeldRightIsShort
+              )
             end if
           end if
 
@@ -510,59 +455,17 @@ object LongestCommonSubsequence:
             // all solutions with lesser base and left indices in dependency
             // order within this swathe...
             if maximumLesserBaseIndex < maximumLesserLeftIndex then
-              val maximumShortIndex = maximumLesserBaseIndex
-              val maximumLongIndex  = maximumLesserLeftIndex
-              val indexPermutation  = IndexPermutation.RightHeldBaseIsShort
-
-              // Evaluate along initial short diagonals increasing in length...
-              for
-                ceiling    <- 0 until maximumShortIndex
-                shortIndex <- 0 to ceiling
-                longIndex = ceiling - shortIndex
-              do indexPermutation(shortIndex, longIndex)
-              end for
-              // Evaluate along full-length diagonals...
-              for
-                ceiling    <- maximumShortIndex to maximumLongIndex
-                shortIndex <- 0 to maximumShortIndex
-                longIndex = ceiling - shortIndex
-              do indexPermutation(shortIndex, longIndex)
-              end for
-              // Evaluate along final short diagonals decreasing in length...
-              for
-                ceiling <-
-                  (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
-                shortIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
-                longIndex = ceiling - shortIndex
-              do indexPermutation(shortIndex, longIndex)
-              end for
+              traverseInDiagonalStripes(
+                maximumShortIndex = maximumLesserBaseIndex,
+                maximumLongIndex = maximumLesserLeftIndex,
+                indexPermutation = IndexPermutation.RightHeldBaseIsShort
+              )
             else
-              val maximumShortIndex = maximumLesserLeftIndex
-              val maximumLongIndex  = maximumLesserBaseIndex
-              val indexPermutation  = IndexPermutation.RightHeldLeftIsShort
-
-              // Evaluate along initial short diagonals increasing in length...
-              for
-                ceiling    <- 0 until maximumShortIndex
-                shortIndex <- 0 to ceiling
-                longIndex = ceiling - shortIndex
-              do indexPermutation(shortIndex, longIndex)
-              end for
-              // Evaluate along full-length diagonals...
-              for
-                ceiling    <- maximumShortIndex to maximumLongIndex
-                shortIndex <- 0 to maximumShortIndex
-                longIndex = ceiling - shortIndex
-              do indexPermutation(shortIndex, longIndex)
-              end for
-              // Evaluate along final short diagonals decreasing in length...
-              for
-                ceiling <-
-                  (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
-                shortIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
-                longIndex = ceiling - shortIndex
-              do indexPermutation(shortIndex, longIndex)
-              end for
+              traverseInDiagonalStripes(
+                maximumShortIndex = maximumLesserLeftIndex,
+                maximumLongIndex = maximumLesserBaseIndex,
+                indexPermutation = IndexPermutation.RightHeldLeftIsShort
+              )
             end if
           end if
 
