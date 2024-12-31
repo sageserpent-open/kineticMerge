@@ -1,13 +1,14 @@
 package com.sageserpent.kineticmerge.core
 
-import cats.Eq
+import cats.effect.IO
+import cats.effect.unsafe.implicits.global
+import scala.concurrent.ExecutionContext.Implicits.global
 import cats.syntax.all.{catsSyntaxApplyOps, catsSyntaxFlatMapOps}
+import cats.{Eq, Monad}
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{CommonSubsequenceSize, Contribution}
 import monocle.syntax.all.*
 
-import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, Future}
+import scala.concurrent.Future
 
 case class LongestCommonSubsequence[Element] private (
     base: IndexedSeq[Contribution[Element]],
@@ -207,6 +208,9 @@ object LongestCommonSubsequence:
             resultSnapshotPriorToMutation
           end advanceToNextLeadingSwathe
 
+          private def notYetReachedFinalSwathe =
+            maximumSwatheIndex > _indexOfLeadingSwathe
+
           def topLevelSolution: LongestCommonSubsequence[Element] =
             require(!notYetReachedFinalSwathe)
 
@@ -219,36 +223,6 @@ object LongestCommonSubsequence:
               )
             )
           end topLevelSolution
-
-          private def notYetReachedFinalSwathe =
-            maximumSwatheIndex > _indexOfLeadingSwathe
-
-          inline private def storageLotForLeadingSwathe =
-            _indexOfLeadingSwathe % 2
-          end storageLotForLeadingSwathe
-
-          inline private def indexFor(
-              swatheIndex: Int,
-              onePastBaseIndex: Int,
-              onePastLeftIndex: Int,
-              onePastRightIndex: Int
-          ) =
-            val swatheIndexOnBase =
-              swatheIndex == onePastBaseIndex
-            val swatheIndexOnLeft =
-              swatheIndex == onePastLeftIndex
-            val swatheIndexOnRight =
-              swatheIndex == onePastRightIndex
-            if swatheIndexOnBase && swatheIndexOnLeft && swatheIndexOnRight
-            then offsetInStorageEntriesWithAllEqualToSwatheIndex
-            else if swatheIndexOnLeft then
-              offsetInStorageEntriesWithLeftEqualToSwatheIndex + onePastBaseIndex * (1 + right.size) + onePastRightIndex
-            else if swatheIndexOnRight then
-              offsetInStorageEntriesWithRightEqualToSwatheIndex + onePastBaseIndex * (1 + left.size) + onePastLeftIndex
-            else
-              offsetInStorageEntriesWithBaseEqualToSwatheIndex + onePastLeftIndex * (1 + right.size) + onePastRightIndex
-            end if
-          end indexFor
 
           def consultRelevantSwatheForSolution(
               onePastBaseIndex: Int,
@@ -296,6 +270,33 @@ object LongestCommonSubsequence:
             end if
           end consultRelevantSwatheForSolution
 
+          inline private def storageLotForLeadingSwathe =
+            _indexOfLeadingSwathe % 2
+          end storageLotForLeadingSwathe
+
+          inline private def indexFor(
+              swatheIndex: Int,
+              onePastBaseIndex: Int,
+              onePastLeftIndex: Int,
+              onePastRightIndex: Int
+          ) =
+            val swatheIndexOnBase =
+              swatheIndex == onePastBaseIndex
+            val swatheIndexOnLeft =
+              swatheIndex == onePastLeftIndex
+            val swatheIndexOnRight =
+              swatheIndex == onePastRightIndex
+            if swatheIndexOnBase && swatheIndexOnLeft && swatheIndexOnRight
+            then offsetInStorageEntriesWithAllEqualToSwatheIndex
+            else if swatheIndexOnLeft then
+              offsetInStorageEntriesWithLeftEqualToSwatheIndex + onePastBaseIndex * (1 + right.size) + onePastRightIndex
+            else if swatheIndexOnRight then
+              offsetInStorageEntriesWithRightEqualToSwatheIndex + onePastBaseIndex * (1 + left.size) + onePastLeftIndex
+            else
+              offsetInStorageEntriesWithBaseEqualToSwatheIndex + onePastLeftIndex * (1 + right.size) + onePastRightIndex
+            end if
+          end indexFor
+
           inline private def storageLotForPrecedingSwathe =
             (1 + _indexOfLeadingSwathe) % 2
           end storageLotForPrecedingSwathe
@@ -326,13 +327,21 @@ object LongestCommonSubsequence:
             )
         end swathes
 
-        while swathes.advanceToNextLeadingSwathe() do
+        val haveAdvancedToNextLeadingSwathe = IO {
+          swathes.advanceToNextLeadingSwathe()
+        }
+
+        val indexOfLeadingSwathe: IO[Int] = IO { swathes.indexOfLeadingSwathe }
+
+        val allSolutionsOverAllSwathes = Monad[IO].whileM_(
+          haveAdvancedToNextLeadingSwathe
+        )(indexOfLeadingSwathe.flatMap { indexOfLeadingSwathe =>
           val maximumLesserBaseIndex =
-            base.size min (swathes.indexOfLeadingSwathe - 1)
+            base.size min (indexOfLeadingSwathe - 1)
           val maximumLesserLeftIndex =
-            left.size min (swathes.indexOfLeadingSwathe - 1)
+            left.size min (indexOfLeadingSwathe - 1)
           val maximumLesserRightIndex =
-            right.size min (swathes.indexOfLeadingSwathe - 1)
+            right.size min (indexOfLeadingSwathe - 1)
 
           enum IndexPermutation:
             inline def evaluateAt(shortIndex: Int, longIndex: Int): Unit =
@@ -340,14 +349,14 @@ object LongestCommonSubsequence:
                 case BaseHeldLeftIsShort =>
                   action(
                     swathes,
-                    swathes.indexOfLeadingSwathe,
+                    indexOfLeadingSwathe,
                     shortIndex,
                     longIndex
                   )
                 case BaseHeldRightIsShort =>
                   action(
                     swathes,
-                    swathes.indexOfLeadingSwathe,
+                    indexOfLeadingSwathe,
                     longIndex,
                     shortIndex
                   )
@@ -355,14 +364,14 @@ object LongestCommonSubsequence:
                   action(
                     swathes,
                     shortIndex,
-                    swathes.indexOfLeadingSwathe,
+                    indexOfLeadingSwathe,
                     longIndex
                   )
                 case LeftHeldRightIsShort =>
                   action(
                     swathes,
                     longIndex,
-                    swathes.indexOfLeadingSwathe,
+                    indexOfLeadingSwathe,
                     shortIndex
                   )
                 case RightHeldBaseIsShort =>
@@ -370,14 +379,14 @@ object LongestCommonSubsequence:
                     swathes,
                     shortIndex,
                     longIndex,
-                    swathes.indexOfLeadingSwathe
+                    indexOfLeadingSwathe
                   )
                 case RightHeldLeftIsShort =>
                   action(
                     swathes,
                     longIndex,
                     shortIndex,
-                    swathes.indexOfLeadingSwathe
+                    indexOfLeadingSwathe
                   )
 
             case BaseHeldLeftIsShort
@@ -418,7 +427,7 @@ object LongestCommonSubsequence:
           end traverseInDiagonalStripes
 
           val solutionsHoldingTheBase = Future {
-            if base.size >= swathes.indexOfLeadingSwathe then
+            if base.size >= indexOfLeadingSwathe then
               // Hold the base index at the maximum for this swathe and evaluate
               // all solutions with lesser left and right indices in dependency
               // order within this swathe...
@@ -439,7 +448,7 @@ object LongestCommonSubsequence:
           }
 
           val solutionsHoldingTheLeft = Future {
-            if left.size >= swathes.indexOfLeadingSwathe then
+            if left.size >= indexOfLeadingSwathe then
               // Hold the left index at the maximum for this swathe and evaluate
               // all solutions with lesser base and right indices in dependency
               // order within this swathe...
@@ -460,7 +469,7 @@ object LongestCommonSubsequence:
           }
 
           val solutionsHoldingTheRight = Future {
-            if right.size >= swathes.indexOfLeadingSwathe then
+            if right.size >= indexOfLeadingSwathe then
               // Hold the right index at the maximum for this swathe and
               // evaluate
               // all solutions with lesser base and left indices in dependency
@@ -486,13 +495,13 @@ object LongestCommonSubsequence:
 
           val solutionsHoldingTheBaseAndLeft =
             solutionsHoldingEachOfTheThreeSides >> Future {
-              if base.size >= swathes.indexOfLeadingSwathe && left.size >= swathes.indexOfLeadingSwathe
+              if base.size >= indexOfLeadingSwathe && left.size >= indexOfLeadingSwathe
               then
                 for rightIndex <- 0 to maximumLesserRightIndex do
                   action(
                     swathes,
-                    swathes.indexOfLeadingSwathe,
-                    swathes.indexOfLeadingSwathe,
+                    indexOfLeadingSwathe,
+                    indexOfLeadingSwathe,
                     rightIndex
                   )
                 end for
@@ -501,14 +510,14 @@ object LongestCommonSubsequence:
 
           val solutionsHoldingTheBaseAndRight =
             solutionsHoldingEachOfTheThreeSides >> Future {
-              if base.size >= swathes.indexOfLeadingSwathe && right.size >= swathes.indexOfLeadingSwathe
+              if base.size >= indexOfLeadingSwathe && right.size >= indexOfLeadingSwathe
               then
                 for leftIndex <- 0 to maximumLesserLeftIndex do
                   action(
                     swathes,
-                    swathes.indexOfLeadingSwathe,
+                    indexOfLeadingSwathe,
                     leftIndex,
-                    swathes.indexOfLeadingSwathe
+                    indexOfLeadingSwathe
                   )
                 end for
               end if
@@ -516,14 +525,14 @@ object LongestCommonSubsequence:
 
           val solutionsHoldingTheLeftAndRight =
             solutionsHoldingEachOfTheThreeSides >> Future {
-              if left.size >= swathes.indexOfLeadingSwathe && right.size >= swathes.indexOfLeadingSwathe
+              if left.size >= indexOfLeadingSwathe && right.size >= indexOfLeadingSwathe
               then
                 for baseIndex <- 0 to maximumLesserBaseIndex do
                   action(
                     swathes,
                     baseIndex,
-                    swathes.indexOfLeadingSwathe,
-                    swathes.indexOfLeadingSwathe
+                    indexOfLeadingSwathe,
+                    indexOfLeadingSwathe
                   )
                 end for
               end if
@@ -533,21 +542,23 @@ object LongestCommonSubsequence:
             solutionsHoldingTheBaseAndLeft *> solutionsHoldingTheBaseAndRight *> solutionsHoldingTheLeftAndRight
 
           val topLevelSolution =
-            allExceptTopLevelSolution >> Future.successful {
-              if base.size >= swathes.indexOfLeadingSwathe && left.size >= swathes.indexOfLeadingSwathe && right.size >= swathes.indexOfLeadingSwathe
+            allExceptTopLevelSolution >> Future {
+              if base.size >= indexOfLeadingSwathe && left.size >= indexOfLeadingSwathe && right.size >= indexOfLeadingSwathe
               then
                 // Top-level solution for the leading swathe...
                 action(
                   swathes,
-                  swathes.indexOfLeadingSwathe,
-                  swathes.indexOfLeadingSwathe,
-                  swathes.indexOfLeadingSwathe
+                  indexOfLeadingSwathe,
+                  indexOfLeadingSwathe,
+                  indexOfLeadingSwathe
                 )
               end if
             }
 
-          Await.ready(topLevelSolution, Duration.Inf)
-        end while
+          IO.fromFuture(IO(topLevelSolution))
+        })
+
+        allSolutionsOverAllSwathes.unsafeRunSync()
 
         swathes.topLevelSolution
       end evaluateSolutionsInDependencyOrder
