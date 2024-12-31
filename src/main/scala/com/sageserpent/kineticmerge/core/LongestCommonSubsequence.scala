@@ -2,12 +2,12 @@ package com.sageserpent.kineticmerge.core
 
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
-import scala.concurrent.ExecutionContext.Implicits.global
 import cats.syntax.all.{catsSyntaxApplyOps, catsSyntaxFlatMapOps}
 import cats.{Eq, Monad}
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{CommonSubsequenceSize, Contribution}
 import monocle.syntax.all.*
 
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
 case class LongestCommonSubsequence[Element] private (
@@ -333,6 +333,13 @@ object LongestCommonSubsequence:
 
         val indexOfLeadingSwathe: IO[Int] = IO { swathes.indexOfLeadingSwathe }
 
+        // TODO: either cut over *completely* to using `IO` (but without
+        // sacrificing performance obtained by using `Future` to do the heavy
+        // lifting), or learn how to write a catamorphism for `Future` that
+        // unfolds through the swathes. The problem is that without a
+        // catamorphism, the only obvious way of doing this is to used
+        // `Monad.whileM_`, and that really doesn't play well with `Future` as
+        // it evaluates its condition eagerly and once.
         val allSolutionsOverAllSwathes = Monad[IO].whileM_(
           haveAdvancedToNextLeadingSwathe
         )(indexOfLeadingSwathe.flatMap { indexOfLeadingSwathe =>
