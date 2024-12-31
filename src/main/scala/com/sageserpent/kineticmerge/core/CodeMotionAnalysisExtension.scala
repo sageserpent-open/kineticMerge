@@ -47,7 +47,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           val bothBelongToTheSameMatches =
             matchesFor(lhs).intersect(matchesFor(rhs)).nonEmpty
 
-          bothBelongToTheSameMatches || Eq[Seq[Element]]
+          bothBelongToTheSameMatches || lhs.size == rhs.size && Eq[Seq[Element]]
             .eqv(lhs.content, rhs.content)
         end eqv
       end given
