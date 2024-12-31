@@ -339,42 +339,42 @@ object LongestCommonSubsequence:
 
               // Evaluate along initial short diagonals increasing in length...
               for
-                ceiling   <- 0 until maximumShortIndex
-                leftIndex <- 0 to ceiling
-                rightIndex = ceiling - leftIndex
+                ceiling    <- 0 until maximumShortIndex
+                shortIndex <- 0 to ceiling
+                longIndex = ceiling - shortIndex
               do
                 action(
                   swathes,
                   swathes.indexOfLeadingSwathe,
-                  leftIndex,
-                  rightIndex
+                  shortIndex,
+                  longIndex
                 )
               end for
               // Evaluate along full-length diagonals...
               for
-                ceiling   <- maximumShortIndex to maximumLongIndex
-                leftIndex <- 0 to maximumShortIndex
-                rightIndex = ceiling - leftIndex
+                ceiling    <- maximumShortIndex to maximumLongIndex
+                shortIndex <- 0 to maximumShortIndex
+                longIndex = ceiling - shortIndex
               do
                 action(
                   swathes,
                   swathes.indexOfLeadingSwathe,
-                  leftIndex,
-                  rightIndex
+                  shortIndex,
+                  longIndex
                 )
               end for
               // Evaluate along final short diagonals decreasing in length...
               for
                 ceiling <-
                   (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
-                leftIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
-                rightIndex = ceiling - leftIndex
+                shortIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
+                longIndex = ceiling - shortIndex
               do
                 action(
                   swathes,
                   swathes.indexOfLeadingSwathe,
-                  leftIndex,
-                  rightIndex
+                  shortIndex,
+                  longIndex
                 )
               end for
             else
@@ -384,41 +384,41 @@ object LongestCommonSubsequence:
               // Evaluate along initial short diagonals increasing in length...
               for
                 ceiling    <- 0 until maximumShortIndex
-                rightIndex <- 0 to ceiling
-                leftIndex = ceiling - rightIndex
+                shortIndex <- 0 to ceiling
+                longIndex = ceiling - shortIndex
               do
                 action(
                   swathes,
                   swathes.indexOfLeadingSwathe,
-                  leftIndex,
-                  rightIndex
+                  longIndex,
+                  shortIndex
                 )
               end for
               // Evaluate along full-length diagonals...
               for
                 ceiling    <- maximumShortIndex to maximumLongIndex
-                rightIndex <- 0 to maximumShortIndex
-                leftIndex = ceiling - rightIndex
+                shortIndex <- 0 to maximumShortIndex
+                longIndex = ceiling - shortIndex
               do
                 action(
                   swathes,
                   swathes.indexOfLeadingSwathe,
-                  leftIndex,
-                  rightIndex
+                  longIndex,
+                  shortIndex
                 )
               end for
               // Evaluate along final short diagonals decreasing in length...
               for
                 ceiling <-
                   (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
-                rightIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
-                leftIndex = ceiling - rightIndex
+                shortIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
+                longIndex = ceiling - shortIndex
               do
                 action(
                   swathes,
                   swathes.indexOfLeadingSwathe,
-                  leftIndex,
-                  rightIndex
+                  longIndex,
+                  shortIndex
                 )
               end for
             end if
@@ -434,42 +434,42 @@ object LongestCommonSubsequence:
 
               // Evaluate along initial short diagonals increasing in length...
               for
-                ceiling   <- 0 until maximumShortIndex
-                baseIndex <- 0 to ceiling
-                rightIndex = ceiling - baseIndex
+                ceiling    <- 0 until maximumShortIndex
+                shortIndex <- 0 to ceiling
+                longIndex = ceiling - shortIndex
               do
                 action(
                   swathes,
-                  baseIndex,
+                  shortIndex,
                   swathes.indexOfLeadingSwathe,
-                  rightIndex
+                  longIndex
                 )
               end for
               // Evaluate along full-length diagonals...
               for
-                ceiling   <- maximumShortIndex to maximumLongIndex
-                baseIndex <- 0 to maximumShortIndex
-                rightIndex = ceiling - baseIndex
+                ceiling    <- maximumShortIndex to maximumLongIndex
+                shortIndex <- 0 to maximumShortIndex
+                longIndex = ceiling - shortIndex
               do
                 action(
                   swathes,
-                  baseIndex,
+                  shortIndex,
                   swathes.indexOfLeadingSwathe,
-                  rightIndex
+                  longIndex
                 )
               end for
               // Evaluate along final short diagonals decreasing in length...
               for
                 ceiling <-
                   (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
-                baseIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
-                rightIndex = ceiling - baseIndex
+                shortIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
+                longIndex = ceiling - shortIndex
               do
                 action(
                   swathes,
-                  baseIndex,
+                  shortIndex,
                   swathes.indexOfLeadingSwathe,
-                  rightIndex
+                  longIndex
                 )
               end for
             else
@@ -479,41 +479,41 @@ object LongestCommonSubsequence:
               // Evaluate along initial short diagonals increasing in length...
               for
                 ceiling    <- 0 until maximumShortIndex
-                rightIndex <- 0 to ceiling
-                baseIndex = ceiling - rightIndex
+                shortIndex <- 0 to ceiling
+                longIndex = ceiling - shortIndex
               do
                 action(
                   swathes,
-                  baseIndex,
+                  longIndex,
                   swathes.indexOfLeadingSwathe,
-                  rightIndex
+                  shortIndex
                 )
               end for
               // Evaluate along full-length diagonals...
               for
                 ceiling    <- maximumShortIndex to maximumLongIndex
-                rightIndex <- 0 to maximumShortIndex
-                baseIndex = ceiling - rightIndex
+                shortIndex <- 0 to maximumShortIndex
+                longIndex = ceiling - shortIndex
               do
                 action(
                   swathes,
-                  baseIndex,
+                  longIndex,
                   swathes.indexOfLeadingSwathe,
-                  rightIndex
+                  shortIndex
                 )
               end for
               // Evaluate along final short diagonals decreasing in length...
               for
                 ceiling <-
                   (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
-                rightIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
-                baseIndex = ceiling - rightIndex
+                shortIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
+                longIndex = ceiling - shortIndex
               do
                 action(
                   swathes,
-                  baseIndex,
+                  longIndex,
                   swathes.indexOfLeadingSwathe,
-                  rightIndex
+                  shortIndex
                 )
               end for
             end if
@@ -529,27 +529,27 @@ object LongestCommonSubsequence:
 
               // Evaluate along initial short diagonals increasing in length...
               for
-                ceiling   <- 0 until maximumShortIndex
-                baseIndex <- 0 to ceiling
-                leftIndex = ceiling - baseIndex
+                ceiling    <- 0 until maximumShortIndex
+                shortIndex <- 0 to ceiling
+                longIndex = ceiling - shortIndex
               do
                 action(
                   swathes,
-                  baseIndex,
-                  leftIndex,
+                  shortIndex,
+                  longIndex,
                   swathes.indexOfLeadingSwathe
                 )
               end for
               // Evaluate along full-length diagonals...
               for
-                ceiling   <- maximumShortIndex to maximumLongIndex
-                baseIndex <- 0 to maximumShortIndex
-                leftIndex = ceiling - baseIndex
+                ceiling    <- maximumShortIndex to maximumLongIndex
+                shortIndex <- 0 to maximumShortIndex
+                longIndex = ceiling - shortIndex
               do
                 action(
                   swathes,
-                  baseIndex,
-                  leftIndex,
+                  shortIndex,
+                  longIndex,
                   swathes.indexOfLeadingSwathe
                 )
               end for
@@ -557,13 +557,13 @@ object LongestCommonSubsequence:
               for
                 ceiling <-
                   (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
-                baseIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
-                leftIndex = ceiling - baseIndex
+                shortIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
+                longIndex = ceiling - shortIndex
               do
                 action(
                   swathes,
-                  baseIndex,
-                  leftIndex,
+                  shortIndex,
+                  longIndex,
                   swathes.indexOfLeadingSwathe
                 )
               end for
@@ -573,27 +573,27 @@ object LongestCommonSubsequence:
 
               // Evaluate along initial short diagonals increasing in length...
               for
-                ceiling   <- 0 until maximumShortIndex
-                leftIndex <- 0 to ceiling
-                baseIndex = ceiling - leftIndex
+                ceiling    <- 0 until maximumShortIndex
+                shortIndex <- 0 to ceiling
+                longIndex = ceiling - shortIndex
               do
                 action(
                   swathes,
-                  baseIndex,
-                  leftIndex,
+                  longIndex,
+                  shortIndex,
                   swathes.indexOfLeadingSwathe
                 )
               end for
               // Evaluate along full-length diagonals...
               for
-                ceiling   <- maximumShortIndex to maximumLongIndex
-                leftIndex <- 0 to maximumShortIndex
-                baseIndex = ceiling - leftIndex
+                ceiling    <- maximumShortIndex to maximumLongIndex
+                shortIndex <- 0 to maximumShortIndex
+                longIndex = ceiling - shortIndex
               do
                 action(
                   swathes,
-                  baseIndex,
-                  leftIndex,
+                  longIndex,
+                  shortIndex,
                   swathes.indexOfLeadingSwathe
                 )
               end for
@@ -601,13 +601,13 @@ object LongestCommonSubsequence:
               for
                 ceiling <-
                   (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
-                leftIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
-                baseIndex = ceiling - leftIndex
+                shortIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
+                longIndex = ceiling - shortIndex
               do
                 action(
                   swathes,
-                  baseIndex,
-                  leftIndex,
+                  longIndex,
+                  shortIndex,
                   swathes.indexOfLeadingSwathe
                 )
               end for
