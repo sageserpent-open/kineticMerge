@@ -335,7 +335,7 @@ object LongestCommonSubsequence:
             right.size min (swathes.indexOfLeadingSwathe - 1)
 
           enum IndexPermutation:
-            def evaluateAt(shortIndex: Int, longIndex: Int): Unit =
+            inline def evaluateAt(shortIndex: Int, longIndex: Int): Unit =
               this match
                 case BaseHeldLeftIsShort =>
                   action(
@@ -417,7 +417,7 @@ object LongestCommonSubsequence:
             end for
           end traverseInDiagonalStripes
 
-          val holdingTheBase = Future {
+          val solutionsHoldingTheBase = Future {
             if base.size >= swathes.indexOfLeadingSwathe then
               // Hold the base index at the maximum for this swathe and evaluate
               // all solutions with lesser left and right indices in dependency
@@ -438,7 +438,7 @@ object LongestCommonSubsequence:
             end if
           }
 
-          val holdingTheLeft = Future {
+          val solutionsHoldingTheLeft = Future {
             if left.size >= swathes.indexOfLeadingSwathe then
               // Hold the left index at the maximum for this swathe and evaluate
               // all solutions with lesser base and right indices in dependency
@@ -459,7 +459,7 @@ object LongestCommonSubsequence:
             end if
           }
 
-          val holdingTheRight = Future {
+          val solutionsHoldingTheRight = Future {
             if right.size >= swathes.indexOfLeadingSwathe then
               // Hold the right index at the maximum for this swathe and
               // evaluate
@@ -481,11 +481,11 @@ object LongestCommonSubsequence:
             end if
           }
 
-          val holdingEachOfTheThreeSidesInParallel =
-            holdingTheBase *> holdingTheLeft *> holdingTheRight
+          val solutionsHoldingEachOfTheThreeSides =
+            solutionsHoldingTheBase *> solutionsHoldingTheLeft *> solutionsHoldingTheRight
 
-          val holdingTheBaseAndLeft =
-            holdingEachOfTheThreeSidesInParallel >> Future {
+          val solutionsHoldingTheBaseAndLeft =
+            solutionsHoldingEachOfTheThreeSides >> Future {
               if base.size >= swathes.indexOfLeadingSwathe && left.size >= swathes.indexOfLeadingSwathe
               then
                 for rightIndex <- 0 to maximumLesserRightIndex do
@@ -499,8 +499,8 @@ object LongestCommonSubsequence:
               end if
             }
 
-          val holdingTheBaseAndRight =
-            holdingEachOfTheThreeSidesInParallel >> Future {
+          val solutionsHoldingTheBaseAndRight =
+            solutionsHoldingEachOfTheThreeSides >> Future {
               if base.size >= swathes.indexOfLeadingSwathe && right.size >= swathes.indexOfLeadingSwathe
               then
                 for leftIndex <- 0 to maximumLesserLeftIndex do
@@ -514,8 +514,8 @@ object LongestCommonSubsequence:
               end if
             }
 
-          val holdingTheLeftAndRight =
-            holdingEachOfTheThreeSidesInParallel >> Future {
+          val solutionsHoldingTheLeftAndRight =
+            solutionsHoldingEachOfTheThreeSides >> Future {
               if left.size >= swathes.indexOfLeadingSwathe && right.size >= swathes.indexOfLeadingSwathe
               then
                 for baseIndex <- 0 to maximumLesserBaseIndex do
@@ -529,11 +529,11 @@ object LongestCommonSubsequence:
               end if
             }
 
-          val allSolutionsDoneForTheLeadingSwathe =
-            holdingTheBaseAndLeft *> holdingTheBaseAndRight *> holdingTheLeftAndRight
+          val allExceptTopLevelSolution =
+            solutionsHoldingTheBaseAndLeft *> solutionsHoldingTheBaseAndRight *> solutionsHoldingTheLeftAndRight
 
           val topLevelSolution =
-            allSolutionsDoneForTheLeadingSwathe >> Future.successful {
+            allExceptTopLevelSolution >> Future.successful {
               if base.size >= swathes.indexOfLeadingSwathe && left.size >= swathes.indexOfLeadingSwathe && right.size >= swathes.indexOfLeadingSwathe
               then
                 // Top-level solution for the leading swathe...
