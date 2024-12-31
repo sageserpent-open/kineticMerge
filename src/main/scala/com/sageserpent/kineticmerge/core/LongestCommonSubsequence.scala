@@ -682,7 +682,7 @@ object LongestCommonSubsequence:
       end evaluateSolutionsInDependencyOrder
     end Swathes
 
-    def ofConsultingCacheForSubProblems(
+    def ofConsultingSwathesForSubProblems(
         swathes: Swathes,
         onePastBaseIndex: Int,
         onePastLeftIndex: Int,
@@ -938,7 +938,7 @@ object LongestCommonSubsequence:
             ).max(orderBySize)
           end if
       end match
-    end ofConsultingCacheForSubProblems
+    end ofConsultingSwathesForSubProblems
 
     // Brute-forced and ignorant dynamic programming. Completely unsafe reliance
     // on imperative updates priming each sub-problem solution in the leading
@@ -954,7 +954,7 @@ object LongestCommonSubsequence:
           ) =>
         swathes.storeSolutionInLeadingSwathe(
           partialResultKey,
-          ofConsultingCacheForSubProblems(
+          ofConsultingSwathesForSubProblems(
             swathes,
             onePastBaseIndex,
             onePastLeftIndex,
