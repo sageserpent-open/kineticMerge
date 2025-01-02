@@ -220,15 +220,17 @@ object MainTest extends ProseExamples:
     )
   end tysonSaidConflictingThings
 
-  private def arthurIsMarkedWithConflictingDeletionAndUpdateInTheIndex(
-      flipBranches: Boolean,
-      status: String
-  ): Unit =
+  private def pathIsMarkedWithConflictingDeletionAndUpdateInTheIndex(
+      path: RelPath
+  )(flipBranches: Boolean, status: String): Unit =
     assert(
-      s"${if flipBranches then "DU" else "UD"}\\s+$arthur".r
+      s"${if flipBranches then "DU" else "UD"}\\s+$path".r
         .findFirstIn(status)
         .isDefined
     )
+
+  private val arthurIsMarkedWithConflictingDeletionAndUpdateInTheIndex =
+    pathIsMarkedWithConflictingDeletionAndUpdateInTheIndex(arthur)
 
   private def noUpdatesInIndexForTyson(status: String): Unit =
     assert(!status.contains(tyson))
@@ -2179,7 +2181,7 @@ class MainTest:
                 optionalSubdirectory.fold(ifEmpty = path)(path / _)
               )
 
-              if noCommit then
+              val status =
                 verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
                   path
                 )(
@@ -2189,20 +2191,11 @@ class MainTest:
                   ourBranch,
                   exitCode
                 )
-              else
-                verifyMergeMakesANewCommitWithACleanIndex(path)(
-                  commitOfMovedFileBranch,
-                  commitOfMasterBranch,
-                  ourBranch,
-                  exitCode
-                )
-              end if
 
-              assert(
-                contentMatches(expected = "")(
-                  os.read(path / movedCasesLimitStrategy)
-                )
-              )
+              pathIsMarkedWithConflictingDeletionAndUpdateInTheIndex(
+                movedCasesLimitStrategy
+              )(flipBranches, status)
+              assert(0 == os.size(path / movedCasesLimitStrategy))
               assert(!os.exists(path / casesLimitStrategy))
             }
           )
@@ -2257,7 +2250,7 @@ class MainTest:
                 optionalSubdirectory.fold(ifEmpty = path)(path / _)
               )
 
-              if noCommit then
+              val status =
                 verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
                   path
                 )(
@@ -2267,17 +2260,12 @@ class MainTest:
                   ourBranch,
                   exitCode
                 )
-              else
-                verifyMergeMakesANewCommitWithACleanIndex(path)(
-                  commitOfMovedFileBranch,
-                  commitOfMasterBranch,
-                  ourBranch,
-                  exitCode
-                )
-              end if
 
-              // TODO: be more specific!
-              assert(os.exists(path / movedCasesLimitStrategy))
+              pathIsMarkedWithConflictingDeletionAndUpdateInTheIndex(
+                movedCasesLimitStrategy
+              )(flipBranches, status)
+
+              assert(0 < os.size(path / movedCasesLimitStrategy))
               assert(!os.exists(path / casesLimitStrategy))
             }
           )
