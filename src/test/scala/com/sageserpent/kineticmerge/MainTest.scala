@@ -336,6 +336,17 @@ object MainTest extends ProseExamples:
     )
   end editingCasesLimitStrategy
 
+  private def removingCasesLimitStrategy(path: Path): Unit =
+    os.remove(path / casesLimitStrategy)
+    println(os.proc("git", "rm", casesLimitStrategy).call(path).out.text())
+    println(
+      os.proc(s"git", "commit", "-m", "'Removing `CasesLimitStrategy`.'")
+        .call(path)
+        .out
+        .text()
+    )
+  end removingCasesLimitStrategy
+
   private def splittingCasesLimitStrategy(path: Path): Unit =
     os.write.over(
       path / casesLimitStrategy,
@@ -590,6 +601,25 @@ object MainTest extends ProseExamples:
     assert(currentStatus(path).nonEmpty)
   end verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit
 
+  private def currentCommit(path: Path) =
+    os.proc("git", "log", "-1", "--format=tformat:%H")
+      .call(path)
+      .out
+      .text()
+      .strip
+
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+
+  private def mergeHead(path: Path) =
+    os.read(mergeHeadPath(path)).strip()
+
+  private def mergeHeadPath(path: Path) =
+    path / ".git" / "MERGE_HEAD"
+
   private def verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
       path: Path
   )(
@@ -621,25 +651,6 @@ object MainTest extends ProseExamples:
 
     currentStatus(path)
   end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
-
-  private def currentCommit(path: Path) =
-    os.proc("git", "log", "-1", "--format=tformat:%H")
-      .call(path)
-      .out
-      .text()
-      .strip
-
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
-
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
-
-  private def mergeHead(path: Path) =
-    os.read(mergeHeadPath(path)).strip()
-
-  private def mergeHeadPath(path: Path) =
-    path / ".git" / "MERGE_HEAD"
 
   private def gitRepository(): ImperativeResource[Path] =
     for
@@ -2122,5 +2133,81 @@ class MainTest:
           .unsafeRunSync()
       }
   end issue48BugReproduction
+
+  @TestFactory
+  def outrightDeletionPropagatingThroughAFileMove(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches, noCommit) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingCasesLimitStrategy(path)
+
+              val movedFileBranch = "movedFileBranch"
+
+              makeNewBranch(path)(movedFileBranch)
+
+              moveCasesLimitStrategy(path)
+
+              val commitOfMovedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              removingCasesLimitStrategy(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then checkoutBranch(path)(movedFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then movedFileBranch -> masterBranch
+                else masterBranch                    -> movedFileBranch
+
+              val exitCode = Main.mergeTheirBranch(
+                ApplicationRequest(
+                  theirBranchHead =
+                    theirBranch.taggedWith[Tags.CommitOrBranchName],
+                  noCommit = noCommit,
+                  minimumAmbiguousMatchSize = 5
+                )
+              )(workingDirectory =
+                optionalSubdirectory.fold(ifEmpty = path)(path / _)
+              )
+
+              if noCommit then
+                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                  path
+                )(
+                  flipBranches,
+                  commitOfMovedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              else
+                verifyMergeMakesANewCommitWithACleanIndex(path)(
+                  commitOfMovedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              end if
+
+              assert(
+                contentMatches(expected = "")(
+                  os.read(path / movedCasesLimitStrategy)
+                )
+              )
+              assert(!os.exists(path / casesLimitStrategy))
+            }
+          )
+          .unsafeRunSync()
+      }
+  end outrightDeletionPropagatingThroughAFileMove
 
 end MainTest
