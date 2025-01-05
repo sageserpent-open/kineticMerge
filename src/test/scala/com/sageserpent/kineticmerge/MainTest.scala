@@ -57,6 +57,8 @@ object MainTest extends ProseExamples:
     codeMotionExampleWithSplitHivedOffExpectedMerge
   private val baseExpectyFlavouredAssertContent   = codeMotionExampleBase
   private val editedExpectyFlavouredAssertContent = codeMotionExampleRight
+  private val arthurIsMarkedWithConflictingDeletionAndUpdateInTheIndex =
+    pathIsMarkedWithConflictingDeletionAndUpdateInTheIndex(arthur)
 
   private def introducingArthur(path: Path): Unit =
     os.write(path / arthur, "Hello, my old mucker!\n", createFolders = true)
@@ -229,8 +231,14 @@ object MainTest extends ProseExamples:
         .isDefined
     )
 
-  private val arthurIsMarkedWithConflictingDeletionAndUpdateInTheIndex =
-    pathIsMarkedWithConflictingDeletionAndUpdateInTheIndex(arthur)
+  private def pathIsMarkedWithConflictingDeletionAndRenameInTheIndex(
+      path: RelPath
+  )(flipBranches: Boolean, status: String): Unit =
+    assert(
+      s"${if flipBranches then "UA" else "AU"}\\s+$path".r
+        .findFirstIn(status)
+        .isDefined
+    )
 
   private def noUpdatesInIndexForTyson(status: String): Unit =
     assert(!status.contains(tyson))
@@ -548,12 +556,6 @@ object MainTest extends ProseExamples:
       case Array(postMergeCommit, parents*) => postMergeCommit -> parents
     : @unchecked
 
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
-
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
-
   private def verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit(
       path: Path
   )(
@@ -640,6 +642,12 @@ object MainTest extends ProseExamples:
 
     currentStatus(path)
   end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
+
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
 
   private def currentCommit(path: Path) =
     os.proc("git", "log", "-1", "--format=tformat:%H")
@@ -1241,6 +1249,9 @@ class MainTest:
                 flipBranches,
                 status
               )
+
+              // TODO: need to tighten the expectations to verify that the
+              // content matches what was committed last on `master`.
 
               if flipBranches then
                 sandraIsMarkedAsDeletedInTheIndex(status)
@@ -2137,7 +2148,7 @@ class MainTest:
   end issue48BugReproduction
 
   @TestFactory
-  def outrightDeletionPropagatingThroughAFileMove(): DynamicTests =
+  def conflictingDeletionAndFileMoveOfTheSameFile(): DynamicTests =
     (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
       .withLimit(10)
       .dynamicTests { case (optionalSubdirectory, flipBranches, noCommit) =>
@@ -2192,19 +2203,24 @@ class MainTest:
                   exitCode
                 )
 
-              pathIsMarkedWithConflictingDeletionAndUpdateInTheIndex(
+              pathIsMarkedWithConflictingDeletionAndRenameInTheIndex(
                 movedCasesLimitStrategy
               )(flipBranches, status)
-              assert(0 == os.size(path / movedCasesLimitStrategy))
+
+              assert(
+                contentMatches(expected = baseCasesLimitStrategyContent)(
+                  os.read(path / movedCasesLimitStrategy)
+                )
+              )
               assert(!os.exists(path / casesLimitStrategy))
             }
           )
           .unsafeRunSync()
       }
-  end outrightDeletionPropagatingThroughAFileMove
+  end conflictingDeletionAndFileMoveOfTheSameFile
 
   @TestFactory
-  def outrightDeletionPropagatingThroughAnEditedFileMove(): DynamicTests =
+  def conflictingDeletionAndEditedFileMoveOfTheSameFile(): DynamicTests =
     (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
       .withLimit(10)
       .dynamicTests { case (optionalSubdirectory, flipBranches, noCommit) =>
@@ -2261,16 +2277,20 @@ class MainTest:
                   exitCode
                 )
 
-              pathIsMarkedWithConflictingDeletionAndUpdateInTheIndex(
+              pathIsMarkedWithConflictingDeletionAndRenameInTheIndex(
                 movedCasesLimitStrategy
               )(flipBranches, status)
 
-              assert(0 < os.size(path / movedCasesLimitStrategy))
+              assert(
+                contentMatches(expected = editedCasesLimitStrategyContent)(
+                  os.read(path / movedCasesLimitStrategy)
+                )
+              )
               assert(!os.exists(path / casesLimitStrategy))
             }
           )
           .unsafeRunSync()
       }
-  end outrightDeletionPropagatingThroughAnEditedFileMove
+  end conflictingDeletionAndEditedFileMoveOfTheSameFile
 
 end MainTest
