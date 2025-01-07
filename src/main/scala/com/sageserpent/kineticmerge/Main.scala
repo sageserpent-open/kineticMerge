@@ -1,11 +1,10 @@
 package com.sageserpent.kineticmerge
 
+import cats.Order
 import cats.data.{EitherT, WriterT}
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
-import cats.syntax.foldable.toFoldableOps
 import cats.syntax.traverse.toTraverseOps
-import cats.{Eq, Order}
 import com.google.common.hash.{Funnel, HashFunction, Hashing}
 import com.sageserpent.kineticmerge.Main.MergeInput.*
 import com.sageserpent.kineticmerge.core.*
@@ -1057,204 +1056,181 @@ object Main extends StrictLogging:
     )(
         mergeInputs: List[(Path, MergeInput)]
     ): Workflow[Boolean] =
-      given Eq[Token]     = Token.equality
       given Order[Token]  = Token.comparison
       given Funnel[Token] = Token.funnel
       given HashFunction  = Hashing.murmur3_32_fixed()
 
+      val (baseContentsByPath, leftContentsByPath, rightContentsByPath) =
+        mergeInputs.foldLeft(
+          (
+            Map.empty[Path, IndexedSeq[Token]],
+            Map.empty[Path, IndexedSeq[Token]],
+            Map.empty[Path, IndexedSeq[Token]]
+          )
+        ) {
+          case (
+                (baseContentsByPath, leftContentsByPath, rightContentsByPath),
+                (path, mergeInput)
+              ) =>
+            mergeInput match
+              case JustOurModification(
+                    ourModification,
+                    bestAncestorCommitIdContent
+                  ) =>
+                val unchangedContent = tokens(bestAncestorCommitIdContent).get
+
+                (
+                  baseContentsByPath + (path -> unchangedContent),
+                  leftContentsByPath + (path -> tokens(
+                    ourModification.content
+                  ).get),
+                  rightContentsByPath + (path -> unchangedContent)
+                )
+
+              case JustTheirModification(
+                    theirModification,
+                    bestAncestorCommitIdContent
+                  ) =>
+                val unchangedContent = tokens(bestAncestorCommitIdContent).get
+
+                (
+                  baseContentsByPath + (path -> unchangedContent),
+                  leftContentsByPath + (path -> unchangedContent),
+                  rightContentsByPath + (path -> tokens(
+                    theirModification.content
+                  ).get)
+                )
+
+              case JustOurAddition(ourAddition) =>
+                (
+                  baseContentsByPath,
+                  leftContentsByPath + (path -> tokens(
+                    ourAddition.content
+                  ).get),
+                  rightContentsByPath
+                )
+
+              case JustTheirAddition(theirAddition) =>
+                (
+                  baseContentsByPath,
+                  leftContentsByPath,
+                  rightContentsByPath + (path -> tokens(
+                    theirAddition.content
+                  ).get)
+                )
+
+              case JustOurDeletion(bestAncestorCommitIdContent) =>
+                val unchangedContent = tokens(bestAncestorCommitIdContent).get
+
+                (
+                  baseContentsByPath + (path -> unchangedContent),
+                  leftContentsByPath,
+                  rightContentsByPath + (path -> unchangedContent)
+                )
+
+              case JustTheirDeletion(bestAncestorCommitIdContent) =>
+                val unchangedContent = tokens(bestAncestorCommitIdContent).get
+
+                (
+                  baseContentsByPath + (path -> unchangedContent),
+                  leftContentsByPath + (path -> unchangedContent),
+                  rightContentsByPath
+                )
+
+              case OurModificationAndTheirDeletion(
+                    ourModification,
+                    _,
+                    _,
+                    bestAncestorCommitIdContent
+                  ) =>
+                (
+                  baseContentsByPath + (path -> tokens(
+                    bestAncestorCommitIdContent
+                  ).get),
+                  leftContentsByPath + (path -> tokens(
+                    ourModification.content
+                  ).get),
+                  rightContentsByPath
+                )
+
+              case TheirModificationAndOurDeletion(
+                    theirModification,
+                    _,
+                    _,
+                    bestAncestorCommitIdContent
+                  ) =>
+                (
+                  baseContentsByPath + (path -> tokens(
+                    bestAncestorCommitIdContent
+                  ).get),
+                  leftContentsByPath,
+                  rightContentsByPath + (path -> tokens(
+                    theirModification.content
+                  ).get)
+                )
+
+              case BothContributeAnAddition(
+                    ourAddition,
+                    theirAddition,
+                    _
+                  ) =>
+                (
+                  baseContentsByPath,
+                  leftContentsByPath + (path -> tokens(
+                    ourAddition.content
+                  ).get),
+                  rightContentsByPath + (path -> tokens(
+                    theirAddition.content
+                  ).get)
+                )
+
+              case BothContributeAModification(
+                    ourModification,
+                    theirModification,
+                    _,
+                    _,
+                    bestAncestorCommitIdContent,
+                    _
+                  ) =>
+                (
+                  baseContentsByPath + (path -> tokens(
+                    bestAncestorCommitIdContent
+                  ).get),
+                  leftContentsByPath + (path -> tokens(
+                    ourModification.content
+                  ).get),
+                  rightContentsByPath + (path -> tokens(
+                    theirModification.content
+                  ).get)
+                )
+
+              case BothContributeADeletion(bestAncestorCommitIdContent) =>
+                (
+                  baseContentsByPath + (path -> tokens(
+                    bestAncestorCommitIdContent
+                  ).get),
+                  leftContentsByPath,
+                  rightContentsByPath
+                )
+        }
+
+      val baseSources = MappedContentSourcesOfTokens(
+        baseContentsByPath,
+        label =
+          s"BASE: ${bestAncestorCommitId.take(numberOfDigitsForShortFormOfCommitId)}"
+      )
+
+      val leftSources = MappedContentSourcesOfTokens(
+        leftContentsByPath,
+        label = s"OURS: $ourBranchHead"
+      )
+
+      val rightSources = MappedContentSourcesOfTokens(
+        rightContentsByPath,
+        label = s"THEIRS: $theirBranchHead"
+      )
+
       for
-        (baseContentsByPath, leftContentsByPath, rightContentsByPath) <-
-          mergeInputs.foldM(
-            (
-              Map.empty[Path, IndexedSeq[Token]],
-              Map.empty[Path, IndexedSeq[Token]],
-              Map.empty[Path, IndexedSeq[Token]]
-            )
-          ) {
-            case (
-                  (baseContentsByPath, leftContentsByPath, rightContentsByPath),
-                  (path, mergeInput)
-                ) =>
-              mergeInput match
-                case JustOurModification(
-                      ourModification,
-                      bestAncestorCommitIdContent
-                    ) =>
-                  val unchangedContent = tokens(bestAncestorCommitIdContent).get
-
-                  right(
-                    (
-                      baseContentsByPath + (path -> unchangedContent),
-                      leftContentsByPath + (path -> tokens(
-                        ourModification.content
-                      ).get),
-                      rightContentsByPath + (path -> unchangedContent)
-                    )
-                  )
-
-                case JustTheirModification(
-                      theirModification,
-                      bestAncestorCommitIdContent
-                    ) =>
-                  val unchangedContent = tokens(bestAncestorCommitIdContent).get
-
-                  right(
-                    (
-                      baseContentsByPath + (path -> unchangedContent),
-                      leftContentsByPath + (path -> unchangedContent),
-                      rightContentsByPath + (path -> tokens(
-                        theirModification.content
-                      ).get)
-                    )
-                  )
-
-                case JustOurAddition(ourAddition) =>
-                  right(
-                    (
-                      baseContentsByPath,
-                      leftContentsByPath + (path -> tokens(
-                        ourAddition.content
-                      ).get),
-                      rightContentsByPath
-                    )
-                  )
-
-                case JustTheirAddition(theirAddition) =>
-                  right(
-                    (
-                      baseContentsByPath,
-                      leftContentsByPath,
-                      rightContentsByPath + (path -> tokens(
-                        theirAddition.content
-                      ).get)
-                    )
-                  )
-
-                case JustOurDeletion(bestAncestorCommitIdContent) =>
-                  val unchangedContent = tokens(bestAncestorCommitIdContent).get
-
-                  right(
-                    (
-                      baseContentsByPath + (path -> unchangedContent),
-                      leftContentsByPath,
-                      rightContentsByPath + (path -> unchangedContent)
-                    )
-                  )
-
-                case JustTheirDeletion(bestAncestorCommitIdContent) =>
-                  val unchangedContent = tokens(bestAncestorCommitIdContent).get
-
-                  right(
-                    (
-                      baseContentsByPath + (path -> unchangedContent),
-                      leftContentsByPath + (path -> unchangedContent),
-                      rightContentsByPath
-                    )
-                  )
-
-                case OurModificationAndTheirDeletion(
-                      ourModification,
-                      _,
-                      _,
-                      bestAncestorCommitIdContent
-                    ) =>
-                  right(
-                    (
-                      baseContentsByPath + (path -> tokens(
-                        bestAncestorCommitIdContent
-                      ).get),
-                      leftContentsByPath + (path -> tokens(
-                        ourModification.content
-                      ).get),
-                      rightContentsByPath
-                    )
-                  )
-
-                case TheirModificationAndOurDeletion(
-                      theirModification,
-                      _,
-                      _,
-                      bestAncestorCommitIdContent
-                    ) =>
-                  right(
-                    (
-                      baseContentsByPath + (path -> tokens(
-                        bestAncestorCommitIdContent
-                      ).get),
-                      leftContentsByPath,
-                      rightContentsByPath + (path -> tokens(
-                        theirModification.content
-                      ).get)
-                    )
-                  )
-
-                case BothContributeAnAddition(
-                      ourAddition,
-                      theirAddition,
-                      _
-                    ) =>
-                  right(
-                    (
-                      baseContentsByPath,
-                      leftContentsByPath + (path -> tokens(
-                        ourAddition.content
-                      ).get),
-                      rightContentsByPath + (path -> tokens(
-                        theirAddition.content
-                      ).get)
-                    )
-                  )
-
-                case BothContributeAModification(
-                      ourModification,
-                      theirModification,
-                      _,
-                      _,
-                      bestAncestorCommitIdContent,
-                      _
-                    ) =>
-                  right(
-                    (
-                      baseContentsByPath + (path -> tokens(
-                        bestAncestorCommitIdContent
-                      ).get),
-                      leftContentsByPath + (path -> tokens(
-                        ourModification.content
-                      ).get),
-                      rightContentsByPath + (path -> tokens(
-                        theirModification.content
-                      ).get)
-                    )
-                  )
-
-                case BothContributeADeletion(bestAncestorCommitIdContent) =>
-                  right(
-                    (
-                      baseContentsByPath + (path -> tokens(
-                        bestAncestorCommitIdContent
-                      ).get),
-                      leftContentsByPath,
-                      rightContentsByPath
-                    )
-                  )
-          }
-
-        baseSources = MappedContentSourcesOfTokens(
-          baseContentsByPath,
-          label =
-            s"BASE: ${bestAncestorCommitId.take(numberOfDigitsForShortFormOfCommitId)}"
-        )
-
-        leftSources = MappedContentSourcesOfTokens(
-          leftContentsByPath,
-          label = s"OURS: $ourBranchHead"
-        )
-
-        rightSources = MappedContentSourcesOfTokens(
-          rightContentsByPath,
-          label = s"THEIRS: $theirBranchHead"
-        )
-
         codeMotionAnalysis: CodeMotionAnalysis[Path, Token] <- EitherT
           .fromEither[WorkflowLogWriter] {
             CodeMotionAnalysis.of(baseSources, leftSources, rightSources)(
