@@ -53,6 +53,14 @@ case class MoveDestinations[Element](
     case (leftHalves, rightHalves) =>
       left union right union leftHalves union rightHalves
 
+  def allOnTheLeft: collection.Set[Element] = coincident.unzip.match
+    case (leftHalves, _) =>
+      left union leftHalves
+
+  def allOnTheRight: collection.Set[Element] = coincident.unzip.match
+    case (_, rightHalves) =>
+      right union rightHalves
+
   def description(source: Element): String =
     // What to report?
     // 1. The unambiguous and non-divergent moves.

@@ -24,7 +24,7 @@ enum SpeculativeContentMigration[Element]:
       oppositeToMoveDestinationSide: Side
   )
   case Edit(leftContent: IndexedSeq[Element], rightContent: IndexedSeq[Element])
-  case Deletion()
+  case Deletion(dueToMerge: Boolean)
 end SpeculativeContentMigration
 
 enum SpeculativeMoveDestination[Element]:
@@ -147,8 +147,10 @@ object MoveDestinationsReport:
                     }
                 case SpeculativeContentMigration.Edit(_, rightContent) =>
                   moveDestinations.left.map(_ -> rightContent)
-                case SpeculativeContentMigration.Deletion() =>
-                  moveDestinations.left.map(_ -> IndexedSeq.empty)
+                case SpeculativeContentMigration.Deletion(dueToMerge) =>
+                  if dueToMerge then
+                    moveDestinations.left.map(_ -> IndexedSeq.empty)
+                  else Seq.empty
             else if moveDestinations.right.nonEmpty then
               contentMigration match
                 case SpeculativeContentMigration.PlainMove(_, Side.Right) =>
@@ -173,12 +175,17 @@ object MoveDestinationsReport:
                     }
                 case SpeculativeContentMigration.Edit(leftContent, _) =>
                   moveDestinations.right.map(_ -> leftContent)
-                case SpeculativeContentMigration.Deletion() =>
-                  moveDestinations.right.map(_ -> IndexedSeq.empty)
+                case SpeculativeContentMigration.Deletion(dueToMerge) =>
+                  if dueToMerge then
+                    moveDestinations.right.map(_ -> IndexedSeq.empty)
+                  else Seq.empty
             else
               assume(moveDestinations.coincident.nonEmpty)
               contentMigration match
-                case SpeculativeContentMigration.Deletion() =>
+                case SpeculativeContentMigration.Deletion(_) =>
+                  // NOTE: we don't distinguish between a deletion due to a
+                  // merge or due to the removal of a path; either way the
+                  // content has made a coincident move.
                   moveDestinations.coincident
                     .map {
                       case (leftDestinationElement, rightDestinationElement) =>

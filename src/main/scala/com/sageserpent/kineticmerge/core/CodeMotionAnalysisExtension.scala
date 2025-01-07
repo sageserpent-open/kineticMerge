@@ -136,6 +136,18 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               )
             )
 
+        def recordContentOfFileDeletedOnLeftAndRight(
+            path: Path,
+            baseSections: IndexedSeq[Section[Element]]
+        ): AggregatedInitialMergeResult =
+          this
+            .focus(_.speculativeMigrationsBySource)
+            .modify(
+              _ ++ baseSections.map(
+                _ -> SpeculativeContentMigration.Deletion(dueToMerge = false)
+              )
+            )
+
         def aggregate(
             path: Path,
             firstPassMergeResult: FirstPassMergeResult[Section[Element]]
@@ -195,6 +207,22 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   path,
                   rightSections
                 )
+              case (Some(baseSections), None, None) =>
+                // The file has disappeared on both sides. That may indicate a
+                // coincident deletion of the entire file, or may be a
+                // coincident renaming of the file on both sides, or a divergent
+                // rename to different paths on either side, or a conflict
+                // between a deletion of the entire file on one side and its
+                // renaming on the other. There is nothing other than
+                // pass-through to do here, as the matching has already
+                // correlated the base sections with their destinations, and
+                // there is no need to build `SpeculativeContentMigration`
+                // instances as there is nothing on the opposite side of the
+                // migration to worry about.
+                partialMergeResult.recordContentOfFileDeletedOnLeftAndRight(
+                  path,
+                  baseSections
+                )
               case (
                     optionalBaseSections,
                     optionalLeftSections,
@@ -202,10 +230,10 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   ) =>
                 // Mix of possibilities - the file may have been added on both
                 // sides, or modified on either or both sides, or deleted on one
-                // side and modified on the other, or deleted on one or both
-                // sides. There is also an extraneous case where there is no
-                // file on any of the sides, and another extraneous case where
-                // the file is on all three sides but hasn't changed.
+                // side and modified on the other, or deleted on one side. There
+                // is also an extraneous case where there is no file on any of
+                // the sides, and another extraneous case where the file is on
+                // all three sides but hasn't changed.
 
                 // Whichever is the case, merge...
 

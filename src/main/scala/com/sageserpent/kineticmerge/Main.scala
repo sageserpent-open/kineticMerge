@@ -80,6 +80,18 @@ object Main extends StrictLogging:
     )
   end main
 
+  /** @param commandLineArguments
+    *   Command line arguments as varargs.
+    * @return
+    *   The exit code as a plain integer, suitable for consumption by both Scala
+    *   and Java client code.
+    */
+  @varargs
+  def apply(commandLineArguments: String*): Int = apply(
+    progressRecording = NoProgressRecording,
+    commandLineArguments = commandLineArguments*
+  )
+
   /** @param progressRecording
     * @param commandLineArguments
     *   Command line arguments as varargs.
@@ -388,9 +400,6 @@ object Main extends StrictLogging:
     exitCode
   end mergeTheirBranch
 
-  private def right[Payload](payload: Payload): Workflow[Payload] =
-    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
-
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
       EitherT
@@ -410,20 +419,11 @@ object Main extends StrictLogging:
       workflow.semiflatTap(_ => WriterT.tell(List(Right(message))))
   end extension
 
+  private def right[Payload](payload: Payload): Workflow[Payload] =
+    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
+
   private def underline(anything: Any): Str =
     fansi.Underlined.On(anything.toString)
-
-  /** @param commandLineArguments
-    *   Command line arguments as varargs.
-    * @return
-    *   The exit code as a plain integer, suitable for consumption by both Scala
-    *   and Java client code.
-    */
-  @varargs
-  def apply(commandLineArguments: String*): Int = apply(
-    progressRecording = NoProgressRecording,
-    commandLineArguments = commandLineArguments*
-  )
 
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](
@@ -522,6 +522,8 @@ object Main extends StrictLogging:
   private case class InWorkingDirectory(
       workingDirectory: Path
   ):
+    private val numberOfDigitsForShortFormOfCommitId = 8
+
     def ourBranchHead(): Workflow[String @@ Main.Tags.CommitOrBranchName] =
       IO {
         val branchName = os
@@ -1242,23 +1244,27 @@ object Main extends StrictLogging:
                   )
           }
 
+        baseSources = MappedContentSourcesOfTokens(
+          baseContentsByPath,
+          label =
+            s"BASE: ${bestAncestorCommitId.take(numberOfDigitsForShortFormOfCommitId)}"
+        )
+
+        leftSources = MappedContentSourcesOfTokens(
+          leftContentsByPath,
+          label = s"OURS: $ourBranchHead"
+        )
+
+        rightSources = MappedContentSourcesOfTokens(
+          rightContentsByPath,
+          label = s"THEIRS: $theirBranchHead"
+        )
+
         codeMotionAnalysis: CodeMotionAnalysis[Path, Token] <- EitherT
           .fromEither[WorkflowLogWriter] {
-
-            CodeMotionAnalysis.of(
-              baseSources = MappedContentSourcesOfTokens(
-                baseContentsByPath,
-                label = s"BASE: ${bestAncestorCommitId.take(8)}"
-              ),
-              leftSources = MappedContentSourcesOfTokens(
-                leftContentsByPath,
-                label = s"OURS: $ourBranchHead"
-              ),
-              rightSources = MappedContentSourcesOfTokens(
-                rightContentsByPath,
-                label = s"THEIRS: $theirBranchHead"
-              )
-            )(configuration)
+            CodeMotionAnalysis.of(baseSources, leftSources, rightSources)(
+              configuration
+            )
           }
           .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
 
@@ -1268,7 +1274,7 @@ object Main extends StrictLogging:
           _ logOperation _
         )
 
-        indexStates: List[Option[IndexState]] <-
+        indexStates: List[Vector[IndexState]] <-
           mergeInputs.traverse { case (path, mergeInput) =>
             mergeInput match
               case JustOurModification(ourModification, _) =>
@@ -1291,8 +1297,8 @@ object Main extends StrictLogging:
                       ourModification.mode,
                       blobId
                     )
-                  yield Some(IndexState.OneEntry)
-                else right(None)
+                  yield Vector(IndexState.OneEntry)
+                else right(Vector.empty)
                 end if
 
               case JustTheirModification(theirModification, _) =>
@@ -1315,7 +1321,7 @@ object Main extends StrictLogging:
                       theirModification.mode,
                       blobId
                     )
-                  yield Some(IndexState.OneEntry)
+                  yield Vector(IndexState.OneEntry)
                 else
                   for
                     _ <- restoreFileFromBlobId(
@@ -1327,7 +1333,7 @@ object Main extends StrictLogging:
                       theirModification.mode,
                       theirModification.blobId
                     )
-                  yield Some(IndexState.OneEntry)
+                  yield Vector(IndexState.OneEntry)
                 end if
 
               case JustOurAddition(ourAddition) =>
@@ -1350,8 +1356,8 @@ object Main extends StrictLogging:
                       ourAddition.mode,
                       blobId
                     )
-                  yield Some(IndexState.OneEntry)
-                else right(None)
+                  yield Vector(IndexState.OneEntry)
+                else right(Vector.empty)
                 end if
 
               case JustTheirAddition(theirAddition) =>
@@ -1374,7 +1380,7 @@ object Main extends StrictLogging:
                       theirAddition.mode,
                       blobId
                     )
-                  yield Some(IndexState.OneEntry)
+                  yield Vector(IndexState.OneEntry)
                 else
                   for
                     _ <- restoreFileFromBlobId(
@@ -1386,17 +1392,17 @@ object Main extends StrictLogging:
                       theirAddition.mode,
                       theirAddition.blobId
                     )
-                  yield Some(IndexState.OneEntry)
+                  yield Vector(IndexState.OneEntry)
                 end if
 
               case JustOurDeletion(_) =>
-                right(None)
+                right(Vector.empty)
 
               case JustTheirDeletion(_) =>
                 for
                   _ <- recordDeletionInIndex(path)
                   _ <- deleteFile(path)
-                yield Some(IndexState.OneEntry)
+                yield Vector(IndexState.OneEntry)
 
               case OurModificationAndTheirDeletion(
                     ourModification,
@@ -1469,7 +1475,7 @@ object Main extends StrictLogging:
                           s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and deleted on their branch ${underline(theirBranchHead)}."
                         )
                       yield IndexState.ConflictingEntries
-                yield Some(indexState)
+                yield Vector(indexState)
                 end for
 
               case TheirModificationAndOurDeletion(
@@ -1547,7 +1553,7 @@ object Main extends StrictLogging:
                           s"Conflict - file ${underline(path)} was deleted on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
                         )
                       yield IndexState.ConflictingEntries
-                yield Some(indexState)
+                yield Vector(indexState)
                 end for
 
               case BothContributeAnAddition(_, _, mergedFileMode) =>
@@ -1566,7 +1572,7 @@ object Main extends StrictLogging:
                         mergedFileMode,
                         blobId
                       )
-                    yield Some(IndexState.OneEntry)
+                    yield Vector(IndexState.OneEntry)
                     end for
 
                   case MergedWithConflicts(leftTokens, rightTokens) =>
@@ -1643,7 +1649,7 @@ object Main extends StrictLogging:
                             ourBranchHead
                           )} and added on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
                       )
-                    yield Some(IndexState.ConflictingEntries)
+                    yield Vector(IndexState.ConflictingEntries)
                     end for
 
               case BothContributeAModification(
@@ -1669,7 +1675,7 @@ object Main extends StrictLogging:
                         mergedFileMode,
                         blobId
                       )
-                    yield Some(IndexState.OneEntry)
+                    yield Vector(IndexState.OneEntry)
                     end for
 
                   case MergedWithConflicts(leftTokens, rightTokens) =>
@@ -1754,18 +1760,80 @@ object Main extends StrictLogging:
                             ourBranchHead
                           )} and modified on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
                       )
-                    yield Some(IndexState.ConflictingEntries)
+                    yield Vector(IndexState.ConflictingEntries)
                     end for
 
               case BothContributeADeletion(_) =>
-                // We already have the deletion in our branch, so no need to
-                // update the index. We do yield a result so that there is still
-                // a merge commit if this is the only change, though - this
-                // should *not* be a fast-forward merge.
-                right(Some(IndexState.OneEntry))
-                  .logOperation(
-                    s"Coincidental deletion of file ${underline(path)} on our branch ${underline(ourBranchHead)} and on their branch ${underline(theirBranchHead)}."
-                  )
+                val baseSections = codeMotionAnalysis.base(path).sections
+
+                // NOTE: as the file has been deleted on both sides, these must
+                // have moved to other files.
+                val baseSectionsThatHaveMovedToOtherFiles = baseSections.filter(
+                  moveDestinationsReport.moveDestinationsBySources.contains
+                )
+
+                val totalContentSize = baseSections.map(_.size).sum
+
+                val movedContentSize =
+                  baseSectionsThatHaveMovedToOtherFiles.map(_.size).sum
+
+                val enoughContentHasMovedToConsiderAsRenaming =
+                  baseSectionsThatHaveMovedToOtherFiles.nonEmpty && 2 * movedContentSize >= totalContentSize
+
+                if enoughContentHasMovedToConsiderAsRenaming then
+                  val moveDestinationsOverBaseSections =
+                    baseSectionsThatHaveMovedToOtherFiles
+                      .map(
+                        moveDestinationsReport.moveDestinationsBySources.apply
+                      )
+
+                  val isARenameVersusDeletionConflict =
+                    moveDestinationsOverBaseSections.exists(moveDestinations =>
+                      !moveDestinations.isDivergent && moveDestinations.coincident.isEmpty
+                    )
+
+                  val destinationPaths =
+                    moveDestinationsOverBaseSections.flatMap {
+                      moveDestinations =>
+                        val leftPaths =
+                          moveDestinations.allOnTheLeft.map(leftSources.pathFor)
+                        val rightPaths = moveDestinations.allOnTheRight.map(
+                          rightSources.pathFor
+                        )
+
+                        leftPaths union rightPaths
+                    }
+
+                  val renameText =
+                    if 1 < destinationPaths.size then
+                      s"files: ${destinationPaths.mkString(", ")}"
+                    else s"file: ${destinationPaths.head}"
+
+                  if isARenameVersusDeletionConflict then
+                    right(Vector(IndexState.OneEntry))
+                      .logOperation(
+                        s"File ${underline(path)} on our branch ${underline(ourBranchHead)} is renamed on their branch ${underline(theirBranchHead)} to $renameText."
+                      )
+                  else
+                    // We already have the deletion in our branch, so no need to
+                    // update the index. We do yield a result so that there is
+                    // still a merge commit if this is the only change, though -
+                    // this should *not* be a fast-forward merge.
+                    right(Vector(IndexState.OneEntry))
+                      .logOperation(
+                        s"File ${underline(path)} on our branch ${underline(ourBranchHead)} is renamed on their branch ${underline(theirBranchHead)} to $renameText."
+                      )
+                  end if
+                else
+                  // We already have the deletion in our branch, so no need to
+                  // update the index. We do yield a result so that there is
+                  // still a merge commit if this is the only change, though -
+                  // this should *not* be a fast-forward merge.
+                  right(Vector(IndexState.OneEntry))
+                    .logOperation(
+                      s"Coincidental deletion of file ${underline(path)} on our branch ${underline(ourBranchHead)} and on their branch ${underline(theirBranchHead)}."
+                    )
+                end if
           }
       yield indexStates.flatten
       end for

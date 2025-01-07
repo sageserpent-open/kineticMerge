@@ -241,7 +241,7 @@ object FirstPassMergeResult:
           )
           .focus(_.speculativeMigrationsBySource)
           .modify(
-            _ + (deletedElement -> SpeculativeContentMigration.Deletion())
+            _ + (deletedElement -> SpeculativeContentMigration.Deletion(dueToMerge = true))
           )
       end coincidentDeletion
 
@@ -335,7 +335,7 @@ object FirstPassMergeResult:
           // sides; we don't break up the paired content (and indeed regard it
           // as a potential coincident move destination).
           .modify(
-            _ + (editedElement -> SpeculativeContentMigration.Deletion())
+            _ + (editedElement -> SpeculativeContentMigration.Deletion(dueToMerge = true))
           )
           .focus(_.speculativeMoveDestinations)
           .modify(
