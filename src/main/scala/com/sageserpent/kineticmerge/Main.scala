@@ -80,6 +80,18 @@ object Main extends StrictLogging:
     )
   end main
 
+  /** @param commandLineArguments
+    *   Command line arguments as varargs.
+    * @return
+    *   The exit code as a plain integer, suitable for consumption by both Scala
+    *   and Java client code.
+    */
+  @varargs
+  def apply(commandLineArguments: String*): Int = apply(
+    progressRecording = NoProgressRecording,
+    commandLineArguments = commandLineArguments*
+  )
+
   /** @param progressRecording
     * @param commandLineArguments
     *   Command line arguments as varargs.
@@ -388,9 +400,6 @@ object Main extends StrictLogging:
     exitCode
   end mergeTheirBranch
 
-  private def right[Payload](payload: Payload): Workflow[Payload] =
-    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
-
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
       EitherT
@@ -410,20 +419,11 @@ object Main extends StrictLogging:
       workflow.semiflatTap(_ => WriterT.tell(List(Right(message))))
   end extension
 
+  private def right[Payload](payload: Payload): Workflow[Payload] =
+    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
+
   private def underline(anything: Any): Str =
     fansi.Underlined.On(anything.toString)
-
-  /** @param commandLineArguments
-    *   Command line arguments as varargs.
-    * @return
-    *   The exit code as a plain integer, suitable for consumption by both Scala
-    *   and Java client code.
-    */
-  @varargs
-  def apply(commandLineArguments: String*): Int = apply(
-    progressRecording = NoProgressRecording,
-    commandLineArguments = commandLineArguments*
-  )
 
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](
@@ -1781,6 +1781,7 @@ object Main extends StrictLogging:
                       .map(
                         moveDestinationsReport.moveDestinationsBySources.apply
                       )
+                      .toSet
 
                   val isARenameVersusDeletionConflict =
                     moveDestinationsOverBaseSections.exists(moveDestinations =>
@@ -1796,18 +1797,19 @@ object Main extends StrictLogging:
                           rightSources.pathFor
                         )
 
-                        leftPaths union rightPaths
+                        leftPaths ++ rightPaths
                     }
 
                   val renameText =
                     if 1 < destinationPaths.size then
-                      s"files: ${destinationPaths.mkString(", ")}"
-                    else s"file: ${destinationPaths.head}"
+                      s"fragmented on their branch ${underline(theirBranchHead)} into files: ${destinationPaths.map(underline).mkString(", ")}"
+                    else
+                      s"renamed on their branch ${underline(theirBranchHead)} to file: ${underline(destinationPaths.head)}"
 
                   if isARenameVersusDeletionConflict then
                     right(Vector(IndexState.OneEntry))
                       .logOperation(
-                        s"File ${underline(path)} on our branch ${underline(ourBranchHead)} is renamed on their branch ${underline(theirBranchHead)} to $renameText."
+                        s"File ${underline(path)} on our branch ${underline(ourBranchHead)} is $renameText."
                       )
                   else
                     // We already have the deletion in our branch, so no need to
@@ -1816,7 +1818,7 @@ object Main extends StrictLogging:
                     // this should *not* be a fast-forward merge.
                     right(Vector(IndexState.OneEntry))
                       .logOperation(
-                        s"File ${underline(path)} on our branch ${underline(ourBranchHead)} is renamed on their branch ${underline(theirBranchHead)} to $renameText."
+                        s"File ${underline(path)} on our branch ${underline(ourBranchHead)} is $renameText."
                       )
                   end if
                 else
