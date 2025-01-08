@@ -659,39 +659,6 @@ object Main extends StrictLogging:
         s"Unexpected error - can't parse changes reported by Git ${underline(line)}."
       ).flatMap { case (path, changed) => changed.map(path -> _) }
 
-    private def blobAndContentFor(
-        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
-    )(
-        path: Path
-    ): Workflow[
-      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
-    ] =
-      IO {
-        val line = os
-          .proc("git", "ls-tree", commitIdOrBranchName, path)
-          .call(workingDirectory)
-          .out
-          .text()
-
-        line.split(whitespaceRun) match
-          case Array(mode, _, blobId, _) =>
-            val content = os
-              .proc("git", "cat-file", "blob", blobId)
-              .call(workingDirectory)
-              .out
-              .text()
-
-            (
-              mode.taggedWith[Tags.Mode],
-              blobId.taggedWith[Tags.BlobId],
-              content.taggedWith[Tags.Content]
-            )
-        end match
-      }.labelExceptionWith(errorMessage =
-        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
-      )
-    end blobAndContentFor
-
     def mergeInputsOf(
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
         ourBranchHead: String @@ Tags.CommitOrBranchName,
@@ -895,6 +862,39 @@ object Main extends StrictLogging:
             yield path -> BothContributeADeletion(bestAncestorCommitIdContent)
         }
     end mergeInputsOf
+
+    private def blobAndContentFor(
+        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
+    )(
+        path: Path
+    ): Workflow[
+      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
+    ] =
+      IO {
+        val line = os
+          .proc("git", "ls-tree", commitIdOrBranchName, path)
+          .call(workingDirectory)
+          .out
+          .text()
+
+        line.split(whitespaceRun) match
+          case Array(mode, _, blobId, _) =>
+            val content = os
+              .proc("git", "cat-file", "blob", blobId)
+              .call(workingDirectory)
+              .out
+              .text()
+
+            (
+              mode.taggedWith[Tags.Mode],
+              blobId.taggedWith[Tags.BlobId],
+              content.taggedWith[Tags.Content]
+            )
+        end match
+      }.labelExceptionWith(errorMessage =
+        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
+      )
+    end blobAndContentFor
 
     def mergeWithRollback(
         ourBranchHead: String @@ Main.Tags.CommitOrBranchName,
@@ -1230,6 +1230,19 @@ object Main extends StrictLogging:
         label = s"THEIRS: $theirBranchHead"
       )
 
+      def chooseIndexStatesUnderEachPath(
+          partialResult: Map[Path, (IndexState, Workflow[Unit])],
+          path: Path,
+          indexState: IndexState,
+          workflow: Workflow[Unit]
+      ): Map[Path, (IndexState, Workflow[Unit])] =
+        partialResult.updatedWith(path) {
+          case None =>
+            Some(indexState -> workflow)
+          case Some((IndexState.OneEntry, _)) => Some(indexState -> workflow)
+          case existing @ Some((IndexState.ConflictingEntries, _)) => existing
+        }
+
       for
         codeMotionAnalysis: CodeMotionAnalysis[Path, Token] <- EitherT
           .fromEither[WorkflowLogWriter] {
@@ -1245,464 +1258,294 @@ object Main extends StrictLogging:
           _ logOperation _
         )
 
-        indexStates: List[Vector[IndexState]] <-
-          mergeInputs.traverse { case (path, mergeInput) =>
-            mergeInput match
-              case JustOurModification(ourModification, _) =>
-                val FullyMerged(tokens) = mergeResultsByPath(path): @unchecked
+        (indexStates, workflows) = mergeInputs
+          .flatMap {
+            case (
+                  path: Path,
+                  mergeInput: MergeInput
+                ) =>
+              mergeInput match
+                case JustOurModification(ourModification, _) =>
+                  val FullyMerged(tokens) =
+                    mergeResultsByPath(path): @unchecked
 
-                val mergedFileContent = reconstituteTextFrom(tokens)
+                  val mergedFileContent = reconstituteTextFrom(tokens)
 
-                val ourModificationWasTweakedByTheMerge =
-                  mergedFileContent != ourModification.content
+                  val ourModificationWasTweakedByTheMerge =
+                    mergedFileContent != ourModification.content
 
-                if ourModificationWasTweakedByTheMerge then
-                  for
-                    blobId <- storeBlobFor(path, mergedFileContent)
-                    _ <- restoreFileFromBlobId(
-                      path,
-                      blobId
-                    )
-                    _ <- recordModificationInIndex(
-                      path,
-                      ourModification.mode,
-                      blobId
-                    )
-                  yield Vector(IndexState.OneEntry)
-                else right(Vector.empty)
-                end if
-
-              case JustTheirModification(theirModification, _) =>
-                val FullyMerged(tokens) = mergeResultsByPath(path): @unchecked
-
-                val mergedFileContent = reconstituteTextFrom(tokens)
-
-                val theirModificationWasTweakedByTheMerge =
-                  mergedFileContent != theirModification.content
-
-                if theirModificationWasTweakedByTheMerge then
-                  for
-                    blobId <- storeBlobFor(path, mergedFileContent)
-                    _ <- restoreFileFromBlobId(
-                      path,
-                      blobId
-                    )
-                    _ <- recordModificationInIndex(
-                      path,
-                      theirModification.mode,
-                      blobId
-                    )
-                  yield Vector(IndexState.OneEntry)
-                else
-                  for
-                    _ <- restoreFileFromBlobId(
-                      path,
-                      theirModification.blobId
-                    )
-                    _ <- recordModificationInIndex(
-                      path,
-                      theirModification.mode,
-                      theirModification.blobId
-                    )
-                  yield Vector(IndexState.OneEntry)
-                end if
-
-              case JustOurAddition(ourAddition) =>
-                val FullyMerged(tokens) = mergeResultsByPath(path): @unchecked
-
-                val mergedFileContent = reconstituteTextFrom(tokens)
-
-                val ourAdditionWasTweakedByTheMerge =
-                  mergedFileContent != ourAddition.content
-
-                if ourAdditionWasTweakedByTheMerge then
-                  for
-                    blobId <- storeBlobFor(path, mergedFileContent)
-                    _ <- restoreFileFromBlobId(
-                      path,
-                      blobId
-                    )
-                    _ <- recordModificationInIndex(
-                      path,
-                      ourAddition.mode,
-                      blobId
-                    )
-                  yield Vector(IndexState.OneEntry)
-                else right(Vector.empty)
-                end if
-
-              case JustTheirAddition(theirAddition) =>
-                val FullyMerged(tokens) = mergeResultsByPath(path): @unchecked
-
-                val mergedFileContent = reconstituteTextFrom(tokens)
-
-                val theirAdditionWasTweakedByTheMerge =
-                  mergedFileContent != theirAddition.content
-
-                if theirAdditionWasTweakedByTheMerge then
-                  for
-                    blobId <- storeBlobFor(path, mergedFileContent)
-                    _ <- restoreFileFromBlobId(
-                      path,
-                      blobId
-                    )
-                    _ <- recordAdditionInIndex(
-                      path,
-                      theirAddition.mode,
-                      blobId
-                    )
-                  yield Vector(IndexState.OneEntry)
-                else
-                  for
-                    _ <- restoreFileFromBlobId(
-                      path,
-                      theirAddition.blobId
-                    )
-                    _ <- recordAdditionInIndex(
-                      path,
-                      theirAddition.mode,
-                      theirAddition.blobId
-                    )
-                  yield Vector(IndexState.OneEntry)
-                end if
-
-              case JustOurDeletion(_) =>
-                right(Vector.empty)
-
-              case JustTheirDeletion(_) =>
-                for
-                  _ <- recordDeletionInIndex(path)
-                  _ <- deleteFile(path)
-                yield Vector(IndexState.OneEntry)
-
-              case OurModificationAndTheirDeletion(
-                    ourModification,
-                    bestAncestorCommitIdMode,
-                    bestAncestorCommitIdBlobId,
-                    _
-                  ) =>
-                val tokens = mergeResultsByPath(path) match
-                  case FullyMerged(mergedTokens)               => mergedTokens
-                  case MergedWithConflicts(ourMergedTokens, _) =>
-                    // We don't care about their view of the merge - their side
-                    // simply deleted the whole file, so it contributes nothing
-                    // interesting to the merge; the only point of the merge
-                    // here was to pick up propagated edits / deletions and to
-                    // note move destinations.
-                    ourMergedTokens
-
-                val mergedFileContent = reconstituteTextFrom(tokens)
-                val ourModificationWasTweakedByTheMerge =
-                  mergedFileContent != ourModification.content
-
-                for
-                  - <- recordDeletionInIndex(path)
-                  - <- recordConflictModificationInIndex(
-                    stageIndex = bestCommonAncestorStageIndex
-                  )(
-                    bestAncestorCommitId,
-                    path,
-                    bestAncestorCommitIdMode,
-                    bestAncestorCommitIdBlobId
-                  )
-                  indexState <-
-                    if ourModificationWasTweakedByTheMerge then
-                      if mergedFileContent.nonEmpty then
+                  if ourModificationWasTweakedByTheMerge then
+                    Vector(
+                      (
+                        path,
+                        IndexState.OneEntry,
                         for
                           blobId <- storeBlobFor(path, mergedFileContent)
                           _ <- restoreFileFromBlobId(
                             path,
                             blobId
                           )
+                          _ <- recordModificationInIndex(
+                            path,
+                            ourModification.mode,
+                            blobId
+                          )
+                        yield ()
+                      )
+                    )
+                  else Vector.empty
+                  end if
+
+                case JustTheirModification(theirModification, _) =>
+                  val FullyMerged(tokens) =
+                    mergeResultsByPath(path): @unchecked
+
+                  val mergedFileContent = reconstituteTextFrom(tokens)
+
+                  val theirModificationWasTweakedByTheMerge =
+                    mergedFileContent != theirModification.content
+
+                  Vector(
+                    (
+                      path,
+                      IndexState.OneEntry,
+                      if theirModificationWasTweakedByTheMerge then
+                        for
+                          blobId <- storeBlobFor(path, mergedFileContent)
+                          _ <- restoreFileFromBlobId(
+                            path,
+                            blobId
+                          )
+                          _ <- recordModificationInIndex(
+                            path,
+                            theirModification.mode,
+                            blobId
+                          )
+                        yield ()
+                      else
+                        for
+                          _ <- restoreFileFromBlobId(
+                            path,
+                            theirModification.blobId
+                          )
+                          _ <- recordModificationInIndex(
+                            path,
+                            theirModification.mode,
+                            theirModification.blobId
+                          )
+                        yield ()
+                    )
+                  )
+
+                case JustOurAddition(ourAddition) =>
+                  val FullyMerged(tokens) =
+                    mergeResultsByPath(path): @unchecked
+
+                  val mergedFileContent = reconstituteTextFrom(tokens)
+
+                  val ourAdditionWasTweakedByTheMerge =
+                    mergedFileContent != ourAddition.content
+
+                  if ourAdditionWasTweakedByTheMerge then
+                    Vector(
+                      (
+                        path,
+                        IndexState.OneEntry,
+                        for
+                          blobId <- storeBlobFor(path, mergedFileContent)
+                          _ <- restoreFileFromBlobId(
+                            path,
+                            blobId
+                          )
+                          _ <- recordModificationInIndex(
+                            path,
+                            ourAddition.mode,
+                            blobId
+                          )
+                        yield ()
+                      )
+                    )
+                  else Vector.empty
+                  end if
+
+                case JustTheirAddition(theirAddition) =>
+                  val FullyMerged(tokens) =
+                    mergeResultsByPath(path): @unchecked
+
+                  val mergedFileContent = reconstituteTextFrom(tokens)
+
+                  val theirAdditionWasTweakedByTheMerge =
+                    mergedFileContent != theirAddition.content
+
+                  Vector(
+                    (
+                      path,
+                      IndexState.OneEntry,
+                      if theirAdditionWasTweakedByTheMerge then
+                        for
+                          blobId <- storeBlobFor(path, mergedFileContent)
+                          _ <- restoreFileFromBlobId(
+                            path,
+                            blobId
+                          )
+                          _ <- recordAdditionInIndex(
+                            path,
+                            theirAddition.mode,
+                            blobId
+                          )
+                        yield ()
+                      else
+                        for
+                          _ <- restoreFileFromBlobId(
+                            path,
+                            theirAddition.blobId
+                          )
+                          _ <- recordAdditionInIndex(
+                            path,
+                            theirAddition.mode,
+                            theirAddition.blobId
+                          )
+                        yield ()
+                    )
+                  )
+
+                case JustOurDeletion(_) =>
+                  Vector.empty
+
+                case JustTheirDeletion(_) =>
+                  Vector(
+                    (
+                      path,
+                      IndexState.OneEntry,
+                      for
+                        _ <- recordDeletionInIndex(path)
+                        _ <- deleteFile(path)
+                      yield ()
+                    )
+                  )
+
+                case OurModificationAndTheirDeletion(
+                      ourModification,
+                      bestAncestorCommitIdMode,
+                      bestAncestorCommitIdBlobId,
+                      _
+                    ) =>
+                  val tokens = mergeResultsByPath(path) match
+                    case FullyMerged(mergedTokens)               => mergedTokens
+                    case MergedWithConflicts(ourMergedTokens, _) =>
+                      // We don't care about their view of the merge - their
+                      // side simply deleted the whole file, so it contributes
+                      // nothing interesting to the merge; the only point of the
+                      // merge here was to pick up propagated edits / deletions
+                      // and to note move destinations.
+                      // TODO: is this even necessary? How would there be merge
+                      // conflicts?
+                      ourMergedTokens
+
+                  val mergedFileContent = reconstituteTextFrom(tokens)
+                  val ourModificationWasTweakedByTheMerge =
+                    mergedFileContent != ourModification.content
+
+                  val prelude =
+                    for
+                      - <- recordDeletionInIndex(path)
+                      - <- recordConflictModificationInIndex(
+                        stageIndex = bestCommonAncestorStageIndex
+                      )(
+                        bestAncestorCommitId,
+                        path,
+                        bestAncestorCommitIdMode,
+                        bestAncestorCommitIdBlobId
+                      )
+                    yield ()
+
+                  if ourModificationWasTweakedByTheMerge then
+                    if mergedFileContent.nonEmpty then
+                      Vector(
+                        (
+                          path,
+                          IndexState.ConflictingEntries,
+                          for
+                            _      <- prelude
+                            blobId <- storeBlobFor(path, mergedFileContent)
+                            _ <- restoreFileFromBlobId(
+                              path,
+                              blobId
+                            )
+                            _ <- recordConflictModificationInIndex(
+                              stageIndex = ourStageIndex
+                            )(
+                              ourBranchHead,
+                              path,
+                              ourModification.mode,
+                              blobId
+                            ).logOperation(
+                              s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and deleted on their branch ${underline(theirBranchHead)}."
+                            )
+                          yield ()
+                        )
+                      )
+                    else
+                      Vector(
+                        (
+                          path,
+                          IndexState.OneEntry,
+                          for
+                            _ <- prelude
+                            _ <- recordDeletionInIndex(path)
+                            _ <- deleteFile(path)
+                          yield ()
+                        )
+                      )
+                  else
+                    // The modified file would have been present on our branch;
+                    // given that we started with a clean working directory
+                    // tree, we just leave it there to match what Git merge
+                    // does.
+                    Vector(
+                      (
+                        path,
+                        IndexState.ConflictingEntries,
+                        for
+                          _ <- prelude
                           _ <- recordConflictModificationInIndex(
                             stageIndex = ourStageIndex
                           )(
                             ourBranchHead,
                             path,
                             ourModification.mode,
-                            blobId
+                            ourModification.blobId
                           ).logOperation(
                             s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and deleted on their branch ${underline(theirBranchHead)}."
                           )
-                        yield IndexState.ConflictingEntries
-                      else
-                        for
-                          _ <- recordDeletionInIndex(path)
-                          _ <- deleteFile(path)
-                        yield IndexState.OneEntry
-                    else
-                      // The modified file would have been present on our
-                      // branch; given that we started with a clean working
-                      // directory tree, we just leave it there to match what
-                      // Git merge does.
-                      for _ <- recordConflictModificationInIndex(
-                          stageIndex = ourStageIndex
-                        )(
-                          ourBranchHead,
-                          path,
-                          ourModification.mode,
-                          ourModification.blobId
-                        ).logOperation(
-                          s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and deleted on their branch ${underline(theirBranchHead)}."
-                        )
-                      yield IndexState.ConflictingEntries
-                yield Vector(indexState)
-                end for
+                        yield ()
+                      )
+                    )
+                  end if
 
-              case TheirModificationAndOurDeletion(
-                    theirModification,
-                    bestAncestorCommitIdMode,
-                    bestAncestorCommitIdBlobId,
-                    _
-                  ) =>
-                val tokens = mergeResultsByPath(path) match
-                  case FullyMerged(mergedTokens)                 => mergedTokens
-                  case MergedWithConflicts(_, theirMergedTokens) =>
-                    // We don't care about our view of the merge - our side
-                    // simply deleted the whole file, so it contributes nothing
-                    // interesting to the merge; the only point of the merge
-                    // here was to pick up propagated edits / deletions and to
-                    // note move destinations.
-                    theirMergedTokens
+                case TheirModificationAndOurDeletion(
+                      theirModification,
+                      bestAncestorCommitIdMode,
+                      bestAncestorCommitIdBlobId,
+                      _
+                    ) =>
+                  val tokens = mergeResultsByPath(path) match
+                    case FullyMerged(mergedTokens) => mergedTokens
+                    case MergedWithConflicts(_, theirMergedTokens) =>
+                      // We don't care about our view of the merge - our side
+                      // simply deleted the whole file, so it contributes
+                      // nothing interesting to the merge; the only point of the
+                      // merge here was to pick up propagated edits / deletions
+                      // and to note move destinations.
+                      theirMergedTokens
 
-                val mergedFileContent = reconstituteTextFrom(tokens)
-                val theirModificationWasTweakedByTheMerge =
-                  mergedFileContent != theirModification.content
+                  val mergedFileContent = reconstituteTextFrom(tokens)
+                  val theirModificationWasTweakedByTheMerge =
+                    mergedFileContent != theirModification.content
 
-                for
-                  _ <- recordDeletionInIndex(path)
-                  _ <- recordConflictModificationInIndex(
-                    stageIndex = bestCommonAncestorStageIndex
-                  )(
-                    bestAncestorCommitId,
-                    path,
-                    bestAncestorCommitIdMode,
-                    bestAncestorCommitIdBlobId
-                  )
-                  indexState <-
-                    // Git's merge updates the working directory tree with
-                    // *their* modified file which wouldn't have been present on
-                    // our branch prior to the merge. So that's what we do too.
-                    if theirModificationWasTweakedByTheMerge then
-                      if mergedFileContent.nonEmpty then
-                        for
-                          blobId <- storeBlobFor(path, mergedFileContent)
-                          _ <- restoreFileFromBlobId(
-                            path,
-                            blobId
-                          )
-                          _ <- recordConflictModificationInIndex(
-                            stageIndex = theirStageIndex
-                          )(
-                            theirBranchHead,
-                            path,
-                            theirModification.mode,
-                            blobId
-                          ).logOperation(
-                            s"Conflict - file ${underline(path)} was deleted on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
-                          )
-                        yield IndexState.ConflictingEntries
-                      else
-                        for
-                          _ <- recordDeletionInIndex(path)
-                          _ <- deleteFile(path)
-                        yield IndexState.OneEntry
-                    else
-                      for
-                        _ <- restoreFileFromBlobId(
-                          path,
-                          theirModification.blobId
-                        )
-                        _ <- recordConflictModificationInIndex(
-                          stageIndex = theirStageIndex
-                        )(
-                          theirBranchHead,
-                          path,
-                          theirModification.mode,
-                          theirModification.blobId
-                        ).logOperation(
-                          s"Conflict - file ${underline(path)} was deleted on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
-                        )
-                      yield IndexState.ConflictingEntries
-                yield Vector(indexState)
-                end for
-
-              case BothContributeAnAddition(_, _, mergedFileMode) =>
-                mergeResultsByPath(path) match
-                  case FullyMerged(tokens) =>
-                    val mergedFileContent = reconstituteTextFrom(tokens)
-
+                  val prelude =
                     for
-                      blobId <- storeBlobFor(path, mergedFileContent)
-                      _ <- restoreFileFromBlobId(
-                        path,
-                        blobId
-                      )
-                      _ <- recordModificationInIndex(
-                        path,
-                        mergedFileMode,
-                        blobId
-                      )
-                    yield Vector(IndexState.OneEntry)
-                    end for
-
-                  case MergedWithConflicts(leftTokens, rightTokens) =>
-                    val leftContent  = reconstituteTextFrom(leftTokens)
-                    val rightContent = reconstituteTextFrom(rightTokens)
-
-                    for
-                      fakeBaseTemporaryFile <- temporaryFile(
-                        suffix = ".base",
-                        content = "".taggedWith[Tags.Content]
-                      )
-
-                      leftTemporaryFile <- temporaryFile(
-                        suffix = ".left",
-                        content = leftContent
-                      )
-
-                      rightTemporaryFile <- temporaryFile(
-                        suffix = ".right",
-                        content = rightContent
-                      )
-
-                      lastMinuteResolution <-
-                        val noPriorContentName = "no prior content"
-
-                        val exitCode =
-                          os.proc(
-                            "git",
-                            "merge-file",
-                            "-L",
-                            ourBranchHead,
-                            "-L",
-                            s"'$noPriorContentName'",
-                            "-L",
-                            theirBranchHead,
-                            leftTemporaryFile,
-                            fakeBaseTemporaryFile,
-                            rightTemporaryFile
-                          ).call(workingDirectory, check = false)
-                            .exitCode
-
-                        if 0 <= exitCode then right(0 == exitCode)
-                        else
-                          left(
-                            s"Unexpected error: could not generate conflicted file contents on behalf of ${underline(path)} in temporary file ${underline(leftTemporaryFile)}"
-                          )
-                        end if
-                      _ <- IO {
-                        os.copy.over(leftTemporaryFile, path)
-                      }.labelExceptionWith(errorMessage =
-                        s"Unexpected error: could not copy results of conflicted merge in ${underline(leftTemporaryFile)} to working directory tree file ${underline(path)}."
-                      )
-
-                      leftBlob  <- storeBlobFor(path, leftContent)
-                      rightBlob <- storeBlobFor(path, rightContent)
-                      _         <- recordDeletionInIndex(path)
-                      _ <- recordConflictModificationInIndex(
-                        stageIndex = ourStageIndex
-                      )(
-                        ourBranchHead,
-                        path,
-                        mergedFileMode,
-                        leftBlob
-                      )
-                      _ <- recordConflictModificationInIndex(
-                        stageIndex = theirStageIndex
-                      )(
-                        theirBranchHead,
-                        path,
-                        mergedFileMode,
-                        rightBlob
-                      ).logOperation(
-                        s"Conflict - file ${underline(path)} was added on our branch ${underline(
-                            ourBranchHead
-                          )} and added on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
-                      )
-                    yield Vector(IndexState.ConflictingEntries)
-                    end for
-
-              case BothContributeAModification(
-                    _,
-                    _,
-                    bestAncestorCommitIdMode,
-                    bestAncestorCommitIdBlobId,
-                    bestAncestorCommitIdContent,
-                    mergedFileMode
-                  ) =>
-                mergeResultsByPath(path) match
-                  case FullyMerged(tokens) =>
-                    val mergedFileContent = reconstituteTextFrom(tokens)
-
-                    for
-                      blobId <- storeBlobFor(path, mergedFileContent)
-                      _ <- restoreFileFromBlobId(
-                        path,
-                        blobId
-                      )
-                      _ <- recordModificationInIndex(
-                        path,
-                        mergedFileMode,
-                        blobId
-                      )
-                    yield Vector(IndexState.OneEntry)
-                    end for
-
-                  case MergedWithConflicts(leftTokens, rightTokens) =>
-                    val leftContent  = reconstituteTextFrom(leftTokens)
-                    val rightContent = reconstituteTextFrom(rightTokens)
-
-                    for
-                      baseTemporaryFile <- temporaryFile(
-                        suffix = ".base",
-                        content = bestAncestorCommitIdContent
-                      )
-
-                      leftTemporaryFile <- temporaryFile(
-                        suffix = ".left",
-                        content = leftContent
-                      )
-
-                      rightTemporaryFile <- temporaryFile(
-                        suffix = ".right",
-                        content = rightContent
-                      )
-
-                      lastMinuteResolution <-
-                        val noPriorContentName = "no prior content"
-
-                        val exitCode =
-                          os.proc(
-                            "git",
-                            "merge-file",
-                            "-L",
-                            ourBranchHead,
-                            "-L",
-                            s"'$noPriorContentName'",
-                            "-L",
-                            theirBranchHead,
-                            leftTemporaryFile,
-                            baseTemporaryFile,
-                            rightTemporaryFile
-                          ).call(workingDirectory, check = false)
-                            .exitCode
-
-                        if 0 <= exitCode then right(0 == exitCode)
-                        else
-                          left(
-                            s"Unexpected error: could not generate conflicted file contents on behalf of ${underline(path)} in temporary file ${underline(leftTemporaryFile)}"
-                          )
-                        end if
-                      _ <- IO {
-                        os.copy.over(leftTemporaryFile, path)
-                      }.labelExceptionWith(errorMessage =
-                        s"Unexpected error: could not copy results of conflicted merge in ${underline(leftTemporaryFile)} to working directory tree file ${underline(path)}."
-                      )
-
-                      leftBlob  <- storeBlobFor(path, leftContent)
-                      rightBlob <- storeBlobFor(path, rightContent)
-                      _         <- recordDeletionInIndex(path)
+                      _ <- recordDeletionInIndex(path)
                       _ <- recordConflictModificationInIndex(
                         stageIndex = bestCommonAncestorStageIndex
                       )(
@@ -1711,104 +1554,412 @@ object Main extends StrictLogging:
                         bestAncestorCommitIdMode,
                         bestAncestorCommitIdBlobId
                       )
-                      _ <- recordConflictModificationInIndex(
-                        stageIndex = ourStageIndex
-                      )(
-                        ourBranchHead,
+                    yield ()
+
+                  // Git's merge updates the working directory tree with *their*
+                  // modified file which wouldn't have been present on our
+                  // branch prior to the merge. So that's what we do too.
+                  if theirModificationWasTweakedByTheMerge then
+                    if mergedFileContent.nonEmpty then
+                      Vector(
+                        (
+                          path,
+                          IndexState.ConflictingEntries,
+                          for
+                            _      <- prelude
+                            blobId <- storeBlobFor(path, mergedFileContent)
+                            _ <- restoreFileFromBlobId(
+                              path,
+                              blobId
+                            )
+                            _ <- recordConflictModificationInIndex(
+                              stageIndex = theirStageIndex
+                            )(
+                              theirBranchHead,
+                              path,
+                              theirModification.mode,
+                              blobId
+                            ).logOperation(
+                              s"Conflict - file ${underline(path)} was deleted on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
+                            )
+                          yield ()
+                        )
+                      )
+                    else
+                      Vector(
+                        (
+                          path,
+                          IndexState.OneEntry,
+                          for
+                            _ <- prelude
+                            _ <- recordDeletionInIndex(path)
+                            _ <- deleteFile(path)
+                          yield ()
+                        )
+                      )
+                  else
+                    Vector(
+                      (
                         path,
-                        mergedFileMode,
-                        leftBlob
+                        IndexState.ConflictingEntries,
+                        for
+                          _ <- prelude
+                          _ <- restoreFileFromBlobId(
+                            path,
+                            theirModification.blobId
+                          )
+                          _ <- recordConflictModificationInIndex(
+                            stageIndex = theirStageIndex
+                          )(
+                            theirBranchHead,
+                            path,
+                            theirModification.mode,
+                            theirModification.blobId
+                          ).logOperation(
+                            s"Conflict - file ${underline(path)} was deleted on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
+                          )
+                        yield ()
                       )
-                      _ <- recordConflictModificationInIndex(
-                        stageIndex = theirStageIndex
-                      )(
-                        theirBranchHead,
-                        path,
-                        mergedFileMode,
-                        rightBlob
-                      ).logOperation(
-                        s"Conflict - file ${underline(path)} was modified on our branch ${underline(
-                            ourBranchHead
-                          )} and modified on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
+                    )
+                  end if
+
+                case BothContributeAnAddition(_, _, mergedFileMode) =>
+                  mergeResultsByPath(path) match
+                    case FullyMerged(tokens) =>
+                      val mergedFileContent = reconstituteTextFrom(tokens)
+
+                      Vector(
+                        (
+                          path,
+                          IndexState.OneEntry,
+                          for
+                            blobId <- storeBlobFor(path, mergedFileContent)
+                            _ <- restoreFileFromBlobId(
+                              path,
+                              blobId
+                            )
+                            _ <- recordModificationInIndex(
+                              path,
+                              mergedFileMode,
+                              blobId
+                            )
+                          yield ()
+                        )
                       )
-                    yield Vector(IndexState.ConflictingEntries)
-                    end for
 
-              case BothContributeADeletion(_) =>
-                val baseSections = codeMotionAnalysis.base(path).sections
+                    case MergedWithConflicts(leftTokens, rightTokens) =>
+                      val leftContent  = reconstituteTextFrom(leftTokens)
+                      val rightContent = reconstituteTextFrom(rightTokens)
 
-                // NOTE: as the file has been deleted on both sides, these must
-                // have moved to other files.
-                val baseSectionsThatHaveMovedToOtherFiles = baseSections.filter(
-                  moveDestinationsReport.moveDestinationsBySources.contains
-                )
+                      Vector(
+                        (
+                          path,
+                          IndexState.ConflictingEntries,
+                          for
+                            fakeBaseTemporaryFile <- temporaryFile(
+                              suffix = ".base",
+                              content = "".taggedWith[Tags.Content]
+                            )
 
-                val totalContentSize = baseSections.map(_.size).sum
+                            leftTemporaryFile <- temporaryFile(
+                              suffix = ".left",
+                              content = leftContent
+                            )
 
-                val movedContentSize =
-                  baseSectionsThatHaveMovedToOtherFiles.map(_.size).sum
+                            rightTemporaryFile <- temporaryFile(
+                              suffix = ".right",
+                              content = rightContent
+                            )
 
-                val enoughContentHasMovedToConsiderAsRenaming =
-                  baseSectionsThatHaveMovedToOtherFiles.nonEmpty && 2 * movedContentSize >= totalContentSize
+                            lastMinuteResolution <-
+                              val noPriorContentName = "no prior content"
 
-                if enoughContentHasMovedToConsiderAsRenaming then
-                  val moveDestinationsOverBaseSections =
-                    baseSectionsThatHaveMovedToOtherFiles
-                      .map(
-                        moveDestinationsReport.moveDestinationsBySources.apply
+                              val exitCode =
+                                os.proc(
+                                  "git",
+                                  "merge-file",
+                                  "-L",
+                                  ourBranchHead,
+                                  "-L",
+                                  s"'$noPriorContentName'",
+                                  "-L",
+                                  theirBranchHead,
+                                  leftTemporaryFile,
+                                  fakeBaseTemporaryFile,
+                                  rightTemporaryFile
+                                ).call(workingDirectory, check = false)
+                                  .exitCode
+
+                              if 0 <= exitCode then right(0 == exitCode)
+                              else
+                                left(
+                                  s"Unexpected error: could not generate conflicted file contents on behalf of ${underline(path)} in temporary file ${underline(leftTemporaryFile)}"
+                                )
+                              end if
+                            _ <- IO {
+                              os.copy.over(leftTemporaryFile, path)
+                            }.labelExceptionWith(errorMessage =
+                              s"Unexpected error: could not copy results of conflicted merge in ${underline(leftTemporaryFile)} to working directory tree file ${underline(path)}."
+                            )
+
+                            leftBlob  <- storeBlobFor(path, leftContent)
+                            rightBlob <- storeBlobFor(path, rightContent)
+                            _         <- recordDeletionInIndex(path)
+                            _ <- recordConflictModificationInIndex(
+                              stageIndex = ourStageIndex
+                            )(
+                              ourBranchHead,
+                              path,
+                              mergedFileMode,
+                              leftBlob
+                            )
+                            _ <- recordConflictModificationInIndex(
+                              stageIndex = theirStageIndex
+                            )(
+                              theirBranchHead,
+                              path,
+                              mergedFileMode,
+                              rightBlob
+                            ).logOperation(
+                              s"Conflict - file ${underline(path)} was added on our branch ${underline(
+                                  ourBranchHead
+                                )} and added on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
+                            )
+                          yield ()
+                        )
                       )
-                      .toSet
 
-                  val isARenameVersusDeletionConflict =
-                    moveDestinationsOverBaseSections.exists(moveDestinations =>
-                      !moveDestinations.isDivergent && moveDestinations.coincident.isEmpty
+                case BothContributeAModification(
+                      _,
+                      _,
+                      bestAncestorCommitIdMode,
+                      bestAncestorCommitIdBlobId,
+                      bestAncestorCommitIdContent,
+                      mergedFileMode
+                    ) =>
+                  mergeResultsByPath(path) match
+                    case FullyMerged(tokens) =>
+                      val mergedFileContent = reconstituteTextFrom(tokens)
+
+                      Vector(
+                        (
+                          path,
+                          IndexState.OneEntry,
+                          for
+                            blobId <- storeBlobFor(path, mergedFileContent)
+                            _ <- restoreFileFromBlobId(
+                              path,
+                              blobId
+                            )
+                            _ <- recordModificationInIndex(
+                              path,
+                              mergedFileMode,
+                              blobId
+                            )
+                          yield ()
+                        )
+                      )
+
+                    case MergedWithConflicts(leftTokens, rightTokens) =>
+                      val leftContent  = reconstituteTextFrom(leftTokens)
+                      val rightContent = reconstituteTextFrom(rightTokens)
+
+                      Vector(
+                        (
+                          path,
+                          IndexState.ConflictingEntries,
+                          for
+                            baseTemporaryFile <- temporaryFile(
+                              suffix = ".base",
+                              content = bestAncestorCommitIdContent
+                            )
+
+                            leftTemporaryFile <- temporaryFile(
+                              suffix = ".left",
+                              content = leftContent
+                            )
+
+                            rightTemporaryFile <- temporaryFile(
+                              suffix = ".right",
+                              content = rightContent
+                            )
+
+                            lastMinuteResolution <-
+                              val noPriorContentName = "no prior content"
+
+                              val exitCode =
+                                os.proc(
+                                  "git",
+                                  "merge-file",
+                                  "-L",
+                                  ourBranchHead,
+                                  "-L",
+                                  s"'$noPriorContentName'",
+                                  "-L",
+                                  theirBranchHead,
+                                  leftTemporaryFile,
+                                  baseTemporaryFile,
+                                  rightTemporaryFile
+                                ).call(workingDirectory, check = false)
+                                  .exitCode
+
+                              if 0 <= exitCode then right(0 == exitCode)
+                              else
+                                left(
+                                  s"Unexpected error: could not generate conflicted file contents on behalf of ${underline(path)} in temporary file ${underline(leftTemporaryFile)}"
+                                )
+                              end if
+                            _ <- IO {
+                              os.copy.over(leftTemporaryFile, path)
+                            }.labelExceptionWith(errorMessage =
+                              s"Unexpected error: could not copy results of conflicted merge in ${underline(leftTemporaryFile)} to working directory tree file ${underline(path)}."
+                            )
+
+                            leftBlob  <- storeBlobFor(path, leftContent)
+                            rightBlob <- storeBlobFor(path, rightContent)
+                            _         <- recordDeletionInIndex(path)
+                            _ <- recordConflictModificationInIndex(
+                              stageIndex = bestCommonAncestorStageIndex
+                            )(
+                              bestAncestorCommitId,
+                              path,
+                              bestAncestorCommitIdMode,
+                              bestAncestorCommitIdBlobId
+                            )
+                            _ <- recordConflictModificationInIndex(
+                              stageIndex = ourStageIndex
+                            )(
+                              ourBranchHead,
+                              path,
+                              mergedFileMode,
+                              leftBlob
+                            )
+                            _ <- recordConflictModificationInIndex(
+                              stageIndex = theirStageIndex
+                            )(
+                              theirBranchHead,
+                              path,
+                              mergedFileMode,
+                              rightBlob
+                            ).logOperation(
+                              s"Conflict - file ${underline(path)} was modified on our branch ${underline(
+                                  ourBranchHead
+                                )} and modified on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
+                            )
+                          yield ()
+                        )
+                      )
+
+                case BothContributeADeletion(_) =>
+                  val baseSections = codeMotionAnalysis.base(path).sections
+
+                  // NOTE: as the file has been deleted on both sides, these
+                  // must have moved to other files.
+                  val baseSectionsThatHaveMovedToOtherFiles =
+                    baseSections.filter(
+                      moveDestinationsReport.moveDestinationsBySources.contains
                     )
 
-                  val destinationPaths =
-                    moveDestinationsOverBaseSections.flatMap {
-                      moveDestinations =>
-                        val leftPaths =
-                          moveDestinations.allOnTheLeft.map(leftSources.pathFor)
-                        val rightPaths = moveDestinations.allOnTheRight.map(
-                          rightSources.pathFor
+                  val totalContentSize = baseSections.map(_.size).sum
+
+                  val movedContentSize =
+                    baseSectionsThatHaveMovedToOtherFiles.map(_.size).sum
+
+                  val enoughContentHasMovedToConsiderAsRenaming =
+                    baseSectionsThatHaveMovedToOtherFiles.nonEmpty && 2 * movedContentSize >= totalContentSize
+
+                  if enoughContentHasMovedToConsiderAsRenaming then
+                    val moveDestinationsOverBaseSections =
+                      baseSectionsThatHaveMovedToOtherFiles
+                        .map(
+                          moveDestinationsReport.moveDestinationsBySources.apply
                         )
+                        .toSet
 
-                        leftPaths ++ rightPaths
-                    }
-
-                  val renameText =
-                    if 1 < destinationPaths.size then
-                      s"fragmented on their branch ${underline(theirBranchHead)} into files: ${destinationPaths.map(underline).mkString(", ")}"
-                    else
-                      s"renamed on their branch ${underline(theirBranchHead)} to file: ${underline(destinationPaths.head)}"
-
-                  if isARenameVersusDeletionConflict then
-                    right(Vector(IndexState.OneEntry))
-                      .logOperation(
-                        s"File ${underline(path)} on our branch ${underline(ourBranchHead)} is $renameText."
+                    val isARenameVersusDeletionConflict =
+                      moveDestinationsOverBaseSections.exists(
+                        moveDestinations =>
+                          !moveDestinations.isDivergent && moveDestinations.coincident.isEmpty
                       )
+
+                    val destinationPaths =
+                      moveDestinationsOverBaseSections.flatMap {
+                        moveDestinations =>
+                          val leftPaths =
+                            moveDestinations.allOnTheLeft.map(
+                              leftSources.pathFor
+                            )
+                          val rightPaths = moveDestinations.allOnTheRight.map(
+                            rightSources.pathFor
+                          )
+
+                          leftPaths ++ rightPaths
+                      }
+
+                    val renameText =
+                      if 1 < destinationPaths.size then
+                        s"fragmented on their branch ${underline(theirBranchHead)} into files: ${destinationPaths.map(underline).mkString(", ")}"
+                      else
+                        s"renamed on their branch ${underline(theirBranchHead)} to file: ${underline(destinationPaths.head)}"
+
+                    if isARenameVersusDeletionConflict then
+                      // TODO - a lot more entries...
+                      Vector(
+                        (
+                          path,
+                          IndexState.OneEntry,
+                          right(()).logOperation(
+                            s"File ${underline(path)} on our branch ${underline(ourBranchHead)} is $renameText."
+                          )
+                        )
+                      )
+                    else
+                      // We already have the deletion in our branch, so no need
+                      // to update the index. We do yield a result so that there
+                      // is still a merge commit if this is the only change,
+                      // though - this should *not* be a fast-forward merge.
+                      Vector(
+                        (
+                          path,
+                          IndexState.OneEntry,
+                          right(()).logOperation(
+                            s"File ${underline(path)} on our branch ${underline(ourBranchHead)} is $renameText."
+                          )
+                        )
+                      )
+                    end if
                   else
                     // We already have the deletion in our branch, so no need to
                     // update the index. We do yield a result so that there is
                     // still a merge commit if this is the only change, though -
                     // this should *not* be a fast-forward merge.
-                    right(Vector(IndexState.OneEntry))
-                      .logOperation(
-                        s"File ${underline(path)} on our branch ${underline(ourBranchHead)} is $renameText."
+                    Vector(
+                      (
+                        path,
+                        IndexState.OneEntry,
+                        right(()).logOperation(
+                          s"Coincidental deletion of file ${underline(path)} on our branch ${underline(ourBranchHead)} and on their branch ${underline(theirBranchHead)}."
+                        )
                       )
-                  end if
-                else
-                  // We already have the deletion in our branch, so no need to
-                  // update the index. We do yield a result so that there is
-                  // still a merge commit if this is the only change, though -
-                  // this should *not* be a fast-forward merge.
-                  right(Vector(IndexState.OneEntry))
-                    .logOperation(
-                      s"Coincidental deletion of file ${underline(path)} on our branch ${underline(ourBranchHead)} and on their branch ${underline(theirBranchHead)}."
                     )
-                end if
+                  end if
           }
-      yield !indexStates.flatten.contains(IndexState.ConflictingEntries)
+          .foldLeft(
+            Map.empty[Path, (IndexState, Workflow[Unit])]
+          ) { case (partialResult, (path, indexState, workflow)) =>
+            chooseIndexStatesUnderEachPath(
+              partialResult,
+              path,
+              indexState,
+              workflow
+            )
+          }
+          .values
+          .toSeq
+          .unzip
+
+        _ <- workflows.sequence
+      yield !indexStates.contains(IndexState.ConflictingEntries)
       end for
     end indexUpdates
 
