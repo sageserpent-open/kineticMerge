@@ -660,6 +660,39 @@ object Main extends StrictLogging:
         s"Unexpected error - can't parse changes reported by Git ${underline(line)}."
       ).flatMap { case (path, changed) => changed.map(path -> _) }
 
+    private def blobAndContentFor(
+        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
+    )(
+        path: Path
+    ): Workflow[
+      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
+    ] =
+      IO {
+        val line = os
+          .proc("git", "ls-tree", commitIdOrBranchName, path)
+          .call(workingDirectory)
+          .out
+          .text()
+
+        line.split(whitespaceRun) match
+          case Array(mode, _, blobId, _) =>
+            val content = os
+              .proc("git", "cat-file", "blob", blobId)
+              .call(workingDirectory)
+              .out
+              .text()
+
+            (
+              mode.taggedWith[Tags.Mode],
+              blobId.taggedWith[Tags.BlobId],
+              content.taggedWith[Tags.Content]
+            )
+        end match
+      }.labelExceptionWith(errorMessage =
+        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
+      )
+    end blobAndContentFor
+
     def mergeInputsOf(
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
         ourBranchHead: String @@ Tags.CommitOrBranchName,
@@ -863,39 +896,6 @@ object Main extends StrictLogging:
             yield path -> BothContributeADeletion(bestAncestorCommitIdContent)
         }
     end mergeInputsOf
-
-    private def blobAndContentFor(
-        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
-    )(
-        path: Path
-    ): Workflow[
-      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
-    ] =
-      IO {
-        val line = os
-          .proc("git", "ls-tree", commitIdOrBranchName, path)
-          .call(workingDirectory)
-          .out
-          .text()
-
-        line.split(whitespaceRun) match
-          case Array(mode, _, blobId, _) =>
-            val content = os
-              .proc("git", "cat-file", "blob", blobId)
-              .call(workingDirectory)
-              .out
-              .text()
-
-            (
-              mode.taggedWith[Tags.Mode],
-              blobId.taggedWith[Tags.BlobId],
-              content.taggedWith[Tags.Content]
-            )
-        end match
-      }.labelExceptionWith(errorMessage =
-        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
-      )
-    end blobAndContentFor
 
     def mergeWithRollback(
         ourBranchHead: String @@ Main.Tags.CommitOrBranchName,
@@ -1812,33 +1812,33 @@ object Main extends StrictLogging:
                 val leftRenamingDetail = Option.unless(
                   leftDestinationPaths.isEmpty
                 )(
-                  s"on our branch: ${underline(ourBranchHead)} " ++ (if 1 < leftDestinationPaths.size
-                                                                     then
-                                                                       s"into files: ${leftDestinationPaths.map(underline).mkString(", ")}"
-                                                                     else
-                                                                       s"to file: ${underline(leftDestinationPaths.head)}"
+                  s"on our branch ${underline(ourBranchHead)} " ++ (if 1 < leftDestinationPaths.size
+                                                                    then
+                                                                      s"into files ${leftDestinationPaths.map(underline).mkString(", ")}"
+                                                                    else
+                                                                      s"to file ${underline(leftDestinationPaths.head)}"
                   )
                 )
 
                 val rightRenamingDetail = Option.unless(
                   rightDestinationPaths.isEmpty
                 )(
-                  s"on their branch: ${underline(theirBranchHead)} " ++ (if 1 < rightDestinationPaths.size
-                                                                         then
-                                                                           s"into files: ${rightDestinationPaths.map(underline).mkString(", ")}"
-                                                                         else
-                                                                           s"to file: ${underline(rightDestinationPaths.head)}"
+                  s"on their branch ${underline(theirBranchHead)} " ++ (if 1 < rightDestinationPaths.size
+                                                                        then
+                                                                          s"into files ${rightDestinationPaths.map(underline).mkString(", ")}"
+                                                                        else
+                                                                          s"to file ${underline(rightDestinationPaths.head)}"
                   )
                 )
 
                 val renamingDescription =
                   (leftRenamingDetail, rightRenamingDetail) match
                     case (Some(leftDetailPayload), None) =>
-                      s"File: ${underline(path)} is renamed $leftDetailPayload."
+                      s"File ${underline(path)} was renamed $leftDetailPayload."
                     case (None, Some(rightDetailPayload)) =>
-                      s"File: ${underline(path)} is renamed $rightDetailPayload."
+                      s"File ${underline(path)} was renamed $rightDetailPayload."
                     case (Some(leftDetailPayload), Some(rightDetailPayload)) =>
-                      s"File: ${underline(path)} is renamed $leftDetailPayload and $rightDetailPayload."
+                      s"File ${underline(path)} was renamed $leftDetailPayload and $rightDetailPayload."
 
                 // We already have the deletion in our branch, so no need
                 // to update the index. We do yield a result so that there
@@ -1864,7 +1864,50 @@ object Main extends StrictLogging:
                 )
               end if
         }
-      yield accumulatedMergeState.goodForAMergeCommit
+
+        withLeftRenameVersusRightDeletionConflicts <-
+          accumulatedMergeState.conflictingDeletedPathsByLeftRenamedPath.toSeq
+            .foldM(accumulatedMergeState) {
+              case (partialResult, (leftRenamedPath, conflictingDeletedPath)) =>
+                for
+                  _ <- recordDeletionInIndex(leftRenamedPath)
+                  (mode, blobId, _) <- blobAndContentFor(ourBranchHead)(
+                    leftRenamedPath
+                  )
+                  _ <- recordConflictModificationInIndex(ourStageIndex)(
+                    ourBranchHead,
+                    leftRenamedPath,
+                    mode,
+                    blobId
+                  ).logOperation(
+                    s"Conflict - file ${underline(conflictingDeletedPath)} was renamed on our branch ${underline(ourBranchHead)} to ${underline(leftRenamedPath)} and deleted on their branch ${underline(theirBranchHead)}."
+                  )
+                yield partialResult.copy(goodForAMergeCommit = false)
+            }
+
+        withRightRenameVersusLeftDeletionConflicts <-
+          accumulatedMergeState.conflictingDeletedPathsByRightRenamedPath.toSeq
+            .foldM(withLeftRenameVersusRightDeletionConflicts) {
+              case (
+                    partialResult,
+                    (rightRenamedPath, conflictingDeletedPath)
+                  ) =>
+                for
+                  _ <- recordDeletionInIndex(rightRenamedPath)
+                  (mode, blobId, _) <- blobAndContentFor(theirBranchHead)(
+                    rightRenamedPath
+                  )
+                  _ <- recordConflictModificationInIndex(theirStageIndex)(
+                    theirBranchHead,
+                    rightRenamedPath,
+                    mode,
+                    blobId
+                  ).logOperation(
+                    s"Conflict - file ${underline(conflictingDeletedPath)} was deleted on our branch ${underline(ourBranchHead)} and renamed on their branch ${underline(theirBranchHead)} to ${underline(rightRenamedPath)}."
+                  )
+                yield partialResult.copy(goodForAMergeCommit = false)
+            }
+      yield withRightRenameVersusLeftDeletionConflicts.goodForAMergeCommit
       end for
     end indexUpdates
 
