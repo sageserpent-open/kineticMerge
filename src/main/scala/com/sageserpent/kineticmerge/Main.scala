@@ -80,18 +80,6 @@ object Main extends StrictLogging:
     )
   end main
 
-  /** @param commandLineArguments
-    *   Command line arguments as varargs.
-    * @return
-    *   The exit code as a plain integer, suitable for consumption by both Scala
-    *   and Java client code.
-    */
-  @varargs
-  def apply(commandLineArguments: String*): Int = apply(
-    progressRecording = NoProgressRecording,
-    commandLineArguments = commandLineArguments*
-  )
-
   /** @param progressRecording
     * @param commandLineArguments
     *   Command line arguments as varargs.
@@ -400,6 +388,9 @@ object Main extends StrictLogging:
     exitCode
   end mergeTheirBranch
 
+  private def right[Payload](payload: Payload): Workflow[Payload] =
+    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
+
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
       EitherT
@@ -419,11 +410,20 @@ object Main extends StrictLogging:
       workflow.semiflatTap(_ => WriterT.tell(List(Right(message))))
   end extension
 
-  private def right[Payload](payload: Payload): Workflow[Payload] =
-    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
-
   private def underline(anything: Any): Str =
     fansi.Underlined.On(anything.toString)
+
+  /** @param commandLineArguments
+    *   Command line arguments as varargs.
+    * @return
+    *   The exit code as a plain integer, suitable for consumption by both Scala
+    *   and Java client code.
+    */
+  @varargs
+  def apply(commandLineArguments: String*): Int = apply(
+    progressRecording = NoProgressRecording,
+    commandLineArguments = commandLineArguments*
+  )
 
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](
@@ -1233,13 +1233,15 @@ object Main extends StrictLogging:
 
       case class AccumulatedMergeState(
           goodForAMergeCommit: Boolean,
-          conflictingDeletedPathsByRenamedPath: Map[Path, Path]
+          conflictingDeletedPathsByLeftRenamedPath: Map[Path, Path],
+          conflictingDeletedPathsByRightRenamedPath: Map[Path, Path]
       )
 
       object AccumulatedMergeState:
         def initial: AccumulatedMergeState = AccumulatedMergeState(
           goodForAMergeCommit = true,
-          conflictingDeletedPathsByRenamedPath = Map.empty
+          conflictingDeletedPathsByLeftRenamedPath = Map.empty,
+          conflictingDeletedPathsByRightRenamedPath = Map.empty
         )
       end AccumulatedMergeState
 
@@ -1766,6 +1768,9 @@ object Main extends StrictLogging:
             case BothContributeADeletion(_) =>
               val baseSections = codeMotionAnalysis.base(path).sections
 
+              // TODO: need to vet that the files deemed to be renames are *new*
+              // wrt the base commit.
+
               // NOTE: as the file has been deleted on both sides, these
               // must have moved to other files.
               val baseSectionsThatHaveMovedToOtherFiles =
@@ -1794,24 +1799,46 @@ object Main extends StrictLogging:
                     !moveDestinations.isDivergent && moveDestinations.coincident.isEmpty
                   )
 
-                val destinationPaths =
-                  moveDestinationsOverBaseSections.flatMap { moveDestinations =>
-                    val leftPaths =
-                      moveDestinations.allOnTheLeft.map(
-                        leftSources.pathFor
-                      )
-                    val rightPaths = moveDestinations.allOnTheRight.map(
-                      rightSources.pathFor
-                    )
+                val leftDestinationPaths =
+                  moveDestinationsOverBaseSections.flatMap(
+                    _.allOnTheLeft.map(leftSources.pathFor)
+                  )
 
-                    leftPaths ++ rightPaths
-                  }
+                val rightDestinationPaths =
+                  moveDestinationsOverBaseSections.flatMap(
+                    _.allOnTheRight.map(rightSources.pathFor)
+                  )
 
-                val renameText =
-                  if 1 < destinationPaths.size then
-                    s"fragmented on their branch ${underline(theirBranchHead)} into files: ${destinationPaths.map(underline).mkString(", ")}"
-                  else
-                    s"renamed on their branch ${underline(theirBranchHead)} to file: ${underline(destinationPaths.head)}"
+                val leftRenamingDetail = Option.unless(
+                  leftDestinationPaths.isEmpty
+                )(
+                  s"on our branch: ${underline(ourBranchHead)} " ++ (if 1 < leftDestinationPaths.size
+                                                                     then
+                                                                       s"into files: ${leftDestinationPaths.map(underline).mkString(", ")}"
+                                                                     else
+                                                                       s"to file: ${underline(leftDestinationPaths.head)}"
+                  )
+                )
+
+                val rightRenamingDetail = Option.unless(
+                  rightDestinationPaths.isEmpty
+                )(
+                  s"on their branch: ${underline(theirBranchHead)} " ++ (if 1 < rightDestinationPaths.size
+                                                                         then
+                                                                           s"into files: ${rightDestinationPaths.map(underline).mkString(", ")}"
+                                                                         else
+                                                                           s"to file: ${underline(rightDestinationPaths.head)}"
+                  )
+                )
+
+                val renamingDescription =
+                  (leftRenamingDetail, rightRenamingDetail) match
+                    case (Some(leftDetailPayload), None) =>
+                      s"File: ${underline(path)} is renamed $leftDetailPayload."
+                    case (None, Some(rightDetailPayload)) =>
+                      s"File: ${underline(path)} is renamed $rightDetailPayload."
+                    case (Some(leftDetailPayload), Some(rightDetailPayload)) =>
+                      s"File: ${underline(path)} is renamed $leftDetailPayload and $rightDetailPayload."
 
                 // We already have the deletion in our branch, so no need
                 // to update the index. We do yield a result so that there
@@ -1820,17 +1847,16 @@ object Main extends StrictLogging:
 
                 if isARenameVersusDeletionConflict then
                   right(
-                    partialResult.copy(conflictingDeletedPathsByRenamedPath =
-                      partialResult.conflictingDeletedPathsByRenamedPath ++ destinationPaths
-                        .map(_ -> path)
+                    partialResult.copy(
+                      conflictingDeletedPathsByLeftRenamedPath =
+                        partialResult.conflictingDeletedPathsByLeftRenamedPath ++ leftDestinationPaths
+                          .map(_ -> path),
+                      conflictingDeletedPathsByRightRenamedPath =
+                        partialResult.conflictingDeletedPathsByRightRenamedPath ++ rightDestinationPaths
+                          .map(_ -> path)
                     )
-                  ).logOperation(
-                    s"File ${underline(path)} on our branch ${underline(ourBranchHead)} is $renameText."
-                  )
-                else
-                  right(partialResult).logOperation(
-                    s"File ${underline(path)} on our branch ${underline(ourBranchHead)} is $renameText."
-                  )
+                  ).logOperation(renamingDescription)
+                else right(partialResult).logOperation(renamingDescription)
                 end if
               else
                 right(partialResult).logOperation(
@@ -1970,11 +1996,6 @@ object Main extends StrictLogging:
       )
     end recordAdditionInIndex
   end InWorkingDirectory
-
-  private enum IndexState:
-    case OneEntry
-    case ConflictingEntries
-  end IndexState
 
   object Tags:
     trait Mode
