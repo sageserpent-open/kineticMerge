@@ -57,8 +57,8 @@ object MainTest extends ProseExamples:
     codeMotionExampleWithSplitHivedOffExpectedMerge
   private val baseExpectyFlavouredAssertContent   = codeMotionExampleBase
   private val editedExpectyFlavouredAssertContent = codeMotionExampleRight
-  private val arthurIsMarkedWithConflictingDeletionAndUpdateInTheIndex =
-    pathIsMarkedWithConflictingDeletionAndUpdateInTheIndex(arthur)
+  private val arthurIsMarkedWithConflictingUpdateAndDeletionInTheIndex =
+    pathIsMarkedWithConflictingUpdateAndDeletionInTheIndex(arthur)
 
   private def introducingArthur(path: Path): Unit =
     os.write(path / arthur, "Hello, my old mucker!\n", createFolders = true)
@@ -222,7 +222,7 @@ object MainTest extends ProseExamples:
     )
   end tysonSaidConflictingThings
 
-  private def pathIsMarkedWithConflictingDeletionAndUpdateInTheIndex(
+  private def pathIsMarkedWithConflictingUpdateAndDeletionInTheIndex(
       path: RelPath
   )(flipBranches: Boolean, status: String): Unit =
     assert(
@@ -235,7 +235,7 @@ object MainTest extends ProseExamples:
       path: RelPath
   )(flipBranches: Boolean, status: String): Unit =
     assert(
-      s"${if flipBranches then "UA" else "AU"}\\s+$path".r
+      s"${if flipBranches then "AU" else "UA"}\\s+$path".r
         .findFirstIn(status)
         .isDefined
     )
@@ -611,6 +611,25 @@ object MainTest extends ProseExamples:
     assert(currentStatus(path).nonEmpty)
   end verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit
 
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+
+  private def currentCommit(path: Path) =
+    os.proc("git", "log", "-1", "--format=tformat:%H")
+      .call(path)
+      .out
+      .text()
+      .strip
+
+  private def mergeHead(path: Path) =
+    os.read(mergeHeadPath(path)).strip()
+
+  private def mergeHeadPath(path: Path) =
+    path / ".git" / "MERGE_HEAD"
+
   private def verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
       path: Path
   )(
@@ -642,25 +661,6 @@ object MainTest extends ProseExamples:
 
     currentStatus(path)
   end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
-
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
-
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
-
-  private def currentCommit(path: Path) =
-    os.proc("git", "log", "-1", "--format=tformat:%H")
-      .call(path)
-      .out
-      .text()
-      .strip
-
-  private def mergeHead(path: Path) =
-    os.read(mergeHeadPath(path)).strip()
-
-  private def mergeHeadPath(path: Path) =
-    path / ".git" / "MERGE_HEAD"
 
   private def gitRepository(): ImperativeResource[Path] =
     for
@@ -1166,7 +1166,7 @@ class MainTest:
                   exitCode
                 )
 
-              arthurIsMarkedWithConflictingDeletionAndUpdateInTheIndex(
+              arthurIsMarkedWithConflictingUpdateAndDeletionInTheIndex(
                 flipBranches,
                 status
               )
@@ -1245,7 +1245,7 @@ class MainTest:
                   exitCode
                 )
 
-              arthurIsMarkedWithConflictingDeletionAndUpdateInTheIndex(
+              arthurIsMarkedWithConflictingUpdateAndDeletionInTheIndex(
                 flipBranches,
                 status
               )
@@ -1328,7 +1328,7 @@ class MainTest:
                   exitCode
                 )
 
-              arthurIsMarkedWithConflictingDeletionAndUpdateInTheIndex(
+              arthurIsMarkedWithConflictingUpdateAndDeletionInTheIndex(
                 flipBranches,
                 status
               )
