@@ -80,6 +80,18 @@ object Main extends StrictLogging:
     )
   end main
 
+  /** @param commandLineArguments
+    *   Command line arguments as varargs.
+    * @return
+    *   The exit code as a plain integer, suitable for consumption by both Scala
+    *   and Java client code.
+    */
+  @varargs
+  def apply(commandLineArguments: String*): Int = apply(
+    progressRecording = NoProgressRecording,
+    commandLineArguments = commandLineArguments*
+  )
+
   /** @param progressRecording
     * @param commandLineArguments
     *   Command line arguments as varargs.
@@ -388,9 +400,6 @@ object Main extends StrictLogging:
     exitCode
   end mergeTheirBranch
 
-  private def right[Payload](payload: Payload): Workflow[Payload] =
-    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
-
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
       EitherT
@@ -410,20 +419,11 @@ object Main extends StrictLogging:
       workflow.semiflatTap(_ => WriterT.tell(List(Right(message))))
   end extension
 
+  private def right[Payload](payload: Payload): Workflow[Payload] =
+    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
+
   private def underline(anything: Any): Str =
     fansi.Underlined.On(anything.toString)
-
-  /** @param commandLineArguments
-    *   Command line arguments as varargs.
-    * @return
-    *   The exit code as a plain integer, suitable for consumption by both Scala
-    *   and Java client code.
-    */
-  @varargs
-  def apply(commandLineArguments: String*): Int = apply(
-    progressRecording = NoProgressRecording,
-    commandLineArguments = commandLineArguments*
-  )
 
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](
@@ -660,39 +660,6 @@ object Main extends StrictLogging:
         s"Unexpected error - can't parse changes reported by Git ${underline(line)}."
       ).flatMap { case (path, changed) => changed.map(path -> _) }
 
-    private def blobAndContentFor(
-        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
-    )(
-        path: Path
-    ): Workflow[
-      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
-    ] =
-      IO {
-        val line = os
-          .proc("git", "ls-tree", commitIdOrBranchName, path)
-          .call(workingDirectory)
-          .out
-          .text()
-
-        line.split(whitespaceRun) match
-          case Array(mode, _, blobId, _) =>
-            val content = os
-              .proc("git", "cat-file", "blob", blobId)
-              .call(workingDirectory)
-              .out
-              .text()
-
-            (
-              mode.taggedWith[Tags.Mode],
-              blobId.taggedWith[Tags.BlobId],
-              content.taggedWith[Tags.Content]
-            )
-        end match
-      }.labelExceptionWith(errorMessage =
-        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
-      )
-    end blobAndContentFor
-
     def mergeInputsOf(
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
         ourBranchHead: String @@ Tags.CommitOrBranchName,
@@ -897,6 +864,39 @@ object Main extends StrictLogging:
         }
     end mergeInputsOf
 
+    private def blobAndContentFor(
+        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
+    )(
+        path: Path
+    ): Workflow[
+      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
+    ] =
+      IO {
+        val line = os
+          .proc("git", "ls-tree", commitIdOrBranchName, path)
+          .call(workingDirectory)
+          .out
+          .text()
+
+        line.split(whitespaceRun) match
+          case Array(mode, _, blobId, _) =>
+            val content = os
+              .proc("git", "cat-file", "blob", blobId)
+              .call(workingDirectory)
+              .out
+              .text()
+
+            (
+              mode.taggedWith[Tags.Mode],
+              blobId.taggedWith[Tags.BlobId],
+              content.taggedWith[Tags.Content]
+            )
+        end match
+      }.labelExceptionWith(errorMessage =
+        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
+      )
+    end blobAndContentFor
+
     def mergeWithRollback(
         ourBranchHead: String @@ Main.Tags.CommitOrBranchName,
         theirBranchHead: String @@ Main.Tags.CommitOrBranchName,
@@ -1061,16 +1061,27 @@ object Main extends StrictLogging:
       given Funnel[Token] = Token.funnel
       given HashFunction  = Hashing.murmur3_32_fixed()
 
-      val (baseContentsByPath, leftContentsByPath, rightContentsByPath) =
+      val (
+        baseContentsByPath,
+        leftContentsByPath,
+        rightContentsByPath,
+        newPathsOnLeftOrRight
+      ) =
         mergeInputs.foldLeft(
           (
             Map.empty[Path, IndexedSeq[Token]],
             Map.empty[Path, IndexedSeq[Token]],
-            Map.empty[Path, IndexedSeq[Token]]
+            Map.empty[Path, IndexedSeq[Token]],
+            Set.empty[Path]
           )
         ) {
           case (
-                (baseContentsByPath, leftContentsByPath, rightContentsByPath),
+                (
+                  baseContentsByPath,
+                  leftContentsByPath,
+                  rightContentsByPath,
+                  newPathsOnLeftOrRight
+                ),
                 (path, mergeInput)
               ) =>
             mergeInput match
@@ -1085,7 +1096,8 @@ object Main extends StrictLogging:
                   leftContentsByPath + (path -> tokens(
                     ourModification.content
                   ).get),
-                  rightContentsByPath + (path -> unchangedContent)
+                  rightContentsByPath + (path -> unchangedContent),
+                  newPathsOnLeftOrRight
                 )
 
               case JustTheirModification(
@@ -1099,7 +1111,8 @@ object Main extends StrictLogging:
                   leftContentsByPath + (path -> unchangedContent),
                   rightContentsByPath + (path -> tokens(
                     theirModification.content
-                  ).get)
+                  ).get),
+                  newPathsOnLeftOrRight
                 )
 
               case JustOurAddition(ourAddition) =>
@@ -1108,7 +1121,8 @@ object Main extends StrictLogging:
                   leftContentsByPath + (path -> tokens(
                     ourAddition.content
                   ).get),
-                  rightContentsByPath
+                  rightContentsByPath,
+                  newPathsOnLeftOrRight + path
                 )
 
               case JustTheirAddition(theirAddition) =>
@@ -1117,7 +1131,8 @@ object Main extends StrictLogging:
                   leftContentsByPath,
                   rightContentsByPath + (path -> tokens(
                     theirAddition.content
-                  ).get)
+                  ).get),
+                  newPathsOnLeftOrRight + path
                 )
 
               case JustOurDeletion(bestAncestorCommitIdContent) =>
@@ -1126,7 +1141,8 @@ object Main extends StrictLogging:
                 (
                   baseContentsByPath + (path -> unchangedContent),
                   leftContentsByPath,
-                  rightContentsByPath + (path -> unchangedContent)
+                  rightContentsByPath + (path -> unchangedContent),
+                  newPathsOnLeftOrRight
                 )
 
               case JustTheirDeletion(bestAncestorCommitIdContent) =>
@@ -1135,7 +1151,8 @@ object Main extends StrictLogging:
                 (
                   baseContentsByPath + (path -> unchangedContent),
                   leftContentsByPath + (path -> unchangedContent),
-                  rightContentsByPath
+                  rightContentsByPath,
+                  newPathsOnLeftOrRight
                 )
 
               case OurModificationAndTheirDeletion(
@@ -1151,7 +1168,8 @@ object Main extends StrictLogging:
                   leftContentsByPath + (path -> tokens(
                     ourModification.content
                   ).get),
-                  rightContentsByPath
+                  rightContentsByPath,
+                  newPathsOnLeftOrRight
                 )
 
               case TheirModificationAndOurDeletion(
@@ -1167,7 +1185,8 @@ object Main extends StrictLogging:
                   leftContentsByPath,
                   rightContentsByPath + (path -> tokens(
                     theirModification.content
-                  ).get)
+                  ).get),
+                  newPathsOnLeftOrRight
                 )
 
               case BothContributeAnAddition(
@@ -1182,7 +1201,8 @@ object Main extends StrictLogging:
                   ).get),
                   rightContentsByPath + (path -> tokens(
                     theirAddition.content
-                  ).get)
+                  ).get),
+                  newPathsOnLeftOrRight + path
                 )
 
               case BothContributeAModification(
@@ -1202,7 +1222,8 @@ object Main extends StrictLogging:
                   ).get),
                   rightContentsByPath + (path -> tokens(
                     theirModification.content
-                  ).get)
+                  ).get),
+                  newPathsOnLeftOrRight
                 )
 
               case BothContributeADeletion(bestAncestorCommitIdContent) =>
@@ -1211,7 +1232,8 @@ object Main extends StrictLogging:
                     bestAncestorCommitIdContent
                   ).get),
                   leftContentsByPath,
-                  rightContentsByPath
+                  rightContentsByPath,
+                  newPathsOnLeftOrRight
                 )
         }
 
@@ -1786,6 +1808,8 @@ object Main extends StrictLogging:
               val enoughContentHasMovedToConsiderAsRenaming =
                 baseSectionsThatHaveMovedToOtherFiles.nonEmpty && 2 * movedContentSize >= totalContentSize
 
+              // We already have the deletion in our branch, so no need
+              // to update the index on behalf of this path, whatever happens...
               if enoughContentHasMovedToConsiderAsRenaming then
                 val moveDestinationsOverBaseSections =
                   baseSectionsThatHaveMovedToOtherFiles
@@ -1840,13 +1864,8 @@ object Main extends StrictLogging:
                     case (Some(leftDetailPayload), Some(rightDetailPayload)) =>
                       s"File ${underline(path)} was renamed $leftDetailPayload and $rightDetailPayload."
 
-                // We already have the deletion in our branch, so no need
-                // to update the index. We do yield a result so that there
-                // is still a merge commit if this is the only change,
-                // though - this should *not* be a fast-forward merge.
-
-                if isARenameVersusDeletionConflict then
-                  right(
+                right(
+                  if isARenameVersusDeletionConflict then
                     partialResult.copy(
                       conflictingDeletedPathsByLeftRenamedPath =
                         partialResult.conflictingDeletedPathsByLeftRenamedPath ++ leftDestinationPaths
@@ -1855,9 +1874,8 @@ object Main extends StrictLogging:
                         partialResult.conflictingDeletedPathsByRightRenamedPath ++ rightDestinationPaths
                           .map(_ -> path)
                     )
-                  ).logOperation(renamingDescription)
-                else right(partialResult).logOperation(renamingDescription)
-                end if
+                  else partialResult
+                ).logOperation(renamingDescription)
               else
                 right(partialResult).logOperation(
                   s"Coincidental deletion of file ${underline(path)} on our branch ${underline(ourBranchHead)} and on their branch ${underline(theirBranchHead)}."
