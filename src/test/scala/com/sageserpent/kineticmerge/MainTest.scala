@@ -426,6 +426,19 @@ object MainTest extends ProseExamples:
     )
   end moveCasesLimitStrategy
 
+  private def arthurBecomesAnExpertOnCasesLimitStrategy(path: Path): Unit =
+    os.write.append(
+      path / arthur,
+      baseCasesLimitStrategyContent
+    )
+    println(
+      os.proc("git", "commit", "-am", "'Arthur declaims on software.'")
+        .call(path)
+        .out
+        .text()
+    )
+  end arthurBecomesAnExpertOnCasesLimitStrategy
+
   private def introducingExpectyFlavouredAssert(path: Path): Unit =
     os.write(
       path / expectyFlavouredAssert,
@@ -611,25 +624,6 @@ object MainTest extends ProseExamples:
     assert(currentStatus(path).nonEmpty)
   end verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit
 
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
-
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
-
-  private def currentCommit(path: Path) =
-    os.proc("git", "log", "-1", "--format=tformat:%H")
-      .call(path)
-      .out
-      .text()
-      .strip
-
-  private def mergeHead(path: Path) =
-    os.read(mergeHeadPath(path)).strip()
-
-  private def mergeHeadPath(path: Path) =
-    path / ".git" / "MERGE_HEAD"
-
   private def verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
       path: Path
   )(
@@ -661,6 +655,25 @@ object MainTest extends ProseExamples:
 
     currentStatus(path)
   end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
+
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+
+  private def currentCommit(path: Path) =
+    os.proc("git", "log", "-1", "--format=tformat:%H")
+      .call(path)
+      .out
+      .text()
+      .strip
+
+  private def mergeHead(path: Path) =
+    os.read(mergeHeadPath(path)).strip()
+
+  private def mergeHeadPath(path: Path) =
+    path / ".git" / "MERGE_HEAD"
 
   private def gitRepository(): ImperativeResource[Path] =
     for
@@ -2292,5 +2305,83 @@ class MainTest:
           .unsafeRunSync()
       }
   end conflictingDeletionAndEditedFileMoveOfTheSameFile
+
+  @TestFactory
+  def conflictingDeletionAndFileCondensationOfTheSameFile(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches, noCommit) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingCasesLimitStrategy(path)
+
+              introducingArthur(path)
+
+              val condensedFileBranch = "condensedFileBranch"
+
+              makeNewBranch(path)(condensedFileBranch)
+
+              arthurBecomesAnExpertOnCasesLimitStrategy(path)
+
+              // NOTE: have to do this *after* copying the content to prevent
+              // Git from considering the removal commit as identical to the one
+              // performed on the master branch.
+              removingCasesLimitStrategy(path)
+
+              val commitOfCondensedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              removingCasesLimitStrategy(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then checkoutBranch(path)(condensedFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then condensedFileBranch -> masterBranch
+                else masterBranch                        -> condensedFileBranch
+
+              val exitCode = Main.mergeTheirBranch(
+                ApplicationRequest(
+                  theirBranchHead =
+                    theirBranch.taggedWith[Tags.CommitOrBranchName],
+                  noCommit = noCommit,
+                  minimumAmbiguousMatchSize = 5
+                )
+              )(workingDirectory =
+                optionalSubdirectory.fold(ifEmpty = path)(path / _)
+              )
+
+              if noCommit then
+                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                  path
+                )(
+                  flipBranches,
+                  commitOfCondensedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              else
+                verifyMergeMakesANewCommitWithACleanIndex(path)(
+                  commitOfCondensedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              end if
+
+              assert(!os.exists(path / casesLimitStrategy))
+            }
+          )
+          .unsafeRunSync()
+      }
+  end conflictingDeletionAndFileCondensationOfTheSameFile
 
 end MainTest
