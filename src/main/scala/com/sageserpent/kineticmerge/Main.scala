@@ -1790,48 +1790,61 @@ object Main extends StrictLogging:
             case BothContributeADeletion(_) =>
               val baseSections = codeMotionAnalysis.base(path).sections
 
-              // TODO: need to vet that the files deemed to be renames are *new*
-              // wrt the base commit.
+              val (leftDestinationPaths, baseSectionsMovingLeftToNewFiles) =
+                baseSections
+                  .flatMap(baseSection =>
+                    moveDestinationsReport.moveDestinationsBySources
+                      .get(baseSection)
+                      .map(
+                        _.allOnTheLeft
+                          .map(leftSources.pathFor)
+                          .intersect(newPathsOnLeftOrRight)
+                          .map(_ -> baseSection)
+                      )
+                  )
+                  .flatten
+                  .unzip match
+                  case (paths, sections) => paths.toSet -> sections.toSet
 
-              // NOTE: as the file has been deleted on both sides, these
-              // must have moved to other files.
-              val baseSectionsThatHaveMovedToOtherFiles =
-                baseSections.filter(
-                  moveDestinationsReport.moveDestinationsBySources.contains
-                )
+              val (rightDestinationPaths, baseSectionsMovingRightToNewFiles) =
+                baseSections
+                  .flatMap(baseSection =>
+                    moveDestinationsReport.moveDestinationsBySources
+                      .get(baseSection)
+                      .map(
+                        _.allOnTheRight
+                          .map(rightSources.pathFor)
+                          .intersect(newPathsOnLeftOrRight)
+                          .map(_ -> baseSection)
+                      )
+                  )
+                  .flatten
+                  .unzip match
+                  case (paths, sections) => paths.toSet -> sections.toSet
+
+              val baseSectionsThatHaveMovedToNewFiles =
+                baseSectionsMovingLeftToNewFiles union baseSectionsMovingRightToNewFiles
 
               val totalContentSize = baseSections.map(_.size).sum
 
               val movedContentSize =
-                baseSectionsThatHaveMovedToOtherFiles.map(_.size).sum
+                baseSectionsThatHaveMovedToNewFiles.map(_.size).sum
 
               val enoughContentHasMovedToConsiderAsRenaming =
-                baseSectionsThatHaveMovedToOtherFiles.nonEmpty && 2 * movedContentSize >= totalContentSize
+                baseSectionsThatHaveMovedToNewFiles.nonEmpty && 2 * movedContentSize >= totalContentSize
 
               // We already have the deletion in our branch, so no need
               // to update the index on behalf of this path, whatever happens...
               if enoughContentHasMovedToConsiderAsRenaming then
-                val moveDestinationsOverBaseSections =
-                  baseSectionsThatHaveMovedToOtherFiles
-                    .map(
-                      moveDestinationsReport.moveDestinationsBySources.apply
-                    )
-                    .toSet
-
                 val isARenameVersusDeletionConflict =
-                  moveDestinationsOverBaseSections.exists(moveDestinations =>
-                    !moveDestinations.isDivergent && moveDestinations.coincident.isEmpty
+                  assume(
+                    leftDestinationPaths.nonEmpty || rightDestinationPaths.nonEmpty
                   )
-
-                val leftDestinationPaths =
-                  moveDestinationsOverBaseSections.flatMap(
-                    _.allOnTheLeft.map(leftSources.pathFor)
-                  )
-
-                val rightDestinationPaths =
-                  moveDestinationsOverBaseSections.flatMap(
-                    _.allOnTheRight.map(rightSources.pathFor)
-                  )
+                  // If all the moved content from `path` going into new files
+                  // ends up on just one side, then this is a conflict because
+                  // it implies an isolated deletion on the other side.
+                  leftDestinationPaths.isEmpty || rightDestinationPaths.isEmpty
+                end isARenameVersusDeletionConflict
 
                 val leftRenamingDetail = Option.unless(
                   leftDestinationPaths.isEmpty
