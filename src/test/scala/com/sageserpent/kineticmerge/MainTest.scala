@@ -2307,7 +2307,7 @@ class MainTest:
   end conflictingDeletionAndEditedFileMoveOfTheSameFile
 
   @TestFactory
-  def conflictingDeletionAndFileCondensationOfTheSameFile(): DynamicTests =
+  def cleanMergeOfDeletionAndFileCondensationOfTheSameFile(): DynamicTests =
     (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
       .withLimit(10)
       .dynamicTests { case (optionalSubdirectory, flipBranches, noCommit) =>
@@ -2325,16 +2325,15 @@ class MainTest:
 
               makeNewBranch(path)(condensedFileBranch)
 
-              arthurBecomesAnExpertOnCasesLimitStrategy(path)
-
-              // NOTE: have to do this *after* copying the content to prevent
-              // Git from considering the removal commit as identical to the one
-              // performed on the master branch.
               removingCasesLimitStrategy(path)
+
+              arthurBecomesAnExpertOnCasesLimitStrategy(path)
 
               val commitOfCondensedFileBranch = currentCommit(path)
 
               checkoutBranch(path)(masterBranch)
+
+              sandraStopsByBriefly(path)
 
               removingCasesLimitStrategy(path)
 
@@ -2382,6 +2381,6 @@ class MainTest:
           )
           .unsafeRunSync()
       }
-  end conflictingDeletionAndFileCondensationOfTheSameFile
+  end cleanMergeOfDeletionAndFileCondensationOfTheSameFile
 
 end MainTest
