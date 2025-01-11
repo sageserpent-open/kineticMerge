@@ -137,7 +137,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             )
 
         def recordContentOfFileDeletedOnLeftAndRight(
-            path: Path,
             baseSections: IndexedSeq[Section[Element]]
         ): AggregatedInitialMergeResult =
           this
@@ -220,7 +219,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 // instances as there is nothing on the opposite side of the
                 // migration to worry about.
                 partialMergeResult.recordContentOfFileDeletedOnLeftAndRight(
-                  path,
                   baseSections
                 )
               case (
