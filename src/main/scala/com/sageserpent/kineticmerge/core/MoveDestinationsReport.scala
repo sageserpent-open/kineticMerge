@@ -10,19 +10,9 @@ enum SpeculativeContentMigration[Element]:
       require(leftContent.nonEmpty || rightContent.nonEmpty)
     case _ =>
   end match
-  /** This represents a simple move with no associated changes. We model this
-    * explicitly so that trivial variations of the moved element across the move
-    * can be resolved at the move destination.
-    *
-    * @note
-    *   We only need the side opposite the move destination because a migration
-    *   is keyed by a source element taken from the base. The move destination
-    *   itself completes the three sides' contributions.
-    */
-  case PlainMove(
-      elementOnTheOppositeSideToTheMoveDestination: Element,
-      oppositeToMoveDestinationSide: Side
-  )
+
+  case LeftEditOrDeletion(opposingRightElement: Element)
+  case RightEditOrDeletion(opposingLeftElement: Element)
   case Edit(leftContent: IndexedSeq[Element], rightContent: IndexedSeq[Element])
   case Deletion(dueToMerge: Boolean)
 end SpeculativeContentMigration
@@ -125,11 +115,8 @@ object MoveDestinationsReport:
 
             if moveDestinations.left.nonEmpty then
               contentMigration match
-                case SpeculativeContentMigration.PlainMove(_, Side.Left) =>
-                  Seq.empty
-                case SpeculativeContentMigration.PlainMove(
-                      elementOnTheOppositeSideToTheMoveDestination,
-                      Side.Right
+                case SpeculativeContentMigration.LeftEditOrDeletion(
+                      elementOnTheOppositeSideToTheMoveDestination
                     ) =>
                   moveDestinations.left
                     .map(destinationElement =>
@@ -147,17 +134,14 @@ object MoveDestinationsReport:
                     }
                 case SpeculativeContentMigration.Edit(_, rightContent) =>
                   moveDestinations.left.map(_ -> rightContent)
-                case SpeculativeContentMigration.Deletion(dueToMerge) =>
-                  if dueToMerge then
-                    moveDestinations.left.map(_ -> IndexedSeq.empty)
-                  else Seq.empty
+                case SpeculativeContentMigration.Deletion(dueToMerge)
+                    if dueToMerge =>
+                  moveDestinations.left.map(_ -> IndexedSeq.empty)
+                case _ => Seq.empty
             else if moveDestinations.right.nonEmpty then
               contentMigration match
-                case SpeculativeContentMigration.PlainMove(_, Side.Right) =>
-                  Seq.empty
-                case SpeculativeContentMigration.PlainMove(
-                      elementOnTheOppositeSideToTheMoveDestination,
-                      Side.Left
+                case SpeculativeContentMigration.RightEditOrDeletion(
+                      elementOnTheOppositeSideToTheMoveDestination
                     ) =>
                   moveDestinations.right
                     .map(destinationElement =>
@@ -175,10 +159,10 @@ object MoveDestinationsReport:
                     }
                 case SpeculativeContentMigration.Edit(leftContent, _) =>
                   moveDestinations.right.map(_ -> leftContent)
-                case SpeculativeContentMigration.Deletion(dueToMerge) =>
-                  if dueToMerge then
-                    moveDestinations.right.map(_ -> IndexedSeq.empty)
-                  else Seq.empty
+                case SpeculativeContentMigration.Deletion(dueToMerge)
+                    if dueToMerge =>
+                  moveDestinations.right.map(_ -> IndexedSeq.empty)
+                case _ => Seq.empty
             else
               assume(moveDestinations.coincident.nonEmpty)
               contentMigration match
@@ -229,9 +213,8 @@ object MoveDestinationsReport:
 
             if moveDestinations.left.nonEmpty then
               contentMigration match
-                case SpeculativeContentMigration.PlainMove(
-                      elementOnTheOppositeSideToTheMoveDestination,
-                      Side.Right
+                case SpeculativeContentMigration.LeftEditOrDeletion(
+                      elementOnTheOppositeSideToTheMoveDestination
                     ) =>
                   moveDestinations.left.map(moveDestination =>
                     AnchoredMove(
@@ -290,9 +273,8 @@ object MoveDestinationsReport:
                   Seq.empty
             else if moveDestinations.right.nonEmpty then
               contentMigration match
-                case SpeculativeContentMigration.PlainMove(
-                      elementOnTheOppositeSideToTheMoveDestination,
-                      Side.Left
+                case SpeculativeContentMigration.RightEditOrDeletion(
+                      elementOnTheOppositeSideToTheMoveDestination
                     ) =>
                   moveDestinations.right.map(moveDestination =>
                     AnchoredMove(

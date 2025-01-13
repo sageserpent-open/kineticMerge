@@ -186,11 +186,7 @@ object FirstPassMergeResult:
           .focus(_.speculativeMigrationsBySource)
           .modify(
             _ + (deletedBaseElement -> SpeculativeContentMigration
-              .PlainMove(
-                elementOnTheOppositeSideToTheMoveDestination =
-                  deletedRightElement,
-                oppositeToMoveDestinationSide = Side.Right
-              ))
+              .LeftEditOrDeletion(opposingRightElement = deletedRightElement))
           )
       end leftDeletion
 
@@ -215,11 +211,7 @@ object FirstPassMergeResult:
           .focus(_.speculativeMigrationsBySource)
           .modify(
             _ + (deletedBaseElement -> SpeculativeContentMigration
-              .PlainMove(
-                elementOnTheOppositeSideToTheMoveDestination =
-                  deletedLeftElement,
-                oppositeToMoveDestinationSide = Side.Left
-              ))
+              .RightEditOrDeletion(opposingLeftElement = deletedLeftElement))
           )
       end rightDeletion
 
@@ -241,7 +233,8 @@ object FirstPassMergeResult:
           )
           .focus(_.speculativeMigrationsBySource)
           .modify(
-            _ + (deletedElement -> SpeculativeContentMigration.Deletion(dueToMerge = true))
+            _ + (deletedElement -> SpeculativeContentMigration
+              .Deletion(dueToMerge = true))
           )
       end coincidentDeletion
 
@@ -267,10 +260,8 @@ object FirstPassMergeResult:
           )
           .focus(_.speculativeMigrationsBySource)
           .modify(
-            _ + (editedBaseElement -> SpeculativeContentMigration.PlainMove(
-              elementOnTheOppositeSideToTheMoveDestination = editedRightElement,
-              oppositeToMoveDestinationSide = Side.Right
-            ))
+            _ + (editedBaseElement -> SpeculativeContentMigration
+              .LeftEditOrDeletion(opposingRightElement = editedRightElement))
           )
           .focus(_.speculativeMoveDestinations)
           .modify(
@@ -300,10 +291,8 @@ object FirstPassMergeResult:
           )
           .focus(_.speculativeMigrationsBySource)
           .modify(
-            _ + (editedBaseElement -> SpeculativeContentMigration.PlainMove(
-              elementOnTheOppositeSideToTheMoveDestination = editedLeftElement,
-              oppositeToMoveDestinationSide = Side.Left
-            ))
+            _ + (editedBaseElement -> SpeculativeContentMigration
+              .RightEditOrDeletion(opposingLeftElement = editedLeftElement))
           )
           .focus(_.speculativeMoveDestinations)
           .modify(
@@ -335,7 +324,8 @@ object FirstPassMergeResult:
           // sides; we don't break up the paired content (and indeed regard it
           // as a potential coincident move destination).
           .modify(
-            _ + (editedElement -> SpeculativeContentMigration.Deletion(dueToMerge = true))
+            _ + (editedElement -> SpeculativeContentMigration
+              .Deletion(dueToMerge = true))
           )
           .focus(_.speculativeMoveDestinations)
           .modify(
