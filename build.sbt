@@ -113,7 +113,7 @@ lazy val root = (project in file("."))
     libraryDependencies += "org.apache.commons" % "commons-text" % "1.13.0",
     libraryDependencies += "me.tongfei"         % "progressbar"  % "0.10.1",
     libraryDependencies +=
-      "org.scala-lang.modules" %% "scala-parallel-collections" % "1.1.0",
+      "org.scala-lang.modules" %% "scala-parallel-collections" % "1.2.0",
     libraryDependencies += "eu.timepit"      %% "refined"   % "0.11.3",
     libraryDependencies += "com.sageserpent" %% "americium" % "1.19.9" % Test,
     libraryDependencies += "com.eed3si9n.expecty" %% "expecty" % "0.17.0" % Test,
