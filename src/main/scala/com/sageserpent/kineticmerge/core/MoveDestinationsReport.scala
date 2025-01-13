@@ -6,14 +6,17 @@ import scala.collection.immutable.MultiDict
   */
 enum SpeculativeContentMigration[Element]:
   this match
-    case Edit(leftContent, rightContent) =>
+    case Conflict(leftContent, rightContent) =>
       require(leftContent.nonEmpty || rightContent.nonEmpty)
     case _ =>
   end match
 
   case LeftEditOrDeletion(opposingRightElement: Element)
   case RightEditOrDeletion(opposingLeftElement: Element)
-  case Edit(leftContent: IndexedSeq[Element], rightContent: IndexedSeq[Element])
+  case Conflict(
+      leftContent: IndexedSeq[Element],
+      rightContent: IndexedSeq[Element]
+  )
   case Deletion(dueToMerge: Boolean)
 end SpeculativeContentMigration
 
@@ -87,13 +90,13 @@ object MoveDestinationsReport:
 
             if moveDestinations.left.nonEmpty then
               contentMigration match
-                case SpeculativeContentMigration.Edit(_, rightContent) =>
+                case SpeculativeContentMigration.Conflict(_, rightContent) =>
                   rightContent
                 case _ =>
                   Seq.empty
             else if moveDestinations.right.nonEmpty then
               contentMigration match
-                case SpeculativeContentMigration.Edit(leftContent, _) =>
+                case SpeculativeContentMigration.Conflict(leftContent, _) =>
                   leftContent
                 case _ =>
                   Seq.empty
@@ -132,7 +135,7 @@ object MoveDestinationsReport:
                           if destinationElement != resolved =>
                         destinationElement -> IndexedSeq(resolved)
                     }
-                case SpeculativeContentMigration.Edit(_, rightContent) =>
+                case SpeculativeContentMigration.Conflict(_, rightContent) =>
                   moveDestinations.left.map(_ -> rightContent)
                 case SpeculativeContentMigration.Deletion(dueToMerge)
                     if dueToMerge =>
@@ -157,7 +160,7 @@ object MoveDestinationsReport:
                           if destinationElement != resolved =>
                         destinationElement -> IndexedSeq(resolved)
                     }
-                case SpeculativeContentMigration.Edit(leftContent, _) =>
+                case SpeculativeContentMigration.Conflict(leftContent, _) =>
                   moveDestinations.right.map(_ -> leftContent)
                 case SpeculativeContentMigration.Deletion(dueToMerge)
                     if dueToMerge =>
@@ -227,7 +230,7 @@ object MoveDestinationsReport:
                     )
                   )
                 case SpeculativeContentMigration
-                      .Edit(_, IndexedSeq(loneRightElement)) =>
+                      .Conflict(_, IndexedSeq(loneRightElement)) =>
                   moveDestinations.left.map(moveDestination =>
                     AnchoredMove(
                       moveDestinationSide = Side.Left,
@@ -239,7 +242,7 @@ object MoveDestinationsReport:
                       sourceAnchor = source
                     )
                   )
-                case SpeculativeContentMigration.Edit(_, rightContent)
+                case SpeculativeContentMigration.Conflict(_, rightContent)
                     // NOTE: have to be careful here, as both a migrated
                     // deletion with an edit on the same side as the move and a
                     // migrated edit look like an edit versus deletion conflict.
@@ -287,7 +290,7 @@ object MoveDestinationsReport:
                     )
                   )
                 case SpeculativeContentMigration
-                      .Edit(IndexedSeq(loneLeftElement), _) =>
+                      .Conflict(IndexedSeq(loneLeftElement), _) =>
                   moveDestinations.right.map(moveDestination =>
                     AnchoredMove(
                       moveDestinationSide = Side.Right,
@@ -299,7 +302,7 @@ object MoveDestinationsReport:
                       sourceAnchor = source
                     )
                   )
-                case SpeculativeContentMigration.Edit(leftContent, _)
+                case SpeculativeContentMigration.Conflict(leftContent, _)
                     // NOTE: have to be careful here, as both a migrated
                     // deletion with an edit on the same side as the move and a
                     // migrated edit look like an edit versus deletion conflict.

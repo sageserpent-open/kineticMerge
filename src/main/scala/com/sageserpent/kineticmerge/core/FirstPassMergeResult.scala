@@ -359,7 +359,7 @@ object FirstPassMergeResult:
           .modify(
             editedElements.foldLeft(_)((partialResult, editedElement) =>
               partialResult + (editedElement -> SpeculativeContentMigration
-                .Edit(leftEditElements, rightEditElements))
+                .Conflict(leftEditElements, rightEditElements))
             )
           )
           .focus(_.speculativeMoveDestinations)
