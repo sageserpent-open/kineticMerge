@@ -234,7 +234,7 @@ object FirstPassMergeResult:
           .focus(_.speculativeMigrationsBySource)
           .modify(
             _ + (deletedElement -> SpeculativeContentMigration
-              .Deletion(dueToMerge = true))
+              .CoincidentEditOrDeletion())
           )
       end coincidentDeletion
 
@@ -325,7 +325,7 @@ object FirstPassMergeResult:
           // as a potential coincident move destination).
           .modify(
             _ + (editedElement -> SpeculativeContentMigration
-              .Deletion(dueToMerge = true))
+              .CoincidentEditOrDeletion())
           )
           .focus(_.speculativeMoveDestinations)
           .modify(

@@ -17,7 +17,8 @@ enum SpeculativeContentMigration[Element]:
       leftContent: IndexedSeq[Element],
       rightContent: IndexedSeq[Element]
   )
-  case Deletion(dueToMerge: Boolean)
+  case CoincidentEditOrDeletion()
+  case FileDeletion()
 end SpeculativeContentMigration
 
 enum SpeculativeMoveDestination[Element]:
@@ -136,10 +137,20 @@ object MoveDestinationsReport:
                         destinationElement -> IndexedSeq(resolved)
                     }
                 case SpeculativeContentMigration.Conflict(_, rightContent) =>
-                  moveDestinations.left.map(_ -> rightContent)
-                case SpeculativeContentMigration.Deletion(dueToMerge)
-                    if dueToMerge =>
-                  moveDestinations.left.map(_ -> IndexedSeq.empty)
+                  moveDestinations.left.map(
+                    _ ->
+                      // The move destination is on the left, so take whatever
+                      // is on the right of the conflict as being migrated - if
+                      // empty, it's a deletion, otherwise it's an edit.
+                      rightContent
+                  )
+                case SpeculativeContentMigration.CoincidentEditOrDeletion() =>
+                  moveDestinations.left.map(
+                    _ ->
+                      // The move destination is on the left, so migrate the
+                      // implied deletion on the right.
+                      IndexedSeq.empty
+                  )
                 case _ => Seq.empty
             else if moveDestinations.right.nonEmpty then
               contentMigration match
@@ -161,15 +172,26 @@ object MoveDestinationsReport:
                         destinationElement -> IndexedSeq(resolved)
                     }
                 case SpeculativeContentMigration.Conflict(leftContent, _) =>
-                  moveDestinations.right.map(_ -> leftContent)
-                case SpeculativeContentMigration.Deletion(dueToMerge)
-                    if dueToMerge =>
-                  moveDestinations.right.map(_ -> IndexedSeq.empty)
+                  moveDestinations.right.map(
+                    _ ->
+                      // The move destination is on the right, so take whatever
+                      // is on the left of the conflict as being migrated - if
+                      // empty, it's a deletion, otherwise it's an edit.
+                      leftContent
+                  )
+                case SpeculativeContentMigration.CoincidentEditOrDeletion() =>
+                  moveDestinations.right.map(
+                    _ ->
+                      // The move destination is on the right, so migrate the
+                      // implied deletion on the left.
+                      IndexedSeq.empty
+                  )
                 case _ => Seq.empty
             else
               assume(moveDestinations.coincident.nonEmpty)
               contentMigration match
-                case SpeculativeContentMigration.Deletion(_) =>
+                case SpeculativeContentMigration.CoincidentEditOrDeletion() |
+                    SpeculativeContentMigration.FileDeletion() =>
                   // NOTE: we don't distinguish between a deletion due to a
                   // merge or due to the removal of a path; either way the
                   // content has made a coincident move.

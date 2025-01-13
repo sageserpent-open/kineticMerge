@@ -143,7 +143,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             .focus(_.speculativeMigrationsBySource)
             .modify(
               _ ++ baseSections.map(
-                _ -> SpeculativeContentMigration.Deletion(dueToMerge = false)
+                _ -> SpeculativeContentMigration.FileDeletion()
               )
             )
 
