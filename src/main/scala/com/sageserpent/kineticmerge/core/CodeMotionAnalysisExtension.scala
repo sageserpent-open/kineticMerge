@@ -221,26 +221,69 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 partialMergeResult.recordContentOfFileDeletedOnLeftAndRight(
                   baseSections
                 )
+              case (Some(baseSections), None, Some(rightSections)) =>
+                // The file has disappeared on the left side. That may indicate
+                // a simple deletion of the file, or may be a renaming on the
+                // left.
+
+                // Merge with fake empty content on the right...
+
+                val firstPassMergeResult
+                    : FirstPassMergeResult[Section[Element]] =
+                  mergeOf(mergeAlgebra =
+                    FirstPassMergeResult.mergeAlgebra(inContextOfFileDeletion =
+                      true
+                    )
+                  )(
+                    base = baseSections,
+                    left = IndexedSeq.empty,
+                    right = rightSections
+                  )
+
+                partialMergeResult.aggregate(path, firstPassMergeResult)
+              case (Some(baseSections), Some(leftSections), None) =>
+                // The file has disappeared on the right side. That may indicate
+                // a simple deletion of the file, or may be a renaming on the
+                // right.
+
+                // Merge with fake empty content on the right...
+
+                val firstPassMergeResult
+                    : FirstPassMergeResult[Section[Element]] =
+                  mergeOf(mergeAlgebra =
+                    FirstPassMergeResult.mergeAlgebra(inContextOfFileDeletion =
+                      true
+                    )
+                  )(
+                    base = baseSections,
+                    left = leftSections,
+                    right = IndexedSeq.empty
+                  )
+
+                partialMergeResult.aggregate(path, firstPassMergeResult)
               case (
                     optionalBaseSections,
-                    optionalLeftSections,
-                    optionalRightSections
+                    Some(leftSections),
+                    Some(rightSections)
                   ) =>
                 // Mix of possibilities - the file may have been added on both
-                // sides, or modified on either or both sides, or deleted on one
-                // side and modified on the other, or deleted on one side. There
-                // is also an extraneous case where there is no file on any of
-                // the sides, and another extraneous case where the file is on
-                // all three sides but hasn't changed.
+                // sides, or modified on either or both sides. There is also an
+                // extraneous case where there is no file on any of the sides,
+                // and another extraneous case where the file is on all three
+                // sides but hasn't changed.
 
                 // Whichever is the case, merge...
 
                 val firstPassMergeResult
                     : FirstPassMergeResult[Section[Element]] =
-                  mergeOf(mergeAlgebra = FirstPassMergeResult.mergeAlgebra())(
+                  mergeOf(mergeAlgebra =
+                    FirstPassMergeResult.mergeAlgebra(inContextOfFileDeletion =
+                      false
+                    )
+                  )(
                     base = optionalBaseSections.getOrElse(IndexedSeq.empty),
-                    left = optionalLeftSections.getOrElse(IndexedSeq.empty),
-                    right = optionalRightSections.getOrElse(IndexedSeq.empty)
+                    left = leftSections,
+                    right = rightSections
                   )
 
                 partialMergeResult.aggregate(path, firstPassMergeResult)

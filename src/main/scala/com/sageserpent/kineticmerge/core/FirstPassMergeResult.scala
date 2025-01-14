@@ -61,7 +61,9 @@ object FirstPassMergeResult:
     end playback
   end extension
 
-  def mergeAlgebra[Element](): MergeAlgebra[FirstPassMergeResult, Element] =
+  def mergeAlgebra[Element](
+      inContextOfFileDeletion: Boolean
+  ): MergeAlgebra[FirstPassMergeResult, Element] =
     new MergeAlgebra[FirstPassMergeResult, Element]:
       override def empty: FirstPassMergeResult[Element] =
         FirstPassMergeResult(
@@ -186,7 +188,10 @@ object FirstPassMergeResult:
           .focus(_.speculativeMigrationsBySource)
           .modify(
             _ + (deletedBaseElement -> SpeculativeContentMigration
-              .LeftEditOrDeletion(opposingRightElement = deletedRightElement))
+              .LeftEditOrDeletion(
+                opposingRightElement = deletedRightElement,
+                inContextOfFileDeletion
+              ))
           )
       end leftDeletion
 
@@ -211,7 +216,10 @@ object FirstPassMergeResult:
           .focus(_.speculativeMigrationsBySource)
           .modify(
             _ + (deletedBaseElement -> SpeculativeContentMigration
-              .RightEditOrDeletion(opposingLeftElement = deletedLeftElement))
+              .RightEditOrDeletion(
+                opposingLeftElement = deletedLeftElement,
+                inContextOfFileDeletion
+              ))
           )
       end rightDeletion
 
@@ -261,7 +269,10 @@ object FirstPassMergeResult:
           .focus(_.speculativeMigrationsBySource)
           .modify(
             _ + (editedBaseElement -> SpeculativeContentMigration
-              .LeftEditOrDeletion(opposingRightElement = editedRightElement))
+              .LeftEditOrDeletion(
+                opposingRightElement = editedRightElement,
+                inContextOfFileDeletion = false
+              ))
           )
           .focus(_.speculativeMoveDestinations)
           .modify(
@@ -292,7 +303,10 @@ object FirstPassMergeResult:
           .focus(_.speculativeMigrationsBySource)
           .modify(
             _ + (editedBaseElement -> SpeculativeContentMigration
-              .RightEditOrDeletion(opposingLeftElement = editedLeftElement))
+              .RightEditOrDeletion(
+                opposingLeftElement = editedLeftElement,
+                inContextOfFileDeletion = false
+              ))
           )
           .focus(_.speculativeMoveDestinations)
           .modify(
@@ -359,7 +373,11 @@ object FirstPassMergeResult:
           .modify(
             editedElements.foldLeft(_)((partialResult, editedElement) =>
               partialResult + (editedElement -> SpeculativeContentMigration
-                .Conflict(leftEditElements, rightEditElements))
+                .Conflict(
+                  leftEditElements,
+                  rightEditElements,
+                  inContextOfFileDeletion
+                ))
             )
           )
           .focus(_.speculativeMoveDestinations)

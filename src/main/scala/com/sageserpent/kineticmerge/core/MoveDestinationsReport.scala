@@ -6,16 +6,27 @@ import scala.collection.immutable.MultiDict
   */
 enum SpeculativeContentMigration[Element]:
   this match
-    case Conflict(leftContent, rightContent) =>
+    case Conflict(leftContent, rightContent, false) =>
       require(leftContent.nonEmpty || rightContent.nonEmpty)
+    case Conflict(leftContent, rightContent, true) =>
+      require(
+        leftContent.nonEmpty && rightContent.isEmpty || leftContent.isEmpty && rightContent.nonEmpty
+      )
     case _ =>
   end match
 
-  case LeftEditOrDeletion(opposingRightElement: Element)
-  case RightEditOrDeletion(opposingLeftElement: Element)
+  case LeftEditOrDeletion(
+      opposingRightElement: Element,
+      inContextOfFileDeletion: Boolean
+  )
+  case RightEditOrDeletion(
+      opposingLeftElement: Element,
+      inContextOfFileDeletion: Boolean
+  )
   case Conflict(
       leftContent: IndexedSeq[Element],
-      rightContent: IndexedSeq[Element]
+      rightContent: IndexedSeq[Element],
+      inContextOfFileDeletion: Boolean
   )
   case CoincidentEditOrDeletion()
   case FileDeletion()
@@ -91,13 +102,23 @@ object MoveDestinationsReport:
 
             if moveDestinations.left.nonEmpty then
               contentMigration match
-                case SpeculativeContentMigration.Conflict(_, rightContent) =>
+                case SpeculativeContentMigration.LeftEditOrDeletion(
+                      elementOnTheOppositeSideToTheMoveDestination,
+                      true
+                    ) =>
+                  IndexedSeq(elementOnTheOppositeSideToTheMoveDestination)
+                case SpeculativeContentMigration.Conflict(_, rightContent, _) =>
                   rightContent
                 case _ =>
                   Seq.empty
             else if moveDestinations.right.nonEmpty then
               contentMigration match
-                case SpeculativeContentMigration.Conflict(leftContent, _) =>
+                case SpeculativeContentMigration.RightEditOrDeletion(
+                      elementOnTheOppositeSideToTheMoveDestination,
+                      true
+                    ) =>
+                  IndexedSeq(elementOnTheOppositeSideToTheMoveDestination)
+                case SpeculativeContentMigration.Conflict(leftContent, _, _) =>
                   leftContent
                 case _ =>
                   Seq.empty
@@ -120,7 +141,8 @@ object MoveDestinationsReport:
             if moveDestinations.left.nonEmpty then
               contentMigration match
                 case SpeculativeContentMigration.LeftEditOrDeletion(
-                      elementOnTheOppositeSideToTheMoveDestination
+                      elementOnTheOppositeSideToTheMoveDestination,
+                      _
                     ) =>
                   moveDestinations.left
                     .map(destinationElement =>
@@ -136,7 +158,9 @@ object MoveDestinationsReport:
                           if destinationElement != resolved =>
                         destinationElement -> IndexedSeq(resolved)
                     }
-                case SpeculativeContentMigration.Conflict(_, rightContent) =>
+                case SpeculativeContentMigration
+                      .Conflict(_, rightContent, inContextOfFileDeletion)
+                    if !inContextOfFileDeletion || rightContent.nonEmpty =>
                   moveDestinations.left.map(
                     _ ->
                       // The move destination is on the left, so take whatever
@@ -155,7 +179,8 @@ object MoveDestinationsReport:
             else if moveDestinations.right.nonEmpty then
               contentMigration match
                 case SpeculativeContentMigration.RightEditOrDeletion(
-                      elementOnTheOppositeSideToTheMoveDestination
+                      elementOnTheOppositeSideToTheMoveDestination,
+                      _
                     ) =>
                   moveDestinations.right
                     .map(destinationElement =>
@@ -171,7 +196,9 @@ object MoveDestinationsReport:
                           if destinationElement != resolved =>
                         destinationElement -> IndexedSeq(resolved)
                     }
-                case SpeculativeContentMigration.Conflict(leftContent, _) =>
+                case SpeculativeContentMigration
+                      .Conflict(leftContent, _, inContextOfFileDeletion)
+                    if !inContextOfFileDeletion || leftContent.nonEmpty =>
                   moveDestinations.right.map(
                     _ ->
                       // The move destination is on the right, so take whatever
@@ -239,7 +266,8 @@ object MoveDestinationsReport:
             if moveDestinations.left.nonEmpty then
               contentMigration match
                 case SpeculativeContentMigration.LeftEditOrDeletion(
-                      elementOnTheOppositeSideToTheMoveDestination
+                      elementOnTheOppositeSideToTheMoveDestination,
+                      _
                     ) =>
                   moveDestinations.left.map(moveDestination =>
                     AnchoredMove(
@@ -252,7 +280,7 @@ object MoveDestinationsReport:
                     )
                   )
                 case SpeculativeContentMigration
-                      .Conflict(_, IndexedSeq(loneRightElement)) =>
+                      .Conflict(_, IndexedSeq(loneRightElement), _) =>
                   moveDestinations.left.map(moveDestination =>
                     AnchoredMove(
                       moveDestinationSide = Side.Left,
@@ -264,7 +292,7 @@ object MoveDestinationsReport:
                       sourceAnchor = source
                     )
                   )
-                case SpeculativeContentMigration.Conflict(_, rightContent)
+                case SpeculativeContentMigration.Conflict(_, rightContent, _)
                     // NOTE: have to be careful here, as both a migrated
                     // deletion with an edit on the same side as the move and a
                     // migrated edit look like an edit versus deletion conflict.
@@ -299,7 +327,8 @@ object MoveDestinationsReport:
             else if moveDestinations.right.nonEmpty then
               contentMigration match
                 case SpeculativeContentMigration.RightEditOrDeletion(
-                      elementOnTheOppositeSideToTheMoveDestination
+                      elementOnTheOppositeSideToTheMoveDestination,
+                      _
                     ) =>
                   moveDestinations.right.map(moveDestination =>
                     AnchoredMove(
@@ -312,7 +341,7 @@ object MoveDestinationsReport:
                     )
                   )
                 case SpeculativeContentMigration
-                      .Conflict(IndexedSeq(loneLeftElement), _) =>
+                      .Conflict(IndexedSeq(loneLeftElement), _, _) =>
                   moveDestinations.right.map(moveDestination =>
                     AnchoredMove(
                       moveDestinationSide = Side.Right,
@@ -324,7 +353,7 @@ object MoveDestinationsReport:
                       sourceAnchor = source
                     )
                   )
-                case SpeculativeContentMigration.Conflict(leftContent, _)
+                case SpeculativeContentMigration.Conflict(leftContent, _, _)
                     // NOTE: have to be careful here, as both a migrated
                     // deletion with an edit on the same side as the move and a
                     // migrated edit look like an edit versus deletion conflict.
@@ -420,9 +449,6 @@ object MoveDestinationsReport:
         substitutionsByDestination.keySet
       val allMoveDestinations = moveDestinationsReport.all
       val allMoveSources      = moveDestinationsReport.sources
-      val oppositeSideAnchorsForPlainMoves = anchorOppositeSides.collect {
-        case OppositeSideAnchor.Plain(element) => element
-      }
       val oppositeSideAnchorsForMigratedEdits = anchorOppositeSides.collect {
         case OppositeSideAnchor.OnlyOneInMigratedEdit(element) => element
         case OppositeSideAnchor.FirstInMigratedEdit(element)   => element
@@ -458,12 +484,6 @@ object MoveDestinationsReport:
             s"Substitution destination: ${pprintCustomised(substitutionDestination)}, substitution: ${pprintCustomised(substitution)}."
           )
       }
-
-      require(
-        (migratedEditSuppressions intersect oppositeSideAnchorsForPlainMoves).isEmpty,
-        message =
-          s"Migrated edit suppressions: ${pprintCustomised(migratedEditSuppressions)}, opposite side elements for plain moves: ${pprintCustomised(oppositeSideAnchorsForPlainMoves)}."
-      )
 
       require(
         oppositeSideAnchorsForMigratedEdits subsetOf migratedEditSuppressions,
