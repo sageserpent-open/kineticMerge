@@ -1,6 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
-import com.sageserpent.kineticmerge.core.FirstPassMergeResult.Recording
+import com.sageserpent.kineticmerge.core.FirstPassMergeResult.{FileDeletionContext, Recording}
 import com.sageserpent.kineticmerge.core.merge.MergeAlgebra
 import monocle.syntax.all.*
 
@@ -46,6 +46,12 @@ enum Side:
 end Side
 
 object FirstPassMergeResult:
+  enum FileDeletionContext:
+    case None
+    case Left
+    case Right
+  end FileDeletionContext
+
   opaque type Recording[Element] =
     Vector[[Result[_]] => MergeAlgebra[Result, Element] => Result[
       Element
@@ -62,7 +68,7 @@ object FirstPassMergeResult:
   end extension
 
   def mergeAlgebra[Element](
-      inContextOfFileDeletion: Boolean
+      fileDeletionContext: FileDeletionContext
   ): MergeAlgebra[FirstPassMergeResult, Element] =
     new MergeAlgebra[FirstPassMergeResult, Element]:
       override def empty: FirstPassMergeResult[Element] =
@@ -190,7 +196,8 @@ object FirstPassMergeResult:
             _ + (deletedBaseElement -> SpeculativeContentMigration
               .LeftEditOrDeletion(
                 opposingRightElement = deletedRightElement,
-                inContextOfFileDeletion
+                inContextOfFileDeletion =
+                  fileDeletionContext == FileDeletionContext.Left
               ))
           )
       end leftDeletion
@@ -218,7 +225,8 @@ object FirstPassMergeResult:
             _ + (deletedBaseElement -> SpeculativeContentMigration
               .RightEditOrDeletion(
                 opposingLeftElement = deletedLeftElement,
-                inContextOfFileDeletion
+                inContextOfFileDeletion =
+                  fileDeletionContext == FileDeletionContext.Right
               ))
           )
       end rightDeletion
@@ -242,7 +250,7 @@ object FirstPassMergeResult:
           .focus(_.speculativeMigrationsBySource)
           .modify(
             _ + (deletedElement -> SpeculativeContentMigration
-              .CoincidentEditOrDeletion())
+              .CoincidentEditOrDeletion(fileDeletionContext))
           )
       end coincidentDeletion
 
@@ -339,7 +347,7 @@ object FirstPassMergeResult:
           // as a potential coincident move destination).
           .modify(
             _ + (editedElement -> SpeculativeContentMigration
-              .CoincidentEditOrDeletion())
+              .CoincidentEditOrDeletion(fileDeletionContext))
           )
           .focus(_.speculativeMoveDestinations)
           .modify(
@@ -376,7 +384,7 @@ object FirstPassMergeResult:
                 .Conflict(
                   leftEditElements,
                   rightEditElements,
-                  inContextOfFileDeletion
+                  fileDeletionContext
                 ))
             )
           )

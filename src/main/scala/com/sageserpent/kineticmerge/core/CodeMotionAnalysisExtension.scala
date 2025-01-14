@@ -3,7 +3,7 @@ package com.sageserpent.kineticmerge.core
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
-import com.sageserpent.kineticmerge.core.FirstPassMergeResult.Recording
+import com.sageserpent.kineticmerge.core.FirstPassMergeResult.{FileDeletionContext, Recording}
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Sized
 import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{AnchoredMove, MoveEvaluation, OppositeSideAnchor}
 import com.sageserpent.kineticmerge.core.merge.of as mergeOf
@@ -231,8 +231,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 val firstPassMergeResult
                     : FirstPassMergeResult[Section[Element]] =
                   mergeOf(mergeAlgebra =
-                    FirstPassMergeResult.mergeAlgebra(inContextOfFileDeletion =
-                      true
+                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
+                      FileDeletionContext.Left
                     )
                   )(
                     base = baseSections,
@@ -251,8 +251,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 val firstPassMergeResult
                     : FirstPassMergeResult[Section[Element]] =
                   mergeOf(mergeAlgebra =
-                    FirstPassMergeResult.mergeAlgebra(inContextOfFileDeletion =
-                      true
+                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
+                      FileDeletionContext.Right
                     )
                   )(
                     base = baseSections,
@@ -277,8 +277,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 val firstPassMergeResult
                     : FirstPassMergeResult[Section[Element]] =
                   mergeOf(mergeAlgebra =
-                    FirstPassMergeResult.mergeAlgebra(inContextOfFileDeletion =
-                      false
+                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
+                      FileDeletionContext.None
                     )
                   )(
                     base = optionalBaseSections.getOrElse(IndexedSeq.empty),

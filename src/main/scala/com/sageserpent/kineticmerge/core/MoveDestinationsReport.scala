@@ -1,17 +1,19 @@
 package com.sageserpent.kineticmerge.core
 
+import com.sageserpent.kineticmerge.core.FirstPassMergeResult.FileDeletionContext
+
 import scala.collection.immutable.MultiDict
 
 /** Represents the content migrated through a move.
   */
 enum SpeculativeContentMigration[Element]:
   this match
-    case Conflict(leftContent, rightContent, false) =>
+    case Conflict(leftContent, rightContent, FileDeletionContext.None) =>
       require(leftContent.nonEmpty || rightContent.nonEmpty)
-    case Conflict(leftContent, rightContent, true) =>
-      require(
-        leftContent.nonEmpty && rightContent.isEmpty || leftContent.isEmpty && rightContent.nonEmpty
-      )
+    case Conflict(leftContent, rightContent, FileDeletionContext.Left) =>
+      require(leftContent.isEmpty && rightContent.nonEmpty)
+    case Conflict(leftContent, rightContent, FileDeletionContext.Right) =>
+      require(leftContent.nonEmpty && rightContent.isEmpty)
     case _ =>
   end match
 
@@ -26,9 +28,9 @@ enum SpeculativeContentMigration[Element]:
   case Conflict(
       leftContent: IndexedSeq[Element],
       rightContent: IndexedSeq[Element],
-      inContextOfFileDeletion: Boolean
+      fileDeletionContext: FileDeletionContext
   )
-  case CoincidentEditOrDeletion()
+  case CoincidentEditOrDeletion(fileDeletionContext: FileDeletionContext)
   case FileDeletion()
 end SpeculativeContentMigration
 
@@ -159,8 +161,8 @@ object MoveDestinationsReport:
                         destinationElement -> IndexedSeq(resolved)
                     }
                 case SpeculativeContentMigration
-                      .Conflict(_, rightContent, inContextOfFileDeletion)
-                    if !inContextOfFileDeletion || rightContent.nonEmpty =>
+                      .Conflict(_, rightContent, fileDeletionContext)
+                    if fileDeletionContext != FileDeletionContext.Right || rightContent.nonEmpty =>
                   moveDestinations.left.map(
                     _ ->
                       // The move destination is on the left, so take whatever
@@ -168,7 +170,9 @@ object MoveDestinationsReport:
                       // empty, it's a deletion, otherwise it's an edit.
                       rightContent
                   )
-                case SpeculativeContentMigration.CoincidentEditOrDeletion() =>
+                case SpeculativeContentMigration.CoincidentEditOrDeletion(
+                      FileDeletionContext.None | FileDeletionContext.Left
+                    ) =>
                   moveDestinations.left.map(
                     _ ->
                       // The move destination is on the left, so migrate the
@@ -197,8 +201,8 @@ object MoveDestinationsReport:
                         destinationElement -> IndexedSeq(resolved)
                     }
                 case SpeculativeContentMigration
-                      .Conflict(leftContent, _, inContextOfFileDeletion)
-                    if !inContextOfFileDeletion || leftContent.nonEmpty =>
+                      .Conflict(leftContent, _, fileDeletionContext)
+                    if fileDeletionContext != FileDeletionContext.Left || leftContent.nonEmpty =>
                   moveDestinations.right.map(
                     _ ->
                       // The move destination is on the right, so take whatever
@@ -206,7 +210,9 @@ object MoveDestinationsReport:
                       // empty, it's a deletion, otherwise it's an edit.
                       leftContent
                   )
-                case SpeculativeContentMigration.CoincidentEditOrDeletion() =>
+                case SpeculativeContentMigration.CoincidentEditOrDeletion(
+                      FileDeletionContext.None | FileDeletionContext.Right
+                    ) =>
                   moveDestinations.right.map(
                     _ ->
                       // The move destination is on the right, so migrate the
@@ -217,7 +223,7 @@ object MoveDestinationsReport:
             else
               assume(moveDestinations.coincident.nonEmpty)
               contentMigration match
-                case SpeculativeContentMigration.CoincidentEditOrDeletion() |
+                case SpeculativeContentMigration.CoincidentEditOrDeletion(_) |
                     SpeculativeContentMigration.FileDeletion() =>
                   // NOTE: we don't distinguish between a deletion due to a
                   // merge or due to the removal of a path; either way the
