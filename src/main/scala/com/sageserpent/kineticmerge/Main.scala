@@ -1788,112 +1788,134 @@ object Main extends StrictLogging:
                   end for
 
             case BothContributeADeletion(_) =>
-              val baseSections = codeMotionAnalysis.base(path).sections
+              case class FileRenamingReport(
+                  description: String,
+                  leftRenamePaths: Set[Path],
+                  rightRenamePaths: Set[Path]
+              )
 
-              val (leftDestinationPaths, baseSectionsMovingLeftToNewFiles) =
-                baseSections
-                  .flatMap(baseSection =>
-                    moveDestinationsReport.moveDestinationsBySources
-                      .get(baseSection)
-                      .map(
-                        _.allOnTheLeft
-                          .map(leftSources.pathFor)
-                          .intersect(newPathsOnLeftOrRight)
-                          .map(_ -> baseSection)
-                      )
+              def fileRenamingReport
+                  : Option[FileRenamingReport] =
+                val baseSections = codeMotionAnalysis.base(path).sections
+
+                val (leftRenamePaths, baseSectionsMovingLeftToNewFiles) =
+                  baseSections
+                    .flatMap(baseSection =>
+                      moveDestinationsReport.moveDestinationsBySources
+                        .get(baseSection)
+                        .map(
+                          _.allOnTheLeft
+                            .map(leftSources.pathFor)
+                            .intersect(newPathsOnLeftOrRight)
+                            .map(_ -> baseSection)
+                        )
+                    )
+                    .flatten
+                    .unzip match
+                    case (paths, sections) => paths.toSet -> sections.toSet
+
+                val (rightRenamePaths, baseSectionsMovingRightToNewFiles) =
+                  baseSections
+                    .flatMap(baseSection =>
+                      moveDestinationsReport.moveDestinationsBySources
+                        .get(baseSection)
+                        .map(
+                          _.allOnTheRight
+                            .map(rightSources.pathFor)
+                            .intersect(newPathsOnLeftOrRight)
+                            .map(_ -> baseSection)
+                        )
+                    )
+                    .flatten
+                    .unzip match
+                    case (paths, sections) => paths.toSet -> sections.toSet
+
+                val baseSectionsThatHaveMovedToNewFiles =
+                  baseSectionsMovingLeftToNewFiles union baseSectionsMovingRightToNewFiles
+
+                val totalContentSize = baseSections.map(_.size).sum
+
+                val movedContentSize =
+                  baseSectionsThatHaveMovedToNewFiles.map(_.size).sum
+
+                val enoughContentHasMovedToConsiderAsRenaming =
+                  baseSectionsThatHaveMovedToNewFiles.nonEmpty && 2 * movedContentSize >= totalContentSize
+
+                Option.when(enoughContentHasMovedToConsiderAsRenaming) {
+                  val leftRenamingDetail = Option.unless(
+                    leftRenamePaths.isEmpty
+                  )(
+                    s"on our branch ${underline(ourBranchHead)} " ++ (if 1 < leftRenamePaths.size
+                                                                      then
+                                                                        s"into files ${leftRenamePaths.map(underline).mkString(", ")}"
+                                                                      else
+                                                                        s"to file ${underline(leftRenamePaths.head)}"
+                    )
                   )
-                  .flatten
-                  .unzip match
-                  case (paths, sections) => paths.toSet -> sections.toSet
 
-              val (rightDestinationPaths, baseSectionsMovingRightToNewFiles) =
-                baseSections
-                  .flatMap(baseSection =>
-                    moveDestinationsReport.moveDestinationsBySources
-                      .get(baseSection)
-                      .map(
-                        _.allOnTheRight
-                          .map(rightSources.pathFor)
-                          .intersect(newPathsOnLeftOrRight)
-                          .map(_ -> baseSection)
-                      )
+                  val rightRenamingDetail = Option.unless(
+                    rightRenamePaths.isEmpty
+                  )(
+                    s"on their branch ${underline(theirBranchHead)} " ++ (if 1 < rightRenamePaths.size
+                                                                          then
+                                                                            s"into files ${rightRenamePaths.map(underline).mkString(", ")}"
+                                                                          else
+                                                                            s"to file ${underline(rightRenamePaths.head)}"
+                    )
                   )
-                  .flatten
-                  .unzip match
-                  case (paths, sections) => paths.toSet -> sections.toSet
 
-              val baseSectionsThatHaveMovedToNewFiles =
-                baseSectionsMovingLeftToNewFiles union baseSectionsMovingRightToNewFiles
+                  val description =
+                    (leftRenamingDetail, rightRenamingDetail) match
+                      case (Some(leftDetailPayload), None) =>
+                        s"File ${underline(path)} was renamed $leftDetailPayload."
+                      case (None, Some(rightDetailPayload)) =>
+                        s"File ${underline(path)} was renamed $rightDetailPayload."
+                      case (
+                            Some(leftDetailPayload),
+                            Some(rightDetailPayload)
+                          ) =>
+                        s"File ${underline(path)} was renamed $leftDetailPayload and $rightDetailPayload."
+                    end match
+                  end description
 
-              val totalContentSize = baseSections.map(_.size).sum
-
-              val movedContentSize =
-                baseSectionsThatHaveMovedToNewFiles.map(_.size).sum
-
-              val enoughContentHasMovedToConsiderAsRenaming =
-                baseSectionsThatHaveMovedToNewFiles.nonEmpty && 2 * movedContentSize >= totalContentSize
+                  FileRenamingReport(
+                    description,
+                    leftRenamePaths,
+                    rightRenamePaths
+                  )
+                }
+              end fileRenamingReport
 
               // We already have the deletion in our branch, so no need
               // to update the index on behalf of this path, whatever happens...
-              if enoughContentHasMovedToConsiderAsRenaming then
+              fileRenamingReport.fold(
+                right(partialResult).logOperation(
+                  s"Coincidental deletion of file ${underline(path)} on our branch ${underline(ourBranchHead)} and on their branch ${underline(theirBranchHead)}."
+                )
+              ) { case FileRenamingReport(description, leftRenamePaths, rightRenamePaths) =>
                 val isARenameVersusDeletionConflict =
                   assume(
-                    leftDestinationPaths.nonEmpty || rightDestinationPaths.nonEmpty
+                    leftRenamePaths.nonEmpty || rightRenamePaths.nonEmpty
                   )
                   // If all the moved content from `path` going into new files
                   // ends up on just one side, then this is a conflict because
                   // it implies an isolated deletion on the other side.
-                  leftDestinationPaths.isEmpty || rightDestinationPaths.isEmpty
+                  leftRenamePaths.isEmpty || rightRenamePaths.isEmpty
                 end isARenameVersusDeletionConflict
-
-                val leftRenamingDetail = Option.unless(
-                  leftDestinationPaths.isEmpty
-                )(
-                  s"on our branch ${underline(ourBranchHead)} " ++ (if 1 < leftDestinationPaths.size
-                                                                    then
-                                                                      s"into files ${leftDestinationPaths.map(underline).mkString(", ")}"
-                                                                    else
-                                                                      s"to file ${underline(leftDestinationPaths.head)}"
-                  )
-                )
-
-                val rightRenamingDetail = Option.unless(
-                  rightDestinationPaths.isEmpty
-                )(
-                  s"on their branch ${underline(theirBranchHead)} " ++ (if 1 < rightDestinationPaths.size
-                                                                        then
-                                                                          s"into files ${rightDestinationPaths.map(underline).mkString(", ")}"
-                                                                        else
-                                                                          s"to file ${underline(rightDestinationPaths.head)}"
-                  )
-                )
-
-                val renamingDescription =
-                  (leftRenamingDetail, rightRenamingDetail) match
-                    case (Some(leftDetailPayload), None) =>
-                      s"File ${underline(path)} was renamed $leftDetailPayload."
-                    case (None, Some(rightDetailPayload)) =>
-                      s"File ${underline(path)} was renamed $rightDetailPayload."
-                    case (Some(leftDetailPayload), Some(rightDetailPayload)) =>
-                      s"File ${underline(path)} was renamed $leftDetailPayload and $rightDetailPayload."
 
                 right(
                   if isARenameVersusDeletionConflict then
                     partialResult.copy(
                       conflictingDeletedPathsByLeftRenamedPath =
-                        partialResult.conflictingDeletedPathsByLeftRenamedPath ++ leftDestinationPaths
+                        partialResult.conflictingDeletedPathsByLeftRenamedPath ++ leftRenamePaths
                           .map(_ -> path),
                       conflictingDeletedPathsByRightRenamedPath =
-                        partialResult.conflictingDeletedPathsByRightRenamedPath ++ rightDestinationPaths
+                        partialResult.conflictingDeletedPathsByRightRenamedPath ++ rightRenamePaths
                           .map(_ -> path)
                     )
                   else partialResult
-                ).logOperation(renamingDescription)
-              else
-                right(partialResult).logOperation(
-                  s"Coincidental deletion of file ${underline(path)} on our branch ${underline(ourBranchHead)} and on their branch ${underline(theirBranchHead)}."
-                )
-              end if
+                ).logOperation(description)
+              }
         }
 
         withLeftRenameVersusRightDeletionConflicts <-
