@@ -215,6 +215,25 @@ object MainTest extends ProseExamples:
     )
   end arthurSaidConflictingThings
 
+  private def arthurTakesOnAPseudonym(path: Path): Unit =
+    os.move(
+      path / arthur,
+      path / movedCasesLimitStrategy,
+      createFolders = true
+    )
+
+    println(os.proc("git", "rm", arthur).call(path).out.text())
+    println(
+      os.proc("git", "add", movedCasesLimitStrategy).call(path).out.text()
+    )
+    println(
+      os.proc("git", "commit", "-m", "'Moving `arthur`.'")
+        .call(path)
+        .out
+        .text()
+    )
+  end arthurTakesOnAPseudonym
+
   private def tysonSaidConflictingThings(path: Path): Unit =
     val tysonSaid = os.read(path / tyson)
 
@@ -238,6 +257,15 @@ object MainTest extends ProseExamples:
   )(flipBranches: Boolean, status: String): Unit =
     assert(
       s"${if flipBranches then "AU" else "UA"}\\s+$path".r
+        .findFirstIn(status)
+        .isDefined
+    )
+
+  private def pathIsMarkedWithConflictingAdditionAndAdditionInTheIndex(
+      path: RelPath
+  )(status: String): Unit =
+    assert(
+      s"AA\\s+$path".r
         .findFirstIn(status)
         .isDefined
     )
@@ -2561,5 +2589,75 @@ class MainTest:
           .unsafeRunSync()
       }
   end conflictingDeletionAndReplacementWithEditedFileMoveOfTheSameFile
+
+  @TestFactory
+  def conflictingConvergingFileMovesFromDifferentFiles(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches, noCommit) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingCasesLimitStrategy(path)
+
+              introducingArthur(path)
+
+              val casesLimitStrategyMovesBranch =
+                "casesLimitStrategyMovesBranch"
+
+              makeNewBranch(path)(casesLimitStrategyMovesBranch)
+
+              moveCasesLimitStrategy(path)
+
+              val commitOfMovedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              arthurTakesOnAPseudonym(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then
+                checkoutBranch(path)(casesLimitStrategyMovesBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then
+                  casesLimitStrategyMovesBranch -> masterBranch
+                else masterBranch               -> casesLimitStrategyMovesBranch
+
+              val exitCode = Main.mergeTheirBranch(
+                ApplicationRequest(
+                  theirBranchHead =
+                    theirBranch.taggedWith[Tags.CommitOrBranchName],
+                  noCommit = noCommit,
+                  minimumAmbiguousMatchSize = 5
+                )
+              )(workingDirectory =
+                optionalSubdirectory.fold(ifEmpty = path)(path / _)
+              )
+
+              val status =
+                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                  path
+                )(
+                  flipBranches,
+                  commitOfMovedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+
+              pathIsMarkedWithConflictingAdditionAndAdditionInTheIndex(
+                movedCasesLimitStrategy
+              )(status)
+            }
+          )
+          .unsafeRunSync()
+      }
+  end conflictingConvergingFileMovesFromDifferentFiles
 
 end MainTest
