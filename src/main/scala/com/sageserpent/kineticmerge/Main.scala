@@ -80,18 +80,6 @@ object Main extends StrictLogging:
     )
   end main
 
-  /** @param commandLineArguments
-    *   Command line arguments as varargs.
-    * @return
-    *   The exit code as a plain integer, suitable for consumption by both Scala
-    *   and Java client code.
-    */
-  @varargs
-  def apply(commandLineArguments: String*): Int = apply(
-    progressRecording = NoProgressRecording,
-    commandLineArguments = commandLineArguments*
-  )
-
   /** @param progressRecording
     * @param commandLineArguments
     *   Command line arguments as varargs.
@@ -400,6 +388,9 @@ object Main extends StrictLogging:
     exitCode
   end mergeTheirBranch
 
+  private def right[Payload](payload: Payload): Workflow[Payload] =
+    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
+
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
       EitherT
@@ -419,11 +410,20 @@ object Main extends StrictLogging:
       workflow.semiflatTap(_ => WriterT.tell(List(Right(message))))
   end extension
 
-  private def right[Payload](payload: Payload): Workflow[Payload] =
-    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
-
   private def underline(anything: Any): Str =
     fansi.Underlined.On(anything.toString)
+
+  /** @param commandLineArguments
+    *   Command line arguments as varargs.
+    * @return
+    *   The exit code as a plain integer, suitable for consumption by both Scala
+    *   and Java client code.
+    */
+  @varargs
+  def apply(commandLineArguments: String*): Int = apply(
+    progressRecording = NoProgressRecording,
+    commandLineArguments = commandLineArguments*
+  )
 
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](
@@ -863,39 +863,6 @@ object Main extends StrictLogging:
             yield path -> BothContributeADeletion(bestAncestorCommitIdContent)
         }
     end mergeInputsOf
-
-    private def blobAndContentFor(
-        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
-    )(
-        path: Path
-    ): Workflow[
-      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
-    ] =
-      IO {
-        val line = os
-          .proc("git", "ls-tree", commitIdOrBranchName, path)
-          .call(workingDirectory)
-          .out
-          .text()
-
-        line.split(whitespaceRun) match
-          case Array(mode, _, blobId, _) =>
-            val content = os
-              .proc("git", "cat-file", "blob", blobId)
-              .call(workingDirectory)
-              .out
-              .text()
-
-            (
-              mode.taggedWith[Tags.Mode],
-              blobId.taggedWith[Tags.BlobId],
-              content.taggedWith[Tags.Content]
-            )
-        end match
-      }.labelExceptionWith(errorMessage =
-        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
-      )
-    end blobAndContentFor
 
     def mergeWithRollback(
         ourBranchHead: String @@ Main.Tags.CommitOrBranchName,
@@ -1514,12 +1481,21 @@ object Main extends StrictLogging:
               end if
 
             case JustOurDeletion(_) =>
-              right(partialResult)
+              fileRenamingReport(path).fold(ifEmpty = right(partialResult))(
+                fileRenamingReport =>
+                  right(partialResult).logOperation(
+                    fileRenamingReport.description
+                  )
+              )
 
             case JustTheirDeletion(_) =>
               for
                 _ <- recordDeletionInIndex(path)
                 _ <- deleteFile(path)
+                _ <- fileRenamingReport(path).fold(ifEmpty = right(()))(
+                  fileRenamingReport =>
+                    right(()).logOperation(fileRenamingReport.description)
+                )
               yield partialResult
 
             case OurModificationAndTheirDeletion(
@@ -1582,6 +1558,10 @@ object Main extends StrictLogging:
                     _ <- prelude
                     _ <- recordDeletionInIndex(path)
                     _ <- deleteFile(path)
+                    _ <- fileRenamingReport(path).fold(ifEmpty = right(()))(
+                      fileRenamingReport =>
+                        right(()).logOperation(fileRenamingReport.description)
+                    )
                   yield partialResult
               else
                 // The modified file would have been present on our branch;
@@ -1664,6 +1644,10 @@ object Main extends StrictLogging:
                     _ <- prelude
                     _ <- recordDeletionInIndex(path)
                     _ <- deleteFile(path)
+                    _ <- fileRenamingReport(path).fold(ifEmpty = right(()))(
+                      fileRenamingReport =>
+                        right(()).logOperation(fileRenamingReport.description)
+                    )
                   yield partialResult
               else
                 for
@@ -1895,7 +1879,7 @@ object Main extends StrictLogging:
             case BothContributeADeletion(_) =>
               // We already have the deletion in our branch, so no need
               // to update the index on behalf of this path, whatever happens...
-              fileRenamingReport(path).fold(
+              fileRenamingReport(path).fold(ifEmpty =
                 right(partialResult).logOperation(
                   s"Coincidental deletion of file ${underline(path)} on our branch ${underline(ourBranchHead)} and on their branch ${underline(theirBranchHead)}."
                 )
@@ -1975,6 +1959,39 @@ object Main extends StrictLogging:
       yield withRightRenameVersusLeftDeletionConflicts.goodForAMergeCommit
       end for
     end indexUpdates
+
+    private def blobAndContentFor(
+        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
+    )(
+        path: Path
+    ): Workflow[
+      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
+    ] =
+      IO {
+        val line = os
+          .proc("git", "ls-tree", commitIdOrBranchName, path)
+          .call(workingDirectory)
+          .out
+          .text()
+
+        line.split(whitespaceRun) match
+          case Array(mode, _, blobId, _) =>
+            val content = os
+              .proc("git", "cat-file", "blob", blobId)
+              .call(workingDirectory)
+              .out
+              .text()
+
+            (
+              mode.taggedWith[Tags.Mode],
+              blobId.taggedWith[Tags.BlobId],
+              content.taggedWith[Tags.Content]
+            )
+        end match
+      }.labelExceptionWith(errorMessage =
+        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
+      )
+    end blobAndContentFor
 
     private def deleteFile(path: Path): Workflow[Unit] = IO {
       os.remove(path): Unit
