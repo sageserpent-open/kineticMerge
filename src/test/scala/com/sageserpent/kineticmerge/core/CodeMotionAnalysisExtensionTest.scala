@@ -1236,13 +1236,15 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           "PrecedingAnchor MigratedEdit SucceedingAnchor",
           "PrecedingAnchor MigratedEdit SucceedingAnchor"
         ),
-        (
-          "Edit capture.",
-          "Edited",
-          "CapturedEdit",
-          "Edited",
-          "CapturedEdit"
-        ),
+        // This has been commented out, because nothing actually moves; in fact
+        // the original path is just deleted.
+//        (
+//          "Edit capture.",
+//          "Edited",
+//          "CapturedEdit",
+//          "Edited",
+//          "CapturedEdit"
+//        ),
         (
           "Edit capture preceded by a pure move.",
           "PrecedingAnchor Edited",
@@ -1292,13 +1294,15 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           "PrecedingAnchor SucceedingAnchor",
           "PrecedingAnchor SucceedingAnchor"
         ),
-        (
-          "Deletion capture.",
-          "Deleted",
-          "",
-          "Deleted",
-          ""
-        ),
+        // This has been commented out, because nothing actually moves; in fact
+        // the original path is just deleted.
+//        (
+//          "Deletion capture.",
+//          "Deleted",
+//          "",
+//          "Deleted",
+//          ""
+//        ),
         (
           "Deletion capture preceded by a pure move.",
           "PrecedingAnchor Deleted",
