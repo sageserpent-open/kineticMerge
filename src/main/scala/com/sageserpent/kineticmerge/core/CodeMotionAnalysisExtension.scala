@@ -226,7 +226,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 // a simple deletion of the file, or may be a renaming on the
                 // left.
 
-                // Merge with fake empty content on the right...
+                // Merge with fake empty content on the left...
 
                 val firstPassMergeResult
                     : FirstPassMergeResult[Section[Element]] =
