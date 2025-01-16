@@ -1196,6 +1196,8 @@ class MainTest:
 
               val commitOfMasterBranch = currentCommit(path)
 
+              val arthurOnTheRecord = os.read(path / arthur)
+
               if flipBranches then checkoutBranch(path)(deletedFileBranch)
               end if
 
@@ -1227,6 +1229,12 @@ class MainTest:
               arthurIsMarkedWithConflictingUpdateAndDeletionInTheIndex(
                 flipBranches,
                 status
+              )
+
+              assert(
+                contentMatches(expected = arthurOnTheRecord)(
+                  os.read(path / arthur)
+                )
               )
 
               if flipBranches then
