@@ -614,9 +614,6 @@ object MainTest extends ProseExamples:
       case Array(postMergeCommit, parents*) => postMergeCommit -> parents
     : @unchecked
 
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
-
   private def verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit(
       path: Path
   )(
@@ -643,19 +640,6 @@ object MainTest extends ProseExamples:
 
     assert(status.isEmpty)
   end verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit
-
-  private def currentCommit(path: Path) =
-    os.proc("git", "log", "-1", "--format=tformat:%H")
-      .call(path)
-      .out
-      .text()
-      .strip
-
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
-
-  private def mergeHeadPath(path: Path) =
-    path / ".git" / "MERGE_HEAD"
 
   private def verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit(
       path: Path
@@ -717,8 +701,24 @@ object MainTest extends ProseExamples:
     currentStatus(path)
   end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
 
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
+  private def currentCommit(path: Path) =
+    os.proc("git", "log", "-1", "--format=tformat:%H")
+      .call(path)
+      .out
+      .text()
+      .strip
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+
   private def mergeHead(path: Path) =
     os.read(mergeHeadPath(path)).strip()
+
+  private def mergeHeadPath(path: Path) =
+    path / ".git" / "MERGE_HEAD"
 
   private def gitRepository(): ImperativeResource[Path] =
     for
@@ -1275,6 +1275,8 @@ class MainTest:
 
               val commitOfMasterBranch = currentCommit(path)
 
+              val arthurOnTheRecord = os.read(path / arthur)
+
               if flipBranches then checkoutBranch(path)(deletedFileBranch)
               end if
 
@@ -1308,8 +1310,11 @@ class MainTest:
                 status
               )
 
-              // TODO: need to tighten the expectations to verify that the
-              // content matches what was committed last on `master`.
+              assert(
+                contentMatches(expected = arthurOnTheRecord)(
+                  os.read(path / arthur)
+                )
+              )
 
               if flipBranches then
                 sandraIsMarkedAsDeletedInTheIndex(status)
