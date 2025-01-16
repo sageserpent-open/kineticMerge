@@ -799,6 +799,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
                 rightContent,
                 expectedMergeContent
               ),
+              // NOTE: when the test case is mirrored, the migrations becomes
+              // captures instead.
               mirrorImage
             ) =>
           println(fansi.Color.Yellow(s"*** $label ***"))
@@ -1383,23 +1385,37 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
             label = "base"
           )
 
-          val leftSources = MappedContentSourcesOfTokens(
-            contentsByPath = Map(
-              renamedPath -> tokens(
-                if mirrorImage then rightOriginalContent else leftRenamedContent
-              ).get
-            ),
-            label = "left"
-          )
-
-          val rightSources = MappedContentSourcesOfTokens(
-            contentsByPath = Map(
-              originalPath -> tokens(
-                if mirrorImage then leftRenamedContent else rightOriginalContent
-              ).get
-            ),
-            label = "right"
-          )
+          val (leftSources, rightSources) =
+            if mirrorImage then
+              (
+                MappedContentSourcesOfTokens(
+                  contentsByPath = Map(
+                    originalPath -> tokens(rightOriginalContent).get
+                  ),
+                  label = "left"
+                ),
+                MappedContentSourcesOfTokens(
+                  contentsByPath = Map(
+                    renamedPath -> tokens(leftRenamedContent).get
+                  ),
+                  label = "right"
+                )
+              )
+            else
+              (
+                MappedContentSourcesOfTokens(
+                  contentsByPath = Map(
+                    renamedPath -> tokens(leftRenamedContent).get
+                  ),
+                  label = "left"
+                ),
+                MappedContentSourcesOfTokens(
+                  contentsByPath = Map(
+                    originalPath -> tokens(rightOriginalContent).get
+                  ),
+                  label = "right"
+                )
+              )
 
           val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
             baseSources = baseSources,
