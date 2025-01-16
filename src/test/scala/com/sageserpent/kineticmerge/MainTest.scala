@@ -557,6 +557,19 @@ object MainTest extends ProseExamples:
     assert(currentStatus(path).isEmpty)
   end verifyTrivialMergeMovesToTheMostAdvancedCommitWithACleanIndex
 
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
+  private def currentCommit(path: Path) =
+    os.proc("git", "log", "-1", "--format=tformat:%H")
+      .call(path)
+      .out
+      .text()
+      .strip
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+
   private def verifyMergeMakesANewCommitWithACleanIndex(path: Path)(
       commitOfOneBranch: String,
       commitOfTheOtherBranch: String,
@@ -700,19 +713,6 @@ object MainTest extends ProseExamples:
 
     currentStatus(path)
   end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
-
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
-
-  private def currentCommit(path: Path) =
-    os.proc("git", "log", "-1", "--format=tformat:%H")
-      .call(path)
-      .out
-      .text()
-      .strip
-
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
 
   private def mergeHead(path: Path) =
     os.read(mergeHeadPath(path)).strip()
@@ -1271,7 +1271,9 @@ class MainTest:
 
               sandraHeadsOffHome(path)
 
-              arthurCorrectsHimself(path)
+              // NOTE: this keeps the *original* content; we need to be sure
+              // that isn't lost in the merge.
+              arthurBecomesAnExpertOnCasesLimitStrategy(path)
 
               val commitOfMasterBranch = currentCommit(path)
 
