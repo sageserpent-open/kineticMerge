@@ -1,6 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
-import com.sageserpent.kineticmerge.core.FirstPassMergeResult.{FileDeletionContext, Recording}
+import com.sageserpent.kineticmerge.core.FirstPassMergeResult.Recording
 import com.sageserpent.kineticmerge.core.merge.MergeAlgebra
 import monocle.syntax.all.*
 
@@ -46,26 +46,10 @@ enum Side:
 end Side
 
 object FirstPassMergeResult:
-  enum FileDeletionContext:
-    case None
-    case Left
-    case Right
-  end FileDeletionContext
-
   opaque type Recording[Element] =
     Vector[[Result[_]] => MergeAlgebra[Result, Element] => Result[
       Element
     ] => Result[Element]]
-
-  extension [Element](recording: Recording[Element])
-    def playback[Result[_]](
-        mergeAlgebra: MergeAlgebra[Result, Element]
-    ): Result[Element] =
-      recording.foldLeft(mergeAlgebra.empty)((partialResult, step) =>
-        step(mergeAlgebra)(partialResult)
-      )
-    end playback
-  end extension
 
   def mergeAlgebra[Element](
       fileDeletionContext: FileDeletionContext
@@ -178,17 +162,28 @@ object FirstPassMergeResult:
           deletedBaseElement: Element,
           deletedRightElement: Element
       ): FirstPassMergeResult[Element] =
+        val inContextOfFileDeletion =
+          fileDeletionContext == FileDeletionContext.Left
+
         result
           .focus(_.recording)
           .modify(
             _.appended(
               [Result[_]] =>
                 (mergeAlgebra: MergeAlgebra[Result, Element]) =>
-                  mergeAlgebra.leftDeletion(
-                    _,
-                    deletedBaseElement,
-                    deletedRightElement
-                )
+                  if inContextOfFileDeletion then
+                    mergeAlgebra.preservation(
+                      _,
+                      deletedBaseElement,
+                      deletedRightElement,
+                      deletedRightElement
+                    )
+                  else
+                    mergeAlgebra.leftDeletion(
+                      _,
+                      deletedBaseElement,
+                      deletedRightElement
+                  )
             )
           )
           .focus(_.speculativeMigrationsBySource)
@@ -196,8 +191,7 @@ object FirstPassMergeResult:
             _ + (deletedBaseElement -> SpeculativeContentMigration
               .LeftEditOrDeletion(
                 opposingRightElement = deletedRightElement,
-                inContextOfFileDeletion =
-                  fileDeletionContext == FileDeletionContext.Left
+                inContextOfFileDeletion
               ))
           )
       end leftDeletion
@@ -207,17 +201,28 @@ object FirstPassMergeResult:
           deletedBaseElement: Element,
           deletedLeftElement: Element
       ): FirstPassMergeResult[Element] =
+        val inContextOfFileDeletion =
+          fileDeletionContext == FileDeletionContext.Right
+
         result
           .focus(_.recording)
           .modify(
             _.appended(
               [Result[_]] =>
                 (mergeAlgebra: MergeAlgebra[Result, Element]) =>
-                  mergeAlgebra.rightDeletion(
-                    _,
-                    deletedBaseElement,
-                    deletedLeftElement
-                )
+                  if inContextOfFileDeletion then
+                    mergeAlgebra.preservation(
+                      _,
+                      deletedBaseElement,
+                      deletedLeftElement,
+                      deletedLeftElement
+                    )
+                  else
+                    mergeAlgebra.rightDeletion(
+                      _,
+                      deletedBaseElement,
+                      deletedLeftElement
+                  )
             )
           )
           .focus(_.speculativeMigrationsBySource)
@@ -225,8 +230,7 @@ object FirstPassMergeResult:
             _ + (deletedBaseElement -> SpeculativeContentMigration
               .RightEditOrDeletion(
                 opposingLeftElement = deletedLeftElement,
-                inContextOfFileDeletion =
-                  fileDeletionContext == FileDeletionContext.Right
+                inContextOfFileDeletion
               ))
           )
       end rightDeletion
@@ -403,4 +407,20 @@ object FirstPassMergeResult:
       end conflict
     end new
   end mergeAlgebra
+
+  extension [Element](recording: Recording[Element])
+    def playback[Result[_]](
+        mergeAlgebra: MergeAlgebra[Result, Element]
+    ): Result[Element] =
+      recording.foldLeft(mergeAlgebra.empty)((partialResult, step) =>
+        step(mergeAlgebra)(partialResult)
+      )
+    end playback
+  end extension
+
+  enum FileDeletionContext:
+    case None
+    case Left
+    case Right
+  end FileDeletionContext
 end FirstPassMergeResult

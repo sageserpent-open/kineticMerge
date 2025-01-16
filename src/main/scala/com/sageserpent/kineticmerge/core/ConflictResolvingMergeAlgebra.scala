@@ -13,6 +13,24 @@ class ConflictResolvingMergeAlgebra[Element](
     resolution: Resolution[Element],
     migratedEditSuppressions: Set[Element]
 ) extends CoreMergeAlgebra[Element](resolution):
+  override def preservation(
+      result: MergeResult[Element],
+      preservedBaseElement: Element,
+      preservedElementOnLeft: Element,
+      preservedElementOnRight: Element
+  ): MergeResult[Element] =
+    if migratedEditSuppressions.contains(preservedElementOnLeft) then
+      super.leftDeletion(result, preservedBaseElement, preservedElementOnRight)
+    else if migratedEditSuppressions.contains(preservedElementOnRight) then
+      super.rightDeletion(result, preservedBaseElement, preservedElementOnLeft)
+    else
+      super.preservation(
+        result,
+        preservedBaseElement,
+        preservedElementOnLeft,
+        preservedElementOnRight
+      )
+
   override def conflict(
       result: MergeResult[Element],
       editedElements: IndexedSeq[Element],
