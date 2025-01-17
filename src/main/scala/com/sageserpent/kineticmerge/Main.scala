@@ -80,6 +80,18 @@ object Main extends StrictLogging:
     )
   end main
 
+  /** @param commandLineArguments
+    *   Command line arguments as varargs.
+    * @return
+    *   The exit code as a plain integer, suitable for consumption by both Scala
+    *   and Java client code.
+    */
+  @varargs
+  def apply(commandLineArguments: String*): Int = apply(
+    progressRecording = NoProgressRecording,
+    commandLineArguments = commandLineArguments*
+  )
+
   /** @param progressRecording
     * @param commandLineArguments
     *   Command line arguments as varargs.
@@ -388,9 +400,6 @@ object Main extends StrictLogging:
     exitCode
   end mergeTheirBranch
 
-  private def right[Payload](payload: Payload): Workflow[Payload] =
-    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
-
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
       EitherT
@@ -410,20 +419,11 @@ object Main extends StrictLogging:
       workflow.semiflatTap(_ => WriterT.tell(List(Right(message))))
   end extension
 
+  private def right[Payload](payload: Payload): Workflow[Payload] =
+    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
+
   private def underline(anything: Any): Str =
     fansi.Underlined.On(anything.toString)
-
-  /** @param commandLineArguments
-    *   Command line arguments as varargs.
-    * @return
-    *   The exit code as a plain integer, suitable for consumption by both Scala
-    *   and Java client code.
-    */
-  @varargs
-  def apply(commandLineArguments: String*): Int = apply(
-    progressRecording = NoProgressRecording,
-    commandLineArguments = commandLineArguments*
-  )
 
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](
@@ -864,6 +864,39 @@ object Main extends StrictLogging:
         }
     end mergeInputsOf
 
+    private def blobAndContentFor(
+        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
+    )(
+        path: Path
+    ): Workflow[
+      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
+    ] =
+      IO {
+        val line = os
+          .proc("git", "ls-tree", commitIdOrBranchName, path)
+          .call(workingDirectory)
+          .out
+          .text()
+
+        line.split(whitespaceRun) match
+          case Array(mode, _, blobId, _) =>
+            val content = os
+              .proc("git", "cat-file", "blob", blobId)
+              .call(workingDirectory)
+              .out
+              .text()
+
+            (
+              mode.taggedWith[Tags.Mode],
+              blobId.taggedWith[Tags.BlobId],
+              content.taggedWith[Tags.Content]
+            )
+        end match
+      }.labelExceptionWith(errorMessage =
+        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
+      )
+    end blobAndContentFor
+
     def mergeWithRollback(
         ourBranchHead: String @@ Main.Tags.CommitOrBranchName,
         theirBranchHead: String @@ Main.Tags.CommitOrBranchName,
@@ -1222,15 +1255,24 @@ object Main extends StrictLogging:
 
       case class AccumulatedMergeState(
           goodForAMergeCommit: Boolean,
-          conflictingDeletedPathsByLeftRenamedPath: Map[Path, Path],
-          conflictingDeletedPathsByRightRenamedPath: Map[Path, Path]
+          deletedPathsByLeftRenamePath: Map[Path, Path],
+          deletedPathsByRightRenamePath: Map[Path, Path],
+          conflictingDeletedPathsByLeftRenamePath: Map[Path, Path],
+          conflictingDeletedPathsByRightRenamePath: Map[Path, Path],
+          conflictingAdditionPathsAndTheirLastMinuteResolutions: Map[
+            Path,
+            Boolean
+          ]
       )
 
       object AccumulatedMergeState:
         def initial: AccumulatedMergeState = AccumulatedMergeState(
           goodForAMergeCommit = true,
-          conflictingDeletedPathsByLeftRenamedPath = Map.empty,
-          conflictingDeletedPathsByRightRenamedPath = Map.empty
+          deletedPathsByLeftRenamePath = Map.empty,
+          deletedPathsByRightRenamePath = Map.empty,
+          conflictingDeletedPathsByLeftRenamePath = Map.empty,
+          conflictingDeletedPathsByRightRenamePath = Map.empty,
+          conflictingAdditionPathsAndTheirLastMinuteResolutions = Map.empty
         )
       end AccumulatedMergeState
 
@@ -1483,7 +1525,16 @@ object Main extends StrictLogging:
             case JustOurDeletion(_) =>
               fileRenamingReport(path).fold(ifEmpty = right(partialResult))(
                 fileRenamingReport =>
-                  right(partialResult).logOperation(
+                  right(
+                    partialResult.copy(
+                      deletedPathsByLeftRenamePath =
+                        partialResult.deletedPathsByLeftRenamePath ++ fileRenamingReport.leftRenamePaths
+                          .map(_ -> path),
+                      deletedPathsByRightRenamePath =
+                        partialResult.deletedPathsByRightRenamePath ++ fileRenamingReport.rightRenamePaths
+                          .map(_ -> path)
+                    )
+                  ).logOperation(
                     fileRenamingReport.description
                   )
               )
@@ -1492,11 +1543,25 @@ object Main extends StrictLogging:
               for
                 _ <- recordDeletionInIndex(path)
                 _ <- deleteFile(path)
-                _ <- fileRenamingReport(path).fold(ifEmpty = right(()))(
-                  fileRenamingReport =>
-                    right(()).logOperation(fileRenamingReport.description)
-                )
-              yield partialResult
+                decoratedPartialResult <- fileRenamingReport(path)
+                  .fold(ifEmpty = right(partialResult)) {
+                    case FileRenamingReport(
+                          description,
+                          leftRenamePaths,
+                          rightRenamePaths
+                        ) =>
+                      right(
+                        partialResult.copy(
+                          deletedPathsByLeftRenamePath =
+                            partialResult.deletedPathsByLeftRenamePath ++ leftRenamePaths
+                              .map(_ -> path),
+                          deletedPathsByRightRenamePath =
+                            partialResult.deletedPathsByRightRenamePath ++ rightRenamePaths
+                              .map(_ -> path)
+                        )
+                      ).logOperation(description)
+                  }
+              yield decoratedPartialResult
 
             case OurModificationAndTheirDeletion(
                   ourModification,
@@ -1558,11 +1623,25 @@ object Main extends StrictLogging:
                     _ <- prelude
                     _ <- recordDeletionInIndex(path)
                     _ <- deleteFile(path)
-                    _ <- fileRenamingReport(path).fold(ifEmpty = right(()))(
-                      fileRenamingReport =>
-                        right(()).logOperation(fileRenamingReport.description)
-                    )
-                  yield partialResult
+                    decoratedPartialResult <- fileRenamingReport(path)
+                      .fold(ifEmpty = right(partialResult)) {
+                        case FileRenamingReport(
+                              description,
+                              leftRenamePaths,
+                              rightRenamePaths
+                            ) =>
+                          right(
+                            partialResult.copy(
+                              deletedPathsByLeftRenamePath =
+                                partialResult.deletedPathsByLeftRenamePath ++ leftRenamePaths
+                                  .map(_ -> path),
+                              deletedPathsByRightRenamePath =
+                                partialResult.deletedPathsByRightRenamePath ++ rightRenamePaths
+                                  .map(_ -> path)
+                            )
+                          ).logOperation(description)
+                      }
+                  yield decoratedPartialResult
               else
                 // The modified file would have been present on our branch;
                 // given that we started with a clean working directory
@@ -1644,11 +1723,25 @@ object Main extends StrictLogging:
                     _ <- prelude
                     _ <- recordDeletionInIndex(path)
                     _ <- deleteFile(path)
-                    _ <- fileRenamingReport(path).fold(ifEmpty = right(()))(
-                      fileRenamingReport =>
-                        right(()).logOperation(fileRenamingReport.description)
-                    )
-                  yield partialResult
+                    decoratedPartialResult <- fileRenamingReport(path)
+                      .fold(ifEmpty = right(partialResult)) {
+                        case FileRenamingReport(
+                              description,
+                              leftRenamePaths,
+                              rightRenamePaths
+                            ) =>
+                          right(
+                            partialResult.copy(
+                              deletedPathsByLeftRenamePath =
+                                partialResult.deletedPathsByLeftRenamePath ++ leftRenamePaths
+                                  .map(_ -> path),
+                              deletedPathsByRightRenamePath =
+                                partialResult.deletedPathsByRightRenamePath ++ rightRenamePaths
+                                  .map(_ -> path)
+                            )
+                          ).logOperation(description)
+                      }
+                  yield decoratedPartialResult
               else
                 for
                   _ <- prelude
@@ -1757,12 +1850,12 @@ object Main extends StrictLogging:
                       path,
                       mergedFileMode,
                       rightBlob
-                    ).logOperation(
-                      s"Conflict - file ${underline(path)} was added on our branch ${underline(
-                          ourBranchHead
-                        )} and added on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
                     )
-                  yield partialResult.copy(goodForAMergeCommit = false)
+                  yield partialResult.copy(
+                    goodForAMergeCommit = false,
+                    conflictingAdditionPathsAndTheirLastMinuteResolutions =
+                      partialResult.conflictingAdditionPathsAndTheirLastMinuteResolutions + (path -> lastMinuteResolution)
+                  )
                   end for
 
             case BothContributeAModification(
@@ -1902,11 +1995,17 @@ object Main extends StrictLogging:
                   right(
                     if isARenameVersusDeletionConflict then
                       partialResult.copy(
-                        conflictingDeletedPathsByLeftRenamedPath =
-                          partialResult.conflictingDeletedPathsByLeftRenamedPath ++ leftRenamePaths
+                        deletedPathsByLeftRenamePath =
+                          partialResult.deletedPathsByLeftRenamePath ++ leftRenamePaths
                             .map(_ -> path),
-                        conflictingDeletedPathsByRightRenamedPath =
-                          partialResult.conflictingDeletedPathsByRightRenamedPath ++ rightRenamePaths
+                        deletedPathsByRightRenamePath =
+                          partialResult.deletedPathsByRightRenamePath ++ rightRenamePaths
+                            .map(_ -> path),
+                        conflictingDeletedPathsByLeftRenamePath =
+                          partialResult.conflictingDeletedPathsByLeftRenamePath ++ leftRenamePaths
+                            .map(_ -> path),
+                        conflictingDeletedPathsByRightRenamePath =
+                          partialResult.conflictingDeletedPathsByRightRenamePath ++ rightRenamePaths
                             .map(_ -> path)
                       )
                     else partialResult
@@ -1914,8 +2013,36 @@ object Main extends StrictLogging:
               }
         }
 
+        _ <-
+          accumulatedMergeState.conflictingAdditionPathsAndTheirLastMinuteResolutions.toSeq
+            .traverse_ { case (path, lastMinuteResolution) =>
+              (
+                accumulatedMergeState.deletedPathsByLeftRenamePath.get(path),
+                accumulatedMergeState.deletedPathsByRightRenamePath.get(path)
+              ) match
+                case (None, None) =>
+                  right(()).logOperation(
+                    s"Conflict - file ${underline(path)} was added on our branch ${underline(ourBranchHead)} and added on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
+                  )
+                case (Some(originalPathRenamedOnTheLeft), None) =>
+                  right(()).logOperation(
+                    s"Conflict - file ${underline(path)} is a rename on our branch ${underline(ourBranchHead)} of ${underline(originalPathRenamedOnTheLeft)} and added on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
+                  )
+                case (None, Some(originalPathRenamedOnTheRight)) =>
+                  right(()).logOperation(
+                    s"Conflict - file ${underline(path)} was added on our branch ${underline(ourBranchHead)} and is a rename on their branch ${underline(theirBranchHead)} of ${underline(originalPathRenamedOnTheRight)}."
+                  )
+                case (
+                      Some(originalPathRenamedOnTheLeft),
+                      Some(originalPathRenamedOnTheRight)
+                    ) =>
+                  right(()).logOperation(
+                    s"Conflict - file ${underline(path)} is a rename on our branch ${underline(ourBranchHead)} of ${underline(originalPathRenamedOnTheLeft)} and is a rename on their branch ${underline(theirBranchHead)} of ${underline(originalPathRenamedOnTheRight)}."
+                  )
+            }
+
         withLeftRenameVersusRightDeletionConflicts <-
-          accumulatedMergeState.conflictingDeletedPathsByLeftRenamedPath.toSeq
+          accumulatedMergeState.conflictingDeletedPathsByLeftRenamePath.toSeq
             .foldM(accumulatedMergeState) {
               case (partialResult, (leftRenamedPath, conflictingDeletedPath)) =>
                 for
@@ -1935,7 +2062,7 @@ object Main extends StrictLogging:
             }
 
         withRightRenameVersusLeftDeletionConflicts <-
-          accumulatedMergeState.conflictingDeletedPathsByRightRenamedPath.toSeq
+          accumulatedMergeState.conflictingDeletedPathsByRightRenamePath.toSeq
             .foldM(withLeftRenameVersusRightDeletionConflicts) {
               case (
                     partialResult,
@@ -1959,39 +2086,6 @@ object Main extends StrictLogging:
       yield withRightRenameVersusLeftDeletionConflicts.goodForAMergeCommit
       end for
     end indexUpdates
-
-    private def blobAndContentFor(
-        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
-    )(
-        path: Path
-    ): Workflow[
-      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
-    ] =
-      IO {
-        val line = os
-          .proc("git", "ls-tree", commitIdOrBranchName, path)
-          .call(workingDirectory)
-          .out
-          .text()
-
-        line.split(whitespaceRun) match
-          case Array(mode, _, blobId, _) =>
-            val content = os
-              .proc("git", "cat-file", "blob", blobId)
-              .call(workingDirectory)
-              .out
-              .text()
-
-            (
-              mode.taggedWith[Tags.Mode],
-              blobId.taggedWith[Tags.BlobId],
-              content.taggedWith[Tags.Content]
-            )
-        end match
-      }.labelExceptionWith(errorMessage =
-        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
-      )
-    end blobAndContentFor
 
     private def deleteFile(path: Path): Workflow[Unit] = IO {
       os.remove(path): Unit
