@@ -1263,7 +1263,39 @@ object Main extends StrictLogging:
             Path,
             Boolean
           ]
-      )
+      ):
+        def reportConflictingAdditions: Workflow[Unit] =
+          conflictingAdditionPathsAndTheirLastMinuteResolutions.toSeq
+            .traverse_ { case (path, lastMinuteResolution) =>
+              (
+                deletedPathsByLeftRenamePath
+                  .get(path)
+                  .orElse(conflictingDeletedPathsByLeftRenamePath.get(path)),
+                deletedPathsByRightRenamePath
+                  .get(path)
+                  .orElse(conflictingDeletedPathsByRightRenamePath.get(path))
+              ) match
+                case (None, None) =>
+                  right(()).logOperation(
+                    s"Conflict - file ${underline(path)} was added on our branch ${underline(ourBranchHead)} and added on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
+                  )
+                case (Some(originalPathRenamedOnTheLeft), None) =>
+                  right(()).logOperation(
+                    s"Conflict - file ${underline(path)} is a rename on our branch ${underline(ourBranchHead)} of ${underline(originalPathRenamedOnTheLeft)} and added on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
+                  )
+                case (None, Some(originalPathRenamedOnTheRight)) =>
+                  right(()).logOperation(
+                    s"Conflict - file ${underline(path)} was added on our branch ${underline(ourBranchHead)} and is a rename on their branch ${underline(theirBranchHead)} of ${underline(originalPathRenamedOnTheRight)}."
+                  )
+                case (
+                      Some(originalPathRenamedOnTheLeft),
+                      Some(originalPathRenamedOnTheRight)
+                    ) =>
+                  right(()).logOperation(
+                    s"Conflict - file ${underline(path)} is a rename on our branch ${underline(ourBranchHead)} of ${underline(originalPathRenamedOnTheLeft)} and is a rename on their branch ${underline(theirBranchHead)} of ${underline(originalPathRenamedOnTheRight)}."
+                  )
+            }
+      end AccumulatedMergeState
 
       object AccumulatedMergeState:
         def initial: AccumulatedMergeState = AccumulatedMergeState(
@@ -1399,6 +1431,26 @@ object Main extends StrictLogging:
         accumulatedMergeState <- mergeInputs.foldM(
           AccumulatedMergeState.initial
         ) { case (partialResult, (path, mergeInput)) =>
+          def captureRenamesOfPathDeletedOnJustOneSide =
+            fileRenamingReport(path)
+              .fold(ifEmpty = right(partialResult)) {
+                case FileRenamingReport(
+                      description,
+                      leftRenamePaths,
+                      rightRenamePaths
+                    ) =>
+                  right(
+                    partialResult.copy(
+                      deletedPathsByLeftRenamePath =
+                        partialResult.deletedPathsByLeftRenamePath ++ leftRenamePaths
+                          .map(_ -> path),
+                      deletedPathsByRightRenamePath =
+                        partialResult.deletedPathsByRightRenamePath ++ rightRenamePaths
+                          .map(_ -> path)
+                    )
+                  ).logOperation(description)
+              }
+
           mergeInput match
             case JustOurModification(ourModification, _) =>
               val FullyMerged(tokens) =
@@ -1522,45 +1574,14 @@ object Main extends StrictLogging:
                 yield partialResult
               end if
 
-            case JustOurDeletion(_) =>
-              fileRenamingReport(path).fold(ifEmpty = right(partialResult))(
-                fileRenamingReport =>
-                  right(
-                    partialResult.copy(
-                      deletedPathsByLeftRenamePath =
-                        partialResult.deletedPathsByLeftRenamePath ++ fileRenamingReport.leftRenamePaths
-                          .map(_ -> path),
-                      deletedPathsByRightRenamePath =
-                        partialResult.deletedPathsByRightRenamePath ++ fileRenamingReport.rightRenamePaths
-                          .map(_ -> path)
-                    )
-                  ).logOperation(
-                    fileRenamingReport.description
-                  )
-              )
+            case JustOurDeletion(_) => captureRenamesOfPathDeletedOnJustOneSide
 
             case JustTheirDeletion(_) =>
               for
                 _ <- recordDeletionInIndex(path)
                 _ <- deleteFile(path)
-                decoratedPartialResult <- fileRenamingReport(path)
-                  .fold(ifEmpty = right(partialResult)) {
-                    case FileRenamingReport(
-                          description,
-                          leftRenamePaths,
-                          rightRenamePaths
-                        ) =>
-                      right(
-                        partialResult.copy(
-                          deletedPathsByLeftRenamePath =
-                            partialResult.deletedPathsByLeftRenamePath ++ leftRenamePaths
-                              .map(_ -> path),
-                          deletedPathsByRightRenamePath =
-                            partialResult.deletedPathsByRightRenamePath ++ rightRenamePaths
-                              .map(_ -> path)
-                        )
-                      ).logOperation(description)
-                  }
+                decoratedPartialResult <-
+                  captureRenamesOfPathDeletedOnJustOneSide
               yield decoratedPartialResult
 
             case OurModificationAndTheirDeletion(
@@ -1623,24 +1644,8 @@ object Main extends StrictLogging:
                     _ <- prelude
                     _ <- recordDeletionInIndex(path)
                     _ <- deleteFile(path)
-                    decoratedPartialResult <- fileRenamingReport(path)
-                      .fold(ifEmpty = right(partialResult)) {
-                        case FileRenamingReport(
-                              description,
-                              leftRenamePaths,
-                              rightRenamePaths
-                            ) =>
-                          right(
-                            partialResult.copy(
-                              deletedPathsByLeftRenamePath =
-                                partialResult.deletedPathsByLeftRenamePath ++ leftRenamePaths
-                                  .map(_ -> path),
-                              deletedPathsByRightRenamePath =
-                                partialResult.deletedPathsByRightRenamePath ++ rightRenamePaths
-                                  .map(_ -> path)
-                            )
-                          ).logOperation(description)
-                      }
+                    decoratedPartialResult <-
+                      captureRenamesOfPathDeletedOnJustOneSide
                   yield decoratedPartialResult
               else
                 // The modified file would have been present on our branch;
@@ -1723,24 +1728,8 @@ object Main extends StrictLogging:
                     _ <- prelude
                     _ <- recordDeletionInIndex(path)
                     _ <- deleteFile(path)
-                    decoratedPartialResult <- fileRenamingReport(path)
-                      .fold(ifEmpty = right(partialResult)) {
-                        case FileRenamingReport(
-                              description,
-                              leftRenamePaths,
-                              rightRenamePaths
-                            ) =>
-                          right(
-                            partialResult.copy(
-                              deletedPathsByLeftRenamePath =
-                                partialResult.deletedPathsByLeftRenamePath ++ leftRenamePaths
-                                  .map(_ -> path),
-                              deletedPathsByRightRenamePath =
-                                partialResult.deletedPathsByRightRenamePath ++ rightRenamePaths
-                                  .map(_ -> path)
-                            )
-                          ).logOperation(description)
-                      }
+                    decoratedPartialResult <-
+                      captureRenamesOfPathDeletedOnJustOneSide
                   yield decoratedPartialResult
               else
                 for
@@ -1995,12 +1984,6 @@ object Main extends StrictLogging:
                   right(
                     if isARenameVersusDeletionConflict then
                       partialResult.copy(
-                        deletedPathsByLeftRenamePath =
-                          partialResult.deletedPathsByLeftRenamePath ++ leftRenamePaths
-                            .map(_ -> path),
-                        deletedPathsByRightRenamePath =
-                          partialResult.deletedPathsByRightRenamePath ++ rightRenamePaths
-                            .map(_ -> path),
                         conflictingDeletedPathsByLeftRenamePath =
                           partialResult.conflictingDeletedPathsByLeftRenamePath ++ leftRenamePaths
                             .map(_ -> path),
@@ -2011,35 +1994,10 @@ object Main extends StrictLogging:
                     else partialResult
                   ).logOperation(description)
               }
+          end match
         }
 
-        _ <-
-          accumulatedMergeState.conflictingAdditionPathsAndTheirLastMinuteResolutions.toSeq
-            .traverse_ { case (path, lastMinuteResolution) =>
-              (
-                accumulatedMergeState.deletedPathsByLeftRenamePath.get(path),
-                accumulatedMergeState.deletedPathsByRightRenamePath.get(path)
-              ) match
-                case (None, None) =>
-                  right(()).logOperation(
-                    s"Conflict - file ${underline(path)} was added on our branch ${underline(ourBranchHead)} and added on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
-                  )
-                case (Some(originalPathRenamedOnTheLeft), None) =>
-                  right(()).logOperation(
-                    s"Conflict - file ${underline(path)} is a rename on our branch ${underline(ourBranchHead)} of ${underline(originalPathRenamedOnTheLeft)} and added on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
-                  )
-                case (None, Some(originalPathRenamedOnTheRight)) =>
-                  right(()).logOperation(
-                    s"Conflict - file ${underline(path)} was added on our branch ${underline(ourBranchHead)} and is a rename on their branch ${underline(theirBranchHead)} of ${underline(originalPathRenamedOnTheRight)}."
-                  )
-                case (
-                      Some(originalPathRenamedOnTheLeft),
-                      Some(originalPathRenamedOnTheRight)
-                    ) =>
-                  right(()).logOperation(
-                    s"Conflict - file ${underline(path)} is a rename on our branch ${underline(ourBranchHead)} of ${underline(originalPathRenamedOnTheLeft)} and is a rename on their branch ${underline(theirBranchHead)} of ${underline(originalPathRenamedOnTheRight)}."
-                  )
-            }
+        _ <- accumulatedMergeState.reportConflictingAdditions
 
         withLeftRenameVersusRightDeletionConflicts <-
           accumulatedMergeState.conflictingDeletedPathsByLeftRenamePath.toSeq
