@@ -622,32 +622,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     }
   end whitespaceOnlyEditing
 
-  private def verifyContent(
-      path: FakePath,
-      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
-  )(
-      expectedTokens: IndexedSeq[Token],
-      equality: (Token, Token) => Boolean = Token.equality
-  ): Unit =
-    println(fansi.Color.Yellow(s"Checking $path...\n"))
-    println(fansi.Color.Yellow("Expected..."))
-    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
-
-    mergeResultsByPath(path) match
-      case FullyMerged(result) =>
-        println(fansi.Color.Yellow("Fully merged result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(result)))
-        assert(result.corresponds(expectedTokens)(equality))
-      case MergedWithConflicts(leftResult, rightResult) =>
-        println(fansi.Color.Red(s"Left result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
-        println(fansi.Color.Red(s"Right result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
-
-        fail("Should have seen a clean merge.")
-    end match
-  end verifyContent
-
   @TestFactory
   def whitespaceOnlyEditingWithCodeMotion(): DynamicTests =
     enum RenamingSide:
@@ -852,38 +826,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           verifyAbsenceOfContent(originalPath, mergeResultsByPath)
       }
   end codeMotionAcrossAFileRename
-
-  private def verifyAbsenceOfContent(
-      path: FakePath,
-      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
-  ): Unit =
-    mergeResultsByPath(path) match
-      case FullyMerged(result) =>
-        assert(
-          result.isEmpty,
-          fansi.Color
-            .Yellow(
-              s"\nShould not have this content at $path...\n"
-            )
-            .render + fansi.Color
-            .Green(
-              reconstituteTextFrom(result)
-            )
-            .render
-        )
-      case MergedWithConflicts(leftResult, rightResult) =>
-        fail(
-          fansi.Color
-            .Yellow(
-              s"\nShould not have this content at $path...\n"
-            )
-            .render + fansi.Color.Red(s"\nLeft result...\n")
-            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
-            + fansi.Color.Red(s"\nRight result...\n").render
-            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
-        )
-    end match
-  end verifyAbsenceOfContent
 
   @TestFactory
   def codeMotionAcrossTwoFilesWhoseContentIsCombinedTogetherToMakeANewReplacementFile()
@@ -1187,6 +1129,32 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )
   end coincidences
 
+  private def verifyContent(
+      path: FakePath,
+      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
+  )(
+      expectedTokens: IndexedSeq[Token],
+      equality: (Token, Token) => Boolean = Token.equality
+  ): Unit =
+    println(fansi.Color.Yellow(s"Checking $path...\n"))
+    println(fansi.Color.Yellow("Expected..."))
+    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
+
+    mergeResultsByPath(path) match
+      case FullyMerged(result) =>
+        println(fansi.Color.Yellow("Fully merged result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(result)))
+        assert(result.corresponds(expectedTokens)(equality))
+      case MergedWithConflicts(leftResult, rightResult) =>
+        println(fansi.Color.Red(s"Left result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+        println(fansi.Color.Red(s"Right result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+        fail("Should have seen a clean merge.")
+    end match
+  end verifyContent
+
   @TestFactory
   def simpleCodeMotionAcrossAFileRenameExamples(): DynamicTests =
     val configuration = Configuration(
@@ -1443,6 +1411,38 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           verifyAbsenceOfContent(originalPath, mergeResultsByPath)
       }
   end simpleCodeMotionAcrossAFileRenameExamples
+
+  private def verifyAbsenceOfContent(
+      path: FakePath,
+      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
+  ): Unit =
+    mergeResultsByPath(path) match
+      case FullyMerged(result) =>
+        assert(
+          result.isEmpty,
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render + fansi.Color
+            .Green(
+              reconstituteTextFrom(result)
+            )
+            .render
+        )
+      case MergedWithConflicts(leftResult, rightResult) =>
+        fail(
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render + fansi.Color.Red(s"\nLeft result...\n")
+            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
+            + fansi.Color.Red(s"\nRight result...\n").render
+            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
+        )
+    end match
+  end verifyAbsenceOfContent
 
   @TestFactory
   def forwardingThroughCodeMotionAcrossAFileRenameExamples(): DynamicTests =
@@ -1769,6 +1769,128 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       )
     }
   end issue126BugReproduction
+
+  @TestFactory
+  def contentIsEmptiedOnOneSide(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val emptyText = ""
+
+      val baseText = "Um, ah, mumble, mumble, erm..."
+
+      val leftText = "Um,\tah, mumble,\nmumble, erm..."
+
+      val rightText = emptyText
+
+      // NOTE: this is in contrast to the situation in
+      // `MainTest.fileIsAbsentOnOneSide`. Here, the emptying of the content on
+      // one side is merged in.
+      val expectedMergeText = emptyText
+
+      val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
+
+      val baseSources = MappedContentSourcesOfTokens(
+        contentsByPath = Map(placeholderPath -> tokens(baseText).get),
+        label = "base"
+      )
+      val leftSources = MappedContentSourcesOfTokens(
+        contentsByPath = Map(
+          placeholderPath -> tokens(
+            if mirrorImage then rightText else leftText
+          ).get
+        ),
+        label = "left"
+      )
+      val rightSources = MappedContentSourcesOfTokens(
+        contentsByPath = Map(
+          placeholderPath -> tokens(
+            if mirrorImage then leftText else rightText
+          ).get
+        ),
+        label = "right"
+      )
+
+      val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+        baseSources = baseSources,
+        leftSources = leftSources,
+        rightSources = rightSources
+      )(configuration): @unchecked
+
+      val (mergeResultsByPath, _) =
+        codeMotionAnalysis.merge
+
+      verifyContent(placeholderPath, mergeResultsByPath)(
+        tokens(expectedMergeText).get
+      )
+    }
+  end contentIsEmptiedOnOneSide
+
+  @TestFactory
+  def fileIsAbsentOnOneSide(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val baseText = "Um, ah, mumble, mumble, erm..."
+
+      val leftText = "Um,\tah, mumble,\nmumble, erm..."
+
+      // NOTE: this is in contrast to the situation in
+      // `MainTest.contentIsEmptiedOnOneSide`. Here, the implied deletion of the
+      // file is ignored for a simple merge; this is motivated by having to
+      // emulate Git's treatment of file deletion-versus-modification conflicts,
+      // where we want the modified file to stay as is in its entirety. What we
+      // see here is a degenerate case of this, where there is no modification
+      // at all on the side opposing the file deletion. This feels hokey, but is
+      // worked around by `Main.InWorkingDirectory.indexUpdates`. Furthermore,
+      // if the loss of the file is due to content moving to one or more other
+      // files, then this *is* reflected as a loss of content in the merge; that
+      // is tested for elsewhere in this suite.
+      val expectedMergeText = leftText
+
+      val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
+
+      val baseSources = MappedContentSourcesOfTokens(
+        contentsByPath = Map(placeholderPath -> tokens(baseText).get),
+        label = "base"
+      )
+      val leftSources = MappedContentSourcesOfTokens(
+        contentsByPath =
+          if mirrorImage then Map.empty
+          else Map(placeholderPath -> tokens(leftText).get),
+        label = "left"
+      )
+      val rightSources = MappedContentSourcesOfTokens(
+        contentsByPath =
+          if mirrorImage then Map(placeholderPath -> tokens(leftText).get)
+          else Map.empty,
+        label = "right"
+      )
+
+      val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+        baseSources = baseSources,
+        leftSources = leftSources,
+        rightSources = rightSources
+      )(configuration): @unchecked
+
+      val (mergeResultsByPath, _) =
+        codeMotionAnalysis.merge
+
+      verifyContent(placeholderPath, mergeResultsByPath)(
+        tokens(expectedMergeText).get
+      )
+    }
+  end fileIsAbsentOnOneSide
 
 end CodeMotionAnalysisExtensionTest
 
