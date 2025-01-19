@@ -1,7 +1,10 @@
 package com.sageserpent.kineticmerge.core
 
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
-import com.sageserpent.kineticmerge.core.MappedContentSourcesOfTokens.{TextPosition, linebreakExtraction}
+import com.sageserpent.kineticmerge.core.MappedContentSourcesOfTokens.{
+  TextPosition,
+  linebreakExtraction
+}
 import com.typesafe.scalalogging.StrictLogging
 import pprint.Tree
 
@@ -49,7 +52,10 @@ trait MappedContentSources[Path, Element]
                   throw new OverlappingSections(path, first, second)
               )
 
-            def gapFilling(gapStart: Int, onePastGapEnd: Int): IndexedSeq[Section[Element]] =
+            def gapFilling(
+                gapStart: Int,
+                onePastGapEnd: Int
+            ): IndexedSeq[Section[Element]] =
               val gapSize = onePastGapEnd - gapStart
 
               val gapContent = contentsByPath(path)
@@ -69,7 +75,7 @@ trait MappedContentSources[Path, Element]
                     gapStart,
                     onePastGapEnd - gapStart
                   )
-                  
+
                   IndexedSeq(fillerSection)
               ) { chunk =>
                 val chunkStartInGapContent =
@@ -104,11 +110,10 @@ trait MappedContentSources[Path, Element]
                 val fillerSections = (prefixSection ++ Iterator(
                   chunkSection
                 ) ++ suffixSection).toIndexedSeq
-                
+
                 fillerSections
               }
             end gapFilling
-
 
             val (onePastLastEndOffset, contiguousSections) =
               sectionsInStartOffsetOrder.foldLeft(
@@ -119,12 +124,15 @@ trait MappedContentSources[Path, Element]
                       // Fill the gap - this may be a leading gap before the
                       // first section or between two sections.
 
-                      val fillerSections = gapFilling(gapStart = onePastLastEndOffset, onePastGapEnd = section.startOffset)
-  
+                      val fillerSections = gapFilling(
+                        gapStart = onePastLastEndOffset,
+                        onePastGapEnd = section.startOffset
+                      )
+
                       logger.debug(
                         s"Filling gap on side: $label at path: $path prior to following section with: ${pprintCustomised(fillerSections)}."
                       )
-                      
+
                       partialResult ++ fillerSections
                     else partialResult)
                   :+ section)
@@ -133,7 +141,10 @@ trait MappedContentSources[Path, Element]
             if content.size > onePastLastEndOffset then
               // Fill out the final gap with new sections to cover the entire
               // content.
-              val fillerSections = gapFilling(gapStart = onePastLastEndOffset, onePastGapEnd = content.size)
+              val fillerSections = gapFilling(
+                gapStart = onePastLastEndOffset,
+                onePastGapEnd = content.size
+              )
 
               logger.debug(
                 s"Filling final gap on side: $label at path: $path with ${pprintCustomised(fillerSections)}."
@@ -217,11 +228,11 @@ object MappedContentSourcesOfTokens:
   private val linebreakExtraction =
     """(?m:.*$(\s+?)^)""".r // Matches a single, possibly empty line; the nested parentheses capture the terminating linebreak sequence. A final line without a terminating linebreak is not matched.
 
-      /** @param line
-        *   One-relative line number within the entire content at some path.
-        * @param characterOffset
-        *   Zero-relative character offset from the start of the line.
-        */
+    /** @param line
+      *   One-relative line number within the entire content at some path.
+      * @param characterOffset
+      *   Zero-relative character offset from the start of the line.
+      */
   case class TextPosition(
       line: Int,
       characterOffset: Int

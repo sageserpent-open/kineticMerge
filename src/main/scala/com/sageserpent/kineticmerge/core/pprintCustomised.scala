@@ -9,6 +9,7 @@ extension (prettyPrinter: PPrinter)
     prettyPrinter.defaultEscapeUnicode,
     prettyPrinter.defaultShowFieldNames
   )
+end extension
 
 val pprintCustomised: PPrinter = pprint.copy(additionalHandlers = {
   case section: Section[?] => section.render
