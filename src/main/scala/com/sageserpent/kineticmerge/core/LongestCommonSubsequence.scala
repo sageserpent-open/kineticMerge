@@ -231,25 +231,10 @@ object LongestCommonSubsequence:
           ): LongestCommonSubsequence[Element] =
             require(_indexOfLeadingSwathe != notYetAdvanced)
 
-            if indexOfLeadingSwathe == onePastBaseIndex then
-              twoLotsOfStorage(storageLotForLeadingSwathe)(
-                indexFor(
-                  _indexOfLeadingSwathe,
-                  onePastBaseIndex,
-                  onePastLeftIndex,
-                  onePastRightIndex
-                )
-              )
-            else if indexOfLeadingSwathe == onePastLeftIndex then
-              twoLotsOfStorage(storageLotForLeadingSwathe)(
-                indexFor(
-                  _indexOfLeadingSwathe,
-                  onePastBaseIndex,
-                  onePastLeftIndex,
-                  onePastRightIndex
-                )
-              )
-            else if indexOfLeadingSwathe == onePastRightIndex then
+            if indexOfLeadingSwathe == onePastBaseIndex
+              || indexOfLeadingSwathe == onePastLeftIndex
+              || indexOfLeadingSwathe == onePastRightIndex
+            then
               twoLotsOfStorage(storageLotForLeadingSwathe)(
                 indexFor(
                   _indexOfLeadingSwathe,
