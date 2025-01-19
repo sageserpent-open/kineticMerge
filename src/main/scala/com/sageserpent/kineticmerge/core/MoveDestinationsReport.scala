@@ -54,10 +54,6 @@ case class MoveDestinationsReport[Element](
 end MoveDestinationsReport
 
 object MoveDestinationsReport:
-  def empty[Element]: MoveDestinationsReport[Element] = MoveDestinationsReport(
-    Map.empty
-  )
-
   def evaluateSpeculativeSourcesAndDestinations[Element](
       speculativeMigrationsBySource: Map[Element, SpeculativeContentMigration[
         Element
