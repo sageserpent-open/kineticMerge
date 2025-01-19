@@ -172,6 +172,14 @@ object FirstPassMergeResult:
               [Result[_]] =>
                 (mergeAlgebra: MergeAlgebra[Result, Element]) =>
                   if inContextOfFileDeletion then
+                    // NOTE: in order to support compatibility with core Git
+                    // merge, when a file is deleted on just one side, we
+                    // pretend that all of its content is left untouched; this
+                    // means that the merge won't treat the deletion of the file
+                    // as being deletion of the content. If the content has
+                    // moved out to other files though, then the suppression
+                    // mechanism in `CodeMotionAnalysis.merge` will remove it
+                    // later on from the final merge result.
                     mergeAlgebra.preservation(
                       _,
                       deletedBaseElement,
@@ -211,6 +219,14 @@ object FirstPassMergeResult:
               [Result[_]] =>
                 (mergeAlgebra: MergeAlgebra[Result, Element]) =>
                   if inContextOfFileDeletion then
+                    // NOTE: in order to support compatibility with core Git
+                    // merge, when a file is deleted on just one side, we
+                    // pretend that all of its content is left untouched; this
+                    // means that the merge won't treat the deletion of the file
+                    // as being deletion of the content. If the content has
+                    // moved out to other files though, then the suppression
+                    // mechanism in `CodeMotionAnalysis.merge` will remove it
+                    // later on from the final merge result.
                     mergeAlgebra.preservation(
                       _,
                       deletedBaseElement,

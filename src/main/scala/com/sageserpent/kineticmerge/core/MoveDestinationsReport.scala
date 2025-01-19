@@ -104,6 +104,11 @@ object MoveDestinationsReport:
                       elementOnTheOppositeSideToTheMoveDestination,
                       true
                     ) =>
+                  // NOTE: this complements how
+                  // `FirstPassMergeResult.mergeAlgebra` deals the deletion of
+                  // an entire file - it doesn't actually delete the content. So
+                  // if content has actually moved elsewhere, then we really do
+                  // want to suppress it in its original location.
                   IndexedSeq(elementOnTheOppositeSideToTheMoveDestination)
                 case SpeculativeContentMigration.Conflict(_, rightContent, _) =>
                   rightContent
@@ -115,6 +120,11 @@ object MoveDestinationsReport:
                       elementOnTheOppositeSideToTheMoveDestination,
                       true
                     ) =>
+                  // NOTE: this complements how
+                  // `FirstPassMergeResult.mergeAlgebra` deals the deletion of
+                  // an entire file - it doesn't actually delete the content. So
+                  // if content has actually moved elsewhere, then we really do
+                  // want to suppress it in its original location.
                   IndexedSeq(elementOnTheOppositeSideToTheMoveDestination)
                 case SpeculativeContentMigration.Conflict(leftContent, _, _) =>
                   leftContent

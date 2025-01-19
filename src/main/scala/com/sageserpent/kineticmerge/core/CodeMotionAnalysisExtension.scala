@@ -3,16 +3,9 @@ package com.sageserpent.kineticmerge.core
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
-import com.sageserpent.kineticmerge.core.FirstPassMergeResult.{
-  FileDeletionContext,
-  Recording
-}
+import com.sageserpent.kineticmerge.core.FirstPassMergeResult.{FileDeletionContext, Recording}
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Sized
-import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{
-  AnchoredMove,
-  MoveEvaluation,
-  OppositeSideAnchor
-}
+import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{AnchoredMove, MoveEvaluation, OppositeSideAnchor}
 import com.sageserpent.kineticmerge.core.merge.of as mergeOf
 import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
@@ -219,12 +212,10 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 // coincident renaming of the file on both sides, or a divergent
                 // rename to different paths on either side, or a conflict
                 // between a deletion of the entire file on one side and its
-                // renaming on the other. There is nothing other than
-                // pass-through to do here, as the matching has already
-                // correlated the base sections with their destinations, and
-                // there is no need to build `SpeculativeContentMigration`
-                // instances as there is nothing on the opposite side of the
-                // migration to worry about.
+                // renaming on the other. Unlike the situation where a file
+                // disappears on just *one* side, there is no need to actually
+                // perform a merge, so there is no merge result made under
+                // `path`.
                 partialMergeResult.recordContentOfFileDeletedOnLeftAndRight(
                   baseSections
                 )
