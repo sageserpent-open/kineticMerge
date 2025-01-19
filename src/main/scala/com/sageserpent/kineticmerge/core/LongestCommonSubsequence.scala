@@ -178,21 +178,56 @@ object LongestCommonSubsequence:
           action: (Swathes, Int, Int, Int) => Unit
       ): LongestCommonSubsequence[Element] =
         object swathes extends Swathes:
-          private val upperBoundOfSwatheSizes =
-            // Just use a single upper bound for all swathes, which means it is
-            // an overestimate for all but the final swathe.
-            1 + (1 + base.size) * (1 + left.size) + (1 + base.size) * (1 + right.size) + (1 + left.size) * (1 + right.size)
+          case class Storage(
+              baseEqualToSwatheIndex: Array[LongestCommonSubsequence[Element]],
+              leftEqualToSwatheIndex: Array[LongestCommonSubsequence[Element]],
+              rightEqualToSwatheIndex: Array[LongestCommonSubsequence[Element]]
+          ):
+            def apply(
+                swatheIndex: Int,
+                onePastBaseIndex: Int,
+                onePastLeftIndex: Int,
+                onePastRightIndex: Int
+            ): LongestCommonSubsequence[Element] =
+              if swatheIndex == onePastLeftIndex then
+                leftEqualToSwatheIndex(
+                  onePastBaseIndex * (1 + right.size) + onePastRightIndex
+                )
+              else if swatheIndex == onePastRightIndex then
+                rightEqualToSwatheIndex(
+                  onePastBaseIndex * (1 + left.size) + onePastLeftIndex
+                )
+              else
+                assume(swatheIndex == onePastBaseIndex)
+                baseEqualToSwatheIndex(
+                  onePastLeftIndex * (1 + right.size) + onePastRightIndex
+                )
+              end if
+            end apply
 
-          private val offsetInStorageEntriesWithAllEqualToSwatheIndex = 0
-
-          private val offsetInStorageEntriesWithLeftEqualToSwatheIndex =
-            offsetInStorageEntriesWithAllEqualToSwatheIndex + 1
-
-          private val offsetInStorageEntriesWithRightEqualToSwatheIndex =
-            offsetInStorageEntriesWithLeftEqualToSwatheIndex + (1 + base.size) * (1 + right.size)
-
-          private val offsetInStorageEntriesWithBaseEqualToSwatheIndex =
-            offsetInStorageEntriesWithRightEqualToSwatheIndex + (1 + base.size) * (1 + left.size)
+            def update(
+                swatheIndex: Int,
+                onePastBaseIndex: Int,
+                onePastLeftIndex: Int,
+                onePastRightIndex: Int,
+                entryToStore: LongestCommonSubsequence[Element]
+            ): Unit =
+              if swatheIndex == onePastLeftIndex then
+                leftEqualToSwatheIndex(
+                  onePastBaseIndex * (1 + right.size) + onePastRightIndex
+                ) = entryToStore
+              else if swatheIndex == onePastRightIndex then
+                rightEqualToSwatheIndex(
+                  onePastBaseIndex * (1 + left.size) + onePastLeftIndex
+                ) = entryToStore
+              else
+                assume(swatheIndex == onePastBaseIndex)
+                baseEqualToSwatheIndex(
+                  onePastLeftIndex * (1 + right.size) + onePastRightIndex
+                ) = entryToStore
+              end if
+            end update
+          end Storage
 
           private val twoLotsOfStorage = Array(newStorage, newStorage)
 
@@ -215,12 +250,10 @@ object LongestCommonSubsequence:
             require(!notYetReachedFinalSwathe)
 
             twoLotsOfStorage(storageLotForLeadingSwathe)(
-              indexFor(
-                _indexOfLeadingSwathe,
-                base.size,
-                left.size,
-                right.size
-              )
+              _indexOfLeadingSwathe,
+              base.size,
+              left.size,
+              right.size
             )
           end topLevelSolution
 
@@ -236,21 +269,17 @@ object LongestCommonSubsequence:
               || indexOfLeadingSwathe == onePastRightIndex
             then
               twoLotsOfStorage(storageLotForLeadingSwathe)(
-                indexFor(
-                  _indexOfLeadingSwathe,
-                  onePastBaseIndex,
-                  onePastLeftIndex,
-                  onePastRightIndex
-                )
+                _indexOfLeadingSwathe,
+                onePastBaseIndex,
+                onePastLeftIndex,
+                onePastRightIndex
               )
             else
               twoLotsOfStorage(storageLotForPrecedingSwathe)(
-                indexFor(
-                  _indexOfLeadingSwathe - 1,
-                  onePastBaseIndex,
-                  onePastLeftIndex,
-                  onePastRightIndex
-                )
+                _indexOfLeadingSwathe - 1,
+                onePastBaseIndex,
+                onePastLeftIndex,
+                onePastRightIndex
               )
             end if
           end consultRelevantSwatheForSolution
@@ -258,29 +287,6 @@ object LongestCommonSubsequence:
           inline private def storageLotForLeadingSwathe =
             _indexOfLeadingSwathe % 2
           end storageLotForLeadingSwathe
-
-          inline private def indexFor(
-              swatheIndex: Int,
-              onePastBaseIndex: Int,
-              onePastLeftIndex: Int,
-              onePastRightIndex: Int
-          ) =
-            val swatheIndexOnBase =
-              swatheIndex == onePastBaseIndex
-            val swatheIndexOnLeft =
-              swatheIndex == onePastLeftIndex
-            val swatheIndexOnRight =
-              swatheIndex == onePastRightIndex
-            if swatheIndexOnBase && swatheIndexOnLeft && swatheIndexOnRight
-            then offsetInStorageEntriesWithAllEqualToSwatheIndex
-            else if swatheIndexOnLeft then
-              offsetInStorageEntriesWithLeftEqualToSwatheIndex + onePastBaseIndex * (1 + right.size) + onePastRightIndex
-            else if swatheIndexOnRight then
-              offsetInStorageEntriesWithRightEqualToSwatheIndex + onePastBaseIndex * (1 + left.size) + onePastLeftIndex
-            else
-              offsetInStorageEntriesWithBaseEqualToSwatheIndex + onePastLeftIndex * (1 + right.size) + onePastRightIndex
-            end if
-          end indexFor
 
           inline private def storageLotForPrecedingSwathe =
             (1 + _indexOfLeadingSwathe) % 2
@@ -297,19 +303,21 @@ object LongestCommonSubsequence:
             require(_indexOfLeadingSwathe != notYetAdvanced)
 
             twoLotsOfStorage(storageLotForLeadingSwathe)(
-              indexFor(
-                _indexOfLeadingSwathe,
-                onePastBaseIndex,
-                onePastLeftIndex,
-                onePastRightIndex
-              )
+              _indexOfLeadingSwathe,
+              onePastBaseIndex,
+              onePastLeftIndex,
+              onePastRightIndex
             ) = longestCommonSubsequence
           end storeSolutionInLeadingSwathe
 
-          inline private def newStorage =
-            Array.ofDim[LongestCommonSubsequence[Element]](
-              upperBoundOfSwatheSizes
-            )
+          inline private def newStorage = Storage(
+            baseEqualToSwatheIndex =
+              Array.ofDim((1 + left.size) * (1 + right.size)),
+            leftEqualToSwatheIndex =
+              Array.ofDim((1 + base.size) * (1 + right.size)),
+            rightEqualToSwatheIndex =
+              Array.ofDim((1 + base.size) * (1 + left.size))
+          )
         end swathes
 
         val haveAdvancedToNextLeadingSwathe = IO {
