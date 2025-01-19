@@ -80,18 +80,6 @@ object Main extends StrictLogging:
     )
   end main
 
-  /** @param commandLineArguments
-    *   Command line arguments as varargs.
-    * @return
-    *   The exit code as a plain integer, suitable for consumption by both Scala
-    *   and Java client code.
-    */
-  @varargs
-  def apply(commandLineArguments: String*): Int = apply(
-    progressRecording = NoProgressRecording,
-    commandLineArguments = commandLineArguments*
-  )
-
   /** @param progressRecording
     * @param commandLineArguments
     *   Command line arguments as varargs.
@@ -399,6 +387,9 @@ object Main extends StrictLogging:
     exitCode
   end mergeTheirBranch
 
+  private def right[Payload](payload: Payload): Workflow[Payload] =
+    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
+
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
       EitherT
@@ -418,11 +409,20 @@ object Main extends StrictLogging:
       workflow.semiflatTap(_ => WriterT.tell(List(Right(message))))
   end extension
 
-  private def right[Payload](payload: Payload): Workflow[Payload] =
-    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
-
   private def underline(anything: Any): Str =
     fansi.Underlined.On(anything.toString)
+
+  /** @param commandLineArguments
+    *   Command line arguments as varargs.
+    * @return
+    *   The exit code as a plain integer, suitable for consumption by both Scala
+    *   and Java client code.
+    */
+  @varargs
+  def apply(commandLineArguments: String*): Int = apply(
+    progressRecording = NoProgressRecording,
+    commandLineArguments = commandLineArguments*
+  )
 
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](
@@ -1263,7 +1263,9 @@ object Main extends StrictLogging:
             Boolean
           ]
       ):
-        def reportConflictingAdditions: Workflow[Unit] =
+        // NOTE: no need to yield an updated `AccumulatedMergeState` with
+        // `goodForAMergeCommit` as false - this is done upstream already.
+        def reportConflictingAdditionsTakingRenamesIntoAccount: Workflow[Unit] =
           conflictingAdditionPathsAndTheirLastMinuteResolutions.toSeq
             .traverse_ { case (path, lastMinuteResolution) =>
               (
@@ -1293,6 +1295,51 @@ object Main extends StrictLogging:
                   right(()).logOperation(
                     s"Conflict - file ${underline(path)} is a rename on our branch ${underline(ourBranchHead)} of ${underline(originalPathRenamedOnTheLeft)} and is a rename on their branch ${underline(theirBranchHead)} of ${underline(originalPathRenamedOnTheRight)}."
                   )
+            }
+
+        def reportLeftRenamesConflictingWithRightDeletions
+            : Workflow[AccumulatedMergeState] =
+          conflictingDeletedPathsByLeftRenamePath.toSeq
+            .foldM(this) {
+              case (partialResult, (leftRenamedPath, conflictingDeletedPath)) =>
+                for
+                  _ <- recordDeletionInIndex(leftRenamedPath)
+                  (mode, blobId, _) <- blobAndContentFor(ourBranchHead)(
+                    leftRenamedPath
+                  )
+                  _ <- recordConflictModificationInIndex(ourStageIndex)(
+                    ourBranchHead,
+                    leftRenamedPath,
+                    mode,
+                    blobId
+                  ).logOperation(
+                    s"Conflict - file ${underline(conflictingDeletedPath)} was renamed on our branch ${underline(ourBranchHead)} to ${underline(leftRenamedPath)} and deleted on their branch ${underline(theirBranchHead)}."
+                  )
+                yield partialResult.copy(goodForAMergeCommit = false)
+            }
+
+        def reportLeftDeletionsConflictingWithRightRenames
+            : Workflow[AccumulatedMergeState] =
+          conflictingDeletedPathsByRightRenamePath.toSeq
+            .foldM(this) {
+              case (
+                    partialResult,
+                    (rightRenamedPath, conflictingDeletedPath)
+                  ) =>
+                for
+                  _ <- recordDeletionInIndex(rightRenamedPath)
+                  (mode, blobId, _) <- blobAndContentFor(theirBranchHead)(
+                    rightRenamedPath
+                  )
+                  _ <- recordConflictModificationInIndex(theirStageIndex)(
+                    theirBranchHead,
+                    rightRenamedPath,
+                    mode,
+                    blobId
+                  ).logOperation(
+                    s"Conflict - file ${underline(conflictingDeletedPath)} was deleted on our branch ${underline(ourBranchHead)} and renamed on their branch ${underline(theirBranchHead)} to ${underline(rightRenamedPath)}."
+                  )
+                yield partialResult.copy(goodForAMergeCommit = false)
             }
       end AccumulatedMergeState
 
@@ -2005,51 +2052,13 @@ object Main extends StrictLogging:
           end match
         }
 
-        _ <- accumulatedMergeState.reportConflictingAdditions
+        _ <-
+          accumulatedMergeState.reportConflictingAdditionsTakingRenamesIntoAccount
 
-        withLeftRenameVersusRightDeletionConflicts <-
-          accumulatedMergeState.conflictingDeletedPathsByLeftRenamePath.toSeq
-            .foldM(accumulatedMergeState) {
-              case (partialResult, (leftRenamedPath, conflictingDeletedPath)) =>
-                for
-                  _ <- recordDeletionInIndex(leftRenamedPath)
-                  (mode, blobId, _) <- blobAndContentFor(ourBranchHead)(
-                    leftRenamedPath
-                  )
-                  _ <- recordConflictModificationInIndex(ourStageIndex)(
-                    ourBranchHead,
-                    leftRenamedPath,
-                    mode,
-                    blobId
-                  ).logOperation(
-                    s"Conflict - file ${underline(conflictingDeletedPath)} was renamed on our branch ${underline(ourBranchHead)} to ${underline(leftRenamedPath)} and deleted on their branch ${underline(theirBranchHead)}."
-                  )
-                yield partialResult.copy(goodForAMergeCommit = false)
-            }
-
-        withRightRenameVersusLeftDeletionConflicts <-
-          accumulatedMergeState.conflictingDeletedPathsByRightRenamePath.toSeq
-            .foldM(withLeftRenameVersusRightDeletionConflicts) {
-              case (
-                    partialResult,
-                    (rightRenamedPath, conflictingDeletedPath)
-                  ) =>
-                for
-                  _ <- recordDeletionInIndex(rightRenamedPath)
-                  (mode, blobId, _) <- blobAndContentFor(theirBranchHead)(
-                    rightRenamedPath
-                  )
-                  _ <- recordConflictModificationInIndex(theirStageIndex)(
-                    theirBranchHead,
-                    rightRenamedPath,
-                    mode,
-                    blobId
-                  ).logOperation(
-                    s"Conflict - file ${underline(conflictingDeletedPath)} was deleted on our branch ${underline(ourBranchHead)} and renamed on their branch ${underline(theirBranchHead)} to ${underline(rightRenamedPath)}."
-                  )
-                yield partialResult.copy(goodForAMergeCommit = false)
-            }
-      yield withRightRenameVersusLeftDeletionConflicts.goodForAMergeCommit
+        withRenameVersusDeletionConflicts <-
+          accumulatedMergeState.reportLeftRenamesConflictingWithRightDeletions
+            .flatMap(_.reportLeftDeletionsConflictingWithRightRenames)
+      yield withRenameVersusDeletionConflicts.goodForAMergeCommit
       end for
     end indexUpdates
 
