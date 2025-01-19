@@ -4,10 +4,7 @@ import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.syntax.all.{catsSyntaxApplyOps, catsSyntaxFlatMapOps}
 import cats.{Eq, Monad}
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
-  CommonSubsequenceSize,
-  Contribution
-}
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{CommonSubsequenceSize, Contribution}
 import monocle.syntax.all.*
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -481,9 +478,8 @@ object LongestCommonSubsequence:
           val solutionsHoldingTheRight = Future {
             if right.size >= indexOfLeadingSwathe then
               // Hold the right index at the maximum for this swathe and
-              // evaluate
-              // all solutions with lesser base and left indices in dependency
-              // order within this swathe...
+              // evaluate all solutions with lesser base and left indices in
+              // dependency order within this swathe...
               if maximumLesserBaseIndex < maximumLesserLeftIndex then
                 traverseInDiagonalStripes(
                   maximumShortIndex = maximumLesserBaseIndex,
