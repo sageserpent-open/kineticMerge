@@ -426,7 +426,7 @@ class CodeMotionAnalysisTest:
       )
       .dynamicTests { testPlan =>
 
-      import testPlan.*
+        import testPlan.*
 
         println(
           s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
@@ -1463,6 +1463,7 @@ object CodeMotionAnalysisTest:
           result == leftElement.content && result == rightElement.content
         )
         result
+  end extension
 
   case class FakeSources(
       override val contentsByPath: Map[Path, IndexedSeq[Element]],

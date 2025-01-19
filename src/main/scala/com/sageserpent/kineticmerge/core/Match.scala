@@ -4,7 +4,7 @@ enum Match[+Element]:
   def isAnAllSidesMatch: Boolean = this match
     case _: AllSides[Element] => true
     case _                    => false
-  
+
   def base: Option[Element] = this match
     case BaseAndLeft(baseElement, _)  => Some(baseElement)
     case BaseAndRight(baseElement, _) => Some(baseElement)

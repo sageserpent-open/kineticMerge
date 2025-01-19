@@ -256,8 +256,7 @@ object Main extends StrictLogging:
             override def terminate(exitState: Either[String, Unit]): Unit =
               throw EarlyTermination(exitState match
                 case Left(_)  => 1.taggedWith[Tags.ExitCode]
-                case Right(_) => 0.taggedWith[Tags.ExitCode]
-              )
+                case Right(_) => 0.taggedWith[Tags.ExitCode])
         )
     }
 
@@ -1371,8 +1370,7 @@ object Main extends StrictLogging:
                                                               then
                                                                 s"into files ${leftRenamePaths.map(underline).mkString(", ")}"
                                                               else
-                                                                s"to file ${underline(leftRenamePaths.head)}"
-            )
+                                                                s"to file ${underline(leftRenamePaths.head)}")
           )
 
           val rightRenamingDetail = Option.unless(
@@ -1382,8 +1380,7 @@ object Main extends StrictLogging:
                                                                   then
                                                                     s"into files ${rightRenamePaths.map(underline).mkString(", ")}"
                                                                   else
-                                                                    s"to file ${underline(rightRenamePaths.head)}"
-            )
+                                                                    s"to file ${underline(rightRenamePaths.head)}")
           )
 
           val description =
