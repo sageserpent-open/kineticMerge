@@ -6,11 +6,7 @@ import com.sageserpent.americium.Trials
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.Configuration
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtension.*
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtensionTest.{
-  FakePath,
-  reconstituteTextFrom,
-  given
-}
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtensionTest.{FakePath, reconstituteTextFrom, given}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.Token.tokens
 import org.junit.jupiter.api.Assertions.fail
@@ -1896,6 +1892,73 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     }
   end fileIsAbsentOnOneSide
 
+  @TestFactory
+  def issue144bugReproduction(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val storyPath: FakePath              = "Story"
+      val episodeOnePath: FakePath         = "Episode One"
+      val episodeTwoPath: FakePath         = "Episode Two"
+      val duplicatedProloguePath: FakePath = "Duplicated Prologue"
+
+      val baseSources = MappedContentSourcesOfTokens(
+        contentsByPath = Map(storyPath -> tokens(baselineStory).get),
+        label = "base"
+      )
+      val leftSources = MappedContentSourcesOfTokens(
+        contentsByPath =
+          if mirrorImage then
+            Map(
+              episodeOnePath         -> tokens(storyEpisodeOne).get,
+              episodeTwoPath         -> tokens(storyEpisodeTwo).get,
+              duplicatedProloguePath -> tokens(duplicatedPrologue).get
+            )
+          else Map(storyPath -> tokens(storyWithSpellingChanged).get),
+        label = "left"
+      )
+      val rightSources = MappedContentSourcesOfTokens(
+        contentsByPath =
+          if mirrorImage then
+            Map(storyPath -> tokens(storyWithSpellingChanged).get)
+          else
+            Map(
+              episodeOnePath         -> tokens(storyEpisodeOne).get,
+              episodeTwoPath         -> tokens(storyEpisodeTwo).get,
+              duplicatedProloguePath -> tokens(duplicatedPrologue).get
+            )
+        ,
+        label = "right"
+      )
+
+      val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+        baseSources = baseSources,
+        leftSources = leftSources,
+        rightSources = rightSources
+      )(configuration): @unchecked
+
+      val (mergeResultsByPath, _) =
+        codeMotionAnalysis.merge
+
+      verifyAbsenceOfContent(storyPath, mergeResultsByPath)
+
+      verifyContent(episodeOnePath, mergeResultsByPath)(
+        tokens(expectedStoryEpisodeOne).get
+      )
+      verifyContent(episodeTwoPath, mergeResultsByPath)(
+        tokens(expectedStoryEpisodeTwo).get
+      )
+      verifyContent(duplicatedProloguePath, mergeResultsByPath)(
+        tokens(expectedDuplicatedPrologue).get
+      )
+    }
+  end issue144bugReproduction
+
 end CodeMotionAnalysisExtensionTest
 
 trait ProseExamples:
@@ -3652,4 +3715,58 @@ trait ProseExamples:
       |It seems everyone wants to pay less tax and expects better council repairs.
       |Fancy meeting you here!
       |""".stripMargin
+
+  protected val storyPrologue: String =
+    """
+      |This is the prologue; it sets the scene for the main plot, and conveys a mood for the entire story.
+      |Usually, a prologue is either sad, or has a sense of adversity - this is because nobody wants to read a story that is happy all the way through, and they certainly don’t want things to start off looking promising and then go downhill.
+      |The viewers in the US will be incensed to see how I have spelt ‘prologue’ - on more than one level!
+      |""".stripMargin
+
+  protected val storyPlot: String =
+    """
+      |Git merge and Kinetic Merge were issued various challenges…
+      |""".stripMargin
+
+  protected val storyEpilogue: String =
+    """
+      |Well, this is the epilogue. Did the story resolve to a happy conclusion, or was it an apocalyptic tale of woe?
+      |Hopefully it’s a happy ending, because this is a demonstration of Kinetic Merge and I want it to go well!
+      |Of course, if Git merge doesn’t fare so well, that’s fine by me - some characters have to suffer in a good morality play.
+      |""".stripMargin
+
+  protected val baselineStory: String =
+    storyPrologue + "\n\n" + storyPlot + "\n\n" + storyEpilogue
+
+  protected val storyPrologueWithSpellingChanged: String =
+    """
+      |This is the prolog; it sets the scene for the main plot, and conveys a mood for the entire story.
+      |Usually, a prolog is either sad, or has a sense of adversity - this is because nobody wants to read a story that is happy all the way through, and they certainly don’t want things to start off looking promising and then go downhill.
+      |The viewers in the US will be delighted to see how I have spelled ‘prolog’ - on more than one level!
+      |""".stripMargin
+
+  protected val storyEpilogueWithSpellingChanged: String =
+    """
+      |Well, this is the epilog. Did the story resolve to a happy conclusion, or was it an apocalyptic tale of woe?
+      |Hopefully it’s a happy ending, because this is a demonstration of Kinetic Merge and I want it to go well!
+      |Of course, if Git merge doesn’t fare so well, that’s fine by me - some characters have to suffer in a good morality play.
+      |""".stripMargin
+
+  protected val storyWithSpellingChanged: String =
+    storyPrologueWithSpellingChanged + "\n\n" + storyPlot + "\n\n" + storyEpilogueWithSpellingChanged
+
+  protected val duplicatedPrologue: String = storyPrologue
+
+  protected val storyEpisodeOne: String = storyPrologue + "\n\n" + storyPlot
+
+  protected val storyEpisodeTwo: String = storyEpilogue
+
+  protected val expectedStoryEpisodeOne: String =
+    storyPrologueWithSpellingChanged + "\n\n" + storyPlot
+
+  protected val expectedStoryEpisodeTwo: String =
+    storyEpilogueWithSpellingChanged
+
+  protected val expectedDuplicatedPrologue: String =
+    storyPrologueWithSpellingChanged
 end ProseExamples
