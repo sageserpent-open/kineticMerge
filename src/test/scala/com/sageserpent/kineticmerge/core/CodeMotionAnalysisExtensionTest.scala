@@ -399,32 +399,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
   end issue42BugReproduction
 
-  private def verifyContent(
-      path: FakePath,
-      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
-  )(
-      expectedTokens: IndexedSeq[Token],
-      equality: (Token, Token) => Boolean = Token.equality
-  ): Unit =
-    println(fansi.Color.Yellow(s"Checking $path...\n"))
-    println(fansi.Color.Yellow("Expected..."))
-    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
-
-    mergeResultsByPath(path) match
-      case FullyMerged(result) =>
-        println(fansi.Color.Yellow("Fully merged result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(result)))
-        assert(result.corresponds(expectedTokens)(equality))
-      case MergedWithConflicts(leftResult, rightResult) =>
-        println(fansi.Color.Red(s"Left result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
-        println(fansi.Color.Red(s"Right result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
-
-        fail("Should have seen a clean merge.")
-    end match
-  end verifyContent
-
   @Test
   def codeMotion(): Unit =
     val configuration = Configuration(
@@ -465,6 +439,32 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       tokens(codeMotionExampleExpectedMerge).get
     )
   end codeMotion
+
+  private def verifyContent(
+      path: FakePath,
+      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
+  )(
+      expectedTokens: IndexedSeq[Token],
+      equality: (Token, Token) => Boolean = Token.equality
+  ): Unit =
+    println(fansi.Color.Yellow(s"Checking $path...\n"))
+    println(fansi.Color.Yellow("Expected..."))
+    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
+
+    mergeResultsByPath(path) match
+      case FullyMerged(result) =>
+        println(fansi.Color.Yellow("Fully merged result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(result)))
+        assert(result.corresponds(expectedTokens)(equality))
+      case MergedWithConflicts(leftResult, rightResult) =>
+        println(fansi.Color.Red(s"Left result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+        println(fansi.Color.Red(s"Right result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+        fail("Should have seen a clean merge.")
+    end match
+  end verifyContent
 
   @TestFactory
   def codeMotionWithSplit(): DynamicTests =
@@ -1902,10 +1902,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )
 
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
-      val storyPath: FakePath              = "Story"
-      val episodeOnePath: FakePath         = "Episode One"
-      val episodeTwoPath: FakePath         = "Episode Two"
-      val duplicatedProloguePath: FakePath = "Duplicated Prologue"
+      val storyPath: FakePath       = "Story"
+      val filmScriptPath: FakePath  = "Film Script"
+      val filmTrailerPath: FakePath = "Film Trailer"
 
       val baseSources = MappedContentSourcesOfTokens(
         contentsByPath = Map(storyPath -> tokens(baselineStory).get),
@@ -1915,9 +1914,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         contentsByPath =
           if mirrorImage then
             Map(
-              episodeOnePath         -> tokens(storyEpisodeOne).get,
-              episodeTwoPath         -> tokens(storyEpisodeTwo).get,
-              duplicatedProloguePath -> tokens(duplicatedPrologue).get
+              filmScriptPath  -> tokens(filmScript).get,
+              filmTrailerPath -> tokens(filmTrailer).get
             )
           else Map(storyPath -> tokens(storyWithSpellingChanged).get),
         label = "left"
@@ -1928,9 +1926,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
             Map(storyPath -> tokens(storyWithSpellingChanged).get)
           else
             Map(
-              episodeOnePath         -> tokens(storyEpisodeOne).get,
-              episodeTwoPath         -> tokens(storyEpisodeTwo).get,
-              duplicatedProloguePath -> tokens(duplicatedPrologue).get
+              filmScriptPath  -> tokens(filmScript).get,
+              filmTrailerPath -> tokens(filmTrailer).get
             )
         ,
         label = "right"
@@ -1947,14 +1944,11 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
       verifyAbsenceOfContent(storyPath, mergeResultsByPath)
 
-      verifyContent(episodeOnePath, mergeResultsByPath)(
-        tokens(expectedStoryEpisodeOne).get
+      verifyContent(filmScriptPath, mergeResultsByPath)(
+        tokens(expectedFilmScript).get
       )
-      verifyContent(episodeTwoPath, mergeResultsByPath)(
-        tokens(expectedStoryEpisodeTwo).get
-      )
-      verifyContent(duplicatedProloguePath, mergeResultsByPath)(
-        tokens(expectedDuplicatedPrologue).get
+      verifyContent(filmTrailerPath, mergeResultsByPath)(
+        tokens(expectedFilmTrailer).get
       )
     }
   end issue144BugReproduction
@@ -3728,15 +3722,8 @@ trait ProseExamples:
       |Git merge and Kinetic Merge were issued various challenges…
       |""".stripMargin
 
-  protected val storyEpilogue: String =
-    """
-      |Well, this is the epilogue. Did the story resolve to a happy conclusion, or was it an apocalyptic tale of woe?
-      |Hopefully it’s a happy ending, because this is a demonstration of Kinetic Merge and I want it to go well!
-      |Of course, if Git merge doesn’t fare so well, that’s fine by me - some characters have to suffer in a good morality play.
-      |""".stripMargin
-
   protected val baselineStory: String =
-    storyPrologue + "\n\n" + storyPlot + "\n\n" + storyEpilogue
+    storyPrologue + "\n\n" + storyPlot
 
   protected val storyPrologueWithSpellingChanged: String =
     """
@@ -3745,28 +3732,16 @@ trait ProseExamples:
       |The viewers in the US will be delighted to see how I have spelled ‘prolog’ - on more than one level!
       |""".stripMargin
 
-  protected val storyEpilogueWithSpellingChanged: String =
-    """
-      |Well, this is the epilog. Did the story resolve to a happy conclusion, or was it an apocalyptic tale of woe?
-      |Hopefully it’s a happy ending, because this is a demonstration of Kinetic Merge and I want it to go well!
-      |Of course, if Git merge doesn’t fare so well, that’s fine by me - some characters have to suffer in a good morality play.
-      |""".stripMargin
-
   protected val storyWithSpellingChanged: String =
-    storyPrologueWithSpellingChanged + "\n\n" + storyPlot + "\n\n" + storyEpilogueWithSpellingChanged
-
-  protected val duplicatedPrologue: String = storyPrologue
-
-  protected val storyEpisodeOne: String = storyPrologue + "\n\n" + storyPlot
-
-  protected val storyEpisodeTwo: String = storyEpilogue
-
-  protected val expectedStoryEpisodeOne: String =
     storyPrologueWithSpellingChanged + "\n\n" + storyPlot
 
-  protected val expectedStoryEpisodeTwo: String =
-    storyEpilogueWithSpellingChanged
+  protected val filmTrailer: String = storyPrologue
 
-  protected val expectedDuplicatedPrologue: String =
+  protected val filmScript: String = storyPrologue + "\n\n" + storyPlot
+
+  protected val expectedFilmScript: String =
+    storyPrologueWithSpellingChanged + "\n\n" + storyPlot
+
+  protected val expectedFilmTrailer: String =
     storyPrologueWithSpellingChanged
 end ProseExamples
