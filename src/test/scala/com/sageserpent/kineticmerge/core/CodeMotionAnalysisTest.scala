@@ -426,7 +426,7 @@ class CodeMotionAnalysisTest:
       )
       .dynamicTests { testPlan =>
 
-        import testPlan.*
+      import testPlan.*
 
         println(
           s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
@@ -808,12 +808,108 @@ class CodeMotionAnalysisTest:
   end anAmbiguousAllSidesMatchSubsumedOnOneSideByALargerAllSidesMatchIsEliminatedCompletely
 
   @Test
+  def competingAmbiguousPairwiseMatchesCanBeEatenIntoByCompetingAmbiguousAllSidesMatches()
+      : Unit =
+    // We have a pairwise match that subsumes a smaller all-sides match; thus
+    // the pairwise match would be eaten into to yield smaller leftover pairwise
+    // matches that would flank the all-sides match.
+
+    // So far, so good, only the pairwise match is ambiguous with another
+    // pairwise match that only intrudes on the all-sides match on one side;
+    // this means the other pairwise match is not eaten into by that all-sides
+    // match. What then happens is that there would be an implied ambiguous
+    // all-sides match that would be subsumed by the second pairwise match; thus
+    // causing that one to be eaten into, and thus additional leftover pairwise
+    // matches ambiguous with the first lot.
+
+    val prefix               = 0 until 10
+    val suffix               = 30 until 40
+    val smallAllSidesContent = 10 until 20
+    val bigAmbiguousBaseAndLeftContent =
+      prefix ++ smallAllSidesContent ++ suffix
+
+    val baseSources = new FakeSources(
+      Map(
+        1 -> bigAmbiguousBaseAndLeftContent
+      ),
+      "base"
+    ) with SourcesContracts[Path, Element]
+
+    val leftSources = new FakeSources(
+      Map(
+        1 -> bigAmbiguousBaseAndLeftContent,
+        2 -> bigAmbiguousBaseAndLeftContent
+      ),
+      "left"
+    ) with SourcesContracts[Path, Element]
+
+    val rightSources = new FakeSources(
+      Map(1 -> smallAllSidesContent),
+      "right"
+    ) with SourcesContracts[Path, Element]
+
+    val configuration = Configuration(
+      minimumMatchSize = 10,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    val Right(
+      analysis: CodeMotionAnalysis[Path, Element]
+    ) =
+      CodeMotionAnalysis.of(
+        baseSources,
+        leftSources,
+        rightSources
+      )(configuration): @unchecked
+    end val
+
+    val matches =
+      (analysis.base.values.flatMap(_.sections) ++ analysis.left.values.flatMap(
+        _.sections
+      ) ++ analysis.right.values.flatMap(_.sections))
+        .map(analysis.matchesFor)
+        .reduce(_ union _)
+
+    // There only be base and left matches and all-sides matches.
+    assert(matches.forall {
+      case _: (Match.BaseAndLeft[Section[Element]] |
+            Match.AllSides[Section[Element]]) =>
+        true
+      case _ => false
+    })
+
+    val (allSidesMatches, baseAndLeftMatches) =
+      matches.partition(_.isAnAllSidesMatch)
+
+    // There should be two all-sides matches.
+    assert(allSidesMatches.size == 2)
+
+    // The contents should be the same; we have ambiguous matches.
+    assert(
+      allSidesMatches.map(_.content) == Set(
+        smallAllSidesContent
+      )
+    )
+
+    // There should be four base and left matches.
+    assert(baseAndLeftMatches.size == 4)
+
+    // We have ambiguous matches of either the prefix or the suffix.
+    assert(
+      baseAndLeftMatches.map(_.content) == Set(prefix, suffix)
+    )
+  end competingAmbiguousPairwiseMatchesCanBeEatenIntoByCompetingAmbiguousAllSidesMatches
+
+  @Test
   def eatenPairwiseMatchesMayBeSuppressedByACompetingAmbiguousPairwiseMatch()
       : Unit =
-    // This is a pathological situation - we have a pairwise match that subsumes
-    // a smaller all-sides match; thus the pairwise match would be eaten into to
-    // yield smaller leftover pairwise matches that would flank the all-sides
-    // match.
+    // This is a pathological situation that extends
+    // `CodeMotionAnalysisTest.competingAmbiguousPairwiseMatchesCanBeEatenIntoByCompetingAmbiguousAllSidesMatches`
+    // - we have a pairwise match that subsumes a smaller all-sides match; thus
+    // the pairwise match would be eaten into to yield smaller leftover pairwise
+    // matches that would flank the all-sides match.
 
     // So far, so good, only the pairwise match is ambiguous with another
     // pairwise match that only intrudes on the all-sides match on one side;
@@ -898,7 +994,7 @@ class CodeMotionAnalysisTest:
     // There should be two ambiguous matches.
     assert(matches.size == 2)
 
-    // The contents should be the same; we have ambiguous matches.
+    // We have ambiguous matches of the same content.
     assert(
       matches.map(_.content) == Set(
         bigAmbiguousBaseAndLeftContent
@@ -985,7 +1081,7 @@ class CodeMotionAnalysisTest:
     // There should be two matches.
     assert(matches.size == 2)
 
-    // The contents should be that of the two all-sides matches
+    // The contents should be that of the two all-sides matches.
     assert(
       matches.map(_.content) == Set(
         bigAllSidesContent,
