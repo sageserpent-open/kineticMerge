@@ -3723,24 +3723,24 @@ trait ProseExamples:
       |""".stripMargin
 
   protected val baselineStory: String =
-    storyPrologue + "\n\n" + storyPlot
+    storyPrologue
 
   protected val storyPrologueWithSpellingChanged: String =
     """
       |This is the prolog; it sets the scene for the main plot, and conveys a mood for the entire story.
-      |Usually, a prolog is either sad, or has a sense of adversity - this is because nobody wants to read a story that is happy all the way through, and they certainly don’t want things to start off looking promising and then go downhill.
-      |The viewers in the US will be delighted to see how I have spelled ‘prolog’ - on more than one level!
+      |Usually, a prologue is either sad, or has a sense of adversity - this is because nobody wants to read a story that is happy all the way through, and they certainly don’t want things to start off looking promising and then go downhill.
+      |The viewers in the US will be incensed to see how I have spelt ‘prologue’ - on more than one level!
       |""".stripMargin
 
   protected val storyWithSpellingChanged: String =
-    storyPrologueWithSpellingChanged + "\n\n" + storyPlot
+    storyPrologueWithSpellingChanged
 
   protected val filmTrailer: String = storyPrologue
 
-  protected val filmScript: String = storyPrologue + "\n\n" + storyPlot
+  protected val filmScript: String = storyPrologue
 
   protected val expectedFilmScript: String =
-    storyPrologueWithSpellingChanged + "\n\n" + storyPlot
+    storyPrologueWithSpellingChanged
 
   protected val expectedFilmTrailer: String =
     storyPrologueWithSpellingChanged
