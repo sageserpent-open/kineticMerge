@@ -4,7 +4,10 @@ import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.syntax.all.{catsSyntaxApplyOps, catsSyntaxFlatMapOps}
 import cats.{Eq, Monad}
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{CommonSubsequenceSize, Contribution}
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
+  CommonSubsequenceSize,
+  Contribution
+}
 import monocle.syntax.all.*
 
 import scala.concurrent.ExecutionContext.Implicits.global
