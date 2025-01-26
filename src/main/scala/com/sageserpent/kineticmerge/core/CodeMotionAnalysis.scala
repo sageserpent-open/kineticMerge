@@ -6,6 +6,7 @@ import cats.instances.seq.*
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction}
+import com.sageserpent
 import com.sageserpent.kineticmerge
 import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording, ProgressRecordingSession, core}
 import com.typesafe.scalalogging.StrictLogging
@@ -733,6 +734,53 @@ object CodeMotionAnalysis extends StrictLogging:
           biteDepth = 0
         )(biteEdges, fragments = Vector.empty)
       end eatIntoSection
+
+      private def fragmentsOf(
+          pairwiseMatchesToBeEaten: MultiDict[PairwiseMatch, Match.AllSides[
+            Section[Element]
+          ]]
+      ): Iterable[PairwiseMatch] =
+        pairwiseMatchesToBeEaten.sets.flatMap[PairwiseMatch] {
+          case (pairwiseMatch, bites) =>
+            val fragmentsFromPairwiseMatch: Seq[PairwiseMatch] =
+              pairwiseMatch match
+                case Match.BaseAndLeft(baseSection, leftSection) =>
+                  (eatIntoSection(baseSources, bites.map(_.baseElement))(
+                    baseSection
+                  ) zip eatIntoSection(
+                    leftSources,
+                    bites.map(_.leftElement)
+                  )(
+                    leftSection
+                  ))
+                    .map(Match.BaseAndLeft.apply)
+
+                case Match.BaseAndRight(baseSection, rightSection) =>
+                  (eatIntoSection(baseSources, bites.map(_.baseElement))(
+                    baseSection
+                  ) zip eatIntoSection(
+                    rightSources,
+                    bites.map(_.rightElement)
+                  )(
+                    rightSection
+                  )).map(Match.BaseAndRight.apply)
+
+                case Match.LeftAndRight(leftSection, rightSection) =>
+                  (eatIntoSection(leftSources, bites.map(_.leftElement))(
+                    leftSection
+                  ) zip eatIntoSection(
+                    rightSources,
+                    bites.map(_.rightElement)
+                  )(
+                    rightSection
+                  )).map(Match.LeftAndRight.apply)
+
+            logger.debug(
+              s"Eating into pairwise match:\n${pprintCustomised(pairwiseMatch)} on behalf of all-sides matches:\n${pprintCustomised(bites)}, resulting in fragments:\n${pprintCustomised(fragmentsFromPairwiseMatch)}."
+            )
+
+            fragmentsFromPairwiseMatch
+        }
 
       case class MatchingResult(
           matchesAndTheirSections: MatchesAndTheirSections,
@@ -1524,54 +1572,12 @@ object CodeMotionAnalysis extends StrictLogging:
           )
         end pairwiseMatchesToBeEaten
 
-        val fragmentsByPairwiseMatch: MultiDict[PairwiseMatch, PairwiseMatch] =
-          pairwiseMatchesToBeEaten.mapSets { (pairwiseMatch, bites) =>
-            val fragmentsFromPairwiseMatch: Seq[PairwiseMatch] =
-              pairwiseMatch match
-                case Match.BaseAndLeft(baseSection, leftSection) =>
-                  (eatIntoSection(baseSources, bites.map(_.baseElement))(
-                    baseSection
-                  ) zip eatIntoSection(
-                    leftSources,
-                    bites.map(_.leftElement)
-                  )(
-                    leftSection
-                  ))
-                    .map(Match.BaseAndLeft.apply)
-
-                case Match.BaseAndRight(baseSection, rightSection) =>
-                  (eatIntoSection(baseSources, bites.map(_.baseElement))(
-                    baseSection
-                  ) zip eatIntoSection(
-                    rightSources,
-                    bites.map(_.rightElement)
-                  )(
-                    rightSection
-                  )).map(Match.BaseAndRight.apply)
-
-                case Match.LeftAndRight(leftSection, rightSection) =>
-                  (eatIntoSection(leftSources, bites.map(_.leftElement))(
-                    leftSection
-                  ) zip eatIntoSection(
-                    rightSources,
-                    bites.map(_.rightElement)
-                  )(
-                    rightSection
-                  )).map(Match.LeftAndRight.apply)
-
-            logger.debug(
-              s"Eating into pairwise match:\n${pprintCustomised(pairwiseMatch)} on behalf of all-sides matches:\n${pprintCustomised(bites)}, resulting in fragments:\n${pprintCustomised(fragmentsFromPairwiseMatch)}."
-            )
-
-            pairwiseMatch -> fragmentsFromPairwiseMatch.toSet
-          }
-
         val paredDownMatchesTakingFragmentationIntoAccount =
           val withoutThePairwiseMatchesThatWereEatenInto = withoutTheseMatches(
-              pairwiseMatchesToBeEaten.keySet
-            )
+            pairwiseMatchesToBeEaten.keySet
+          )
 
-          val fragments = fragmentsByPairwiseMatch.values
+          val fragments = fragmentsOf(pairwiseMatchesToBeEaten)
 
           // NOTE: this isn't being overly defensive - see the test
           // `CodeMotionAnalysisTest.eatenPairwiseMatchesMayBeSuppressedByACompetingOverlappingAllSidesMatch`.
@@ -1600,8 +1606,12 @@ object CodeMotionAnalysis extends StrictLogging:
           )
         end paredDownMatchesTakingFragmentationIntoAccount
 
-        val pairwiseMatchesThatShouldBeEaten = pairwiseMatchesToBeEaten
-          .mapSets((pairwiseMatch, allSidesMatches) =>
+        val pairwiseMatchesThatShouldBeEaten =
+          // NOTE: this is subtle - there are *two* levels of thinning out here:
+          // both directly on the associated bits and indirectly when all the
+          // bites are dropped for a given pairwise match, in which case the
+          // pairwise match is dropped too.
+          pairwiseMatchesToBeEaten.mapSets((pairwiseMatch, allSidesMatches) =>
             pairwiseMatch -> allSidesMatches.filter(
               paredDownMatchesTakingFragmentationIntoAccount.contains
             )
@@ -1621,10 +1631,7 @@ object CodeMotionAnalysis extends StrictLogging:
               pairwiseMatchesThatShouldBeEaten.keySet
             )
 
-          val fragments = fragmentsByPairwiseMatch.filterSets {
-            case (pairwiseMatch, _) =>
-              pairwiseMatchesThatShouldBeEaten.containsKey(pairwiseMatch)
-          }.values
+          val fragments = fragmentsOf(pairwiseMatchesThatShouldBeEaten)
 
           // NOTE: this isn't being overly defensive - see the test
           // `CodeMotionAnalysisTest.eatenPairwiseMatchesMayBeSuppressedByACompetingOverlappingAllSidesMatch`.
