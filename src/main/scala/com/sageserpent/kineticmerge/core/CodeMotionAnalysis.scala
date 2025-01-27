@@ -1372,7 +1372,6 @@ object CodeMotionAnalysis extends StrictLogging:
         ) =
           reconcileMatchesWithExistingState(windowSize)(
             matches = matches,
-            phase = 0,
             allSidesMatchesThatHaveAlreadyBeenAddedToTheState = Set.empty
           )
 
@@ -1514,10 +1513,8 @@ object CodeMotionAnalysis extends StrictLogging:
         else this
       end purgedOfMatchesWithOverlappingSections
 
-      @tailrec
       private def reconcileMatchesWithExistingState(windowSize: Int)(
           matches: Set[GenericMatch],
-          phase: Int,
           allSidesMatchesThatHaveAlreadyBeenAddedToTheState: Set[GenericMatch]
       ): (MatchesAndTheirSections, Set[GenericMatch]) =
         def pairwiseMatchesSubsumingOnBothSides(
@@ -1589,7 +1586,7 @@ object CodeMotionAnalysis extends StrictLogging:
                 withoutThePairwiseMatchesThatWereEatenInto
                   .pareDownOrSuppressCompletely(
                     _,
-                    skipOverlapsOrSubsumedBy = 0 == phase
+                    skipOverlapsOrSubsumedBy = true
                   )
               )
 
@@ -1600,7 +1597,7 @@ object CodeMotionAnalysis extends StrictLogging:
           matches.flatMap(
             withTheParedDownFragments.pareDownOrSuppressCompletely(
               _,
-              skipOverlapsOrSubsumedBy = 0 == phase
+              skipOverlapsOrSubsumedBy = true
             )
           )
         end paredDownMatchesTakingFragmentationIntoAccount
@@ -1638,14 +1635,13 @@ object CodeMotionAnalysis extends StrictLogging:
           // smaller than the original pairwise match that the fragment came
           // from that subsumes the fragment.
           val paredDownFragments =
-            fragments
-              .flatMap(
-                withoutThePairwiseMatchesThatWereEatenInto
-                  .pareDownOrSuppressCompletely(
-                    _,
-                    skipOverlapsOrSubsumedBy = 0 == phase
-                  )
-              )
+            fragments.flatMap(
+              withoutThePairwiseMatchesThatWereEatenInto
+                .pareDownOrSuppressCompletely(
+                  _,
+                  skipOverlapsOrSubsumedBy = true
+                )
+            )
 
           val withTheParedDownFragments = paredDownFragments.foldLeft(
             withoutThePairwiseMatchesThatWereEatenInto
@@ -1662,30 +1658,30 @@ object CodeMotionAnalysis extends StrictLogging:
               withTheParedDownFragments
             )(_ withMatch _)
 
-          val numberOfAttempts = 1 + phase
+          val paredDownMatches =
+            (matches diff allSidesMatchesThatShouldEatIntoAPairwiseMatch)
+              .flatMap(
+                updatedThis.pareDownOrSuppressCompletely(
+                  _,
+                  skipOverlapsOrSubsumedBy = false
+                )
+              )
 
-          logger.debug(
-            s"Stabilization at window size $windowSize has made $numberOfAttempts successful attempt(s) to break down larger pairwise matches into fragments, looking for more..."
-          )
+          val (updatedThisWithoutRedundantPairwiseMatches, usefulMatches) =
+            paredDownMatches
+              .foldLeft(updatedThis)(_ withMatch _)
+              // NOTE: this looks terrible - why add all the matches in
+              // unconditionally beforehand and *then* take out the redundant
+              // pairwise ones? The answer is because the matches being added
+              // are in no particular order - so we would have to add all the
+              // all-sides matches first unconditionally and then vet the
+              // pairwise ones afterwards.
+              .withoutRedundantPairwiseMatchesIn(paredDownMatches)
 
-          // Recurse, using the *original* matches minus those that ate into
-          // larger pairwise matches. This opens up further opportunities for
-          // more all-sides matches that would have been blocked by the outgoing
-          // pairwise matches to have their chance to eat into other pairwise
-          // matches.
-          updatedThis.reconcileMatchesWithExistingState(windowSize)(
-            matches =
-              matches diff allSidesMatchesThatShouldEatIntoAPairwiseMatch,
-            phase = numberOfAttempts,
-            allSidesMatchesThatHaveAlreadyBeenAddedToTheState =
-              allSidesMatchesThatHaveAlreadyBeenAddedToTheState union allSidesMatchesThatShouldEatIntoAPairwiseMatch
-          )
+          updatedThisWithoutRedundantPairwiseMatches -> (allSidesMatchesThatHaveAlreadyBeenAddedToTheState union allSidesMatchesThatShouldEatIntoAPairwiseMatch union usefulMatches)
         else
           val paredDownMatches = matches.flatMap(
-            pareDownOrSuppressCompletely(
-              _,
-              skipOverlapsOrSubsumedBy = 0 == phase
-            )
+            pareDownOrSuppressCompletely(_, skipOverlapsOrSubsumedBy = true)
           )
 
           val (updatedThisWithoutRedundantPairwiseMatches, usefulMatches) =
@@ -1782,9 +1778,9 @@ object CodeMotionAnalysis extends StrictLogging:
 
       private def pareDownOrSuppressCompletely[MatchType <: GenericMatch](
           aMatch: MatchType,
-          // This relies on the helper `sectionsByPotentialMatchKey` already
-          // having vetted the matches' sections, and is only valid for the
-          // initial phase of recursion in `reconcileMatchesWithExistingState`.
+          // This relies on the caller already having vetted the matches'
+          // sections, and is only valid if no additional matches have been
+          // added into the state since then.
           skipOverlapsOrSubsumedBy: Boolean
       ): Option[ParedDownMatch[MatchType]] =
         // NOTE: one thing to watch out is when fragments resulting from
