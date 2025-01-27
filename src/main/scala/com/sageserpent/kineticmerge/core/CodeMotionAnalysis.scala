@@ -6,7 +6,6 @@ import cats.instances.seq.*
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction}
-import com.sageserpent
 import com.sageserpent.kineticmerge
 import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording, ProgressRecordingSession, core}
 import com.typesafe.scalalogging.StrictLogging
@@ -36,7 +35,7 @@ end CodeMotionAnalysis
 
 object CodeMotionAnalysis extends StrictLogging:
   /** Analyse code motion from the sources of {@code base} to both {@code left}
-    * and {@code right} , breaking them into [[File]] and thence [[Section]]
+    * and {@code right}, breaking them into [[File]] and thence [[Section]]
     * instances.
     *
     * Where a section moves from {@code base} , it enters into a match with one
@@ -1608,7 +1607,7 @@ object CodeMotionAnalysis extends StrictLogging:
 
         val pairwiseMatchesThatShouldBeEaten =
           // NOTE: this is subtle - there are *two* levels of thinning out here:
-          // both directly on the associated bits and indirectly when all the
+          // both directly on the associated bites and indirectly when all the
           // bites are dropped for a given pairwise match, in which case the
           // pairwise match is dropped too.
           pairwiseMatchesToBeEaten.mapSets((pairwiseMatch, allSidesMatches) =>
