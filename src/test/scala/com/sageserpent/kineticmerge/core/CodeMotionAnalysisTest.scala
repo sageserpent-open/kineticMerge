@@ -33,18 +33,18 @@ class CodeMotionAnalysisTest:
     end extension
 
     val minimumSizeFractionTrials: Trials[Double] =
-      trialsApi.doubles(0.1, 1)
+      trialsApi.doubles(0, 0.2)
 
     val contentTrials: Trials[Vector[Element]] = trialsApi
       .integers(0, 100)
       .flatMap(textSize =>
         trialsApi
-          .integers(lowerBound = 1, upperBound = 20)
+          .integers(lowerBound = 1, upperBound = 10)
           .lotsOfSize[Vector[Path]](textSize)
       )
 
     val pathTrials: Trials[Path] = trialsApi
-      .integers(1, 1000)
+      .integers(1, 100)
 
     val sourcesTrials: Trials[FakeSources] =
       pathTrials
