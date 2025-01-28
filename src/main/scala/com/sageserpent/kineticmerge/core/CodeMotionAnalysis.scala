@@ -1580,7 +1580,7 @@ object CodeMotionAnalysis extends StrictLogging:
                 )
 
                 fragmentsFromPairwiseMatch
-            }
+            }.toSet
 
           val withoutThePairwiseMatchesThatWereEatenInto = withoutTheseMatches(
             pairwiseMatchesToBeEaten.keySet
