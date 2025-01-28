@@ -7,12 +7,7 @@ import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction}
 import com.sageserpent.kineticmerge
-import com.sageserpent.kineticmerge.{
-  NoProgressRecording,
-  ProgressRecording,
-  ProgressRecordingSession,
-  core
-}
+import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording, ProgressRecordingSession, core}
 import com.typesafe.scalalogging.StrictLogging
 import de.sciss.fingertree.RangedSeq
 import monocle.syntax.all.*
@@ -146,16 +141,16 @@ object CodeMotionAnalysis extends StrictLogging:
       ))
 
     logger.debug(
-      s"Minimum match window size across all files over all sides: $minimumWindowSizeAcrossAllFilesOverAllSides"
+      s"Minimum match window size across all files over all sides: $minimumWindowSizeAcrossAllFilesOverAllSides."
     )
     logger.debug(
-      s"Minimum sure-fire match window size across all files over all sides: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides"
+      s"Minimum sure-fire match window size across all files over all sides: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides."
     )
     logger.debug(
-      s"Maximum match window size across all files over all sides: $maximumPossibleMatchSize"
+      s"Maximum match window size across all files over all sides: $maximumPossibleMatchSize."
     )
     logger.debug(
-      s"File sizes across all files over all sides: $fileSizes"
+      s"File sizes across all files over all sides: $fileSizes."
     )
 
     type GenericMatch = Match[Section[Element]]
@@ -1465,10 +1460,17 @@ object CodeMotionAnalysis extends StrictLogging:
                   leftSection
                 ) || rightOverlapsOrIsSubsumedBy(rightSection)
 
-          val overlapping =
-            sectionsAndTheirMatches.values.filter(overlapsWithSomethingElse)
+          val overlappingMatches =
+            // NOTE: have to convert to a set to remove duplicates.
+            sectionsAndTheirMatches.values
+              .filter(overlapsWithSomethingElse)
+              .toSet
 
-          withoutTheseMatches(overlapping)
+          logger.debug(
+            s"Removing overlapping matches:\n${pprintCustomised(overlappingMatches)}"
+          )
+
+          withoutTheseMatches(overlappingMatches)
         else this
       end purgedOfMatchesWithOverlappingSections
 
@@ -1572,7 +1574,7 @@ object CodeMotionAnalysis extends StrictLogging:
                       )).map(Match.LeftAndRight.apply)
 
                 logger.debug(
-                  s"Eating into pairwise match:\n${pprintCustomised(pairwiseMatch)} on behalf of all-sides matches:\n${pprintCustomised(bites)}, resulting in fragments:\n${pprintCustomised(fragmentsFromPairwiseMatch)}."
+                  s"Eating into pairwise match:\n${pprintCustomised(pairwiseMatch)} on behalf of all-sides matches:\n${pprintCustomised(bites)}, resulting in fragments:\n${pprintCustomised(fragmentsFromPairwiseMatch)}"
                 )
 
                 fragmentsFromPairwiseMatch
