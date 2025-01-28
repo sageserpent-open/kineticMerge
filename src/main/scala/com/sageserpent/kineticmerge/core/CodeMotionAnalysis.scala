@@ -223,19 +223,21 @@ object CodeMotionAnalysis extends StrictLogging:
       // `withAllSmallFryMatches`...
       def withAllMatchesOfAtLeastTheSureFireWindowSize()
           : MatchesAndTheirSections =
-        Using(
-          progressRecording.newSession(
-            label = "Minimum match size considered:",
-            maximumProgress = maximumPossibleMatchSize
-          )(initialProgress = maximumPossibleMatchSize)
-        ) { progressRecordingSession =>
-          withAllMatchesOfAtLeastTheSureFireWindowSize(
-            matchesAndTheirSections = empty,
-            looseExclusiveUpperBoundOnMaximumMatchSize =
-              1 + maximumPossibleMatchSize,
-            progressRecordingSession = progressRecordingSession
-          )
-        }.get
+        if 0 < maximumPossibleMatchSize then
+          Using(
+            progressRecording.newSession(
+              label = "Minimum match size considered:",
+              maximumProgress = maximumPossibleMatchSize
+            )(initialProgress = maximumPossibleMatchSize)
+          ) { progressRecordingSession =>
+            withAllMatchesOfAtLeastTheSureFireWindowSize(
+              matchesAndTheirSections = empty,
+              looseExclusiveUpperBoundOnMaximumMatchSize =
+                1 + maximumPossibleMatchSize,
+              progressRecordingSession = progressRecordingSession
+            )
+          }.get
+        else empty
       end withAllMatchesOfAtLeastTheSureFireWindowSize
 
       @tailrec
