@@ -65,8 +65,10 @@ class CodeMotionAnalysisTest:
     ) and sourcesTrials.map(
       _.copy(label = "right")
     ) and minimumSizeFractionTrials)
-      .withStrategy(_ =>
-        CasesLimitStrategy.timed(Duration.apply(1, TimeUnit.MINUTES))
+      .withStrategy(cycle =>
+        CasesLimitStrategy.timed(
+          Duration.apply(if cycle.isInitial then 1 else 3, TimeUnit.MINUTES)
+        )
       )
       .dynamicTests(
         (
@@ -426,7 +428,7 @@ class CodeMotionAnalysisTest:
       )
       .dynamicTests { testPlan =>
 
-        import testPlan.*
+      import testPlan.*
 
         println(
           s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
