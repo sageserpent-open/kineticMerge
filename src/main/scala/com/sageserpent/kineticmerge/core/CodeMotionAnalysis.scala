@@ -775,7 +775,7 @@ object CodeMotionAnalysis extends StrictLogging:
                   )).map(Match.LeftAndRight.apply)
 
             logger.debug(
-              s"Eating into pairwise match:\n${pprintCustomised(pairwiseMatch)} on behalf of all-sides matches:\n${pprintCustomised(bites)}, resulting in fragments:\n${pprintCustomised(fragmentsFromPairwiseMatch)}."
+              s"Eating into pairwise match:\n${pprintCustomised(pairwiseMatch)} on behalf of all-sides matches:\n${pprintCustomised(bites)}, resulting in fragments:\n${pprintCustomised(fragmentsFromPairwiseMatch)}"
             )
 
             fragmentsFromPairwiseMatch
