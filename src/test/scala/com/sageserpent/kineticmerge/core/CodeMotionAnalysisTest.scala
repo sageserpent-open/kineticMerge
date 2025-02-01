@@ -6,7 +6,7 @@ import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.java.CasesLimitStrategy
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.americium.{Trials, TrialsApi}
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.Configuration
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.{AdmissibleFailure, Configuration}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.{*, given}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import org.junit.jupiter.api.{Order as _, *}
@@ -92,7 +92,7 @@ class CodeMotionAnalysisTest:
               analysis.left matches left
               analysis.right matches right
 
-            case Left(overlappingSections: FakeSources#OverlappingSections) =>
+            case Left(overlappingSections: AdmissibleFailure) =>
               pprintCustomised.pprintln(overlappingSections)
               Trials.reject()
 
@@ -425,292 +425,314 @@ class CodeMotionAnalysisTest:
         else CasesLimitStrategy.counted(1000, 3.0)
       )
       .dynamicTests { testPlan =>
+        import testPlan.*
+        // Scalafmt 3.8.5 will wreck this block of code if it isn't protected by
+        // braces; it seems it doesn't play well with the preceding import
+        // statement.
+        {
+          println(
+            s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
+          )
+          println("Sizes of common to all three sides...")
+          pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
+          println("Sizes of common to base and left...")
+          pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
+          println("Sizes of common to base and right...")
+          pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
+          println("Sizes of common to left and right...")
+          pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
 
-      import testPlan.*
+          val configuration = Configuration(
+            minimumMatchSize = minimumPossibleExpectedMatchSize,
+            thresholdSizeFractionForMatching =
+              minimumSizeFractionForMotionDetection,
+            minimumAmbiguousMatchSize = 0,
+            ambiguousMatchesThreshold = 10
+          )
 
-        println(
-          s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
-        )
-        println("Sizes of common to all three sides...")
-        pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
-        println("Sizes of common to base and left...")
-        pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
-        println("Sizes of common to base and right...")
-        pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
-        println("Sizes of common to left and right...")
-        pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
+          CodeMotionAnalysis.of(
+            baseSources,
+            leftSources,
+            rightSources
+          )(
+            configuration,
+            // NOTE: the test cases can exhibit matches with overlapping
+            // sections
+            // that intrude on the content the test is checking, so rather than
+            // quietly suppressing the matches, we let admissible failures for
+            // overlapping sections occur and reject the test case.
+            suppressMatchesInvolvingOverlappingSections = false
+          ) match
+            case Right(analysis) =>
+              // Check that all matches are consistent with the base sections...
+              analysis.base.values.flatMap(_.sections).foreach { baseSection =>
+                val matches = analysis.matchesFor(baseSection)
 
-        val configuration = Configuration(
-          minimumMatchSize = minimumPossibleExpectedMatchSize,
-          thresholdSizeFractionForMatching =
-            minimumSizeFractionForMotionDetection,
-          minimumAmbiguousMatchSize = 0,
-          ambiguousMatchesThreshold = 10
-        )
+                matches foreach {
+                  case Match.AllSides(
+                        matchedBaseSection,
+                        matchedLeftSection,
+                        matchedRightSection
+                      ) =>
+                    assert(matchedBaseSection == baseSection)
+                    assert(
+                      matchedLeftSection.content == matchedBaseSection.content
+                    )
+                    assert(
+                      matchedRightSection.content == matchedBaseSection.content
+                    )
 
-        CodeMotionAnalysis.of(
-          baseSources,
-          leftSources,
-          rightSources
-        )(
-          configuration,
-          // NOTE: the test cases can exhibit matches with overlapping sections
-          // that intrude on the content the test is checking, so rather than
-          // quietly suppressing the matches, we let admissible failures for
-          // overlapping sections occur and reject the test case.
-          suppressMatchesInvolvingOverlappingSections = false
-        ) match
-          case Right(analysis) =>
-            // Check that all matches are consistent with the base sections...
-            analysis.base.values.flatMap(_.sections).foreach { baseSection =>
-              val matches = analysis.matchesFor(baseSection)
+                  case Match
+                        .BaseAndLeft(matchedBaseSection, matchedLeftSection) =>
+                    assert(matchedBaseSection == baseSection)
+                    assert(
+                      matchedLeftSection.content == matchedBaseSection.content
+                    )
 
-              matches foreach {
-                case Match.AllSides(
-                      matchedBaseSection,
-                      matchedLeftSection,
-                      matchedRightSection
-                    ) =>
-                  assert(matchedBaseSection == baseSection)
-                  assert(
-                    matchedLeftSection.content == matchedBaseSection.content
-                  )
-                  assert(
-                    matchedRightSection.content == matchedBaseSection.content
-                  )
+                  case Match
+                        .BaseAndRight(
+                          matchedBaseSection,
+                          matchedRightSection
+                        ) =>
+                    assert(matchedBaseSection == baseSection)
+                    assert(
+                      matchedRightSection.content == matchedBaseSection.content
+                    )
 
-                case Match
-                      .BaseAndLeft(matchedBaseSection, matchedLeftSection) =>
-                  assert(matchedBaseSection == baseSection)
-                  assert(
-                    matchedLeftSection.content == matchedBaseSection.content
-                  )
-
-                case Match
-                      .BaseAndRight(matchedBaseSection, matchedRightSection) =>
-                  assert(matchedBaseSection == baseSection)
-                  assert(
-                    matchedRightSection.content == matchedBaseSection.content
-                  )
-
-                case Match.LeftAndRight(_, _) =>
-              }
-            }
-
-            // Check that all matches are consistent with the left sections...
-            analysis.left.values.flatMap(_.sections).foreach { leftSection =>
-              val matches = analysis.matchesFor(leftSection)
-
-              matches foreach {
-                case Match.AllSides(
-                      matchedBaseSection,
-                      matchedLeftSection,
-                      matchedRightSection
-                    ) =>
-                  assert(matchedLeftSection == leftSection)
-                  assert(
-                    matchedBaseSection.content == matchedLeftSection.content
-                  )
-                  assert(
-                    matchedRightSection.content == matchedLeftSection.content
-                  )
-
-                case Match
-                      .BaseAndLeft(matchedBaseSection, matchedLeftSection) =>
-                  assert(matchedLeftSection == leftSection)
-                  assert(
-                    matchedBaseSection.content == matchedLeftSection.content
-                  )
-
-                case Match.BaseAndRight(_, _) =>
-
-                case Match
-                      .LeftAndRight(matchedLeftSection, matchedRightSection) =>
-                  assert(matchedLeftSection == leftSection)
-                  assert(
-                    matchedRightSection.content == matchedLeftSection.content
-                  )
-              }
-            }
-
-            // Check that all matches are consistent with the right sections...
-            analysis.right.values.flatMap(_.sections).foreach { rightSection =>
-              val matches = analysis.matchesFor(rightSection)
-
-              matches foreach {
-                case Match.AllSides(
-                      matchedBaseSection,
-                      matchedLeftSection,
-                      matchedRightSection
-                    ) =>
-                  assert(matchedRightSection == rightSection)
-                  assert(
-                    matchedBaseSection.content == matchedRightSection.content
-                  )
-                  assert(
-                    matchedLeftSection.content == matchedRightSection.content
-                  )
-
-                case Match.BaseAndLeft(_, _) =>
-
-                case Match
-                      .BaseAndRight(matchedBaseSection, matchedRightSection) =>
-                  assert(matchedRightSection == rightSection)
-                  assert(
-                    matchedBaseSection.content == matchedRightSection.content
-                  )
-
-                case Match
-                      .LeftAndRight(matchedLeftSection, matchedRightSection) =>
-                  assert(matchedRightSection == rightSection)
-                  assert(
-                    matchedLeftSection.content == matchedRightSection.content
-                  )
-              }
-            }
-
-            // NOTE: the reason that matched sections are concatenated in the
-            // three following blocks is to allow looseness in the expectations
-            // for the generated matches. This test starts off by making content
-            // matches across two or all sides, but it also encourages the
-            // possibility of having subsumption of one content match within
-            // another larger one, either on just one side or two. This means
-            // that the original content matches from the test can't be taken
-            // literally as what we expect to see from the SUT; instead we
-            // expect to encounter the occasional situation where the original
-            // content match is broken down by the SUT into several smaller
-            // matches that abut on each side. However, the sections are ordered
-            // so as to reproduce the source file's content, thus we know that
-            // concatenation will place any such smaller matches together in the
-            // correct order for a correctly functioning SUT, so each of the
-            // original matches should show up in the concatenation.
-
-            // Over all paths on the base side, the concatenations of all
-            // matched sections should contain all the relevant common
-            // sequences...
-            {
-              val survivorsCommonToAllThreeSides =
-                collection.mutable.Set[IndexedSeq[Element]](
-                  commonToAllThreeSides*
-                )
-              val survivorsCommonToBaseAndLeft =
-                collection.mutable.Set[IndexedSeq[Element]](
-                  commonToBaseAndLeft*
-                )
-              val survivorsCommonToBaseAndRight =
-                collection.mutable.Set[IndexedSeq[Element]](
-                  commonToBaseAndRight*
-                )
-
-              analysis.base.foreach { case (_, file) =>
-                val matchedBaseSectionsContent: IndexedSeq[Element] =
-                  file.sections
-                    .filter(analysis.matchesFor(_).nonEmpty)
-                    .map(_.content)
-                    .foldLeft(IndexedSeq.empty)(_ ++ _)
-
-                survivorsCommonToAllThreeSides.filterInPlace(
-                  !matchedBaseSectionsContent.containsSlice(_)
-                )
-                survivorsCommonToBaseAndLeft.filterInPlace(
-                  !matchedBaseSectionsContent.containsSlice(_)
-                )
-                survivorsCommonToBaseAndRight.filterInPlace(
-                  !matchedBaseSectionsContent.containsSlice(_)
-                )
+                  case Match.LeftAndRight(_, _) =>
+                }
               }
 
-              assert(survivorsCommonToAllThreeSides.isEmpty)
-              assert(survivorsCommonToBaseAndLeft.isEmpty)
-              assert(survivorsCommonToBaseAndRight.isEmpty)
-            }
+              // Check that all matches are consistent with the left sections...
+              analysis.left.values.flatMap(_.sections).foreach { leftSection =>
+                val matches = analysis.matchesFor(leftSection)
 
-            // Over all paths on the left side, the concatenations of all
-            // matched sections should contain all the relevant common
-            // sequences...
-            {
-              val survivorsCommonToAllThreeSides =
-                collection.mutable.Set[IndexedSeq[Element]](
-                  commonToAllThreeSides*
-                )
-              val survivorsCommonToBaseAndLeft =
-                collection.mutable.Set[IndexedSeq[Element]](
-                  commonToBaseAndLeft*
-                )
-              val survivorsCommonToLeftAndRight =
-                collection.mutable.Set[IndexedSeq[Element]](
-                  commonToLeftAndRight*
-                )
+                matches foreach {
+                  case Match.AllSides(
+                        matchedBaseSection,
+                        matchedLeftSection,
+                        matchedRightSection
+                      ) =>
+                    assert(matchedLeftSection == leftSection)
+                    assert(
+                      matchedBaseSection.content == matchedLeftSection.content
+                    )
+                    assert(
+                      matchedRightSection.content == matchedLeftSection.content
+                    )
 
-              analysis.left.foreach { case (_, file) =>
-                val matchedLeftSectionsContent: IndexedSeq[Element] =
-                  file.sections
-                    .filter(analysis.matchesFor(_).nonEmpty)
-                    .map(_.content)
-                    .foldLeft(IndexedSeq.empty)(_ ++ _)
+                  case Match
+                        .BaseAndLeft(matchedBaseSection, matchedLeftSection) =>
+                    assert(matchedLeftSection == leftSection)
+                    assert(
+                      matchedBaseSection.content == matchedLeftSection.content
+                    )
 
-                survivorsCommonToAllThreeSides.filterInPlace(
-                  !matchedLeftSectionsContent.containsSlice(_)
-                )
-                survivorsCommonToBaseAndLeft.filterInPlace(
-                  !matchedLeftSectionsContent.containsSlice(_)
-                )
-                survivorsCommonToLeftAndRight.filterInPlace(
-                  !matchedLeftSectionsContent.containsSlice(_)
-                )
+                  case Match.BaseAndRight(_, _) =>
+
+                  case Match
+                        .LeftAndRight(
+                          matchedLeftSection,
+                          matchedRightSection
+                        ) =>
+                    assert(matchedLeftSection == leftSection)
+                    assert(
+                      matchedRightSection.content == matchedLeftSection.content
+                    )
+                }
               }
 
-              assert(survivorsCommonToAllThreeSides.isEmpty)
-              assert(survivorsCommonToBaseAndLeft.isEmpty)
-              assert(survivorsCommonToLeftAndRight.isEmpty)
-            }
+              // Check that all matches are consistent with the right
+              // sections...
+              analysis.right.values.flatMap(_.sections).foreach {
+                rightSection =>
+                  val matches = analysis.matchesFor(rightSection)
 
-            // Over all paths on the right side, the concatenations of all
-            // matched sections should contain all the relevant common
-            // sequences...
-            {
-              val survivorsCommonToAllThreeSides =
-                collection.mutable.Set[IndexedSeq[Element]](
-                  commonToAllThreeSides*
-                )
-              val survivorsCommonToBaseAndRight =
-                collection.mutable.Set[IndexedSeq[Element]](
-                  commonToBaseAndRight*
-                )
-              val survivorsCommonToLeftAndRight =
-                collection.mutable.Set[IndexedSeq[Element]](
-                  commonToLeftAndRight*
-                )
+                  matches foreach {
+                    case Match.AllSides(
+                          matchedBaseSection,
+                          matchedLeftSection,
+                          matchedRightSection
+                        ) =>
+                      assert(matchedRightSection == rightSection)
+                      assert(
+                        matchedBaseSection.content == matchedRightSection.content
+                      )
+                      assert(
+                        matchedLeftSection.content == matchedRightSection.content
+                      )
 
-              analysis.right.foreach { case (_, file) =>
-                val matchedRightSectionsContent: IndexedSeq[Element] =
-                  file.sections
-                    .filter(analysis.matchesFor(_).nonEmpty)
-                    .map(_.content)
-                    .foldLeft(IndexedSeq.empty)(_ ++ _)
+                    case Match.BaseAndLeft(_, _) =>
 
-                survivorsCommonToAllThreeSides.filterInPlace(
-                  !matchedRightSectionsContent.containsSlice(_)
-                )
-                survivorsCommonToBaseAndRight.filterInPlace(
-                  !matchedRightSectionsContent.containsSlice(_)
-                )
-                survivorsCommonToLeftAndRight.filterInPlace(
-                  !matchedRightSectionsContent.containsSlice(_)
-                )
+                    case Match
+                          .BaseAndRight(
+                            matchedBaseSection,
+                            matchedRightSection
+                          ) =>
+                      assert(matchedRightSection == rightSection)
+                      assert(
+                        matchedBaseSection.content == matchedRightSection.content
+                      )
+
+                    case Match
+                          .LeftAndRight(
+                            matchedLeftSection,
+                            matchedRightSection
+                          ) =>
+                      assert(matchedRightSection == rightSection)
+                      assert(
+                        matchedLeftSection.content == matchedRightSection.content
+                      )
+                  }
               }
 
-              assert(survivorsCommonToAllThreeSides.isEmpty)
-              assert(survivorsCommonToBaseAndRight.isEmpty)
-              assert(survivorsCommonToLeftAndRight.isEmpty)
-            }
+              // NOTE: the reason that matched sections are concatenated in the
+              // three following blocks is to allow looseness in the
+              // expectations
+              // for the generated matches. This test starts off by making
+              // content
+              // matches across two or all sides, but it also encourages the
+              // possibility of having subsumption of one content match within
+              // another larger one, either on just one side or two. This means
+              // that the original content matches from the test can't be taken
+              // literally as what we expect to see from the SUT; instead we
+              // expect to encounter the occasional situation where the original
+              // content match is broken down by the SUT into several smaller
+              // matches that abut on each side. However, the sections are
+              // ordered
+              // so as to reproduce the source file's content, thus we know that
+              // concatenation will place any such smaller matches together in
+              // the
+              // correct order for a correctly functioning SUT, so each of the
+              // original matches should show up in the concatenation.
 
-          case Left(overlappingSections: FakeSources#OverlappingSections) =>
-            pprintCustomised.pprintln(overlappingSections)
-            Trials.reject()
+              // Over all paths on the base side, the concatenations of all
+              // matched sections should contain all the relevant common
+              // sequences...
+              {
+                val survivorsCommonToAllThreeSides =
+                  collection.mutable.Set[IndexedSeq[Element]](
+                    commonToAllThreeSides*
+                  )
+                val survivorsCommonToBaseAndLeft =
+                  collection.mutable.Set[IndexedSeq[Element]](
+                    commonToBaseAndLeft*
+                  )
+                val survivorsCommonToBaseAndRight =
+                  collection.mutable.Set[IndexedSeq[Element]](
+                    commonToBaseAndRight*
+                  )
 
-          case Left(unexpectedException) => throw unexpectedException
-        end match
+                analysis.base.foreach { case (_, file) =>
+                  val matchedBaseSectionsContent: IndexedSeq[Element] =
+                    file.sections
+                      .filter(analysis.matchesFor(_).nonEmpty)
+                      .map(_.content)
+                      .foldLeft(IndexedSeq.empty)(_ ++ _)
+
+                  survivorsCommonToAllThreeSides.filterInPlace(
+                    !matchedBaseSectionsContent.containsSlice(_)
+                  )
+                  survivorsCommonToBaseAndLeft.filterInPlace(
+                    !matchedBaseSectionsContent.containsSlice(_)
+                  )
+                  survivorsCommonToBaseAndRight.filterInPlace(
+                    !matchedBaseSectionsContent.containsSlice(_)
+                  )
+                }
+
+                assert(survivorsCommonToAllThreeSides.isEmpty)
+                assert(survivorsCommonToBaseAndLeft.isEmpty)
+                assert(survivorsCommonToBaseAndRight.isEmpty)
+              }
+
+              // Over all paths on the left side, the concatenations of all
+              // matched sections should contain all the relevant common
+              // sequences...
+              {
+                val survivorsCommonToAllThreeSides =
+                  collection.mutable.Set[IndexedSeq[Element]](
+                    commonToAllThreeSides*
+                  )
+                val survivorsCommonToBaseAndLeft =
+                  collection.mutable.Set[IndexedSeq[Element]](
+                    commonToBaseAndLeft*
+                  )
+                val survivorsCommonToLeftAndRight =
+                  collection.mutable.Set[IndexedSeq[Element]](
+                    commonToLeftAndRight*
+                  )
+
+                analysis.left.foreach { case (_, file) =>
+                  val matchedLeftSectionsContent: IndexedSeq[Element] =
+                    file.sections
+                      .filter(analysis.matchesFor(_).nonEmpty)
+                      .map(_.content)
+                      .foldLeft(IndexedSeq.empty)(_ ++ _)
+
+                  survivorsCommonToAllThreeSides.filterInPlace(
+                    !matchedLeftSectionsContent.containsSlice(_)
+                  )
+                  survivorsCommonToBaseAndLeft.filterInPlace(
+                    !matchedLeftSectionsContent.containsSlice(_)
+                  )
+                  survivorsCommonToLeftAndRight.filterInPlace(
+                    !matchedLeftSectionsContent.containsSlice(_)
+                  )
+                }
+
+                assert(survivorsCommonToAllThreeSides.isEmpty)
+                assert(survivorsCommonToBaseAndLeft.isEmpty)
+                assert(survivorsCommonToLeftAndRight.isEmpty)
+              }
+
+              // Over all paths on the right side, the concatenations of all
+              // matched sections should contain all the relevant common
+              // sequences...
+              {
+                val survivorsCommonToAllThreeSides =
+                  collection.mutable.Set[IndexedSeq[Element]](
+                    commonToAllThreeSides*
+                  )
+                val survivorsCommonToBaseAndRight =
+                  collection.mutable.Set[IndexedSeq[Element]](
+                    commonToBaseAndRight*
+                  )
+                val survivorsCommonToLeftAndRight =
+                  collection.mutable.Set[IndexedSeq[Element]](
+                    commonToLeftAndRight*
+                  )
+
+                analysis.right.foreach { case (_, file) =>
+                  val matchedRightSectionsContent: IndexedSeq[Element] =
+                    file.sections
+                      .filter(analysis.matchesFor(_).nonEmpty)
+                      .map(_.content)
+                      .foldLeft(IndexedSeq.empty)(_ ++ _)
+
+                  survivorsCommonToAllThreeSides.filterInPlace(
+                    !matchedRightSectionsContent.containsSlice(_)
+                  )
+                  survivorsCommonToBaseAndRight.filterInPlace(
+                    !matchedRightSectionsContent.containsSlice(_)
+                  )
+                  survivorsCommonToLeftAndRight.filterInPlace(
+                    !matchedRightSectionsContent.containsSlice(_)
+                  )
+                }
+
+                assert(survivorsCommonToAllThreeSides.isEmpty)
+                assert(survivorsCommonToBaseAndRight.isEmpty)
+                assert(survivorsCommonToLeftAndRight.isEmpty)
+              }
+
+            case Left(overlappingSections: AdmissibleFailure) =>
+              pprintCustomised.pprintln(overlappingSections)
+              Trials.reject()
+
+            case Left(unexpectedException) => throw unexpectedException
+          end match
+        }
       }
   end matchingSectionsAreFound
 
@@ -1392,7 +1414,7 @@ class CodeMotionAnalysisTest:
         suppressMatchesInvolvingOverlappingSections = false
       ): @unchecked
 
-    assert(exception.isInstanceOf[FakeSources#OverlappingSections])
+    assert(exception.isInstanceOf[AdmissibleFailure])
 
   end matchesWithOverlappingSections
 

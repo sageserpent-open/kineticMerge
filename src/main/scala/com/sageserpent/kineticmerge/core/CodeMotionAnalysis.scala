@@ -1483,36 +1483,47 @@ object CodeMotionAnalysis extends StrictLogging:
       def purgedOfMatchesWithOverlappingSections(
           enabled: Boolean
       ): MatchesAndTheirSections =
-        if enabled then
-          def overlapsWithSomethingElse(aMatch: GenericMatch): Boolean =
-            // NOTE: the invariant already guarantees that nothing will be
-            // subsumed by the match's sections, so this is only testing for
-            // overlaps.
-            aMatch match
-              case Match.AllSides(baseSection, leftSection, rightSection) =>
-                baseOverlapsOrIsSubsumedBy(baseSection) ||
-                leftOverlapsOrIsSubsumedBy(
-                  leftSection
-                ) || rightOverlapsOrIsSubsumedBy(rightSection)
-              case Match.BaseAndLeft(baseSection, leftSection) =>
-                baseOverlapsOrIsSubsumedBy(baseSection) ||
-                leftOverlapsOrIsSubsumedBy(
-                  leftSection
-                )
-              case Match.BaseAndRight(baseSection, rightSection) =>
-                baseOverlapsOrIsSubsumedBy(
-                  baseSection
-                ) || rightOverlapsOrIsSubsumedBy(rightSection)
-              case Match.LeftAndRight(leftSection, rightSection) =>
-                leftOverlapsOrIsSubsumedBy(
-                  leftSection
-                ) || rightOverlapsOrIsSubsumedBy(rightSection)
+        def overlapsWithSomethingElse(aMatch: GenericMatch): Boolean =
+          // NOTE: the invariant already guarantees that nothing will be
+          // subsumed by the match's sections, so this is only testing for
+          // overlaps.
+          aMatch match
+            case Match.AllSides(baseSection, leftSection, rightSection) =>
+              baseOverlapsOrIsSubsumedBy(baseSection) ||
+              leftOverlapsOrIsSubsumedBy(
+                leftSection
+              ) || rightOverlapsOrIsSubsumedBy(rightSection)
+            case Match.BaseAndLeft(baseSection, leftSection) =>
+              baseOverlapsOrIsSubsumedBy(baseSection) ||
+              leftOverlapsOrIsSubsumedBy(
+                leftSection
+              )
+            case Match.BaseAndRight(baseSection, rightSection) =>
+              baseOverlapsOrIsSubsumedBy(
+                baseSection
+              ) || rightOverlapsOrIsSubsumedBy(rightSection)
+            case Match.LeftAndRight(leftSection, rightSection) =>
+              leftOverlapsOrIsSubsumedBy(
+                leftSection
+              ) || rightOverlapsOrIsSubsumedBy(rightSection)
 
-          val overlapping =
-            sectionsAndTheirMatches.values.filter(overlapsWithSomethingElse)
+        val overlapping =
+          sectionsAndTheirMatches.values.filter(overlapsWithSomethingElse).toSet
 
-          withoutTheseMatches(overlapping)
+        if enabled then withoutTheseMatches(overlapping)
+        else if overlapping.nonEmpty then
+          throw new AdmissibleFailure(
+            s"""Overlapping matches found: ${pprintCustomised(overlapping)}.
+                 |Consider setting the command line parameter `--minimum-match-size` to something larger than ${overlapping.map {
+                case Match.AllSides(baseSection, _, _)  => baseSection.size
+                case Match.BaseAndLeft(baseSection, _)  => baseSection.size
+                case Match.BaseAndRight(baseSection, _) => baseSection.size
+                case Match.LeftAndRight(leftSection, _) => leftSection.size
+              }.min}.
+                 |""".stripMargin
+          )
         else this
+        end if
       end purgedOfMatchesWithOverlappingSections
 
       private def reconcileMatchesWithExistingState(windowSize: Int)(
@@ -2090,23 +2101,22 @@ object CodeMotionAnalysis extends StrictLogging:
       override def hashCode(): Int = cachedHashCode
     end PotentialMatchKey
 
-    val matchesAndTheirSections =
-      val withAllMatchesOfAtLeastTheSureFireWindowSize =
-        MatchesAndTheirSections.withAllMatchesOfAtLeastTheSureFireWindowSize()
-
-      (if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > minimumWindowSizeAcrossAllFilesOverAllSides
-       then
-         withAllMatchesOfAtLeastTheSureFireWindowSize
-           .withAllSmallFryMatches()
-       else withAllMatchesOfAtLeastTheSureFireWindowSize)
-        .purgedOfMatchesWithOverlappingSections(
-          suppressMatchesInvolvingOverlappingSections
-        )
-    end matchesAndTheirSections
-
-    matchesAndTheirSections.checkInvariant()
-
     try
+      val matchesAndTheirSections =
+        val withAllMatchesOfAtLeastTheSureFireWindowSize =
+          MatchesAndTheirSections.withAllMatchesOfAtLeastTheSureFireWindowSize()
+
+        (if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > minimumWindowSizeAcrossAllFilesOverAllSides
+         then
+           withAllMatchesOfAtLeastTheSureFireWindowSize
+             .withAllSmallFryMatches()
+         else withAllMatchesOfAtLeastTheSureFireWindowSize)
+          .purgedOfMatchesWithOverlappingSections(
+            suppressMatchesInvolvingOverlappingSections
+          )
+      end matchesAndTheirSections
+
+      matchesAndTheirSections.checkInvariant()
       val sectionsAndTheirMatches =
         matchesAndTheirSections.sectionsAndTheirMatches
 

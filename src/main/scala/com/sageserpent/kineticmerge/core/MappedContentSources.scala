@@ -1,10 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
-import com.sageserpent.kineticmerge.core.MappedContentSourcesOfTokens.{
-  TextPosition,
-  linebreakExtraction
-}
+import com.sageserpent.kineticmerge.core.MappedContentSourcesOfTokens.{TextPosition, linebreakExtraction}
 import com.typesafe.scalalogging.StrictLogging
 import pprint.Tree
 
@@ -49,7 +45,16 @@ trait MappedContentSources[Path, Element]
                     first.onePastEndOffset < second.onePastEndOffset,
                     s"Subsumed section ${pprintCustomised(second)} is subsumed by section: ${pprintCustomised(first)}."
                   )
-                  throw new OverlappingSections(path, first, second)
+
+                  val overlap = section(path)(
+                    startOffset = second.startOffset,
+                    size = first.onePastEndOffset - second.startOffset
+                  )
+                  
+                  throw new RuntimeException:
+                    s"""Overlapping section detected on side: $label at path: $path, $first (content: ${first.content}) 
+                       |overlaps with start of section: $second (content: ${second.content}), overlap content: ${overlap.content}. 
+                       |Consider setting the command line parameter `--minimum-match-size` to something larger than ${first.size min second.size}.""".stripMargin
               )
 
             def gapFilling(
@@ -205,23 +210,6 @@ trait MappedContentSources[Path, Element]
     override def content: IndexedSeq[Element] =
       contentsByPath(path).slice(startOffset, onePastEndOffset)
   end SectionImplementation
-
-  class OverlappingSections(
-      path: Path,
-      first: Section[Element],
-      second: Section[Element]
-  ) extends AdmissibleFailure({
-        val overlap = section(path)(
-          startOffset = second.startOffset,
-          size = first.onePastEndOffset - second.startOffset
-        )
-
-        s"""Overlapping section detected on side: $label at path: $path, $first (content: ${first.content}) 
-       |overlaps with start of section: $second (content: ${second.content}), overlap content: ${overlap.content}. 
-       |Consider setting the command line parameter `--minimum-match-size` to something larger than ${first.size min second.size}.""".stripMargin
-      }):
-
-  end OverlappingSections
 end MappedContentSources
 
 object MappedContentSourcesOfTokens:
