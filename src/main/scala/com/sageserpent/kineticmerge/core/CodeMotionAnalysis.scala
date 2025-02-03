@@ -1683,13 +1683,8 @@ object CodeMotionAnalysis extends StrictLogging:
           // match.
           val (allSidesMatchesThatShouldEatIntoAPairwiseMatch: Set[
             GenericMatch
-          ]) = pairwiseMatchesThatShouldBeEaten
-            .map((pairwiseMatch, triple) => pairwiseMatch -> triple._1)
-            .sets
-            .values
-            .reduce(
-              _ union _
-            ): @unchecked
+          ]) =
+            pairwiseMatchesThatShouldBeEaten.values.map(_._1).toSet: @unchecked
 
           val withoutThePairwiseMatchesThatWereEatenInto =
             withoutTheseMatches(
