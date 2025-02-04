@@ -600,57 +600,49 @@ object CodeMotionAnalysis extends StrictLogging:
         )
       end maximumSizeOfCoalescedSections
 
+      enum BiteEdge:
+        case Start(startOffsetRelativeToMeal: Int)
+        case End(onePastEndOffsetRelativeToMeal: Int)
+      end BiteEdge
+
+      def sortedBiteEdgesFrom(bites: collection.Set[BiteEdge]): Seq[BiteEdge] =
+        bites.toSeq.sortWith {
+          case (
+                BiteEdge.Start(startOffset),
+                BiteEdge.End(onePastEndOffset)
+              ) =>
+            // Bites should have positive width, so that way a start comes
+            // strictly before the end of its bite.
+            startOffset < onePastEndOffset
+          case (
+                BiteEdge.End(onePastEndOffset),
+                BiteEdge.Start(startOffset)
+              ) =>
+            // If two bites abut, then the end position of the preceding bite
+            // will be equal to the start position of the following bite.
+            onePastEndOffset <= startOffset
+          case (
+                BiteEdge.Start(firstStartOffset),
+                BiteEdge.Start(secondStartOffset)
+              ) =>
+            // Bites should have positive width, so this is a strict equality.
+            firstStartOffset < secondStartOffset
+          case (
+                BiteEdge.End(firstOnePastEndOffset),
+                BiteEdge.End(secondOnePastEndOffset)
+              ) =>
+            // Bites should have positive width, so this is a strict equality.
+            firstOnePastEndOffset < secondOnePastEndOffset
+        }
+
       // Breaks up a section by eating into it with smaller bites, yielding the
       // fragment sections.
       private def eatIntoSection(
           side: Sources[Path, Element],
-          bites: collection.Set[Section[Element]]
+          biteEdges: Seq[BiteEdge]
       )(
           section: Section[Element]
       ): Seq[Section[Element]] =
-        // TODO: can this be made to eliminate overlaps too?
-
-        enum BiteEdge:
-          case Start(startOffset: Int)
-          case End(onePastEndOffset: Int)
-        end BiteEdge
-
-        val biteEdges: Seq[BiteEdge] = bites.toSeq
-          .flatMap { biteSection =>
-            Seq(
-              BiteEdge.Start(biteSection.startOffset),
-              BiteEdge.End(biteSection.onePastEndOffset)
-            )
-          }
-          .sortWith {
-            case (
-                  BiteEdge.Start(startOffset),
-                  BiteEdge.End(onePastEndOffset)
-                ) =>
-              // Bites should have positive width, so that way a start comes
-              // strictly before the end of its bite.
-              startOffset < onePastEndOffset
-            case (
-                  BiteEdge.End(onePastEndOffset),
-                  BiteEdge.Start(startOffset)
-                ) =>
-              // If two bites abut, then the end position of the preceding bite
-              // will be equal to the start position of the following bite.
-              onePastEndOffset <= startOffset
-            case (
-                  BiteEdge.Start(firstStartOffset),
-                  BiteEdge.Start(secondStartOffset)
-                ) =>
-              // Bites should have positive width, so this is a strict equality.
-              firstStartOffset < secondStartOffset
-            case (
-                  BiteEdge.End(firstOnePastEndOffset),
-                  BiteEdge.End(secondOnePastEndOffset)
-                ) =>
-              // Bites should have positive width, so this is a strict equality.
-              firstOnePastEndOffset < secondOnePastEndOffset
-          }
-
         val mealOnePastEndOffset: Int = section.onePastEndOffset
 
         val path = side.pathFor(section)
@@ -674,7 +666,13 @@ object CodeMotionAnalysis extends StrictLogging:
                     )
                   )
                 else fragments
-              case Seq(BiteEdge.Start(startOffset), remainingBiteEdges*) =>
+              case Seq(
+                    BiteEdge.Start(startOffsetRelativeToMeal),
+                    remainingBiteEdges*
+                  ) =>
+                val startOffset =
+                  section.startOffset + startOffsetRelativeToMeal
+
                 require(mealOnePastEndOffset > startOffset)
                 val guardedStartOffset = startOffset max mealStartOffset
 
@@ -696,8 +694,14 @@ object CodeMotionAnalysis extends StrictLogging:
                         )
                       else fragments
                   )
-              case Seq(BiteEdge.End(onePastEndOffset), remainingBiteEdges*) =>
+              case Seq(
+                    BiteEdge.End(onePastEndOffsetRelativeToMeal),
+                    remainingBiteEdges*
+                  ) =>
                 require(0 < biteDepth)
+
+                val onePastEndOffset =
+                  section.startOffset + onePastEndOffsetRelativeToMeal
 
                 require(mealStartOffset <= onePastEndOffset)
                 val guardedOnePastEndOffset =
@@ -718,64 +722,69 @@ object CodeMotionAnalysis extends StrictLogging:
       end eatIntoSection
 
       private def fragmentsOf(
-          matchesToBeEaten: MultiDict[GenericMatch, Match.AllSides[
-            Section[Element]
-          ]]
+          matchesToBeEaten: MultiDict[
+            GenericMatch,
+            (Match.AllSides[Section[Element]], BiteEdge, BiteEdge)
+          ]
       ): Iterable[GenericMatch] =
         matchesToBeEaten.sets.flatMap[GenericMatch] { case (aMatch, bites) =>
-          val fragmentsFromPairwiseMatch: Seq[GenericMatch] =
+          val sortedBiteEdges = sortedBiteEdgesFrom(bites.flatMap {
+            case (_, biteStart, biteEnd) => Seq(biteStart, biteEnd)
+          })
+
+          val fragments: Seq[GenericMatch] =
             aMatch match
               case Match.AllSides(baseSection, leftSection, rightSection) =>
-                (eatIntoSection(baseSources, bites.map(_.baseElement))(
+                (eatIntoSection(baseSources, sortedBiteEdges)(
                   baseSection
                 ) lazyZip eatIntoSection(
                   leftSources,
-                  bites.map(_.leftElement)
+                  sortedBiteEdges
                 )(
                   leftSection
                 ) lazyZip eatIntoSection(
                   rightSources,
-                  bites.map(_.rightElement)
+                  sortedBiteEdges
                 )(
                   rightSection
                 )).map(Match.AllSides.apply)
 
               case Match.BaseAndLeft(baseSection, leftSection) =>
-                (eatIntoSection(baseSources, bites.map(_.baseElement))(
+                (eatIntoSection(baseSources, sortedBiteEdges)(
                   baseSection
                 ) zip eatIntoSection(
                   leftSources,
-                  bites.map(_.leftElement)
+                  sortedBiteEdges
                 )(
                   leftSection
                 ))
                   .map(Match.BaseAndLeft.apply)
 
               case Match.BaseAndRight(baseSection, rightSection) =>
-                (eatIntoSection(baseSources, bites.map(_.baseElement))(
+                (eatIntoSection(baseSources, sortedBiteEdges)(
                   baseSection
                 ) zip eatIntoSection(
                   rightSources,
-                  bites.map(_.rightElement)
+                  sortedBiteEdges
                 )(
                   rightSection
                 )).map(Match.BaseAndRight.apply)
 
               case Match.LeftAndRight(leftSection, rightSection) =>
-                (eatIntoSection(leftSources, bites.map(_.leftElement))(
+                (eatIntoSection(leftSources, sortedBiteEdges)(
                   leftSection
                 ) zip eatIntoSection(
                   rightSources,
-                  bites.map(_.rightElement)
+                  sortedBiteEdges
                 )(
                   rightSection
                 )).map(Match.LeftAndRight.apply)
 
           logger.debug(
-            s"Eating into match:\n${pprintCustomised(aMatch)} on behalf of all-sides matches:\n${pprintCustomised(bites)}, resulting in fragments:\n${pprintCustomised(fragmentsFromPairwiseMatch)}"
+            s"Eating into match:\n${pprintCustomised(aMatch)} on behalf of all-sides matches:\n${pprintCustomised(bites)}, resulting in fragments:\n${pprintCustomised(fragments)}"
           )
 
-          fragmentsFromPairwiseMatch
+          fragments
         }
 
       case class MatchingResult(
@@ -1525,9 +1534,9 @@ object CodeMotionAnalysis extends StrictLogging:
           matches: Set[GenericMatch],
           allSidesMatchesThatHaveAlreadyBeenAddedToTheState: Set[GenericMatch]
       ): (MatchesAndTheirSections, Set[GenericMatch]) =
-        def matchesSubsumingOnAllOfTheirSides(
+        def matchesSubsumingOnAtLeastTwoOfTheirSides(
             allSides: Match.AllSides[Section[Element]]
-        ): Set[GenericMatch] =
+        ): Set[(GenericMatch, BiteEdge, BiteEdge)] =
           val subsumingOnBase =
             subsumingMatchesIncludingTriviallySubsuming(
               sectionsAndTheirMatches
@@ -1556,14 +1565,77 @@ object CodeMotionAnalysis extends StrictLogging:
               allSides.rightElement
             )
 
-          (subsumingOnBase intersect subsumingOnLeft) union
-            (subsumingOnBase intersect subsumingOnRight) union
-            (subsumingOnLeft intersect subsumingOnRight) diff (subsumingOnBase intersect subsumingOnLeft intersect subsumingOnRight)
-        end matchesSubsumingOnAllOfTheirSides
+          (subsumingOnBase intersect subsumingOnLeft).map {
+            case subsuming: Match.AllSides[Section[Element]] =>
+              (
+                subsuming,
+                BiteEdge.Start(startOffsetRelativeToMeal =
+                  allSides.baseElement.startOffset - subsuming.baseElement.startOffset
+                ),
+                BiteEdge.End(onePastEndOffsetRelativeToMeal =
+                  allSides.baseElement.onePastEndOffset - subsuming.baseElement.startOffset
+                )
+              )
+            case subsuming: Match.BaseAndLeft[Section[Element]] =>
+              (
+                subsuming,
+                BiteEdge.Start(startOffsetRelativeToMeal =
+                  allSides.baseElement.startOffset - subsuming.baseElement.startOffset
+                ),
+                BiteEdge.End(onePastEndOffsetRelativeToMeal =
+                  allSides.baseElement.onePastEndOffset - subsuming.baseElement.startOffset
+                )
+              )
+          } union
+            (subsumingOnBase intersect subsumingOnRight).map {
+              case subsuming: Match.AllSides[Section[Element]] =>
+                (
+                  subsuming,
+                  BiteEdge.Start(startOffsetRelativeToMeal =
+                    allSides.baseElement.startOffset - subsuming.baseElement.startOffset
+                  ),
+                  BiteEdge.End(onePastEndOffsetRelativeToMeal =
+                    allSides.baseElement.onePastEndOffset - subsuming.baseElement.startOffset
+                  )
+                )
+              case subsuming: Match.BaseAndRight[Section[Element]] =>
+                (
+                  subsuming,
+                  BiteEdge.Start(startOffsetRelativeToMeal =
+                    allSides.baseElement.startOffset - subsuming.baseElement.startOffset
+                  ),
+                  BiteEdge.End(onePastEndOffsetRelativeToMeal =
+                    allSides.baseElement.onePastEndOffset - subsuming.baseElement.startOffset
+                  )
+                )
+            } union
+            (subsumingOnLeft intersect subsumingOnRight).map {
+              case subsuming: Match.AllSides[Section[Element]] =>
+                (
+                  subsuming,
+                  BiteEdge.Start(startOffsetRelativeToMeal =
+                    allSides.leftElement.startOffset - subsuming.leftElement.startOffset
+                  ),
+                  BiteEdge.End(onePastEndOffsetRelativeToMeal =
+                    allSides.leftElement.onePastEndOffset - subsuming.leftElement.startOffset
+                  )
+                )
+              case subsuming: Match.LeftAndRight[Section[Element]] =>
+                (
+                  subsuming,
+                  BiteEdge.Start(startOffsetRelativeToMeal =
+                    allSides.leftElement.startOffset - subsuming.leftElement.startOffset
+                  ),
+                  BiteEdge.End(onePastEndOffsetRelativeToMeal =
+                    allSides.leftElement.onePastEndOffset - subsuming.leftElement.startOffset
+                  )
+                )
+            }
+        end matchesSubsumingOnAtLeastTwoOfTheirSides
 
         val matchesToBeEaten: MultiDict[
           GenericMatch,
-          Match.AllSides[Section[Element]]
+          (Match.AllSides[Section[Element]], BiteEdge, BiteEdge)
         ] =
           val allSidesMatches = matches.collect {
             case allSides: Match.AllSides[Section[Element]] => allSides
@@ -1571,9 +1643,10 @@ object CodeMotionAnalysis extends StrictLogging:
 
           MultiDict.from(
             allSidesMatches.flatMap(allSides =>
-              matchesSubsumingOnAllOfTheirSides(allSides).map(
-                _ -> allSides
-              )
+              matchesSubsumingOnAtLeastTwoOfTheirSides(allSides).map {
+                case (pairwiseMatch, biteStart, biteEnd) =>
+                  pairwiseMatch -> (allSides, biteStart, biteEnd)
+              }
             )
           )
         end matchesToBeEaten
@@ -1618,9 +1691,9 @@ object CodeMotionAnalysis extends StrictLogging:
           // bites are dropped for a given match, in which case the match is
           // dropped too.
           matchesToBeEaten.mapSets((aMatch, allSidesMatches) =>
-            aMatch -> allSidesMatches.filter(
-              paredDownMatchesTakingFragmentationIntoAccount.contains
-            )
+            aMatch -> allSidesMatches.filter { case (allSides, _, _) =>
+              paredDownMatchesTakingFragmentationIntoAccount.contains(allSides)
+            }
           )
 
         if matchesThatShouldBeEaten.nonEmpty then
@@ -1628,9 +1701,8 @@ object CodeMotionAnalysis extends StrictLogging:
           // match.
           val (allSidesMatchesThatShouldEatIntoAMatch: Set[
             GenericMatch
-          ]) = matchesThatShouldBeEaten.sets.values.reduce(
-            _ union _
-          ): @unchecked
+          ]) =
+            matchesThatShouldBeEaten.values.map(_._1).toSet: @unchecked
 
           val withoutTheMatchesThatWereEatenInto =
             withoutTheseMatches(
