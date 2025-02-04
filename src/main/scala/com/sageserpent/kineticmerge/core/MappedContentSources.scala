@@ -50,11 +50,12 @@ trait MappedContentSources[Path, Element]
                     startOffset = second.startOffset,
                     size = first.onePastEndOffset - second.startOffset
                   )
-                  
-                  throw new RuntimeException:
+
+                  throw new RuntimeException(
                     s"""Overlapping section detected on side: $label at path: $path, $first (content: ${first.content}) 
                        |overlaps with start of section: $second (content: ${second.content}), overlap content: ${overlap.content}. 
                        |Consider setting the command line parameter `--minimum-match-size` to something larger than ${first.size min second.size}.""".stripMargin
+                  )
               )
 
             def gapFilling(
