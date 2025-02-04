@@ -324,7 +324,10 @@ object CodeMotionAnalysis extends StrictLogging:
                 )
                 progressRecordingSession.upTo(candidateWindowSize)
                 withAllMatchesOfAtLeastTheSureFireWindowSize(
-                  stateAfterTryingCandidate,
+                  stateAfterTryingCandidate
+                    .purgedOfMatchesWithOverlappingSections(
+                      suppressMatchesInvolvingOverlappingSections
+                    ),
                   looseExclusiveUpperBoundOnMaximumMatchSize =
                     candidateWindowSize,
                   progressRecordingSession
@@ -377,7 +380,9 @@ object CodeMotionAnalysis extends StrictLogging:
             )
             progressRecordingSession.upTo(bestMatchSize)
             withAllMatchesOfAtLeastTheSureFireWindowSize(
-              fallbackImprovedState,
+              fallbackImprovedState.purgedOfMatchesWithOverlappingSections(
+                suppressMatchesInvolvingOverlappingSections
+              ),
               looseExclusiveUpperBoundOnMaximumMatchSize = bestMatchSize,
               progressRecordingSession
             )
@@ -966,6 +971,11 @@ object CodeMotionAnalysis extends StrictLogging:
         ) =
           this.matchesForWindowSize(candidateWindowSize, PathInclusions.all)
 
+        val stateWithoutOverlappingMatches =
+          stateAfterTryingCandidate.purgedOfMatchesWithOverlappingSections(
+            suppressMatchesInvolvingOverlappingSections
+          )
+
         if candidateWindowSize > minimumWindowSizeAcrossAllFilesOverAllSides
         then
           if 0 < numberOfMatchesForTheGivenWindowSize then
@@ -975,7 +985,7 @@ object CodeMotionAnalysis extends StrictLogging:
           end if
           progressRecordingSession.upTo(candidateWindowSize)
 
-          stateAfterTryingCandidate.withAllSmallFryMatches(
+          stateWithoutOverlappingMatches.withAllSmallFryMatches(
             candidateWindowSize = candidateWindowSize - 1,
             progressRecordingSession = progressRecordingSession
           )
@@ -993,7 +1003,7 @@ object CodeMotionAnalysis extends StrictLogging:
             minimumWindowSizeAcrossAllFilesOverAllSides
           )
 
-          stateAfterTryingCandidate
+          stateWithoutOverlappingMatches
         end if
       end withAllSmallFryMatches
 
@@ -2157,14 +2167,12 @@ object CodeMotionAnalysis extends StrictLogging:
         val withAllMatchesOfAtLeastTheSureFireWindowSize =
           MatchesAndTheirSections.withAllMatchesOfAtLeastTheSureFireWindowSize()
 
-        (if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > minimumWindowSizeAcrossAllFilesOverAllSides
-         then
-           withAllMatchesOfAtLeastTheSureFireWindowSize
-             .withAllSmallFryMatches()
-         else withAllMatchesOfAtLeastTheSureFireWindowSize)
-          .purgedOfMatchesWithOverlappingSections(
-            suppressMatchesInvolvingOverlappingSections
-          )
+        if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > minimumWindowSizeAcrossAllFilesOverAllSides
+        then
+          withAllMatchesOfAtLeastTheSureFireWindowSize
+            .withAllSmallFryMatches()
+        else withAllMatchesOfAtLeastTheSureFireWindowSize
+        end if
       end matchesAndTheirSections
 
       matchesAndTheirSections.checkInvariant()
