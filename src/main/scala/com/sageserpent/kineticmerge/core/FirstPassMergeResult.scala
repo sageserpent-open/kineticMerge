@@ -73,7 +73,7 @@ object FirstPassMergeResult:
       ): FirstPassMergeResult[Element] = result
         .focus(_.recording)
         .modify(
-          _.appended(
+          _.record(
             [Result[_]] =>
               (mergeAlgebra: MergeAlgebra[Result, Element]) =>
                 mergeAlgebra.preservation(
@@ -99,7 +99,7 @@ object FirstPassMergeResult:
         result
           .focus(_.recording)
           .modify(
-            _.appended(
+            _.record(
               [Result[_]] =>
                 (mergeAlgebra: MergeAlgebra[Result, Element]) =>
                   mergeAlgebra.leftInsertion(
@@ -119,7 +119,7 @@ object FirstPassMergeResult:
         result
           .focus(_.recording)
           .modify(
-            _.appended(
+            _.record(
               [Result[_]] =>
                 (mergeAlgebra: MergeAlgebra[Result, Element]) =>
                   mergeAlgebra.rightInsertion(
@@ -139,7 +139,7 @@ object FirstPassMergeResult:
       ): FirstPassMergeResult[Element] = result
         .focus(_.recording)
         .modify(
-          _.appended(
+          _.record(
             [Result[_]] =>
               (mergeAlgebra: MergeAlgebra[Result, Element]) =>
                 mergeAlgebra.coincidentInsertion(
@@ -168,7 +168,7 @@ object FirstPassMergeResult:
         result
           .focus(_.recording)
           .modify(
-            _.appended(
+            _.record(
               [Result[_]] =>
                 (mergeAlgebra: MergeAlgebra[Result, Element]) =>
                   if inContextOfFileDeletion then
@@ -215,7 +215,7 @@ object FirstPassMergeResult:
         result
           .focus(_.recording)
           .modify(
-            _.appended(
+            _.record(
               [Result[_]] =>
                 (mergeAlgebra: MergeAlgebra[Result, Element]) =>
                   if inContextOfFileDeletion then
@@ -258,7 +258,7 @@ object FirstPassMergeResult:
         result
           .focus(_.recording)
           .modify(
-            _.appended(
+            _.record(
               [Result[_]] =>
                 (mergeAlgebra: MergeAlgebra[Result, Element]) =>
                   mergeAlgebra.coincidentDeletion(
@@ -283,7 +283,7 @@ object FirstPassMergeResult:
         result
           .focus(_.recording)
           .modify(
-            _.appended(
+            _.record(
               [Result[_]] =>
                 (mergeAlgebra: MergeAlgebra[Result, Element]) =>
                   mergeAlgebra.leftEdit(
@@ -317,7 +317,7 @@ object FirstPassMergeResult:
         result
           .focus(_.recording)
           .modify(
-            _.appended(
+            _.record(
               [Result[_]] =>
                 (mergeAlgebra: MergeAlgebra[Result, Element]) =>
                   mergeAlgebra.rightEdit(
@@ -350,7 +350,7 @@ object FirstPassMergeResult:
         result
           .focus(_.recording)
           .modify(
-            _.appended(
+            _.record(
               [Result[_]] =>
                 (mergeAlgebra: MergeAlgebra[Result, Element]) =>
                   mergeAlgebra.coincidentEdit(
@@ -386,7 +386,7 @@ object FirstPassMergeResult:
         result
           .focus(_.recording)
           .modify(
-            _.appended(
+            _.record(
               [Result[_]] =>
                 (mergeAlgebra: MergeAlgebra[Result, Element]) =>
                   mergeAlgebra.conflict(
@@ -425,6 +425,12 @@ object FirstPassMergeResult:
   end mergeAlgebra
 
   extension [Element](recording: Recording[Element])
+    def record(
+        step: [Result[_]] => MergeAlgebra[Result, Element] => Result[
+          Element
+        ] => Result[Element]
+    ): Recording[Element] = recording.appended(step)
+
     def playback[Result[_]](
         mergeAlgebra: MergeAlgebra[Result, Element]
     ): Result[Element] =
