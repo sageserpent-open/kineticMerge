@@ -1527,25 +1527,26 @@ object CodeMotionAnalysis extends StrictLogging:
           // NOTE: have to convert to a set to remove duplicates.
           sectionsAndTheirMatches.values.filter(overlapsWithSomethingElse).toSet
 
-        if enabled then
-          logger.debug(
-            s"Removing overlapping matches:\n${pprintCustomised(overlappingMatches)}"
-          )
+        if overlappingMatches.nonEmpty then
+          if enabled then
+            logger.debug(
+              s"Removing overlapping matches:\n${pprintCustomised(overlappingMatches)}"
+            )
 
-          withoutTheseMatches(overlappingMatches)
-        else if overlappingMatches.nonEmpty then
-          throw new AdmissibleFailure(
-            s"""Overlapping matches found: ${pprintCustomised(
-                overlappingMatches
-              )}.
-                 |Consider setting the command line parameter `--minimum-match-size` to something larger than ${overlappingMatches.map {
-                case Match.AllSides(baseSection, _, _)  => baseSection.size
-                case Match.BaseAndLeft(baseSection, _)  => baseSection.size
-                case Match.BaseAndRight(baseSection, _) => baseSection.size
-                case Match.LeftAndRight(leftSection, _) => leftSection.size
-              }.min}.
-                 |""".stripMargin
-          )
+            withoutTheseMatches(overlappingMatches)
+          else
+            throw new AdmissibleFailure(
+              s"""Overlapping matches found: ${pprintCustomised(
+                  overlappingMatches
+                )}.
+                   |Consider setting the command line parameter `--minimum-match-size` to something larger than ${overlappingMatches.map {
+                  case Match.AllSides(baseSection, _, _)  => baseSection.size
+                  case Match.BaseAndLeft(baseSection, _)  => baseSection.size
+                  case Match.BaseAndRight(baseSection, _) => baseSection.size
+                  case Match.LeftAndRight(leftSection, _) => leftSection.size
+                }.min}.
+                   |""".stripMargin
+            )
         else this
         end if
       end purgedOfMatchesWithOverlappingSections
