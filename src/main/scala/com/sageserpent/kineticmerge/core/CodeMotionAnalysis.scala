@@ -141,16 +141,16 @@ object CodeMotionAnalysis extends StrictLogging:
       ))
 
     logger.debug(
-      s"Minimum match window size across all files over all sides: $minimumWindowSizeAcrossAllFilesOverAllSides"
+      s"Minimum match window size across all files over all sides: $minimumWindowSizeAcrossAllFilesOverAllSides."
     )
     logger.debug(
-      s"Minimum sure-fire match window size across all files over all sides: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides"
+      s"Minimum sure-fire match window size across all files over all sides: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides."
     )
     logger.debug(
-      s"Maximum match window size across all files over all sides: $maximumPossibleMatchSize"
+      s"Maximum match window size across all files over all sides: $maximumPossibleMatchSize."
     )
     logger.debug(
-      s"File sizes across all files over all sides: $fileSizes"
+      s"File sizes across all files over all sides: $fileSizes."
     )
 
     type GenericMatch = Match[Section[Element]]
@@ -745,9 +745,9 @@ object CodeMotionAnalysis extends StrictLogging:
             PairwiseMatch,
             (Match.AllSides[Section[Element]], BiteEdge, BiteEdge)
           ]
-      ): Iterable[PairwiseMatch] =
-        pairwiseMatchesToBeEaten.sets.flatMap[PairwiseMatch] {
-          case (pairwiseMatch, bites) =>
+      ): Set[PairwiseMatch] =
+        pairwiseMatchesToBeEaten.sets
+          .flatMap[PairwiseMatch] { case (pairwiseMatch, bites) =>
             val sortedBiteEdges = sortedBiteEdgesFrom(bites.flatMap {
               case (_, biteStart, biteEnd) => Seq(biteStart, biteEnd)
             })
@@ -799,7 +799,8 @@ object CodeMotionAnalysis extends StrictLogging:
             )
 
             fragmentsFromPairwiseMatch
-        }
+          }
+          .toSet
 
       case class MatchingResult(
           matchesAndTheirSections: MatchesAndTheirSections,
@@ -1525,14 +1526,22 @@ object CodeMotionAnalysis extends StrictLogging:
                 leftSection
               ) || rightOverlapsOrIsSubsumedBy(rightSection)
 
-        val overlapping =
+        val overlappingMatches =
+          // NOTE: have to convert to a set to remove duplicates.
           sectionsAndTheirMatches.values.filter(overlapsWithSomethingElse).toSet
 
-        if enabled then withoutTheseMatches(overlapping)
-        else if overlapping.nonEmpty then
+        if enabled then
+          logger.debug(
+            s"Removing overlapping matches:\n${pprintCustomised(overlappingMatches)}"
+          )
+
+          withoutTheseMatches(overlappingMatches)
+        else if overlappingMatches.nonEmpty then
           throw new AdmissibleFailure(
-            s"""Overlapping matches found: ${pprintCustomised(overlapping)}.
-                 |Consider setting the command line parameter `--minimum-match-size` to something larger than ${overlapping.map {
+            s"""Overlapping matches found: ${pprintCustomised(
+                overlappingMatches
+              )}.
+                 |Consider setting the command line parameter `--minimum-match-size` to something larger than ${overlappingMatches.map {
                 case Match.AllSides(baseSection, _, _)  => baseSection.size
                 case Match.BaseAndLeft(baseSection, _)  => baseSection.size
                 case Match.BaseAndRight(baseSection, _) => baseSection.size
