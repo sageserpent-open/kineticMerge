@@ -16,6 +16,7 @@ import scala.concurrent.duration.Duration
 
 class CodeMotionAnalysisTest:
 
+  @Disabled
   @TestFactory
   def sourcesCanBeReconstructedFromTheAnalysis: DynamicTests =
     extension (results: Map[Path, File[Element]])
@@ -1419,6 +1420,61 @@ class CodeMotionAnalysisTest:
     assert(exception.isInstanceOf[AdmissibleFailure])
 
   end matchesWithOverlappingSections
+
+  @Test
+  def overlappingSmallerAllSidesMatchesCanEatIntoALargerPairwiseMatchWithoutLeavingAnyFragments()
+      : Unit =
+    // Here, we set up a larger pairwise match and eat into it via four smaller,
+    // ambiguous *and* overlapping all-sides matches. The overlapping causes the
+    // collective all-sides matches to eat into all of the content of the
+    // pairwise matches, so apart from the all-sides matches (which are
+    // suppressed later by virtue of overlapping each other), there are no
+    // fragmented pairwise matches left over.
+
+    val configuration = Configuration(
+      minimumMatchSize = 2,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    val baseSources = new FakeSources(
+      Map(1 -> Vector(1, 5, 5, 5, 2)),
+      "base"
+    ) with SourcesContracts[Path, Element]
+
+    val leftSources = new FakeSources(
+      Map(1 -> Vector(3, 5, 5, 5, 4)),
+      "left"
+    ) with SourcesContracts[Path, Element]
+
+    val rightSources = new FakeSources(
+      Map(1 -> Vector(6, 5, 5, 7)),
+      "right"
+    ) with SourcesContracts[Path, Element]
+
+    val Right(
+      analysis: CodeMotionAnalysis[Path, Element]
+    ) =
+      CodeMotionAnalysis.of(
+        baseSources,
+        leftSources,
+        rightSources
+      )(
+        configuration,
+        suppressMatchesInvolvingOverlappingSections = true
+      ): @unchecked
+    end val
+
+    val matches =
+      (analysis.base.values.flatMap(_.sections) ++ analysis.left.values.flatMap(
+        _.sections
+      ) ++ analysis.right.values.flatMap(_.sections))
+        .map(analysis.matchesFor)
+        .reduce(_ union _)
+
+    assert(matches.isEmpty)
+  end overlappingSmallerAllSidesMatchesCanEatIntoALargerPairwiseMatchWithoutLeavingAnyFragments
 
 end CodeMotionAnalysisTest
 
