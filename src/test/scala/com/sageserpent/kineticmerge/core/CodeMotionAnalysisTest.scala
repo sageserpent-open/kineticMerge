@@ -1438,18 +1438,21 @@ class CodeMotionAnalysisTest:
       ambiguousMatchesThreshold = 10
     )
 
+    val largeIdenticalContentRun = Vector.fill(3)(5)
+    val smallIdenticalContentRun = largeIdenticalContentRun.drop(1)
+
     val baseSources = new FakeSources(
-      Map(1 -> Vector(1, 5, 5, 5, 2)),
+      Map(1 -> ((1 +: largeIdenticalContentRun) :+ 2)),
       "base"
     ) with SourcesContracts[Path, Element]
 
     val leftSources = new FakeSources(
-      Map(1 -> Vector(3, 5, 5, 5, 4)),
+      Map(1 -> ((3 +: largeIdenticalContentRun) :+ 4)),
       "left"
     ) with SourcesContracts[Path, Element]
 
     val rightSources = new FakeSources(
-      Map(1 -> Vector(6, 5, 5, 7)),
+      Map(1 -> ((6 +: smallIdenticalContentRun) :+ 7)),
       "right"
     ) with SourcesContracts[Path, Element]
 
@@ -1475,6 +1478,55 @@ class CodeMotionAnalysisTest:
 
     assert(matches.isEmpty)
   end overlappingSmallerAllSidesMatchesCanEatIntoALargerPairwiseMatchWithoutLeavingAnyFragments
+
+  @Test
+  def overlappingSmallerAllSidesMatchesCanEatIntoALargerPairwiseMatchWithoutLeavingAnyFragmentsVariation()
+      : Unit =
+    val configuration = Configuration(
+      minimumMatchSize = 2,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    val alpha = -1
+    val beta  = -2
+    val gamma = -3
+
+    val baseSources = new FakeSources(
+      Map(1 -> Vector(1, alpha, beta, gamma, 2)),
+      "base"
+    ) with SourcesContracts[Path, Element]
+
+    val leftSources = new FakeSources(
+      Map(1 -> Vector(3, beta, gamma, 4, alpha, beta, 5)),
+      "left"
+    ) with SourcesContracts[Path, Element]
+
+    val rightSources = new FakeSources(
+      Map(1 -> Vector(6, beta, gamma, 7, alpha, beta, gamma, 8)),
+      "right"
+    ) with SourcesContracts[Path, Element]
+
+    val Right(
+      analysis: CodeMotionAnalysis[Path, Element]
+    ) =
+      CodeMotionAnalysis.of(
+        baseSources,
+        leftSources,
+        rightSources
+      )(configuration): @unchecked
+    end val
+
+    val matches =
+      (analysis.base.values.flatMap(_.sections) ++ analysis.left.values.flatMap(
+        _.sections
+      ) ++ analysis.right.values.flatMap(_.sections))
+        .map(analysis.matchesFor)
+        .reduce(_ union _)
+
+    assert(matches.isEmpty)
+  end overlappingSmallerAllSidesMatchesCanEatIntoALargerPairwiseMatchWithoutLeavingAnyFragmentsVariation
 
 end CodeMotionAnalysisTest
 
