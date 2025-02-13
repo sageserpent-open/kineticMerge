@@ -1528,6 +1528,83 @@ class CodeMotionAnalysisTest:
     assert(matches.isEmpty)
   end overlappingSmallerAllSidesMatchesCanEatIntoALargerPairwiseMatchWithoutLeavingAnyFragmentsVariation
 
+  @Test
+  def complexFragmentationOfMultiplePairwiseMatches(): Unit =
+    val configuration = Configuration(
+      minimumMatchSize = 2,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    val alpha = -1
+    val beta  = -2
+    val gamma = -3
+    val delta = -4
+
+    val baseSources = new FakeSources(
+      Map(1 -> Vector(1, beta, gamma, delta, 2, beta, gamma, 3)),
+      "base"
+    ) with SourcesContracts[Path, Element]
+
+    val leftSources = new FakeSources(
+      Map(1 -> Vector(4, alpha, beta, gamma, 5)),
+      "left"
+    ) with SourcesContracts[Path, Element]
+
+    val rightSources = new FakeSources(
+      Map(1 -> Vector(6, alpha, beta, gamma, 7, alpha, beta, gamma, delta, 8)),
+      "right"
+    ) with SourcesContracts[Path, Element]
+
+    val Right(
+      analysis: CodeMotionAnalysis[Path, Element]
+    ) =
+      CodeMotionAnalysis.of(
+        baseSources,
+        leftSources,
+        rightSources
+      )(configuration): @unchecked
+    end val
+
+    val matches =
+      (analysis.base.values.flatMap(_.sections) ++ analysis.left.values.flatMap(
+        _.sections
+      ) ++ analysis.right.values.flatMap(_.sections))
+        .map(analysis.matchesFor)
+        .reduce(_ union _)
+
+    // There should be base-right, left-right and all-sides matches.
+    assert(matches.map(_.ordinal).size == 3)
+
+    // There should be one base-right match.
+    assert((matches count {
+      case _: Match.BaseAndRight[Section[Element]] => true
+      case _                                       => false
+    }) == 1)
+
+    // There should be two left-right matches.
+    assert((matches count {
+      case _: Match.LeftAndRight[Section[Element]] => true
+      case _                                       => false
+    }) == 2)
+
+    // There should be four all-sides matches.
+    assert((matches count {
+      case _: Match.AllSides[Section[Element]] => true
+      case _                                   => false
+    }) == 4)
+
+    // The contents should be broken down.
+    assert(
+      matches.map(_.content) == Set(
+        Vector(alpha),
+        Vector(beta, gamma),
+        Vector(delta)
+      )
+    )
+  end complexFragmentationOfMultiplePairwiseMatches
+
 end CodeMotionAnalysisTest
 
 object CodeMotionAnalysisTest:
