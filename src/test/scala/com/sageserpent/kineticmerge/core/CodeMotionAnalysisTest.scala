@@ -1119,7 +1119,7 @@ class CodeMotionAnalysisTest:
     // Here, we have a base-left match and a base-right match - both matches
     // share a smaller run of common content. Ordinarily, the common content
     // would form two ambiguous all-sides matches (obviously the pairwise
-    // matches must differ in content to not constituting an all-side match
+    // matches must differ in content to not constitute an all-side match
     // overall).
 
     // The twist is that the matching threshold forbids matching of the common
