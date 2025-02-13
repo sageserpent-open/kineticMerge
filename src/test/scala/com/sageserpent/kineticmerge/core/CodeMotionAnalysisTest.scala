@@ -15,8 +15,6 @@ import java.util.concurrent.TimeUnit
 import scala.concurrent.duration.Duration
 
 class CodeMotionAnalysisTest:
-
-  @Disabled
   @TestFactory
   def sourcesCanBeReconstructedFromTheAnalysis: DynamicTests =
     extension (results: Map[Path, File[Element]])
