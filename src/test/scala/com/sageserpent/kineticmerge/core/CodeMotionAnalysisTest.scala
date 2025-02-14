@@ -1478,8 +1478,7 @@ class CodeMotionAnalysisTest:
   end overlappingSmallerAllSidesMatchesCanEatIntoALargerPairwiseMatchWithoutLeavingAnyFragments
 
   @Test
-  def overlappingSmallerAllSidesMatchesCanEatIntoALargerPairwiseMatchWithoutLeavingAnyFragmentsVariation()
-      : Unit =
+  def problematicSituation(): Unit =
     val configuration = Configuration(
       minimumMatchSize = 2,
       thresholdSizeFractionForMatching = 0,
@@ -1487,10 +1486,10 @@ class CodeMotionAnalysisTest:
       ambiguousMatchesThreshold = 10
     )
 
-    val alpha   = 2
-    val beta    = 3
-    val gamma   = 4
-    val delta   = 7
+    val alpha   = 1
+    val beta    = 2
+    val gamma   = 3
+    val delta   = 4
     val epsilon = 5
 
     val baseSources = new FakeSources(
@@ -1551,7 +1550,7 @@ class CodeMotionAnalysisTest:
       ) ++ analysis.right.values.flatMap(_.sections))
         .map(analysis.matchesFor)
         .reduce(_ union _)
-  end overlappingSmallerAllSidesMatchesCanEatIntoALargerPairwiseMatchWithoutLeavingAnyFragmentsVariation
+  end problematicSituation
 
   @Test
   def complexFragmentationOfMultiplePairwiseMatches(): Unit =
