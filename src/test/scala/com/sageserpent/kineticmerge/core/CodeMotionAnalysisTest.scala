@@ -1487,14 +1487,20 @@ class CodeMotionAnalysisTest:
       ambiguousMatchesThreshold = 10
     )
 
-    val alpha = -1
-    val beta  = -2
-    val gamma = -3
+    val alpha   = 2
+    val beta    = 3
+    val gamma   = 4
+    val delta   = 7
+    val epsilon = 5
 
     val baseSources = new FakeSources(
       Map(
         1 -> Vector(
-          -1, 4, 7, 5, -2
+          -1,
+          gamma,
+          delta,
+          epsilon,
+          -2
         )
       ),
       "base"
@@ -1503,7 +1509,20 @@ class CodeMotionAnalysisTest:
     val leftSources = new FakeSources(
       Map(
         1 -> Vector(
-          -3, 4, 7, 2, 7, 5, -4, 7, 4, 7, -5, 7, 5, -6
+          -3,
+          gamma,
+          delta,
+          alpha,
+          delta,
+          epsilon,
+          -4,
+          beta,
+          gamma,
+          delta,
+          -5,
+          delta,
+          epsilon,
+          -6
         )
       ),
       "left"
@@ -1511,7 +1530,7 @@ class CodeMotionAnalysisTest:
 
     val rightSources = new FakeSources(
       Map(
-        1 -> Vector(-7, 2, 7, 5, 7, 4, 7, 5, -8)
+        1 -> Vector(-7, alpha, delta, epsilon, beta, gamma, delta, epsilon, -8)
       ),
       "right"
     ) with SourcesContracts[Path, Element]
