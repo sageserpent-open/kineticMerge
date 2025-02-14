@@ -1496,11 +1496,9 @@ class CodeMotionAnalysisTest:
     val baseSources = new FakeSources(
       Map(
         1 -> Vector(
-          -1,
           gamma,
           delta,
-          epsilon,
-          -2
+          epsilon
         )
       ),
       "base"
@@ -1509,21 +1507,13 @@ class CodeMotionAnalysisTest:
     val leftSources = new FakeSources(
       Map(
         1 -> Vector(
-          -3,
-          gamma,
-          delta,
-          -4,
           alpha,
           delta,
           epsilon,
-          -5,
+          -1,
           beta,
           gamma,
-          delta,
-          -6,
-          delta,
-          epsilon,
-          -7
+          delta
         )
       ),
       "left"
@@ -1532,16 +1522,14 @@ class CodeMotionAnalysisTest:
     val rightSources = new FakeSources(
       Map(
         1 -> Vector(
-          -8,
           alpha,
           delta,
           epsilon,
-          -9,
+          -2,
           beta,
           gamma,
           delta,
-          epsilon,
-          -10
+          epsilon
         )
       ),
       "right"
