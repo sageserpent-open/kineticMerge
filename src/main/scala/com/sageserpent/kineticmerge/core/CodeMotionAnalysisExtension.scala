@@ -3,9 +3,16 @@ package com.sageserpent.kineticmerge.core
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
-import com.sageserpent.kineticmerge.core.FirstPassMergeResult.{FileDeletionContext, Recording}
+import com.sageserpent.kineticmerge.core.FirstPassMergeResult.{
+  FileDeletionContext,
+  Recording
+}
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Sized
-import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{AnchoredMove, MoveEvaluation, OppositeSideAnchor}
+import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{
+  AnchoredMove,
+  MoveEvaluation,
+  OppositeSideAnchor
+}
 import com.sageserpent.kineticmerge.core.merge.of as mergeOf
 import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*

@@ -6,7 +6,7 @@ import scala.sys.process.*
 
 lazy val javaVersion = "17"
 
-ThisBuild / scalaVersion := "3.3.4"
+ThisBuild / scalaVersion := "3.3.5"
 
 ThisBuild / javacOptions ++= Seq("-source", javaVersion, "-target", javaVersion)
 
@@ -94,8 +94,8 @@ lazy val root = (project in file("."))
     libraryDependencies += "org.typelevel"    %% "cats-core"       % "2.9.0",
     libraryDependencies += "com.github.scopt" %% "scopt"           % "4.1.0",
     libraryDependencies += "org.typelevel" %% "cats-collections-core" % "0.9.9",
-    libraryDependencies += "org.typelevel" %% "cats-core"      % "2.12.0",
-    libraryDependencies += "org.typelevel" %% "alleycats-core" % "2.12.0",
+    libraryDependencies += "org.typelevel" %% "cats-core"      % "2.13.0",
+    libraryDependencies += "org.typelevel" %% "alleycats-core" % "2.13.0",
     libraryDependencies += "org.typelevel" %% "cats-effect"    % "3.5.7",
     libraryDependencies += "org.scala-lang.modules" %% "scala-collection-contrib" % "0.4.0",
     libraryDependencies ++= Seq(
@@ -103,7 +103,7 @@ lazy val root = (project in file("."))
       "dev.optics" %% "monocle-macro" % "3.3.0"
     ),
     libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "2.4.0",
-    libraryDependencies += "com.lihaoyi"             %% "os-lib"  % "0.11.3",
+    libraryDependencies += "com.lihaoyi"             %% "os-lib"  % "0.11.4",
     libraryDependencies += "com.lihaoyi"             %% "fansi"   % "0.5.0",
     libraryDependencies += "com.lihaoyi"             %% "pprint"  % "0.9.0",
     libraryDependencies += "com.softwaremill.common" %% "tagging" % "2.3.5",
