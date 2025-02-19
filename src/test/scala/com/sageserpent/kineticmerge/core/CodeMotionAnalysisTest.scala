@@ -426,7 +426,7 @@ class CodeMotionAnalysisTest:
       )
       .dynamicTests { testPlan =>
 
-      import testPlan.*
+        import testPlan.*
 
         println(
           s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
