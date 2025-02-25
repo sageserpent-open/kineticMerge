@@ -1391,10 +1391,7 @@ object CodeMotionAnalysis extends StrictLogging:
           updatedMatchesAndTheirSections,
           reconciledMatches
         ) =
-          reconcileMatchesWithExistingState(windowSize)(
-            matches = matches,
-            allSidesMatchesThatHaveAlreadyBeenAddedToTheState = Set.empty
-          )
+          reconcileMatchesWithExistingState(windowSize)(matches)
 
         val pathInclusions =
           if !haveTrimmedMatches then
@@ -1554,9 +1551,8 @@ object CodeMotionAnalysis extends StrictLogging:
       end purgedOfMatchesWithOverlappingSections
 
       private def reconcileMatchesWithExistingState(windowSize: Int)(
-          matches: Set[GenericMatch],
-          allSidesMatchesThatHaveAlreadyBeenAddedToTheState: Set[GenericMatch]
-      ): (MatchesAndTheirSections, Set[GenericMatch]) =
+          matches: Set[GenericMatch]
+      ): (MatchesAndTheirSections, collection.Set[GenericMatch]) =
         def pairwiseMatchesSubsumingOnBothSides(
             allSides: Match.AllSides[Section[Element]]
         ): Set[(PairwiseMatch, BiteEdge, BiteEdge)] =
@@ -1751,7 +1747,7 @@ object CodeMotionAnalysis extends StrictLogging:
               // pairwise ones afterwards.
               .withoutRedundantPairwiseMatchesIn(paredDownMatches)
 
-          updatedThisWithoutRedundantPairwiseMatches -> (allSidesMatchesThatHaveAlreadyBeenAddedToTheState union allSidesMatchesThatShouldEatIntoAPairwiseMatch union usefulMatches)
+          updatedThisWithoutRedundantPairwiseMatches -> (allSidesMatchesThatShouldEatIntoAPairwiseMatch union usefulMatches)
         else
           val paredDownMatches = matches.flatMap(
             pareDownOrSuppressCompletely(_, skipOverlapsOrSubsumedBy = true)
@@ -1768,7 +1764,7 @@ object CodeMotionAnalysis extends StrictLogging:
               // pairwise ones afterwards.
               .withoutRedundantPairwiseMatchesIn(paredDownMatches)
 
-          updatedThisWithoutRedundantPairwiseMatches -> (allSidesMatchesThatHaveAlreadyBeenAddedToTheState union usefulMatches)
+          updatedThisWithoutRedundantPairwiseMatches -> usefulMatches
         end if
       end reconcileMatchesWithExistingState
 
