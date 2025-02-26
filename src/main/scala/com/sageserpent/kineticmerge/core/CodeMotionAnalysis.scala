@@ -1757,11 +1757,7 @@ object CodeMotionAnalysis extends StrictLogging:
           val paredDownFragments =
             fragments
               .flatMap(
-                withoutThePairwiseMatchesThatWereEatenInto
-                  .pareDownOrSuppressCompletely(
-                    _,
-                    skipOverlapsOrSubsumedBy = true
-                  )
+                withoutThePairwiseMatchesThatWereEatenInto.pareDownOrSuppressCompletely
               )
 
           val withTheParedDownFragments = paredDownFragments.foldLeft(
@@ -1769,10 +1765,7 @@ object CodeMotionAnalysis extends StrictLogging:
           )(_ withMatch _)
 
           matches.flatMap(
-            withTheParedDownFragments.pareDownOrSuppressCompletely(
-              _,
-              skipOverlapsOrSubsumedBy = true
-            )
+            withTheParedDownFragments.pareDownOrSuppressCompletely
           )
         end paredDownMatchesTakingFragmentationIntoAccount
 
@@ -1809,11 +1802,7 @@ object CodeMotionAnalysis extends StrictLogging:
           // from that subsumes the fragment.
           val paredDownFragments =
             fragments.flatMap(
-              withoutThePairwiseMatchesThatWereEatenInto
-                .pareDownOrSuppressCompletely(
-                  _,
-                  skipOverlapsOrSubsumedBy = true
-                )
+              withoutThePairwiseMatchesThatWereEatenInto.pareDownOrSuppressCompletely
             )
 
           val withTheParedDownFragments = paredDownFragments.foldLeft(
@@ -1912,11 +1901,7 @@ object CodeMotionAnalysis extends StrictLogging:
       end withMatch
 
       private def pareDownOrSuppressCompletely[MatchType <: GenericMatch](
-          aMatch: MatchType,
-          // This relies on the caller already having vetted the matches'
-          // sections, and is only valid if no additional matches have been
-          // added into the state since then.
-          skipOverlapsOrSubsumedBy: Boolean
+          aMatch: MatchType
       ): Option[ParedDownMatch[MatchType]] =
         // NOTE: one thing to watch out is when fragments resulting from
         // larger pairwise matches being eaten into collide with equivalent
@@ -1928,12 +1913,7 @@ object CodeMotionAnalysis extends StrictLogging:
         // yielded the pairwise matching. Intercepting this here addresses both
         // cases.
         aMatch match
-          case Match.AllSides(baseSection, leftSection, rightSection)
-              if skipOverlapsOrSubsumedBy || (!baseOverlapsOrIsSubsumedBy(
-                baseSection
-              ) && !leftOverlapsOrIsSubsumedBy(
-                leftSection
-              ) && !rightOverlapsOrIsSubsumedBy(rightSection)) =>
+          case Match.AllSides(baseSection, leftSection, rightSection) =>
             val trivialSubsumptionSize = baseSection.size
 
             def isTriviallySubsumed(candidate: GenericMatch): Boolean =
@@ -2027,32 +2007,21 @@ object CodeMotionAnalysis extends StrictLogging:
             else None
             end if
 
-          case baseAndLeft @ Match.BaseAndLeft(baseSection, leftSection)
-              if skipOverlapsOrSubsumedBy || (!baseOverlapsOrIsSubsumedBy(
-                baseSection
-              ) && !leftOverlapsOrIsSubsumedBy(
-                leftSection
-              )) =>
+          case Match.BaseAndLeft(baseSection, leftSection) =>
             Option.unless(
               baseSubsumes(baseSection) || leftSubsumes(
                 leftSection
               )
             )(aMatch)
 
-          case baseAndRight @ Match.BaseAndRight(baseSection, rightSection)
-              if skipOverlapsOrSubsumedBy || (!baseOverlapsOrIsSubsumedBy(
-                baseSection
-              ) && !rightOverlapsOrIsSubsumedBy(rightSection)) =>
+          case Match.BaseAndRight(baseSection, rightSection) =>
             Option.unless(
               baseSubsumes(baseSection) || rightSubsumes(
                 rightSection
               )
             )(aMatch)
 
-          case leftAndRight @ Match.LeftAndRight(leftSection, rightSection)
-              if skipOverlapsOrSubsumedBy || (!leftOverlapsOrIsSubsumedBy(
-                leftSection
-              ) && !rightOverlapsOrIsSubsumedBy(rightSection)) =>
+          case Match.LeftAndRight(leftSection, rightSection) =>
             Option.unless(
               leftSubsumes(leftSection) || rightSubsumes(
                 rightSection
