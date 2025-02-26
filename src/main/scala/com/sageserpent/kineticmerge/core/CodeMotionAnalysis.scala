@@ -844,7 +844,7 @@ object CodeMotionAnalysis extends StrictLogging:
       private val rightIncluding: Section[Element] => Map[Path, SectionsSeen] =
         including(rightSources, rightSectionsByPath)
 
-      def thisShouldBeAReconciliationPostcondition(): Unit =
+      private def thisShouldBeAReconciliationPostcondition(): Unit =
         baseSectionsByPath.values.flatMap(_.iterator).foreach { baseSection =>
           assert(!baseSubsumes(baseSection))
         }
@@ -1564,11 +1564,9 @@ object CodeMotionAnalysis extends StrictLogging:
       // suppressed by a larger pairwise match. This situation results in a
       // pairwise match that shares its sections on both sides with the other
       // all-sides match; remove any such redundant pairwise matches.
-      private def withoutRedundantPairwiseMatchesIn(
-          matches: collection.Set[GenericMatch]
-      ): (MatchesAndTheirSections, collection.Set[GenericMatch]) =
-        val (redundantMatches, usefulMatches) =
-          matches.partition {
+      private def withoutRedundantPairwiseMatches: MatchesAndTheirSections =
+        val redundantMatches =
+          sectionsAndTheirMatches.values.filter {
             case Match.BaseAndLeft(baseSection, leftSection) =>
               sectionsAndTheirMatches
                 .get(baseSection)
@@ -1586,7 +1584,6 @@ object CodeMotionAnalysis extends StrictLogging:
                 .exists(_.isAnAllSidesMatch)
             case _: Match.AllSides[Section[Element]] => false
           }
-        end val
 
         if redundantMatches.nonEmpty then
           logger.debug(
@@ -1594,8 +1591,8 @@ object CodeMotionAnalysis extends StrictLogging:
           )
         end if
 
-        withoutTheseMatches(redundantMatches) -> usefulMatches
-      end withoutRedundantPairwiseMatchesIn
+        withoutTheseMatches(redundantMatches)
+      end withoutRedundantPairwiseMatches
 
       def purgedOfMatchesWithOverlappingSections(
           enabled: Boolean
@@ -1722,103 +1719,61 @@ object CodeMotionAnalysis extends StrictLogging:
 
         val matches = sectionsAndTheirMatches.values.toSet
 
-        val pairwiseMatchesToBeEaten: MultiDict[
-          PairwiseMatch,
-          (Match.AllSides[Section[Element]], BiteEdge, BiteEdge)
-        ] =
-          val allSidesMatches = matches.collect {
+        @tailrec
+        def reconcileUsing(
+            allSidesMatches: Set[Match.AllSides[Section[Element]]]
+        ): MatchesAndTheirSections =
+
+          val pairwiseMatchesToBeEaten: MultiDict[
+            PairwiseMatch,
+            (Match.AllSides[Section[Element]], BiteEdge, BiteEdge)
+          ] =
+            MultiDict.from(
+              allSidesMatches.flatMap(allSides =>
+                pairwiseMatchesSubsumingOnBothSides(allSides).map {
+                  case (pairwiseMatch, biteStart, biteEnd) =>
+                    pairwiseMatch -> (allSides, biteStart, biteEnd)
+                }
+              )
+            )
+          end pairwiseMatchesToBeEaten
+
+          // TODO: review the diff: it is important, but should it apply elsewhere too?
+          val fragments = fragmentsOf(pairwiseMatchesToBeEaten).diff(
+            matches.asInstanceOf[Set[PairwiseMatch]]
+          )
+
+          val takingFragmentationIntoAccount = fragments.foldLeft(
+            withoutTheseMatches(pairwiseMatchesToBeEaten.keySet)
+          )(_ withMatch _)
+
+          // TODO: review the diff: it is important, but should it apply elsewhere too?
+          val paredDownMatches = matches.flatMap(
+            takingFragmentationIntoAccount.pareDownOrSuppressCompletely
+          ) diff pairwiseMatchesToBeEaten.keySet.asInstanceOf[Set[GenericMatch]]
+
+          val paredDownAllSidesMatches = paredDownMatches.collect {
             case allSides: Match.AllSides[Section[Element]] => allSides
           }
 
-          MultiDict.from(
-            allSidesMatches.flatMap(allSides =>
-              pairwiseMatchesSubsumingOnBothSides(allSides).map {
-                case (pairwiseMatch, biteStart, biteEnd) =>
-                  pairwiseMatch -> (allSides, biteStart, biteEnd)
-              }
-            )
-          )
-        end pairwiseMatchesToBeEaten
-
-        val paredDownMatchesTakingFragmentationIntoAccount =
-          val withoutThePairwiseMatchesThatWereEatenInto = withoutTheseMatches(
-            pairwiseMatchesToBeEaten.keySet
-          )
-
-          val fragments = fragmentsOf(pairwiseMatchesToBeEaten)
-
-          // NOTE: this isn't being overly defensive - see the test
-          // `CodeMotionAnalysisTest.eatenPairwiseMatchesMayBeSuppressedByACompetingOverlappingAllSidesMatch`.
-          // To cut a long story short, we can have some other match that is
-          // smaller than the original pairwise match that the fragment came
-          // from that subsumes the fragment.
-          val paredDownFragments =
-            fragments
+          if paredDownAllSidesMatches == allSidesMatches then
+            (paredDownMatches union /*TODO: review this paring down....*/ fragments
               .flatMap(
-                withoutThePairwiseMatchesThatWereEatenInto.pareDownOrSuppressCompletely
-              )
+                takingFragmentationIntoAccount.pareDownOrSuppressCompletely
+              ))
+              .foldLeft(MatchesAndTheirSections.empty)(_ withMatch _)
+              .withoutRedundantPairwiseMatches
+          else reconcileUsing(paredDownAllSidesMatches)
+          end if
+        end reconcileUsing
 
-          val withTheParedDownFragments = paredDownFragments.foldLeft(
-            withoutThePairwiseMatchesThatWereEatenInto
-          )(_ withMatch _)
+        val result = reconcileUsing(matches.collect {
+          case allSides: Match.AllSides[Section[Element]] => allSides
+        })
 
-          matches.flatMap(
-            withTheParedDownFragments.pareDownOrSuppressCompletely
-          )
-        end paredDownMatchesTakingFragmentationIntoAccount
+        result.thisShouldBeAReconciliationPostcondition()
 
-        val pairwiseMatchesThatShouldBeEaten =
-          // NOTE: this is subtle - there are *two* levels of thinning out here:
-          // both directly on the associated bites and indirectly when all the
-          // bites are dropped for a given pairwise match, in which case the
-          // pairwise match is dropped too.
-          pairwiseMatchesToBeEaten.mapSets((pairwiseMatch, allSidesMatches) =>
-            pairwiseMatch -> allSidesMatches.filter { case (allSides, _, _) =>
-              paredDownMatchesTakingFragmentationIntoAccount.contains(allSides)
-            }
-          )
-
-        if pairwiseMatchesThatShouldBeEaten.nonEmpty then
-          // NOTE: those parentheses are necessary to mark an unchecked pattern
-          // match.
-          val (allSidesMatchesThatShouldEatIntoAPairwiseMatch: Set[
-            GenericMatch
-          ]) =
-            pairwiseMatchesThatShouldBeEaten.values.map(_._1).toSet: @unchecked
-
-          val withoutThePairwiseMatchesThatWereEatenInto =
-            withoutTheseMatches(
-              pairwiseMatchesThatShouldBeEaten.keySet
-            )
-
-          val fragments = fragmentsOf(pairwiseMatchesThatShouldBeEaten)
-
-          // NOTE: this isn't being overly defensive - see the test
-          // `CodeMotionAnalysisTest.eatenPairwiseMatchesMayBeSuppressedByACompetingOverlappingAllSidesMatch`.
-          // To cut a long story short, we can have some other match that is
-          // smaller than the original pairwise match that the fragment came
-          // from that subsumes the fragment.
-          val paredDownFragments =
-            fragments.flatMap(
-              withoutThePairwiseMatchesThatWereEatenInto.pareDownOrSuppressCompletely
-            )
-
-          val withTheParedDownFragments = paredDownFragments.foldLeft(
-            withoutThePairwiseMatchesThatWereEatenInto
-          )(_ withMatch _)
-
-          (paredDownMatchesTakingFragmentationIntoAccount diff matches)
-            .foldLeft(
-              withTheParedDownFragments.withoutTheseMatches(
-                matches diff paredDownMatchesTakingFragmentationIntoAccount
-              )
-            )(_ withMatch _)
-            .withoutRedundantPairwiseMatchesIn(
-              paredDownMatchesTakingFragmentationIntoAccount diff matches
-            )
-            ._1
-        else this
-        end if
+        result
       end reconcileMatches
 
       private def withMatch(
@@ -2196,9 +2151,6 @@ object CodeMotionAnalysis extends StrictLogging:
           )
       end matchesAndTheirSections
 
-      // TODO: the reconciliation should happen here - so that would make the
-      // existing invariant check into a post-condition check instead...
-      matchesAndTheirSections.thisShouldBeAReconciliationPostcondition()
       val sectionsAndTheirMatches =
         matchesAndTheirSections.sectionsAndTheirMatches
 
@@ -2272,7 +2224,15 @@ object CodeMotionAnalysis extends StrictLogging:
           // Invariant: all the match keys should belong to the breakdown
           // of sections.
 
-          require(sectionsAndTheirMatches.keySet.subsetOf(allDistinctSections))
+          val rogueMatches =
+            (sectionsAndTheirMatches.keySet diff allDistinctSections).flatMap(
+              sectionsAndTheirMatches.get
+            )
+
+          require(
+            rogueMatches.isEmpty,
+            s"Found rogue matches whose sections do not belong to the breakdown: ${pprintCustomised(rogueMatches)}."
+          )
         }
 
         override def base: Map[Path, File[Element]] = baseFilesByPath
