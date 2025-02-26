@@ -184,7 +184,6 @@ object CodeMotionAnalysis extends StrictLogging:
         leftSectionsByPath = Map.empty,
         rightSectionsByPath = Map.empty,
         sectionsAndTheirMatches = MultiDict.empty,
-        pairwiseMatches = Set.empty,
         baseFingerprintedInclusionsByPath =
           fingerprintedInclusionsByPath(baseSources),
         leftFingerprintedInclusionsByPath =
@@ -816,7 +815,6 @@ object CodeMotionAnalysis extends StrictLogging:
         leftSectionsByPath: Map[Path, SectionsSeen],
         rightSectionsByPath: Map[Path, SectionsSeen],
         sectionsAndTheirMatches: MatchedSections,
-        pairwiseMatches: Set[PairwiseMatch],
         baseFingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions],
         leftFingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions],
         rightFingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions]
@@ -1878,24 +1876,21 @@ object CodeMotionAnalysis extends StrictLogging:
               baseSectionsByPath = baseIncluding(baseSection),
               leftSectionsByPath = leftIncluding(leftSection),
               sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch),
-              pairwiseMatches = pairwiseMatches + baseAndLeft
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch)
             )
           case baseAndRight @ Match.BaseAndRight(baseSection, rightSection) =>
             copy(
               baseSectionsByPath = baseIncluding(baseSection),
               rightSectionsByPath = rightIncluding(rightSection),
               sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch),
-              pairwiseMatches = pairwiseMatches + baseAndRight
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch)
             )
           case leftAndRight @ Match.LeftAndRight(leftSection, rightSection) =>
             copy(
               leftSectionsByPath = leftIncluding(leftSection),
               rightSectionsByPath = rightIncluding(rightSection),
               sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch),
-              pairwiseMatches = pairwiseMatches + leftAndRight
+                sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch)
             )
         end match
       end withMatch
@@ -2087,8 +2082,6 @@ object CodeMotionAnalysis extends StrictLogging:
                 _.remove(baseSection, baseAndLeft)
                   .remove(leftSection, baseAndLeft)
               )
-              .focus(_.pairwiseMatches)
-              .modify(_ - baseAndLeft)
 
           case (
                 matchesAndTheirSections,
@@ -2110,8 +2103,6 @@ object CodeMotionAnalysis extends StrictLogging:
                 _.remove(baseSection, baseAndRight)
                   .remove(rightSection, baseAndRight)
               )
-              .focus(_.pairwiseMatches)
-              .modify(_ - baseAndRight)
 
           case (
                 matchesAndTheirSections,
@@ -2133,8 +2124,6 @@ object CodeMotionAnalysis extends StrictLogging:
                 _.remove(leftSection, leftAndRight)
                   .remove(rightSection, leftAndRight)
               )
-              .focus(_.pairwiseMatches)
-              .modify(_ - leftAndRight)
         }
       end withoutTheseMatches
     end MatchesAndTheirSections
