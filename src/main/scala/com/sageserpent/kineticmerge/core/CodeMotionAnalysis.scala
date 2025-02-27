@@ -844,6 +844,142 @@ object CodeMotionAnalysis extends StrictLogging:
       private val rightIncluding: Section[Element] => Map[Path, SectionsSeen] =
         including(rightSources, rightSectionsByPath)
 
+      private def checkInvariant(): Unit =
+        // We expect to tally either two lots of a given pairwise match or three
+        // lots of a given all-sides match; we therefore scale the
+        // raw multiplicities of the section to take this into account.
+        val subdivisibleByTwoOrThree = 6
+
+        val baseSectionMultiplicities = baseSectionsByPath.values
+          .flatMap(_.iterator)
+          .groupBy(identity)
+          .map((section, group) =>
+            section -> subdivisibleByTwoOrThree * group.size
+          )
+
+        val leftSectionMultiplicities = leftSectionsByPath.values
+          .flatMap(_.iterator)
+          .groupBy(identity)
+          .map((section, group) =>
+            section -> subdivisibleByTwoOrThree * group.size
+          )
+
+        val rightSectionMultiplicities = rightSectionsByPath.values
+          .flatMap(_.iterator)
+          .groupBy(identity)
+          .map((section, group) =>
+            section -> subdivisibleByTwoOrThree * group.size
+          )
+
+        val tallyAllSides: Option[Int] => Option[Int] = {
+          case Some(multiplicity) =>
+            // Once we've accounted for the multiplicity, remove the entry.
+            Option.unless(2 == multiplicity)(multiplicity - 2)
+          // If we have an occurrence and there is no entry, start a negative
+          // count.
+          case None => Some(-2)
+        }
+
+        val tallyPairwise: Option[Int] => Option[Int] = {
+          case Some(multiplicity) =>
+            // Once we've accounted for the multiplicity, remove the entry.
+            Option.unless(3 == multiplicity)(multiplicity - 3)
+          // If we have an occurrence and there is no entry, start a negative
+          // count.
+          case None => Some(-3)
+        }
+
+        val (
+          unbalancedBaseSectionMultiplicities,
+          unbalancedLeftSectionMultiplicities,
+          unbalancedRightSectionMultiplicities
+        ) = sectionsAndTheirMatches.values.foldLeft(
+          (
+            baseSectionMultiplicities,
+            leftSectionMultiplicities,
+            rightSectionMultiplicities
+          )
+        ) {
+          case (
+                (
+                  baseSectionMultiplicities,
+                  leftSectionMultiplicities,
+                  rightSectionMultiplicities
+                ),
+                aMatch
+              ) =>
+            aMatch match
+              case Match.AllSides(
+                    baseSection,
+                    leftSection,
+                    rightSection
+                  ) =>
+                (
+                  baseSectionMultiplicities.updatedWith(baseSection)(
+                    tallyAllSides
+                  ),
+                  leftSectionMultiplicities.updatedWith(leftSection)(
+                    tallyAllSides
+                  ),
+                  rightSectionMultiplicities.updatedWith(rightSection)(
+                    tallyAllSides
+                  )
+                )
+              case Match.BaseAndLeft(
+                    baseSection,
+                    leftSection
+                  ) =>
+                (
+                  baseSectionMultiplicities.updatedWith(baseSection)(
+                    tallyPairwise
+                  ),
+                  leftSectionMultiplicities.updatedWith(leftSection)(
+                    tallyPairwise
+                  ),
+                  rightSectionMultiplicities
+                )
+              case Match.BaseAndRight(
+                    baseSection,
+                    rightSection
+                  ) =>
+                (
+                  baseSectionMultiplicities.updatedWith(baseSection)(
+                    tallyPairwise
+                  ),
+                  leftSectionMultiplicities,
+                  rightSectionMultiplicities.updatedWith(rightSection)(
+                    tallyPairwise
+                  )
+                )
+              case Match.LeftAndRight(
+                    leftSection,
+                    rightSection
+                  ) =>
+                (
+                  baseSectionMultiplicities,
+                  leftSectionMultiplicities.updatedWith(leftSection)(
+                    tallyPairwise
+                  ),
+                  rightSectionMultiplicities.updatedWith(rightSection)(
+                    tallyPairwise
+                  )
+                )
+        }
+
+        assert(
+          unbalancedBaseSectionMultiplicities.isEmpty,
+          s"Found unbalanced base section multiplicities, these are:\n${pprintCustomised(unbalancedBaseSectionMultiplicities)}"
+        )
+        assert(
+          unbalancedLeftSectionMultiplicities.isEmpty,
+          s"Found unbalanced left section multiplicities, these are:\n${pprintCustomised(unbalancedLeftSectionMultiplicities)}"
+        )
+        assert(
+          unbalancedRightSectionMultiplicities.isEmpty,
+          s"Found unbalanced right section multiplicities, these are:\n${pprintCustomised(unbalancedRightSectionMultiplicities)}"
+        )
+      end checkInvariant
+
       private def thisShouldBeAReconciliationPostcondition(): Unit =
         baseSectionsByPath.values.flatMap(_.iterator).foreach { baseSection =>
           assert(!baseSubsumes(baseSection))
@@ -1738,7 +1874,8 @@ object CodeMotionAnalysis extends StrictLogging:
             )
           end pairwiseMatchesToBeEaten
 
-          // TODO: review the diff: it is important, but should it apply elsewhere too?
+          // TODO: review the diff: it is important, but should it apply
+          // elsewhere too?
           val fragments = fragmentsOf(pairwiseMatchesToBeEaten).diff(
             matches.asInstanceOf[Set[PairwiseMatch]]
           )
@@ -1747,7 +1884,8 @@ object CodeMotionAnalysis extends StrictLogging:
             withoutTheseMatches(pairwiseMatchesToBeEaten.keySet)
           )(_ withMatch _)
 
-          // TODO: review the diff: it is important, but should it apply elsewhere too?
+          // TODO: review the diff: it is important, but should it apply
+          // elsewhere too?
           val paredDownMatches = matches.flatMap(
             takingFragmentationIntoAccount.pareDownOrSuppressCompletely
           ) diff pairwiseMatchesToBeEaten.keySet.asInstanceOf[Set[GenericMatch]]
@@ -1757,12 +1895,17 @@ object CodeMotionAnalysis extends StrictLogging:
           }
 
           if paredDownAllSidesMatches == allSidesMatches then
-            (paredDownMatches union /*TODO: review this paring down....*/ fragments
-              .flatMap(
-                takingFragmentationIntoAccount.pareDownOrSuppressCompletely
-              ))
-              .foldLeft(MatchesAndTheirSections.empty)(_ withMatch _)
-              .withoutRedundantPairwiseMatches
+            val result =
+              (paredDownMatches union /*TODO: review this paring down....*/ fragments
+                .flatMap(
+                  takingFragmentationIntoAccount.pareDownOrSuppressCompletely
+                ))
+                .foldLeft(MatchesAndTheirSections.empty)(_ withMatch _)
+                .withoutRedundantPairwiseMatches
+
+            result.checkInvariant()
+
+            result
           else reconcileUsing(paredDownAllSidesMatches)
           end if
         end reconcileUsing
