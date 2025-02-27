@@ -980,7 +980,7 @@ object CodeMotionAnalysis extends StrictLogging:
         )
       end checkInvariant
 
-      private def thisShouldBeAReconciliationPostcondition(): Unit =
+      private def reconciliationPostcondition(): Unit =
         baseSectionsByPath.values.flatMap(_.iterator).foreach { baseSection =>
           assert(!baseSubsumes(baseSection))
         }
@@ -1048,7 +1048,7 @@ object CodeMotionAnalysis extends StrictLogging:
             )
           end if
         }
-      end thisShouldBeAReconciliationPostcondition
+      end reconciliationPostcondition
 
       def baseSections: Set[Section[Element]] =
         baseSectionsByPath.values.flatMap(_.iterator).toSet
@@ -1918,7 +1918,7 @@ object CodeMotionAnalysis extends StrictLogging:
           case allSides: Match.AllSides[Section[Element]] => allSides
         })
 
-        result.thisShouldBeAReconciliationPostcondition()
+        result.reconciliationPostcondition()
 
         result
       end reconcileMatches
