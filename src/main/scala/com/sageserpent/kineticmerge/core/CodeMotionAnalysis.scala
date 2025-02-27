@@ -1003,36 +1003,37 @@ object CodeMotionAnalysis extends StrictLogging:
         // legitimate to have a pairwise match sharing just one section with an
         // all-sides match; they are just ambiguous matches.
 
-        val matchesBySectionPairs = sectionsAndTheirMatches.values.foldLeft(
-          MultiDict.empty[(Section[Element], Section[Element]), Match[
-            Section[Element]
-          ]]
-        )((matchesBySectionPairs, aMatch) =>
-          aMatch match
-            case Match.AllSides(baseSection, leftSection, rightSection) =>
-              matchesBySectionPairs + ((
-                baseSection,
-                leftSection
-              ) -> aMatch) + ((baseSection, rightSection) -> aMatch) + ((
-                leftSection,
-                rightSection
-              ) -> aMatch)
-            case Match.BaseAndLeft(baseSection, leftSection) =>
-              matchesBySectionPairs + ((
-                baseSection,
-                leftSection
-              ) -> aMatch)
-            case Match.BaseAndRight(baseSection, rightSection) =>
-              matchesBySectionPairs + ((
-                baseSection,
-                rightSection
-              ) -> aMatch)
-            case Match.LeftAndRight(leftSection, rightSection) =>
-              matchesBySectionPairs + ((
-                leftSection,
-                rightSection
-              ) -> aMatch)
-        )
+        val matchesBySectionPairs =
+          sectionsAndTheirMatches.values.toSet.foldLeft(
+            MultiDict.empty[(Section[Element], Section[Element]), Match[
+              Section[Element]
+            ]]
+          )((matchesBySectionPairs, aMatch) =>
+            aMatch match
+              case Match.AllSides(baseSection, leftSection, rightSection) =>
+                matchesBySectionPairs + ((
+                  baseSection,
+                  leftSection
+                ) -> aMatch) + ((baseSection, rightSection) -> aMatch) + ((
+                  leftSection,
+                  rightSection
+                ) -> aMatch)
+              case Match.BaseAndLeft(baseSection, leftSection) =>
+                matchesBySectionPairs + ((
+                  baseSection,
+                  leftSection
+                ) -> aMatch)
+              case Match.BaseAndRight(baseSection, rightSection) =>
+                matchesBySectionPairs + ((
+                  baseSection,
+                  rightSection
+                ) -> aMatch)
+              case Match.LeftAndRight(leftSection, rightSection) =>
+                matchesBySectionPairs + ((
+                  leftSection,
+                  rightSection
+                ) -> aMatch)
+          )
 
         matchesBySectionPairs.keySet.foreach { sectionPair =>
           val matches = matchesBySectionPairs.get(sectionPair)
@@ -1702,7 +1703,7 @@ object CodeMotionAnalysis extends StrictLogging:
       // all-sides match; remove any such redundant pairwise matches.
       private def withoutRedundantPairwiseMatches: MatchesAndTheirSections =
         val redundantMatches =
-          sectionsAndTheirMatches.values.filter {
+          sectionsAndTheirMatches.values.toSet.filter {
             case Match.BaseAndLeft(baseSection, leftSection) =>
               sectionsAndTheirMatches
                 .get(baseSection)
@@ -1759,7 +1760,7 @@ object CodeMotionAnalysis extends StrictLogging:
 
         val overlappingMatches =
           // NOTE: have to convert to a set to remove duplicates.
-          sectionsAndTheirMatches.values.filter(overlapsWithSomethingElse).toSet
+          sectionsAndTheirMatches.values.toSet.filter(overlapsWithSomethingElse)
 
         if overlappingMatches.nonEmpty then
           if enabled then
@@ -1874,6 +1875,8 @@ object CodeMotionAnalysis extends StrictLogging:
             )
           end pairwiseMatchesToBeEaten
 
+          this.checkInvariant()
+
           // TODO: review the diff: it is important, but should it apply
           // elsewhere too?
           val fragments = fragmentsOf(pairwiseMatchesToBeEaten).diff(
@@ -1883,6 +1886,8 @@ object CodeMotionAnalysis extends StrictLogging:
           val takingFragmentationIntoAccount = fragments.foldLeft(
             withoutTheseMatches(pairwiseMatchesToBeEaten.keySet)
           )(_ withMatch _)
+
+          takingFragmentationIntoAccount.checkInvariant()
 
           // TODO: review the diff: it is important, but should it apply
           // elsewhere too?
@@ -1895,13 +1900,16 @@ object CodeMotionAnalysis extends StrictLogging:
           }
 
           if paredDownAllSidesMatches == allSidesMatches then
-            val result =
+            val rebuilt =
               (paredDownMatches union /*TODO: review this paring down....*/ fragments
                 .flatMap(
                   takingFragmentationIntoAccount.pareDownOrSuppressCompletely
                 ))
                 .foldLeft(MatchesAndTheirSections.empty)(_ withMatch _)
-                .withoutRedundantPairwiseMatches
+
+            rebuilt.checkInvariant()
+
+            val result = rebuilt.withoutRedundantPairwiseMatches
 
             result.checkInvariant()
 
@@ -2334,7 +2342,7 @@ object CodeMotionAnalysis extends StrictLogging:
           val allMatchKeys = sectionsAndTheirMatches.keySet
 
           val allParticipatingSections =
-            sectionsAndTheirMatches.values
+            sectionsAndTheirMatches.values.toSet
               .map {
                 case Match.AllSides(baseSection, leftSection, rightSection) =>
                   Set(baseSection, leftSection, rightSection)
