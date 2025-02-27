@@ -844,6 +844,59 @@ object CodeMotionAnalysis extends StrictLogging:
       private val rightIncluding: Section[Element] => Map[Path, SectionsSeen] =
         including(rightSources, rightSectionsByPath)
 
+      private def checkInvariant(): Unit =
+        val evaluatedBaseSections  = baseSections
+        val evaluatedLeftSections  = leftSections
+        val evaluatedRightSections = rightSections
+
+        sectionsAndTheirMatches.values.toSet.foreach {
+          case allSides @ Match.AllSides(
+                baseSection,
+                leftSection,
+                rightSection
+              ) =>
+            require(
+              evaluatedBaseSections.contains(baseSection),
+              s"Can't find the base section: $baseSection from match: $allSides in base sections, got:\n${pprintCustomised(evaluatedBaseSections)}"
+            )
+            require(
+              evaluatedLeftSections.contains(leftSection),
+              s"Can't find the left section: $leftSection from match: $allSides in left sections, got:\n${pprintCustomised(evaluatedLeftSections)}"
+            )
+            require(
+              evaluatedRightSections.contains(rightSection),
+              s"Can't find the right section: $rightSection from match: $allSides in right sections, got:\n${pprintCustomised(evaluatedRightSections)}"
+            )
+          case baseAndLeft @ Match.BaseAndLeft(baseSection, leftSection) =>
+            require(
+              evaluatedBaseSections.contains(baseSection),
+              s"Can't find the base section: $baseSection from match: $baseAndLeft in base sections, got:\n${pprintCustomised(evaluatedBaseSections)}"
+            )
+            require(
+              evaluatedLeftSections.contains(leftSection),
+              s"Can't find the left section: $leftSection from match: $baseAndLeft in left sections, got:\n${pprintCustomised(evaluatedLeftSections)}"
+            )
+          case baseAndRight @ Match.BaseAndRight(baseSection, rightSection) =>
+            require(
+              evaluatedBaseSections.contains(baseSection),
+              s"Can't find the base section: $baseSection from match: $baseAndRight in base sections, got:\n${pprintCustomised(evaluatedBaseSections)}"
+            )
+            require(
+              evaluatedRightSections.contains(rightSection),
+              s"Can't find the right section: $rightSection from match: $baseAndRight in right sections, got:\n${pprintCustomised(evaluatedRightSections)}"
+            )
+          case leftAndRight @ Match.LeftAndRight(leftSection, rightSection) =>
+            require(
+              evaluatedLeftSections.contains(leftSection),
+              s"Can't find the left section: $leftSection from match: $leftAndRight in left sections, got:\n${pprintCustomised(evaluatedLeftSections)}"
+            )
+            require(
+              evaluatedRightSections.contains(rightSection),
+              s"Can't find the right section: $rightSection from match: $leftAndRight in right sections, got:\n${pprintCustomised(evaluatedRightSections)}"
+            )
+        }
+      end checkInvariant
+
       private def thisShouldBeAReconciliationPostcondition(): Unit =
         baseSectionsByPath.values.flatMap(_.iterator).foreach { baseSection =>
           assert(!baseSubsumes(baseSection))
@@ -867,36 +920,37 @@ object CodeMotionAnalysis extends StrictLogging:
         // legitimate to have a pairwise match sharing just one section with an
         // all-sides match; they are just ambiguous matches.
 
-        val matchesBySectionPairs = sectionsAndTheirMatches.values.foldLeft(
-          MultiDict.empty[(Section[Element], Section[Element]), Match[
-            Section[Element]
-          ]]
-        )((matchesBySectionPairs, aMatch) =>
-          aMatch match
-            case Match.AllSides(baseSection, leftSection, rightSection) =>
-              matchesBySectionPairs + ((
-                baseSection,
-                leftSection
-              ) -> aMatch) + ((baseSection, rightSection) -> aMatch) + ((
-                leftSection,
-                rightSection
-              ) -> aMatch)
-            case Match.BaseAndLeft(baseSection, leftSection) =>
-              matchesBySectionPairs + ((
-                baseSection,
-                leftSection
-              ) -> aMatch)
-            case Match.BaseAndRight(baseSection, rightSection) =>
-              matchesBySectionPairs + ((
-                baseSection,
-                rightSection
-              ) -> aMatch)
-            case Match.LeftAndRight(leftSection, rightSection) =>
-              matchesBySectionPairs + ((
-                leftSection,
-                rightSection
-              ) -> aMatch)
-        )
+        val matchesBySectionPairs =
+          sectionsAndTheirMatches.values.toSet.foldLeft(
+            MultiDict.empty[(Section[Element], Section[Element]), Match[
+              Section[Element]
+            ]]
+          )((matchesBySectionPairs, aMatch) =>
+            aMatch match
+              case Match.AllSides(baseSection, leftSection, rightSection) =>
+                matchesBySectionPairs + ((
+                  baseSection,
+                  leftSection
+                ) -> aMatch) + ((baseSection, rightSection) -> aMatch) + ((
+                  leftSection,
+                  rightSection
+                ) -> aMatch)
+              case Match.BaseAndLeft(baseSection, leftSection) =>
+                matchesBySectionPairs + ((
+                  baseSection,
+                  leftSection
+                ) -> aMatch)
+              case Match.BaseAndRight(baseSection, rightSection) =>
+                matchesBySectionPairs + ((
+                  baseSection,
+                  rightSection
+                ) -> aMatch)
+              case Match.LeftAndRight(leftSection, rightSection) =>
+                matchesBySectionPairs + ((
+                  leftSection,
+                  rightSection
+                ) -> aMatch)
+          )
 
         matchesBySectionPairs.keySet.foreach { sectionPair =>
           val matches = matchesBySectionPairs.get(sectionPair)
@@ -1566,7 +1620,7 @@ object CodeMotionAnalysis extends StrictLogging:
       // all-sides match; remove any such redundant pairwise matches.
       private def withoutRedundantPairwiseMatches: MatchesAndTheirSections =
         val redundantMatches =
-          sectionsAndTheirMatches.values.filter {
+          sectionsAndTheirMatches.values.toSet.filter {
             case Match.BaseAndLeft(baseSection, leftSection) =>
               sectionsAndTheirMatches
                 .get(baseSection)
@@ -1623,7 +1677,7 @@ object CodeMotionAnalysis extends StrictLogging:
 
         val overlappingMatches =
           // NOTE: have to convert to a set to remove duplicates.
-          sectionsAndTheirMatches.values.filter(overlapsWithSomethingElse).toSet
+          sectionsAndTheirMatches.values.toSet.filter(overlapsWithSomethingElse)
 
         if overlappingMatches.nonEmpty then
           if enabled then
@@ -1738,7 +1792,10 @@ object CodeMotionAnalysis extends StrictLogging:
             )
           end pairwiseMatchesToBeEaten
 
-          // TODO: review the diff: it is important, but should it apply elsewhere too?
+          this.checkInvariant()
+
+          // TODO: review the diff: it is important, but should it apply
+          // elsewhere too?
           val fragments = fragmentsOf(pairwiseMatchesToBeEaten).diff(
             matches.asInstanceOf[Set[PairwiseMatch]]
           )
@@ -1747,7 +1804,10 @@ object CodeMotionAnalysis extends StrictLogging:
             withoutTheseMatches(pairwiseMatchesToBeEaten.keySet)
           )(_ withMatch _)
 
-          // TODO: review the diff: it is important, but should it apply elsewhere too?
+          takingFragmentationIntoAccount.checkInvariant()
+
+          // TODO: review the diff: it is important, but should it apply
+          // elsewhere too?
           val paredDownMatches = matches.flatMap(
             takingFragmentationIntoAccount.pareDownOrSuppressCompletely
           ) diff pairwiseMatchesToBeEaten.keySet.asInstanceOf[Set[GenericMatch]]
@@ -1757,12 +1817,20 @@ object CodeMotionAnalysis extends StrictLogging:
           }
 
           if paredDownAllSidesMatches == allSidesMatches then
-            (paredDownMatches union /*TODO: review this paring down....*/ fragments
-              .flatMap(
-                takingFragmentationIntoAccount.pareDownOrSuppressCompletely
-              ))
-              .foldLeft(MatchesAndTheirSections.empty)(_ withMatch _)
-              .withoutRedundantPairwiseMatches
+            val rebuilt =
+              (paredDownMatches union /*TODO: review this paring down....*/ fragments
+                .flatMap(
+                  takingFragmentationIntoAccount.pareDownOrSuppressCompletely
+                ))
+                .foldLeft(MatchesAndTheirSections.empty)(_ withMatch _)
+
+            rebuilt.checkInvariant()
+
+            val result = rebuilt.withoutRedundantPairwiseMatches
+
+            result.checkInvariant()
+
+            result
           else reconcileUsing(paredDownAllSidesMatches)
           end if
         end reconcileUsing
@@ -2191,7 +2259,7 @@ object CodeMotionAnalysis extends StrictLogging:
           val allMatchKeys = sectionsAndTheirMatches.keySet
 
           val allParticipatingSections =
-            sectionsAndTheirMatches.values
+            sectionsAndTheirMatches.values.toSet
               .map {
                 case Match.AllSides(baseSection, leftSection, rightSection) =>
                   Set(baseSection, leftSection, rightSection)
