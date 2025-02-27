@@ -1877,8 +1877,6 @@ object CodeMotionAnalysis extends StrictLogging:
 
           this.checkInvariant()
 
-          // TODO: review the diff: it is important, but should it apply
-          // elsewhere too?
           val fragments = fragmentsOf(pairwiseMatchesToBeEaten).diff(
             matches.asInstanceOf[Set[PairwiseMatch]]
           )
@@ -1889,8 +1887,6 @@ object CodeMotionAnalysis extends StrictLogging:
 
           takingFragmentationIntoAccount.checkInvariant()
 
-          // TODO: review the diff: it is important, but should it apply
-          // elsewhere too?
           val paredDownMatches = matches.flatMap(
             takingFragmentationIntoAccount.pareDownOrSuppressCompletely
           ) diff pairwiseMatchesToBeEaten.keySet.asInstanceOf[Set[GenericMatch]]
@@ -1901,7 +1897,7 @@ object CodeMotionAnalysis extends StrictLogging:
 
           if paredDownAllSidesMatches == allSidesMatches then
             val rebuilt =
-              (paredDownMatches union /*TODO: review this paring down....*/ fragments
+              (paredDownMatches union fragments
                 .flatMap(
                   takingFragmentationIntoAccount.pareDownOrSuppressCompletely
                 ))
