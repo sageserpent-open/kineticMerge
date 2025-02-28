@@ -1550,6 +1550,23 @@ class CodeMotionAnalysisTest:
       ) ++ analysis.right.values.flatMap(_.sections))
         .map(analysis.matchesFor)
         .reduce(_ union _)
+
+    // There should be just left-right matches.
+    assert(matches.map(_.ordinal).size == 1)
+
+    // There should be two left-right matches.
+    assert((matches count {
+      case _: Match.LeftAndRight[Section[Element]] => true
+      case _                                       => false
+    }) == 2)
+
+    // The contents should be broken down.
+    assert(
+      matches.map(_.content) == Set(
+        Vector(alpha),
+        Vector(beta)
+      )
+    )
   end problematicSituation
 
   @Test
