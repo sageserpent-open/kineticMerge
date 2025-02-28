@@ -6,7 +6,7 @@
 
 Merge a heavily refactored codebase and stay sane.
 
-(**Release - 1.5.1**).
+(**Release - 1.6.0**).
 
 YouTube: [Kinetic Merge: Merging through a File Split](https://youtu.be/JHb9DKK0LIA)
 
