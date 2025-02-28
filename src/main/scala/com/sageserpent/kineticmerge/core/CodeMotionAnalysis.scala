@@ -7,12 +7,7 @@ import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction}
 import com.sageserpent.kineticmerge
-import com.sageserpent.kineticmerge.{
-  NoProgressRecording,
-  ProgressRecording,
-  ProgressRecordingSession,
-  core
-}
+import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording, ProgressRecordingSession, core}
 import com.typesafe.scalalogging.StrictLogging
 import de.sciss.fingertree.RangedSeq
 import monocle.syntax.all.*
@@ -853,45 +848,63 @@ object CodeMotionAnalysis extends StrictLogging:
         // We expect to tally either two lots of a given pairwise match or three
         // lots of a given all-sides match; we therefore scale the
         // raw multiplicities of the section to take this into account.
-        val subdivisibleByTwoOrThree = 6
+        val multiplicityScaleSubdivisibleByTwoOrThree = 6
+
+        val multiplicityScaleDividedIntoAThirdForEachSideOfAnAllSidesMatch =
+          multiplicityScaleSubdivisibleByTwoOrThree / 3
+
+        val multiplicityScaleDividedIntoAHalfForEachSideOfAPairwiseMatch =
+          multiplicityScaleSubdivisibleByTwoOrThree / 2
 
         val baseSectionMultiplicities = baseSectionsByPath.values
           .flatMap(_.iterator)
           .groupBy(identity)
           .map((section, group) =>
-            section -> subdivisibleByTwoOrThree * group.size
+            section -> multiplicityScaleSubdivisibleByTwoOrThree * group.size
           )
 
         val leftSectionMultiplicities = leftSectionsByPath.values
           .flatMap(_.iterator)
           .groupBy(identity)
           .map((section, group) =>
-            section -> subdivisibleByTwoOrThree * group.size
+            section -> multiplicityScaleSubdivisibleByTwoOrThree * group.size
           )
 
         val rightSectionMultiplicities = rightSectionsByPath.values
           .flatMap(_.iterator)
           .groupBy(identity)
           .map((section, group) =>
-            section -> subdivisibleByTwoOrThree * group.size
+            section -> multiplicityScaleSubdivisibleByTwoOrThree * group.size
           )
 
         val tallyAllSides: Option[Int] => Option[Int] = {
           case Some(multiplicity) =>
             // Once we've accounted for the multiplicity, remove the entry.
-            Option.unless(2 == multiplicity)(multiplicity - 2)
+            Option.unless(
+              multiplicityScaleDividedIntoAThirdForEachSideOfAnAllSidesMatch == multiplicity
+            )(
+              multiplicity - multiplicityScaleDividedIntoAThirdForEachSideOfAnAllSidesMatch
+            )
           // If we have an occurrence and there is no entry, start a negative
           // count.
-          case None => Some(-2)
+          case None =>
+            Some(
+              -multiplicityScaleDividedIntoAThirdForEachSideOfAnAllSidesMatch
+            )
         }
 
         val tallyPairwise: Option[Int] => Option[Int] = {
           case Some(multiplicity) =>
             // Once we've accounted for the multiplicity, remove the entry.
-            Option.unless(3 == multiplicity)(multiplicity - 3)
+            Option.unless(
+              multiplicityScaleDividedIntoAHalfForEachSideOfAPairwiseMatch == multiplicity
+            )(
+              multiplicity - multiplicityScaleDividedIntoAHalfForEachSideOfAPairwiseMatch
+            )
           // If we have an occurrence and there is no entry, start a negative
           // count.
-          case None => Some(-3)
+          case None =>
+            Some(-multiplicityScaleDividedIntoAHalfForEachSideOfAPairwiseMatch)
         }
 
         val (
