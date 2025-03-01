@@ -8,7 +8,9 @@ Merge a heavily refactored codebase and stay sane.
 
 (**Release - 1.6.0**).
 
-YouTube: [Kinetic Merge: Merging through a File Split](https://youtu.be/JHb9DKK0LIA)
+YouTube: 
+- [Kinetic Merge: Merging through a File Split](https://youtu.be/JHb9DKK0LIA)
+- [Kinetic Merge: Complex Merge Demonstration](https://youtu.be/6jry6NKxGJA)
 
 <video src="https://github.com/sageserpent-open/kineticMerge/assets/1765601/2d676e20-dce0-441a-b4a2-fcbaa8aff35d"><video/>
 
