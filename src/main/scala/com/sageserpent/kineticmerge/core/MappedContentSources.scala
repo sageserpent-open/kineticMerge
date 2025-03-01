@@ -1,6 +1,9 @@
 package com.sageserpent.kineticmerge.core
 
-import com.sageserpent.kineticmerge.core.MappedContentSourcesOfTokens.{TextPosition, linebreakExtraction}
+import com.sageserpent.kineticmerge.core.MappedContentSourcesOfTokens.{
+  TextPosition,
+  linebreakExtraction
+}
 import com.typesafe.scalalogging.StrictLogging
 import pprint.Tree
 
@@ -50,7 +53,7 @@ trait MappedContentSources[Path, Element]
                     startOffset = second.startOffset,
                     size = first.onePastEndOffset - second.startOffset
                   )
-                  
+
                   throw new RuntimeException:
                     s"""Overlapping section detected on side: $label at path: $path, $first (content: ${first.content}) 
                        |overlaps with start of section: $second (content: ${second.content}), overlap content: ${overlap.content}. 

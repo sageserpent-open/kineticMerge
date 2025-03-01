@@ -7,7 +7,12 @@ import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction}
 import com.sageserpent.kineticmerge
-import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording, ProgressRecordingSession, core}
+import com.sageserpent.kineticmerge.{
+  NoProgressRecording,
+  ProgressRecording,
+  ProgressRecordingSession,
+  core
+}
 import com.typesafe.scalalogging.StrictLogging
 import de.sciss.fingertree.RangedSeq
 import monocle.syntax.all.*
