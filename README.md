@@ -32,13 +32,13 @@ YouTube: [Kinetic Merge: Merging through a File Split](https://youtu.be/JHb9DKK0
 ```bash
 curl -LJO --verbose http://github.com/sageserpent-open/kineticMerge/releases/download/v<RELEASE VERSION FROM GITHUB>/kinetic-merge
 
-chmod ug+x kinetic-merge
+chmod a+x kinetic-merge
 ```
 
 Put it on on your path.
 
 Alternatively, go to the [releases](https://github.com/sageserpent-open/kineticMerge/releases) and manually
-download `kinetic-merge`. You'll still have to execute `chmod ug+x kineticMerge` so you can run it.
+download `kinetic-merge`. You'll still have to execute `chmod a+x kineticMerge` so you can run it.
 
 If you're on Windows, instead of `kinetic-merge` use the companion download *`kinetic-merge.bat`*.
 
