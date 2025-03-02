@@ -118,7 +118,7 @@ one.
 Well, it works; there are stable releases. Code motion is tracked both intra-file and inter-file. You can split a file into pieces on one branch and
 edit the original file on another - those edits will find their way into the right places when you merge. Correspondingly, you can join several files together on one branch and edit all of them on another - again, the edits will arrive in the right place on merging. Cool.
 
-As befits any piece of non-vapourware, there are known bugs / deficiencies and there are always no features to add, but that's why Github provides an issue tracker.
+As befits any piece of non-vapourware, there are known bugs / deficiencies and there are always new features to add, but that's why Github provides an issue tracker.
 
 The author uses it regularly on his own projects.
 
