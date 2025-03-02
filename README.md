@@ -72,8 +72,9 @@ usual workflow to resolve the conflicts. You can open up an editor directly on t
 hand - mark them as resolved in the usual way with `git add <resolved file>` and the commit with `git commit`, or
 just `git merge --continue` - or use your usual IDE to resolve the conflicts; I use IntelliJ, that works nicely.
 
-Unlike a conventional Git merge, if you use an IDE that reads the staged conflicting files, you will see that the *left*
-and *right* versions are already partially merged for you.
+Unlike a conventional Git merge, if you use an IDE that reads the staged conflicting files, you will see that the *left* and *right* versions are already partially merged for you.
+
+What's more, the staged files and the conflicts already have any code motion applied to them, so they are less confusing; the conflicts are shown in the right place.
 
 It supports fast-forwarding, plus the `--no-ff` and `--no-commit` options too. Use `--help` if you need a reminder.
 
