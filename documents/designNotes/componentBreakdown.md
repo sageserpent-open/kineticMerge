@@ -22,7 +22,7 @@ of `Main.InWorkingDirectory`; that instance is used to drive the merge.
 ### `Main.InWorkingDirectory` ###
 
 This interacts with the Git repository, the working tree and the Git index to build up the inputs to the core merge
-machinery - `CodeMotionAnalysis.of` and `CodeMotionAnalysisExtenstion.merge`, writing the merge results to the working
+machinery - `CodeMotionAnalysis.of` and `CodeMotionAnalysisExtension.merge`, writing the merge results to the working
 tree, the Git index and making a merge commit in the Git repository proper if appropriate. It also performs fast-forward
 merges.
 
