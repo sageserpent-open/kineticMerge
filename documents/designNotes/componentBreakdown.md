@@ -62,10 +62,6 @@ party tools to get feedback of the merge machinery's progress at various long-ru
 For each phase, the `ProgressRecording` instance is used as a factory to build a mutable `ProgressRecordingSession`;
 that in turn serves as a callback trait, so the merge machinery can notify interested parties of its progress.
 
-### `NecessaryEvil` ###
-
-What it says on the tin! The plan is to remove it at some point. Please don't open it and let's move on...
-
 ## `com.sageserpent.kineticmerge.core` ##
 
 **NOTE:** except `Token`, all of the components below are parameterised with types representing paths, content elements
@@ -150,11 +146,13 @@ they base plus left, base plus right or left plus right - is a *pairwise match*.
 
 ### `CodeMotionAnalysis` ###
 
-The class is a result of the act of performing the analysis. It is a breakdown of files by path for each of the three
-sides, together with a set of all the matches gleaned from the analysis.
+The class is a result of the act of performing the analysis. It has a breakdown of files by path for each of the three
+sides.
 
 The files will yield sections that are either parts of the matches, or are gap filler sections to cover the unmatched
 content on all three sides.
+
+There is a lookup facility that yields the set of matches that involve any given section.
 
 The companion object defines `CodeMotionAnalysis.of` - this performs the analysis, being a factory for the instances.
 Its job is find an optimal set of matches, matching as much of the content as possible across all the sides, but using
@@ -226,7 +224,7 @@ see [the comment in this issue](https://github.com/sageserpent-open/kineticMerge
 
 A merge algebra implementation has an associated result type - when testing the three-way merge, this result type is
 spartan, being a plain `MergeResult`. `CodeMotionAnalysisExtension.merge` drives the three-way merges with a richer
-merge algebra that yields a `MatchesResult.MergeResultDetectingMotion`.
+merge algebra that yields a `FirstPassMergeResult`.
 
 ### `merge` ###
 
@@ -236,32 +234,17 @@ result of the merge.
 
 ### `MoveDestinations` ###
 
-An instance represents the destinations a piece of code may move to. There are subtleties here:
+An instance represents the destinations a piece of content may move to. Content may move to the left side, the right
+side or a coincident move to the same place on both the left and right. A given piece of content may move to multiple
+move destinations, and for that matter may arrive at a given destination from multiple sources.
 
-1. There are potentially up to three kind of move destination for the same piece of code - the left side, the right side
-   or a coincident move to the same place on both the left and right.
-2. For each kind of move destination, there may be multiple entries due to ambiguous matches.
-3. Again due to ambiguous matches, there may be several sources of the same piece of code.
-
-This class is odd in that it isn't a single move destination, it also carries the sources of the moves, and it is
-parameterised by an element type that itself doesn't expose any location in its abstract form. It is only
-because `CodeMotionAnalysisExtension.merge` works in terms of sections that the location information is modelled. This
-works perfectly well; the logic only needs to be able to identify a destination, it doesn't need any location when
-migrating changes or insertions.
+This class is odd in that it isn't a single move destination, and it is parameterised by an element type that itself
+doesn't expose any location in its abstract form. It is only because `CodeMotionAnalysisExtension.merge` works in terms
+of sections that the location information is modelled. This works perfectly well; the logic only needs to be able to
+identify a destination, it doesn't need any location when migrating changes or insertions.
 
 Nevertheless, the report shown to the user when running Kinetic Merge will refer to sections, and these do display
 location information.
-
-### `MatchesContext` ###
-
-Provides context to `MatchesContext.MergeResultDetectingMotion` and its merge algebra implementation. The context is
-simply a lookup of matches for a given section.
-
-### `MatchesContext.MergeResultDetectingMotion` ###
-
-A richer merge result that aggregates (and delegates to) a simpler merge result (in `CodeMotionAnalysisExtension.merge`,
-this is a plain `MergeResult`). It has extra baggage that tracks changes (edits and deletions) to be migrated, move
-destinations and insertions that may or may not need migration.
 
 ### `LongestCommonSubsequence` ###
 
@@ -275,10 +258,15 @@ elements only align on two sides, augmented further with elements present only o
 In essence, it classifies the elements according to whether they are in the core longest common subsequence, or are
 common on just two sides, or are just different. This classification is revealed separately for all three sides.
 
-The algorithm used is the standard dynamic programming algorithm recast as a memoized recursive algorithm. It is not
-robust against stack overflow, nor does it scale well - but as the three-way merge works over sections rather than
-tokens, it works very well in practice, stack usage and performance being no problem. The focus was on getting something
-comprehensible to pass its tests, rather than to hit optimisation goals prematurely.
+The algorithm used is the standard dynamic programming algorithm, but has been restructured to save memory (not all the
+partial solutions examined by the algorithm need to be present at the same time) and to afford a degree of parallel
+evaluations of partial solutions.
+
+Using a top-down memoized approach instead of dynamic programming is not stack safe, and this **does** cause stack
+overflow in practise. This approach can be made stack safe, but incurs a significant performance hit.
+
+For the full story, see the notes [in this ticket](https://github.com/sageserpent-open/kineticMerge/issues/93) and
+the [follow up](https://github.com/sageserpent-open/kineticMerge/issues/132).
 
 There are theoretically better algorithms out there (as well as some crude heuristics to optimise the standard
 algorithm), but they haven't been deemed necessary. Yet.
