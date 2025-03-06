@@ -38,7 +38,7 @@ Then run `cs install --contrib kinetic-merge`, and you're all set to go, it will
 `kinetic-merge` on your path.
 
 You can also invoke Kinetic Merge via Coursier without actually installing it:
-`cs launch com.sageserpent::kinetic-merge:<RELEASE VERSION FROM GITHUB> -- <command line arguments follow the -->`
+`cs launch com.sageserpent::kinetic-merge:<RELEASE VERSION FROM GITHUB> -- <command line arguments>`
 
 ### Not got Coursier installed? ###
 
