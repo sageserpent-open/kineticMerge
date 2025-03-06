@@ -8,7 +8,8 @@ Merge a heavily refactored codebase and stay sane.
 
 (**Release - 1.6.0**).
 
-YouTube: 
+YouTube:
+
 - [Kinetic Merge: Merging through a File Split](https://youtu.be/JHb9DKK0LIA)
 - [Kinetic Merge: Complex Merge Demonstration](https://youtu.be/6jry6NKxGJA)
 
@@ -31,26 +32,44 @@ YouTube:
 
 ## Installation ##
 
+### Got [Coursier](https://get-coursier.io/) installed? ###
+
+Then run `cs install --contrib kinetic-merge`, and you're all set to go, it will put the latest release of
+`kinetic-merge` on your path.
+
+You can also invoke Kinetic Merge via Coursier without actually installing it:
+`cs launch com.sageserpent::kinetic-merge:<RELEASE VERSION FROM GITHUB> -- <command line arguments follow the -->`
+
+### Not got Coursier installed? ###
+
+Install it, then: https://get-coursier.io/docs/cli-installation.
+
+### Don't want to install Coursier? ###
+
+Then download a release for yourself:
+
 ```bash
 curl -LJO --verbose http://github.com/sageserpent-open/kineticMerge/releases/download/v<RELEASE VERSION FROM GITHUB>/kinetic-merge
 
 chmod a+x kinetic-merge
 ```
 
-Put it on on your path.
+Put it on your path.
 
 Alternatively, go to the [releases](https://github.com/sageserpent-open/kineticMerge/releases) and manually
 download `kinetic-merge`. You'll still have to execute `chmod a+x kineticMerge` so you can run it.
 
 If you're on Windows, instead of `kinetic-merge` use the companion download *`kinetic-merge.bat`*.
 
-Stuck in a firewalled corporate environment and can't just download anything you feel like?
+### Stuck in a firewalled corporate environment and can't just download anything you feel like, but can clone this repository? ###
 
-Try the instructions
-here [if you have Coursier](https://github.com/sageserpent-open/kineticMerge/issues/21#issuecomment-1933956129)
-or [here if you have a corporate mirror of Maven](https://github.com/sageserpent-open/kineticMerge/issues/21#issuecomment-1932619838).
+If so, clone this repository locally (or just download it as a source drop), install SBT and run `sbt packageExecutable`
+in the top level of the directory you've cloned / downloaded - that will place a freshly baked executable and companion
+Windows batch file in the `target` subdirectory.
 
-Really can't download scripts or JARs from GitHub, Maven Central or Sonatype, but can clone this repository? If so, clone this repository locally (or just download it as a source drop), install SBT and run `sbt packageExecutable` in the top level of the directory you've cloned / downloaded - that will place a freshly baked executable and companion Windows batch file in the `target` directory.
+### Want to test-drive the programmatic API from JShell and have access to Maven Central or Sonatype? ###
+
+Try the instructions [here](https://github.com/sageserpent-open/kineticMerge/issues/21#issuecomment-1932619838).
 
 ## Running it ##
 
@@ -72,9 +91,11 @@ usual workflow to resolve the conflicts. You can open up an editor directly on t
 hand - mark them as resolved in the usual way with `git add <resolved file>` and the commit with `git commit`, or
 just `git merge --continue` - or use your usual IDE to resolve the conflicts; I use IntelliJ, that works nicely.
 
-Unlike a conventional Git merge, if you use an IDE that reads the staged conflicting files, you will see that the *left* and *right* versions are already partially merged for you.
+Unlike a conventional Git merge, if you use an IDE that reads the staged conflicting files, you will see that the *left*
+and *right* versions are already partially merged for you.
 
-What's more, the staged files and the conflicts already have any code motion applied to them, so they are less confusing; the conflicts are shown in the right place.
+What's more, the staged files and the conflicts already have any code motion applied to them, so they are less
+confusing; the conflicts are shown in the right place.
 
 It supports fast-forwarding, plus the `--no-ff` and `--no-commit` options too. Use `--help` if you need a reminder.
 
@@ -116,10 +137,14 @@ one.
 
 ## Status
 
-Well, it works; there are stable releases. Code motion is tracked both intra-file and inter-file. You can split a file into pieces on one branch and
-edit the original file on another - those edits will find their way into the right places when you merge. Correspondingly, you can join several files together on one branch and edit all of them on another - again, the edits will arrive in the right place on merging. Cool.
+Well, it works; there are stable releases. Code motion is tracked both intra-file and inter-file. You can split a file
+into pieces on one branch and
+edit the original file on another - those edits will find their way into the right places when you merge.
+Correspondingly, you can join several files together on one branch and edit all of them on another - again, the edits
+will arrive in the right place on merging. Cool.
 
-As befits any piece of non-vapourware, there are known bugs / deficiencies and there are always new features to add, but that's why Github provides an issue tracker.
+As befits any piece of non-vapourware, there are known bugs / deficiencies and there are always new features to add, but
+that's why Github provides an issue tracker.
 
 The author uses it regularly on his own projects.
 
