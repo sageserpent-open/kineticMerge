@@ -134,7 +134,7 @@ likely to provide a good performance boost.
 
 This is the job
 of [
-`matchesForWindowSize`](https://github.com/sageserpent-open/kineticMerge/blob/a9c639c98c78af9ba848243471f51c364845f5d1/src/main/scala/com/sageserpent/kineticmerge/core/CodeMotionAnalysis.scala#L1152).
+`MatchesAndTheirSections.matchesForWindowSize`](https://github.com/sageserpent-open/kineticMerge/blob/a9c639c98c78af9ba848243471f51c364845f5d1/src/main/scala/com/sageserpent/kineticmerge/core/CodeMotionAnalysis.scala#L1152).
 It packages the matches found together with their count and the estimated window size for an optimal match in
 a `MatchingResult`.
 
@@ -165,3 +165,34 @@ It delegates to three helper functions:
    to build the final `MatchingResult` for the candidate window size out of those matches. It is here that the estimate
    for the optimal match size is requested.
 
+## Reconciling Matches ##
+
+This has gone through a *lot* of changes, and code has shuttled back and forth between the reconciliation and the
+initial production of matches. Names have changed several times too, and there was a time when `MatchesAndTheirSections`
+had a much tighter invariant with match fragmentation happening on the fly as matches were found by the searches;
+although prior to that there was a fairly hokey mixture of on-the-fly fragmentation followed by a final cleanup.
+
+Put it this way - think twice before rewriting this, because a lot of alternatives have been tried - and bugs uncovered!
+That said, there are lots of weird one-off scenario tests in `CodeMotionAnalysisTest` that were added to reproduce these
+bugs, so there is a safety net if you want to get hacking. **Just don't casually delete those weird tests!**
+
+`CodeMotionAnalysisTest.sourcesCanBeReconstructedFromTheAnalysis` is also a surprisingly powerful test these days in
+this regard, despite the fact that it looks a lot simpler than the more weighty
+`CodeMotionAnalysisTest.matchingSectionsAreFound`.
+
+Because `MatchesAndTheirSections` has loosened the invariant to allow reconciliation to take place at the end, there is
+a [weak invariant](https://github.com/sageserpent-open/kineticMerge/blob/5404bdf9b4ebf1178f24dfa29f420e586b0fe01b/src/main/scala/com/sageserpent/kineticmerge/core/CodeMotionAnalysis.scala#L847)
+that holds in general and
+a [stronger post-condition that holds after reconciliation](https://github.com/sageserpent-open/kineticMerge/blob/5404bdf9b4ebf1178f24dfa29f420e586b0fe01b/src/main/scala/com/sageserpent/kineticmerge/core/CodeMotionAnalysis.scala#L1001).
+
+Reconciliation takes place
+in [
+`MatchesAndTheirSections.reconcileMatches`](https://github.com/sageserpent-open/kineticMerge/blob/5404bdf9b4ebf1178f24dfa29f420e586b0fe01b/src/main/scala/com/sageserpent/kineticmerge/core/CodeMotionAnalysis.scala#L1807).
+
+This uses an iterative approach, working with a set of all-sides matches to fragment larger subsuming pairwise matches.
+After each iteration discovers new fragments and pares down the matches, this affects the set of all-sides matches
+available to cause more fragmentation, so the reconciliation is iterated with each change in the pared down all-sides
+matches until it stabilizes.
+
+This iterative approach is vital, see [this ticket](https://github.com/sageserpent-open/kineticMerge/issues/144)
+and [this ticket](https://github.com/sageserpent-open/kineticMerge/issues/146) for background.
