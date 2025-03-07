@@ -194,8 +194,8 @@ Code motion that doesn't have associated changes or insertions does not feature 
 nothing to do. It is however tracked as it is important to the process of merging.
 
 The outcome is a map of `MergeResult` values keyed by path; the paths are seen from the point of view of the final
-merge, so may be from either the left or right side. A report of the move destinations (and their sources) is also
-produced - and this does include *all* code motion, with or without migrations.
+merge, so may be from either the left or right side. As a by-product, a `MoveDestinationsReport` is also produced so
+that information about code motion can be shown to the user.
 
 ### `MergeResult` ###
 
@@ -224,7 +224,20 @@ see [the comment in this issue](https://github.com/sageserpent-open/kineticMerge
 
 A merge algebra implementation has an associated result type - when testing the three-way merge, this result type is
 spartan, being a plain `MergeResult`. `CodeMotionAnalysisExtension.merge` drives the three-way merges with a richer
-merge algebra that yields a `FirstPassMergeResult`.
+merge algebra that yields a `FirstPassMergeResult`. This plays two roles:
+
+1. It accumulates information from a three-way merge about where the sources of content moves might be, and where the
+   destinations of content moves might be, as well as where content is preserved in the merge. This is aggregated later
+   on across all the three-way merges in an instance of `AggregatedInitialMergeResult`.
+2. It records the merge algebra operations that were used to build it up so that those operations can be played back
+   again on a different merge algebra, namely a `ConflictResolvingMergeAlgebra`. This merge algebra extends the one also
+   used by the tests - namely `CoreMergeAlgebra`- so that in addition to actually producing a `MergeResult`, some of the
+   operations are reinterpreted to take into account the global picture of moves.
+
+It is because the moves have to be computed globally that `FirstPassMergeResult` records operations - the final
+production of `MergeResult` instances has to wait until that global picture of moves is available, which is only after
+all the per-file three-way merges have been performed. So rather than having to recompute the three-way merges to drive
+`ConflictResolvingMergeAlgebra`, it is more efficient to simply play back the operations on that merge algebra.
 
 ### `merge` ###
 
@@ -245,6 +258,17 @@ identify a destination, it doesn't need any location when migrating changes or i
 
 Nevertheless, the report shown to the user when running Kinetic Merge will refer to sections, and these do display
 location information.
+
+### `MoveDestinationsReport` ###
+
+This is a by-product of performing a merge via `CodeMotionAnalysisExtension.merge`; it organises the move destinations
+by their sources for *all* code motion, with or without migrations.
+
+Its companion object provides the functionality to build up the global picture of moves via
+`MoveDestinationsReport.evaluateSpeculativeSourcesAndDestinations`. That method produces an instance of
+`MoveEvaluation`, which bundles up a `MoveDestinationsReport` with various bits of information required by both
+`ConflictResolvingMergeAlgebra` and the post-processing steps in `CodeMotionAnalysisExtension.merge` that carry out
+change and insertion migration.
 
 ### `LongestCommonSubsequence` ###
 
