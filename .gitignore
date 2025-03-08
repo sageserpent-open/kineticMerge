@@ -1,12 +1,5 @@
-
-syntax: glob
-*.class
-.cache
+/.idea/
+target
+.bsp
+htmlReport
 .DS_Store
-.idea/
-project/project/
-project/target/
-target/
-/.project
-/.bsp
-/htmlReport

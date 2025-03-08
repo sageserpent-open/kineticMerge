@@ -1,4 +1,5 @@
 import sbtrelease.ReleaseStateTransformations.*
+import xerial.sbt.Sonatype.*
 
 import scala.language.postfixOps
 import scala.sys.process.*
@@ -9,10 +10,7 @@ ThisBuild / scalaVersion := "3.3.5"
 
 ThisBuild / javacOptions ++= Seq("-source", javaVersion, "-target", javaVersion)
 
-ThisBuild / scalacOptions ++= List(
-  s"-java-output-version:$javaVersion",
-  "-source:future"
-)
+ThisBuild / scalacOptions += s"-java-output-version:$javaVersion"
 
 lazy val packageExecutable =
   taskKey[String]("Package an executable with Coursier")
@@ -22,12 +20,21 @@ lazy val versionResource =
 
 lazy val root = (project in file("."))
   .settings(
-    pomIncludeRepository := { _ => false },
-    publishMavenStyle    := true,
+    publishTo              := sonatypePublishToBundle.value,
+    pomIncludeRepository   := { _ => false },
+    sonatypeCredentialHost := "s01.oss.sonatype.org",
+    publishMavenStyle      := true,
     licenses += ("MIT", url("https://opensource.org/licenses/MIT")),
     organization     := "com.sageserpent",
     organizationName := "sageserpent",
     description := "Merge branches in the presence of code motion within and between files.",
+    sonatypeProjectHosting := Some(
+      GitHubHosting(
+        user = "sageserpent-open",
+        repository = "kineticMerge",
+        email = "gjmurphy1@icloud.com"
+      )
+    ),
     releaseCrossBuild := false, // No cross-building here - just Scala 3.
     releaseProcess := Seq[ReleaseStep](
       checkSnapshotDependencies,
@@ -38,12 +45,15 @@ lazy val root = (project in file("."))
       commitReleaseVersion,
       tagRelease,
       releaseStepCommand("packageExecutable"),
-      // *DO NOT* run `publishSigned`, `sonatypeBundleRelease` and
-      // `pushChanges` - the equivalent is done on GitHub by
-      // `gha-scala-library-release-workflow`.
+      releaseStepCommand(
+        "publishSigned"
+      ), // ... finally the publishing step using SBT's own mechanism.
+      releaseStepCommand("sonatypeBundleRelease"),
       setNextVersion,
-      commitNextVersion
+      commitNextVersion,
+      pushChanges
     ),
+    scalacOptions ++= List("-source:future"),
     name := "kinetic-merge",
     versionResource := {
       val additionalResourcesDirectory = (Compile / resourceManaged).value
