@@ -5,6 +5,8 @@ on:
 
 jobs:
   initialise:
+    runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
       - uses: coursier/setup-action@v1
