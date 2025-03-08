@@ -12,6 +12,7 @@ jobs:
       - uses: coursier/setup-action@v1
 
   release:
+    needs: initialise
     uses: guardian/gha-scala-library-release-workflow/.github/workflows/reusable-release.yml@v1
     permissions: { contents: write, pull-requests: write }
     secrets:
