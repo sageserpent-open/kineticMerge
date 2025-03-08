@@ -4,9 +4,10 @@ on:
   workflow_dispatch:
 
 jobs:
-  steps:
-    - uses: actions/checkout@v4
-    - uses: coursier/setup-action@v1
+  initialise:
+    steps:
+      - uses: actions/checkout@v4
+      - uses: coursier/setup-action@v1
 
   release:
     uses: guardian/gha-scala-library-release-workflow/.github/workflows/reusable-release.yml@v1
