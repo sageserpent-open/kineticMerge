@@ -36,7 +36,6 @@ lazy val root = (project in file("."))
       setReleaseVersion,
       commitReleaseVersion,
       tagRelease,
-      releaseStepCommand("packageExecutable"),
       // *DO NOT* run `publishSigned`, `sonatypeBundleRelease` and
       // `pushChanges` - the equivalent is done on GitHub by
       // `gha-scala-library-release-workflow`.
@@ -63,8 +62,6 @@ lazy val root = (project in file("."))
       Seq(location)
     }.taskValue,
     packageExecutable := {
-      val blobby = coursier.cli.Coursier
-
       val packagingVersion = (ThisBuild / version).value
 
       println(s"Packaging executable with version: $packagingVersion")
@@ -74,7 +71,7 @@ lazy val root = (project in file("."))
 
       val executablePath = s"${target.value}${Path.sep}${name.value}"
 
-      blobby.main(
+      coursier.cli.Coursier.main(
         s"bootstrap --verbose --bat=true --scala-version ${scalaBinaryVersion.value} -f $localArtifactCoordinates -o $executablePath"
           .split("\\s+")
       )
