@@ -1,7 +1,6 @@
 import sbtrelease.ReleaseStateTransformations.*
 
 import scala.language.postfixOps
-import scala.sys.process.*
 
 lazy val javaVersion = "17"
 
@@ -64,6 +63,8 @@ lazy val root = (project in file("."))
       Seq(location)
     }.taskValue,
     packageExecutable := {
+      val blobby = coursier.cli.Coursier
+
       val packagingVersion = (ThisBuild / version).value
 
       println(s"Packaging executable with version: $packagingVersion")
@@ -73,7 +74,10 @@ lazy val root = (project in file("."))
 
       val executablePath = s"${target.value}${Path.sep}${name.value}"
 
-      s"cs bootstrap --verbose --bat=true --scala-version ${scalaBinaryVersion.value} -f $localArtifactCoordinates -o $executablePath" !
+      blobby.main(
+        s"bootstrap --verbose --bat=true --scala-version ${scalaBinaryVersion.value} -f $localArtifactCoordinates -o $executablePath"
+          .split("\\s+")
+      )
 
       name.value
     },
