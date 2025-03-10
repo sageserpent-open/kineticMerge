@@ -38,4 +38,4 @@ jobs:
       - name: Add executable to release
         run: |
           sbt packageExecutable
-          gh release upload "v${{ needs.release.outputs.RELEASE_VERSION }}" "${GITHUB_WORKSPACE/target/kinetic-merge" "${GITHUB_WORKSPACE/target/kinetic-merge.bat"
+          gh release upload "v${{ needs.release.outputs.RELEASE_VERSION }}" "${GITHUB_WORKSPACE}/target/kinetic-merge" "${GITHUB_WORKSPACE}/target/kinetic-merge.bat"
