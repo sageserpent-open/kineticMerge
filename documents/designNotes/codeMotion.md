@@ -144,4 +144,6 @@ There is a subtlety in that a splice may succeed one anchor and precede a later 
 the corresponding moves are in parallel, the splice must be inserted only once, being shared between the bracketing move
 destination anchors.
 
-
+Another subtlety is that a migrated edit implies a special anchor where the edit sequence acts as a stand-in for the
+anchor opposite to the move: this is handy because it prevents migrated edits from blurring into splices and thus being
+migrated twice by both the change and the splice migration mechanisms.
