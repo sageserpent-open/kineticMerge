@@ -34,7 +34,62 @@ three-way merge, then the move is termed *divergent*. Kinetic Merge does **not**
 considering both the left and right moves as equally valid choices; rather it honours both, allowing the content to be
 duplicated in the final results. As we will see, this is important when considering migration.
 
+# Migration #
+
+Work on code on one side of a merge needs to follow code motion of the original code on the other side; this is referred
+to as *migration*. This breaks down into two forms, *change migration* and *splice migration*.
+
 # Change Migration #
 
+This pertains to migrating an edit or an outright deletion of some code that already exists in the base side and which
+moves elsewhere on either the left or right side; the edit or deletion takes place on the opposite side to the move.
+
+Thinking in terms of sections, we have a source section in the base that moves to a destination section on the left or
+the right, and an associated *substitution* from the opposite side that is either an edit (thus a non-empty sequence of
+sections that replaces the destination section in the final merged output) or a deletion (an empty sequence of
+sections).
+
+The job of change migration is to associate a substitution with a move, remove any **edit** sequence from its original
+location in the merged output (because it is being migrated, so the original location becomes the wrong place) and to
+apply the substitution to the destination section.
+
+A subtlety here is the interplay between detecting moves and producing the final merged output. Moves are detected by
+collecting information from across all the per-file three-way merges and then evaluating the moves using a global
+picture; that takes place in [
+`MoveDestinationsReport.evaluateSpeculativeSourcesAndDestinations`](https://github.com/sageserpent-open/kineticMerge/blob/acfd8239370d6a0d8fa9a235801af47aed77d868/src/main/scala/com/sageserpent/kineticmerge/core/MoveDestinationsReport.scala#L57)
+
+Once this has built up the picture of moves and their associated substitutions, the per-file merges have to replayed
+because the sources of moves need to be reinterpreted to take the moves into account; this is done
+via [
+`ConflictResolvingMergeAlgebra`](https://github.com/sageserpent-open/kineticMerge/blob/acfd8239370d6a0d8fa9a235801af47aed77d868/src/main/scala/com/sageserpent/kineticmerge/core/ConflictResolvingMergeAlgebra.scala#L12)
+which is responsible for suppressing the edit sequences in their original locations; that has the effect of changing the
+merge outcome.
+
+Examples follow:
+
+- Migrating a deletion: ![](file://documents/designNotes/diagrams/migratingADeletion.excalidraw.svg)
+- Migrating an edit: ![](file://documents/designNotes/diagrams/migratingAnEdit.excalidraw.svg)
+- Simple move with a deletion on the move
+  side: ![](file://documents/designNotes/diagrams/simpleMoveWithADeletionOnTheMoveSide.excalidraw.svg)
+- Simple move with an edit on the move
+  side: ![](file://documents/designNotes/diagrams/simpleMoveWithAnEditOnTheMoveSide.excalidraw.svg)
+- Migrating a deletion with an edit on the move
+  side: ![](file://documents/designNotes/diagrams/migratingADeletionWithAnEditOnTheMoveSide.excalidraw.svg)
+- Migrating an edit with an edit on the move
+  side: ![](file://documents/designNotes/diagrams/migratingAnEditWithAnEditOnTheMoveSide.excalidraw.svg)
+- Migrating a deletion with a coincident
+  edit:  ![](file://documents/designNotes/diagrams/migratingADeletionWithACoincidentEdit.excalidraw.svg)
+
+When there are moves from the same source to both sides, be they coincident or divergent, then Kinetic Merge takes the
+view that there is no change associated with either side's move: because the original content has turned up on both
+sides, it cannot be considered as being deleted or edited on the other side; any such change is simply left as-is in the
+final merge without being migrated.
+
+- Coincident move: ![](file://documents/designNotes/diagrams/coincidentMoves.excalidraw.svg)
+- Divergent moves: ![](file://documents/designNotes/diagrams/divergentMoves.excalidraw.svg)
+
 # Splice Migration #
+
+This pertains to migrating an insertion of new code adjacent to some code that already exists in the base side and which
+moves elsewhere on either the left or right side; the insertion takes place on the opposite side to the move.
 

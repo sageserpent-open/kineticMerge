@@ -38,6 +38,7 @@ Then run `cs install --contrib kinetic-merge`, and you're all set to go, it will
 `kinetic-merge` on your path.
 
 You can also invoke Kinetic Merge via Coursier without actually installing it:
+
 ```
 cs launch com.sageserpent::kinetic-merge:<RELEASE VERSION FROM GITHUB> -- <command line arguments>
 ```
@@ -173,6 +174,16 @@ The price paid by Kinetic Merge for dropping this was the appearance of a bug du
 collisions using rolling polynomial hashing; that has been since fixed. The fact that the bug was latent in the code for
 so long is a testament to the collision resistance of Rabin fingerprinting!
 
+## Design Documents
+
+- [Job Description](./documents/designNotes/jobDescription.md)
+- [Problem Space](./documents/designNotes/problemSpace.md)
+- [Code Motion](./documents/designNotes/codeMotion.md)
+- [Component Breakdown](./documents/designNotes/componentBreakdown.md)
+- [`CodeMotionAnalysis`](./documents/designNotes/codeMotionAnalysis.md)
+- [Blind Alleys](./documents/designNotes/blindAlleys.md)
+- [Skeletons in the Cupboard](./documents/designNotes/skeletonsInTheCupboard.md)
+
 ## Do you use these libraries yet?
 
 Direct dependencies in `build.sbt` and why they are used...
@@ -196,7 +207,8 @@ Direct dependencies in `build.sbt` and why they are used...
   rough-and-ready, but it does the job well.
 - `caffeine`. If you want a well-documented, one-stop-shop Java caching API that plugs into everything and is endlessly
   configurable, here it is.
+- `progressbar`. A straightforward way of displaying a progress bar for a console application.
 - `americium`. Possibly the world's best parameterised test support framework. Your scribe is of course completely
   unbiased. If you want tests that automatically shrink down failing test cases, you're in the right place.
 - `expecty`. Scala's most minimal and yet most effective assertion framework. Less is more!
-- `jupiter-interface`. Yes, use *JUnit5 for your Scala tests*. Works a treat in concert with `americium` and `expecty`. 
+- `jupiter-interface`. Yes, use *JUnit5 for your Scala tests*. Works a treat in concert with `americium` and `expecty`.
