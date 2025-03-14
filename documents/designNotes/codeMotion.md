@@ -65,28 +65,46 @@ via [
 which is responsible for suppressing the edit sequences in their original locations; that has the effect of changing the
 merge outcome.
 
-Examples follow:
+## Migrating a deletion:
 
-- Migrating a deletion: ![](file://documents/designNotes/diagrams/migratingADeletion.excalidraw.svg)
-- Migrating an edit: ![](file://documents/designNotes/diagrams/migratingAnEdit.excalidraw.svg)
-- Simple move with a deletion on the move
-  side: ![](file://documents/designNotes/diagrams/simpleMoveWithADeletionOnTheMoveSide.excalidraw.svg)
-- Simple move with an edit on the move
-  side: ![](file://documents/designNotes/diagrams/simpleMoveWithAnEditOnTheMoveSide.excalidraw.svg)
-- Migrating a deletion with an edit on the move
-  side: ![](file://documents/designNotes/diagrams/migratingADeletionWithAnEditOnTheMoveSide.excalidraw.svg)
-- Migrating an edit with an edit on the move
-  side: ![](file://documents/designNotes/diagrams/migratingAnEditWithAnEditOnTheMoveSide.excalidraw.svg)
-- Migrating a deletion with a coincident
-  edit:  ![](file://documents/designNotes/diagrams/migratingADeletionWithACoincidentEdit.excalidraw.svg)
+![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/migratingADeletion.excalidraw.svg)
+
+## Migrating an edit:
+
+![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/migratingAnEdit.excalidraw.svg)
+
+## Simple move with a deletion on the move side:
+
+![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/simpleMoveWithADeletionOnTheMoveSide.excalidraw.svg)
+
+## Simple move with an edit on the move side:
+
+![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/simpleMoveWithAnEditOnTheMoveSide.excalidraw.svg)
+
+## Migrating a deletion with an edit on the move side:
+
+![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/migratingADeletionWithAnEditOnTheMoveSide.excalidraw.svg)
+
+## Migrating an edit with an edit on the move side:
+
+![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/migratingAnEditWithAnEditOnTheMoveSide.excalidraw.svg)
+
+## Migrating a deletion with a coincident edit:
+
+![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/migratingADeletionWithACoincidentEdit.excalidraw.svg)
 
 When there are moves from the same source to both sides, be they coincident or divergent, then Kinetic Merge takes the
 view that there is no change associated with either side's move: because the original content has turned up on both
 sides, it cannot be considered as being deleted or edited on the other side; any such change is simply left as-is in the
 final merge without being migrated.
 
-- Coincident move: ![](file://documents/designNotes/diagrams/coincidentMoves.excalidraw.svg)
-- Divergent moves: ![](file://documents/designNotes/diagrams/divergentMoves.excalidraw.svg)
+## Coincident move:
+
+![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/coincidentMoves.excalidraw.svg)
+
+## Divergent moves:
+
+![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/divergentMoves.excalidraw.svg)
 
 # Splice Migration #
 
