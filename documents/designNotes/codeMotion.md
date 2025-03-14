@@ -100,7 +100,7 @@ final merge without being migrated.
 
 ## Coincident move:
 
-![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/coincidentMoves.excalidraw.svg)
+![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/coincidentMove.excalidraw.svg)
 
 ## Divergent moves:
 
