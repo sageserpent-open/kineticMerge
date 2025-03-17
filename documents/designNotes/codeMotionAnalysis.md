@@ -19,7 +19,7 @@ The overall plan followed by the implementation is to:
    that cover the same content.
 3. Purging of any overlapping matches, because the content needs to be covered uniquely by sections.
 4. Filling of gaps where content has not been covered by a matched section with unmatched sections.
-5. The final matches are both packed into the resulting `CodeMotionAnalysis`, and their sections on each side are used
+5. The final matches are packed into the resulting `CodeMotionAnalysis`, and their sections on each side are used
    to formulate a breakdown of the corresponding `Sources` instance - these breakdowns go into the resulting
    `CodeMotionAnalysis` too.
 
@@ -64,7 +64,7 @@ The binary search approach tries various candidate window sizes between an inclu
 bound. If there is at least one match found at a candidate window size, an estimate of the window size of the optimal
 match (if there is just one) is also yielded.
 
-If no match is found, this taken to mean the binary search should go low and tighten the upper bound (if it can go any
+If no match is found, this is taken to mean the binary search should go low and tighten the upper bound (if it can go any
 lower - otherwise we're done).
 
 If a single match is found, we have an optimal match and note it.
