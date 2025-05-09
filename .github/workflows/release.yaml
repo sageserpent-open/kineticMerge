@@ -5,7 +5,7 @@ on:
 
 jobs:
   release:
-    uses: guardian/gha-scala-library-release-workflow/.github/workflows/reusable-release.yml@v1
+    uses: guardian/gha-scala-library-release-workflow/.github/workflows/reusable-release.yml@add-central-portal-support
     permissions: { contents: write, pull-requests: write }
     secrets:
       SONATYPE_TOKEN: ${{ secrets.AUTOMATED_MAVEN_RELEASE_SONATYPE_TOKEN }}
@@ -14,7 +14,7 @@ jobs:
     with:
       GITHUB_APP_ID: 983631
       SONATYPE_PROFILE_NAME: "com.sageserpent"
-      SONATYPE_CREDENTIAL_HOST: "s01.oss.sonatype.org"
+      SONATYPE_CREDENTIAL_HOST: "central.sonatype.com"
 
   uploadExecutables:
     runs-on: ubuntu-latest
