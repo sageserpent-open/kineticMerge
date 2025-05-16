@@ -114,13 +114,13 @@ object Main extends StrictLogging:
             commandLineArguments.copy(noCommit = true)
           )
           .text(
-            "Do not commit a successful merge - leave merged changes staged in the index for review."
+            "Do not commit a successful merge - leave merged changes staged in the index for review. Off by default."
           ),
         opt[Unit](name = "no-ff")
           .action((noFastForward, commandLineArguments) =>
             commandLineArguments.copy(noFastForward = true)
           )
-          .text("Prevent fast-forward merge - make a merge commit instead."),
+          .text("Prevent fast-forward merge - make a merge commit instead. Off by default."),
         opt[Int](name = "minimum-match-size")
           .validate(minimumMatchSize =>
             if 0 < minimumMatchSize then success
@@ -130,13 +130,13 @@ object Main extends StrictLogging:
             commandLineArguments
               .copy(minimumMatchSize = minimumMatchSize)
           )
-          .text("Minimum number of tokens for a match to be considered."),
+          .text("Minimum number of tokens for a match to be considered. Default of 4."),
         opt[String](name = "match-threshold")
           .validate(matchThreshold =>
             if matchThresholdRegex.matches(matchThreshold) then success
             else
               failure(
-                s"Match threshold ${underline(matchThreshold)} must be a percentage, or digits to the right of the decimal point of a non-negative fraction less than one, or a fraction at least zero and at most one."
+                s"Match threshold ${underline(matchThreshold)} must be a percentage, or digits to the right of the decimal point of a non-negative fraction less than one, or a non-negative fraction at most one."
               )
           )
           .action { (matchThreshold, commandLineArguments) =>
@@ -166,12 +166,12 @@ object Main extends StrictLogging:
             )
           }
           .text(
-            "Minimum fraction of a containing file's size for a section of text to qualify for matching."
+            "Minimum fraction of a containing file's size for a section of text to qualify for matching. Default of zero for no restriction."
           ),
         opt[Int](name = "minimum-ambiguous-match-size")
           .validate(minimumAmbiguousMatchSize =>
             if 0 <= minimumAmbiguousMatchSize then success
-            else failure(s"Minimum match size must be zero or positive.")
+            else failure(s"Minimum match size must be zero or positive. Default of 10.")
           )
           .action((minimumAmbiguousMatchSize, commandLineArguments) =>
             commandLineArguments
@@ -190,7 +190,7 @@ object Main extends StrictLogging:
               .copy(ambiguousMatchesThreshold = ambiguousMatchesThreshold)
           )
           .text(
-            "Maximum number of matches of the same kind that can refer to the same matched content."
+            "Maximum number of matches of the same kind that can refer to the same matched content. Default of 20."
           ),
         arg[String](name = "<their branch to merge into ours>")
           .action((theirBranch, commandLineArguments) =>

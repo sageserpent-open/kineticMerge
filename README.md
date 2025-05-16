@@ -143,13 +143,12 @@ one.
 ## Status
 
 Well, it works; there are stable releases. Code motion is tracked both intra-file and inter-file. You can split a file
-into pieces on one branch and
-edit the original file on another - those edits will find their way into the right places when you merge.
-Correspondingly, you can join several files together on one branch and edit all of them on another - again, the edits
-will arrive in the right place on merging. Cool.
+into pieces on one branch and edit the original file on another - those edits will find their way into the right places
+when you merge. Correspondingly, you can join several files together on one branch and edit all of them on another -
+again, the edits will arrive in the right place on merging. Cool.
 
 As befits any piece of non-vapourware, there are known bugs / deficiencies and there are always new features to add, but
-that's why Github provides an issue tracker.
+that's why GitHub provides an issue tracker.
 
 The author uses it regularly on his own projects.
 
@@ -159,6 +158,77 @@ for guidance.
 
 Bear in mind you can use either `--no-commit` or rollback with `git merge --abort` or `git reset --hard`, but know what
 you're doing before you use the third technique.
+
+## What do the command-line options do?
+
+```text
+  --help                   Output this summary.
+  --version                Show the version of this command.
+  --no-commit              Do not commit a successful merge - leave merged changes staged in the index for review.
+  --no-ff                  Prevent fast-forward merge - make a merge commit instead.
+  --minimum-match-size <value>
+                           Minimum number of tokens for a match to be considered.
+  --match-threshold <value>
+                           Minimum fraction of a containing file's size for a section of text to qualify for matching.
+  --minimum-ambiguous-match-size <value>
+                           Minimum number of tokens for an ambiguous match to be considered.
+  --ambiguous-matches-threshold <value>
+                           Maximum number of matches of the same kind that can refer to the same matched content.
+```
+
+Hopefully `--help` and `--version` are self-explanatory.
+
+As for `--no-commit` and `--no-ff`, these are for feature parity with plain Git merge and do the same thing.
+
+Where it gets interesting is:
+
+`--minimum-match-size`: this is the minimum size of content measured *in tokens* required for a match across two or more
+sides of the merge to be eligible for discovery. Making this larger means that potential matches of content may be left
+undiscovered. However, setting this right down to one token can lead to a bombardment of useless matches because it is
+likely for a single token to be repeated many times across the codebase (and indeed the same goes for to matches of two
+tokens).
+
+The default is set to 4; this seems to work well enough in practice.
+
+`--match-threshold`: this is a looser alternative to `--minimum-match-size` where content in a file is only eligible for
+match discovery if its size in tokens is at least a fraction of that file's size *as measured in content tokens*. This
+means that a potential match may be deemed unsuitable if only one of its sides fails to meet the threshold.
+
+The match threshold fraction is specified as either an explicit percentage - eg `10%`, the digits following the decimal
+point for a non-negative fraction less than one - eg `05` (meaning 0.05, or 5%) or an explicit non-negative fraction at
+most one - eg `0.0`, `0.34`, `1.0`.
+
+The default is set to zero, thus this has no effect if not specified.
+
+**NOTE:**
+
+1. Tokens include words, punctuation, braces and operator symbol characters. Intervening whitespace is usually
+   considered to be a suffix of the preceding token. A string constant (strictly speaking, a Java string constant, but
+   this seems to work well enough in other languages) is treated as a single token that includes the opening and closing
+   quotation marks.
+2. When both `--minimum-match-size` and `--match-threshold` are specified, the largest one takes precedence on a
+   file-by-file basis.
+3. While both `--minimum-match-size` and `--match-threshold` control the minimum size of content eligible for match
+   discovery, it is possible and indeed desirable for Kinetic Merge to break down matches into smaller pieces whose size
+   in tokens is less than that minimum size. The full story is
+   on [this ticket](https://github.com/sageserpent-open/kineticMerge/issues/23).
+
+`--minimum-ambiguous-match-size`: this is an extra restriction applied *after* `--minimum-match-size` and
+`--match-threshold`, limiting the size of ambiguous matches where the same content can match in multiple places. This
+allows important small matches of some special content that occurs only in one place to be picked up, while blocking the
+usual noise that results from single and double-token ambiguous matches.
+
+The default is set to 10.
+
+`--ambiguous-matches-threshold`: this permits case-by-case vetting of ambiguous matches; if the number of ambiguous
+matches *for some specific content* exceeds the threshold, than that content will not be matched.
+
+The default is set to 20.
+
+**NOTE:**
+
+If `--minimum-ambiguous-match-size` is set to a low value and then results in a lot of noise, experiment using
+`--ambiguous-matches-threshold`, setting it to a low enough value to weed out the unwanted matches.
 
 ## Simple Use Cases
 
