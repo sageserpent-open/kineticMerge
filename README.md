@@ -192,7 +192,7 @@ The default is set to 4; this seems to work well enough in practice.
 
 `--match-threshold`: this is a looser alternative to `--minimum-match-size` where content in a file is only eligible for
 match discovery if its size in tokens is at least a fraction of that file's size *as measured in content tokens*. This
-means that a potential match may be deemed unsuitable if only one of its sides fails to meet the threshold.
+means that a potential match may be deemed unsuitable even if only one of its sides fails to meet the threshold.
 
 The match threshold fraction is specified as either an explicit percentage - eg `10%`, the digits following the decimal
 point for a non-negative fraction less than one - eg `05` (meaning 0.05, or 5%) or an explicit non-negative fraction at
