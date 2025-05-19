@@ -225,9 +225,9 @@ matches *for some specific content* exceeds the threshold, than that content wil
 
 The default is set to 20.
 
-**NOTE:**
+**TIP:**
 
-If `--minimum-ambiguous-match-size` is set to a low value and then results in a lot of noise, experiment using
+If `--minimum-ambiguous-match-size` is set to a low value and then results in a lot of noise, experiment with
 `--ambiguous-matches-threshold`, setting it to a low enough value to weed out the unwanted matches.
 
 ## Simple Use Cases
