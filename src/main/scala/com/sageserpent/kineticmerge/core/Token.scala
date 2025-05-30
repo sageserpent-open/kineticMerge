@@ -91,8 +91,8 @@ object Token extends JavaTokenParsers:
             WithTrailingWhitespace(rhsCoreToken, _)
           ) =>
         comparison(lhs, rhsCoreToken)
-      case (Whitespace(_), Significant(_)) => -1
-      case (Significant(_), Whitespace(_)) => 1
+      case (Whitespace(_), Significant(_))                => -1
+      case (Significant(_), Whitespace(_))                => 1
       case (Whitespace(lhsBlanks), Whitespace(rhsBlanks)) =>
         Order.compare(lhsBlanks, rhsBlanks)
       case (Significant(lhsLetters), Significant(rhsLetters)) =>
@@ -124,8 +124,8 @@ end Token
 
 trait Token:
   def text: String = this match
-    case Whitespace(blanks)   => blanks
-    case Significant(letters) => letters
+    case Whitespace(blanks)                            => blanks
+    case Significant(letters)                          => letters
     case WithTrailingWhitespace(coreToken, whitespace) =>
       coreToken.text ++ whitespace.text
 end Token

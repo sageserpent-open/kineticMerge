@@ -34,7 +34,7 @@ object Main extends StrictLogging:
     Either[String @@ Tags.ErrorMessage, String]
   private type WorkflowLog                = List[ErrorOrOperationMessage]
   private type WorkflowLogWriter[Payload] = WriterT[IO, WorkflowLog, Payload]
-  private type Workflow[Payload] =
+  private type Workflow[Payload]          =
     EitherT[WorkflowLogWriter, String @@ Tags.ErrorMessage, Payload]
 
   private val whitespaceRun = "\\s+"
@@ -120,7 +120,9 @@ object Main extends StrictLogging:
           .action((noFastForward, commandLineArguments) =>
             commandLineArguments.copy(noFastForward = true)
           )
-          .text("Prevent fast-forward merge - make a merge commit instead. Off by default."),
+          .text(
+            "Prevent fast-forward merge - make a merge commit instead. Off by default."
+          ),
         opt[Int](name = "minimum-match-size")
           .validate(minimumMatchSize =>
             if 0 < minimumMatchSize then success
@@ -130,7 +132,9 @@ object Main extends StrictLogging:
             commandLineArguments
               .copy(minimumMatchSize = minimumMatchSize)
           )
-          .text("Minimum number of tokens for a match to be considered. Default of 4."),
+          .text(
+            "Minimum number of tokens for a match to be considered. Default of 4."
+          ),
         opt[String](name = "match-threshold")
           .validate(matchThreshold =>
             if matchThresholdRegex.matches(matchThreshold) then success
@@ -171,7 +175,10 @@ object Main extends StrictLogging:
         opt[Int](name = "minimum-ambiguous-match-size")
           .validate(minimumAmbiguousMatchSize =>
             if 0 <= minimumAmbiguousMatchSize then success
-            else failure(s"Minimum match size must be zero or positive. Default of 10.")
+            else
+              failure(
+                s"Minimum match size must be zero or positive. Default of 10."
+              )
           )
           .action((minimumAmbiguousMatchSize, commandLineArguments) =>
             commandLineArguments
@@ -251,7 +258,7 @@ object Main extends StrictLogging:
     applicationRequest.fold(
       {
         case EarlyTermination(exitCode) => exitCode
-        case exception: Exception =>
+        case exception: Exception       =>
           exception.printStackTrace()
           error
       },
@@ -826,7 +833,7 @@ object Main extends StrictLogging:
                 bestAncestorCommitIdMode,
                 bestAncestorCommitIdBlobId,
                 bestAncestorCommitIdContent
-              ) <- blobAndContentFor(bestAncestorCommitId)(path)
+              )              <- blobAndContentFor(bestAncestorCommitId)(path)
               mergedFileMode <-
                 if bestAncestorCommitIdMode == ourModification.mode then
                   right(theirModification.mode)
@@ -981,7 +988,7 @@ object Main extends StrictLogging:
                     s"Unexpected error: `GIT_DIR` reported by Git ${underline(gitDir)} is not a valid path."
                   )
                 theirCommitId <- theirCommitId(theirBranchHead)
-                _ <- IO {
+                _             <- IO {
                   os.write.over(gitDirPath / "MERGE_HEAD", theirCommitId)
                 }.labelExceptionWith(errorMessage =
                   s"Unexpected error: could not write `MERGE_HEAD` to reference their branch ${underline(theirBranchHead)}."
@@ -1010,7 +1017,7 @@ object Main extends StrictLogging:
       val workflowWithWorkaround =
         for
           payload <- workflow
-          _ <- IO {
+          _       <- IO {
             // Do this to work around the issue mentioned here:
             // https://stackoverflow.com/questions/51146392/cannot-git-merge-abort-until-git-status,
             // this has been observed when `git merge-file` successfully writes
@@ -1106,8 +1113,8 @@ object Main extends StrictLogging:
                 val unchangedContent = tokens(bestAncestorCommitIdContent).get
 
                 (
-                  baseContentsByPath + (path -> unchangedContent),
-                  leftContentsByPath + (path -> unchangedContent),
+                  baseContentsByPath + (path  -> unchangedContent),
+                  leftContentsByPath + (path  -> unchangedContent),
                   rightContentsByPath + (path -> tokens(
                     theirModification.content
                   ).get),
@@ -1303,7 +1310,7 @@ object Main extends StrictLogging:
             .foldM(this) {
               case (partialResult, (leftRenamedPath, conflictingDeletedPath)) =>
                 for
-                  _ <- recordDeletionInIndex(leftRenamedPath)
+                  _                 <- recordDeletionInIndex(leftRenamedPath)
                   (mode, blobId, _) <- blobAndContentFor(ourBranchHead)(
                     leftRenamedPath
                   )
@@ -1327,7 +1334,7 @@ object Main extends StrictLogging:
                     (rightRenamedPath, conflictingDeletedPath)
                   ) =>
                 for
-                  _ <- recordDeletionInIndex(rightRenamedPath)
+                  _                 <- recordDeletionInIndex(rightRenamedPath)
                   (mode, blobId, _) <- blobAndContentFor(theirBranchHead)(
                     rightRenamedPath
                   )
@@ -1508,7 +1515,7 @@ object Main extends StrictLogging:
               if ourModificationWasTweakedByTheMerge then
                 for
                   blobId <- storeBlobFor(path, mergedFileContent)
-                  _ <- restoreFileFromBlobId(
+                  _      <- restoreFileFromBlobId(
                     path,
                     blobId
                   )
@@ -1533,7 +1540,7 @@ object Main extends StrictLogging:
               if theirModificationWasTweakedByTheMerge then
                 for
                   blobId <- storeBlobFor(path, mergedFileContent)
-                  _ <- restoreFileFromBlobId(
+                  _      <- restoreFileFromBlobId(
                     path,
                     blobId
                   )
@@ -1569,7 +1576,7 @@ object Main extends StrictLogging:
               if ourAdditionWasTweakedByTheMerge then
                 for
                   blobId <- storeBlobFor(path, mergedFileContent)
-                  _ <- restoreFileFromBlobId(
+                  _      <- restoreFileFromBlobId(
                     path,
                     blobId
                   )
@@ -1594,7 +1601,7 @@ object Main extends StrictLogging:
               if theirAdditionWasTweakedByTheMerge then
                 for
                   blobId <- storeBlobFor(path, mergedFileContent)
-                  _ <- restoreFileFromBlobId(
+                  _      <- restoreFileFromBlobId(
                     path,
                     blobId
                   )
@@ -1633,8 +1640,8 @@ object Main extends StrictLogging:
               // `CodeMotionAnalysisExtension.mergeResultsByPath` and does not
               // necessarily remove the content.
               for
-                _ <- recordDeletionInIndex(path)
-                _ <- deleteFile(path)
+                _                      <- recordDeletionInIndex(path)
+                _                      <- deleteFile(path)
                 decoratedPartialResult <-
                   captureRenamesOfPathDeletedOnJustOneSide
               yield decoratedPartialResult
@@ -1679,7 +1686,7 @@ object Main extends StrictLogging:
                   for
                     _      <- prelude
                     blobId <- storeBlobFor(path, mergedFileContent)
-                    _ <- restoreFileFromBlobId(
+                    _      <- restoreFileFromBlobId(
                       path,
                       blobId
                     )
@@ -1696,9 +1703,9 @@ object Main extends StrictLogging:
                   yield partialResult.copy(goodForAMergeCommit = false)
                 else
                   for
-                    _ <- prelude
-                    _ <- recordDeletionInIndex(path)
-                    _ <- deleteFile(path)
+                    _                      <- prelude
+                    _                      <- recordDeletionInIndex(path)
+                    _                      <- deleteFile(path)
                     decoratedPartialResult <-
                       captureRenamesOfPathDeletedOnJustOneSide
                   yield decoratedPartialResult
@@ -1763,7 +1770,7 @@ object Main extends StrictLogging:
                   for
                     _      <- prelude
                     blobId <- storeBlobFor(path, mergedFileContent)
-                    _ <- restoreFileFromBlobId(
+                    _      <- restoreFileFromBlobId(
                       path,
                       blobId
                     )
@@ -1780,9 +1787,9 @@ object Main extends StrictLogging:
                   yield partialResult.copy(goodForAMergeCommit = false)
                 else
                   for
-                    _ <- prelude
-                    _ <- recordDeletionInIndex(path)
-                    _ <- deleteFile(path)
+                    _                      <- prelude
+                    _                      <- recordDeletionInIndex(path)
+                    _                      <- deleteFile(path)
                     decoratedPartialResult <-
                       captureRenamesOfPathDeletedOnJustOneSide
                   yield decoratedPartialResult
@@ -1813,7 +1820,7 @@ object Main extends StrictLogging:
 
                   for
                     blobId <- storeBlobFor(path, mergedFileContent)
-                    _ <- restoreFileFromBlobId(
+                    _      <- restoreFileFromBlobId(
                       path,
                       blobId
                     )
@@ -1879,7 +1886,7 @@ object Main extends StrictLogging:
                     leftBlob  <- storeBlobFor(path, leftContent)
                     rightBlob <- storeBlobFor(path, rightContent)
                     _         <- recordDeletionInIndex(path)
-                    _ <- recordConflictModificationInIndex(
+                    _         <- recordConflictModificationInIndex(
                       stageIndex = ourStageIndex
                     )(
                       ourBranchHead,
@@ -1916,7 +1923,7 @@ object Main extends StrictLogging:
 
                   for
                     blobId <- storeBlobFor(path, mergedFileContent)
-                    _ <- restoreFileFromBlobId(
+                    _      <- restoreFileFromBlobId(
                       path,
                       blobId
                     )
@@ -1982,7 +1989,7 @@ object Main extends StrictLogging:
                     leftBlob  <- storeBlobFor(path, leftContent)
                     rightBlob <- storeBlobFor(path, rightContent)
                     _         <- recordDeletionInIndex(path)
-                    _ <- recordConflictModificationInIndex(
+                    _         <- recordConflictModificationInIndex(
                       stageIndex = bestCommonAncestorStageIndex
                     )(
                       bestAncestorCommitId,

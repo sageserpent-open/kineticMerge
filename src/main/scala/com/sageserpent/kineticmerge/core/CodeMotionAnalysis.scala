@@ -2104,7 +2104,7 @@ object CodeMotionAnalysis extends StrictLogging:
                 subsumedBySomeMatchOnJustTheRight
               ) match
                 case (false, false, false) => Some(aMatch)
-                case (true, false, false) =>
+                case (true, false, false)  =>
                   Option.unless(
                     leftSubsumes(leftSection) || rightSubsumes(
                       rightSection

@@ -332,7 +332,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
       logger.debug(s"Move evaluation: ${pprintCustomised(moveEvaluation)}.")
 
-      val sourceAnchors = anchoredMoves.map(_.sourceAnchor)
+      val sourceAnchors       = anchoredMoves.map(_.sourceAnchor)
       val oppositeSideAnchors =
         anchoredMoves.map(_.oppositeSideAnchor.element)
       val moveDestinationAnchors = anchoredMoves.map(_.moveDestinationAnchor)
@@ -849,7 +849,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
                     uniqueSplices match
                       case head :: Nil => head
-                      case _ =>
+                      case _           =>
                         throw new AdmissibleFailure(
                           s"""
                                |Multiple potential splices before destination: $candidateAnchorDestination,
@@ -879,7 +879,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
                     uniqueSplices match
                       case head :: Nil => head
-                      case _ =>
+                      case _           =>
                         throw new AdmissibleFailure(
                           s"""
                                |Multiple potential splices after destination: $candidateAnchorDestination, 
@@ -992,7 +992,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             val substitution: IndexedSeq[Section[Element]] =
               uniqueSubstitutions match
                 case head :: Nil => head
-                case _ =>
+                case _           =>
                   throw new AdmissibleFailure(
                     s"""
                        |Multiple potential changes migrated to destination: $section, 

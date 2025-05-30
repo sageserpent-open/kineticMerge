@@ -753,7 +753,7 @@ class CodeMotionAnalysisTest:
     val prefix                        = 0 until 10
     val suffix                        = 30 until 40
     val smallAmbiguousAllSidesContent = 10 until 20
-    val bigAllSidesContent =
+    val bigAllSidesContent            =
       prefix ++ smallAmbiguousAllSidesContent ++ suffix
 
     // We have ambiguous all-sides matches because
@@ -848,9 +848,9 @@ class CodeMotionAnalysisTest:
     // causing that one to be eaten into, and thus additional leftover pairwise
     // matches ambiguous with the first lot.
 
-    val prefix               = 0 until 10
-    val suffix               = 30 until 40
-    val smallAllSidesContent = 10 until 20
+    val prefix                         = 0 until 10
+    val suffix                         = 30 until 40
+    val smallAllSidesContent           = 10 until 20
     val bigAmbiguousBaseAndLeftContent =
       prefix ++ smallAllSidesContent ++ suffix
 
@@ -960,9 +960,9 @@ class CodeMotionAnalysisTest:
     // the leftovers and the all-sides match; in addition, the original
     // ambiguous pairwise match is allowed to stand as-is.
 
-    val prefix               = 0 until 10
-    val suffix               = 30 until 40
-    val smallAllSidesContent = 10 until 20
+    val prefix                         = 0 until 10
+    val suffix                         = 30 until 40
+    val smallAllSidesContent           = 10 until 20
     val bigAmbiguousBaseAndLeftContent =
       prefix ++ smallAllSidesContent ++ suffix
 
@@ -1131,13 +1131,13 @@ class CodeMotionAnalysisTest:
     // base-right match is blocked by the subsuming base-left match, so in the
     // end there is no eating into either pairwise match.
 
-    val largePrefix          = 0 until 10
-    val largeSuffix          = 30 until 40
-    val smallAllSidesContent = 10 until 20
+    val largePrefix           = 0 until 10
+    val largeSuffix           = 30 until 40
+    val smallAllSidesContent  = 10 until 20
     val bigBaseAndLeftContent =
       largePrefix ++ smallAllSidesContent ++ largeSuffix
-    val smallPrefix = 40 until 45
-    val smallSuffix = 50 until 55
+    val smallPrefix            = 40 until 45
+    val smallSuffix            = 50 until 55
     val bigBaseAndRightContent =
       smallPrefix ++ smallAllSidesContent ++ smallSuffix
 
@@ -1223,13 +1223,13 @@ class CodeMotionAnalysisTest:
     // The end result is that there are two ambiguous all-sides matches and
     // fragments from both pairwise matches.
 
-    val largePrefix          = 0 until 10
-    val largeSuffix          = 30 until 40
-    val smallAllSidesContent = 10 until 20
+    val largePrefix           = 0 until 10
+    val largeSuffix           = 30 until 40
+    val smallAllSidesContent  = 10 until 20
     val bigBaseAndLeftContent =
       largePrefix ++ smallAllSidesContent ++ largeSuffix
-    val smallPrefix = 40 until 45
-    val smallSuffix = 50 until 55
+    val smallPrefix            = 40 until 45
+    val smallSuffix            = 50 until 55
     val bigBaseAndRightContent =
       smallPrefix ++ smallAllSidesContent ++ smallSuffix
 
@@ -1313,7 +1313,7 @@ class CodeMotionAnalysisTest:
     val someContentThatMatchesWithoutOverlap  = 0 until 10
     val otherContentThatMatchesWithoutOverlap = 10 until 20
     val overlappingMatchesTargetContent       = -1 to -50 by -1
-    val overlappingMatchesSources =
+    val overlappingMatchesSources             =
       (-1 to -41 by -1).flatMap(start => start until start - 10 by -1)
 
     val baseSources = new FakeSources(

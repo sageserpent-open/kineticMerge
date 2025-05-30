@@ -459,8 +459,8 @@ object MoveDestinationsReport:
       val anchorDestinations  = anchoredMoves.map(_.moveDestinationAnchor)
       val substitutionDestinations: collection.Set[Element] =
         substitutionsByDestination.keySet
-      val allMoveDestinations = moveDestinationsReport.all
-      val allMoveSources      = moveDestinationsReport.sources
+      val allMoveDestinations                 = moveDestinationsReport.all
+      val allMoveSources                      = moveDestinationsReport.sources
       val oppositeSideAnchorsForMigratedEdits = anchorOppositeSides.collect {
         case OppositeSideAnchor.OnlyOneInMigratedEdit(element) => element
         case OppositeSideAnchor.FirstInMigratedEdit(element)   => element
