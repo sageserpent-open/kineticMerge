@@ -90,10 +90,10 @@ case class MoveDestinations[Element](
         // violate the invariant.
         case (false, true, false) => s"${elementSetAsText(right)}"
         case (false, false, true) => s"${elementSetAsText(coincident)}"
-        case (false, true, true) =>
+        case (false, true, true)  =>
           s"${elementSetAsText(right)}\n\n${elementSetAsText(coincident)}"
         case (true, false, false) => s"${elementSetAsText(left)}"
-        case (true, true, false) =>
+        case (true, true, false)  =>
           s"${elementSetAsText(left)}\n\n${elementSetAsText(right)}"
         case (true, false, true) =>
           s"${elementSetAsText(left)}\n\n${elementSetAsText(coincident)}"

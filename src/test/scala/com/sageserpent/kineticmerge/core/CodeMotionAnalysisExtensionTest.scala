@@ -685,7 +685,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           renamingSide match
             case RenamingSide.Left => renamedForCodeMotionPath -> originalPath
             case RenamingSide.Right => originalPath -> renamedForCodeMotionPath
-            case RenamingSide.Both =>
+            case RenamingSide.Both  =>
               renamedForCodeMotionPath -> renamedForCodeMotionPath
 
         val leftSources = MappedContentSourcesOfTokens(

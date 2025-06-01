@@ -28,7 +28,7 @@ lazy val root = (project in file("."))
     organizationName := "sageserpent",
     description := "Merge branches in the presence of code motion within and between files.",
     releaseCrossBuild := false, // No cross-building here - just Scala 3.
-    releaseProcess := Seq[ReleaseStep](
+    releaseProcess    := Seq[ReleaseStep](
       checkSnapshotDependencies,
       inquireVersions,
       runClean,
@@ -42,7 +42,7 @@ lazy val root = (project in file("."))
       setNextVersion,
       commitNextVersion
     ),
-    name := "kinetic-merge",
+    name            := "kinetic-merge",
     versionResource := {
       val additionalResourcesDirectory = (Compile / resourceManaged).value
 
