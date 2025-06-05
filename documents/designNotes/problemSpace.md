@@ -14,7 +14,9 @@ There is no knowledge of Git concepts such as commits, merge parents or the inde
 
 In order to model both merging and code motion, a file in turn breaks down into an indexed sequence of *sections*. Each
 section covers a continuous piece of content in a file that is demarcated by a start offset and one past the end
-offset - so a closed-open interval of offsets into the file content. A section does not have to align with line boundaries - it may refer to just a part of a single line, or span several lines with the start and / or end being ragged, i.e. not spanning an entire line.
+offset - so a closed-open interval of offsets into the file content. A section does not have to align with line
+boundaries - it may refer to just a part of a single line, or span several lines with the start and / or end being
+ragged, i.e. not spanning an entire line.
 
 The idea is to cover each file in each of the three sources with contiguous sections, so that all the content belonging
 to each of the three sources is covered by one, and only one section. A sources instance does not mandate any particular
@@ -94,7 +96,7 @@ In this situation, we take this as precisely the definition of intra-file code m
 backbone of the merge, it is considered to have 'jumped around'. This can be generalised to include inter-file code
 motion - when a matched section isn't part of the longest common subsequence (or is only weakly aligned in it), we look
 for a section participating in the same match that belongs to a file at a different path on another side. This indicates
-that the current file path is either the source of destination of a move.
+that the current file path is either the source or the destination of a move.
 
 So if in the example above, *D* was part of a match involving a section in yet another file `destination.txt`, we would
 interpret it is moving out from `example.txt` into `destination.txt` - **not** being edited into *F*. Conversely, if *F*
@@ -113,4 +115,6 @@ are treated as one big token - although where there are alternate representation
 example Scala's raw strings versus one with escapes), these are treated as distinct.
 
 Because file content that is tokenised can match with whitespace insensitivity, we have to pick a winner when copying
-aligned sections into the merged results - do we choose the base, the left or the right? Kinetic Merge departs slightly from what `git-merge` does; the merge code favours the side that made whitespace changes if the other remains exactly the same as the base. If both sides have whitespace changes, the left is chosen as a tiebreaker.
+aligned sections into the merged results - do we choose the base, the left or the right? Kinetic Merge departs slightly
+from what `git-merge` does; the merge code favours the side that made whitespace changes if the other remains exactly
+the same as the base. If both sides have whitespace changes, the left is chosen as a tiebreaker.

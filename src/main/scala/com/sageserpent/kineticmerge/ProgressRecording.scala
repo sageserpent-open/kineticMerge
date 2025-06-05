@@ -28,7 +28,7 @@ trait ProgressRecording:
     * @param maximumProgress
     *   The maximum amount of progress that can be recorded.
     * @param initialProgress
-    *   This may be anywhere between zero and {@code maximumProgress}.
+    *   This may be anywhere between zero and {@code maximumProgress} .
     * @return
     *   An instance of [[ProgressRecordingSession]] with {@code initialProgress}
     *   recorded.

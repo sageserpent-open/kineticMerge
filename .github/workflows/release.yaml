@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    uses: guardian/gha-scala-library-release-workflow/.github/workflows/reusable-release.yml@add-central-portal-support
+    permissions: { contents: write, pull-requests: write }
+    secrets:
+      SONATYPE_TOKEN: ${{ secrets.AUTOMATED_MAVEN_RELEASE_SONATYPE_TOKEN }}
+      PGP_PRIVATE_KEY: ${{ secrets.AUTOMATED_MAVEN_RELEASE_PGP_SECRET }}
+      GITHUB_APP_PRIVATE_KEY: ${{ secrets.AUTOMATED_MAVEN_RELEASE_GITHUB_APP_PRIVATE_KEY }}
+    with:
+      GITHUB_APP_ID: 983631
+      SONATYPE_PROFILE_NAME: "com.sageserpent"
+      SONATYPE_CREDENTIAL_HOST: "central.sonatype.com"
+
+  uploadExecutables:
+    runs-on: ubuntu-latest
+    needs: release
+
+    steps:
+      - id: generate-github-app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: 983631
+          private-key: ${{ secrets.AUTOMATED_MAVEN_RELEASE_GITHUB_APP_PRIVATE_KEY }}
+      - uses: actions/checkout@v4
+        with:
+          ref: "v${{ needs.release.outputs.RELEASE_VERSION }}"
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: corretto
+      - uses: sbt/setup-sbt@v1
+      - name: Add executable to release
+        env:
+          GH_TOKEN: ${{ steps.generate-github-app-token.outputs.token }}
+        run: |
+          sbt packageExecutable
+          gh release upload "v${{ needs.release.outputs.RELEASE_VERSION }}" "${GITHUB_WORKSPACE}/target/kinetic-merge" "${GITHUB_WORKSPACE}/target/kinetic-merge.bat"

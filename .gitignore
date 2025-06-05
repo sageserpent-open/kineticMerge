@@ -1,5 +1,12 @@
-/.idea/
-target
-.bsp
-htmlReport
+
+syntax: glob
+*.class
+.cache
 .DS_Store
+.idea/
+project/project/
+project/target/
+target/
+/.project
+/.bsp
+/htmlReport

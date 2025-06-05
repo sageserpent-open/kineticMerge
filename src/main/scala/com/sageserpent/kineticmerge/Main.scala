@@ -1,11 +1,11 @@
 package com.sageserpent.kineticmerge
 
+import cats.Order
 import cats.data.{EitherT, WriterT}
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.syntax.foldable.toFoldableOps
 import cats.syntax.traverse.toTraverseOps
-import cats.{Eq, Order}
 import com.google.common.hash.{Funnel, HashFunction, Hashing}
 import com.sageserpent.kineticmerge.Main.MergeInput.*
 import com.sageserpent.kineticmerge.core.*
@@ -20,6 +20,7 @@ import scopt.{DefaultOEffectSetup, OParser}
 
 import scala.annotation.varargs
 import scala.collection.BuildFrom
+import scala.collection.decorators.mapDecorator
 import scala.io.Source
 import scala.util.Try
 
@@ -113,13 +114,13 @@ object Main extends StrictLogging:
             commandLineArguments.copy(noCommit = true)
           )
           .text(
-            "Do not commit a successful merge - leave merged changes staged in the index for review."
+            "Do not commit a successful merge - leave merged changes staged in the index for review. Off by default."
           ),
         opt[Unit](name = "no-ff")
           .action((noFastForward, commandLineArguments) =>
             commandLineArguments.copy(noFastForward = true)
           )
-          .text("Prevent fast-forward merge - make a merge commit instead."),
+          .text("Prevent fast-forward merge - make a merge commit instead. Off by default."),
         opt[Int](name = "minimum-match-size")
           .validate(minimumMatchSize =>
             if 0 < minimumMatchSize then success
@@ -129,13 +130,13 @@ object Main extends StrictLogging:
             commandLineArguments
               .copy(minimumMatchSize = minimumMatchSize)
           )
-          .text("Minimum number of tokens for a match to be considered."),
+          .text("Minimum number of tokens for a match to be considered. Default of 4."),
         opt[String](name = "match-threshold")
           .validate(matchThreshold =>
             if matchThresholdRegex.matches(matchThreshold) then success
             else
               failure(
-                s"Match threshold ${underline(matchThreshold)} must be a percentage, or digits to the right of the decimal point of a non-negative fraction less than one, or a fraction at least zero and at most one."
+                s"Match threshold ${underline(matchThreshold)} must be a percentage, or digits to the right of the decimal point of a non-negative fraction less than one, or a non-negative fraction at most one."
               )
           )
           .action { (matchThreshold, commandLineArguments) =>
@@ -165,12 +166,12 @@ object Main extends StrictLogging:
             )
           }
           .text(
-            "Minimum fraction of a containing file's size for a section of text to qualify for matching."
+            "Minimum fraction of a containing file's size for a section of text to qualify for matching. Default of zero for no restriction."
           ),
         opt[Int](name = "minimum-ambiguous-match-size")
           .validate(minimumAmbiguousMatchSize =>
             if 0 <= minimumAmbiguousMatchSize then success
-            else failure(s"Minimum match size must be zero or positive.")
+            else failure(s"Minimum match size must be zero or positive. Default of 10.")
           )
           .action((minimumAmbiguousMatchSize, commandLineArguments) =>
             commandLineArguments
@@ -178,6 +179,18 @@ object Main extends StrictLogging:
           )
           .text(
             "Minimum number of tokens for an ambiguous match to be considered."
+          ),
+        opt[Int](name = "ambiguous-matches-threshold")
+          .validate(ambiguousMatchesThreshold =>
+            if 0 < ambiguousMatchesThreshold then success
+            else failure(s"Ambiguous matches threshold must be positive.")
+          )
+          .action((ambiguousMatchesThreshold, commandLineArguments) =>
+            commandLineArguments
+              .copy(ambiguousMatchesThreshold = ambiguousMatchesThreshold)
+          )
+          .text(
+            "Maximum number of matches of the same kind that can refer to the same matched content. Default of 20."
           ),
         arg[String](name = "<their branch to merge into ours>")
           .action((theirBranch, commandLineArguments) =>
@@ -231,13 +244,17 @@ object Main extends StrictLogging:
             override def terminate(exitState: Either[String, Unit]): Unit =
               throw EarlyTermination(exitState match
                 case Left(_)  => 1.taggedWith[Tags.ExitCode]
-                case Right(_) => 0.taggedWith[Tags.ExitCode]
-              )
+                case Right(_) => 0.taggedWith[Tags.ExitCode])
         )
     }
 
     applicationRequest.fold(
-      { case EarlyTermination(exitCode) => exitCode },
+      {
+        case EarlyTermination(exitCode) => exitCode
+        case exception: Exception =>
+          exception.printStackTrace()
+          error
+      },
       _.fold(ifEmpty = incorrectCommandLine)(
         mergeTheirBranch(_)(workingDirectory = os.pwd, progressRecording)
       )
@@ -254,7 +271,7 @@ object Main extends StrictLogging:
       minimumMatchSize,
       thresholdSizeFractionForMatching,
       minimumAmbiguousMatchSize,
-      propagateExceptions = false,
+      ambiguousMatchesThreshold,
       progressRecording = progressRecording
     )
 
@@ -382,6 +399,7 @@ object Main extends StrictLogging:
           // TODO: something pure, functional and wholesome that could be seen
           // at high church...
           logger.error(exception.getMessage)
+          exception.printStackTrace()
           errorMessage.taggedWith[Tags.ErrorMessage]
         )
   end extension
@@ -439,7 +457,8 @@ object Main extends StrictLogging:
         // better merge as well.
         4,
       thresholdSizeFractionForMatching: Double = 0,
-      minimumAmbiguousMatchSize: Int = 10
+      minimumAmbiguousMatchSize: Int = 10,
+      ambiguousMatchesThreshold: Int = 20
   )
 
   enum Change:
@@ -502,6 +521,8 @@ object Main extends StrictLogging:
   private case class InWorkingDirectory(
       workingDirectory: Path
   ):
+    private val numberOfDigitsForShortFormOfCommitId = 8
+
     def ourBranchHead(): Workflow[String @@ Main.Tags.CommitOrBranchName] =
       IO {
         val branchName = os
@@ -647,9 +668,6 @@ object Main extends StrictLogging:
         theirChanges: Map[Path, Change]
     ): Workflow[List[(Path, MergeInput)]] =
 
-      // TODO: use `ourChanges.mergeByKey(theirChanges)` if
-      // https://github.com/scala/scala-collection-contrib/issues/239 leads to a
-      // bug-fix.
       val outerJoin = ourChanges.mergeByKey(theirChanges)
 
       outerJoin.toList
@@ -889,17 +907,12 @@ object Main extends StrictLogging:
     ): Workflow[Int @@ Tags.ExitCode] =
       val workflow =
         for
-          indexUpdates <- indexUpdates(
+          goodForAMergeCommit <- indexUpdates(
             bestAncestorCommitId,
             ourBranchHead,
             theirBranchHead,
             configuration
           )(mergeInputs)
-
-          goodForAMergeCommit = indexUpdates.forall {
-            case IndexState.OneEntry           => true
-            case IndexState.ConflictingEntries => false
-          }
 
           exitCodeWhenThereAreNoUnexpectedErrors <-
             val commitMessage =
@@ -945,9 +958,9 @@ object Main extends StrictLogging:
                   .labelExceptionWith(errorMessage =
                     s"Unexpected error: could not advance branch ${underline(ourBranchHead)} to commit ${underline(commitId)}."
                   )
-                  .logOperation(
-                    s"Successful merge, made a new commit ${underline(commitId)}"
-                  )
+                _ <- right(()).logOperation(
+                  s"Successful merge, made a new commit ${underline(commitId)}"
+                )
               yield successfulMerge
             else
               for
@@ -984,17 +997,7 @@ object Main extends StrictLogging:
                 }.labelExceptionWith(errorMessage =
                   s"Unexpected error: could not write `MERGE_MSG` to prepare the commit message ${underline(commitMessage)}."
                 )
-                _ <- IO {
-                  // Do this to workaround the issue mentioned here:
-                  // https://stackoverflow.com/questions/51146392/cannot-git-merge-abort-until-git-status,
-                  // this has been observed when `git merge-file` successfully
-                  // writes a non-conflicted file after Kinetic Merge has
-                  // reported a conflict for that file.
-                  os.proc("git", "status")
-                    .call(workingDirectory)
-                }.labelExceptionWith(errorMessage =
-                  s"Unexpected error: could not check the status of the working tree."
-                ).logOperation(
+                _ <- right(()).logOperation(
                   if goodForAMergeCommit then
                     "Successful merge, leaving merged changes in the index for review..."
                   else
@@ -1004,8 +1007,24 @@ object Main extends StrictLogging:
             end if
         yield exitCodeWhenThereAreNoUnexpectedErrors
 
+      val workflowWithWorkaround =
+        for
+          payload <- workflow
+          _ <- IO {
+            // Do this to work around the issue mentioned here:
+            // https://stackoverflow.com/questions/51146392/cannot-git-merge-abort-until-git-status,
+            // this has been observed when `git merge-file` successfully writes
+            // a non-conflicted file after Kinetic Merge has reported a conflict
+            // for that file.
+            os.proc("git", "status")
+              .call(workingDirectory)
+          }.labelExceptionWith(errorMessage =
+            s"Unexpected error: could not check the status of the working tree."
+          )
+        yield payload
+
       // NASTY HACK: hokey cleanup, need to think about the best approach...
-      workflow.leftMap(label =>
+      workflowWithWorkaround.leftMap(label =>
         try os.proc("git", "reset", "--hard").call(workingDirectory)
         catch
           case exception =>
@@ -1036,206 +1055,409 @@ object Main extends StrictLogging:
         configuration: Configuration
     )(
         mergeInputs: List[(Path, MergeInput)]
-    ): Workflow[List[IndexState]] =
-      given Eq[Token]     = Token.equality
+    ): Workflow[Boolean] =
       given Order[Token]  = Token.comparison
       given Funnel[Token] = Token.funnel
       given HashFunction  = Hashing.murmur3_32_fixed()
 
-      for
-        (baseContentsByPath, leftContentsByPath, rightContentsByPath) <-
-          mergeInputs.foldM(
-            (
-              Map.empty[Path, IndexedSeq[Token]],
-              Map.empty[Path, IndexedSeq[Token]],
-              Map.empty[Path, IndexedSeq[Token]]
+      val (
+        baseContentsByPath,
+        leftContentsByPath,
+        rightContentsByPath,
+        newPathsOnLeftOrRight
+      ) =
+        mergeInputs.foldLeft(
+          (
+            Map.empty[Path, IndexedSeq[Token]],
+            Map.empty[Path, IndexedSeq[Token]],
+            Map.empty[Path, IndexedSeq[Token]],
+            Set.empty[Path]
+          )
+        ) {
+          case (
+                (
+                  baseContentsByPath,
+                  leftContentsByPath,
+                  rightContentsByPath,
+                  newPathsOnLeftOrRight
+                ),
+                (path, mergeInput)
+              ) =>
+            mergeInput match
+              case JustOurModification(
+                    ourModification,
+                    bestAncestorCommitIdContent
+                  ) =>
+                val unchangedContent = tokens(bestAncestorCommitIdContent).get
+
+                (
+                  baseContentsByPath + (path -> unchangedContent),
+                  leftContentsByPath + (path -> tokens(
+                    ourModification.content
+                  ).get),
+                  rightContentsByPath + (path -> unchangedContent),
+                  newPathsOnLeftOrRight
+                )
+
+              case JustTheirModification(
+                    theirModification,
+                    bestAncestorCommitIdContent
+                  ) =>
+                val unchangedContent = tokens(bestAncestorCommitIdContent).get
+
+                (
+                  baseContentsByPath + (path -> unchangedContent),
+                  leftContentsByPath + (path -> unchangedContent),
+                  rightContentsByPath + (path -> tokens(
+                    theirModification.content
+                  ).get),
+                  newPathsOnLeftOrRight
+                )
+
+              case JustOurAddition(ourAddition) =>
+                (
+                  baseContentsByPath,
+                  leftContentsByPath + (path -> tokens(
+                    ourAddition.content
+                  ).get),
+                  rightContentsByPath,
+                  newPathsOnLeftOrRight + path
+                )
+
+              case JustTheirAddition(theirAddition) =>
+                (
+                  baseContentsByPath,
+                  leftContentsByPath,
+                  rightContentsByPath + (path -> tokens(
+                    theirAddition.content
+                  ).get),
+                  newPathsOnLeftOrRight + path
+                )
+
+              case JustOurDeletion(bestAncestorCommitIdContent) =>
+                val unchangedContent = tokens(bestAncestorCommitIdContent).get
+
+                (
+                  baseContentsByPath + (path -> unchangedContent),
+                  leftContentsByPath,
+                  rightContentsByPath + (path -> unchangedContent),
+                  newPathsOnLeftOrRight
+                )
+
+              case JustTheirDeletion(bestAncestorCommitIdContent) =>
+                val unchangedContent = tokens(bestAncestorCommitIdContent).get
+
+                (
+                  baseContentsByPath + (path -> unchangedContent),
+                  leftContentsByPath + (path -> unchangedContent),
+                  rightContentsByPath,
+                  newPathsOnLeftOrRight
+                )
+
+              case OurModificationAndTheirDeletion(
+                    ourModification,
+                    _,
+                    _,
+                    bestAncestorCommitIdContent
+                  ) =>
+                (
+                  baseContentsByPath + (path -> tokens(
+                    bestAncestorCommitIdContent
+                  ).get),
+                  leftContentsByPath + (path -> tokens(
+                    ourModification.content
+                  ).get),
+                  rightContentsByPath,
+                  newPathsOnLeftOrRight
+                )
+
+              case TheirModificationAndOurDeletion(
+                    theirModification,
+                    _,
+                    _,
+                    bestAncestorCommitIdContent
+                  ) =>
+                (
+                  baseContentsByPath + (path -> tokens(
+                    bestAncestorCommitIdContent
+                  ).get),
+                  leftContentsByPath,
+                  rightContentsByPath + (path -> tokens(
+                    theirModification.content
+                  ).get),
+                  newPathsOnLeftOrRight
+                )
+
+              case BothContributeAnAddition(
+                    ourAddition,
+                    theirAddition,
+                    _
+                  ) =>
+                (
+                  baseContentsByPath,
+                  leftContentsByPath + (path -> tokens(
+                    ourAddition.content
+                  ).get),
+                  rightContentsByPath + (path -> tokens(
+                    theirAddition.content
+                  ).get),
+                  newPathsOnLeftOrRight + path
+                )
+
+              case BothContributeAModification(
+                    ourModification,
+                    theirModification,
+                    _,
+                    _,
+                    bestAncestorCommitIdContent,
+                    _
+                  ) =>
+                (
+                  baseContentsByPath + (path -> tokens(
+                    bestAncestorCommitIdContent
+                  ).get),
+                  leftContentsByPath + (path -> tokens(
+                    ourModification.content
+                  ).get),
+                  rightContentsByPath + (path -> tokens(
+                    theirModification.content
+                  ).get),
+                  newPathsOnLeftOrRight
+                )
+
+              case BothContributeADeletion(bestAncestorCommitIdContent) =>
+                (
+                  baseContentsByPath + (path -> tokens(
+                    bestAncestorCommitIdContent
+                  ).get),
+                  leftContentsByPath,
+                  rightContentsByPath,
+                  newPathsOnLeftOrRight
+                )
+        }
+
+      val baseSources = MappedContentSourcesOfTokens(
+        baseContentsByPath,
+        label =
+          s"BASE: ${bestAncestorCommitId.take(numberOfDigitsForShortFormOfCommitId)}"
+      )
+
+      val leftSources = MappedContentSourcesOfTokens(
+        leftContentsByPath,
+        label = s"OURS: $ourBranchHead"
+      )
+
+      val rightSources = MappedContentSourcesOfTokens(
+        rightContentsByPath,
+        label = s"THEIRS: $theirBranchHead"
+      )
+
+      case class AccumulatedMergeState(
+          goodForAMergeCommit: Boolean,
+          deletedPathsByLeftRenamePath: Map[Path, Path],
+          deletedPathsByRightRenamePath: Map[Path, Path],
+          conflictingDeletedPathsByLeftRenamePath: Map[Path, Path],
+          conflictingDeletedPathsByRightRenamePath: Map[Path, Path],
+          conflictingAdditionPathsAndTheirLastMinuteResolutions: Map[
+            Path,
+            Boolean
+          ]
+      ):
+        // NOTE: no need to yield an updated `AccumulatedMergeState` with
+        // `goodForAMergeCommit` as false - this is done upstream already.
+        def reportConflictingAdditionsTakingRenamesIntoAccount: Workflow[Unit] =
+          conflictingAdditionPathsAndTheirLastMinuteResolutions.toSeq
+            .traverse_ { case (path, lastMinuteResolution) =>
+              (
+                deletedPathsByLeftRenamePath
+                  .get(path)
+                  .orElse(conflictingDeletedPathsByLeftRenamePath.get(path)),
+                deletedPathsByRightRenamePath
+                  .get(path)
+                  .orElse(conflictingDeletedPathsByRightRenamePath.get(path))
+              ) match
+                case (None, None) =>
+                  right(()).logOperation(
+                    s"Conflict - file ${underline(path)} was added on our branch ${underline(ourBranchHead)} and added on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
+                  )
+                case (Some(originalPathRenamedOnTheLeft), None) =>
+                  right(()).logOperation(
+                    s"Conflict - file ${underline(path)} is a rename on our branch ${underline(ourBranchHead)} of ${underline(originalPathRenamedOnTheLeft)} and added on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
+                  )
+                case (None, Some(originalPathRenamedOnTheRight)) =>
+                  right(()).logOperation(
+                    s"Conflict - file ${underline(path)} was added on our branch ${underline(ourBranchHead)} and is a rename on their branch ${underline(theirBranchHead)} of ${underline(originalPathRenamedOnTheRight)}."
+                  )
+                case (
+                      Some(originalPathRenamedOnTheLeft),
+                      Some(originalPathRenamedOnTheRight)
+                    ) =>
+                  right(()).logOperation(
+                    s"Conflict - file ${underline(path)} is a rename on our branch ${underline(ourBranchHead)} of ${underline(originalPathRenamedOnTheLeft)} and is a rename on their branch ${underline(theirBranchHead)} of ${underline(originalPathRenamedOnTheRight)}."
+                  )
+            }
+
+        def reportLeftRenamesConflictingWithRightDeletions
+            : Workflow[AccumulatedMergeState] =
+          conflictingDeletedPathsByLeftRenamePath.toSeq
+            .foldM(this) {
+              case (partialResult, (leftRenamedPath, conflictingDeletedPath)) =>
+                for
+                  _ <- recordDeletionInIndex(leftRenamedPath)
+                  (mode, blobId, _) <- blobAndContentFor(ourBranchHead)(
+                    leftRenamedPath
+                  )
+                  _ <- recordConflictModificationInIndex(ourStageIndex)(
+                    ourBranchHead,
+                    leftRenamedPath,
+                    mode,
+                    blobId
+                  ).logOperation(
+                    s"Conflict - file ${underline(conflictingDeletedPath)} was renamed on our branch ${underline(ourBranchHead)} to ${underline(leftRenamedPath)} and deleted on their branch ${underline(theirBranchHead)}."
+                  )
+                yield partialResult.copy(goodForAMergeCommit = false)
+            }
+
+        def reportLeftDeletionsConflictingWithRightRenames
+            : Workflow[AccumulatedMergeState] =
+          conflictingDeletedPathsByRightRenamePath.toSeq
+            .foldM(this) {
+              case (
+                    partialResult,
+                    (rightRenamedPath, conflictingDeletedPath)
+                  ) =>
+                for
+                  _ <- recordDeletionInIndex(rightRenamedPath)
+                  (mode, blobId, _) <- blobAndContentFor(theirBranchHead)(
+                    rightRenamedPath
+                  )
+                  _ <- recordConflictModificationInIndex(theirStageIndex)(
+                    theirBranchHead,
+                    rightRenamedPath,
+                    mode,
+                    blobId
+                  ).logOperation(
+                    s"Conflict - file ${underline(conflictingDeletedPath)} was deleted on our branch ${underline(ourBranchHead)} and renamed on their branch ${underline(theirBranchHead)} to ${underline(rightRenamedPath)}."
+                  )
+                yield partialResult.copy(goodForAMergeCommit = false)
+            }
+      end AccumulatedMergeState
+
+      object AccumulatedMergeState:
+        def initial: AccumulatedMergeState = AccumulatedMergeState(
+          goodForAMergeCommit = true,
+          deletedPathsByLeftRenamePath = Map.empty,
+          deletedPathsByRightRenamePath = Map.empty,
+          conflictingDeletedPathsByLeftRenamePath = Map.empty,
+          conflictingDeletedPathsByRightRenamePath = Map.empty,
+          conflictingAdditionPathsAndTheirLastMinuteResolutions = Map.empty
+        )
+      end AccumulatedMergeState
+
+      case class FileRenamingReport(
+          description: String,
+          leftRenamePaths: Set[Path],
+          rightRenamePaths: Set[Path]
+      )
+
+      def fileRenamingReportUsing(
+          codeMotionAnalysis: CodeMotionAnalysis[Path, Token],
+          moveDestinationsReport: MoveDestinationsReport[Section[Token]]
+      )(path: Path): Option[FileRenamingReport] =
+        val baseSections = codeMotionAnalysis.base(path).sections
+
+        val (leftRenamePaths, baseSectionsMovingLeftToNewFiles) =
+          baseSections
+            .flatMap(baseSection =>
+              moveDestinationsReport.moveDestinationsBySources
+                .get(baseSection)
+                .map(
+                  _.allOnTheLeft
+                    .map(leftSources.pathFor)
+                    .intersect(newPathsOnLeftOrRight)
+                    .map(_ -> baseSection)
+                )
             )
-          ) {
-            case (
-                  (baseContentsByPath, leftContentsByPath, rightContentsByPath),
-                  (path, mergeInput)
-                ) =>
-              mergeInput match
-                case JustOurModification(
-                      ourModification,
-                      bestAncestorCommitIdContent
-                    ) =>
-                  val unchangedContent = tokens(bestAncestorCommitIdContent).get
+            .flatten
+            .unzip match
+            case (paths, sections) => paths.toSet -> sections.toSet
 
-                  right(
-                    (
-                      baseContentsByPath + (path -> unchangedContent),
-                      leftContentsByPath + (path -> tokens(
-                        ourModification.content
-                      ).get),
-                      rightContentsByPath + (path -> unchangedContent)
-                    )
-                  )
+        val (rightRenamePaths, baseSectionsMovingRightToNewFiles) =
+          baseSections
+            .flatMap(baseSection =>
+              moveDestinationsReport.moveDestinationsBySources
+                .get(baseSection)
+                .map(
+                  _.allOnTheRight
+                    .map(rightSources.pathFor)
+                    .intersect(newPathsOnLeftOrRight)
+                    .map(_ -> baseSection)
+                )
+            )
+            .flatten
+            .unzip match
+            case (paths, sections) => paths.toSet -> sections.toSet
 
-                case JustTheirModification(
-                      theirModification,
-                      bestAncestorCommitIdContent
-                    ) =>
-                  val unchangedContent = tokens(bestAncestorCommitIdContent).get
+        val baseSectionsThatHaveMovedToNewFiles =
+          baseSectionsMovingLeftToNewFiles union baseSectionsMovingRightToNewFiles
 
-                  right(
-                    (
-                      baseContentsByPath + (path -> unchangedContent),
-                      leftContentsByPath + (path -> unchangedContent),
-                      rightContentsByPath + (path -> tokens(
-                        theirModification.content
-                      ).get)
-                    )
-                  )
+        val totalContentSize = baseSections.map(_.size).sum
 
-                case JustOurAddition(ourAddition) =>
-                  right(
-                    (
-                      baseContentsByPath,
-                      leftContentsByPath + (path -> tokens(
-                        ourAddition.content
-                      ).get),
-                      rightContentsByPath
-                    )
-                  )
+        val movedContentSize =
+          baseSectionsThatHaveMovedToNewFiles.map(_.size).sum
 
-                case JustTheirAddition(theirAddition) =>
-                  right(
-                    (
-                      baseContentsByPath,
-                      leftContentsByPath,
-                      rightContentsByPath + (path -> tokens(
-                        theirAddition.content
-                      ).get)
-                    )
-                  )
+        val enoughContentHasMovedToConsiderAsRenaming =
+          baseSectionsThatHaveMovedToNewFiles.nonEmpty && 2 * movedContentSize >= totalContentSize
 
-                case JustOurDeletion(bestAncestorCommitIdContent) =>
-                  val unchangedContent = tokens(bestAncestorCommitIdContent).get
+        Option.when(enoughContentHasMovedToConsiderAsRenaming) {
+          val leftRenamingDetail = Option.unless(
+            leftRenamePaths.isEmpty
+          )(
+            s"on our branch ${underline(ourBranchHead)} " ++ (if 1 < leftRenamePaths.size
+                                                              then
+                                                                s"into files ${leftRenamePaths.map(underline).mkString(", ")}"
+                                                              else
+                                                                s"to file ${underline(leftRenamePaths.head)}")
+          )
 
-                  right(
-                    (
-                      baseContentsByPath + (path -> unchangedContent),
-                      leftContentsByPath,
-                      rightContentsByPath + (path -> unchangedContent)
-                    )
-                  )
+          val rightRenamingDetail = Option.unless(
+            rightRenamePaths.isEmpty
+          )(
+            s"on their branch ${underline(theirBranchHead)} " ++ (if 1 < rightRenamePaths.size
+                                                                  then
+                                                                    s"into files ${rightRenamePaths.map(underline).mkString(", ")}"
+                                                                  else
+                                                                    s"to file ${underline(rightRenamePaths.head)}")
+          )
 
-                case JustTheirDeletion(bestAncestorCommitIdContent) =>
-                  val unchangedContent = tokens(bestAncestorCommitIdContent).get
+          val description =
+            (leftRenamingDetail, rightRenamingDetail) match
+              case (Some(leftDetailPayload), None) =>
+                s"File ${underline(path)} was renamed $leftDetailPayload."
+              case (None, Some(rightDetailPayload)) =>
+                s"File ${underline(path)} was renamed $rightDetailPayload."
+              case (
+                    Some(leftDetailPayload),
+                    Some(rightDetailPayload)
+                  ) =>
+                s"File ${underline(path)} was renamed $leftDetailPayload and $rightDetailPayload."
+            end match
+          end description
 
-                  right(
-                    (
-                      baseContentsByPath + (path -> unchangedContent),
-                      leftContentsByPath + (path -> unchangedContent),
-                      rightContentsByPath
-                    )
-                  )
+          FileRenamingReport(
+            description,
+            leftRenamePaths,
+            rightRenamePaths
+          )
+        }
+      end fileRenamingReportUsing
 
-                case OurModificationAndTheirDeletion(
-                      ourModification,
-                      _,
-                      _,
-                      bestAncestorCommitIdContent
-                    ) =>
-                  right(
-                    (
-                      baseContentsByPath + (path -> tokens(
-                        bestAncestorCommitIdContent
-                      ).get),
-                      leftContentsByPath + (path -> tokens(
-                        ourModification.content
-                      ).get),
-                      rightContentsByPath
-                    )
-                  )
-
-                case TheirModificationAndOurDeletion(
-                      theirModification,
-                      _,
-                      _,
-                      bestAncestorCommitIdContent
-                    ) =>
-                  right(
-                    (
-                      baseContentsByPath + (path -> tokens(
-                        bestAncestorCommitIdContent
-                      ).get),
-                      leftContentsByPath,
-                      rightContentsByPath + (path -> tokens(
-                        theirModification.content
-                      ).get)
-                    )
-                  )
-
-                case BothContributeAnAddition(
-                      ourAddition,
-                      theirAddition,
-                      _
-                    ) =>
-                  right(
-                    (
-                      baseContentsByPath,
-                      leftContentsByPath + (path -> tokens(
-                        ourAddition.content
-                      ).get),
-                      rightContentsByPath + (path -> tokens(
-                        theirAddition.content
-                      ).get)
-                    )
-                  )
-
-                case BothContributeAModification(
-                      ourModification,
-                      theirModification,
-                      _,
-                      _,
-                      bestAncestorCommitIdContent,
-                      _
-                    ) =>
-                  right(
-                    (
-                      baseContentsByPath + (path -> tokens(
-                        bestAncestorCommitIdContent
-                      ).get),
-                      leftContentsByPath + (path -> tokens(
-                        ourModification.content
-                      ).get),
-                      rightContentsByPath + (path -> tokens(
-                        theirModification.content
-                      ).get)
-                    )
-                  )
-
-                case BothContributeADeletion(bestAncestorCommitIdContent) =>
-                  right(
-                    (
-                      baseContentsByPath + (path -> tokens(
-                        bestAncestorCommitIdContent
-                      ).get),
-                      leftContentsByPath,
-                      rightContentsByPath
-                    )
-                  )
-          }
-
+      for
         codeMotionAnalysis: CodeMotionAnalysis[Path, Token] <- EitherT
           .fromEither[WorkflowLogWriter] {
-
-            CodeMotionAnalysis.of(
-              base = MappedContentSourcesOfTokens(
-                baseContentsByPath,
-                label = s"BASE: ${bestAncestorCommitId.take(8)}"
-              ),
-              left = MappedContentSourcesOfTokens(
-                leftContentsByPath,
-                label = s"OURS: $ourBranchHead"
-              ),
-              right = MappedContentSourcesOfTokens(
-                rightContentsByPath,
-                label = s"THEIRS: $theirBranchHead"
-              )
-            )(configuration)
+            CodeMotionAnalysis.of(baseSources, leftSources, rightSources)(
+              configuration
+            )
           }
           .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
 
@@ -1245,156 +1467,201 @@ object Main extends StrictLogging:
           _ logOperation _
         )
 
-        indexStates: List[Option[IndexState]] <-
-          mergeInputs.traverse { case (path, mergeInput) =>
-            mergeInput match
-              case JustOurModification(ourModification, _) =>
-                val FullyMerged(tokens) = mergeResultsByPath(path): @unchecked
+        fileRenamingReport = fileRenamingReportUsing(
+          codeMotionAnalysis,
+          moveDestinationsReport
+        )
 
-                val mergedFileContent = reconstituteTextFrom(tokens)
-
-                val ourModificationWasTweakedByTheMerge =
-                  mergedFileContent != ourModification.content
-
-                if ourModificationWasTweakedByTheMerge then
-                  for
-                    blobId <- storeBlobFor(path, mergedFileContent)
-                    _ <- restoreFileFromBlobId(
-                      path,
-                      blobId
+        accumulatedMergeState <- mergeInputs.foldM(
+          AccumulatedMergeState.initial
+        ) { case (partialResult, (path, mergeInput)) =>
+          def captureRenamesOfPathDeletedOnJustOneSide =
+            fileRenamingReport(path)
+              .fold(ifEmpty = right(partialResult)) {
+                case FileRenamingReport(
+                      description,
+                      leftRenamePaths,
+                      rightRenamePaths
+                    ) =>
+                  right(
+                    partialResult.copy(
+                      deletedPathsByLeftRenamePath =
+                        partialResult.deletedPathsByLeftRenamePath ++ leftRenamePaths
+                          .map(_ -> path),
+                      deletedPathsByRightRenamePath =
+                        partialResult.deletedPathsByRightRenamePath ++ rightRenamePaths
+                          .map(_ -> path)
                     )
-                    _ <- recordModificationInIndex(
-                      path,
-                      ourModification.mode,
-                      blobId
-                    )
-                  yield Some(IndexState.OneEntry)
-                else right(None)
-                end if
+                  ).logOperation(description)
+              }
 
-              case JustTheirModification(theirModification, _) =>
-                val FullyMerged(tokens) = mergeResultsByPath(path): @unchecked
+          mergeInput match
+            case JustOurModification(ourModification, _) =>
+              val FullyMerged(tokens) =
+                mergeResultsByPath(path): @unchecked
 
-                val mergedFileContent = reconstituteTextFrom(tokens)
+              val mergedFileContent = reconstituteTextFrom(tokens)
 
-                val theirModificationWasTweakedByTheMerge =
-                  mergedFileContent != theirModification.content
+              val ourModificationWasTweakedByTheMerge =
+                mergedFileContent != ourModification.content
 
-                if theirModificationWasTweakedByTheMerge then
-                  for
-                    blobId <- storeBlobFor(path, mergedFileContent)
-                    _ <- restoreFileFromBlobId(
-                      path,
-                      blobId
-                    )
-                    _ <- recordModificationInIndex(
-                      path,
-                      theirModification.mode,
-                      blobId
-                    )
-                  yield Some(IndexState.OneEntry)
-                else
-                  for
-                    _ <- restoreFileFromBlobId(
-                      path,
-                      theirModification.blobId
-                    )
-                    _ <- recordModificationInIndex(
-                      path,
-                      theirModification.mode,
-                      theirModification.blobId
-                    )
-                  yield Some(IndexState.OneEntry)
-                end if
-
-              case JustOurAddition(ourAddition) =>
-                val FullyMerged(tokens) = mergeResultsByPath(path): @unchecked
-
-                val mergedFileContent = reconstituteTextFrom(tokens)
-
-                val ourAdditionWasTweakedByTheMerge =
-                  mergedFileContent != ourAddition.content
-
-                if ourAdditionWasTweakedByTheMerge then
-                  for
-                    blobId <- storeBlobFor(path, mergedFileContent)
-                    _ <- restoreFileFromBlobId(
-                      path,
-                      blobId
-                    )
-                    _ <- recordModificationInIndex(
-                      path,
-                      ourAddition.mode,
-                      blobId
-                    )
-                  yield Some(IndexState.OneEntry)
-                else right(None)
-                end if
-
-              case JustTheirAddition(theirAddition) =>
-                val FullyMerged(tokens) = mergeResultsByPath(path): @unchecked
-
-                val mergedFileContent = reconstituteTextFrom(tokens)
-
-                val theirAdditionWasTweakedByTheMerge =
-                  mergedFileContent != theirAddition.content
-
-                if theirAdditionWasTweakedByTheMerge then
-                  for
-                    blobId <- storeBlobFor(path, mergedFileContent)
-                    _ <- restoreFileFromBlobId(
-                      path,
-                      blobId
-                    )
-                    _ <- recordAdditionInIndex(
-                      path,
-                      theirAddition.mode,
-                      blobId
-                    )
-                  yield Some(IndexState.OneEntry)
-                else
-                  for
-                    _ <- restoreFileFromBlobId(
-                      path,
-                      theirAddition.blobId
-                    )
-                    _ <- recordAdditionInIndex(
-                      path,
-                      theirAddition.mode,
-                      theirAddition.blobId
-                    )
-                  yield Some(IndexState.OneEntry)
-                end if
-
-              case JustOurDeletion(_) =>
-                right(None)
-
-              case JustTheirDeletion(_) =>
+              if ourModificationWasTweakedByTheMerge then
                 for
-                  _ <- recordDeletionInIndex(path)
-                  _ <- deleteFile(path)
-                yield Some(IndexState.OneEntry)
+                  blobId <- storeBlobFor(path, mergedFileContent)
+                  _ <- restoreFileFromBlobId(
+                    path,
+                    blobId
+                  )
+                  _ <- recordModificationInIndex(
+                    path,
+                    ourModification.mode,
+                    blobId
+                  )
+                yield partialResult
+              else right(partialResult)
+              end if
 
-              case OurModificationAndTheirDeletion(
-                    ourModification,
-                    bestAncestorCommitIdMode,
-                    bestAncestorCommitIdBlobId,
-                    _
-                  ) =>
-                val tokens = mergeResultsByPath(path) match
-                  case FullyMerged(mergedTokens)               => mergedTokens
-                  case MergedWithConflicts(ourMergedTokens, _) =>
-                    // We don't care about their view of the merge - their side
-                    // simply deleted the whole file, so it contributes nothing
-                    // interesting to the merge; the only point of the merge
-                    // here was to pick up propagated edits / deletions and to
-                    // note move destinations.
-                    ourMergedTokens
+            case JustTheirModification(theirModification, _) =>
+              val FullyMerged(tokens) =
+                mergeResultsByPath(path): @unchecked
 
-                val mergedFileContent = reconstituteTextFrom(tokens)
-                val ourModificationWasTweakedByTheMerge =
-                  mergedFileContent != ourModification.content
+              val mergedFileContent = reconstituteTextFrom(tokens)
 
+              val theirModificationWasTweakedByTheMerge =
+                mergedFileContent != theirModification.content
+
+              if theirModificationWasTweakedByTheMerge then
+                for
+                  blobId <- storeBlobFor(path, mergedFileContent)
+                  _ <- restoreFileFromBlobId(
+                    path,
+                    blobId
+                  )
+                  _ <- recordModificationInIndex(
+                    path,
+                    theirModification.mode,
+                    blobId
+                  )
+                yield partialResult
+              else
+                for
+                  _ <- restoreFileFromBlobId(
+                    path,
+                    theirModification.blobId
+                  )
+                  _ <- recordModificationInIndex(
+                    path,
+                    theirModification.mode,
+                    theirModification.blobId
+                  )
+                yield partialResult
+              end if
+
+            case JustOurAddition(ourAddition) =>
+              val FullyMerged(tokens) =
+                mergeResultsByPath(path): @unchecked
+
+              val mergedFileContent = reconstituteTextFrom(tokens)
+
+              val ourAdditionWasTweakedByTheMerge =
+                mergedFileContent != ourAddition.content
+
+              if ourAdditionWasTweakedByTheMerge then
+                for
+                  blobId <- storeBlobFor(path, mergedFileContent)
+                  _ <- restoreFileFromBlobId(
+                    path,
+                    blobId
+                  )
+                  _ <- recordModificationInIndex(
+                    path,
+                    ourAddition.mode,
+                    blobId
+                  )
+                yield partialResult
+              else right(partialResult)
+              end if
+
+            case JustTheirAddition(theirAddition) =>
+              val FullyMerged(tokens) =
+                mergeResultsByPath(path): @unchecked
+
+              val mergedFileContent = reconstituteTextFrom(tokens)
+
+              val theirAdditionWasTweakedByTheMerge =
+                mergedFileContent != theirAddition.content
+
+              if theirAdditionWasTweakedByTheMerge then
+                for
+                  blobId <- storeBlobFor(path, mergedFileContent)
+                  _ <- restoreFileFromBlobId(
+                    path,
+                    blobId
+                  )
+                  _ <- recordAdditionInIndex(
+                    path,
+                    theirAddition.mode,
+                    blobId
+                  )
+                yield partialResult
+              else
+                for
+                  _ <- restoreFileFromBlobId(
+                    path,
+                    theirAddition.blobId
+                  )
+                  _ <- recordAdditionInIndex(
+                    path,
+                    theirAddition.mode,
+                    theirAddition.blobId
+                  )
+                yield partialResult
+              end if
+
+            case JustOurDeletion(_) =>
+              // NOTE: we don't consult `mergeResultsByPath` because we know the
+              // outcome already. This is important, because deletion of an
+              // entire file on just one side is treated as a special case by
+              // `CodeMotionAnalysisExtension.mergeResultsByPath` and does not
+              // necessarily remove the content.
+              captureRenamesOfPathDeletedOnJustOneSide
+
+            case JustTheirDeletion(_) =>
+              // NOTE: we don't consult `mergeResultsByPath` because we know the
+              // outcome already. This is important, because deletion of an
+              // entire file on just one side is treated as a special case by
+              // `CodeMotionAnalysisExtension.mergeResultsByPath` and does not
+              // necessarily remove the content.
+              for
+                _ <- recordDeletionInIndex(path)
+                _ <- deleteFile(path)
+                decoratedPartialResult <-
+                  captureRenamesOfPathDeletedOnJustOneSide
+              yield decoratedPartialResult
+
+            case OurModificationAndTheirDeletion(
+                  ourModification,
+                  bestAncestorCommitIdMode,
+                  bestAncestorCommitIdBlobId,
+                  _
+                ) =>
+              val tokens = mergeResultsByPath(path) match
+                case FullyMerged(mergedTokens)               => mergedTokens
+                case MergedWithConflicts(ourMergedTokens, _) =>
+                  // We don't care about their view of the merge - their
+                  // side simply deleted the whole file, so it contributes
+                  // nothing interesting to the merge; the only point of the
+                  // merge here was to pick up propagated edits / deletions
+                  // and to note move destinations.
+                  // TODO: is this even necessary? How would there be merge
+                  // conflicts?
+                  ourMergedTokens
+
+              val mergedFileContent = reconstituteTextFrom(tokens)
+              val ourModificationWasTweakedByTheMerge =
+                mergedFileContent != ourModification.content
+
+              val prelude =
                 for
                   - <- recordDeletionInIndex(path)
                   - <- recordConflictModificationInIndex(
@@ -1405,70 +1672,77 @@ object Main extends StrictLogging:
                     bestAncestorCommitIdMode,
                     bestAncestorCommitIdBlobId
                   )
-                  indexState <-
-                    if ourModificationWasTweakedByTheMerge then
-                      if mergedFileContent.nonEmpty then
-                        for
-                          blobId <- storeBlobFor(path, mergedFileContent)
-                          _ <- restoreFileFromBlobId(
-                            path,
-                            blobId
-                          )
-                          _ <- recordConflictModificationInIndex(
-                            stageIndex = ourStageIndex
-                          )(
-                            ourBranchHead,
-                            path,
-                            ourModification.mode,
-                            blobId
-                          ).logOperation(
-                            s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and deleted on their branch ${underline(theirBranchHead)}."
-                          )
-                        yield IndexState.ConflictingEntries
-                      else
-                        for
-                          _ <- recordDeletionInIndex(path)
-                          _ <- deleteFile(path)
-                        yield IndexState.OneEntry
-                    else
-                      // The modified file would have been present on our
-                      // branch; given that we started with a clean working
-                      // directory tree, we just leave it there to match what
-                      // Git merge does.
-                      for _ <- recordConflictModificationInIndex(
-                          stageIndex = ourStageIndex
-                        )(
-                          ourBranchHead,
-                          path,
-                          ourModification.mode,
-                          ourModification.blobId
-                        ).logOperation(
-                          s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and deleted on their branch ${underline(theirBranchHead)}."
-                        )
-                      yield IndexState.ConflictingEntries
-                yield Some(indexState)
-                end for
+                yield ()
 
-              case TheirModificationAndOurDeletion(
-                    theirModification,
-                    bestAncestorCommitIdMode,
-                    bestAncestorCommitIdBlobId,
-                    _
-                  ) =>
-                val tokens = mergeResultsByPath(path) match
-                  case FullyMerged(mergedTokens)                 => mergedTokens
-                  case MergedWithConflicts(_, theirMergedTokens) =>
-                    // We don't care about our view of the merge - our side
-                    // simply deleted the whole file, so it contributes nothing
-                    // interesting to the merge; the only point of the merge
-                    // here was to pick up propagated edits / deletions and to
-                    // note move destinations.
-                    theirMergedTokens
+              if ourModificationWasTweakedByTheMerge then
+                if mergedFileContent.nonEmpty then
+                  for
+                    _      <- prelude
+                    blobId <- storeBlobFor(path, mergedFileContent)
+                    _ <- restoreFileFromBlobId(
+                      path,
+                      blobId
+                    )
+                    _ <- recordConflictModificationInIndex(
+                      stageIndex = ourStageIndex
+                    )(
+                      ourBranchHead,
+                      path,
+                      ourModification.mode,
+                      blobId
+                    ).logOperation(
+                      s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and deleted on their branch ${underline(theirBranchHead)}."
+                    )
+                  yield partialResult.copy(goodForAMergeCommit = false)
+                else
+                  for
+                    _ <- prelude
+                    _ <- recordDeletionInIndex(path)
+                    _ <- deleteFile(path)
+                    decoratedPartialResult <-
+                      captureRenamesOfPathDeletedOnJustOneSide
+                  yield decoratedPartialResult
+              else
+                // The modified file would have been present on our branch;
+                // given that we started with a clean working directory
+                // tree, we just leave it there to match what Git merge
+                // does.
+                for
+                  _ <- prelude
+                  _ <- recordConflictModificationInIndex(
+                    stageIndex = ourStageIndex
+                  )(
+                    ourBranchHead,
+                    path,
+                    ourModification.mode,
+                    ourModification.blobId
+                  ).logOperation(
+                    s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and deleted on their branch ${underline(theirBranchHead)}."
+                  )
+                yield partialResult.copy(goodForAMergeCommit = false)
+              end if
 
-                val mergedFileContent = reconstituteTextFrom(tokens)
-                val theirModificationWasTweakedByTheMerge =
-                  mergedFileContent != theirModification.content
+            case TheirModificationAndOurDeletion(
+                  theirModification,
+                  bestAncestorCommitIdMode,
+                  bestAncestorCommitIdBlobId,
+                  _
+                ) =>
+              val tokens = mergeResultsByPath(path) match
+                case FullyMerged(mergedTokens)                 => mergedTokens
+                case MergedWithConflicts(_, theirMergedTokens) =>
+                  // We don't care about our view of the merge - our side
+                  // simply deleted the whole file, so it contributes
+                  // nothing interesting to the merge; the only point of the
+                  // merge here was to pick up propagated edits / deletions
+                  // and to note move destinations.
+                  theirMergedTokens
 
+              val mergedFileContent = reconstituteTextFrom(tokens)
+              val theirModificationWasTweakedByTheMerge =
+                mergedFileContent != theirModification.content
+
+              val prelude =
                 for
                   _ <- recordDeletionInIndex(path)
                   _ <- recordConflictModificationInIndex(
@@ -1479,272 +1753,312 @@ object Main extends StrictLogging:
                     bestAncestorCommitIdMode,
                     bestAncestorCommitIdBlobId
                   )
-                  indexState <-
-                    // Git's merge updates the working directory tree with
-                    // *their* modified file which wouldn't have been present on
-                    // our branch prior to the merge. So that's what we do too.
-                    if theirModificationWasTweakedByTheMerge then
-                      if mergedFileContent.nonEmpty then
-                        for
-                          blobId <- storeBlobFor(path, mergedFileContent)
-                          _ <- restoreFileFromBlobId(
-                            path,
-                            blobId
-                          )
-                          _ <- recordConflictModificationInIndex(
-                            stageIndex = theirStageIndex
-                          )(
-                            theirBranchHead,
-                            path,
-                            theirModification.mode,
-                            blobId
-                          ).logOperation(
-                            s"Conflict - file ${underline(path)} was deleted on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
-                          )
-                        yield IndexState.ConflictingEntries
-                      else
-                        for
-                          _ <- recordDeletionInIndex(path)
-                          _ <- deleteFile(path)
-                        yield IndexState.OneEntry
-                    else
-                      for
-                        _ <- restoreFileFromBlobId(
-                          path,
-                          theirModification.blobId
-                        )
-                        _ <- recordConflictModificationInIndex(
-                          stageIndex = theirStageIndex
-                        )(
-                          theirBranchHead,
-                          path,
-                          theirModification.mode,
-                          theirModification.blobId
-                        ).logOperation(
-                          s"Conflict - file ${underline(path)} was deleted on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
-                        )
-                      yield IndexState.ConflictingEntries
-                yield Some(indexState)
-                end for
+                yield ()
 
-              case BothContributeAnAddition(_, _, mergedFileMode) =>
-                mergeResultsByPath(path) match
-                  case FullyMerged(tokens) =>
-                    val mergedFileContent = reconstituteTextFrom(tokens)
-
-                    for
-                      blobId <- storeBlobFor(path, mergedFileContent)
-                      _ <- restoreFileFromBlobId(
-                        path,
-                        blobId
-                      )
-                      _ <- recordModificationInIndex(
-                        path,
-                        mergedFileMode,
-                        blobId
-                      )
-                    yield Some(IndexState.OneEntry)
-                    end for
-
-                  case MergedWithConflicts(leftTokens, rightTokens) =>
-                    val leftContent  = reconstituteTextFrom(leftTokens)
-                    val rightContent = reconstituteTextFrom(rightTokens)
-
-                    for
-                      fakeBaseTemporaryFile <- temporaryFile(
-                        suffix = ".base",
-                        content = "".taggedWith[Tags.Content]
-                      )
-
-                      leftTemporaryFile <- temporaryFile(
-                        suffix = ".left",
-                        content = leftContent
-                      )
-
-                      rightTemporaryFile <- temporaryFile(
-                        suffix = ".right",
-                        content = rightContent
-                      )
-
-                      lastMinuteResolution <-
-                        val noPriorContentName = "no prior content"
-
-                        val exitCode =
-                          os.proc(
-                            "git",
-                            "merge-file",
-                            "-L",
-                            ourBranchHead,
-                            "-L",
-                            s"'$noPriorContentName'",
-                            "-L",
-                            theirBranchHead,
-                            leftTemporaryFile,
-                            fakeBaseTemporaryFile,
-                            rightTemporaryFile
-                          ).call(workingDirectory, check = false)
-                            .exitCode
-
-                        if 0 <= exitCode then right(0 == exitCode)
-                        else
-                          left(
-                            s"Unexpected error: could not generate conflicted file contents on behalf of ${underline(path)} in temporary file ${underline(leftTemporaryFile)}"
-                          )
-                        end if
-                      _ <- IO {
-                        os.copy.over(leftTemporaryFile, path)
-                      }.labelExceptionWith(errorMessage =
-                        s"Unexpected error: could not copy results of conflicted merge in ${underline(leftTemporaryFile)} to working directory tree file ${underline(path)}."
-                      )
-
-                      leftBlob  <- storeBlobFor(path, leftContent)
-                      rightBlob <- storeBlobFor(path, rightContent)
-                      _         <- recordDeletionInIndex(path)
-                      _ <- recordConflictModificationInIndex(
-                        stageIndex = ourStageIndex
-                      )(
-                        ourBranchHead,
-                        path,
-                        mergedFileMode,
-                        leftBlob
-                      )
-                      _ <- recordConflictModificationInIndex(
-                        stageIndex = theirStageIndex
-                      )(
-                        theirBranchHead,
-                        path,
-                        mergedFileMode,
-                        rightBlob
-                      ).logOperation(
-                        s"Conflict - file ${underline(path)} was added on our branch ${underline(
-                            ourBranchHead
-                          )} and added on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
-                      )
-                    yield Some(IndexState.ConflictingEntries)
-                    end for
-
-              case BothContributeAModification(
-                    _,
-                    _,
-                    bestAncestorCommitIdMode,
-                    bestAncestorCommitIdBlobId,
-                    bestAncestorCommitIdContent,
-                    mergedFileMode
-                  ) =>
-                mergeResultsByPath(path) match
-                  case FullyMerged(tokens) =>
-                    val mergedFileContent = reconstituteTextFrom(tokens)
-
-                    for
-                      blobId <- storeBlobFor(path, mergedFileContent)
-                      _ <- restoreFileFromBlobId(
-                        path,
-                        blobId
-                      )
-                      _ <- recordModificationInIndex(
-                        path,
-                        mergedFileMode,
-                        blobId
-                      )
-                    yield Some(IndexState.OneEntry)
-                    end for
-
-                  case MergedWithConflicts(leftTokens, rightTokens) =>
-                    val leftContent  = reconstituteTextFrom(leftTokens)
-                    val rightContent = reconstituteTextFrom(rightTokens)
-
-                    for
-                      baseTemporaryFile <- temporaryFile(
-                        suffix = ".base",
-                        content = bestAncestorCommitIdContent
-                      )
-
-                      leftTemporaryFile <- temporaryFile(
-                        suffix = ".left",
-                        content = leftContent
-                      )
-
-                      rightTemporaryFile <- temporaryFile(
-                        suffix = ".right",
-                        content = rightContent
-                      )
-
-                      lastMinuteResolution <-
-                        val noPriorContentName = "no prior content"
-
-                        val exitCode =
-                          os.proc(
-                            "git",
-                            "merge-file",
-                            "-L",
-                            ourBranchHead,
-                            "-L",
-                            s"'$noPriorContentName'",
-                            "-L",
-                            theirBranchHead,
-                            leftTemporaryFile,
-                            baseTemporaryFile,
-                            rightTemporaryFile
-                          ).call(workingDirectory, check = false)
-                            .exitCode
-
-                        if 0 <= exitCode then right(0 == exitCode)
-                        else
-                          left(
-                            s"Unexpected error: could not generate conflicted file contents on behalf of ${underline(path)} in temporary file ${underline(leftTemporaryFile)}"
-                          )
-                        end if
-                      _ <- IO {
-                        os.copy.over(leftTemporaryFile, path)
-                      }.labelExceptionWith(errorMessage =
-                        s"Unexpected error: could not copy results of conflicted merge in ${underline(leftTemporaryFile)} to working directory tree file ${underline(path)}."
-                      )
-
-                      leftBlob  <- storeBlobFor(path, leftContent)
-                      rightBlob <- storeBlobFor(path, rightContent)
-                      _         <- recordDeletionInIndex(path)
-                      _ <- recordConflictModificationInIndex(
-                        stageIndex = bestCommonAncestorStageIndex
-                      )(
-                        bestAncestorCommitId,
-                        path,
-                        bestAncestorCommitIdMode,
-                        bestAncestorCommitIdBlobId
-                      )
-                      _ <- recordConflictModificationInIndex(
-                        stageIndex = ourStageIndex
-                      )(
-                        ourBranchHead,
-                        path,
-                        mergedFileMode,
-                        leftBlob
-                      )
-                      _ <- recordConflictModificationInIndex(
-                        stageIndex = theirStageIndex
-                      )(
-                        theirBranchHead,
-                        path,
-                        mergedFileMode,
-                        rightBlob
-                      ).logOperation(
-                        s"Conflict - file ${underline(path)} was modified on our branch ${underline(
-                            ourBranchHead
-                          )} and modified on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
-                      )
-                    yield Some(IndexState.ConflictingEntries)
-                    end for
-
-              case BothContributeADeletion(_) =>
-                // We already have the deletion in our branch, so no need to
-                // update the index. We do yield a result so that there is still
-                // a merge commit if this is the only change, though - this
-                // should *not* be a fast-forward merge.
-                right(Some(IndexState.OneEntry))
-                  .logOperation(
-                    s"Coincidental deletion of file ${underline(path)} on our branch ${underline(ourBranchHead)} and on their branch ${underline(theirBranchHead)}."
+              // Git's merge updates the working directory tree with *their*
+              // modified file which wouldn't have been present on our
+              // branch prior to the merge. So that's what we do too.
+              if theirModificationWasTweakedByTheMerge then
+                if mergedFileContent.nonEmpty then
+                  for
+                    _      <- prelude
+                    blobId <- storeBlobFor(path, mergedFileContent)
+                    _ <- restoreFileFromBlobId(
+                      path,
+                      blobId
+                    )
+                    _ <- recordConflictModificationInIndex(
+                      stageIndex = theirStageIndex
+                    )(
+                      theirBranchHead,
+                      path,
+                      theirModification.mode,
+                      blobId
+                    ).logOperation(
+                      s"Conflict - file ${underline(path)} was deleted on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
+                    )
+                  yield partialResult.copy(goodForAMergeCommit = false)
+                else
+                  for
+                    _ <- prelude
+                    _ <- recordDeletionInIndex(path)
+                    _ <- deleteFile(path)
+                    decoratedPartialResult <-
+                      captureRenamesOfPathDeletedOnJustOneSide
+                  yield decoratedPartialResult
+              else
+                for
+                  _ <- prelude
+                  _ <- restoreFileFromBlobId(
+                    path,
+                    theirModification.blobId
                   )
-          }
-      yield indexStates.flatten
+                  _ <- recordConflictModificationInIndex(
+                    stageIndex = theirStageIndex
+                  )(
+                    theirBranchHead,
+                    path,
+                    theirModification.mode,
+                    theirModification.blobId
+                  ).logOperation(
+                    s"Conflict - file ${underline(path)} was deleted on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
+                  )
+                yield partialResult.copy(goodForAMergeCommit = false)
+              end if
+
+            case BothContributeAnAddition(_, _, mergedFileMode) =>
+              mergeResultsByPath(path) match
+                case FullyMerged(tokens) =>
+                  val mergedFileContent = reconstituteTextFrom(tokens)
+
+                  for
+                    blobId <- storeBlobFor(path, mergedFileContent)
+                    _ <- restoreFileFromBlobId(
+                      path,
+                      blobId
+                    )
+                    _ <- recordModificationInIndex(
+                      path,
+                      mergedFileMode,
+                      blobId
+                    )
+                  yield partialResult
+                  end for
+
+                case MergedWithConflicts(leftTokens, rightTokens) =>
+                  val leftContent  = reconstituteTextFrom(leftTokens)
+                  val rightContent = reconstituteTextFrom(rightTokens)
+
+                  for
+                    fakeBaseTemporaryFile <- temporaryFile(
+                      suffix = ".base",
+                      content = "".taggedWith[Tags.Content]
+                    )
+
+                    leftTemporaryFile <- temporaryFile(
+                      suffix = ".left",
+                      content = leftContent
+                    )
+
+                    rightTemporaryFile <- temporaryFile(
+                      suffix = ".right",
+                      content = rightContent
+                    )
+
+                    lastMinuteResolution <-
+                      val noPriorContentName = "no prior content"
+
+                      val exitCode =
+                        os.proc(
+                          "git",
+                          "merge-file",
+                          "-L",
+                          ourBranchHead,
+                          "-L",
+                          s"'$noPriorContentName'",
+                          "-L",
+                          theirBranchHead,
+                          leftTemporaryFile,
+                          fakeBaseTemporaryFile,
+                          rightTemporaryFile
+                        ).call(workingDirectory, check = false)
+                          .exitCode
+
+                      if 0 <= exitCode then right(0 == exitCode)
+                      else
+                        left(
+                          s"Unexpected error: could not generate conflicted file contents on behalf of ${underline(path)} in temporary file ${underline(leftTemporaryFile)}"
+                        )
+                      end if
+                    _ <- IO {
+                      os.copy.over(leftTemporaryFile, path)
+                    }.labelExceptionWith(errorMessage =
+                      s"Unexpected error: could not copy results of conflicted merge in ${underline(leftTemporaryFile)} to working directory tree file ${underline(path)}."
+                    )
+
+                    leftBlob  <- storeBlobFor(path, leftContent)
+                    rightBlob <- storeBlobFor(path, rightContent)
+                    _         <- recordDeletionInIndex(path)
+                    _ <- recordConflictModificationInIndex(
+                      stageIndex = ourStageIndex
+                    )(
+                      ourBranchHead,
+                      path,
+                      mergedFileMode,
+                      leftBlob
+                    )
+                    _ <- recordConflictModificationInIndex(
+                      stageIndex = theirStageIndex
+                    )(
+                      theirBranchHead,
+                      path,
+                      mergedFileMode,
+                      rightBlob
+                    )
+                  yield partialResult.copy(
+                    goodForAMergeCommit = false,
+                    conflictingAdditionPathsAndTheirLastMinuteResolutions =
+                      partialResult.conflictingAdditionPathsAndTheirLastMinuteResolutions + (path -> lastMinuteResolution)
+                  )
+                  end for
+
+            case BothContributeAModification(
+                  _,
+                  _,
+                  bestAncestorCommitIdMode,
+                  bestAncestorCommitIdBlobId,
+                  bestAncestorCommitIdContent,
+                  mergedFileMode
+                ) =>
+              mergeResultsByPath(path) match
+                case FullyMerged(tokens) =>
+                  val mergedFileContent = reconstituteTextFrom(tokens)
+
+                  for
+                    blobId <- storeBlobFor(path, mergedFileContent)
+                    _ <- restoreFileFromBlobId(
+                      path,
+                      blobId
+                    )
+                    _ <- recordModificationInIndex(
+                      path,
+                      mergedFileMode,
+                      blobId
+                    )
+                  yield partialResult
+                  end for
+
+                case MergedWithConflicts(leftTokens, rightTokens) =>
+                  val leftContent  = reconstituteTextFrom(leftTokens)
+                  val rightContent = reconstituteTextFrom(rightTokens)
+
+                  for
+                    baseTemporaryFile <- temporaryFile(
+                      suffix = ".base",
+                      content = bestAncestorCommitIdContent
+                    )
+
+                    leftTemporaryFile <- temporaryFile(
+                      suffix = ".left",
+                      content = leftContent
+                    )
+
+                    rightTemporaryFile <- temporaryFile(
+                      suffix = ".right",
+                      content = rightContent
+                    )
+
+                    lastMinuteResolution <-
+                      val noPriorContentName = "no prior content"
+
+                      val exitCode =
+                        os.proc(
+                          "git",
+                          "merge-file",
+                          "-L",
+                          ourBranchHead,
+                          "-L",
+                          s"'$noPriorContentName'",
+                          "-L",
+                          theirBranchHead,
+                          leftTemporaryFile,
+                          baseTemporaryFile,
+                          rightTemporaryFile
+                        ).call(workingDirectory, check = false)
+                          .exitCode
+
+                      if 0 <= exitCode then right(0 == exitCode)
+                      else
+                        left(
+                          s"Unexpected error: could not generate conflicted file contents on behalf of ${underline(path)} in temporary file ${underline(leftTemporaryFile)}"
+                        )
+                      end if
+                    _ <- IO {
+                      os.copy.over(leftTemporaryFile, path)
+                    }.labelExceptionWith(errorMessage =
+                      s"Unexpected error: could not copy results of conflicted merge in ${underline(leftTemporaryFile)} to working directory tree file ${underline(path)}."
+                    )
+
+                    leftBlob  <- storeBlobFor(path, leftContent)
+                    rightBlob <- storeBlobFor(path, rightContent)
+                    _         <- recordDeletionInIndex(path)
+                    _ <- recordConflictModificationInIndex(
+                      stageIndex = bestCommonAncestorStageIndex
+                    )(
+                      bestAncestorCommitId,
+                      path,
+                      bestAncestorCommitIdMode,
+                      bestAncestorCommitIdBlobId
+                    )
+                    _ <- recordConflictModificationInIndex(
+                      stageIndex = ourStageIndex
+                    )(
+                      ourBranchHead,
+                      path,
+                      mergedFileMode,
+                      leftBlob
+                    )
+                    _ <- recordConflictModificationInIndex(
+                      stageIndex = theirStageIndex
+                    )(
+                      theirBranchHead,
+                      path,
+                      mergedFileMode,
+                      rightBlob
+                    ).logOperation(
+                      s"Conflict - file ${underline(path)} was modified on our branch ${underline(
+                          ourBranchHead
+                        )} and modified on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
+                    )
+                  yield partialResult.copy(goodForAMergeCommit = false)
+                  end for
+
+            case BothContributeADeletion(_) =>
+              // We already have the deletion in our branch, so no need
+              // to update the index on behalf of this path, whatever happens...
+              fileRenamingReport(path).fold(ifEmpty =
+                right(partialResult).logOperation(
+                  s"Coincidental deletion of file ${underline(path)} on our branch ${underline(ourBranchHead)} and on their branch ${underline(theirBranchHead)}."
+                )
+              ) {
+                case FileRenamingReport(
+                      description,
+                      leftRenamePaths,
+                      rightRenamePaths
+                    ) =>
+                  val isARenameVersusDeletionConflict =
+                    assume(
+                      leftRenamePaths.nonEmpty || rightRenamePaths.nonEmpty
+                    )
+                    // If all the moved content from `path` going into new files
+                    // ends up on just one side, then this is a conflict because
+                    // it implies an isolated deletion on the other side.
+                    leftRenamePaths.isEmpty || rightRenamePaths.isEmpty
+                  end isARenameVersusDeletionConflict
+
+                  right(
+                    if isARenameVersusDeletionConflict then
+                      partialResult.copy(
+                        conflictingDeletedPathsByLeftRenamePath =
+                          partialResult.conflictingDeletedPathsByLeftRenamePath ++ leftRenamePaths
+                            .map(_ -> path),
+                        conflictingDeletedPathsByRightRenamePath =
+                          partialResult.conflictingDeletedPathsByRightRenamePath ++ rightRenamePaths
+                            .map(_ -> path)
+                      )
+                    else partialResult
+                  ).logOperation(description)
+              }
+          end match
+        }
+
+        _ <-
+          accumulatedMergeState.reportConflictingAdditionsTakingRenamesIntoAccount
+
+        withRenameVersusDeletionConflicts <-
+          accumulatedMergeState.reportLeftRenamesConflictingWithRightDeletions
+            .flatMap(_.reportLeftDeletionsConflictingWithRightRenames)
+      yield withRenameVersusDeletionConflicts.goodForAMergeCommit
       end for
     end indexUpdates
 
@@ -1876,11 +2190,6 @@ object Main extends StrictLogging:
       )
     end recordAdditionInIndex
   end InWorkingDirectory
-
-  private enum IndexState:
-    case OneEntry
-    case ConflictingEntries
-  end IndexState
 
   object Tags:
     trait Mode

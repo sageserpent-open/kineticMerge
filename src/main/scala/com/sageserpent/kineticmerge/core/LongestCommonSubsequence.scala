@@ -1,10 +1,17 @@
 package com.sageserpent.kineticmerge.core
 
-import cats.Eq
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{CommonSubsequenceSize, Contribution}
+import cats.effect.IO
+import cats.effect.unsafe.implicits.global
+import cats.syntax.all.{catsSyntaxApplyOps, catsSyntaxFlatMapOps}
+import cats.{Eq, Monad}
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
+  CommonSubsequenceSize,
+  Contribution
+}
 import monocle.syntax.all.*
 
-import scala.collection.mutable
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
 
 case class LongestCommonSubsequence[Element] private (
     base: IndexedSeq[Contribution[Element]],
@@ -120,7 +127,6 @@ case class LongestCommonSubsequence[Element] private (
 end LongestCommonSubsequence
 
 object LongestCommonSubsequence:
-  private val sentinelIndexForExhaustion = -1
 
   def defaultElementSize[Element](irrelevant: Element): Int = 1
 
@@ -139,11 +145,429 @@ object LongestCommonSubsequence:
     val equality = summon[Eq[Element]]
     val sized    = summon[Sized[Element]]
 
-    val partialResultsCache
-        : mutable.Map[(Int, Int, Int), LongestCommonSubsequence[Element]] =
-      mutable.Map.empty
+    /** The [[LongestCommonSubsequence]] solutions are organised into swathes,
+      * where each swathe provides random-access to a solution via a notional
+      * key of three indices corresponding to the base, left and right. Any
+      * given swathe is populated by keys that all share at least one index
+      * taking the value of the swathe's labelling index; all other indices in a
+      * swathe's keys are lower than the swathe index.<p> For example, the
+      * swathe of index 0 contains an entry using indices (0, 0, 0).<p> The
+      * swathe of index 1 contains entries using indices (1, 1, 1), (1, 1, 0),
+      * (1, 0, 1), (1, 0, 0).<p>This breakdown of keys means that a dynamic
+      * programming approach can work up through the swathes, calculating
+      * sub-problem solutions that depend only on solutions from within the
+      * leading swathe and its predecessor.
+      */
+    trait Swathes:
+      def consultRelevantSwatheForSolution(
+          onePastBaseIndex: Int,
+          onePastLeftIndex: Int,
+          onePastRightIndex: Int
+      ): LongestCommonSubsequence[Element]
 
-    def of(
+      def storeSolutionInLeadingSwathe(
+          onePastBaseIndex: Int,
+          onePastLeftIndex: Int,
+          onePastRightIndex: Int,
+          longestCommonSubsequence: LongestCommonSubsequence[Element]
+      ): Unit
+    end Swathes
+
+    object Swathes:
+      private val maximumSwatheIndex =
+        base.size max left.size max right.size
+
+      def evaluateSolutionsInDependencyOrder(
+          action: (Swathes, Int, Int, Int) => Unit
+      ): LongestCommonSubsequence[Element] =
+        object swathes extends Swathes:
+          case class Storage(
+              baseEqualToSwatheIndex: Array[LongestCommonSubsequence[Element]],
+              leftEqualToSwatheIndex: Array[LongestCommonSubsequence[Element]],
+              rightEqualToSwatheIndex: Array[LongestCommonSubsequence[Element]]
+          ):
+            def apply(
+                swatheIndex: Int,
+                onePastBaseIndex: Int,
+                onePastLeftIndex: Int,
+                onePastRightIndex: Int
+            ): LongestCommonSubsequence[Element] =
+              if swatheIndex == onePastLeftIndex then
+                leftEqualToSwatheIndex(
+                  onePastBaseIndex * (1 + right.size) + onePastRightIndex
+                )
+              else if swatheIndex == onePastRightIndex then
+                rightEqualToSwatheIndex(
+                  onePastBaseIndex * (1 + left.size) + onePastLeftIndex
+                )
+              else
+                assume(swatheIndex == onePastBaseIndex)
+                baseEqualToSwatheIndex(
+                  onePastLeftIndex * (1 + right.size) + onePastRightIndex
+                )
+              end if
+            end apply
+
+            def update(
+                swatheIndex: Int,
+                onePastBaseIndex: Int,
+                onePastLeftIndex: Int,
+                onePastRightIndex: Int,
+                entryToStore: LongestCommonSubsequence[Element]
+            ): Unit =
+              if swatheIndex == onePastLeftIndex then
+                leftEqualToSwatheIndex(
+                  onePastBaseIndex * (1 + right.size) + onePastRightIndex
+                ) = entryToStore
+              else if swatheIndex == onePastRightIndex then
+                rightEqualToSwatheIndex(
+                  onePastBaseIndex * (1 + left.size) + onePastLeftIndex
+                ) = entryToStore
+              else
+                assume(swatheIndex == onePastBaseIndex)
+                baseEqualToSwatheIndex(
+                  onePastLeftIndex * (1 + right.size) + onePastRightIndex
+                ) = entryToStore
+              end if
+            end update
+          end Storage
+
+          private val twoLotsOfStorage = Array(newStorage, newStorage)
+
+          private val notYetAdvanced = -1
+
+          private var _indexOfLeadingSwathe: Int = notYetAdvanced
+
+          def advanceToNextLeadingSwathe(): Boolean =
+            val resultSnapshotPriorToMutation = notYetReachedFinalSwathe
+
+            if resultSnapshotPriorToMutation then _indexOfLeadingSwathe += 1
+
+            resultSnapshotPriorToMutation
+          end advanceToNextLeadingSwathe
+
+          private def notYetReachedFinalSwathe =
+            maximumSwatheIndex > _indexOfLeadingSwathe
+
+          def topLevelSolution: LongestCommonSubsequence[Element] =
+            require(!notYetReachedFinalSwathe)
+
+            twoLotsOfStorage(storageLotForLeadingSwathe)(
+              _indexOfLeadingSwathe,
+              base.size,
+              left.size,
+              right.size
+            )
+          end topLevelSolution
+
+          def consultRelevantSwatheForSolution(
+              onePastBaseIndex: Int,
+              onePastLeftIndex: Int,
+              onePastRightIndex: Int
+          ): LongestCommonSubsequence[Element] =
+            require(_indexOfLeadingSwathe != notYetAdvanced)
+
+            if indexOfLeadingSwathe == onePastBaseIndex
+              || indexOfLeadingSwathe == onePastLeftIndex
+              || indexOfLeadingSwathe == onePastRightIndex
+            then
+              twoLotsOfStorage(storageLotForLeadingSwathe)(
+                _indexOfLeadingSwathe,
+                onePastBaseIndex,
+                onePastLeftIndex,
+                onePastRightIndex
+              )
+            else
+              twoLotsOfStorage(storageLotForPrecedingSwathe)(
+                _indexOfLeadingSwathe - 1,
+                onePastBaseIndex,
+                onePastLeftIndex,
+                onePastRightIndex
+              )
+            end if
+          end consultRelevantSwatheForSolution
+
+          inline private def storageLotForLeadingSwathe =
+            _indexOfLeadingSwathe % 2
+          end storageLotForLeadingSwathe
+
+          inline private def storageLotForPrecedingSwathe =
+            (1 + _indexOfLeadingSwathe) % 2
+          end storageLotForPrecedingSwathe
+
+          def indexOfLeadingSwathe: Int = _indexOfLeadingSwathe
+
+          def storeSolutionInLeadingSwathe(
+              onePastBaseIndex: Int,
+              onePastLeftIndex: Int,
+              onePastRightIndex: Int,
+              longestCommonSubsequence: LongestCommonSubsequence[Element]
+          ): Unit =
+            require(_indexOfLeadingSwathe != notYetAdvanced)
+
+            twoLotsOfStorage(storageLotForLeadingSwathe)(
+              _indexOfLeadingSwathe,
+              onePastBaseIndex,
+              onePastLeftIndex,
+              onePastRightIndex
+            ) = longestCommonSubsequence
+          end storeSolutionInLeadingSwathe
+
+          inline private def newStorage = Storage(
+            baseEqualToSwatheIndex =
+              Array.ofDim((1 + left.size) * (1 + right.size)),
+            leftEqualToSwatheIndex =
+              Array.ofDim((1 + base.size) * (1 + right.size)),
+            rightEqualToSwatheIndex =
+              Array.ofDim((1 + base.size) * (1 + left.size))
+          )
+        end swathes
+
+        val haveAdvancedToNextLeadingSwathe = IO {
+          swathes.advanceToNextLeadingSwathe()
+        }
+
+        val indexOfLeadingSwathe: IO[Int] = IO { swathes.indexOfLeadingSwathe }
+
+        // TODO: either cut over *completely* to using `IO` (but without
+        // sacrificing performance obtained by using `Future` to do the heavy
+        // lifting), or learn how to write a catamorphism for `Future` that
+        // unfolds through the swathes. The problem is that without a
+        // catamorphism, the only obvious way of doing this is to used
+        // `Monad.whileM_`, and that really doesn't play well with `Future` as
+        // it evaluates its condition eagerly and once.
+        val allSolutionsOverAllSwathes = Monad[IO].whileM_(
+          haveAdvancedToNextLeadingSwathe
+        )(indexOfLeadingSwathe.flatMap { indexOfLeadingSwathe =>
+          val maximumLesserBaseIndex =
+            base.size min (indexOfLeadingSwathe - 1)
+          val maximumLesserLeftIndex =
+            left.size min (indexOfLeadingSwathe - 1)
+          val maximumLesserRightIndex =
+            right.size min (indexOfLeadingSwathe - 1)
+
+          enum IndexPermutation:
+            inline def evaluateAt(shortIndex: Int, longIndex: Int): Unit =
+              this match
+                case BaseHeldLeftIsShort =>
+                  action(
+                    swathes,
+                    indexOfLeadingSwathe,
+                    shortIndex,
+                    longIndex
+                  )
+                case BaseHeldRightIsShort =>
+                  action(
+                    swathes,
+                    indexOfLeadingSwathe,
+                    longIndex,
+                    shortIndex
+                  )
+                case LeftHeldBaseIsShort =>
+                  action(
+                    swathes,
+                    shortIndex,
+                    indexOfLeadingSwathe,
+                    longIndex
+                  )
+                case LeftHeldRightIsShort =>
+                  action(
+                    swathes,
+                    longIndex,
+                    indexOfLeadingSwathe,
+                    shortIndex
+                  )
+                case RightHeldBaseIsShort =>
+                  action(
+                    swathes,
+                    shortIndex,
+                    longIndex,
+                    indexOfLeadingSwathe
+                  )
+                case RightHeldLeftIsShort =>
+                  action(
+                    swathes,
+                    longIndex,
+                    shortIndex,
+                    indexOfLeadingSwathe
+                  )
+
+            case BaseHeldLeftIsShort
+            case BaseHeldRightIsShort
+            case LeftHeldBaseIsShort
+            case LeftHeldRightIsShort
+            case RightHeldBaseIsShort
+            case RightHeldLeftIsShort
+          end IndexPermutation
+
+          def traverseInDiagonalStripes(
+              maximumShortIndex: Int,
+              maximumLongIndex: Int,
+              indexPermutation: IndexPermutation
+          ): Unit =
+            // Evaluate along initial short diagonals increasing in length...
+            for
+              ceiling    <- 0 until maximumShortIndex
+              shortIndex <- 0 to ceiling
+              longIndex = ceiling - shortIndex
+            do indexPermutation.evaluateAt(shortIndex, longIndex)
+            end for
+            // Evaluate along full-length diagonals...
+            for
+              ceiling    <- maximumShortIndex to maximumLongIndex
+              shortIndex <- 0 to maximumShortIndex
+              longIndex = ceiling - shortIndex
+            do indexPermutation.evaluateAt(shortIndex, longIndex)
+            end for
+            // Evaluate along final short diagonals decreasing in length...
+            for
+              ceiling <-
+                (1 + maximumLongIndex) to (maximumShortIndex + maximumLongIndex)
+              shortIndex <- (ceiling - maximumLongIndex) to maximumShortIndex
+              longIndex = ceiling - shortIndex
+            do indexPermutation.evaluateAt(shortIndex, longIndex)
+            end for
+          end traverseInDiagonalStripes
+
+          val solutionsHoldingTheBase = Future {
+            if base.size >= indexOfLeadingSwathe then
+              // Hold the base index at the maximum for this swathe and evaluate
+              // all solutions with lesser left and right indices in dependency
+              // order within this swathe...
+              if maximumLesserLeftIndex < maximumLesserRightIndex then
+                traverseInDiagonalStripes(
+                  maximumShortIndex = maximumLesserLeftIndex,
+                  maximumLongIndex = maximumLesserRightIndex,
+                  indexPermutation = IndexPermutation.BaseHeldLeftIsShort
+                )
+              else
+                traverseInDiagonalStripes(
+                  maximumShortIndex = maximumLesserRightIndex,
+                  maximumLongIndex = maximumLesserLeftIndex,
+                  indexPermutation = IndexPermutation.BaseHeldRightIsShort
+                )
+              end if
+            end if
+          }
+
+          val solutionsHoldingTheLeft = Future {
+            if left.size >= indexOfLeadingSwathe then
+              // Hold the left index at the maximum for this swathe and evaluate
+              // all solutions with lesser base and right indices in dependency
+              // order within this swathe...
+              if maximumLesserBaseIndex < maximumLesserRightIndex then
+                traverseInDiagonalStripes(
+                  maximumShortIndex = maximumLesserBaseIndex,
+                  maximumLongIndex = maximumLesserRightIndex,
+                  indexPermutation = IndexPermutation.LeftHeldBaseIsShort
+                )
+              else
+                traverseInDiagonalStripes(
+                  maximumShortIndex = maximumLesserRightIndex,
+                  maximumLongIndex = maximumLesserBaseIndex,
+                  indexPermutation = IndexPermutation.LeftHeldRightIsShort
+                )
+              end if
+            end if
+          }
+
+          val solutionsHoldingTheRight = Future {
+            if right.size >= indexOfLeadingSwathe then
+              // Hold the right index at the maximum for this swathe and
+              // evaluate all solutions with lesser base and left indices in
+              // dependency order within this swathe...
+              if maximumLesserBaseIndex < maximumLesserLeftIndex then
+                traverseInDiagonalStripes(
+                  maximumShortIndex = maximumLesserBaseIndex,
+                  maximumLongIndex = maximumLesserLeftIndex,
+                  indexPermutation = IndexPermutation.RightHeldBaseIsShort
+                )
+              else
+                traverseInDiagonalStripes(
+                  maximumShortIndex = maximumLesserLeftIndex,
+                  maximumLongIndex = maximumLesserBaseIndex,
+                  indexPermutation = IndexPermutation.RightHeldLeftIsShort
+                )
+              end if
+            end if
+          }
+
+          val solutionsHoldingEachOfTheThreeSides =
+            solutionsHoldingTheBase *> solutionsHoldingTheLeft *> solutionsHoldingTheRight
+
+          val solutionsHoldingTheBaseAndLeft =
+            solutionsHoldingEachOfTheThreeSides >> Future {
+              if base.size >= indexOfLeadingSwathe && left.size >= indexOfLeadingSwathe
+              then
+                for rightIndex <- 0 to maximumLesserRightIndex do
+                  action(
+                    swathes,
+                    indexOfLeadingSwathe,
+                    indexOfLeadingSwathe,
+                    rightIndex
+                  )
+                end for
+              end if
+            }
+
+          val solutionsHoldingTheBaseAndRight =
+            solutionsHoldingEachOfTheThreeSides >> Future {
+              if base.size >= indexOfLeadingSwathe && right.size >= indexOfLeadingSwathe
+              then
+                for leftIndex <- 0 to maximumLesserLeftIndex do
+                  action(
+                    swathes,
+                    indexOfLeadingSwathe,
+                    leftIndex,
+                    indexOfLeadingSwathe
+                  )
+                end for
+              end if
+            }
+
+          val solutionsHoldingTheLeftAndRight =
+            solutionsHoldingEachOfTheThreeSides >> Future {
+              if left.size >= indexOfLeadingSwathe && right.size >= indexOfLeadingSwathe
+              then
+                for baseIndex <- 0 to maximumLesserBaseIndex do
+                  action(
+                    swathes,
+                    baseIndex,
+                    indexOfLeadingSwathe,
+                    indexOfLeadingSwathe
+                  )
+                end for
+              end if
+            }
+
+          val allExceptTopLevelSolution =
+            solutionsHoldingTheBaseAndLeft *> solutionsHoldingTheBaseAndRight *> solutionsHoldingTheLeftAndRight
+
+          val topLevelSolution =
+            allExceptTopLevelSolution >> Future {
+              if base.size >= indexOfLeadingSwathe && left.size >= indexOfLeadingSwathe && right.size >= indexOfLeadingSwathe
+              then
+                // Top-level solution for the leading swathe...
+                action(
+                  swathes,
+                  indexOfLeadingSwathe,
+                  indexOfLeadingSwathe,
+                  indexOfLeadingSwathe
+                )
+              end if
+            }
+
+          IO.fromFuture(IO(topLevelSolution))
+        })
+
+        allSolutionsOverAllSwathes.unsafeRunSync()
+
+        swathes.topLevelSolution
+      end evaluateSolutionsInDependencyOrder
+    end Swathes
+
+    def ofConsultingSwathesForSubProblems(
+        swathes: Swathes,
         onePastBaseIndex: Int,
         onePastLeftIndex: Int,
         onePastRightIndex: Int
@@ -156,11 +580,10 @@ object LongestCommonSubsequence:
       val leftIsExhausted  = 0 == onePastLeftIndex
       val rightIsExhausted = 0 == onePastRightIndex
 
-      val numberOfNonEmptySides =
-        Seq(baseIsExhausted, leftIsExhausted, rightIsExhausted).count(!_)
-
-      numberOfNonEmptySides match
-        case 0 | 1 =>
+      (baseIsExhausted, leftIsExhausted, rightIsExhausted) match
+        case (true, true, true) | (true, true, false) | (true, false, true) |
+            (false, true, true) =>
+          // There is nothing left to compare from one side to any other...
           LongestCommonSubsequence(
             base = Vector.tabulate(onePastBaseIndex)(index =>
               Contribution.Difference(base(index))
@@ -176,198 +599,279 @@ object LongestCommonSubsequence:
             commonToBaseAndLeftOnlySize = CommonSubsequenceSize.zero,
             commonToBaseAndRightOnlySize = CommonSubsequenceSize.zero
           )
-        case 2 | 3 =>
-          if baseIsExhausted then
-            val leftIndex  = onePastLeftIndex - 1
-            val rightIndex = onePastRightIndex - 1
 
-            val leftElement  = left(leftIndex)
-            val rightElement = right(rightIndex)
+        case (true, false, false) =>
+          // Base is exhausted...
+          val leftIndex  = onePastLeftIndex - 1
+          val rightIndex = onePastRightIndex - 1
 
-            partialResultsCache.getOrElseUpdate(
-              (sentinelIndexForExhaustion, leftIndex, rightIndex), {
-                val leftEqualsRight = equality.eqv(leftElement, rightElement)
+          val leftElement  = left(leftIndex)
+          val rightElement = right(rightIndex)
 
-                if leftEqualsRight then
-                  of(onePastBaseIndex = 0, leftIndex, rightIndex)
-                    .addCommonLeftAndRight(leftElement, rightElement)(
-                      sized.sizeOf
-                    )
-                else
-                  val resultDroppingTheEndOfTheLeft =
-                    of(onePastBaseIndex = 0, leftIndex, onePastRightIndex)
-                      .addLeftDifference(leftElement)
+          val leftEqualsRight = equality.eqv(leftElement, rightElement)
 
-                  val resultDroppingTheEndOfTheRight =
-                    of(onePastBaseIndex = 0, onePastLeftIndex, rightIndex)
-                      .addRightDifference(rightElement)
-
-                  orderBySize.max(
-                    resultDroppingTheEndOfTheLeft,
-                    resultDroppingTheEndOfTheRight
-                  )
-                end if
-              }
-            )
-          else if leftIsExhausted then
-            val baseIndex  = onePastBaseIndex - 1
-            val rightIndex = onePastRightIndex - 1
-
-            val baseElement  = base(baseIndex)
-            val rightElement = right(rightIndex)
-
-            partialResultsCache.getOrElseUpdate(
-              (baseIndex, sentinelIndexForExhaustion, rightIndex), {
-                val baseEqualsRight = equality.eqv(baseElement, rightElement)
-
-                if baseEqualsRight then
-                  of(baseIndex, onePastLeftIndex = 0, rightIndex)
-                    .addCommonBaseAndRight(baseElement, rightElement)(
-                      sized.sizeOf
-                    )
-                else
-                  val resultDroppingTheEndOfTheBase =
-                    of(baseIndex, onePastLeftIndex = 0, onePastRightIndex)
-                      .addBaseDifference(baseElement)
-
-                  val resultDroppingTheEndOfTheRight =
-                    of(onePastBaseIndex, onePastLeftIndex = 0, rightIndex)
-                      .addRightDifference(rightElement)
-
-                  orderBySize.max(
-                    resultDroppingTheEndOfTheBase,
-                    resultDroppingTheEndOfTheRight
-                  )
-                end if
-              }
-            )
-          else if rightIsExhausted then
-            val baseIndex = onePastBaseIndex - 1
-            val leftIndex = onePastLeftIndex - 1
-
-            val baseElement = base(baseIndex)
-            val leftElement = left(leftIndex)
-
-            partialResultsCache.getOrElseUpdate(
-              (baseIndex, leftIndex, sentinelIndexForExhaustion), {
-                val baseEqualsLeft = equality.eqv(baseElement, leftElement)
-
-                if baseEqualsLeft then
-                  of(baseIndex, leftIndex, onePastRightIndex = 0)
-                    .addCommonBaseAndLeft(baseElement, leftElement)(
-                      sized.sizeOf
-                    )
-                else
-                  val resultDroppingTheEndOfTheBase =
-                    of(baseIndex, onePastLeftIndex, onePastRightIndex = 0)
-                      .addBaseDifference(baseElement)
-
-                  val resultDroppingTheEndOfTheLeft =
-                    of(onePastBaseIndex, leftIndex, onePastRightIndex = 0)
-                      .addLeftDifference(leftElement)
-
-                  orderBySize.max(
-                    resultDroppingTheEndOfTheBase,
-                    resultDroppingTheEndOfTheLeft
-                  )
-                end if
-              }
-            )
+          if leftEqualsRight then
+            swathes
+              .consultRelevantSwatheForSolution(0, leftIndex, rightIndex)
+              .addCommonLeftAndRight(leftElement, rightElement)(
+                sized.sizeOf
+              )
           else
-            val baseIndex  = onePastBaseIndex - 1
-            val leftIndex  = onePastLeftIndex - 1
-            val rightIndex = onePastRightIndex - 1
+            val resultDroppingTheEndOfTheLeft =
+              swathes
+                .consultRelevantSwatheForSolution(
+                  0,
+                  leftIndex,
+                  onePastRightIndex
+                )
+                .addLeftDifference(leftElement)
 
-            val baseElement  = base(baseIndex)
-            val leftElement  = left(leftIndex)
-            val rightElement = right(rightIndex)
+            val resultDroppingTheEndOfTheRight =
+              swathes
+                .consultRelevantSwatheForSolution(
+                  0,
+                  onePastLeftIndex,
+                  rightIndex
+                )
+                .addRightDifference(rightElement)
 
-            partialResultsCache.getOrElseUpdate(
-              (baseIndex, leftIndex, rightIndex), {
-                val baseEqualsLeft  = equality.eqv(baseElement, leftElement)
-                val baseEqualsRight = equality.eqv(baseElement, rightElement)
-
-                if baseEqualsLeft && baseEqualsRight
-                then
-                  of(baseIndex, leftIndex, rightIndex)
-                    .addCommon(baseElement, leftElement, rightElement)(
-                      sized.sizeOf
-                    )
-                else
-                  lazy val resultDroppingTheEndOfTheBase =
-                    of(baseIndex, onePastLeftIndex, onePastRightIndex)
-                      .addBaseDifference(baseElement)
-
-                  lazy val resultDroppingTheEndOfTheLeft =
-                    of(onePastBaseIndex, leftIndex, onePastRightIndex)
-                      .addLeftDifference(leftElement)
-
-                  lazy val resultDroppingTheEndOfTheRight =
-                    of(onePastBaseIndex, onePastLeftIndex, rightIndex)
-                      .addRightDifference(rightElement)
-
-                  val resultDroppingTheBaseAndLeft =
-                    if baseEqualsLeft then
-                      of(baseIndex, leftIndex, onePastRightIndex)
-                        .addCommonBaseAndLeft(baseElement, leftElement)(
-                          sized.sizeOf
-                        )
-                    else
-                      orderBySize.max(
-                        resultDroppingTheEndOfTheBase,
-                        resultDroppingTheEndOfTheLeft
-                      )
-                    end if
-                  end resultDroppingTheBaseAndLeft
-
-                  val resultDroppingTheBaseAndRight =
-                    if baseEqualsRight then
-                      of(baseIndex, onePastLeftIndex, rightIndex)
-                        .addCommonBaseAndRight(baseElement, rightElement)(
-                          sized.sizeOf
-                        )
-                    else
-                      orderBySize.max(
-                        resultDroppingTheEndOfTheBase,
-                        resultDroppingTheEndOfTheRight
-                      )
-                    end if
-                  end resultDroppingTheBaseAndRight
-
-                  val leftEqualsRight = equality.eqv(leftElement, rightElement)
-
-                  val resultDroppingTheLeftAndRight =
-                    if leftEqualsRight then
-                      of(onePastBaseIndex, leftIndex, rightIndex)
-                        .addCommonLeftAndRight(leftElement, rightElement)(
-                          sized.sizeOf
-                        )
-                    else
-                      orderBySize.max(
-                        resultDroppingTheEndOfTheLeft,
-                        resultDroppingTheEndOfTheRight
-                      )
-                    end if
-                  end resultDroppingTheLeftAndRight
-
-                  Iterator(
-                    resultDroppingTheBaseAndLeft,
-                    resultDroppingTheBaseAndRight,
-                    resultDroppingTheLeftAndRight
-                  ).max(orderBySize)
-                end if
-              }
+            orderBySize.max(
+              resultDroppingTheEndOfTheLeft,
+              resultDroppingTheEndOfTheRight
             )
           end if
+
+        case (false, true, false) =>
+          // Left is exhausted...
+          val baseIndex  = onePastBaseIndex - 1
+          val rightIndex = onePastRightIndex - 1
+
+          val baseElement  = base(baseIndex)
+          val rightElement = right(rightIndex)
+
+          val baseEqualsRight = equality.eqv(baseElement, rightElement)
+
+          if baseEqualsRight then
+            swathes
+              .consultRelevantSwatheForSolution(baseIndex, 0, rightIndex)
+              .addCommonBaseAndRight(baseElement, rightElement)(
+                sized.sizeOf
+              )
+          else
+            val resultDroppingTheEndOfTheBase =
+              swathes
+                .consultRelevantSwatheForSolution(
+                  baseIndex,
+                  0,
+                  onePastRightIndex
+                )
+                .addBaseDifference(baseElement)
+
+            val resultDroppingTheEndOfTheRight =
+              swathes
+                .consultRelevantSwatheForSolution(
+                  onePastBaseIndex,
+                  0,
+                  rightIndex
+                )
+                .addRightDifference(rightElement)
+
+            orderBySize.max(
+              resultDroppingTheEndOfTheBase,
+              resultDroppingTheEndOfTheRight
+            )
+          end if
+
+        case (false, false, true) =>
+          // Right is exhausted...
+          val baseIndex = onePastBaseIndex - 1
+          val leftIndex = onePastLeftIndex - 1
+
+          val baseElement = base(baseIndex)
+          val leftElement = left(leftIndex)
+
+          val baseEqualsLeft = equality.eqv(baseElement, leftElement)
+
+          if baseEqualsLeft then
+            swathes
+              .consultRelevantSwatheForSolution(baseIndex, leftIndex, 0)
+              .addCommonBaseAndLeft(baseElement, leftElement)(
+                sized.sizeOf
+              )
+          else
+            val resultDroppingTheEndOfTheBase =
+              swathes
+                .consultRelevantSwatheForSolution(
+                  baseIndex,
+                  onePastLeftIndex,
+                  0
+                )
+                .addBaseDifference(baseElement)
+
+            val resultDroppingTheEndOfTheLeft =
+              swathes
+                .consultRelevantSwatheForSolution(
+                  onePastBaseIndex,
+                  leftIndex,
+                  0
+                )
+                .addLeftDifference(leftElement)
+
+            orderBySize.max(
+              resultDroppingTheEndOfTheBase,
+              resultDroppingTheEndOfTheLeft
+            )
+          end if
+
+        case (false, false, false) =>
+          // Nothing is exhausted...
+          val baseIndex  = onePastBaseIndex - 1
+          val leftIndex  = onePastLeftIndex - 1
+          val rightIndex = onePastRightIndex - 1
+
+          val baseElement  = base(baseIndex)
+          val leftElement  = left(leftIndex)
+          val rightElement = right(rightIndex)
+
+          val baseEqualsLeft  = equality.eqv(baseElement, leftElement)
+          val baseEqualsRight = equality.eqv(baseElement, rightElement)
+
+          if baseEqualsLeft && baseEqualsRight
+          then
+            swathes
+              .consultRelevantSwatheForSolution(
+                baseIndex,
+                leftIndex,
+                rightIndex
+              )
+              .addCommon(baseElement, leftElement, rightElement)(
+                sized.sizeOf
+              )
+          else
+            val leftEqualsRight = equality.eqv(leftElement, rightElement)
+
+            // NOTE: at this point, we can't have any two of
+            // `baseEqualsLeft`, `baseEqualsRight` or `leftEqualsRight`
+            // being true - because by transitive equality, that would imply
+            // all three sides are equal, and thus we should be following
+            // other branch. So we have to use all the next three bindings
+            // one way or the other...
+
+            val resultDroppingTheEndOfTheBase =
+              swathes
+                .consultRelevantSwatheForSolution(
+                  baseIndex,
+                  onePastLeftIndex,
+                  onePastRightIndex
+                )
+                .addBaseDifference(baseElement)
+
+            val resultDroppingTheEndOfTheLeft =
+              swathes
+                .consultRelevantSwatheForSolution(
+                  onePastBaseIndex,
+                  leftIndex,
+                  onePastRightIndex
+                )
+                .addLeftDifference(leftElement)
+
+            val resultDroppingTheEndOfTheRight =
+              swathes
+                .consultRelevantSwatheForSolution(
+                  onePastBaseIndex,
+                  onePastLeftIndex,
+                  rightIndex
+                )
+                .addRightDifference(rightElement)
+
+            val resultDroppingTheBaseAndLeft =
+              if baseEqualsLeft then
+                swathes
+                  .consultRelevantSwatheForSolution(
+                    baseIndex,
+                    leftIndex,
+                    onePastRightIndex
+                  )
+                  .addCommonBaseAndLeft(baseElement, leftElement)(
+                    sized.sizeOf
+                  )
+              else
+                orderBySize.max(
+                  resultDroppingTheEndOfTheBase,
+                  resultDroppingTheEndOfTheLeft
+                )
+              end if
+            end resultDroppingTheBaseAndLeft
+
+            val resultDroppingTheBaseAndRight =
+              if baseEqualsRight then
+                swathes
+                  .consultRelevantSwatheForSolution(
+                    baseIndex,
+                    onePastLeftIndex,
+                    rightIndex
+                  )
+                  .addCommonBaseAndRight(baseElement, rightElement)(
+                    sized.sizeOf
+                  )
+              else
+                orderBySize.max(
+                  resultDroppingTheEndOfTheBase,
+                  resultDroppingTheEndOfTheRight
+                )
+              end if
+            end resultDroppingTheBaseAndRight
+
+            val resultDroppingTheLeftAndRight =
+              if leftEqualsRight then
+                swathes
+                  .consultRelevantSwatheForSolution(
+                    onePastBaseIndex,
+                    leftIndex,
+                    rightIndex
+                  )
+                  .addCommonLeftAndRight(leftElement, rightElement)(
+                    sized.sizeOf
+                  )
+              else
+                orderBySize.max(
+                  resultDroppingTheEndOfTheLeft,
+                  resultDroppingTheEndOfTheRight
+                )
+              end if
+            end resultDroppingTheLeftAndRight
+
+            Iterator(
+              resultDroppingTheBaseAndLeft,
+              resultDroppingTheBaseAndRight,
+              resultDroppingTheLeftAndRight
+            ).max(orderBySize)
+          end if
       end match
-    end of
+    end ofConsultingSwathesForSubProblems
 
-    of(
-      base.size,
-      left.size,
-      right.size
-    )
-
+    // Brute-forced and ignorant dynamic programming. Completely unsafe reliance
+    // on imperative updates priming each sub-problem solution in the leading
+    // swathe prior to its use. Got to love it!
+    Swathes.evaluateSolutionsInDependencyOrder {
+      case (
+            swathes,
+            onePastBaseIndex,
+            onePastLeftIndex,
+            onePastRightIndex
+          ) =>
+        swathes.storeSolutionInLeadingSwathe(
+          onePastBaseIndex,
+          onePastLeftIndex,
+          onePastRightIndex,
+          ofConsultingSwathesForSubProblems(
+            swathes,
+            onePastBaseIndex,
+            onePastLeftIndex,
+            onePastRightIndex
+          )
+        )
+    }
   end of
 
   trait Sized[Element]:

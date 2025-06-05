@@ -2,7 +2,11 @@ package com.sageserpent.kineticmerge.core
 
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.Token.{Significant, tokens}
-import com.sageserpent.kineticmerge.core.TokenTest.{checkTokenization, scalaStuff, stringLiteral}
+import com.sageserpent.kineticmerge.core.TokenTest.{
+  checkTokenization,
+  scalaStuff,
+  stringLiteral
+}
 import org.apache.commons.text.StringEscapeUtils
 import org.junit.jupiter.api.Test
 import pprintCustomised.pprintln

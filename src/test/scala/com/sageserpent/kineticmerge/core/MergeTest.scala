@@ -49,7 +49,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -82,7 +82,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -114,7 +114,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -148,7 +148,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -181,7 +181,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -215,7 +215,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -249,7 +249,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -286,7 +286,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -326,7 +326,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -366,7 +366,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -405,7 +405,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -439,7 +439,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -475,7 +475,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -515,7 +515,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -551,7 +551,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -583,7 +583,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -618,7 +618,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -654,7 +654,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -696,7 +696,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -742,7 +742,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -790,7 +790,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -838,7 +838,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -887,7 +887,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -935,7 +935,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -976,7 +976,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -1020,7 +1020,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -1069,7 +1069,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -1113,7 +1113,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -1150,7 +1150,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -1190,7 +1190,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -1236,7 +1236,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -1278,7 +1278,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -1324,7 +1324,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -1366,7 +1366,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -1406,7 +1406,7 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          MergeResult.mergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra(guardedLeftBiasedResolution)
         )
       )(base, left, right): @unchecked
 
@@ -1427,7 +1427,7 @@ class MergeTest:
         val AugmentedMergeResult(_, result) =
           merge.of(mergeAlgebra =
             DelegatingMergeAlgebraWithContracts(
-              MergeResult.mergeAlgebra(guardedCoinFlippingResolution)
+              new CoreMergeAlgebra(guardedCoinFlippingResolution)
             )
           )(
             testCase.base,
@@ -1448,7 +1448,7 @@ class MergeTest:
         val AugmentedMergeResult(_, result) =
           merge.of(mergeAlgebra =
             DelegatingMergeAlgebraWithContracts(
-              MergeResult.mergeAlgebra(guardedCoinFlippingResolution)
+              new CoreMergeAlgebra(guardedCoinFlippingResolution)
             )
           )(
             testCase.base,
@@ -2355,7 +2355,8 @@ object MergeTest:
     case class AugmentedMergeResult[Element](
         state: State,
         coreMergeResult: MergeResult[Element]
-    ) extends MergeResult[Element]
+    ) extends MergeResult[Element]:
+      export coreMergeResult.*
 
   end DelegatingMergeAlgebraWithContracts
 
