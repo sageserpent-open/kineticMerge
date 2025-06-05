@@ -733,6 +733,13 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         indentationExampleWithADeletionAndALineAdjustmentExpectedMerge
       ),
       (
+        "Global indentation change versus a line deletion and a multi-line indentation change",
+        indentationExampleBase,
+        indentationExampleWithGlobalAdjustment,
+        indentationExampleWithADeletionAndAMultiLineAdjustment,
+        indentationExampleWithADeletionAndAMultiLineAdjustmentExpectedMerge
+      ),
+      (
         "Global indentation change versus significant edits with line-by-line indentation changes",
         indentationExampleBase,
         indentationExampleWithGlobalAdjustment,
@@ -3891,6 +3898,7 @@ trait ProseExamples:
       |""".stripMargin
 
   protected val indentationExampleWithLineByLineAdjustments: String =
+    // Fourth line indentation increased, fifth line indentation decreased.
     """
       |    First line.
       |    Second line.
@@ -3915,7 +3923,7 @@ trait ProseExamples:
       |""".stripMargin
 
   protected val indentationExampleWithADeletionAndALineAdjustment: String =
-    // Fourth line deleted.
+    // Fourth line deleted, fifth line indentation decreased.
     """
       |    First line.
       |    Second line.
@@ -3936,6 +3944,31 @@ trait ProseExamples:
       |        Sixth line.
       |        Seventh line.
       |        Eighth line.
+      |""".stripMargin
+
+  protected val indentationExampleWithADeletionAndAMultiLineAdjustment: String =
+    // Fourth line deleted, sixth to eight line indentation increased to align
+    // with the fifth.
+    """
+      |    First line.
+      |    Second line.
+      |        Third line.
+      |        Fifth line.
+      |        Sixth line.
+      |        Seventh line.
+      |        Eighth line.
+      |""".stripMargin
+
+  protected val indentationExampleWithADeletionAndAMultiLineAdjustmentExpectedMerge
+      : String =
+    """
+      |        First line.
+      |        Second line.
+      |            Third line.
+      |            Fifth line.
+      |            Sixth line.
+      |            Seventh line.
+      |            Eighth line.
       |""".stripMargin
 
   protected val indentationExampleWithSignificantEdits: String =
