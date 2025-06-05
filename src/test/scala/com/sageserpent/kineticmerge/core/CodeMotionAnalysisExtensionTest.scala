@@ -726,6 +726,13 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         indentationExampleExpectedMerge
       ),
       (
+        "Global indentation change versus a line deletion and a line indentation change",
+        indentationExampleBase,
+        indentationExampleWithGlobalAdjustment,
+        indentationExampleWithADeletionAndALineAdjustment,
+        indentationExampleWithADeletionAndALineAdjustmentExpectedMerge
+      ),
+      (
         "Global indentation change versus significant edits with line-by-line indentation changes",
         indentationExampleBase,
         indentationExampleWithGlobalAdjustment,
@@ -3901,6 +3908,30 @@ trait ProseExamples:
       |        Second line.
       |            Third line.
       |                Fourth line.
+      |        Fifth line.
+      |        Sixth line.
+      |        Seventh line.
+      |        Eighth line.
+      |""".stripMargin
+
+  protected val indentationExampleWithADeletionAndALineAdjustment: String =
+    // Fourth line deleted.
+    """
+      |    First line.
+      |    Second line.
+      |        Third line.
+      |    Fifth line.
+      |    Sixth line.
+      |    Seventh line.
+      |    Eighth line.
+      |""".stripMargin
+
+  protected val indentationExampleWithADeletionAndALineAdjustmentExpectedMerge
+      : String =
+    """
+      |        First line.
+      |        Second line.
+      |            Third line.
       |        Fifth line.
       |        Sixth line.
       |        Seventh line.
