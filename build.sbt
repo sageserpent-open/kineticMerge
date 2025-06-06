@@ -28,7 +28,7 @@ lazy val root = (project in file("."))
     organizationName := "sageserpent",
     description := "Merge branches in the presence of code motion within and between files.",
     releaseCrossBuild := false, // No cross-building here - just Scala 3.
-    releaseProcess := Seq[ReleaseStep](
+    releaseProcess    := Seq[ReleaseStep](
       checkSnapshotDependencies,
       inquireVersions,
       runClean,
@@ -42,7 +42,7 @@ lazy val root = (project in file("."))
       setNextVersion,
       commitNextVersion
     ),
-    name := "kinetic-merge",
+    name            := "kinetic-merge",
     versionResource := {
       val additionalResourcesDirectory = (Compile / resourceManaged).value
 
@@ -84,7 +84,7 @@ lazy val root = (project in file("."))
     libraryDependencies += "ch.qos.logback"    % "logback-classic" % "1.5.18",
     libraryDependencies += "org.typelevel"    %% "cats-core"       % "2.9.0",
     libraryDependencies += "com.github.scopt" %% "scopt"           % "4.1.0",
-    libraryDependencies += "org.typelevel" %% "cats-collections-core" % "0.9.9",
+    libraryDependencies += "org.typelevel" %% "cats-collections-core" % "0.9.10",
     libraryDependencies += "org.typelevel" %% "cats-core"      % "2.13.0",
     libraryDependencies += "org.typelevel" %% "alleycats-core" % "2.13.0",
     libraryDependencies += "org.typelevel" %% "cats-effect"    % "3.6.1",
@@ -104,7 +104,7 @@ lazy val root = (project in file("."))
     libraryDependencies += "me.tongfei" % "progressbar" % "0.10.1",
     libraryDependencies +=
       "org.scala-lang.modules" %% "scala-parallel-collections" % "1.2.0",
-    libraryDependencies += "com.sageserpent" %% "americium" % "1.21.1" % Test,
+    libraryDependencies += "com.sageserpent" %% "americium" % "1.21.3" % Test,
     libraryDependencies += "com.eed3si9n.expecty" %% "expecty" % "0.17.0" % Test,
     libraryDependencies += "org.apache.commons" % "commons-text" % "1.13.1" % Test,
     libraryDependencies += "com.github.sbt.junit" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,

@@ -280,14 +280,14 @@ class LongestCommonSubsequenceTest:
     end MissingSide
 
     val testCases = for
-      size <- trialsApi.integers(1, maximumSize)
+      size              <- trialsApi.integers(1, maximumSize)
       lowerCaseSequence <- trialsApi
         .choose('a' to 'z')
         .lotsOfSize[Vector[Element]](size)
       upperCaseSequence <- trialsApi
         .choose('A' to 'Z')
         .lotsOfSize[Vector[Element]](size)
-      missingSide <- trialsApi.choose(MissingSide.values)
+      missingSide  <- trialsApi.choose(MissingSide.values)
       baseSequence <-
         if missingSide == MissingSide.Base then trialsApi.only(Vector.empty)
         else
@@ -384,7 +384,7 @@ object LongestCommonSubsequenceTest:
   val coreElements: Trials[Element]       = trialsApi.choose('a' to 'z')
   val additionalElements: Trials[Element] = trialsApi.choose('A' to 'Z')
   val maximumSize                         = 30
-  val testCases: Trials[TestCase] = for
+  val testCases: Trials[TestCase]         = for
     core <- sizes(maximumSize)
       .filter(2 < _)
       .flatMap(coreElements.lotsOfSize[Vector[Element]])
