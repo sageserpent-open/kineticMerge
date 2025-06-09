@@ -6,9 +6,9 @@ object ResolutionContracts:
   extension [Element](matchesByElement: Map[Element, Match[Element]])
     def equivalent(lhs: Element, rhs: Element): Boolean =
       matchesByElement.get(lhs) -> matchesByElement.get(rhs) match
-        case (None, None)    => false
-        case (None, Some(_)) => false
-        case (Some(_), None) => false
+        case (None, None)                     => false
+        case (None, Some(_))                  => false
+        case (Some(_), None)                  => false
         case (Some(lhsMatch), Some(rhsMatch)) =>
           lhsMatch == rhsMatch
       end match

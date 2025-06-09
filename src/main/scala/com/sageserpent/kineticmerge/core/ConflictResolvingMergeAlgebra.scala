@@ -14,6 +14,24 @@ import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.UnresolvedMergeResult
 class ConflictResolvingMergeAlgebra[Element](
     migratedEditSuppressions: Set[Element]
 ) extends CoreMergeAlgebra[Element]:
+  override def preservation(
+      result: UnresolvedMergeResult[Element],
+      preservedBaseElement: Element,
+      preservedElementOnLeft: Element,
+      preservedElementOnRight: Element
+  ): UnresolvedMergeResult[Element] =
+    if migratedEditSuppressions.contains(preservedElementOnLeft) then
+      super.leftDeletion(result, preservedBaseElement, preservedElementOnRight)
+    else if migratedEditSuppressions.contains(preservedElementOnRight) then
+      super.rightDeletion(result, preservedBaseElement, preservedElementOnLeft)
+    else
+      super.preservation(
+        result,
+        preservedBaseElement,
+        preservedElementOnLeft,
+        preservedElementOnRight
+      )
+
   override def conflict(
       result: UnresolvedMergeResult[Element],
       editedElements: IndexedSeq[Element],

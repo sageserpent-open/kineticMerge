@@ -6,7 +6,11 @@ import com.sageserpent.americium.Trials
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.Configuration
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtension.*
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtensionTest.{FakePath, reconstituteTextFrom, given}
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtensionTest.{
+  FakePath,
+  reconstituteTextFrom,
+  given
+}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.Token.tokens
 import org.junit.jupiter.api.Assertions.fail
@@ -28,12 +32,154 @@ object CodeMotionAnalysisExtensionTest:
 end CodeMotionAnalysisExtensionTest
 
 class CodeMotionAnalysisExtensionTest extends ProseExamples:
+  @TestFactory
+  def migrationScenariosFromExcalidrawDocuments(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    Trials.api
+      .choose(
+        (
+          "ATheStripedMoverBC",
+          "ABCTheStripedMover",
+          "ABCTheStripedMover",
+          "ABCTheStripedMover",
+          "https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/coincidentMove.excalidraw.svg"
+        ),
+        (
+          "ATheStripedMoverBC",
+          "ABCTheStripedMover",
+          "TheStripedMoverABC",
+          "TheStripedMoverABCTheStripedMover",
+          "https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/divergentMoves.excalidraw.svg"
+        ),
+        (
+          "ATheStripedMoverBC",
+          "ABCTheStripedMover",
+          "ABC",
+          "ABC",
+          "https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/migratingADeletion.excalidraw.svg"
+        ),
+        (
+          "ATheStripedMoverBC",
+          "ATheCoincidentStripedEditBCTheStripedMover",
+          "ATheCoincidentStripedEditBC",
+          "ATheCoincidentStripedEditBC",
+          "https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/migratingADeletionWithACoincidentEdit.excalidraw.svg"
+        ),
+        (
+          "ATheStripedMoverBC",
+          "APBCTheStripedMover",
+          "ABC",
+          "APBC",
+          "https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/migratingADeletionWithAnEditOnTheMoveSide.excalidraw.svg"
+        ),
+        (
+          "ATheStripedMoverBC",
+          "ABCTheStripedMover",
+          "APBC",
+          "ABCP",
+          "https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/migratingAnEdit.excalidraw.svg"
+        ),
+        (
+          "ATheStripedMoverBC",
+          "APBCTheStripedMover",
+          "AQBC",
+          "APBCQ",
+          "https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/migratingAnEditWithAnEditOnTheMoveSide.excalidraw.svg"
+        ),
+        (
+          "ATheStripedMoverBC",
+          "ABCTheStripedMover",
+          "ATheStripedMoverBC",
+          "ABCTheStripedMover",
+          "https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/simpleMoveWithADeletionOnTheMoveSide.excalidraw.svg"
+        ),
+        (
+          "ATheStripedMoverBC",
+          "APBCTheStripedMover",
+          "ATheStripedMoverBC",
+          "APBCTheStripedMover",
+          "https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/simpleMoveWithAnEditOnTheMoveSide.excalidraw.svg"
+        )
+      )
+      .and(Trials.api.booleans)
+      .withLimit(20)
+      .dynamicTests {
+        case (
+              (baseText, leftText, rightText, expectedMergeText, link),
+              mirrorImage
+            ) =>
+          println(s"See: $link")
+
+          val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
+
+          val tokenRegex =
+            raw"TheStripedMover|TheCoincidentStripedEdit|.".r.anchored
+
+          def stuntDoubleTokens(content: String): Vector[Token] = tokenRegex
+            .findAllMatchIn(content)
+            .map(_.group(0))
+            .map(Token.Significant.apply)
+            .toVector
+
+          val baseSources = MappedContentSourcesOfTokens(
+            contentsByPath = Map(
+              placeholderPath -> stuntDoubleTokens(baseText)
+            ),
+            label = "base"
+          )
+
+          val leftSources = MappedContentSourcesOfTokens(
+            contentsByPath = Map(
+              placeholderPath -> stuntDoubleTokens(
+                if mirrorImage then rightText else leftText
+              )
+            ),
+            label = "left"
+          )
+
+          val rightSources = MappedContentSourcesOfTokens(
+            contentsByPath = Map(
+              placeholderPath -> stuntDoubleTokens(
+                if mirrorImage then leftText else rightText
+              )
+            ),
+            label = "right"
+          )
+
+          val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+            baseSources = baseSources,
+            leftSources = leftSources,
+            rightSources = rightSources
+          )(configuration): @unchecked
+
+          val (mergeResultsByPath, moveDestinationsReport) =
+            codeMotionAnalysis.merge
+
+          println(fansi.Color.Yellow(s"Final move destinations report...\n"))
+          println(
+            fansi.Color
+              .Green(moveDestinationsReport.summarizeInText.mkString("\n"))
+          )
+
+          verifyContent(placeholderPath, mergeResultsByPath)(
+            stuntDoubleTokens(expectedMergeText)
+          )
+      }
+  end migrationScenariosFromExcalidrawDocuments
+
   @Test
   def issue23BugReproduction(): Unit =
     val configuration = Configuration(
       minimumMatchSize = 4,
       thresholdSizeFractionForMatching = 0.1,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
     )
 
     val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
@@ -81,7 +227,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val configuration = Configuration(
       minimumMatchSize = 2,
       thresholdSizeFractionForMatching = 0,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
     )
 
     val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
@@ -164,7 +311,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val configuration = Configuration(
       minimumMatchSize = 2,
       thresholdSizeFractionForMatching = 0,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
     )
 
     val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
@@ -260,7 +408,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val configuration = Configuration(
       minimumMatchSize = 4,
       thresholdSizeFractionForMatching = 0,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
     )
 
     val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
@@ -295,51 +444,85 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )
   end codeMotion
 
-  @Test
-  def codeMotionWithSplit(): Unit =
-    val configuration = Configuration(
-      minimumMatchSize = 4,
-      thresholdSizeFractionForMatching = 0,
-      minimumAmbiguousMatchSize = 5
-    )
+  private def verifyContent(
+      path: FakePath,
+      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
+  )(
+      expectedTokens: IndexedSeq[Token],
+      equality: (Token, Token) => Boolean = Token.equality
+  ): Unit =
+    println(fansi.Color.Yellow(s"Checking $path...\n"))
+    println(fansi.Color.Yellow("Expected..."))
+    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
 
-    val originalPath: FakePath = "*** ORIGINAL ***"
-    val hivedOffPath: FakePath = "*** HIVED OFF ***"
+    mergeResultsByPath(path) match
+      case FullyMerged(result) =>
+        println(fansi.Color.Yellow("Fully merged result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(result)))
+        assert(result.corresponds(expectedTokens)(equality))
+      case MergedWithConflicts(leftResult, rightResult) =>
+        println(fansi.Color.Red(s"Left result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+        println(fansi.Color.Red(s"Right result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
 
-    val baseSources = MappedContentSourcesOfTokens(
-      contentsByPath =
-        Map(originalPath -> tokens(codeMotionExampleWithSplitOriginalBase).get),
-      label = "base"
-    )
-    val leftSources = MappedContentSourcesOfTokens(
-      contentsByPath =
-        Map(originalPath -> tokens(codeMotionExampleWithSplitOriginalLeft).get),
-      label = "left"
-    )
-    val rightSources = MappedContentSourcesOfTokens(
-      contentsByPath = Map(
-        originalPath -> tokens(codeMotionExampleWithSplitOriginalRight).get,
-        hivedOffPath -> tokens(codeMotionExampleWithSplitHivedOffRight).get
-      ),
-      label = "right"
-    )
+        fail("Should have seen a clean merge.")
+    end match
+  end verifyContent
 
-    val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-      baseSources = baseSources,
-      leftSources = leftSources,
-      rightSources = rightSources
-    )(configuration): @unchecked
+  @TestFactory
+  def codeMotionWithSplit(): DynamicTests =
+    Trials.api
+      .integers(lowerBound = 1, upperBound = 10)
+      .withLimit(10)
+      .dynamicTests { minimumMatchSize =>
+        val configuration = Configuration(
+          minimumMatchSize = minimumMatchSize,
+          thresholdSizeFractionForMatching = 0,
+          minimumAmbiguousMatchSize = minimumMatchSize,
+          ambiguousMatchesThreshold = 10
+        )
 
-    val (mergeResultsByPath, _) =
-      codeMotionAnalysis.merge
+        val originalPath: FakePath = "*** ORIGINAL ***"
+        val hivedOffPath: FakePath = "*** HIVED OFF ***"
 
-    verifyContent(originalPath, mergeResultsByPath)(
-      tokens(codeMotionExampleWithSplitOriginalExpectedMerge).get
-    )
+        val baseSources = MappedContentSourcesOfTokens(
+          contentsByPath = Map(
+            originalPath -> tokens(codeMotionExampleWithSplitOriginalBase).get
+          ),
+          label = "base"
+        )
+        val leftSources = MappedContentSourcesOfTokens(
+          contentsByPath = Map(
+            originalPath -> tokens(codeMotionExampleWithSplitOriginalLeft).get
+          ),
+          label = "left"
+        )
+        val rightSources = MappedContentSourcesOfTokens(
+          contentsByPath = Map(
+            originalPath -> tokens(codeMotionExampleWithSplitOriginalRight).get,
+            hivedOffPath -> tokens(codeMotionExampleWithSplitHivedOffRight).get
+          ),
+          label = "right"
+        )
 
-    verifyContent(hivedOffPath, mergeResultsByPath)(
-      tokens(codeMotionExampleWithSplitHivedOffExpectedMerge).get
-    )
+        val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+          baseSources = baseSources,
+          leftSources = leftSources,
+          rightSources = rightSources
+        )(configuration): @unchecked
+
+        val (mergeResultsByPath, _) =
+          codeMotionAnalysis.merge
+
+        verifyContent(originalPath, mergeResultsByPath)(
+          tokens(codeMotionExampleWithSplitOriginalExpectedMerge).get
+        )
+
+        verifyContent(hivedOffPath, mergeResultsByPath)(
+          tokens(codeMotionExampleWithSplitHivedOffExpectedMerge).get
+        )
+      }
   end codeMotionWithSplit
 
   @TestFactory
@@ -350,7 +533,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       val configuration = Configuration(
         minimumMatchSize = minimumMatchSize,
         thresholdSizeFractionForMatching = 0,
-        minimumAmbiguousMatchSize = 4
+        minimumAmbiguousMatchSize = 4,
+        ambiguousMatchesThreshold = 10
       )
 
       val prosePath: FakePath    = "prose"
@@ -413,7 +597,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         val configuration = Configuration(
           minimumMatchSize = 4,
           thresholdSizeFractionForMatching = 0.1,
-          minimumAmbiguousMatchSize = 0
+          minimumAmbiguousMatchSize = 0,
+          ambiguousMatchesThreshold = 10
         )
 
         val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
@@ -467,32 +652,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     }
   end whitespaceOnlyEditing
 
-  private def verifyContent(
-      path: FakePath,
-      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
-  )(
-      expectedTokens: IndexedSeq[Token],
-      equality: (Token, Token) => Boolean = Token.equality
-  ): Unit =
-    println(fansi.Color.Yellow(s"Checking $path...\n"))
-    println(fansi.Color.Yellow("Expected..."))
-    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
-
-    mergeResultsByPath(path) match
-      case FullyMerged(result) =>
-        println(fansi.Color.Yellow("Fully merged result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(result)))
-        assert(result.corresponds(expectedTokens)(equality))
-      case MergedWithConflicts(leftResult, rightResult) =>
-        println(fansi.Color.Red(s"Left result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
-        println(fansi.Color.Red(s"Right result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
-
-        fail("Should have seen a clean merge.")
-    end match
-  end verifyContent
-
   @TestFactory
   def whitespaceOnlyEditingWithCodeMotion(): DynamicTests =
     enum RenamingSide:
@@ -509,7 +668,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         val configuration = Configuration(
           minimumMatchSize = 4,
           thresholdSizeFractionForMatching = 0.1,
-          minimumAmbiguousMatchSize = 0
+          minimumAmbiguousMatchSize = 0,
+          ambiguousMatchesThreshold = 10
         )
 
         val originalPath: FakePath             = "*** ORIGINAL ***"
@@ -525,7 +685,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           renamingSide match
             case RenamingSide.Left => renamedForCodeMotionPath -> originalPath
             case RenamingSide.Right => originalPath -> renamedForCodeMotionPath
-            case RenamingSide.Both =>
+            case RenamingSide.Both  =>
               renamedForCodeMotionPath -> renamedForCodeMotionPath
 
         val leftSources = MappedContentSourcesOfTokens(
@@ -568,7 +728,11 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         val (mergeResultsByPath, _) =
           codeMotionAnalysis.merge
 
-        verifyAbsenceOfContent(originalPath, mergeResultsByPath)
+        renamingSide match
+          case RenamingSide.Both =>
+            assert(!mergeResultsByPath.contains(originalPath))
+          case _ => verifyAbsenceOfContent(originalPath, mergeResultsByPath)
+        end match
 
         verifyContent(renamedForCodeMotionPath, mergeResultsByPath)(
           expected,
@@ -614,7 +778,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val configuration = Configuration(
       minimumMatchSize = 2,
       thresholdSizeFractionForMatching = 0,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
     )
 
     val originalPath: FakePath = "*** ORIGINAL ***"
@@ -670,7 +835,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
                 rightContent,
                 expectedMergeContent
               ),
-              swapSides
+              // NOTE: when the test case is mirrored, the migrations becomes
+              // captures instead.
+              mirrorImage
             ) =>
           println(fansi.Color.Yellow(s"*** $label ***"))
 
@@ -683,7 +850,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
           val leftSources = MappedContentSourcesOfTokens(
             contentsByPath = Map(
-              renamedPath -> tokens(leftContent).get
+              renamedPath -> tokens(
+                if mirrorImage then rightContent else leftContent
+              ).get
             ),
             label = "left"
           )
@@ -691,7 +860,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           val rightSources = MappedContentSourcesOfTokens(
             contentsByPath = Map(
               originalPath -> tokens(
-                rightContent
+                if mirrorImage then leftContent else rightContent
               ).get
             ),
             label = "right"
@@ -699,8 +868,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
           val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
             baseSources = baseSources,
-            leftSources = if swapSides then rightSources else leftSources,
-            rightSources = if swapSides then leftSources else rightSources
+            leftSources = leftSources,
+            rightSources = rightSources
           )(configuration): @unchecked
 
           val (mergeResultsByPath, moveDestinationsReport) =
@@ -726,7 +895,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val configuration = Configuration(
       minimumMatchSize = 2,
       thresholdSizeFractionForMatching = 0,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
     )
 
     val proverbsPath: FakePath    = "*** PROVERBS ***"
@@ -839,7 +1009,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val configuration = Configuration(
       minimumMatchSize = 2,
       thresholdSizeFractionForMatching = 0,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
     )
 
     val proverbsPath: FakePath        = "*** PROVERBS ***"
@@ -897,7 +1068,11 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val configuration = Configuration(
       minimumMatchSize = 2,
       thresholdSizeFractionForMatching = 0,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      // Need a large value for this, as the single-character tokenization
+      // yields runs of repeated tokens, thus causing lots of ambiguous
+      // overlaps.
+      ambiguousMatchesThreshold = 200
     )
 
     val ehs  = "A".repeat(10)
@@ -983,7 +1158,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val configuration = Configuration(
       minimumMatchSize = 4,
       thresholdSizeFractionForMatching = 0,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
     )
 
     val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
@@ -1020,7 +1196,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val configuration = Configuration(
       minimumMatchSize = 1,
       thresholdSizeFractionForMatching = 0,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
     )
 
     val originalPath: FakePath = "*** ORIGINAL ***"
@@ -1063,13 +1240,15 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           "PrecedingAnchor MigratedEdit SucceedingAnchor",
           "PrecedingAnchor MigratedEdit SucceedingAnchor"
         ),
-        (
-          "Edit capture.",
-          "Edited",
-          "CapturedEdit",
-          "Edited",
-          "CapturedEdit"
-        ),
+        // This has been commented out, because nothing actually moves; in fact
+        // the original path is just deleted.
+//        (
+//          "Edit capture.",
+//          "Edited",
+//          "CapturedEdit",
+//          "Edited",
+//          "CapturedEdit"
+//        ),
         (
           "Edit capture preceded by a pure move.",
           "PrecedingAnchor Edited",
@@ -1119,13 +1298,15 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           "PrecedingAnchor SucceedingAnchor",
           "PrecedingAnchor SucceedingAnchor"
         ),
-        (
-          "Deletion capture.",
-          "Deleted",
-          "",
-          "Deleted",
-          ""
-        ),
+        // This has been commented out, because nothing actually moves; in fact
+        // the original path is just deleted.
+//        (
+//          "Deletion capture.",
+//          "Deleted",
+//          "",
+//          "Deleted",
+//          ""
+//        ),
         (
           "Deletion capture preceded by a pure move.",
           "PrecedingAnchor Deleted",
@@ -1201,7 +1382,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
                 rightOriginalContent,
                 expectedRenamedMergeContent
               ),
-              swapSides
+              mirrorImage
             ) =>
           println(fansi.Color.Yellow(s"*** $label ***"))
 
@@ -1212,26 +1393,42 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
             label = "base"
           )
 
-          val leftSources = MappedContentSourcesOfTokens(
-            contentsByPath = Map(
-              renamedPath -> tokens(leftRenamedContent).get
-            ),
-            label = "left"
-          )
-
-          val rightSources = MappedContentSourcesOfTokens(
-            contentsByPath = Map(
-              originalPath -> tokens(
-                rightOriginalContent
-              ).get
-            ),
-            label = "right"
-          )
+          val (leftSources, rightSources) =
+            if mirrorImage then
+              (
+                MappedContentSourcesOfTokens(
+                  contentsByPath = Map(
+                    originalPath -> tokens(rightOriginalContent).get
+                  ),
+                  label = "left"
+                ),
+                MappedContentSourcesOfTokens(
+                  contentsByPath = Map(
+                    renamedPath -> tokens(leftRenamedContent).get
+                  ),
+                  label = "right"
+                )
+              )
+            else
+              (
+                MappedContentSourcesOfTokens(
+                  contentsByPath = Map(
+                    renamedPath -> tokens(leftRenamedContent).get
+                  ),
+                  label = "left"
+                ),
+                MappedContentSourcesOfTokens(
+                  contentsByPath = Map(
+                    originalPath -> tokens(rightOriginalContent).get
+                  ),
+                  label = "right"
+                )
+              )
 
           val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
             baseSources = baseSources,
-            leftSources = if swapSides then rightSources else leftSources,
-            rightSources = if swapSides then leftSources else rightSources
+            leftSources = leftSources,
+            rightSources = rightSources
           )(configuration): @unchecked
 
           val (mergeResultsByPath, moveDestinationsReport) =
@@ -1256,7 +1453,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     val configuration = Configuration(
       minimumMatchSize = 1,
       thresholdSizeFractionForMatching = 0,
-      minimumAmbiguousMatchSize = 0
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
     )
 
     val originalPath: FakePath  = "*** ORIGINAL ***"
@@ -1437,7 +1635,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
                 rightOriginalContent,
                 expectedRenamedMergeContent
               ),
-              swapSides
+              mirrorImage
             ) =>
           println(fansi.Color.Yellow(s"*** $label ***"))
 
@@ -1449,27 +1647,48 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
             label = "base"
           )
 
-          val leftSources = MappedContentSourcesOfTokens(
-            contentsByPath = Map(
-              renamedPath   -> tokens(leftRenamedContent).get,
-              forwardedPath -> tokens(leftForwardedContent).get
-            ),
-            label = "left"
-          )
-
-          val rightSources = MappedContentSourcesOfTokens(
-            contentsByPath = Map(
-              originalPath -> tokens(
-                rightOriginalContent
-              ).get
-            ),
-            label = "right"
-          )
+          val (leftSources, rightSources) =
+            if mirrorImage then
+              (
+                MappedContentSourcesOfTokens(
+                  contentsByPath = Map(
+                    originalPath -> tokens(
+                      rightOriginalContent
+                    ).get
+                  ),
+                  label = "left"
+                ),
+                MappedContentSourcesOfTokens(
+                  contentsByPath = Map(
+                    renamedPath   -> tokens(leftRenamedContent).get,
+                    forwardedPath -> tokens(leftForwardedContent).get
+                  ),
+                  label = "right"
+                )
+              )
+            else
+              (
+                MappedContentSourcesOfTokens(
+                  contentsByPath = Map(
+                    renamedPath   -> tokens(leftRenamedContent).get,
+                    forwardedPath -> tokens(leftForwardedContent).get
+                  ),
+                  label = "left"
+                ),
+                MappedContentSourcesOfTokens(
+                  contentsByPath = Map(
+                    originalPath -> tokens(
+                      rightOriginalContent
+                    ).get
+                  ),
+                  label = "right"
+                )
+              )
 
           val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
             baseSources = baseSources,
-            leftSources = if swapSides then rightSources else leftSources,
-            rightSources = if swapSides then leftSources else rightSources
+            leftSources = leftSources,
+            rightSources = rightSources
           )(configuration): @unchecked
 
           val (mergeResultsByPath, moveDestinationsReport) =
@@ -1490,6 +1709,253 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           verifyAbsenceOfContent(forwardedPath, mergeResultsByPath)
       }
   end forwardingThroughCodeMotionAcrossAFileRenameExamples
+
+  @TestFactory
+  def issue126BugReproduction(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val baseText = "AmbiguousABCAmbiguousDE"
+
+      val leftText = "AmbiguousABCDEAmbiguous"
+
+      val rightText = "EditABCAmbiguousDE"
+
+      val expectedMergeText = "EditABCDEAmbiguous"
+
+      val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
+
+      val tokenRegex = raw"Ambiguous|Edit|A|B|C|D|E".r.anchored
+
+      def stuntDoubleTokens(content: String): Vector[Token] = tokenRegex
+        .findAllMatchIn(content)
+        .map(_.group(0))
+        .map(Token.Significant.apply)
+        .toVector
+
+      val baseSources = MappedContentSourcesOfTokens(
+        contentsByPath = Map(placeholderPath -> stuntDoubleTokens(baseText)),
+        label = "base"
+      )
+      val leftSources = MappedContentSourcesOfTokens(
+        contentsByPath = Map(
+          placeholderPath -> stuntDoubleTokens(
+            if mirrorImage then rightText else leftText
+          )
+        ),
+        label = "left"
+      )
+      val rightSources = MappedContentSourcesOfTokens(
+        contentsByPath = Map(
+          placeholderPath -> stuntDoubleTokens(
+            if mirrorImage then leftText else rightText
+          )
+        ),
+        label = "right"
+      )
+
+      val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+        baseSources = baseSources,
+        leftSources = leftSources,
+        rightSources = rightSources
+      )(configuration): @unchecked
+
+      val (mergeResultsByPath, _) =
+        codeMotionAnalysis.merge
+
+      verifyContent(placeholderPath, mergeResultsByPath)(
+        stuntDoubleTokens(expectedMergeText)
+      )
+    }
+  end issue126BugReproduction
+
+  @TestFactory
+  def contentIsEmptiedOnOneSide(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val emptyText = ""
+
+      val baseText = "Um, ah, mumble, mumble, erm..."
+
+      val leftText = "Um,\tah, mumble,\nmumble, erm..."
+
+      val rightText = emptyText
+
+      // NOTE: this is in contrast to the situation in
+      // `MainTest.fileIsAbsentOnOneSide`. Here, the emptying of the content on
+      // one side is merged in.
+      val expectedMergeText = emptyText
+
+      val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
+
+      val baseSources = MappedContentSourcesOfTokens(
+        contentsByPath = Map(placeholderPath -> tokens(baseText).get),
+        label = "base"
+      )
+      val leftSources = MappedContentSourcesOfTokens(
+        contentsByPath = Map(
+          placeholderPath -> tokens(
+            if mirrorImage then rightText else leftText
+          ).get
+        ),
+        label = "left"
+      )
+      val rightSources = MappedContentSourcesOfTokens(
+        contentsByPath = Map(
+          placeholderPath -> tokens(
+            if mirrorImage then leftText else rightText
+          ).get
+        ),
+        label = "right"
+      )
+
+      val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+        baseSources = baseSources,
+        leftSources = leftSources,
+        rightSources = rightSources
+      )(configuration): @unchecked
+
+      val (mergeResultsByPath, _) =
+        codeMotionAnalysis.merge
+
+      verifyContent(placeholderPath, mergeResultsByPath)(
+        tokens(expectedMergeText).get
+      )
+    }
+  end contentIsEmptiedOnOneSide
+
+  @TestFactory
+  def fileIsAbsentOnOneSide(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val baseText = "Um, ah, mumble, mumble, erm..."
+
+      val leftText = "Um,\tah, mumble,\nmumble, erm..."
+
+      // NOTE: this is in contrast to the situation in
+      // `MainTest.contentIsEmptiedOnOneSide`. Here, the implied deletion of the
+      // file is ignored for a simple merge; this is motivated by having to
+      // emulate Git's treatment of file deletion-versus-modification conflicts,
+      // where we want the modified file to stay as is in its entirety. What we
+      // see here is a degenerate case of this, where there is no modification
+      // at all on the side opposing the file deletion. This feels hokey, but is
+      // worked around by `Main.InWorkingDirectory.indexUpdates`. Furthermore,
+      // if the loss of the file is due to content moving to one or more other
+      // files, then this *is* reflected as a loss of content in the merge; that
+      // is tested for elsewhere in this suite.
+      val expectedMergeText = leftText
+
+      val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
+
+      val baseSources = MappedContentSourcesOfTokens(
+        contentsByPath = Map(placeholderPath -> tokens(baseText).get),
+        label = "base"
+      )
+      val leftSources = MappedContentSourcesOfTokens(
+        contentsByPath =
+          if mirrorImage then Map.empty
+          else Map(placeholderPath -> tokens(leftText).get),
+        label = "left"
+      )
+      val rightSources = MappedContentSourcesOfTokens(
+        contentsByPath =
+          if mirrorImage then Map(placeholderPath -> tokens(leftText).get)
+          else Map.empty,
+        label = "right"
+      )
+
+      val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+        baseSources = baseSources,
+        leftSources = leftSources,
+        rightSources = rightSources
+      )(configuration): @unchecked
+
+      val (mergeResultsByPath, _) =
+        codeMotionAnalysis.merge
+
+      verifyContent(placeholderPath, mergeResultsByPath)(
+        tokens(expectedMergeText).get
+      )
+    }
+  end fileIsAbsentOnOneSide
+
+  @TestFactory
+  def issue144BugReproduction(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 4,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val storyPath: FakePath       = "Story"
+      val filmScriptPath: FakePath  = "Film Script"
+      val filmTrailerPath: FakePath = "Film Trailer"
+
+      val baseSources = MappedContentSourcesOfTokens(
+        contentsByPath = Map(storyPath -> tokens(baselineStory).get),
+        label = "base"
+      )
+      val leftSources = MappedContentSourcesOfTokens(
+        contentsByPath =
+          if mirrorImage then
+            Map(
+              filmScriptPath  -> tokens(filmScript).get,
+              filmTrailerPath -> tokens(filmTrailer).get
+            )
+          else Map(storyPath -> tokens(storyWithSpellingChanged).get),
+        label = "left"
+      )
+      val rightSources = MappedContentSourcesOfTokens(
+        contentsByPath =
+          if mirrorImage then
+            Map(storyPath -> tokens(storyWithSpellingChanged).get)
+          else
+            Map(
+              filmScriptPath  -> tokens(filmScript).get,
+              filmTrailerPath -> tokens(filmTrailer).get
+            )
+        ,
+        label = "right"
+      )
+
+      val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+        baseSources = baseSources,
+        leftSources = leftSources,
+        rightSources = rightSources
+      )(configuration): @unchecked
+
+      val (mergeResultsByPath, _) =
+        codeMotionAnalysis.merge
+
+      verifyAbsenceOfContent(storyPath, mergeResultsByPath)
+
+      verifyContent(filmScriptPath, mergeResultsByPath)(
+        tokens(expectedFilmScript).get
+      )
+      verifyContent(filmTrailerPath, mergeResultsByPath)(
+        tokens(expectedFilmTrailer).get
+      )
+    }
+  end issue144BugReproduction
 
 end CodeMotionAnalysisExtensionTest
 
@@ -3247,4 +3713,39 @@ trait ProseExamples:
       |It seems everyone wants to pay less tax and expects better council repairs.
       |Fancy meeting you here!
       |""".stripMargin
+
+  protected val storyPrologue: String =
+    """
+      |This is the prologue; it sets the scene for the main plot, and conveys a mood for the entire story.
+      |Usually, a prologue is either sad, or has a sense of adversity - this is because nobody wants to read a story that is happy all the way through, and they certainly don’t want things to start off looking promising and then go downhill.
+      |The viewers in the US will be incensed to see how I have spelt ‘prologue’ - on more than one level!
+      |""".stripMargin
+
+  protected val storyPlot: String =
+    """
+      |Git merge and Kinetic Merge were issued various challenges…
+      |""".stripMargin
+
+  protected val baselineStory: String =
+    storyPrologue + "\n\n" + storyPlot
+
+  protected val storyPrologueWithSpellingChanged: String =
+    """
+      |This is the prolog; it sets the scene for the main plot, and conveys a mood for the entire story.
+      |Usually, a prolog is either sad, or has a sense of adversity - this is because nobody wants to read a story that is happy all the way through, and they certainly don’t want things to start off looking promising and then go downhill.
+      |The viewers in the US will be delighted to see how I have spelled ‘prolog’ - on more than one level!
+      |""".stripMargin
+
+  protected val storyWithSpellingChanged: String =
+    storyPrologueWithSpellingChanged + "\n\n" + storyPlot
+
+  protected val filmTrailer: String = storyPrologue
+
+  protected val filmScript: String = storyPrologue + "\n\n" + storyPlot
+
+  protected val expectedFilmScript: String =
+    storyPrologueWithSpellingChanged + "\n\n" + storyPlot
+
+  protected val expectedFilmTrailer: String =
+    storyPrologueWithSpellingChanged
 end ProseExamples

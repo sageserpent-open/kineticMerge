@@ -123,7 +123,7 @@ class RollingHashTest:
           .sorted
       end fingerprints
 
-      val firstLotOfFingerprints = fingerprints(concatenatedSubsequences)
+      val firstLotOfFingerprints  = fingerprints(concatenatedSubsequences)
       val secondLotOfFingerprints =
         fingerprints(concatenatedPermutedSubsequences)
 

@@ -4,11 +4,16 @@
 
 [![Scala Steward badge](https://img.shields.io/badge/Scala_Steward-helping-blue.svg?style=flat&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAQCAMAAAARSr4IAAAAVFBMVEUAAACHjojlOy5NWlrKzcYRKjGFjIbp293YycuLa3pYY2LSqql4f3pCUFTgSjNodYRmcXUsPD/NTTbjRS+2jomhgnzNc223cGvZS0HaSD0XLjbaSjElhIr+AAAAAXRSTlMAQObYZgAAAHlJREFUCNdNyosOwyAIhWHAQS1Vt7a77/3fcxxdmv0xwmckutAR1nkm4ggbyEcg/wWmlGLDAA3oL50xi6fk5ffZ3E2E3QfZDCcCN2YtbEWZt+Drc6u6rlqv7Uk0LdKqqr5rk2UCRXOk0vmQKGfc94nOJyQjouF9H/wCc9gECEYfONoAAAAASUVORK5CYII=)](https://scala-steward.org)
 
+**Requires JRE 17 LTS or later since release 1.3.0.**
+
 Merge a heavily refactored codebase and stay sane.
 
-(**Release Candidate - 1.2.4**).
+(**Release - 1.6.0**).
 
-YouTube: [Kinetic Merge: Merging through a File Split](https://youtu.be/JHb9DKK0LIA)
+YouTube:
+
+- [Kinetic Merge: Merging through a File Split](https://youtu.be/JHb9DKK0LIA)
+- [Kinetic Merge: Complex Merge Demonstration](https://youtu.be/6jry6NKxGJA)
 
 <video src="https://github.com/sageserpent-open/kineticMerge/assets/1765601/2d676e20-dce0-441a-b4a2-fcbaa8aff35d"><video/>
 
@@ -29,26 +34,47 @@ YouTube: [Kinetic Merge: Merging through a File Split](https://youtu.be/JHb9DKK0
 
 ## Installation ##
 
+### Got [Coursier](https://get-coursier.io/) installed? ###
+
+Then run `cs install --contrib kinetic-merge`, and you're all set to go, it will put the latest release of
+`kinetic-merge` on your path.
+
+You can also invoke Kinetic Merge via Coursier without actually installing it:
+
+```
+cs launch com.sageserpent::kinetic-merge:<RELEASE VERSION FROM GITHUB> -- <command line arguments>
+```
+
+### Not got Coursier installed? ###
+
+Install it, then: https://get-coursier.io/docs/cli-installation.
+
+### Don't want to install Coursier? ###
+
+Then download a release for yourself:
+
 ```bash
 curl -LJO --verbose http://github.com/sageserpent-open/kineticMerge/releases/download/v<RELEASE VERSION FROM GITHUB>/kinetic-merge
 
-chmod ug+x kinetic-merge
+chmod a+x kinetic-merge
 ```
 
-Put it on on your path.
+Put it on your path.
 
 Alternatively, go to the [releases](https://github.com/sageserpent-open/kineticMerge/releases) and manually
-download `kinetic-merge`. You'll still have to execute `chmod ug+x kineticMerge` so you can run it.
+download `kinetic-merge`. You'll still have to execute `chmod a+x kineticMerge` so you can run it.
 
 If you're on Windows, instead of `kinetic-merge` use the companion download *`kinetic-merge.bat`*.
 
-Stuck in a firewalled corporate environment and can't just download anything you feel like?
+### Stuck in a firewalled corporate environment and can't just download anything you feel like, but can clone this repository? ###
 
-Try the instructions
-here [if you have Coursier](https://github.com/sageserpent-open/kineticMerge/issues/21#issuecomment-1933956129)
-or [here if you have a corporate mirror of Maven](https://github.com/sageserpent-open/kineticMerge/issues/21#issuecomment-1932619838).
+If so, clone this repository locally (or just download it as a source drop), install SBT and run `sbt packageExecutable`
+in the top level of the directory you've cloned / downloaded - that will place a freshly baked executable and companion
+Windows batch file in the `target` subdirectory.
 
-Really can't download scripts or JARs from GitHub, Maven Central or Sonatype, but can clone this repository? If so, clone this repository locally (or just download it as a source drop), install SBT and run `sbt packageExecutable` in the top level of the directory you've cloned / downloaded - that will place a freshly baked executable and companion Windows batch file in the `target` directory.
+### Want to test-drive the programmatic API from JShell and have access to Maven Central or Sonatype? ###
+
+Try the instructions [here](https://github.com/sageserpent-open/kineticMerge/issues/21#issuecomment-1932619838).
 
 ## Running it ##
 
@@ -72,6 +98,9 @@ just `git merge --continue` - or use your usual IDE to resolve the conflicts; I 
 
 Unlike a conventional Git merge, if you use an IDE that reads the staged conflicting files, you will see that the *left*
 and *right* versions are already partially merged for you.
+
+What's more, the staged files and the conflicts already have any code motion applied to them, so they are less
+confusing; the conflicts are shown in the right place.
 
 It supports fast-forwarding, plus the `--no-ff` and `--no-commit` options too. Use `--help` if you need a reminder.
 
@@ -113,9 +142,15 @@ one.
 
 ## Status
 
-Well, that's the plan. It's no longer vapourware, there is a release candidate; the code motion aspect is implemented
-end-to-end. Code motion is tracked both intra-file and inter-file. You can split a file into pieces on one branch and
-edit the original file on another - those changes will find their way into the right places when you merge. Cool.
+Well, it works; there are stable releases. Code motion is tracked both intra-file and inter-file. You can split a file
+into pieces on one branch and edit the original file on another - those edits will find their way into the right places
+when you merge. Correspondingly, you can join several files together on one branch and edit all of them on another -
+again, the edits will arrive in the right place on merging. Cool.
+
+As befits any piece of non-vapourware, there are known bugs / deficiencies and there are always new features to add, but
+that's why GitHub provides an issue tracker.
+
+The author uses it regularly on his own projects.
 
 Give it a spin, do raise bug tickets,
 see [https://github.com/sageserpent-open/kineticMerge/issues/21](https://github.com/sageserpent-open/kineticMerge/issues/21)
@@ -123,6 +158,77 @@ for guidance.
 
 Bear in mind you can use either `--no-commit` or rollback with `git merge --abort` or `git reset --hard`, but know what
 you're doing before you use the third technique.
+
+## What do the command-line options do?
+
+```text
+  --help                   Output this summary.
+  --version                Show the version of this command.
+  --no-commit              Do not commit a successful merge - leave merged changes staged in the index for review.
+  --no-ff                  Prevent fast-forward merge - make a merge commit instead.
+  --minimum-match-size <value>
+                           Minimum number of tokens for a match to be considered.
+  --match-threshold <value>
+                           Minimum fraction of a containing file's size for a section of text to qualify for matching.
+  --minimum-ambiguous-match-size <value>
+                           Minimum number of tokens for an ambiguous match to be considered.
+  --ambiguous-matches-threshold <value>
+                           Maximum number of matches of the same kind that can refer to the same matched content.
+```
+
+Hopefully `--help` and `--version` are self-explanatory.
+
+As for `--no-commit` and `--no-ff`, these are for feature parity with plain Git merge and do the same thing.
+
+Where it gets interesting is:
+
+`--minimum-match-size`: this is the minimum size of content measured *in tokens* required for a match across two or more
+sides of the merge to be eligible for discovery. Making this larger means that potential matches of content may be left
+undiscovered. However, setting this right down to one token can lead to a bombardment of useless matches because it is
+likely for a single token to be repeated many times across the codebase (and indeed the same goes for to matches of two
+tokens).
+
+The default is set to 4; this seems to work well enough in practice.
+
+`--match-threshold`: this is a looser alternative to `--minimum-match-size` where content in a file is only eligible for
+match discovery if its size in tokens is at least a fraction of that file's size *as measured in content tokens*. This
+means that a potential match may be deemed unsuitable even if just one of its sides fails to meet the threshold.
+
+The match threshold fraction is specified as either an explicit percentage - eg `10%`, the digits following the decimal
+point for a non-negative fraction less than one - eg `05` (meaning 0.05, or 5%) or an explicit non-negative fraction at
+most one - eg `0.0`, `0.34`, `1.0`.
+
+The default is set to zero, thus this has no effect if not specified.
+
+**NOTE:**
+
+1. Tokens include words, punctuation, braces and operator symbol characters. Intervening whitespace is usually
+   considered to be a suffix of the preceding token. A string constant (strictly speaking, a Java string constant, but
+   this seems to work well enough in other languages) is treated as a single token that includes the opening and closing
+   quotation marks.
+2. When both `--minimum-match-size` and `--match-threshold` are specified, the largest one takes precedence on a
+   file-by-file basis.
+3. While both `--minimum-match-size` and `--match-threshold` control the minimum size of content eligible for match
+   discovery, it is possible and indeed desirable for Kinetic Merge to break down matches into smaller pieces whose size
+   in tokens is less than that minimum size. The full story is
+   on [this ticket](https://github.com/sageserpent-open/kineticMerge/issues/23).
+
+`--minimum-ambiguous-match-size`: this is an extra restriction applied *after* `--minimum-match-size` and
+`--match-threshold`, limiting the size of ambiguous matches where the same content can match in multiple places. This
+allows important small matches of some special content that occurs only in one place to be picked up, while blocking the
+usual noise that results from single and double-token ambiguous matches.
+
+The default is set to 10.
+
+`--ambiguous-matches-threshold`: this permits case-by-case vetting of ambiguous matches; if the number of ambiguous
+matches *for some specific content* exceeds the threshold, than that content will not be matched.
+
+The default is set to 20.
+
+**TIP:**
+
+If `--minimum-ambiguous-match-size` is set to a low value and then results in a lot of noise, experiment with
+`--ambiguous-matches-threshold`, setting it to a low enough value to weed out the unwanted matches.
 
 ## Simple Use Cases
 
@@ -139,6 +245,16 @@ project: [rabinfingerprint](https://github.com/themadcreator/rabinfingerprint).
 The price paid by Kinetic Merge for dropping this was the appearance of a bug due to the higher probability of
 collisions using rolling polynomial hashing; that has been since fixed. The fact that the bug was latent in the code for
 so long is a testament to the collision resistance of Rabin fingerprinting!
+
+## Design Documents
+
+- [Job Description](./documents/designNotes/jobDescription.md)
+- [Problem Space](./documents/designNotes/problemSpace.md)
+- [Code Motion](./documents/designNotes/codeMotion.md)
+- [Component Breakdown](./documents/designNotes/componentBreakdown.md)
+- [`CodeMotionAnalysis.of`](./documents/designNotes/codeMotionAnalysis.md)
+- [Blind Alleys](./documents/designNotes/blindAlleys.md)
+- [Skeletons in the Cupboard](./documents/designNotes/skeletonsInTheCupboard.md)
 
 ## Do you use these libraries yet?
 
@@ -163,7 +279,8 @@ Direct dependencies in `build.sbt` and why they are used...
   rough-and-ready, but it does the job well.
 - `caffeine`. If you want a well-documented, one-stop-shop Java caching API that plugs into everything and is endlessly
   configurable, here it is.
+- `progressbar`. A straightforward way of displaying a progress bar for a console application.
 - `americium`. Possibly the world's best parameterised test support framework. Your scribe is of course completely
   unbiased. If you want tests that automatically shrink down failing test cases, you're in the right place.
 - `expecty`. Scala's most minimal and yet most effective assertion framework. Less is more!
-- `jupiter-interface`. Yes, use *JUnit5 for your Scala tests*. Works a treat in concert with `americium` and `expecty`. 
+- `jupiter-interface`. Yes, use *JUnit5 for your Scala tests*. Works a treat in concert with `americium` and `expecty`.

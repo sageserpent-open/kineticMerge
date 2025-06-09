@@ -1,12 +1,5 @@
 # Skeletons in the Cupboard #
 
-## `NecessaryEvil` ##
-
-This is a temporary workaround for [this bug](https://github.com/scala/scala-collection-contrib/issues/239) in a
-third-party dependency. At time of writing, there is an open PR to fix this; in the meantime this stands in.
-
-It is used in `MatchesContext.MoveDestinationsReport.mergeWith` to fuse maps together as an outer-join.
-
 ## `Sources.filesByPathUtilising` ##
 
 Given a set of mandatory sections, a `Sources` instance representing a side provides a breakdown by path to files so
@@ -56,20 +49,21 @@ on its successor, or is kept on hold when one or both of the other sides moves t
 
 This isn't always possible - there is a certain amount of lookahead scanning done to detect *marooned edits /
 deletions*.
-See [`rightEditNotMaroonedByPriorCoincidentInsertion`](https://github.com/sageserpent-open/kineticMerge/blob/63ea2b5cf44d553bf9d49412cc321fc219874d9a/src/main/scala/com/sageserpent/kineticmerge/core/merge.scala#L90),
-[`leftEditNotMaroonedByPriorCoincidentInsertion`](https://github.com/sageserpent-open/kineticMerge/blob/63ea2b5cf44d553bf9d49412cc321fc219874d9a/src/main/scala/com/sageserpent/kineticmerge/core/merge.scala#L107),
-[`rightEditNotMaroonedByPriorLeftDeletion`](https://github.com/sageserpent-open/kineticMerge/blob/63ea2b5cf44d553bf9d49412cc321fc219874d9a/src/main/scala/com/sageserpent/kineticmerge/core/merge.scala#L124)
+See [
+`rightEditNotMaroonedByPriorCoincidentInsertion`](https://github.com/sageserpent-open/kineticMerge/blob/63ea2b5cf44d553bf9d49412cc321fc219874d9a/src/main/scala/com/sageserpent/kineticmerge/core/merge.scala#L90),
+[
+`leftEditNotMaroonedByPriorCoincidentInsertion`](https://github.com/sageserpent-open/kineticMerge/blob/63ea2b5cf44d553bf9d49412cc321fc219874d9a/src/main/scala/com/sageserpent/kineticmerge/core/merge.scala#L107),
+[
+`rightEditNotMaroonedByPriorLeftDeletion`](https://github.com/sageserpent-open/kineticMerge/blob/63ea2b5cf44d553bf9d49412cc321fc219874d9a/src/main/scala/com/sageserpent/kineticmerge/core/merge.scala#L124)
 and
-[`leftEditNotMaroonedByPriorRightDeletion`](https://github.com/sageserpent-open/kineticMerge/blob/63ea2b5cf44d553bf9d49412cc321fc219874d9a/src/main/scala/com/sageserpent/kineticmerge/core/merge.scala#L137).
+[
+`leftEditNotMaroonedByPriorRightDeletion`](https://github.com/sageserpent-open/kineticMerge/blob/63ea2b5cf44d553bf9d49412cc321fc219874d9a/src/main/scala/com/sageserpent/kineticmerge/core/merge.scala#L137).
 
 So far, this lookahead scanning is either rare enough or doesn't scan far enough before aligning the edit across the
 base and left / right sides to cause a noticeable performance hit, so in it stays.
 
 ## Miscellaneous ##
 
-1. [`MatchesContext` defines too much as being class-scoped rather than companion object-scoped](https://github.com/sageserpent-open/kineticMerge/blob/63ea2b5cf44d553bf9d49412cc321fc219874d9a/src/main/scala/com/sageserpent/kineticmerge/core/MatchesContext.scala#L34)
-2. [The recursive helper `of` within `LongestCommonSubsequence.of`](https://github.com/sageserpent-open/kineticMerge/blob/63ea2b5cf44d553bf9d49412cc321fc219874d9a/src/main/scala/com/sageserpent/kineticmerge/core/LongestCommonSubsequence.scala#L146)
-   uses memoization as part of a non-tail recursive approach. This works OK when merging sections, but fails completely
-   due to stack overflow when individual tokens are merged. For now this has been kicked into the long grass, but it
-   might need rewriting as a dynamic programming algorithm, or the memoization should be rewritten with a pure
-   functional approach, maybe using Cat's `Eval` to defeat stack overflow.
+Resolution of merge contributions from the three sides has
+a [dark secret](https://github.com/sageserpent-open/kineticMerge/issues/120)!
+

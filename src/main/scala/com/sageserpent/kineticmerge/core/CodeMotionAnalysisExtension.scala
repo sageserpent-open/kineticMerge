@@ -5,8 +5,16 @@ import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
 import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.Merged
 import com.sageserpent.kineticmerge.core.FirstPassMergeResult.Recording
+import com.sageserpent.kineticmerge.core.FirstPassMergeResult.{
+  FileDeletionContext,
+  Recording
+}
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Sized
-import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{AnchoredMove, MoveEvaluation, OppositeSideAnchor}
+import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{
+  AnchoredMove,
+  MoveEvaluation,
+  OppositeSideAnchor
+}
 import com.sageserpent.kineticmerge.core.merge.of as mergeOf
 import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
@@ -48,7 +56,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           val bothBelongToTheSameMatches =
             matchesFor(lhs).intersect(matchesFor(rhs)).nonEmpty
 
-          bothBelongToTheSameMatches || Eq[Seq[Element]]
+          bothBelongToTheSameMatches || lhs.size == rhs.size && Eq[Seq[Element]]
             .eqv(lhs.content, rhs.content)
         end eqv
       end given
@@ -145,6 +153,17 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               )
             )
 
+        def recordContentOfFileDeletedOnLeftAndRight(
+            baseSections: IndexedSeq[Section[Element]]
+        ): AggregatedInitialMergeResult =
+          this
+            .focus(_.speculativeMigrationsBySource)
+            .modify(
+              _ ++ baseSections.map(
+                _ -> SpeculativeContentMigration.FileDeletion()
+              )
+            )
+
         def aggregate(
             path: Path,
             firstPassMergeResult: FirstPassMergeResult[Section[Element]]
@@ -204,26 +223,82 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   path,
                   rightSections
                 )
+              case (Some(baseSections), None, None) =>
+                // The file has disappeared on both sides. That may indicate a
+                // coincident deletion of the entire file, or may be a
+                // coincident renaming of the file on both sides, or a divergent
+                // rename to different paths on either side, or a conflict
+                // between a deletion of the entire file on one side and its
+                // renaming on the other. Unlike the situation where a file
+                // disappears on just *one* side, there is no need to actually
+                // perform a merge, so there is no merge result made under
+                // `path`.
+                partialMergeResult.recordContentOfFileDeletedOnLeftAndRight(
+                  baseSections
+                )
+              case (Some(baseSections), None, Some(rightSections)) =>
+                // The file has disappeared on the left side. That may indicate
+                // a simple deletion of the file, or may be a renaming on the
+                // left.
+
+                // Merge with fake empty content on the left...
+
+                val firstPassMergeResult
+                    : FirstPassMergeResult[Section[Element]] =
+                  mergeOf(mergeAlgebra =
+                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
+                      FileDeletionContext.Left
+                    )
+                  )(
+                    base = baseSections,
+                    left = IndexedSeq.empty,
+                    right = rightSections
+                  )
+
+                partialMergeResult.aggregate(path, firstPassMergeResult)
+              case (Some(baseSections), Some(leftSections), None) =>
+                // The file has disappeared on the right side. That may indicate
+                // a simple deletion of the file, or may be a renaming on the
+                // right.
+
+                // Merge with fake empty content on the right...
+
+                val firstPassMergeResult
+                    : FirstPassMergeResult[Section[Element]] =
+                  mergeOf(mergeAlgebra =
+                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
+                      FileDeletionContext.Right
+                    )
+                  )(
+                    base = baseSections,
+                    left = leftSections,
+                    right = IndexedSeq.empty
+                  )
+
+                partialMergeResult.aggregate(path, firstPassMergeResult)
               case (
                     optionalBaseSections,
-                    optionalLeftSections,
-                    optionalRightSections
+                    Some(leftSections),
+                    Some(rightSections)
                   ) =>
                 // Mix of possibilities - the file may have been added on both
-                // sides, or modified on either or both sides, or deleted on one
-                // side and modified on the other, or deleted on one or both
-                // sides. There is also an extraneous case where there is no
-                // file on any of the sides, and another extraneous case where
-                // the file is on all three sides but hasn't changed.
+                // sides, or modified on either or both sides. There is also an
+                // extraneous case where there is no file on any of the sides,
+                // and another extraneous case where the file is on all three
+                // sides but hasn't changed.
 
                 // Whichever is the case, merge...
 
                 val firstPassMergeResult
                     : FirstPassMergeResult[Section[Element]] =
-                  mergeOf(mergeAlgebra = FirstPassMergeResult.mergeAlgebra())(
+                  mergeOf(mergeAlgebra =
+                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
+                      FileDeletionContext.None
+                    )
+                  )(
                     base = optionalBaseSections.getOrElse(IndexedSeq.empty),
-                    left = optionalLeftSections.getOrElse(IndexedSeq.empty),
-                    right = optionalRightSections.getOrElse(IndexedSeq.empty)
+                    left = leftSections,
+                    right = rightSections
                   )
 
                 partialMergeResult.aggregate(path, firstPassMergeResult)
@@ -267,7 +342,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
       logger.debug(s"Move evaluation: ${pprintCustomised(moveEvaluation)}.")
 
-      val sourceAnchors = anchoredMoves.map(_.sourceAnchor)
+      val sourceAnchors       = anchoredMoves.map(_.sourceAnchor)
       val oppositeSideAnchors =
         anchoredMoves.map(_.oppositeSideAnchor.element)
       val moveDestinationAnchors = anchoredMoves.map(_.moveDestinationAnchor)
@@ -757,6 +832,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 )
             end if
             sections ++ migratedSplice
+        end extension
 
         def insertAnchoredSplices(
             sections: IndexedSeq[Section[Element]]
@@ -783,7 +859,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
                     uniqueSplices match
                       case head :: Nil => head
-                      case _ =>
+                      case _           =>
                         throw new AdmissibleFailure(
                           s"""
                                |Multiple potential splices before destination: $candidateAnchorDestination,
@@ -813,7 +889,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
                     uniqueSplices match
                       case head :: Nil => head
-                      case _ =>
+                      case _           =>
                         throw new AdmissibleFailure(
                           s"""
                                |Multiple potential splices after destination: $candidateAnchorDestination,
@@ -928,7 +1004,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             val substitution: IndexedSeq[Section[Element]] =
               uniqueSubstitutions match
                 case head :: Nil => head
-                case _ =>
+                case _           =>
                   throw new AdmissibleFailure(
                     s"""
                        |Multiple potential changes migrated to destination: $section,
