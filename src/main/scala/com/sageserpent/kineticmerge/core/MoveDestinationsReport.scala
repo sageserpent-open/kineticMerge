@@ -1,9 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
-import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.{
-  Merged,
-  UnresolvedMergeResult
-}
+import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSided
 import com.sageserpent.kineticmerge.core.FirstPassMergeResult.FileDeletionContext
 
 import scala.collection.immutable.MultiDict
@@ -143,7 +140,7 @@ object MoveDestinationsReport:
         .toSet
 
     val substitutionsByDestination
-        : MultiDict[Element, IndexedSeq[Merged[Element]]] =
+        : MultiDict[Element, IndexedSeq[MultiSided[Element]]] =
       MultiDict.from(
         moveDestinationsBySource.toSeq.flatMap((source, moveDestinations) =>
           if !moveDestinations.isDivergent
@@ -159,7 +156,7 @@ object MoveDestinationsReport:
                   moveDestinations.left
                     .map(destinationElement =>
                       destinationElement -> IndexedSeq(
-                        Merged.Preserved(
+                        MultiSided.Preserved(
                           baseElement = source,
                           leftElement = destinationElement,
                           rightElement =
@@ -175,7 +172,7 @@ object MoveDestinationsReport:
                       // The move destination is on the left, so take whatever
                       // is on the right of the conflict as being migrated - if
                       // empty, it's a deletion, otherwise it's an edit.
-                      rightContent.map(Merged.Resolved.apply)
+                      rightContent.map(MultiSided.Unique.apply)
                   )
                 case SpeculativeContentMigration.CoincidentEditOrDeletion(
                       FileDeletionContext.None | FileDeletionContext.Left
@@ -196,7 +193,7 @@ object MoveDestinationsReport:
                   moveDestinations.right
                     .map(destinationElement =>
                       destinationElement -> IndexedSeq(
-                        Merged.Preserved(
+                        MultiSided.Preserved(
                           baseElement = source,
                           leftElement =
                             elementOnTheOppositeSideToTheMoveDestination,
@@ -212,7 +209,7 @@ object MoveDestinationsReport:
                       // The move destination is on the right, so take whatever
                       // is on the left of the conflict as being migrated - if
                       // empty, it's a deletion, otherwise it's an edit.
-                      leftContent.map(Merged.Resolved.apply)
+                      leftContent.map(MultiSided.Unique.apply)
                   )
                 case SpeculativeContentMigration.CoincidentEditOrDeletion(
                       FileDeletionContext.None | FileDeletionContext.Right
@@ -241,7 +238,7 @@ object MoveDestinationsReport:
                         // we use both destinations as alternative keys, or
                         // maybe make the key a composite?
                         leftDestinationElement -> IndexedSeq(
-                          Merged.Preserved(
+                          MultiSided.Preserved(
                             baseElement = source,
                             leftElement = leftDestinationElement,
                             rightElement = rightDestinationElement
@@ -438,7 +435,9 @@ object MoveDestinationsReport:
   case class MoveEvaluation[Element](
       moveDestinationsReport: MoveDestinationsReport[Element],
       migratedEditSuppressions: Set[Element],
-      substitutionsByDestination: MultiDict[Element, IndexedSeq[Merged[Element]]],
+      substitutionsByDestination: MultiDict[Element, IndexedSeq[
+        MultiSided[Element]
+      ]],
       anchoredMoves: Set[AnchoredMove[Element]]
   ):
     {

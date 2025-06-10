@@ -4,11 +4,20 @@ import cats.Eq
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
-import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.{Merged, UnresolvedMergeResult}
+import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.{
+  MultiSided,
+  MultiSidedMergeResult
+}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{Sized, defaultElementSize}
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
+  Sized,
+  defaultElementSize
+}
 import com.sageserpent.kineticmerge.core.MergeTest.*
-import com.sageserpent.kineticmerge.core.MergeTest.DelegatingMergeAlgebraWithContracts.{AugmentedMergeResult, State}
+import com.sageserpent.kineticmerge.core.MergeTest.DelegatingMergeAlgebraWithContracts.{
+  AugmentedMergeResult,
+  State
+}
 import com.sageserpent.kineticmerge.core.MergeTest.Move.*
 import com.sageserpent.kineticmerge.core.ResolutionContracts.*
 import monocle.syntax.all.*
@@ -2138,7 +2147,7 @@ object MergeTest:
   end Move
 
   class DelegatingMergeAlgebraWithContracts(
-      coreMergeAlgebra: merge.MergeAlgebra[UnresolvedMergeResult, Element]
+      coreMergeAlgebra: merge.MergeAlgebra[MultiSidedMergeResult, Element]
   ) extends merge.MergeAlgebra[AugmentedMergeResult, Element]:
     override def empty: AugmentedMergeResult[Element] =
       AugmentedMergeResult(state = State.Neutral, coreMergeAlgebra.empty)
@@ -2350,8 +2359,8 @@ object MergeTest:
 
     case class AugmentedMergeResult[Element](
         state: State,
-        coreMergeResult: UnresolvedMergeResult[Element]
-    ) extends UnresolvedMergeResult[Element]:
+        coreMergeResult: MultiSidedMergeResult[Element]
+    ) extends MultiSidedMergeResult[Element]:
       export coreMergeResult.*
 
   end DelegatingMergeAlgebraWithContracts
