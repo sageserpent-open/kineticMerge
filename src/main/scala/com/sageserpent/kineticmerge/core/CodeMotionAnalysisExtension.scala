@@ -930,10 +930,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                         _
                       ) =>
                     // We have encountered a succeeding anchor...
-                    if sectionRunOrdering.equiv(
-                        deferredSplice,
-                        precedingMigrationSplice
-                      )
+                    if Eq[Seq[Section[Element]]]
+                        .eqv(deferredSplice, precedingMigrationSplice)
                     then
                       // The deferred migration from the previous preceding
                       // anchor and the succeeding anchor just encountered
