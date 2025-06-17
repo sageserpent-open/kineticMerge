@@ -1022,7 +1022,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               logger.debug(
                 s"Applying migrated deletion to move destination: ${pprintCustomised(section)}."
               )
-            else if substitution.map(_.content) != IndexedSeq(section.content)
+            else if !Ordering[Seq[Section[Element]]]
+                .equiv(substitution, IndexedSeq(section))
             then
               logger.debug(
                 s"Applying migrated edit into ${pprintCustomised(substitution)} to move destination: ${pprintCustomised(section)}."
