@@ -19,6 +19,7 @@ import monocle.syntax.all.*
 
 import scala.collection.immutable.MultiDict
 import scala.collection.{IndexedSeqView, Searching}
+import scala.math.Ordering.Implicits.seqOrdering
 
 object CodeMotionAnalysisExtension extends StrictLogging:
 
@@ -345,12 +346,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         anchoredMoves.map(_.oppositeSideAnchor.element)
       val moveDestinationAnchors = anchoredMoves.map(_.moveDestinationAnchor)
 
-      given sectionRunOrdering[Sequence[Item] <: Seq[Item]]
-          : Ordering[Sequence[Section[Element]]] =
-        Ordering.Implicits.seqOrdering(
-          Ordering.by[Section[Element], IndexedSeq[Element]](_.content)(
-            Ordering.Implicits.seqOrdering(summon[Eq[Element]].toOrdering)
-          )
+      given sectionOrdering: Ordering[Section[Element]] =
+        Ordering.by[Section[Element], IndexedSeq[Element]](_.content)(
+          seqOrdering(summon[Order[Element]].toOrdering)
         )
 
       def uniqueSortedItemsFrom[Item](
@@ -938,7 +936,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                         _
                       ) =>
                     // We have encountered a succeeding anchor...
-                    if sectionRunOrdering.equiv(
+                    if Ordering[Seq[Section[Element]]].equiv(
                         deferredSplice,
                         precedingMigrationSplice
                       )
