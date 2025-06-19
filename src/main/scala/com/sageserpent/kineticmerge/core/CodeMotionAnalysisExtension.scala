@@ -3,6 +3,10 @@ package com.sageserpent.kineticmerge.core
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
+import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.{
+  MultiSided,
+  MultiSidedMergeResult
+}
 import com.sageserpent.kineticmerge.core.FirstPassMergeResult.{
   FileDeletionContext,
   Recording
@@ -61,6 +65,18 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       end given
 
       given Sized[Section[Element]] = _.size
+
+      extension [Item: Sized](multiSided: MultiSided[Item])
+        private def size: Int =
+          val sized = summon[Sized[Item]]
+          multiSided match
+            case MultiSided.Unique(unique)          => sized.sizeOf(unique)
+            case MultiSided.Coincident(left, right) =>
+              sized.sizeOf(left)
+            case MultiSided.Preserved(base, left, right) =>
+              sized.sizeOf(base)
+          end match
+      end extension
 
       val paths =
         codeMotionAnalysis.base.keySet ++ codeMotionAnalysis.left.keySet ++ codeMotionAnalysis.right.keySet
@@ -351,6 +367,50 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           seqOrdering(summon[Order[Element]].toOrdering)
         )
 
+      given multiSidedOrdering[Item](using
+          itemOrdering: Ordering[Item]
+      ): Ordering[MultiSided[Item]] with
+        override def compare(x: MultiSided[Item], y: MultiSided[Item]): Int =
+          (x, y) match
+            case (MultiSided.Unique(uniqueX), MultiSided.Unique(uniqueY)) =>
+              itemOrdering.compare(uniqueX, uniqueY)
+            case (
+                  MultiSided.Coincident(leftX, rightX),
+                  MultiSided.Coincident(leftY, rightY)
+                ) =>
+              Ordering[(Item, Item)].compare(
+                (leftX, rightX),
+                (leftY, rightY)
+              )
+            case (
+                  MultiSided.Preserved(baseX, leftX, rightX),
+                  MultiSided.Preserved(baseY, leftY, rightY)
+                ) =>
+              Ordering[(Item, Item, Item)].compare(
+                (baseX, leftX, rightX),
+                (baseY, leftY, rightY)
+              )
+            case (_: MultiSided.Unique[Item], _) =>
+              // A unique LHS is less than anything that isn't unique.
+              -1
+            case (
+                  _: MultiSided.Coincident[Item],
+                  _: MultiSided.Preserved[Item]
+                ) =>
+              // A coincident LHS is greater than a preserved RHS.
+              -1
+            case _ =>
+              // A coincident LHS is greater than a unique RHS, and a preserved
+              // LHS is greater than anything that isn't preserved.
+              +1
+          end match
+        end compare
+      end multiSidedOrdering
+
+      val specialCaseEquivalenceBasedOnOrdering
+          : Eq[MultiSided[Section[Element]]] =
+        Order.fromOrdering[MultiSided[Section[Element]]]
+
       def uniqueSortedItemsFrom[Item](
           items: collection.Set[Item]
       )(using itemOrdering: Ordering[Item]): List[Item] =
@@ -555,9 +615,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       end anchoredContentFromModeDestinationSide
 
       case class MigrationSplices(
-          precedingSplice: IndexedSeq[Section[Element]],
-          succeedingSplice: IndexedSeq[Section[Element]],
-          spliceMigrationSuppressions: Set[Section[Element]]
+          precedingSplice: IndexedSeq[MultiSided[Section[Element]]],
+          succeedingSplice: IndexedSeq[MultiSided[Section[Element]]],
+          spliceMigrationSuppressions: Set[MultiSided[Section[Element]]]
       )
 
       val conflictResolvingMergeAlgebra =
@@ -573,7 +633,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             anchoredContentFromMoveDestinationSide: IndexedSeq[Section[Element]]
         )
 
-        private val resultsCache: Cache[MergeInput, MergeResult[
+        private val resultsCache: Cache[MergeInput, MultiSidedMergeResult[
           Section[Element]
         ]] = Caffeine.newBuilder().build()
 
@@ -582,7 +642,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             anchoredContentFromSource: IndexedSeq[Section[Element]],
             anchoredContentFromOppositeSide: IndexedSeq[Section[Element]],
             anchoredContentFromMoveDestinationSide: IndexedSeq[Section[Element]]
-        ): MergeResult[Section[Element]] =
+        ): MultiSidedMergeResult[Section[Element]] =
           moveDestinationSide match
             case Side.Left =>
               logger.debug(
@@ -629,13 +689,13 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     base = anchoredContentFromSource,
                     left = anchoredContentFromMoveDestinationSide,
                     right = anchoredContentFromOppositeSide
-                  ).resolveUsing(resolution)
+                  )
                 case Side.Right =>
                   mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
                     base = anchoredContentFromSource,
                     left = anchoredContentFromOppositeSide,
                     right = anchoredContentFromMoveDestinationSide
-                  ).resolveUsing(resolution)
+                  )
               end match
           )
 
@@ -681,6 +741,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             ++ precedingAnchoredContentFromMoveDestinationSide
             ++ succeedingAnchoredContentFromOppositeSide
             ++ succeedingAnchoredContentFromMoveDestinationSide).toSet
+            .map(MultiSided.Unique.apply)
 
         val precedingMerge = CachedAnchoredContentMerges
           .of(
@@ -741,13 +802,13 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       val (
         splicesByAnchoredMoveDestination: MultiDict[
           (Section[Element], AnchoringSense),
-          IndexedSeq[Section[Element]]
+          IndexedSeq[MultiSided[Section[Element]]]
         ],
-        spliceMigrationSuppressions: Set[Section[Element]]
+        spliceMigrationSuppressions: Set[MultiSided[Section[Element]]]
       ) = anchoredMoves.foldLeft(
         MultiDict.empty[(Section[Element], AnchoringSense), IndexedSeq[
-          Section[Element]
-        ]] -> Set.empty[Section[Element]]
+          MultiSided[Section[Element]]
+        ]] -> Set.empty[MultiSided[Section[Element]]]
       ) {
         case (
               (partialKeyedSplices, partialSpliceMigrationSuppressions),
@@ -797,13 +858,13 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
       def applySplices(
           path: Path,
-          mergeResult: MergeResult[Section[Element]]
-      ): (Path, MergeResult[Section[Element]]) =
+          mergeResult: MultiSidedMergeResult[Section[Element]]
+      ): (Path, MultiSidedMergeResult[Section[Element]]) =
         // Apply the suppressions....
 
         val withSuppressions = mergeResult.transformElementsEnMasse(
           _.filterNot(spliceMigrationSuppressions.contains)
-        )
+        )(using specialCaseEquivalenceBasedOnOrdering)
 
         // Insert the splices....
 
@@ -813,10 +874,10 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         // 3. If two anchors are adjacent and the predecessor shares the same
         // splice with the successor, just splice in one copy.
 
-        extension (sections: IndexedSeq[Section[Element]])
+        extension (sections: IndexedSeq[MultiSided[Section[Element]]])
           private def appendMigratedSplices(
-              migratedSplice: Seq[Section[Element]]
-          ): IndexedSeq[Section[Element]] =
+              migratedSplice: Seq[MultiSided[Section[Element]]]
+          ): IndexedSeq[MultiSided[Section[Element]]] =
             if migratedSplice.nonEmpty then
               if sections.nonEmpty then
                 logger.debug(
@@ -831,16 +892,16 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         end extension
 
         def insertAnchoredSplices(
-            sections: IndexedSeq[Section[Element]]
-        ): IndexedSeq[Section[Element]] =
+            sections: IndexedSeq[MultiSided[Section[Element]]]
+        ): IndexedSeq[MultiSided[Section[Element]]] =
           sections
             .foldLeft(
-              IndexedSeq.empty[Section[Element]] -> IndexedSeq
-                .empty[Section[Element]]
+              IndexedSeq.empty[MultiSided[Section[Element]]] -> IndexedSeq
+                .empty[MultiSided[Section[Element]]]
             ) {
               case (
                     (partialResult, deferredSplice),
-                    candidateAnchorDestination
+                    section @ MultiSided.Unique(candidateAnchorDestination)
                   ) =>
                 val precedingSpliceAlternatives =
                   splicesByAnchoredMoveDestination
@@ -854,8 +915,13 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       uniqueSortedItemsFrom(precedingSpliceAlternatives)
 
                     uniqueSplices match
-                      case head :: Nil => head
-                      case _           =>
+                      case head :: Nil =>
+                        logger.debug(
+                          s"Encountered succeeding anchor destination: ${pprintCustomised(candidateAnchorDestination)} with associated preceding migration splice: ${pprintCustomised(head)}."
+                        )
+
+                        head
+                      case _ =>
                         throw new AdmissibleFailure(
                           s"""
                                |Multiple potential splices before destination: $candidateAnchorDestination,
@@ -884,8 +950,13 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       uniqueSortedItemsFrom(succeedingSpliceAlternatives)
 
                     uniqueSplices match
-                      case head :: Nil => head
-                      case _           =>
+                      case head :: Nil =>
+                        logger.debug(
+                          s"Encountered preceding anchor destination: ${pprintCustomised(candidateAnchorDestination)} with associated following migration splice: ${pprintCustomised(head)}."
+                        )
+
+                        head
+                      case _ =>
                         throw new AdmissibleFailure(
                           s"""
                                |Multiple potential splices after destination: $candidateAnchorDestination,
@@ -902,17 +973,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     end match
                   }
 
-                precedingSplice.foreach(splice =>
-                  logger.debug(
-                    s"Encountered succeeding anchor destination: ${pprintCustomised(candidateAnchorDestination)} with associated preceding migration splice: ${pprintCustomised(splice)}."
-                  )
-                )
-                succeedingSplice.foreach(splice =>
-                  logger.debug(
-                    s"Encountered preceding anchor destination: ${pprintCustomised(candidateAnchorDestination)} with associated following migration splice: ${pprintCustomised(splice)}."
-                  )
-                )
-
                 (
                   precedingSplice,
                   succeedingSplice
@@ -925,18 +985,18 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       ) =>
                     // `candidateAnchorDestination` is not an anchor after all,
                     // so we can splice in the deferred migration from the
-                    // previous preceding anchor
+                    // previous preceding anchor.
                     (partialResult
                       .appendMigratedSplices(
                         deferredSplice
-                      ) :+ candidateAnchorDestination) -> IndexedSeq.empty
+                      ) :+ section) -> IndexedSeq.empty
 
                   case (
                         Some(precedingMigrationSplice),
                         _
                       ) =>
                     // We have encountered a succeeding anchor...
-                    if Ordering[Seq[Section[Element]]].equiv(
+                    if Ordering[Seq[MultiSided[Section[Element]]]].equiv(
                         deferredSplice,
                         precedingMigrationSplice
                       )
@@ -947,7 +1007,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       (partialResult
                         .appendMigratedSplices(
                           deferredSplice
-                        ) :+ candidateAnchorDestination) -> succeedingSplice
+                        ) :+ section) -> succeedingSplice
                         .getOrElse(IndexedSeq.empty)
                     else
                       // The deferred migration from the previous preceding
@@ -959,7 +1019,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                         )
                         .appendMigratedSplices(
                           precedingMigrationSplice
-                        ) :+ candidateAnchorDestination) -> succeedingSplice
+                        ) :+ section) -> succeedingSplice
                         .getOrElse(IndexedSeq.empty)
                     end if
 
@@ -972,32 +1032,38 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     // be added to the partial result.
                     (partialResult.appendMigratedSplices(
                       deferredSplice
-                    ) :+ candidateAnchorDestination) -> succeedingMigrationSplice
+                    ) :+ section) -> succeedingMigrationSplice
                 end match
+              case ((partialResult, deferredSplice), section) =>
+                // `section` is not an anchor, so we can splice in the deferred
+                // migration from the previous preceding anchor.
+                (partialResult
+                  .appendMigratedSplices(
+                    deferredSplice
+                  ) :+ section) -> IndexedSeq.empty
             } match
             case (partialResult, deferredMigration) =>
               partialResult.appendMigratedSplices(deferredMigration)
 
         path -> withSuppressions.transformElementsEnMasse(
           insertAnchoredSplices
-        )
+        )(using specialCaseEquivalenceBasedOnOrdering)
       end applySplices
 
       def applySubstitutions(
           path: Path,
-          mergeResult: MergeResult[Section[Element]]
-      ): (Path, MergeResult[Section[Element]]) =
+          mergeResult: MultiSidedMergeResult[Section[Element]]
+      ): (Path, MultiSidedMergeResult[Section[Element]]) =
         def substituteFor(
-            section: Section[Element]
-        ): IndexedSeq[Section[Element]] =
+            section: MultiSided[Section[Element]]
+        ): IndexedSeq[MultiSided[Section[Element]]] =
           val substitutions = substitutionsByDestination
             .get(section)
-            .map(_.map(_.resolveUsing(resolution)))
 
           if substitutions.nonEmpty then
             val uniqueSubstitutions = uniqueSortedItemsFrom(substitutions)
 
-            val substitution: IndexedSeq[Section[Element]] =
+            val substitution: IndexedSeq[MultiSided[Section[Element]]] =
               uniqueSubstitutions match
                 case head :: Nil => head
                 case _           =>
@@ -1022,7 +1088,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               logger.debug(
                 s"Applying migrated deletion to move destination: ${pprintCustomised(section)}."
               )
-            else if !Ordering[Seq[Section[Element]]]
+            else if !Ordering[Seq[MultiSided[Section[Element]]]]
                 .equiv(substitution, IndexedSeq(section))
             then
               logger.debug(
@@ -1041,8 +1107,17 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             // have a forwarded edit or deletion from the opposite side in it.
             substituteFor(section).flatMap(substituteFor)
           )
-        )
+        )(using specialCaseEquivalenceBasedOnOrdering)
       end applySubstitutions
+
+      def resolveSections(
+          path: Path,
+          mergeResult: MultiSidedMergeResult[Section[Element]]
+      ): (Path, MergeResult[Section[Element]]) =
+        path -> mergeResult.transformElementsEnMasse(
+          _.map(_.resolveUsing(resolution))
+        )
+      end resolveSections
 
       def explodeSections(
           path: Path,
@@ -1052,18 +1127,21 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       end explodeSections
 
       val secondPassMergeResultsByPath
-          : Map[Path, MergeResult[Section[Element]]] =
+          : Map[Path, MultiSidedMergeResult[Section[Element]]] =
         secondPassInputsByPath.map {
           case (path, Right(recording)) =>
             path -> recording
               .playback(conflictResolvingMergeAlgebra)
-              .resolveUsing(resolution)
-          case (path, Left(fullyMerged)) => path -> fullyMerged
+          case (path, Left(fullyMerged)) =>
+            path -> fullyMerged.transformElementsEnMasse(
+              _.map(MultiSided.Unique.apply)
+            )(using specialCaseEquivalenceBasedOnOrdering)
         }
 
       secondPassMergeResultsByPath
         .map(applySplices)
         .map(applySubstitutions)
+        .map(resolveSections)
         .map(explodeSections) -> moveDestinationsReport
     end merge
   end extension

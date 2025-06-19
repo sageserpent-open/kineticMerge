@@ -140,7 +140,7 @@ object MoveDestinationsReport:
         .toSet
 
     val substitutionsByDestination
-        : MultiDict[Element, IndexedSeq[MultiSided[Element]]] =
+        : MultiDict[MultiSided[Element], IndexedSeq[MultiSided[Element]]] =
       MultiDict.from(
         moveDestinationsBySource.toSeq.flatMap((source, moveDestinations) =>
           if !moveDestinations.isDivergent
@@ -155,7 +155,7 @@ object MoveDestinationsReport:
                     ) =>
                   moveDestinations.left
                     .map(destinationElement =>
-                      destinationElement -> IndexedSeq(
+                      MultiSided.Unique(destinationElement) -> IndexedSeq(
                         MultiSided.Preserved(
                           baseElement = source,
                           leftElement = destinationElement,
@@ -167,8 +167,8 @@ object MoveDestinationsReport:
                 case SpeculativeContentMigration
                       .Conflict(_, rightContent, fileDeletionContext)
                     if fileDeletionContext != FileDeletionContext.Right || rightContent.nonEmpty =>
-                  moveDestinations.left.map(
-                    _ ->
+                  moveDestinations.left.map(destinationElement =>
+                    MultiSided.Unique(destinationElement) ->
                       // The move destination is on the left, so take whatever
                       // is on the right of the conflict as being migrated - if
                       // empty, it's a deletion, otherwise it's an edit.
@@ -177,8 +177,8 @@ object MoveDestinationsReport:
                 case SpeculativeContentMigration.CoincidentEditOrDeletion(
                       FileDeletionContext.None | FileDeletionContext.Left
                     ) =>
-                  moveDestinations.left.map(
-                    _ ->
+                  moveDestinations.left.map(destinationElement =>
+                    MultiSided.Unique(destinationElement) ->
                       // The move destination is on the left, so migrate the
                       // implied deletion on the right.
                       IndexedSeq.empty
@@ -192,7 +192,7 @@ object MoveDestinationsReport:
                     ) =>
                   moveDestinations.right
                     .map(destinationElement =>
-                      destinationElement -> IndexedSeq(
+                      MultiSided.Unique(destinationElement) -> IndexedSeq(
                         MultiSided.Preserved(
                           baseElement = source,
                           leftElement =
@@ -204,8 +204,8 @@ object MoveDestinationsReport:
                 case SpeculativeContentMigration
                       .Conflict(leftContent, _, fileDeletionContext)
                     if fileDeletionContext != FileDeletionContext.Left || leftContent.nonEmpty =>
-                  moveDestinations.right.map(
-                    _ ->
+                  moveDestinations.right.map(destinationElement =>
+                    MultiSided.Unique(destinationElement) ->
                       // The move destination is on the right, so take whatever
                       // is on the left of the conflict as being migrated - if
                       // empty, it's a deletion, otherwise it's an edit.
@@ -214,8 +214,8 @@ object MoveDestinationsReport:
                 case SpeculativeContentMigration.CoincidentEditOrDeletion(
                       FileDeletionContext.None | FileDeletionContext.Right
                     ) =>
-                  moveDestinations.right.map(
-                    _ ->
+                  moveDestinations.right.map(destinationElement =>
+                    MultiSided.Unique(destinationElement) ->
                       // The move destination is on the right, so migrate the
                       // implied deletion on the left.
                       IndexedSeq.empty
@@ -232,12 +232,10 @@ object MoveDestinationsReport:
                   moveDestinations.coincident
                     .map {
                       case (leftDestinationElement, rightDestinationElement) =>
-                        // TODO: currently just using the left destination
-                        // element as the key - but what about the right
-                        // destination element? What happens downstream? Should
-                        // we use both destinations as alternative keys, or
-                        // maybe make the key a composite?
-                        leftDestinationElement -> IndexedSeq(
+                        MultiSided.Coincident(
+                          leftDestinationElement,
+                          rightDestinationElement
+                        ) -> IndexedSeq(
                           MultiSided.Preserved(
                             baseElement = source,
                             leftElement = leftDestinationElement,
@@ -435,7 +433,7 @@ object MoveDestinationsReport:
   case class MoveEvaluation[Element](
       moveDestinationsReport: MoveDestinationsReport[Element],
       migratedEditSuppressions: Set[Element],
-      substitutionsByDestination: MultiDict[Element, IndexedSeq[
+      substitutionsByDestination: MultiDict[MultiSided[Element], IndexedSeq[
         MultiSided[Element]
       ]],
       anchoredMoves: Set[AnchoredMove[Element]]
@@ -445,7 +443,13 @@ object MoveDestinationsReport:
       val anchorOppositeSides = anchoredMoves.map(_.oppositeSideAnchor)
       val anchorDestinations  = anchoredMoves.map(_.moveDestinationAnchor)
       val substitutionDestinations: collection.Set[Element] =
-        substitutionsByDestination.keySet
+        substitutionsByDestination.keySet.flatMap {
+          case MultiSided.Unique(uniqueDestination) => Seq(uniqueDestination)
+          case MultiSided.Coincident(leftDestination, rightDestination) =>
+            Seq(leftDestination, rightDestination)
+          case MultiSided.Preserved(_, leftDestination, rightDestination) =>
+            Seq(leftDestination, rightDestination)
+        }
       val allMoveDestinations                 = moveDestinationsReport.all
       val allMoveSources                      = moveDestinationsReport.sources
       val oppositeSideAnchorsForMigratedEdits = anchorOppositeSides.collect {
