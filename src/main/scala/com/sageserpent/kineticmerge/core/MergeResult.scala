@@ -87,13 +87,6 @@ object CoreMergeAlgebra:
   end MultiSided
 
   type MultiSidedMergeResult[Element] = MergeResult[MultiSided[Element]]
-
-  extension [Element: Eq](unresolvedMergeResult: MultiSidedMergeResult[Element])
-    def resolveUsing(resolution: Resolution[Element]): MergeResult[Element] =
-      unresolvedMergeResult.transformElementsEnMasse(
-        _.map(_.resolveUsing(resolution))
-      )
-  end extension
 end CoreMergeAlgebra
 
 class CoreMergeAlgebra[Element]

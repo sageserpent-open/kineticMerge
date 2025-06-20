@@ -1762,6 +1762,13 @@ end MergeTest
 object MergeTest:
   type Element = Int
 
+  extension (unresolvedMergeResult: MultiSidedMergeResult[Element])
+    def resolveUsing(resolution: Resolution[Element]): MergeResult[Element] =
+      unresolvedMergeResult.transformElementsEnMasse(
+        _.map(_.resolveUsing(resolution))
+      )
+  end extension
+
   private def emptyMergeTestCase(allowConflicts: Boolean): MergeTestCase =
     MergeTestCase(
       base = IndexedSeq.empty,
