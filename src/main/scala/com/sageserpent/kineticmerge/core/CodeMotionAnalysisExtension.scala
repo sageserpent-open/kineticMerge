@@ -617,7 +617,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       case class MigrationSplices(
           precedingSplice: IndexedSeq[MultiSided[Section[Element]]],
           succeedingSplice: IndexedSeq[MultiSided[Section[Element]]],
-          spliceMigrationSuppressions: Set[MultiSided[Section[Element]]]
+          spliceMigrationSuppressions: Set[Section[Element]]
       )
 
       val conflictResolvingMergeAlgebra =
@@ -741,7 +741,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             ++ precedingAnchoredContentFromMoveDestinationSide
             ++ succeedingAnchoredContentFromOppositeSide
             ++ succeedingAnchoredContentFromMoveDestinationSide).toSet
-            .map(MultiSided.Unique.apply)
 
         val precedingMerge = CachedAnchoredContentMerges
           .of(
@@ -804,11 +803,11 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           (Section[Element], AnchoringSense),
           IndexedSeq[MultiSided[Section[Element]]]
         ],
-        spliceMigrationSuppressions: Set[MultiSided[Section[Element]]]
+        spliceMigrationSuppressions: Set[Section[Element]]
       ) = anchoredMoves.foldLeft(
         MultiDict.empty[(Section[Element], AnchoringSense), IndexedSeq[
           MultiSided[Section[Element]]
-        ]] -> Set.empty[MultiSided[Section[Element]]]
+        ]] -> Set.empty[Section[Element]]
       ) {
         case (
               (partialKeyedSplices, partialSpliceMigrationSuppressions),
@@ -863,7 +862,15 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         // Apply the suppressions....
 
         val withSuppressions = mergeResult.transformElementsEnMasse(
-          _.filterNot(spliceMigrationSuppressions.contains)
+          _.filterNot {
+            case MultiSided.Unique(section) =>
+              spliceMigrationSuppressions.contains(section)
+            case MultiSided.Preserved(_, leftSection, rightSection) =>
+              spliceMigrationSuppressions.contains(
+                leftSection
+              ) || spliceMigrationSuppressions.contains(rightSection)
+            case _ => false
+          }
         )(using specialCaseEquivalenceBasedOnOrdering)
 
         // Insert the splices....
