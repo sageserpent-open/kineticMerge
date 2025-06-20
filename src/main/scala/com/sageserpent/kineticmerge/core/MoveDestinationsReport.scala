@@ -1,5 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
+import cats.Eq
 import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSided
 import com.sageserpent.kineticmerge.core.FirstPassMergeResult.FileDeletionContext
 
@@ -55,7 +56,7 @@ case class MoveDestinationsReport[Element](
 end MoveDestinationsReport
 
 object MoveDestinationsReport:
-  def evaluateSpeculativeSourcesAndDestinations[Element](
+  def evaluateSpeculativeSourcesAndDestinations[Element: Eq](
       speculativeMigrationsBySource: Map[Element, SpeculativeContentMigration[
         Element
       ]],

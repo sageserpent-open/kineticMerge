@@ -1,5 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
+import cats.Eq
 import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSidedMergeResult
 
 /** This embellishes [[CoreMergeAlgebra]], resolving conflicts that turn out to
@@ -11,7 +12,7 @@ import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSidedMergeResult
   * @tparam Element
   * @return
   */
-class ConflictResolvingMergeAlgebra[Element](
+class ConflictResolvingMergeAlgebra[Element: Eq](
     migratedEditSuppressions: Set[Element]
 ) extends CoreMergeAlgebra[Element]:
   override def preservation(

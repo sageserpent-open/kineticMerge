@@ -62,34 +62,41 @@ case class MergedWithConflicts[Element](
 end MergedWithConflicts
 
 object CoreMergeAlgebra:
-  enum MultiSided[Element]:
+  type MultiSidedMergeResult[Element] = MergeResult[MultiSided[Element]]
+
+  enum MultiSided[Element: Eq]:
+    this match
+      case Unique(element)                       => ()
+      case Coincident(leftElement, rightElement) =>
+        require(Eq[Element].eqv(leftElement, rightElement))
+      case Preserved(baseElement, leftElement, rightElement) =>
+        Eq[Element].eqv(baseElement, leftElement)
+        Eq[Element].eqv(baseElement, rightElement)
+    end match
+
     def resolveUsing(resolution: Resolution[Element]): Element =
       this match
         case Unique(element) => element
         // NOTE: the following cases are performing double-dispatch on overloads
         // of `Resolution.apply`...
-        case coincident: Coincident[Element] =>
-          resolution.coincident(coincident.leftElement, coincident.rightElement)
-        case preserved: Preserved[Element] =>
-          resolution.preserved(
-            preserved.baseElement,
-            preserved.leftElement,
-            preserved.rightElement
-          )
+        case Coincident(leftElement, rightElement) =>
+          resolution.coincident(leftElement, rightElement)
+        case Preserved(baseElement, leftElement, rightElement) =>
+          resolution.preserved(baseElement, leftElement, rightElement)
 
-    case Unique(element: Element)
-    case Coincident(leftElement: Element, rightElement: Element)
+    case Unique(element: Element)(using equality: Eq[Element])
+    case Coincident(leftElement: Element, rightElement: Element)(using
+        equality: Eq[Element]
+    )
     case Preserved(
         baseElement: Element,
         leftElement: Element,
         rightElement: Element
-    )
+    )(using equality: Eq[Element])
   end MultiSided
-
-  type MultiSidedMergeResult[Element] = MergeResult[MultiSided[Element]]
 end CoreMergeAlgebra
 
-class CoreMergeAlgebra[Element]
+class CoreMergeAlgebra[Element: Eq]
     extends MergeAlgebra[MultiSidedMergeResult, Element]:
   override def empty: MultiSidedMergeResult[Element] = FullyMerged(
     IndexedSeq.empty
