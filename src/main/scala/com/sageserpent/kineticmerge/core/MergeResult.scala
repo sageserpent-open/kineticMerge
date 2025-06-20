@@ -129,15 +129,15 @@ class CoreMergeAlgebra[Element: Eq]
       result: MultiSidedMergeResult[Element],
       insertedElement: Element
   ): MultiSidedMergeResult[Element] =
-    val resolved = MultiSided.Unique(insertedElement)
+    val multiSided = MultiSided.Unique(insertedElement)
 
     result match
       case FullyMerged(elements) =>
-        FullyMerged(elements :+ resolved)
+        FullyMerged(elements :+ multiSided)
       case MergedWithConflicts(leftElements, rightElements) =>
         MergedWithConflicts(
-          leftElements :+ resolved,
-          rightElements :+ resolved
+          leftElements :+ multiSided,
+          rightElements :+ multiSided
         )
     end match
   end leftInsertion
@@ -146,15 +146,15 @@ class CoreMergeAlgebra[Element: Eq]
       result: MultiSidedMergeResult[Element],
       insertedElement: Element
   ): MultiSidedMergeResult[Element] =
-    val resolved = MultiSided.Unique(insertedElement)
+    val multiSided = MultiSided.Unique(insertedElement)
 
     result match
       case FullyMerged(elements) =>
-        FullyMerged(elements :+ resolved)
+        FullyMerged(elements :+ multiSided)
       case MergedWithConflicts(leftElements, rightElements) =>
         MergedWithConflicts(
-          leftElements :+ resolved,
-          rightElements :+ resolved
+          leftElements :+ multiSided,
+          rightElements :+ multiSided
         )
     end match
   end rightInsertion
@@ -201,15 +201,15 @@ class CoreMergeAlgebra[Element: Eq]
       editedRightElement: Element,
       editElements: IndexedSeq[Element]
   ): MultiSidedMergeResult[Element] =
-    val resolved = editElements map MultiSided.Unique.apply
+    val multiSided = editElements map MultiSided.Unique.apply
 
     result match
       case FullyMerged(elements) =>
-        FullyMerged(elements ++ resolved)
+        FullyMerged(elements ++ multiSided)
       case MergedWithConflicts(leftElements, rightElements) =>
         MergedWithConflicts(
-          leftElements ++ resolved,
-          rightElements ++ resolved
+          leftElements ++ multiSided,
+          rightElements ++ multiSided
         )
     end match
   end leftEdit
@@ -220,15 +220,15 @@ class CoreMergeAlgebra[Element: Eq]
       editedLeftElement: Element,
       editElements: IndexedSeq[Element]
   ): MultiSidedMergeResult[Element] =
-    val resolved = editElements map MultiSided.Unique.apply
+    val multiSided = editElements map MultiSided.Unique.apply
 
     result match
       case FullyMerged(elements) =>
-        FullyMerged(elements ++ resolved)
+        FullyMerged(elements ++ multiSided)
       case MergedWithConflicts(leftElements, rightElements) =>
         MergedWithConflicts(
-          leftElements ++ resolved,
-          rightElements ++ resolved
+          leftElements ++ multiSided,
+          rightElements ++ multiSided
         )
     end match
   end rightEdit
