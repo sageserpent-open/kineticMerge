@@ -183,7 +183,7 @@ object FirstPassMergeResult:
                     mergeAlgebra.preservation(
                       _,
                       deletedBaseElement,
-                      deletedRightElement,
+                      deletedBaseElement,
                       deletedRightElement
                     )
                   else
@@ -231,7 +231,7 @@ object FirstPassMergeResult:
                       _,
                       deletedBaseElement,
                       deletedLeftElement,
-                      deletedLeftElement
+                      deletedBaseElement
                     )
                   else
                     mergeAlgebra.rightDeletion(

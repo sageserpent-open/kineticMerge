@@ -1,5 +1,8 @@
 package com.sageserpent.kineticmerge.core
 
+import cats.Eq
+import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSidedMergeResult
+
 /** This embellishes [[CoreMergeAlgebra]], resolving conflicts that turn out to
   * be where an edit or deletion migration was picked up.
   *
@@ -9,16 +12,15 @@ package com.sageserpent.kineticmerge.core
   * @tparam Element
   * @return
   */
-class ConflictResolvingMergeAlgebra[Element](
-    resolution: Resolution[Element],
+class ConflictResolvingMergeAlgebra[Element: Eq](
     migratedEditSuppressions: Set[Element]
-) extends CoreMergeAlgebra[Element](resolution):
+) extends CoreMergeAlgebra[Element]:
   override def preservation(
-      result: MergeResult[Element],
+      result: MultiSidedMergeResult[Element],
       preservedBaseElement: Element,
       preservedElementOnLeft: Element,
       preservedElementOnRight: Element
-  ): MergeResult[Element] =
+  ): MultiSidedMergeResult[Element] =
     if migratedEditSuppressions.contains(preservedElementOnLeft) then
       super.leftDeletion(result, preservedBaseElement, preservedElementOnRight)
     else if migratedEditSuppressions.contains(preservedElementOnRight) then
@@ -32,11 +34,11 @@ class ConflictResolvingMergeAlgebra[Element](
       )
 
   override def conflict(
-      result: MergeResult[Element],
+      result: MultiSidedMergeResult[Element],
       editedElements: IndexedSeq[Element],
       leftEditElements: IndexedSeq[Element],
       rightEditElements: IndexedSeq[Element]
-  ): MergeResult[Element] =
+  ): MultiSidedMergeResult[Element] =
     val vettedLeftElements =
       leftEditElements.filterNot(migratedEditSuppressions.contains)
     val vettedRightElements =

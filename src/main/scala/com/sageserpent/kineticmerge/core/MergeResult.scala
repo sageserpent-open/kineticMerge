@@ -1,6 +1,10 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.Eq
+import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.{
+  MultiSided,
+  MultiSidedMergeResult
+}
 import com.sageserpent.kineticmerge.core.merge.MergeAlgebra
 
 trait MergeResult[Element]:
@@ -57,162 +61,219 @@ case class MergedWithConflicts[Element](
   end transformElementsEnMasse
 end MergedWithConflicts
 
-class CoreMergeAlgebra[Element](resolution: Resolution[Element])
-    extends MergeAlgebra[MergeResult, Element]:
-  override def empty: MergeResult[Element] = FullyMerged(IndexedSeq.empty)
+object CoreMergeAlgebra:
+  type MultiSidedMergeResult[Element] = MergeResult[MultiSided[Element]]
+
+  enum MultiSided[Element: Eq]:
+    this match
+      case Unique(element)                       => ()
+      case Coincident(leftElement, rightElement) =>
+        require(Eq[Element].eqv(leftElement, rightElement))
+      case Preserved(baseElement, leftElement, rightElement) =>
+        Eq[Element].eqv(baseElement, leftElement)
+        Eq[Element].eqv(baseElement, rightElement)
+    end match
+
+    def resolveUsing(resolution: Resolution[Element]): Element =
+      this match
+        case Unique(element) => element
+        // NOTE: the following cases are performing double-dispatch on overloads
+        // of `Resolution.apply`...
+        case Coincident(leftElement, rightElement) =>
+          resolution.coincident(leftElement, rightElement)
+        case Preserved(baseElement, leftElement, rightElement) =>
+          resolution.preserved(baseElement, leftElement, rightElement)
+
+    case Unique(element: Element)(using equality: Eq[Element])
+    case Coincident(leftElement: Element, rightElement: Element)(using
+        equality: Eq[Element]
+    )
+    case Preserved(
+        baseElement: Element,
+        leftElement: Element,
+        rightElement: Element
+    )(using equality: Eq[Element])
+  end MultiSided
+end CoreMergeAlgebra
+
+class CoreMergeAlgebra[Element: Eq]
+    extends MergeAlgebra[MultiSidedMergeResult, Element]:
+  override def empty: MultiSidedMergeResult[Element] = FullyMerged(
+    IndexedSeq.empty
+  )
 
   override def preservation(
-      result: MergeResult[Element],
+      result: MultiSidedMergeResult[Element],
       preservedBaseElement: Element,
       preservedElementOnLeft: Element,
       preservedElementOnRight: Element
-  ): MergeResult[Element] =
-    val resolvedPreservedElement =
-      resolution(
-        Some(preservedBaseElement),
-        preservedElementOnLeft,
-        preservedElementOnRight
-      )
+  ): MultiSidedMergeResult[Element] =
+    val preserved = MultiSided.Preserved(
+      preservedBaseElement,
+      preservedElementOnLeft,
+      preservedElementOnRight
+    )
 
     result match
       case FullyMerged(elements) =>
-        FullyMerged(elements :+ resolvedPreservedElement)
+        FullyMerged(elements :+ preserved)
       case MergedWithConflicts(leftElements, rightElements) =>
         MergedWithConflicts(
-          leftElements :+ resolvedPreservedElement,
-          rightElements :+ resolvedPreservedElement
+          leftElements :+ preserved,
+          rightElements :+ preserved
         )
     end match
   end preservation
 
   override def leftInsertion(
-      result: MergeResult[Element],
+      result: MultiSidedMergeResult[Element],
       insertedElement: Element
-  ): MergeResult[Element] =
+  ): MultiSidedMergeResult[Element] =
+    val multiSided = MultiSided.Unique(insertedElement)
+
     result match
       case FullyMerged(elements) =>
-        FullyMerged(elements :+ insertedElement)
+        FullyMerged(elements :+ multiSided)
       case MergedWithConflicts(leftElements, rightElements) =>
         MergedWithConflicts(
-          leftElements :+ insertedElement,
-          rightElements :+ insertedElement
+          leftElements :+ multiSided,
+          rightElements :+ multiSided
         )
+    end match
+  end leftInsertion
 
   override def rightInsertion(
-      result: MergeResult[Element],
+      result: MultiSidedMergeResult[Element],
       insertedElement: Element
-  ): MergeResult[Element] =
+  ): MultiSidedMergeResult[Element] =
+    val multiSided = MultiSided.Unique(insertedElement)
+
     result match
       case FullyMerged(elements) =>
-        FullyMerged(elements :+ insertedElement)
+        FullyMerged(elements :+ multiSided)
       case MergedWithConflicts(leftElements, rightElements) =>
         MergedWithConflicts(
-          leftElements :+ insertedElement,
-          rightElements :+ insertedElement
+          leftElements :+ multiSided,
+          rightElements :+ multiSided
         )
+    end match
+  end rightInsertion
 
   override def coincidentInsertion(
-      result: MergeResult[Element],
+      result: MultiSidedMergeResult[Element],
       insertedElementOnLeft: Element,
       insertedElementOnRight: Element
-  ): MergeResult[Element] =
-    val resolvedInsertedElement =
-      resolution(None, insertedElementOnLeft, insertedElementOnRight)
+  ): MultiSidedMergeResult[Element] =
+    val coincident =
+      MultiSided.Coincident(insertedElementOnLeft, insertedElementOnRight)
 
     result match
       case FullyMerged(elements) =>
-        FullyMerged(elements :+ resolvedInsertedElement)
+        FullyMerged(elements :+ coincident)
       case MergedWithConflicts(leftElements, rightElements) =>
         MergedWithConflicts(
-          leftElements :+ resolvedInsertedElement,
-          rightElements :+ resolvedInsertedElement
+          leftElements :+ coincident,
+          rightElements :+ coincident
         )
     end match
   end coincidentInsertion
 
   override def leftDeletion(
-      result: MergeResult[Element],
+      result: MultiSidedMergeResult[Element],
       deletedBaseElement: Element,
       deletedRightElement: Element
-  ): MergeResult[Element] = result
+  ): MultiSidedMergeResult[Element] = result
 
   override def rightDeletion(
-      result: MergeResult[Element],
+      result: MultiSidedMergeResult[Element],
       deletedBaseElement: Element,
       deletedLeftElement: Element
-  ): MergeResult[Element] = result
+  ): MultiSidedMergeResult[Element] = result
 
   override def coincidentDeletion(
-      result: MergeResult[Element],
+      result: MultiSidedMergeResult[Element],
       deletedElement: Element
-  ): MergeResult[Element] = result
+  ): MultiSidedMergeResult[Element] = result
 
   override def leftEdit(
-      result: MergeResult[Element],
+      result: MultiSidedMergeResult[Element],
       editedBaseElement: Element,
       editedRightElement: Element,
       editElements: IndexedSeq[Element]
-  ): MergeResult[Element] =
+  ): MultiSidedMergeResult[Element] =
+    val multiSided = editElements map MultiSided.Unique.apply
+
     result match
       case FullyMerged(elements) =>
-        FullyMerged(elements ++ editElements)
+        FullyMerged(elements ++ multiSided)
       case MergedWithConflicts(leftElements, rightElements) =>
         MergedWithConflicts(
-          leftElements ++ editElements,
-          rightElements ++ editElements
+          leftElements ++ multiSided,
+          rightElements ++ multiSided
         )
+    end match
+  end leftEdit
 
   override def rightEdit(
-      result: MergeResult[Element],
+      result: MultiSidedMergeResult[Element],
       editedBaseElement: Element,
       editedLeftElement: Element,
       editElements: IndexedSeq[Element]
-  ): MergeResult[Element] =
+  ): MultiSidedMergeResult[Element] =
+    val multiSided = editElements map MultiSided.Unique.apply
+
     result match
       case FullyMerged(elements) =>
-        FullyMerged(elements ++ editElements)
+        FullyMerged(elements ++ multiSided)
       case MergedWithConflicts(leftElements, rightElements) =>
         MergedWithConflicts(
-          leftElements ++ editElements,
-          rightElements ++ editElements
+          leftElements ++ multiSided,
+          rightElements ++ multiSided
         )
+    end match
+  end rightEdit
 
   override def coincidentEdit(
-      result: MergeResult[Element],
+      result: MultiSidedMergeResult[Element],
       editedElement: Element,
       editElements: IndexedSeq[(Element, Element)]
-  ): MergeResult[Element] =
-    val resolvedEditElements = editElements.map {
+  ): MultiSidedMergeResult[Element] =
+    val coincident = editElements.map {
       case (leftEditElement, rightEditElement) =>
-        resolution(None, leftEditElement, rightEditElement)
+        MultiSided.Coincident(leftEditElement, rightEditElement)
     }
 
     result match
       case FullyMerged(elements) =>
-        FullyMerged(elements ++ resolvedEditElements)
+        FullyMerged(elements ++ coincident)
       case MergedWithConflicts(leftElements, rightElements) =>
         MergedWithConflicts(
-          leftElements ++ resolvedEditElements,
-          rightElements ++ resolvedEditElements
+          leftElements ++ coincident,
+          rightElements ++ coincident
         )
     end match
   end coincidentEdit
 
   override def conflict(
-      result: MergeResult[Element],
+      result: MultiSidedMergeResult[Element],
       editedElements: IndexedSeq[Element],
       leftEditElements: IndexedSeq[Element],
       rightEditElements: IndexedSeq[Element]
-  ): MergeResult[Element] =
+  ): MultiSidedMergeResult[Element] =
+    val leftResolved  = leftEditElements map MultiSided.Unique.apply
+    val rightResolved = rightEditElements map MultiSided.Unique.apply
+
     result match
       case FullyMerged(elements) =>
         MergedWithConflicts(
-          elements ++ leftEditElements,
-          elements ++ rightEditElements
+          elements ++ leftResolved,
+          elements ++ rightResolved
         )
       case MergedWithConflicts(leftElements, rightElements) =>
         MergedWithConflicts(
-          leftElements ++ leftEditElements,
-          rightElements ++ rightEditElements
+          leftElements ++ leftResolved,
+          rightElements ++ rightResolved
         )
+    end match
+  end conflict
 end CoreMergeAlgebra

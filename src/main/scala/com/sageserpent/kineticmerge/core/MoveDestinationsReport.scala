@@ -1,5 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
+import cats.Eq
+import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSided
 import com.sageserpent.kineticmerge.core.FirstPassMergeResult.FileDeletionContext
 
 import scala.collection.immutable.MultiDict
@@ -54,14 +56,13 @@ case class MoveDestinationsReport[Element](
 end MoveDestinationsReport
 
 object MoveDestinationsReport:
-  def evaluateSpeculativeSourcesAndDestinations[Element](
+  def evaluateSpeculativeSourcesAndDestinations[Element: Eq](
       speculativeMigrationsBySource: Map[Element, SpeculativeContentMigration[
         Element
       ]],
       speculativeMoveDestinations: Set[SpeculativeMoveDestination[Element]]
   )(
-      matchesFor: Element => collection.Set[Match[Element]],
-      resolution: Resolution[Element]
+      matchesFor: Element => collection.Set[Match[Element]]
   ): MoveEvaluation[Element] =
     val destinationsBySource =
       MultiDict.from(speculativeMigrationsBySource.keys.flatMap {
@@ -139,7 +140,8 @@ object MoveDestinationsReport:
         )
         .toSet
 
-    val substitutionsByDestination: MultiDict[Element, IndexedSeq[Element]] =
+    val substitutionsByDestination
+        : MultiDict[MultiSided[Element], IndexedSeq[MultiSided[Element]]] =
       MultiDict.from(
         moveDestinationsBySource.toSeq.flatMap((source, moveDestinations) =>
           if !moveDestinations.isDivergent
@@ -154,33 +156,30 @@ object MoveDestinationsReport:
                     ) =>
                   moveDestinations.left
                     .map(destinationElement =>
-                      val resolved = resolution(
-                        Some(source),
-                        destinationElement,
-                        elementOnTheOppositeSideToTheMoveDestination
+                      MultiSided.Unique(destinationElement) -> IndexedSeq(
+                        MultiSided.Preserved(
+                          baseElement = source,
+                          leftElement = destinationElement,
+                          rightElement =
+                            elementOnTheOppositeSideToTheMoveDestination
+                        )
                       )
-                      destinationElement -> resolved
                     )
-                    .collect {
-                      case (destinationElement, resolved)
-                          if destinationElement != resolved =>
-                        destinationElement -> IndexedSeq(resolved)
-                    }
                 case SpeculativeContentMigration
                       .Conflict(_, rightContent, fileDeletionContext)
                     if fileDeletionContext != FileDeletionContext.Right || rightContent.nonEmpty =>
-                  moveDestinations.left.map(
-                    _ ->
+                  moveDestinations.left.map(destinationElement =>
+                    MultiSided.Unique(destinationElement) ->
                       // The move destination is on the left, so take whatever
                       // is on the right of the conflict as being migrated - if
                       // empty, it's a deletion, otherwise it's an edit.
-                      rightContent
+                      rightContent.map(MultiSided.Unique.apply)
                   )
                 case SpeculativeContentMigration.CoincidentEditOrDeletion(
                       FileDeletionContext.None | FileDeletionContext.Left
                     ) =>
-                  moveDestinations.left.map(
-                    _ ->
+                  moveDestinations.left.map(destinationElement =>
+                    MultiSided.Unique(destinationElement) ->
                       // The move destination is on the left, so migrate the
                       // implied deletion on the right.
                       IndexedSeq.empty
@@ -194,33 +193,30 @@ object MoveDestinationsReport:
                     ) =>
                   moveDestinations.right
                     .map(destinationElement =>
-                      val resolved = resolution(
-                        Some(source),
-                        elementOnTheOppositeSideToTheMoveDestination,
-                        destinationElement
+                      MultiSided.Unique(destinationElement) -> IndexedSeq(
+                        MultiSided.Preserved(
+                          baseElement = source,
+                          leftElement =
+                            elementOnTheOppositeSideToTheMoveDestination,
+                          rightElement = destinationElement
+                        )
                       )
-                      destinationElement -> resolved
                     )
-                    .collect {
-                      case (destinationElement, resolved)
-                          if destinationElement != resolved =>
-                        destinationElement -> IndexedSeq(resolved)
-                    }
                 case SpeculativeContentMigration
                       .Conflict(leftContent, _, fileDeletionContext)
                     if fileDeletionContext != FileDeletionContext.Left || leftContent.nonEmpty =>
-                  moveDestinations.right.map(
-                    _ ->
+                  moveDestinations.right.map(destinationElement =>
+                    MultiSided.Unique(destinationElement) ->
                       // The move destination is on the right, so take whatever
                       // is on the left of the conflict as being migrated - if
                       // empty, it's a deletion, otherwise it's an edit.
-                      leftContent
+                      leftContent.map(MultiSided.Unique.apply)
                   )
                 case SpeculativeContentMigration.CoincidentEditOrDeletion(
                       FileDeletionContext.None | FileDeletionContext.Right
                     ) =>
-                  moveDestinations.right.map(
-                    _ ->
+                  moveDestinations.right.map(destinationElement =>
+                    MultiSided.Unique(destinationElement) ->
                       // The move destination is on the right, so migrate the
                       // implied deletion on the left.
                       IndexedSeq.empty
@@ -237,28 +233,16 @@ object MoveDestinationsReport:
                   moveDestinations.coincident
                     .map {
                       case (leftDestinationElement, rightDestinationElement) =>
-                        val resolved = resolution(
-                          Some(source),
+                        MultiSided.Coincident(
                           leftDestinationElement,
                           rightDestinationElement
+                        ) -> IndexedSeq(
+                          MultiSided.Preserved(
+                            baseElement = source,
+                            leftElement = leftDestinationElement,
+                            rightElement = rightDestinationElement
+                          )
                         )
-
-                        // NASTY HACK: this relies on external context, namely
-                        // that `CoreMergeAlgebra` has made a two-way resolution
-                        // that has turned out to be wrong in the light of
-                        // discovering a coincident move.
-                        val inaccuratelyResolvedBecauseOfCoreMerge = resolution(
-                          None,
-                          leftDestinationElement,
-                          rightDestinationElement
-                        )
-
-                        inaccuratelyResolvedBecauseOfCoreMerge -> resolved
-                    }
-                    .collect {
-                      case (destinationElement, resolved)
-                          if destinationElement != resolved =>
-                        destinationElement -> IndexedSeq(resolved)
                     }
                 case _ => Seq.empty
               end match
@@ -450,7 +434,9 @@ object MoveDestinationsReport:
   case class MoveEvaluation[Element](
       moveDestinationsReport: MoveDestinationsReport[Element],
       migratedEditSuppressions: Set[Element],
-      substitutionsByDestination: MultiDict[Element, IndexedSeq[Element]],
+      substitutionsByDestination: MultiDict[MultiSided[Element], IndexedSeq[
+        MultiSided[Element]
+      ]],
       anchoredMoves: Set[AnchoredMove[Element]]
   ):
     {
@@ -458,7 +444,13 @@ object MoveDestinationsReport:
       val anchorOppositeSides = anchoredMoves.map(_.oppositeSideAnchor)
       val anchorDestinations  = anchoredMoves.map(_.moveDestinationAnchor)
       val substitutionDestinations: collection.Set[Element] =
-        substitutionsByDestination.keySet
+        substitutionsByDestination.keySet.flatMap {
+          case MultiSided.Unique(uniqueDestination) => Seq(uniqueDestination)
+          case MultiSided.Coincident(leftDestination, rightDestination) =>
+            Seq(leftDestination, rightDestination)
+          case MultiSided.Preserved(_, leftDestination, rightDestination) =>
+            Seq(leftDestination, rightDestination)
+        }
       val allMoveDestinations                 = moveDestinationsReport.all
       val allMoveSources                      = moveDestinationsReport.sources
       val oppositeSideAnchorsForMigratedEdits = anchorOppositeSides.collect {

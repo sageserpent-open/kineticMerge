@@ -4,10 +4,20 @@ import cats.Eq
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
+import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.{
+  MultiSided,
+  MultiSidedMergeResult
+}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{Sized, defaultElementSize}
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
+  Sized,
+  defaultElementSize
+}
 import com.sageserpent.kineticmerge.core.MergeTest.*
-import com.sageserpent.kineticmerge.core.MergeTest.DelegatingMergeAlgebraWithContracts.{AugmentedMergeResult, State}
+import com.sageserpent.kineticmerge.core.MergeTest.DelegatingMergeAlgebraWithContracts.{
+  AugmentedMergeResult,
+  State
+}
 import com.sageserpent.kineticmerge.core.MergeTest.Move.*
 import com.sageserpent.kineticmerge.core.ResolutionContracts.*
 import monocle.syntax.all.*
@@ -49,11 +59,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end edit
 
   @Test
@@ -82,11 +92,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end editFollowedByAnInsertionOnTheOtherSide
 
   @Test
@@ -114,11 +124,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end insertionFollowedByADeletionOnTheOtherSide
 
   @Test
@@ -148,11 +158,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end insertionFollowedByAnEditOnTheOtherSide
 
   @Test
@@ -181,11 +191,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end coincidentDeletionFollowedByAnEdit
 
   @Test
@@ -215,11 +225,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end coincidentDeletionWithCoincidentInsertionAndThenASingleSideInsertion
 
   @Test
@@ -249,11 +259,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end singleSideInsertionFollowedByCoincidentDeletionWithCoincidentInsertion
 
   @Test
@@ -286,11 +296,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end editOnOneSideFollowedByADeletionOnTheSameSide
 
   @Test
@@ -326,11 +336,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end editOnOneSideFollowedByADeletionOnTheSameSideThenAnInsertionOnTheOppositeSide
 
   @Test
@@ -366,11 +376,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end editOnOneSideFollowedByAnInsertionOnTheOppositeSideThenADeletionOnTheOriginalSide
 
   @Test
@@ -405,11 +415,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end editOnOneSideFollowedByAnInsertionOnTheOppositeSideThenAnEditOnTheOriginalSide
 
   @Test
@@ -439,11 +449,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end editOnOneSideFollowedByAnInsertionOnTheSameSide
 
   @Test
@@ -475,11 +485,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end editOnOneSideFollowedByAnInsertionOnTheSameSideThenAnInsertionOnTheOppositeSide
 
   @Test
@@ -515,11 +525,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end editOnOneSideFollowedByAnInsertionOnTheSameSideThenACoincidentEdit
 
   @Test
@@ -551,11 +561,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end editOnOneSideFollowedByADeletionOnTheOppositeSide
 
   @Test
@@ -583,11 +593,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end deletionFollowedByAnInsertionOnTheOtherSide
 
   @Test
@@ -618,11 +628,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end deletionOnOneSideFollowedByADeletionOnTheOtherSide
 
   @Test
@@ -654,11 +664,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end deletionOnOneSideFollowedByAnEditOnTheOppositeSide
 
   @Test
@@ -696,11 +706,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end editConflict
 
   @Test
@@ -742,11 +752,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end editConflictFollowedByAnotherEditConflict
 
   @Test
@@ -790,11 +800,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end leftEditVersusRightDeletionConflictDueToFollowingRightEdit
 
   @Test
@@ -838,11 +848,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end rightEditVersusLeftDeletionConflictDueToFollowingLeftEdit
 
   @Test
@@ -887,11 +897,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end leftInsertionWithFollowingLeftInsertionVersusRightInsertionConflict
 
   @Test
@@ -935,11 +945,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end leftEditVersusRightDeletionConflictWithFollowingLeftInsertion
 
   @Test
@@ -976,11 +986,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end insertionConflict
 
   @Test
@@ -1020,11 +1030,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end insertionConflictFollowedByAnotherInsertionConflict
 
   @Test
@@ -1069,11 +1079,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end editConflictFollowedByCoincidentInsertion
 
   @Test
@@ -1113,11 +1123,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end editConflictFollowedByCoincidentDeletion
 
   @Test
@@ -1150,11 +1160,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end editConflictFollowedByALeftInsertionConflictingWithARightInsertion
 
   @Test
@@ -1190,11 +1200,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end leftEditVersusRightDeletionConflictWithFollowingLeftInsertionThenACoincidentInsertion
 
   @Test
@@ -1236,11 +1246,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end leftEditVersusRightDeletionConflictDueToFollowingRightDeletionAndThenLeftEdit
 
   @Test
@@ -1278,11 +1288,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end leftEditVersusRightDeletionConflictWithFollowingLeftInsertionAndThenRightEdit
 
   @Test
@@ -1324,11 +1334,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end rightEditVersusLeftDeletionConflictDueToFollowingLeftDeletionAndThenRightEdit
 
   @Test
@@ -1366,11 +1376,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end rightEditVersusLeftDeletionConflictWithFollowingRightInsertionAndThenLeftEdit
 
   @Test
@@ -1406,11 +1416,11 @@ class MergeTest:
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
-          new CoreMergeAlgebra(guardedLeftBiasedResolution)
+          new CoreMergeAlgebra
         )
       )(base, left, right): @unchecked
 
-    assert(result == expectedMerge)
+    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
   end coincidentEditFollowedByACoincidentInsertion
 
   @TestFactory
@@ -1427,7 +1437,7 @@ class MergeTest:
         val AugmentedMergeResult(_, result) =
           merge.of(mergeAlgebra =
             DelegatingMergeAlgebraWithContracts(
-              new CoreMergeAlgebra(guardedCoinFlippingResolution)
+              new CoreMergeAlgebra
             )
           )(
             testCase.base,
@@ -1435,7 +1445,7 @@ class MergeTest:
             testCase.right
           ): @unchecked
 
-        testCase.validate(result)
+        testCase.validate(result.resolveUsing(guardedCoinFlippingResolution))
 
   @TestFactory
   def conflictedMerge: DynamicTests =
@@ -1448,7 +1458,7 @@ class MergeTest:
         val AugmentedMergeResult(_, result) =
           merge.of(mergeAlgebra =
             DelegatingMergeAlgebraWithContracts(
-              new CoreMergeAlgebra(guardedCoinFlippingResolution)
+              new CoreMergeAlgebra
             )
           )(
             testCase.base,
@@ -1456,12 +1466,14 @@ class MergeTest:
             testCase.right
           ): @unchecked
 
-        result match
+        val resolvedResult = result.resolveUsing(guardedCoinFlippingResolution)
+
+        resolvedResult match
           case MergedWithConflicts(_, _) =>
             println("*************")
             pprintln(testCase)
 
-            testCase.validate(result)
+            testCase.validate(resolvedResult)
           case FullyMerged(_) => Trials.reject()
         end match
 
@@ -1530,13 +1542,7 @@ class MergeTest:
                 .focus(_.expectedMerge.some)
                 .modify:
                   case FullyMerged(elements) =>
-                    FullyMerged(
-                      elements :+ coinFlippingResolution(
-                        None,
-                        leftElement,
-                        rightElement
-                      )
-                    )
+                    FullyMerged(elements :+ coinFlippingResolution.coincident(leftElement, rightElement))
                 .focus(_.moves)
                 .modify(_ :+ CoincidentInsertion)
           yield result
@@ -1570,8 +1576,8 @@ class MergeTest:
                 .modify:
                   case FullyMerged(elements) =>
                     FullyMerged(
-                      elements :+ coinFlippingResolution(
-                        Some(baseElement),
+                      elements :+ coinFlippingResolution.preserved(
+                        baseElement,
                         leftElement,
                         rightElement
                       )
@@ -1669,8 +1675,7 @@ class MergeTest:
                 .modify:
                   case FullyMerged(elements) =>
                     FullyMerged(
-                      elements :+ coinFlippingResolution(
-                        None,
+                      elements :+ coinFlippingResolution.coincident(
                         leftElement,
                         rightElement
                       )
@@ -1757,6 +1762,13 @@ end MergeTest
 object MergeTest:
   type Element = Int
 
+  extension (unresolvedMergeResult: MultiSidedMergeResult[Element])
+    def resolveUsing(resolution: Resolution[Element]): MergeResult[Element] =
+      unresolvedMergeResult.transformElementsEnMasse(
+        _.map(_.resolveUsing(resolution))
+      )
+  end extension
+
   private def emptyMergeTestCase(allowConflicts: Boolean): MergeTestCase =
     MergeTestCase(
       base = IndexedSeq.empty,
@@ -1784,8 +1796,8 @@ object MergeTest:
         val preserved = base.collect(baseElement =>
           matchesByElement.get(baseElement) match
             case Some(Match.AllSides(baseElement, leftElement, rightElement)) =>
-              coinFlippingResolution(
-                Some(baseElement),
+              coinFlippingResolution.preserved(
+                baseElement,
                 leftElement,
                 rightElement
               )
@@ -1801,13 +1813,13 @@ object MergeTest:
         val appears = left.collect(leftElement =>
           matchesByElement.get(leftElement) match
             case Some(Match.AllSides(baseElement, leftElement, rightElement)) =>
-              coinFlippingResolution(
-                Some(baseElement),
+              coinFlippingResolution.preserved(
+                baseElement,
                 leftElement,
                 rightElement
               )
             case Some(Match.LeftAndRight(leftElement, rightElement)) =>
-              coinFlippingResolution(None, leftElement, rightElement)
+              coinFlippingResolution.coincident(leftElement, rightElement)
             case None => leftElement
         )
 
@@ -1820,13 +1832,13 @@ object MergeTest:
         val appears = right.collect(rightElement =>
           matchesByElement.get(rightElement) match
             case Some(Match.AllSides(baseElement, leftElement, rightElement)) =>
-              coinFlippingResolution(
-                Some(baseElement),
+              coinFlippingResolution.preserved(
+                baseElement,
                 leftElement,
                 rightElement
               )
             case Some(Match.LeftAndRight(leftElement, rightElement)) =>
-              coinFlippingResolution(None, leftElement, rightElement)
+              coinFlippingResolution.coincident(leftElement, rightElement)
             case None => rightElement
         )
 
@@ -2142,7 +2154,7 @@ object MergeTest:
   end Move
 
   class DelegatingMergeAlgebraWithContracts(
-      coreMergeAlgebra: merge.MergeAlgebra[MergeResult, Element]
+      coreMergeAlgebra: merge.MergeAlgebra[MultiSidedMergeResult, Element]
   ) extends merge.MergeAlgebra[AugmentedMergeResult, Element]:
     override def empty: AugmentedMergeResult[Element] =
       AugmentedMergeResult(state = State.Neutral, coreMergeAlgebra.empty)
@@ -2354,8 +2366,8 @@ object MergeTest:
 
     case class AugmentedMergeResult[Element](
         state: State,
-        coreMergeResult: MergeResult[Element]
-    ) extends MergeResult[Element]:
+        coreMergeResult: MultiSidedMergeResult[Element]
+    ) extends MultiSidedMergeResult[Element]:
       export coreMergeResult.*
 
   end DelegatingMergeAlgebraWithContracts

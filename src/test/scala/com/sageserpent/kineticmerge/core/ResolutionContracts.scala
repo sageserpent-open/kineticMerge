@@ -25,46 +25,70 @@ object ResolutionContracts:
     new CoinFlippingResolution[Element] with ResolutionContracts[Element] {}
 
   trait LeftBiasedResolution[Element] extends Resolution[Element]:
-    override def apply(
-        base: Option[Element],
-        left: Element,
-        right: Element
-    ): Element = left
+    override def coincident(
+        leftElement: Element,
+        rightElement: Element
+    ): Element = leftElement
+
+    override def preserved(
+        baseElement: Element,
+        leftElement: Element,
+        rightElement: Element
+    ): Element = leftElement
   end LeftBiasedResolution
 
   trait RightBiasedResolution[Element] extends Resolution[Element]:
-    override def apply(
-        base: Option[Element],
-        left: Element,
-        right: Element
-    ): Element = right
+    override def coincident(
+        leftElement: Element,
+        rightElement: Element
+    ): Element = rightElement
+
+    override def preserved(
+        baseElement: Element,
+        leftElement: Element,
+        rightElement: Element
+    ): Element = rightElement
   end RightBiasedResolution
 
   trait CoinFlippingResolution[Element] extends Resolution[Element]:
-    override def apply(
-        base: Option[Element],
-        left: Element,
-        right: Element
+    override def coincident(
+        leftElement: Element,
+        rightElement: Element
     ): Element =
-      val headsItIs = 0 == (base, left, right).hashCode() % 2
-      if headsItIs then left else right
-    end apply
+      val headsItIs = 0 == (leftElement, rightElement).hashCode() % 2
+      if headsItIs then leftElement else rightElement
+    end coincident
+
+    override def preserved(
+        baseElement: Element,
+        leftElement: Element,
+        rightElement: Element
+    ): Element =
+      val headsItIs =
+        0 == (baseElement, leftElement, rightElement).hashCode() % 2
+      if headsItIs then leftElement else rightElement
+    end preserved
   end CoinFlippingResolution
 end ResolutionContracts
 
 trait ResolutionContracts[Element: Eq] extends Resolution[Element]:
-  abstract override def apply(
-      base: Option[Element],
-      left: Element,
-      right: Element
+  abstract override def coincident(
+      leftElement: Element,
+      rightElement: Element
   ): Element =
-    require(Eq.eqv(left, right))
+    require(Eq.eqv(leftElement, rightElement))
+    super.coincident(leftElement, rightElement)
+  end coincident
 
-    base.foreach { payload =>
-      require(Eq.eqv(payload, left))
-      require(Eq.eqv(payload, right))
-    }
+  abstract override def preserved(
+      baseElement: Element,
+      leftElement: Element,
+      rightElement: Element
+  ): Element =
+    require(Eq.eqv(leftElement, rightElement))
+    require(Eq.eqv(baseElement, leftElement))
+    require(Eq.eqv(baseElement, rightElement))
 
-    super.apply(base, left, right)
-  end apply
+    super.preserved(baseElement, leftElement, rightElement)
+  end preserved
 end ResolutionContracts
