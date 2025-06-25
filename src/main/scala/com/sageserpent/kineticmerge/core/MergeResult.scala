@@ -13,6 +13,20 @@ trait MergeResult[Element]:
   def transformElementsEnMasse[TransformedElement](
       transform: IndexedSeq[Element] => IndexedSeq[TransformedElement]
   )(using equality: Eq[TransformedElement]): MergeResult[TransformedElement]
+
+  /** Yields content in a form suitable for being potentially nested within
+    * either side of a larger [[MergedWithConflicts]]. This is necessary because
+    * Git doesn't model nested conflicts, where one side of a conflict can
+    * contain a smaller conflict. <p>This occurs because splicing can generate
+    * such nested conflicts housed within a larger conflict between move
+    * destination anchors on one side (with the splice) and some other
+    * conflicting content on the opposite side to the anchors.
+    * @return
+    *   The elements as single [[IndexedSeq]].
+    * @see
+    *   https://github.com/sageserpent-open/kineticMerge/issues/160
+    */
+  def flattenContent: IndexedSeq[Element]
 end MergeResult
 
 case class FullyMerged[Element](elements: IndexedSeq[Element])
@@ -23,6 +37,8 @@ case class FullyMerged[Element](elements: IndexedSeq[Element])
       transform: IndexedSeq[Element] => IndexedSeq[TransformedElement]
   )(using equality: Eq[TransformedElement]): MergeResult[TransformedElement] =
     FullyMerged(transform(elements))
+
+  override def flattenContent: IndexedSeq[Element] = elements
 end FullyMerged
 
 /** @param leftElements
@@ -59,6 +75,9 @@ case class MergedWithConflicts[Element](
       )
     end if
   end transformElementsEnMasse
+
+  override def flattenContent: IndexedSeq[Element] =
+    leftElements ++ rightElements
 end MergedWithConflicts
 
 object CoreMergeAlgebra:

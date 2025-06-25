@@ -758,44 +758,11 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             succeedingAnchoredContentFromMoveDestinationSide
           )
 
-        anchoredMove.moveDestinationSide match
-          case Side.Left =>
-            val precedingSplice =
-              precedingMerge match
-                case FullyMerged(sections) => sections
-                case MergedWithConflicts(leftSections, rightSections) =>
-                  leftSections ++ rightSections
-
-            val succeedingSplice =
-              succeedingMerge match
-                case FullyMerged(sections) => sections
-                case MergedWithConflicts(leftSections, rightSections) =>
-                  rightSections ++ leftSections
-
-            MigrationSplices(
-              precedingSplice,
-              succeedingSplice,
-              spliceMigrationSuppressions
-            )
-          case Side.Right =>
-            val precedingSplice =
-              precedingMerge match
-                case FullyMerged(sections) => sections
-                case MergedWithConflicts(leftSections, rightSections) =>
-                  rightSections ++ leftSections
-
-            val succeedingSplice =
-              succeedingMerge match
-                case FullyMerged(sections) => sections
-                case MergedWithConflicts(leftSections, rightSections) =>
-                  leftSections ++ rightSections
-
-            MigrationSplices(
-              precedingSplice,
-              succeedingSplice,
-              spliceMigrationSuppressions
-            )
-        end match
+        MigrationSplices(
+          precedingMerge.flattenContent,
+          succeedingMerge.flattenContent,
+          spliceMigrationSuppressions
+        )
       end mergesFrom
 
       val (
