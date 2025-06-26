@@ -19,7 +19,6 @@ import com.sageserpent.kineticmerge.core.MergeTest.DelegatingMergeAlgebraWithCon
   State
 }
 import com.sageserpent.kineticmerge.core.MergeTest.Move.*
-import com.sageserpent.kineticmerge.core.ResolutionContracts.*
 import monocle.syntax.all.*
 import org.junit.jupiter.api.{Assertions, Test, TestFactory}
 import pprintCustomised.*
@@ -50,11 +49,11 @@ class MergeTest:
 
     val matchesByElement: Map[Element, Match[Element]] = Map(a -> ab, b -> ab)
 
-    // NOTE: we expect a clean merge of the edit of `a` into `c`.
-    val expectedMerge = FullyMerged(elements = Vector(c))
-
-    given Eq[Element]    = matchesByElement.equivalent
+    given Eq[Element] = matchesByElement.equivalent
     given Sized[Element] = defaultElementSize
+
+    // NOTE: we expect a clean merge of the edit of `a` into `c`.
+    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(c)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -63,7 +62,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end edit
 
   @Test
@@ -82,12 +81,12 @@ class MergeTest:
 
     val matchesByElement: Map[Element, Match[Element]] = Map(a -> ab, b -> ab)
 
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+    
     // NOTE: we expect a clean merge of the edit of `a` into `d` followed by an
     // insertion of `c`.
-    val expectedMerge = FullyMerged(elements = Vector(d, c))
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
+    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(d), MultiSided.Unique(c)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -96,7 +95,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end editFollowedByAnInsertionOnTheOtherSide
 
   @Test
@@ -114,12 +113,12 @@ class MergeTest:
 
     val matchesByElement: Map[Element, Match[Element]] = Map(a -> ac, c -> ac)
 
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+
     // NOTE: we expect a clean merge of the insertion of `b` followed by a
     // deletion of `a`.
-    val expectedMerge = FullyMerged(elements = Vector(b))
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
+    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(b)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -128,7 +127,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end insertionFollowedByADeletionOnTheOtherSide
 
   @Test
@@ -148,12 +147,12 @@ class MergeTest:
 
     val matchesByElement: Map[Element, Match[Element]] = Map(a -> ac, c -> ac)
 
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+
     // NOTE: we expect a clean merge of the insertion of `b` followed by an edit
     // of `a` into `d`.
-    val expectedMerge = FullyMerged(elements = Vector(b, d))
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
+    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(b), MultiSided.Unique(d)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -162,7 +161,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end insertionFollowedByAnEditOnTheOtherSide
 
   @Test
@@ -181,12 +180,12 @@ class MergeTest:
 
     val matchesByElement: Map[Element, Match[Element]] = Map(b -> bc, c -> bc)
 
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+
     // NOTE: we expect a clean merge of the coincident deletion of `a` followed
     // by the edit of `b` into `d`
-    val expectedMerge = FullyMerged(elements = Vector(d))
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
+    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(d)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -195,7 +194,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end coincidentDeletionFollowedByAnEdit
 
   @Test
@@ -215,12 +214,12 @@ class MergeTest:
 
     val matchesByElement: Map[Element, Match[Element]] = Map(b -> bc, c -> bc)
 
-    // NOTE: we expect a clean merge of the coincident deletion of `a` with a
-    // coincident insertion of `b` followed by insertion of `d`.
-    val expectedMerge = FullyMerged(elements = Vector(b, d))
-
-    given Eq[Element]    = matchesByElement.equivalent
+    given Eq[Element] = matchesByElement.equivalent
     given Sized[Element] = defaultElementSize
+
+    // NOTE: we expect a clean merge of the coincident deletion of `a` with a
+    // coincident insertion of `b` and `c`, followed by insertion of `d`.
+    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Coincident(b, c), MultiSided.Unique(d)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -229,7 +228,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end coincidentDeletionWithCoincidentInsertionAndThenASingleSideInsertion
 
   @Test
@@ -249,12 +248,12 @@ class MergeTest:
 
     val matchesByElement: Map[Element, Match[Element]] = Map(b -> bd, d -> bd)
 
-    // NOTE: we expect a clean merge of the insertion of `c`, followed by a
-    // coincident deletion of `a` with a coincident insertion of `b`.
-    val expectedMerge = FullyMerged(elements = Vector(c, b))
-
-    given Eq[Element]    = matchesByElement.equivalent
+    given Eq[Element] = matchesByElement.equivalent
     given Sized[Element] = defaultElementSize
+    
+    // NOTE: we expect a clean merge of the insertion of `c`, followed by a
+    // coincident deletion of `a` with a coincident insertion of `b` and `d`.
+    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(c), MultiSided.Coincident(b, d)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -263,7 +262,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end singleSideInsertionFollowedByCoincidentDeletionWithCoincidentInsertion
 
   @Test
@@ -284,14 +283,14 @@ class MergeTest:
 
     val matchesByElement: Map[Element, Match[Element]] =
       Map(a -> ac, c -> ac, b -> bd, d -> bd)
+    
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a clean merge of the edit of `a` into `e` followed by a
     // deletion of `b`. Merging is supposed to look eagerly for edits, so `e` is
     // considered to be an edit of `a` rather than of `b`.
-    val expectedMerge = FullyMerged(elements = Vector(e))
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
+    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(e)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -300,7 +299,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end editOnOneSideFollowedByADeletionOnTheSameSide
 
   @Test
@@ -324,14 +323,14 @@ class MergeTest:
     val matchesByElement: Map[Element, Match[Element]] =
       Map(a -> ac, c -> ac, b -> bd, d -> bd)
 
+    given Eq[Element]    = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+
     // NOTE: we expect a clean merge of the edit of `a` into `f` followed by a
     // deletion of `b` and then an insertion of `e`. Merging is supposed to look
     // eagerly for edits, so `f` is considered to be an edit of `a` rather than
     // of `b`.
-    val expectedMerge = FullyMerged(elements = Vector(f, e))
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
+    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(f), MultiSided.Unique(e)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -340,7 +339,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end editOnOneSideFollowedByADeletionOnTheSameSideThenAnInsertionOnTheOppositeSide
 
   @Test
@@ -364,14 +363,14 @@ class MergeTest:
     val matchesByElement: Map[Element, Match[Element]] =
       Map(a -> ac, c -> ac, b -> be, e -> be)
 
+    given Eq[Element]    = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+
     // NOTE: we expect a clean merge of the edit of `a` into `f` followed by an
     // insertion of `d` and finally deletion of `b`. Merging is supposed to look
     // eagerly for edits, so `f` is considered to be an edit of `a` rather than
     // of `b`.
-    val expectedMerge = FullyMerged(elements = Vector(f, d))
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
+    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(f), MultiSided.Unique(d)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -380,7 +379,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end editOnOneSideFollowedByAnInsertionOnTheOppositeSideThenADeletionOnTheOriginalSide
 
   @Test
@@ -405,12 +404,12 @@ class MergeTest:
     val matchesByElement: Map[Element, Match[Element]] =
       Map(a -> ac, c -> ac, b -> be, e -> be)
 
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+
     // NOTE: we expect a clean merge of the edit of `a` into `f` followed by an
     // insertion of `d` and finally a merge of the edit of `b` into `g`.
-    val expectedMerge = FullyMerged(elements = Vector(f, d, g))
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
+    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(f), MultiSided.Unique(d), MultiSided.Unique(g)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -419,7 +418,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end editOnOneSideFollowedByAnInsertionOnTheOppositeSideThenAnEditOnTheOriginalSide
 
   @Test
@@ -439,13 +438,13 @@ class MergeTest:
     val matchesByElement: Map[Element, Match[Element]] =
       Map(a -> ab, b -> ab)
 
-    // NOTE: we expect a clean merge of the edit of `a` into `c` coalesced with
-    // an insertion of `d`.
-    val expectedMerge = FullyMerged(elements = Vector(c, d))
-
-    given Eq[Element]    = matchesByElement.equivalent
+    given Eq[Element] = matchesByElement.equivalent
     given Sized[Element] = defaultElementSize
 
+    // NOTE: we expect a clean merge of the edit of `a` into `c` coalesced with
+    // an insertion of `d`.
+    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(c), MultiSided.Unique(d)))
+    
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
         DelegatingMergeAlgebraWithContracts(
@@ -453,7 +452,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end editOnOneSideFollowedByAnInsertionOnTheSameSide
 
   @Test
@@ -475,12 +474,12 @@ class MergeTest:
     val matchesByElement: Map[Element, Match[Element]] =
       Map(a -> ab, b -> ab)
 
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+    
     // NOTE: we expect a clean merge of the edit of `a` into `d` coalesced with
     // an insertion of `e` followed by an insertion of `c`.
-    val expectedMerge = FullyMerged(elements = Vector(d, e, c))
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
+    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(d), MultiSided.Unique(e), MultiSided.Unique(c)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -489,7 +488,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end editOnOneSideFollowedByAnInsertionOnTheSameSideThenAnInsertionOnTheOppositeSide
 
   @Test
@@ -514,13 +513,13 @@ class MergeTest:
     val matchesByElement: Map[Element, Match[Element]] =
       Map(a -> af, f -> af, e -> eg, g -> eg)
 
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+    
     // NOTE: we expect a clean merge of the left edit of `a` into `c` coalesced
     // with the left insertion of `d` and finally a coincident edit of `b` into
-    // `e`.
-    val expectedMerge = FullyMerged(elements = Vector(c, d, e))
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
+    // `e` and `g`.
+    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(c), MultiSided.Unique(d), MultiSided.Coincident(e, g)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -529,7 +528,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end editOnOneSideFollowedByAnInsertionOnTheSameSideThenACoincidentEdit
 
   @Test
@@ -551,12 +550,12 @@ class MergeTest:
     val matchesByElement: Map[Element, Match[Element]] =
       Map(a -> ac, c -> ac, b -> be, e -> be)
 
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+    
     // NOTE: we expect a clean merge of the edit of `a` into `d` followed by a
     // deletion of `b`.
-    val expectedMerge = FullyMerged(elements = Vector(d))
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
+    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(d)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -565,7 +564,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end editOnOneSideFollowedByADeletionOnTheOppositeSide
 
   @Test
@@ -583,12 +582,12 @@ class MergeTest:
 
     val matchesByElement: Map[Element, Match[Element]] = Map(a -> ab, b -> ab)
 
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+    
     // NOTE: we expect a clean merge of the deletion of `a` followed by an
     // insertion of `c`.
-    val expectedMerge = FullyMerged(elements = Vector(c))
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
+    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(c)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -597,7 +596,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end deletionFollowedByAnInsertionOnTheOtherSide
 
   @Test
@@ -618,12 +617,12 @@ class MergeTest:
     val matchesByElement: Map[Element, Match[Element]] =
       Map(a -> ac, c -> ac, b -> bd, d -> bd)
 
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+    
     // NOTE: we expect a clean merge of the deletion of `a` followed by a
     // deletion of `b`.
     val expectedMerge = FullyMerged(elements = Vector())
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -632,7 +631,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end deletionOnOneSideFollowedByADeletionOnTheOtherSide
 
   @Test
@@ -650,16 +649,16 @@ class MergeTest:
 
     val ac = Match.BaseAndLeft(baseElement = a, leftElement = c)
     val be = Match.BaseAndRight(baseElement = b, rightElement = e)
-
+    
     val matchesByElement: Map[Element, Match[Element]] =
       Map(a -> ac, c -> ac, b -> be, e -> be)
 
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+    
     // NOTE: we expect a clean merge of the deletion of 'a' followed by an edit
     // of `b` into `d` followed by a deletion of `b`.
-    val expectedMerge = FullyMerged(elements = Vector(d))
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
+    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(d)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -668,7 +667,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end deletionOnOneSideFollowedByAnEditOnTheOppositeSide
 
   @Test
@@ -693,15 +692,15 @@ class MergeTest:
       f -> bdf
     )
 
-    // NOTE: we expect a clean merge of `d` after the initial edit conflict.
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+
+    // NOTE: we expect `b` to be preserved as `d` and `f` after the initial edit conflict.
     val expectedMerge =
       MergedWithConflicts(
-        leftElements = Vector(c, d),
-        rightElements = Vector(e, d)
+        leftElements = Vector(MultiSided.Unique(c), MultiSided.Preserved(b, d, f)),
+        rightElements = Vector(MultiSided.Unique(e), MultiSided.Preserved(b, d, f))
       )
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -710,7 +709,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end editConflict
 
   @Test
@@ -738,16 +737,15 @@ class MergeTest:
       i -> cfi
     )
 
-    // NOTE: we expect a clean merge of `f` after the two separate edit
-    // conflicts.
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+
+    // NOTE: we expect a `c` to be preserved as `f` and `i` after the two separate edit conflicts.
     val expectedMerge =
       MergedWithConflicts(
-        leftElements = Vector(d, e, f),
-        rightElements = Vector(g, h, f)
+        leftElements = Vector(MultiSided.Unique(d), MultiSided.Unique(e), MultiSided.Preserved(c, f, i)),
+        rightElements = Vector(MultiSided.Unique(g), MultiSided.Unique(h), MultiSided.Preserved(c, f, i))
       )
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -756,7 +754,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end editConflictFollowedByAnotherEditConflict
 
   @Test
@@ -786,16 +784,15 @@ class MergeTest:
       i -> cfi
     )
 
-    // NOTE: we expect a clean merge of `g`, `h` and `f` after the initial
-    // left edit versus right deletion conflict.
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+
+    // NOTE: we expect a right edit of `b` into `g` and then `h` after the initial left edit versus right deletion conflict, followed by `c` being preserved as `f` and `i`.
     val expectedMerge =
       MergedWithConflicts(
-        leftElements = Vector(d, g, h, f),
-        rightElements = Vector(g, h, f)
+        leftElements = Vector(MultiSided.Unique(d), MultiSided.Unique(g), MultiSided.Unique(h), MultiSided.Preserved(c, f, i)),
+        rightElements = Vector(MultiSided.Unique(g), MultiSided.Unique(h), MultiSided.Preserved(c, f, i))
       )
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -804,7 +801,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end leftEditVersusRightDeletionConflictDueToFollowingRightEdit
 
   @Test
@@ -834,16 +831,15 @@ class MergeTest:
       i -> cfi
     )
 
-    // NOTE: we expect a clean merge of `d`, `e` and `f` after the initial
-    // right edit versus left deletion conflict.
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+
+    // NOTE: we expect a left edit of `b` into `d` and then `e` after the initial right edit versus left deletion conflict, followed by `c` being preserved as `f` and `i`.
     val expectedMerge =
       MergedWithConflicts(
-        leftElements = Vector(d, e, f),
-        rightElements = Vector(g, d, e, f)
+        leftElements = Vector(MultiSided.Unique(d), MultiSided.Unique(e), MultiSided.Preserved(c, f, i)),
+        rightElements = Vector(MultiSided.Unique(g), MultiSided.Unique(d), MultiSided.Unique(e), MultiSided.Preserved(c, f, i))
       )
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -852,7 +848,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end rightEditVersusLeftDeletionConflictDueToFollowingLeftEdit
 
   @Test
@@ -884,15 +880,15 @@ class MergeTest:
       i -> bfi
     )
 
-    // NOTE: we expect a clean merge of `f` after the conflict.
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+
+    // NOTE: we expect `a` to be preserved as `c` and `g` before the conflict, with `b` being preserved as `f` and `i` after.
     val expectedMerge =
       MergedWithConflicts(
-        leftElements = Vector(c, d, e, f),
-        rightElements = Vector(c, h, f)
+        leftElements = Vector(MultiSided.Preserved(a, c, g), MultiSided.Unique(d), MultiSided.Unique(e), MultiSided.Preserved(b, f, i)),
+        rightElements = Vector(MultiSided.Preserved(a, c, g), MultiSided.Unique(h), MultiSided.Preserved(b, f, i))
       )
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -901,7 +897,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end leftInsertionWithFollowingLeftInsertionVersusRightInsertionConflict
 
   @Test
@@ -932,15 +928,15 @@ class MergeTest:
       i -> cgi
     )
 
-    // NOTE: we expect a clean merge of `g` after the coalesced conflict.
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+
+    // NOTE: we expect `a` to be preserved as `d` and `h` before the coalesced conflict, with `c` to be preserved as `g` and `i` after.
     val expectedMerge =
       MergedWithConflicts(
-        leftElements = Vector(d, e, f, g),
-        rightElements = Vector(d, g)
+        leftElements = Vector(MultiSided.Preserved(a, d, h), MultiSided.Unique(e), MultiSided.Unique(f), MultiSided.Preserved(c, g, i)),
+        rightElements = Vector(MultiSided.Preserved(a, d, h), MultiSided.Preserved(c, g, i))
       )
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -949,7 +945,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end leftEditVersusRightDeletionConflictWithFollowingLeftInsertion
 
   @Test
@@ -973,15 +969,15 @@ class MergeTest:
       e -> ace
     )
 
-    // NOTE: we expect a clean merge of `c` after the initial conflict.
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+
+    // NOTE: we expect `a` to be preserved as `c` and `e` after the initial conflict.
     val expectedMerge =
       MergedWithConflicts(
-        leftElements = Vector(b, c),
-        rightElements = Vector(d, c)
+        leftElements = Vector(MultiSided.Unique(b), MultiSided.Preserved(a, c, e)),
+        rightElements = Vector(MultiSided.Unique(d), MultiSided.Preserved(a, c, e))
       )
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -990,7 +986,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end insertionConflict
 
   @Test
@@ -1016,16 +1012,15 @@ class MergeTest:
       g -> adg
     )
 
-    // NOTE: we expect a clean merge of `d` after the two separate insertion
-    // conflicts.
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+
+    // NOTE: we expect `a` to be preserved as `d` and `g` after the coalesced insertion conflict.
     val expectedMerge =
       MergedWithConflicts(
-        leftElements = Vector(b, c, d),
-        rightElements = Vector(e, f, d)
+        leftElements = Vector(MultiSided.Unique(b), MultiSided.Unique(c), MultiSided.Preserved(a, d, g)),
+        rightElements = Vector(MultiSided.Unique(e), MultiSided.Unique(f), MultiSided.Preserved(a, d, g))
       )
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -1034,7 +1029,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end insertionConflictFollowedByAnotherInsertionConflict
 
   @Test
@@ -1065,16 +1060,15 @@ class MergeTest:
       h -> beh
     )
 
-    // NOTE: we expect a clean merge of `d` and `e` after the initial edit
-    // conflict.
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+
+    // NOTE: we expect a coincident insertion of `d` and `g` and then `b` to be preserved as `e` and `h` after the initial edit conflict.
     val expectedMerge =
       MergedWithConflicts(
-        leftElements = Vector(c, d, e),
-        rightElements = Vector(f, d, e)
+        leftElements = Vector(MultiSided.Unique(c), MultiSided.Coincident(d, g), MultiSided.Preserved(b, e, h)),
+        rightElements = Vector(MultiSided.Unique(f), MultiSided.Coincident(d, g), MultiSided.Preserved(b, e, h))
       )
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -1083,7 +1077,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end editConflictFollowedByCoincidentInsertion
 
   @Test
@@ -1109,16 +1103,15 @@ class MergeTest:
       g -> ceg
     )
 
-    // NOTE: we expect a clean merge of `e` after the initial edit
-    // conflict coalesces with the coincident deletion of `b`.
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+
+    // NOTE: we expect `c` to be preserved as `e` and `g` after the initial edit conflict coalesces with the coincident deletion of `b`.
     val expectedMerge =
       MergedWithConflicts(
-        leftElements = Vector(d, e),
-        rightElements = Vector(f, e)
+        leftElements = Vector(MultiSided.Unique(d), MultiSided.Preserved(c, e, g)),
+        rightElements = Vector(MultiSided.Unique(f), MultiSided.Preserved(c, e, g))
       )
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -1127,7 +1120,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end editConflictFollowedByCoincidentDeletion
 
   @Test
@@ -1146,16 +1139,16 @@ class MergeTest:
 
     val matchesByElement: Map[Element, Match[Element]] = Map.empty
 
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+
     // NOTE: we expect the initial edit conflict to coalesce with the following
     // insertion conflict.
     val expectedMerge =
       MergedWithConflicts(
-        leftElements = Vector(b, c),
-        rightElements = Vector(d, e)
+        leftElements = Vector(MultiSided.Unique(b), MultiSided.Unique(c)),
+        rightElements = Vector(MultiSided.Unique(d), MultiSided.Unique(e))
       )
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -1164,7 +1157,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end editConflictFollowedByALeftInsertionConflictingWithARightInsertion
 
   @Test
@@ -1186,16 +1179,16 @@ class MergeTest:
 
     val matchesByElement: Map[Element, Match[Element]] = Map(d -> df, f -> df)
 
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+
     // NOTE: we expect the initial edit conflict to coalesce with the following
-    // insertion conflict, then be followed by the coincident insertion.
+    // insertion conflict, then be followed by the coincident insertion of `d` and `f`.
     val expectedMerge =
       MergedWithConflicts(
-        leftElements = Vector(b, c, d),
-        rightElements = Vector(e, d)
+        leftElements = Vector(MultiSided.Unique(b), MultiSided.Unique(c), MultiSided.Coincident(d, f)),
+        rightElements = Vector(MultiSided.Unique(e), MultiSided.Coincident(d, f))
       )
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -1204,7 +1197,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end leftEditVersusRightDeletionConflictWithFollowingLeftInsertionThenACoincidentInsertion
 
   @Test
@@ -1232,16 +1225,16 @@ class MergeTest:
       g -> cg
     )
 
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+
     // NOTE: we expect a clean merge of the deletion of 'b' and the edit of 'c'
     // into 'f' after the initial left edit versus right deletion conflict.
     val expectedMerge =
       MergedWithConflicts(
-        leftElements = Vector(d, f),
-        rightElements = Vector(f)
+        leftElements = Vector(MultiSided.Unique(d), MultiSided.Unique(f)),
+        rightElements = Vector(MultiSided.Unique(f))
       )
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -1250,7 +1243,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end leftEditVersusRightDeletionConflictDueToFollowingRightDeletionAndThenLeftEdit
 
   @Test
@@ -1274,16 +1267,16 @@ class MergeTest:
       e -> be
     )
 
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+
     // NOTE: we expect a left edit versus right deletion conflict that claims
     // both `c` and `d` on the left, followed by a right-edit of `b` into `f`.
     val expectedMerge =
       MergedWithConflicts(
-        leftElements = Vector(c, d, f),
-        rightElements = Vector(f)
+        leftElements = Vector(MultiSided.Unique(c), MultiSided.Unique(d), MultiSided.Unique(f)),
+        rightElements = Vector(MultiSided.Unique(f))
       )
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -1292,7 +1285,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end leftEditVersusRightDeletionConflictWithFollowingLeftInsertionAndThenRightEdit
 
   @Test
@@ -1320,16 +1313,16 @@ class MergeTest:
       d -> cd
     )
 
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+
     // NOTE: we expect a clean merge of the deletion of 'b' and the edit of 'c'
     // into 'g' after the initial left edit versus right deletion conflict.
     val expectedMerge =
       MergedWithConflicts(
-        leftElements = Vector(g),
-        rightElements = Vector(e, g)
+        leftElements = Vector(MultiSided.Unique(g)),
+        rightElements = Vector(MultiSided.Unique(e), MultiSided.Unique(g))
       )
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -1338,7 +1331,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end rightEditVersusLeftDeletionConflictDueToFollowingLeftDeletionAndThenRightEdit
 
   @Test
@@ -1362,16 +1355,16 @@ class MergeTest:
       f -> bf
     )
 
+    given Eq[Element] = matchesByElement.equivalent
+    given Sized[Element] = defaultElementSize
+
     // NOTE: we expect a right edit versus left deletion conflict that claims
     // both `d` and `e` on the right, followed by a left-edit of `b` into `c`.
     val expectedMerge =
       MergedWithConflicts(
-        leftElements = Vector(c),
-        rightElements = Vector(d, e, c)
+        leftElements = Vector(MultiSided.Unique(c)),
+        rightElements = Vector(MultiSided.Unique(d), MultiSided.Unique(e), MultiSided.Unique(c))
       )
-
-    given Eq[Element]    = matchesByElement.equivalent
-    given Sized[Element] = defaultElementSize
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -1380,7 +1373,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end rightEditVersusLeftDeletionConflictWithFollowingRightInsertionAndThenLeftEdit
 
   @Test
@@ -1405,13 +1398,13 @@ class MergeTest:
       e -> ce
     )
 
-    // NOTE: we expect a a clean merge of a coincident edit coalesced with the
-    // following coincident insertion, editing `a` into `b` and `c`.
-    val expectedMerge =
-      FullyMerged(elements = Vector(b, c))
-
-    given Eq[Element]    = matchesByElement.equivalent
+    given Eq[Element] = matchesByElement.equivalent
     given Sized[Element] = defaultElementSize
+
+    // NOTE: we expect a clean merge of a coincident edit coalesced with the
+    // following coincident insertion, editing `a` into `b` and `d` and then `c` and `e`.
+    val expectedMerge =
+      FullyMerged(elements = Vector(MultiSided.Coincident(b, d), MultiSided.Coincident(c, e)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -1420,7 +1413,7 @@ class MergeTest:
         )
       )(base, left, right): @unchecked
 
-    assert(result.resolveUsing(guardedLeftBiasedResolution) == expectedMerge)
+    assert(result == expectedMerge)
   end coincidentEditFollowedByACoincidentInsertion
 
   @TestFactory
@@ -1445,7 +1438,7 @@ class MergeTest:
             testCase.right
           ): @unchecked
 
-        testCase.validate(result.resolveUsing(guardedCoinFlippingResolution))
+        testCase.validate(result)
 
   @TestFactory
   def conflictedMerge: DynamicTests =
@@ -1466,14 +1459,12 @@ class MergeTest:
             testCase.right
           ): @unchecked
 
-        val resolvedResult = result.resolveUsing(guardedCoinFlippingResolution)
-
-        resolvedResult match
+        result match
           case MergedWithConflicts(_, _) =>
             println("*************")
             pprintln(testCase)
 
-            testCase.validate(resolvedResult)
+            testCase.validate(result)
           case FullyMerged(_) => Trials.reject()
         end match
 
@@ -1496,7 +1487,7 @@ class MergeTest:
                 .focus(_.expectedMerge.some)
                 .modify:
                   case FullyMerged(elements) =>
-                    FullyMerged(elements :+ leftElement)
+                    FullyMerged(elements :+ MultiSided.Unique(leftElement))
                 .focus(_.moves)
                 .modify(_ :+ LeftInsertion)
             )
@@ -1513,7 +1504,7 @@ class MergeTest:
                 .focus(_.expectedMerge.some)
                 .modify:
                   case FullyMerged(elements) =>
-                    FullyMerged(elements :+ rightElement)
+                    FullyMerged(elements :+ MultiSided.Unique(rightElement))
                 .focus(_.moves)
                 .modify(_ :+ RightInsertion)
             )
@@ -1542,7 +1533,9 @@ class MergeTest:
                 .focus(_.expectedMerge.some)
                 .modify:
                   case FullyMerged(elements) =>
-                    FullyMerged(elements :+ coinFlippingResolution.coincident(leftElement, rightElement))
+                    FullyMerged(elements :+ MultiSided.Coincident(leftElement, rightElement)
+                      // As we're defining the match between the left and right elements at the same time anyway, we just jemmy the equivalence.
+                      (using (_, _) => true))
                 .focus(_.moves)
                 .modify(_ :+ CoincidentInsertion)
           yield result
@@ -1576,11 +1569,13 @@ class MergeTest:
                 .modify:
                   case FullyMerged(elements) =>
                     FullyMerged(
-                      elements :+ coinFlippingResolution.preserved(
+                      elements :+ MultiSided.Preserved(
                         baseElement,
                         leftElement,
                         rightElement
                       )
+                      // As we're defining the match between the base, left and right elements at the same time anyway, we just jemmy the equivalence.
+                      (using (_, _) => true)
                     )
                 .focus(_.moves)
                 .modify(_ :+ Preservation)
@@ -1612,7 +1607,7 @@ class MergeTest:
                 .focus(_.expectedMerge.some)
                 .modify:
                   case FullyMerged(elements) =>
-                    FullyMerged(elements :+ leftElement)
+                    FullyMerged(elements :+ MultiSided.Unique(leftElement))
                 .focus(_.moves)
                 .modify(_ :+ LeftEdit)
           yield result
@@ -1643,7 +1638,7 @@ class MergeTest:
                 .focus(_.expectedMerge.some)
                 .modify:
                   case FullyMerged(elements) =>
-                    FullyMerged(elements :+ rightElement)
+                    FullyMerged(elements :+ MultiSided.Unique(rightElement))
                 .focus(_.moves)
                 .modify(_ :+ RightEdit)
           yield result
@@ -1675,10 +1670,12 @@ class MergeTest:
                 .modify:
                   case FullyMerged(elements) =>
                     FullyMerged(
-                      elements :+ coinFlippingResolution.coincident(
+                      elements :+ MultiSided.Coincident(
                         leftElement,
                         rightElement
-                      )
+                      ) 
+                      // As we're defining the match between the left and right elements at the same time anyway, we just jemmy the equivalence.
+                      (using (_, _) => true)
                     )
                 .focus(_.moves)
                 .modify(_ :+ CoincidentEdit)
@@ -1769,6 +1766,18 @@ object MergeTest:
       )
   end extension
 
+  extension (matchesByElement: Map[Element, Match[Element]])
+    def equivalent(lhs: Element, rhs: Element): Boolean =
+      matchesByElement.get(lhs) -> matchesByElement.get(rhs) match
+        case (None, None) => false
+        case (None, Some(_)) => false
+        case (Some(_), None) => false
+        case (Some(lhsMatch), Some(rhsMatch)) =>
+          lhsMatch == rhsMatch
+      end match
+    end equivalent
+  end extension
+
   private def emptyMergeTestCase(allowConflicts: Boolean): MergeTestCase =
     MergeTestCase(
       base = IndexedSeq.empty,
@@ -1786,17 +1795,19 @@ object MergeTest:
       left: IndexedSeq[Element],
       right: IndexedSeq[Element],
       matchesByElement: Map[Element, Match[Element]],
-      expectedMerge: Option[FullyMerged[Element]],
+      expectedMerge: Option[FullyMerged[MultiSided[Element]]],
       moves: IndexedSeq[Move]
   ):
-    def validate(result: MergeResult[Element]): Unit =
+    given Eq[Element] = equivalent(matchesByElement)
+    
+    def validate(result: MultiSidedMergeResult[Element]): Unit =
       def baseIsPreservedCorrectlyIn(
-          elements: IndexedSeq[Element]
-      ): Set[Element] =
+          elements: IndexedSeq[MultiSided[Element]]
+      ): Set[MultiSided[Element]] =
         val preserved = base.collect(baseElement =>
           matchesByElement.get(baseElement) match
             case Some(Match.AllSides(baseElement, leftElement, rightElement)) =>
-              coinFlippingResolution.preserved(
+              MultiSided.Preserved(
                 baseElement,
                 leftElement,
                 rightElement
@@ -1809,18 +1820,18 @@ object MergeTest:
 
       end baseIsPreservedCorrectlyIn
 
-      def leftAppearsCorrectlyIn(elements: IndexedSeq[Element]): Set[Element] =
+      def leftAppearsCorrectlyIn(elements: IndexedSeq[MultiSided[Element]]): Set[MultiSided[Element]] =
         val appears = left.collect(leftElement =>
           matchesByElement.get(leftElement) match
             case Some(Match.AllSides(baseElement, leftElement, rightElement)) =>
-              coinFlippingResolution.preserved(
+              MultiSided.Preserved(
                 baseElement,
                 leftElement,
                 rightElement
               )
             case Some(Match.LeftAndRight(leftElement, rightElement)) =>
-              coinFlippingResolution.coincident(leftElement, rightElement)
-            case None => leftElement
+              MultiSided.Coincident(leftElement, rightElement)
+            case None => MultiSided.Unique(leftElement)
         )
 
         val _ = appears.isSubsequenceOf(elements)
@@ -1828,18 +1839,18 @@ object MergeTest:
         appears.toSet
       end leftAppearsCorrectlyIn
 
-      def rightAppearsCorrectlyIn(elements: IndexedSeq[Element]): Set[Element] =
+      def rightAppearsCorrectlyIn(elements: IndexedSeq[MultiSided[Element]]): Set[MultiSided[Element]] =
         val appears = right.collect(rightElement =>
           matchesByElement.get(rightElement) match
             case Some(Match.AllSides(baseElement, leftElement, rightElement)) =>
-              coinFlippingResolution.preserved(
+              MultiSided.Preserved(
                 baseElement,
                 leftElement,
                 rightElement
               )
             case Some(Match.LeftAndRight(leftElement, rightElement)) =>
-              coinFlippingResolution.coincident(leftElement, rightElement)
-            case None => rightElement
+              MultiSided.Coincident(leftElement, rightElement)
+            case None => MultiSided.Unique(rightElement)
         )
 
         val _ = appears.isSubsequenceOf(elements)
@@ -1847,7 +1858,7 @@ object MergeTest:
         appears.toSet
       end rightAppearsCorrectlyIn
 
-      def allPresentAndCorrectIn(result: MergeResult[Element]): Unit =
+      def allPresentAndCorrectIn(result: MultiSidedMergeResult[Element]): Unit =
         result match
           case FullyMerged(elements) =>
             val basePreservations = baseIsPreservedCorrectlyIn(elements)
@@ -2348,10 +2359,6 @@ object MergeTest:
       )
     end conflict
   end DelegatingMergeAlgebraWithContracts
-
-  object leftBiasedResolution extends LeftBiasedResolution[Element]
-
-  object coinFlippingResolution extends CoinFlippingResolution[Element]
 
   object DelegatingMergeAlgebraWithContracts:
     // Leave this as an enumeration rather than as a Boolean as left- and
