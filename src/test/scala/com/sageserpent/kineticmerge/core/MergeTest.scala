@@ -1756,13 +1756,6 @@ end MergeTest
 object MergeTest:
   type Element = Int
 
-  extension (unresolvedMergeResult: MultiSidedMergeResult[Element])
-    def resolveUsing(resolution: Resolution[Element]): MergeResult[Element] =
-      unresolvedMergeResult.transformElementsEnMasse(
-        _.map(resolution.apply)
-      )
-  end extension
-
   extension (matchesByElement: Map[Element, Match[Element]])
     def equivalent(lhs: Element, rhs: Element): Boolean =
       matchesByElement.get(lhs) -> matchesByElement.get(rhs) match
