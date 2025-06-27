@@ -78,12 +78,14 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       val paths =
         codeMotionAnalysis.base.keySet ++ codeMotionAnalysis.left.keySet ++ codeMotionAnalysis.right.keySet
 
-      def resolution(multiSided: MultiSided[Section[Element]]) =
+      def resolution(
+          multiSided: MultiSided[Section[Element]]
+      ): IndexedSeq[Element] =
         multiSided match
-          case MultiSided.Unique(element)                       => element
+          case MultiSided.Unique(element) => element.content
           case MultiSided.Coincident(leftElement, rightElement) =>
             // Break the symmetry - choose the left.
-            leftElement
+            leftElement.content
           case MultiSided.Preserved(
                 baseElement,
                 leftElement,
@@ -97,11 +99,11 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               baseElement.content == rightElement.content
 
             (lhsIsCompletelyUnchanged, rhsIsCompletelyUnchanged) match
-              case (false, true) => leftElement
-              case (true, false) => rightElement
+              case (false, true) => leftElement.content
+              case (true, false) => rightElement.content
               case _             =>
                 // Break the symmetry - choose the left.
-                leftElement
+                leftElement.content
             end match
 
       type SecondPassInput =
@@ -1080,16 +1082,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       def resolveSections(
           path: Path,
           mergeResult: MultiSidedMergeResult[Section[Element]]
-      ): (Path, MergeResult[Section[Element]]) =
-        path -> mergeResult.transformElementsEnMasse(_.map(resolution))
-      end resolveSections
-
-      def explodeSections(
-          path: Path,
-          mergeResult: MergeResult[Section[Element]]
       ): (Path, MergeResult[Element]) =
-        path -> mergeResult.transformElementsEnMasse(_.flatMap(_.content))
-      end explodeSections
+        path -> mergeResult.transformElementsEnMasse(_.flatMap(resolution))
+      end resolveSections
 
       val secondPassMergeResultsByPath
           : Map[Path, MultiSidedMergeResult[Section[Element]]] =
@@ -1106,8 +1101,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       secondPassMergeResultsByPath
         .map(applySplices)
         .map(applySubstitutions)
-        .map(resolveSections)
-        .map(explodeSections) -> moveDestinationsReport
+        .map(resolveSections) -> moveDestinationsReport
     end merge
   end extension
 end CodeMotionAnalysisExtension
