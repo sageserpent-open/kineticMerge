@@ -1,5 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
+import cats.kernel.instances.SeqEq
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
@@ -35,7 +36,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       codeMotionAnalysis: CodeMotionAnalysis[Path, Element]
   )
     def merge: (
-        Map[Path, MergeResult[Element]],
+        Map[Path, MergeResult[IndexedSeq[Element]]],
         MoveDestinationsReport[Section[Element]]
     ) =
       import codeMotionAnalysis.matchesFor
@@ -107,7 +108,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             end match
 
       type SecondPassInput =
-        Either[FullyMerged[Section[Element]], Recording[Section[Element]]]
+        Either[FullyMerged[IndexedSeq[Section[Element]]], Recording[
+          Section[Element]
+        ]]
 
       case class AggregatedInitialMergeResult(
           secondPassInputsByPath: Map[Path, SecondPassInput],
@@ -403,8 +406,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       end multiSidedOrdering
 
       val specialCaseEquivalenceBasedOnOrdering
-          : Eq[MultiSided[Section[Element]]] =
-        Order.fromOrdering[MultiSided[Section[Element]]]
+          : Eq[IndexedSeq[MultiSided[Section[Element]]]] = Order.fromOrdering
 
       def uniqueSortedItemsFrom[Item](
           items: collection.Set[Item]
@@ -753,9 +755,17 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             succeedingAnchoredContentFromMoveDestinationSide
           )
 
+        extension (merge: MultiSidedMergeResult[Section[Element]])
+          private def flattenPotentiallyNestedConflict
+              : IndexedSeq[MultiSided[Section[Element]]] = merge match
+            case FullyMerged(sections)                            => sections
+            case MergedWithConflicts(leftSections, rightSections) =>
+              leftSections ++ rightSections
+        end extension
+
         MigrationSplices(
-          precedingMerge.flattenContent,
-          succeedingMerge.flattenContent,
+          precedingMerge.flattenPotentiallyNestedConflict,
+          succeedingMerge.flattenPotentiallyNestedConflict,
           spliceMigrationSuppressions
         )
       end mergesFrom
@@ -823,7 +833,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       ): (Path, MultiSidedMergeResult[Section[Element]]) =
         // Apply the suppressions....
 
-        val withSuppressions = mergeResult.transformElementsEnMasse(
+        val withSuppressions = mergeResult.transform(
           _.filterNot {
             case MultiSided.Unique(section) =>
               spliceMigrationSuppressions.contains(section)
@@ -1014,7 +1024,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             case (partialResult, deferredMigration) =>
               partialResult.appendMigratedSplices(deferredMigration)
 
-        path -> withSuppressions.transformElementsEnMasse(
+        path -> withSuppressions.transform(
           insertAnchoredSplices
         )(using specialCaseEquivalenceBasedOnOrdering)
       end applySplices
@@ -1070,7 +1080,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           end if
         end substituteFor
 
-        path -> mergeResult.transformElementsEnMasse(
+        path -> mergeResult.transform(
           _.flatMap(section =>
             // NOTE: the substitution has to be further substituted in case we
             // have a forwarded edit or deletion from the opposite side in it.
@@ -1082,9 +1092,10 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       def resolveSections(
           path: Path,
           mergeResult: MultiSidedMergeResult[Section[Element]]
-      ): (Path, MergeResult[Element]) =
-        path -> mergeResult.transformElementsEnMasse(_.flatMap(resolution))
-      end resolveSections
+      ): (Path, MergeResult[IndexedSeq[Element]]) =
+        path -> mergeResult.transform(_.flatMap(resolution))(using
+          SeqEq[Element]
+        )
 
       val secondPassMergeResultsByPath
           : Map[Path, MultiSidedMergeResult[Section[Element]]] =
@@ -1093,7 +1104,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             path -> recording
               .playback(conflictResolvingMergeAlgebra)
           case (path, Left(fullyMerged)) =>
-            path -> fullyMerged.transformElementsEnMasse(
+            path -> fullyMerged.transform(
               _.map(MultiSided.Unique.apply)
             )(using specialCaseEquivalenceBasedOnOrdering)
         }

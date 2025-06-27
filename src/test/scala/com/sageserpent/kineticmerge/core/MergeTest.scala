@@ -50,7 +50,7 @@ class MergeTest:
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a clean merge of the edit of `a` into `c`.
-    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(c)))
+    val expectedMerge = FullyMerged(content = Vector(MultiSided.Unique(c)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -83,7 +83,7 @@ class MergeTest:
     
     // NOTE: we expect a clean merge of the edit of `a` into `d` followed by an
     // insertion of `c`.
-    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(d), MultiSided.Unique(c)))
+    val expectedMerge = FullyMerged(content = Vector(MultiSided.Unique(d), MultiSided.Unique(c)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -115,7 +115,7 @@ class MergeTest:
 
     // NOTE: we expect a clean merge of the insertion of `b` followed by a
     // deletion of `a`.
-    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(b)))
+    val expectedMerge = FullyMerged(content = Vector(MultiSided.Unique(b)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -149,7 +149,7 @@ class MergeTest:
 
     // NOTE: we expect a clean merge of the insertion of `b` followed by an edit
     // of `a` into `d`.
-    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(b), MultiSided.Unique(d)))
+    val expectedMerge = FullyMerged(content = Vector(MultiSided.Unique(b), MultiSided.Unique(d)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -182,7 +182,7 @@ class MergeTest:
 
     // NOTE: we expect a clean merge of the coincident deletion of `a` followed
     // by the edit of `b` into `d`
-    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(d)))
+    val expectedMerge = FullyMerged(content = Vector(MultiSided.Unique(d)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -216,7 +216,7 @@ class MergeTest:
 
     // NOTE: we expect a clean merge of the coincident deletion of `a` with a
     // coincident insertion of `b` and `c`, followed by insertion of `d`.
-    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Coincident(b, c), MultiSided.Unique(d)))
+    val expectedMerge = FullyMerged(content = Vector(MultiSided.Coincident(b, c), MultiSided.Unique(d)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -250,7 +250,7 @@ class MergeTest:
     
     // NOTE: we expect a clean merge of the insertion of `c`, followed by a
     // coincident deletion of `a` with a coincident insertion of `b` and `d`.
-    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(c), MultiSided.Coincident(b, d)))
+    val expectedMerge = FullyMerged(content = Vector(MultiSided.Unique(c), MultiSided.Coincident(b, d)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -287,7 +287,7 @@ class MergeTest:
     // NOTE: we expect a clean merge of the edit of `a` into `e` followed by a
     // deletion of `b`. Merging is supposed to look eagerly for edits, so `e` is
     // considered to be an edit of `a` rather than of `b`.
-    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(e)))
+    val expectedMerge = FullyMerged(content = Vector(MultiSided.Unique(e)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -327,7 +327,7 @@ class MergeTest:
     // deletion of `b` and then an insertion of `e`. Merging is supposed to look
     // eagerly for edits, so `f` is considered to be an edit of `a` rather than
     // of `b`.
-    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(f), MultiSided.Unique(e)))
+    val expectedMerge = FullyMerged(content = Vector(MultiSided.Unique(f), MultiSided.Unique(e)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -367,7 +367,7 @@ class MergeTest:
     // insertion of `d` and finally deletion of `b`. Merging is supposed to look
     // eagerly for edits, so `f` is considered to be an edit of `a` rather than
     // of `b`.
-    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(f), MultiSided.Unique(d)))
+    val expectedMerge = FullyMerged(content = Vector(MultiSided.Unique(f), MultiSided.Unique(d)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -406,7 +406,7 @@ class MergeTest:
 
     // NOTE: we expect a clean merge of the edit of `a` into `f` followed by an
     // insertion of `d` and finally a merge of the edit of `b` into `g`.
-    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(f), MultiSided.Unique(d), MultiSided.Unique(g)))
+    val expectedMerge = FullyMerged(content = Vector(MultiSided.Unique(f), MultiSided.Unique(d), MultiSided.Unique(g)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -440,7 +440,7 @@ class MergeTest:
 
     // NOTE: we expect a clean merge of the edit of `a` into `c` coalesced with
     // an insertion of `d`.
-    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(c), MultiSided.Unique(d)))
+    val expectedMerge = FullyMerged(content = Vector(MultiSided.Unique(c), MultiSided.Unique(d)))
     
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -476,7 +476,7 @@ class MergeTest:
     
     // NOTE: we expect a clean merge of the edit of `a` into `d` coalesced with
     // an insertion of `e` followed by an insertion of `c`.
-    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(d), MultiSided.Unique(e), MultiSided.Unique(c)))
+    val expectedMerge = FullyMerged(content = Vector(MultiSided.Unique(d), MultiSided.Unique(e), MultiSided.Unique(c)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -516,7 +516,7 @@ class MergeTest:
     // NOTE: we expect a clean merge of the left edit of `a` into `c` coalesced
     // with the left insertion of `d` and finally a coincident edit of `b` into
     // `e` and `g`.
-    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(c), MultiSided.Unique(d), MultiSided.Coincident(e, g)))
+    val expectedMerge = FullyMerged(content = Vector(MultiSided.Unique(c), MultiSided.Unique(d), MultiSided.Coincident(e, g)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -552,7 +552,7 @@ class MergeTest:
     
     // NOTE: we expect a clean merge of the edit of `a` into `d` followed by a
     // deletion of `b`.
-    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(d)))
+    val expectedMerge = FullyMerged(content = Vector(MultiSided.Unique(d)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -584,7 +584,7 @@ class MergeTest:
     
     // NOTE: we expect a clean merge of the deletion of `a` followed by an
     // insertion of `c`.
-    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(c)))
+    val expectedMerge = FullyMerged(content = Vector(MultiSided.Unique(c)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -619,7 +619,7 @@ class MergeTest:
     
     // NOTE: we expect a clean merge of the deletion of `a` followed by a
     // deletion of `b`.
-    val expectedMerge = FullyMerged(elements = Vector())
+    val expectedMerge = FullyMerged(content = Vector())
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -655,7 +655,7 @@ class MergeTest:
     
     // NOTE: we expect a clean merge of the deletion of 'a' followed by an edit
     // of `b` into `d` followed by a deletion of `b`.
-    val expectedMerge = FullyMerged(elements = Vector(MultiSided.Unique(d)))
+    val expectedMerge = FullyMerged(content = Vector(MultiSided.Unique(d)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -1401,7 +1401,7 @@ class MergeTest:
     // NOTE: we expect a clean merge of a coincident edit coalesced with the
     // following coincident insertion, editing `a` into `b` and `d` and then `c` and `e`.
     val expectedMerge =
-      FullyMerged(elements = Vector(MultiSided.Coincident(b, d), MultiSided.Coincident(c, e)))
+      FullyMerged(content = Vector(MultiSided.Coincident(b, d), MultiSided.Coincident(c, e)))
 
     val AugmentedMergeResult(_, result) =
       merge.of(mergeAlgebra =
@@ -1775,7 +1775,7 @@ object MergeTest:
       right = IndexedSeq.empty,
       matchesByElement = Map.empty,
       expectedMerge = Option.unless(allowConflicts) {
-        FullyMerged(elements = IndexedSeq.empty)
+        FullyMerged(content = IndexedSeq.empty)
       },
       moves = IndexedSeq.empty
     )
@@ -1785,7 +1785,7 @@ object MergeTest:
       left: IndexedSeq[Element],
       right: IndexedSeq[Element],
       matchesByElement: Map[Element, Match[Element]],
-      expectedMerge: Option[FullyMerged[MultiSided[Element]]],
+      expectedMerge: Option[FullyMerged[IndexedSeq[MultiSided[Element]]]],
       moves: IndexedSeq[Move]
   ):
     given Eq[Element] = equivalent(matchesByElement)

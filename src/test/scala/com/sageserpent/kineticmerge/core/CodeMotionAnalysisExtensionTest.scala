@@ -446,7 +446,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
   private def verifyContent(
       path: FakePath,
-      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
+      mergeResultsByPath: Map[FakePath, MergeResult[IndexedSeq[Token]]]
   )(
       expectedTokens: IndexedSeq[Token],
       equality: (Token, Token) => Boolean = Token.equality
@@ -743,7 +743,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
   private def verifyAbsenceOfContent(
       path: FakePath,
-      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
+      mergeResultsByPath: Map[FakePath, MergeResult[IndexedSeq[Token]]]
   ): Unit =
     mergeResultsByPath(path) match
       case FullyMerged(result) =>

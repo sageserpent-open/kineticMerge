@@ -4,38 +4,21 @@ import cats.Eq
 import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSidedMergeResult
 import com.sageserpent.kineticmerge.core.merge.MergeAlgebra
 
-trait MergeResult[Element]:
-  def isEmpty: Boolean
-
-  def transformElementsEnMasse[TransformedElement](
-      transform: IndexedSeq[Element] => IndexedSeq[TransformedElement]
-  )(using equality: Eq[TransformedElement]): MergeResult[TransformedElement]
-
-  /** Yields content in a form suitable for being potentially nested within
-    * either side of a larger [[MergedWithConflicts]]. This is necessary because
-    * Git doesn't model nested conflicts, where one side of a conflict can
-    * contain a smaller conflict. <p>This occurs because splicing can generate
-    * such nested conflicts housed within a larger conflict between move
-    * destination anchors on one side (with the splice) and some other
-    * conflicting content on the opposite side to the anchors.
-    * @return
-    *   The elements as single [[IndexedSeq]].
-    * @see
-    *   https://github.com/sageserpent-open/kineticMerge/issues/160
-    */
-  def flattenContent: IndexedSeq[Element]
+trait MergeResult[Content]:
+  def transform[TransformedContent](
+      transform: Content => TransformedContent
+  )(using
+      equality: Eq[? >: TransformedContent]
+  ): MergeResult[TransformedContent]
 end MergeResult
 
-case class FullyMerged[Element](elements: IndexedSeq[Element])
-    extends MergeResult[Element]:
-  override def isEmpty: Boolean = elements.isEmpty
-
-  override def transformElementsEnMasse[TransformedElement](
-      transform: IndexedSeq[Element] => IndexedSeq[TransformedElement]
-  )(using equality: Eq[TransformedElement]): MergeResult[TransformedElement] =
-    FullyMerged(transform(elements))
-
-  override def flattenContent: IndexedSeq[Element] = elements
+case class FullyMerged[Content](content: Content) extends MergeResult[Content]:
+  override def transform[TransformedContent](
+      transform: Content => TransformedContent
+  )(using
+      equality: Eq[? >: TransformedContent]
+  ): MergeResult[TransformedContent] =
+    FullyMerged(transform(content))
 end FullyMerged
 
 /** @param leftElements
@@ -44,26 +27,24 @@ end FullyMerged
   * @param rightElements
   *   The right hand form of the merge. Has all the clean merges, plus the right
   *   side of the conflicts.
-  * @tparam Element
+  * @tparam Content
   */
-case class MergedWithConflicts[Element](
-    leftElements: IndexedSeq[Element],
-    rightElements: IndexedSeq[Element]
-) extends MergeResult[Element]:
+case class MergedWithConflicts[Content](
+    leftElements: Content,
+    rightElements: Content
+) extends MergeResult[Content]:
   require(leftElements != rightElements)
 
-  override def isEmpty: Boolean = false // The invariant guarantees this.
-
-  override def transformElementsEnMasse[TransformedElement](
-      transform: IndexedSeq[Element] => IndexedSeq[TransformedElement]
-  )(using equality: Eq[TransformedElement]): MergeResult[TransformedElement] =
+  override def transform[TransformedContent](
+      transform: Content => TransformedContent
+  )(using
+      equality: Eq[? >: TransformedContent]
+  ): MergeResult[TransformedContent] =
     val transformedLeftElements  = transform(leftElements)
     val transformedRightElements = transform(rightElements)
 
     // Just in case the conflict was resolved by the migrated changes...
-    if transformedLeftElements.corresponds(transformedRightElements)(
-        equality.eqv
-      )
+    if equality.eqv(transformedLeftElements, transformedRightElements)
     then FullyMerged(transformedLeftElements)
     else
       MergedWithConflicts(
@@ -71,14 +52,12 @@ case class MergedWithConflicts[Element](
         transformedRightElements
       )
     end if
-  end transformElementsEnMasse
-
-  override def flattenContent: IndexedSeq[Element] =
-    leftElements ++ rightElements
+  end transform
 end MergedWithConflicts
 
 object CoreMergeAlgebra:
-  type MultiSidedMergeResult[Element] = MergeResult[MultiSided[Element]]
+  type MultiSidedMergeResult[Element] =
+    MergeResult[IndexedSeq[MultiSided[Element]]]
 end CoreMergeAlgebra
 
 class CoreMergeAlgebra[Element: Eq]
