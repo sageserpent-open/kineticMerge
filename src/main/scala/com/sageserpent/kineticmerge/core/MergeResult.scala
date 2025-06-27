@@ -5,8 +5,6 @@ import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSidedMergeResult
 import com.sageserpent.kineticmerge.core.merge.MergeAlgebra
 
 trait MergeResult[Element]:
-  def isEmpty: Boolean
-
   def transformElementsEnMasse[TransformedElement](
       transform: IndexedSeq[Element] => IndexedSeq[TransformedElement]
   )(using equality: Eq[TransformedElement]): MergeResult[TransformedElement]
@@ -28,7 +26,6 @@ end MergeResult
 
 case class FullyMerged[Element](elements: IndexedSeq[Element])
     extends MergeResult[Element]:
-  override def isEmpty: Boolean = elements.isEmpty
 
   override def transformElementsEnMasse[TransformedElement](
       transform: IndexedSeq[Element] => IndexedSeq[TransformedElement]
@@ -52,7 +49,7 @@ case class MergedWithConflicts[Element](
 ) extends MergeResult[Element]:
   require(leftElements != rightElements)
 
-  override def isEmpty: Boolean = false // The invariant guarantees this.
+  // The invariant guarantees this.
 
   override def transformElementsEnMasse[TransformedElement](
       transform: IndexedSeq[Element] => IndexedSeq[TransformedElement]
