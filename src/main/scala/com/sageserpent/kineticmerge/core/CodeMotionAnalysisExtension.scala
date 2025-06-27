@@ -3,10 +3,7 @@ package com.sageserpent.kineticmerge.core
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
-import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.{
-  MultiSided,
-  MultiSidedMergeResult
-}
+import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSidedMergeResult
 import com.sageserpent.kineticmerge.core.FirstPassMergeResult.{
   FileDeletionContext,
   Recording

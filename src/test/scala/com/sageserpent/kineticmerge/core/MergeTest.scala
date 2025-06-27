@@ -4,10 +4,7 @@ import cats.Eq
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
-import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.{
-  MultiSided,
-  MultiSidedMergeResult
-}
+import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSidedMergeResult
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
   Sized,
