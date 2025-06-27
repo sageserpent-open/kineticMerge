@@ -80,33 +80,33 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
       val resolution: Resolution[Section[Element]] =
         new Resolution[Section[Element]]:
-          override def coincident(
-              leftElement: Section[Element],
-              rightElement: Section[Element]
+          override def apply(
+              multiSided: MultiSided[Section[Element]]
           ): Section[Element] =
-            // Break the symmetry - choose the left.
-            leftElement
-
-          override def preserved(
-              baseElement: Section[Element],
-              leftElement: Section[Element],
-              rightElement: Section[Element]
-          ): Section[Element] =
-            // Look at the content and use *exact* comparison.
-
-            val lhsIsCompletelyUnchanged =
-              baseElement.content == leftElement.content
-            val rhsIsCompletelyUnchanged =
-              baseElement.content == rightElement.content
-
-            (lhsIsCompletelyUnchanged, rhsIsCompletelyUnchanged) match
-              case (false, true) => leftElement
-              case (true, false) => rightElement
-              case _             =>
+            multiSided match
+              case MultiSided.Unique(element)                       => element
+              case MultiSided.Coincident(leftElement, rightElement) =>
                 // Break the symmetry - choose the left.
                 leftElement
-            end match
-          end preserved
+              case MultiSided.Preserved(
+                    baseElement,
+                    leftElement,
+                    rightElement
+                  ) =>
+                // Look at the content and use *exact* comparison.
+
+                val lhsIsCompletelyUnchanged =
+                  baseElement.content == leftElement.content
+                val rhsIsCompletelyUnchanged =
+                  baseElement.content == rightElement.content
+
+                (lhsIsCompletelyUnchanged, rhsIsCompletelyUnchanged) match
+                  case (false, true) => leftElement
+                  case (true, false) => rightElement
+                  case _             =>
+                    // Break the symmetry - choose the left.
+                    leftElement
+                end match
 
       type SecondPassInput =
         Either[FullyMerged[Section[Element]], Recording[Section[Element]]]
@@ -1086,7 +1086,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           mergeResult: MultiSidedMergeResult[Section[Element]]
       ): (Path, MergeResult[Section[Element]]) =
         path -> mergeResult.transformElementsEnMasse(
-          _.map(_.resolveUsing(resolution))
+          _.map(resolution.apply)
         )
       end resolveSections
 

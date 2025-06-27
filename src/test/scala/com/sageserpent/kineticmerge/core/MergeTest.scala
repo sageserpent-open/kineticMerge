@@ -1759,7 +1759,7 @@ object MergeTest:
   extension (unresolvedMergeResult: MultiSidedMergeResult[Element])
     def resolveUsing(resolution: Resolution[Element]): MergeResult[Element] =
       unresolvedMergeResult.transformElementsEnMasse(
-        _.map(_.resolveUsing(resolution))
+        _.map(resolution.apply)
       )
   end extension
 

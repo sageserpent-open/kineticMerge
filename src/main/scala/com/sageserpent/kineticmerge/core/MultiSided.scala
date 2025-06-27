@@ -14,16 +14,6 @@ enum MultiSided[Element: Eq]:
       Eq[Element].eqv(baseElement, rightElement)
   end match
 
-  def resolveUsing(resolution: Resolution[Element]): Element =
-    this match
-      case Unique(element) => element
-      // NOTE: the following cases are performing double-dispatch on overloads
-      // of `Resolution.apply`...
-      case Coincident(leftElement, rightElement) =>
-        resolution.coincident(leftElement, rightElement)
-      case Preserved(baseElement, leftElement, rightElement) =>
-        resolution.preserved(baseElement, leftElement, rightElement)
-
   case Unique(element: Element)(using equality: Eq[Element])
   case Coincident(leftElement: Element, rightElement: Element)(using
       equality: Eq[Element]
