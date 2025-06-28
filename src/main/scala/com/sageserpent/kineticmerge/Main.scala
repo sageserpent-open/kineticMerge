@@ -4,6 +4,7 @@ import cats.Order
 import cats.data.{EitherT, WriterT}
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
+import cats.kernel.Eq
 import cats.syntax.foldable.toFoldableOps
 import cats.syntax.traverse.toTraverseOps
 import com.google.common.hash.{Funnel, HashFunction, Hashing}
@@ -1042,7 +1043,7 @@ object Main extends StrictLogging:
       )
     end mergeWithRollback
 
-    def theirCommitId(
+    private def theirCommitId(
         theirBranchHead: String @@ Main.Tags.CommitOrBranchName
     ): Workflow[String @@ Tags.CommitOrBranchName] =
       IO {
@@ -1459,6 +1460,9 @@ object Main extends StrictLogging:
         }
       end fileRenamingReportUsing
 
+      given contentEquality: Eq[String @@ Tags.Content] =
+        Eq[String].asInstanceOf[Eq[String @@ Tags.Content]]
+
       for
         codeMotionAnalysis: CodeMotionAnalysis[Path, Token] <- EitherT
           .fromEither[WorkflowLogWriter] {
@@ -1468,7 +1472,8 @@ object Main extends StrictLogging:
           }
           .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
 
-        (mergeResultsByPath, moveDestinationsReport) = codeMotionAnalysis.merge
+        (mergeResultsByPath, moveDestinationsReport) = codeMotionAnalysis
+          .merge[String @@ Tags.Content](???)
 
         _ <- moveDestinationsReport.summarizeInText.foldLeft(right(()))(
           _ logOperation _
@@ -1504,17 +1509,15 @@ object Main extends StrictLogging:
 
           mergeInput match
             case JustOurModification(ourModification, _) =>
-              val FullyMerged(tokens) =
+              val FullyMerged(content) =
                 mergeResultsByPath(path): @unchecked
 
-              val mergedFileContent = reconstituteTextFrom(tokens)
-
               val ourModificationWasTweakedByTheMerge =
-                mergedFileContent != ourModification.content
+                content != ourModification.content
 
               if ourModificationWasTweakedByTheMerge then
                 for
-                  blobId <- storeBlobFor(path, mergedFileContent)
+                  blobId <- storeBlobFor(path, content)
                   _      <- restoreFileFromBlobId(
                     path,
                     blobId
@@ -1529,17 +1532,15 @@ object Main extends StrictLogging:
               end if
 
             case JustTheirModification(theirModification, _) =>
-              val FullyMerged(tokens) =
+              val FullyMerged(fullyMergedContent) =
                 mergeResultsByPath(path): @unchecked
 
-              val mergedFileContent = reconstituteTextFrom(tokens)
-
               val theirModificationWasTweakedByTheMerge =
-                mergedFileContent != theirModification.content
+                fullyMergedContent != theirModification.content
 
               if theirModificationWasTweakedByTheMerge then
                 for
-                  blobId <- storeBlobFor(path, mergedFileContent)
+                  blobId <- storeBlobFor(path, fullyMergedContent)
                   _      <- restoreFileFromBlobId(
                     path,
                     blobId
@@ -1565,17 +1566,15 @@ object Main extends StrictLogging:
               end if
 
             case JustOurAddition(ourAddition) =>
-              val FullyMerged(tokens) =
+              val FullyMerged(fullyMergedContent) =
                 mergeResultsByPath(path): @unchecked
 
-              val mergedFileContent = reconstituteTextFrom(tokens)
-
               val ourAdditionWasTweakedByTheMerge =
-                mergedFileContent != ourAddition.content
+                fullyMergedContent != ourAddition.content
 
               if ourAdditionWasTweakedByTheMerge then
                 for
-                  blobId <- storeBlobFor(path, mergedFileContent)
+                  blobId <- storeBlobFor(path, fullyMergedContent)
                   _      <- restoreFileFromBlobId(
                     path,
                     blobId
@@ -1590,17 +1589,15 @@ object Main extends StrictLogging:
               end if
 
             case JustTheirAddition(theirAddition) =>
-              val FullyMerged(tokens) =
+              val FullyMerged(fullyMergedContent) =
                 mergeResultsByPath(path): @unchecked
 
-              val mergedFileContent = reconstituteTextFrom(tokens)
-
               val theirAdditionWasTweakedByTheMerge =
-                mergedFileContent != theirAddition.content
+                fullyMergedContent != theirAddition.content
 
               if theirAdditionWasTweakedByTheMerge then
                 for
-                  blobId <- storeBlobFor(path, mergedFileContent)
+                  blobId <- storeBlobFor(path, fullyMergedContent)
                   _      <- restoreFileFromBlobId(
                     path,
                     blobId
@@ -1652,9 +1649,9 @@ object Main extends StrictLogging:
                   bestAncestorCommitIdBlobId,
                   _
                 ) =>
-              val tokens = mergeResultsByPath(path) match
-                case FullyMerged(mergedTokens)               => mergedTokens
-                case MergedWithConflicts(ourMergedTokens, _) =>
+              val mergedContent = mergeResultsByPath(path) match
+                case FullyMerged(fullyMergedContent) => fullyMergedContent
+                case MergedWithConflicts(ourMergedContent, _) =>
                   // We don't care about their view of the merge - their
                   // side simply deleted the whole file, so it contributes
                   // nothing interesting to the merge; the only point of the
@@ -1662,11 +1659,10 @@ object Main extends StrictLogging:
                   // and to note move destinations.
                   // TODO: is this even necessary? How would there be merge
                   // conflicts?
-                  ourMergedTokens
+                  ourMergedContent
 
-              val mergedFileContent = reconstituteTextFrom(tokens)
               val ourModificationWasTweakedByTheMerge =
-                mergedFileContent != ourModification.content
+                mergedContent != ourModification.content
 
               val prelude =
                 for
@@ -1682,10 +1678,10 @@ object Main extends StrictLogging:
                 yield ()
 
               if ourModificationWasTweakedByTheMerge then
-                if mergedFileContent.nonEmpty then
+                if mergedContent.nonEmpty then
                   for
                     _      <- prelude
-                    blobId <- storeBlobFor(path, mergedFileContent)
+                    blobId <- storeBlobFor(path, mergedContent)
                     _      <- restoreFileFromBlobId(
                       path,
                       blobId
@@ -1735,19 +1731,18 @@ object Main extends StrictLogging:
                   bestAncestorCommitIdBlobId,
                   _
                 ) =>
-              val tokens = mergeResultsByPath(path) match
-                case FullyMerged(mergedTokens)                 => mergedTokens
-                case MergedWithConflicts(_, theirMergedTokens) =>
+              val mergedContent = mergeResultsByPath(path) match
+                case FullyMerged(fullyMergedContent) => fullyMergedContent
+                case MergedWithConflicts(_, theirMergedContent) =>
                   // We don't care about our view of the merge - our side
                   // simply deleted the whole file, so it contributes
                   // nothing interesting to the merge; the only point of the
                   // merge here was to pick up propagated edits / deletions
                   // and to note move destinations.
-                  theirMergedTokens
+                  theirMergedContent
 
-              val mergedFileContent = reconstituteTextFrom(tokens)
               val theirModificationWasTweakedByTheMerge =
-                mergedFileContent != theirModification.content
+                mergedContent != theirModification.content
 
               val prelude =
                 for
@@ -1766,10 +1761,10 @@ object Main extends StrictLogging:
               // modified file which wouldn't have been present on our
               // branch prior to the merge. So that's what we do too.
               if theirModificationWasTweakedByTheMerge then
-                if mergedFileContent.nonEmpty then
+                if mergedContent.nonEmpty then
                   for
                     _      <- prelude
-                    blobId <- storeBlobFor(path, mergedFileContent)
+                    blobId <- storeBlobFor(path, mergedContent)
                     _      <- restoreFileFromBlobId(
                       path,
                       blobId
@@ -1815,11 +1810,9 @@ object Main extends StrictLogging:
 
             case BothContributeAnAddition(_, _, mergedFileMode) =>
               mergeResultsByPath(path) match
-                case FullyMerged(tokens) =>
-                  val mergedFileContent = reconstituteTextFrom(tokens)
-
+                case FullyMerged(fullyMergedContent) =>
                   for
-                    blobId <- storeBlobFor(path, mergedFileContent)
+                    blobId <- storeBlobFor(path, fullyMergedContent)
                     _      <- restoreFileFromBlobId(
                       path,
                       blobId
@@ -1832,10 +1825,10 @@ object Main extends StrictLogging:
                   yield partialResult
                   end for
 
-                case MergedWithConflicts(leftTokens, rightTokens) =>
-                  val leftContent  = reconstituteTextFrom(leftTokens)
-                  val rightContent = reconstituteTextFrom(rightTokens)
-
+                case MergedWithConflicts(
+                      ourMergedContent,
+                      theirMergedContent
+                    ) =>
                   for
                     fakeBaseTemporaryFile <- temporaryFile(
                       suffix = ".base",
@@ -1844,12 +1837,12 @@ object Main extends StrictLogging:
 
                     leftTemporaryFile <- temporaryFile(
                       suffix = ".left",
-                      content = leftContent
+                      content = ourMergedContent
                     )
 
                     rightTemporaryFile <- temporaryFile(
                       suffix = ".right",
-                      content = rightContent
+                      content = theirMergedContent
                     )
 
                     lastMinuteResolution <-
@@ -1883,8 +1876,8 @@ object Main extends StrictLogging:
                       s"Unexpected error: could not copy results of conflicted merge in ${underline(leftTemporaryFile)} to working directory tree file ${underline(path)}."
                     )
 
-                    leftBlob  <- storeBlobFor(path, leftContent)
-                    rightBlob <- storeBlobFor(path, rightContent)
+                    leftBlob  <- storeBlobFor(path, ourMergedContent)
+                    rightBlob <- storeBlobFor(path, theirMergedContent)
                     _         <- recordDeletionInIndex(path)
                     _         <- recordConflictModificationInIndex(
                       stageIndex = ourStageIndex
@@ -1918,11 +1911,9 @@ object Main extends StrictLogging:
                   mergedFileMode
                 ) =>
               mergeResultsByPath(path) match
-                case FullyMerged(tokens) =>
-                  val mergedFileContent = reconstituteTextFrom(tokens)
-
+                case FullyMerged(fullyMergedContent) =>
                   for
-                    blobId <- storeBlobFor(path, mergedFileContent)
+                    blobId <- storeBlobFor(path, fullyMergedContent)
                     _      <- restoreFileFromBlobId(
                       path,
                       blobId
@@ -1935,10 +1926,10 @@ object Main extends StrictLogging:
                   yield partialResult
                   end for
 
-                case MergedWithConflicts(leftTokens, rightTokens) =>
-                  val leftContent  = reconstituteTextFrom(leftTokens)
-                  val rightContent = reconstituteTextFrom(rightTokens)
-
+                case MergedWithConflicts(
+                      ourMergedContent,
+                      theirMergedContent
+                    ) =>
                   for
                     baseTemporaryFile <- temporaryFile(
                       suffix = ".base",
@@ -1947,12 +1938,12 @@ object Main extends StrictLogging:
 
                     leftTemporaryFile <- temporaryFile(
                       suffix = ".left",
-                      content = leftContent
+                      content = ourMergedContent
                     )
 
                     rightTemporaryFile <- temporaryFile(
                       suffix = ".right",
-                      content = rightContent
+                      content = theirMergedContent
                     )
 
                     lastMinuteResolution <-
@@ -1986,8 +1977,8 @@ object Main extends StrictLogging:
                       s"Unexpected error: could not copy results of conflicted merge in ${underline(leftTemporaryFile)} to working directory tree file ${underline(path)}."
                     )
 
-                    leftBlob  <- storeBlobFor(path, leftContent)
-                    rightBlob <- storeBlobFor(path, rightContent)
+                    leftBlob  <- storeBlobFor(path, ourMergedContent)
+                    rightBlob <- storeBlobFor(path, theirMergedContent)
                     _         <- recordDeletionInIndex(path)
                     _         <- recordConflictModificationInIndex(
                       stageIndex = bestCommonAncestorStageIndex
