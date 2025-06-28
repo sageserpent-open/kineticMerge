@@ -1,18 +1,13 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.kernel.instances.SeqEq
-import cats.{Eq, Order}
-import com.google.common.hash.{Funnel, HashFunction, Hashing}
+import com.google.common.hash.{HashFunction, Hashing}
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.Configuration
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtension.*
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtensionTest.{
-  FakePath,
-  reconstituteTextFrom,
-  resolution,
-  given
-}
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtensionTest.{FakePath, reconstituteTextFrom, given}
+import com.sageserpent.kineticmerge.core.ContentResolution.given
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.Token.tokens
 import org.junit.jupiter.api.Assertions.fail
@@ -26,39 +21,7 @@ object CodeMotionAnalysisExtensionTest:
   def reconstituteTextFrom(tokens: IndexedSeq[Token]): String =
     tokens.map(_.text).mkString
 
-  def resolution(
-      multiSided: MultiSided[Section[Token]]
-  ): IndexedSeq[Token] =
-    multiSided match
-      case MultiSided.Unique(section)                       => section.content
-      case MultiSided.Coincident(leftSection, rightSection) =>
-        // Break the symmetry - choose the left.
-        leftSection.content
-      case MultiSided.Preserved(
-            baseSection,
-            leftSection,
-            rightSection
-          ) =>
-        // Look at the content and use *exact* comparison.
-
-        val lhsIsCompletelyUnchanged =
-          baseSection.content == leftSection.content
-        val rhsIsCompletelyUnchanged =
-          baseSection.content == rightSection.content
-
-        (lhsIsCompletelyUnchanged, rhsIsCompletelyUnchanged) match
-          case (false, true) => leftSection.content
-          case (true, false) => rightSection.content
-          case _             =>
-            // Break the symmetry - choose the left.
-            leftSection.content
-        end match
-
-  given Eq[Token]             = Token.equality
-  given Order[Token]          = Token.comparison
-  given Funnel[Token]         = Token.funnel
-  given HashFunction          = Hashing.murmur3_32_fixed()
-  given Eq[IndexedSeq[Token]] = SeqEq[Token].asInstanceOf[Eq[IndexedSeq[Token]]]
+  given HashFunction = Hashing.murmur3_32_fixed()
 
 end CodeMotionAnalysisExtensionTest
 
@@ -190,7 +153,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           )(configuration): @unchecked
 
           val (mergeResultsByPath, moveDestinationsReport) =
-            codeMotionAnalysis.merge(_.flatMap(resolution))
+            codeMotionAnalysis.merge(_.flatMap(ContentResolution.apply))
 
           println(fansi.Color.Yellow(s"Final move destinations report...\n"))
           println(
@@ -246,7 +209,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )(configuration): @unchecked
 
     val (mergeResultsByPath, _) =
-      codeMotionAnalysis.merge(_.flatMap(resolution))
+      codeMotionAnalysis.merge(_.flatMap(ContentResolution.apply))
 
     verifyContent(placeholderPath, mergeResultsByPath)(
       stuntDoubleTokens(issue23BugReproductionExpectedMerge)
@@ -328,7 +291,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           )(configuration): @unchecked
 
           val (mergeResultsByPath, _) =
-            codeMotionAnalysis.merge(_.flatMap(resolution))
+            codeMotionAnalysis.merge(_.flatMap(ContentResolution.apply))
 
           verifyContent(placeholderPath, mergeResultsByPath)(
             stuntDoubleTokens(expectedText)
@@ -425,7 +388,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           )(configuration): @unchecked
 
           val (mergeResultsByPath, _) =
-            codeMotionAnalysis.merge(_.flatMap(resolution))
+            codeMotionAnalysis.merge(_.flatMap(ContentResolution.apply))
 
           verifyContent(placeholderPath, mergeResultsByPath)(
             stuntDoubleTokens(expectedText)
@@ -468,7 +431,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )(configuration): @unchecked
 
     val (mergeResultsByPath, _) =
-      codeMotionAnalysis.merge(_.flatMap(resolution))
+      codeMotionAnalysis.merge(_.flatMap(ContentResolution.apply))
 
     verifyContent(placeholderPath, mergeResultsByPath)(
       tokens(codeMotionExampleExpectedMerge).get
@@ -544,7 +507,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         )(configuration): @unchecked
 
         val (mergeResultsByPath, _) =
-          codeMotionAnalysis.merge(_.flatMap(resolution))
+          codeMotionAnalysis.merge(_.flatMap(ContentResolution.apply))
 
         verifyContent(originalPath, mergeResultsByPath)(
           tokens(codeMotionExampleWithSplitOriginalExpectedMerge).get
@@ -603,7 +566,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       )(configuration): @unchecked
 
       val (mergeResultsByPath, _) =
-        codeMotionAnalysis.merge(_.flatMap(resolution))
+        codeMotionAnalysis.merge(_.flatMap(ContentResolution.apply))
 
       def merge(path: FakePath): Unit =
         mergeResultsByPath(path) match
@@ -678,7 +641,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         ).get
 
         val (mergeResultsByPath, _) =
-          codeMotionAnalysis.merge(_.flatMap(resolution))
+          codeMotionAnalysis.merge(_.flatMap(ContentResolution.apply))
 
         verifyContent(placeholderPath, mergeResultsByPath)(expected, _ == _)
     }
@@ -758,7 +721,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         ).get
 
         val (mergeResultsByPath, _) =
-          codeMotionAnalysis.merge(_.flatMap(resolution))
+          codeMotionAnalysis.merge(_.flatMap(ContentResolution.apply))
 
         renamingSide match
           case RenamingSide.Both =>
@@ -905,7 +868,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           )(configuration): @unchecked
 
           val (mergeResultsByPath, moveDestinationsReport) =
-            codeMotionAnalysis.merge(_.flatMap(resolution))
+            codeMotionAnalysis.merge(_.flatMap(ContentResolution.apply))
 
           println(fansi.Color.Yellow(s"Final move destinations report...\n"))
           println(
@@ -1018,7 +981,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           )(configuration): @unchecked
 
           val (mergeResultsByPath, moveDestinationsReport) =
-            codeMotionAnalysis.merge(_.flatMap(resolution))
+            codeMotionAnalysis.merge(_.flatMap(ContentResolution.apply))
 
           println(fansi.Color.Yellow(s"Final move destinations report...\n"))
           println(
@@ -1077,7 +1040,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )(configuration): @unchecked
 
     val (mergeResultsByPath, moveDestinationsReport) =
-      codeMotionAnalysis.merge(_.flatMap(resolution))
+      codeMotionAnalysis.merge(_.flatMap(ContentResolution.apply))
 
     println(fansi.Color.Yellow(s"Final move destinations report...\n"))
     println(
@@ -1172,7 +1135,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )(configuration): @unchecked
 
     val (mergeResultsByPath, moveDestinationsReport) =
-      codeMotionAnalysis.merge(_.flatMap(resolution))
+      codeMotionAnalysis.merge(_.flatMap(ContentResolution.apply))
 
     println(fansi.Color.Yellow(s"Final move destinations report...\n"))
     println(
@@ -1216,7 +1179,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )(configuration): @unchecked
 
     val (mergeResultsByPath, _) =
-      codeMotionAnalysis.merge(_.flatMap(resolution))
+      codeMotionAnalysis.merge(_.flatMap(ContentResolution.apply))
 
     verifyContent(placeholderPath, mergeResultsByPath)(
       tokens(coincidencesExpectedMerge).get
@@ -1464,7 +1427,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           )(configuration): @unchecked
 
           val (mergeResultsByPath, moveDestinationsReport) =
-            codeMotionAnalysis.merge(_.flatMap(resolution))
+            codeMotionAnalysis.merge(_.flatMap(ContentResolution.apply))
 
           println(fansi.Color.Yellow(s"Final move destinations report...\n"))
           println(
@@ -1724,7 +1687,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           )(configuration): @unchecked
 
           val (mergeResultsByPath, moveDestinationsReport) =
-            codeMotionAnalysis.merge(_.flatMap(resolution))
+            codeMotionAnalysis.merge(_.flatMap(ContentResolution.apply))
 
           println(fansi.Color.Yellow(s"Final move destinations report...\n"))
           println(
@@ -1798,7 +1761,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       )(configuration): @unchecked
 
       val (mergeResultsByPath, _) =
-        codeMotionAnalysis.merge(_.flatMap(resolution))
+        codeMotionAnalysis.merge(_.flatMap(ContentResolution.apply))
 
       verifyContent(placeholderPath, mergeResultsByPath)(
         stuntDoubleTokens(expectedMergeText)
@@ -1859,7 +1822,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       )(configuration): @unchecked
 
       val (mergeResultsByPath, _) =
-        codeMotionAnalysis.merge(_.flatMap(resolution))
+        codeMotionAnalysis.merge(_.flatMap(ContentResolution.apply))
 
       verifyContent(placeholderPath, mergeResultsByPath)(
         tokens(expectedMergeText).get
@@ -1920,7 +1883,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       )(configuration): @unchecked
 
       val (mergeResultsByPath, _) =
-        codeMotionAnalysis.merge(_.flatMap(resolution))
+        codeMotionAnalysis.merge(_.flatMap(ContentResolution.apply))
 
       verifyContent(placeholderPath, mergeResultsByPath)(
         tokens(expectedMergeText).get
@@ -1976,7 +1939,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       )(configuration): @unchecked
 
       val (mergeResultsByPath, _) =
-        codeMotionAnalysis.merge(_.flatMap(resolution))
+        codeMotionAnalysis.merge(_.flatMap(ContentResolution.apply))
 
       verifyAbsenceOfContent(storyPath, mergeResultsByPath)
 

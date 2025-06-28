@@ -1473,7 +1473,12 @@ object Main extends StrictLogging:
           .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
 
         (mergeResultsByPath, moveDestinationsReport) = codeMotionAnalysis
-          .merge[String @@ Tags.Content](???)
+          .merge[String @@ Tags.Content](
+            _.flatMap(ContentResolution.apply)
+              .map(_.text)
+              .mkString
+              .taggedWith[Tags.Content]
+          )
 
         _ <- moveDestinationsReport.summarizeInText.foldLeft(right(()))(
           _ logOperation _
@@ -2085,11 +2090,6 @@ object Main extends StrictLogging:
       }.labelExceptionWith(errorMessage =
         s"Unexpected error: could not update working directory tree with file ${underline(path)}."
       )
-
-    private def reconstituteTextFrom(
-        tokens: IndexedSeq[Token]
-    ): String @@ Main.Tags.Content =
-      tokens.map(_.text).mkString.taggedWith[Tags.Content]
 
     private def recordModificationInIndex(
         path: Path,

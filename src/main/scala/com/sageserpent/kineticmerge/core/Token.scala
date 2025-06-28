@@ -1,23 +1,18 @@
 package com.sageserpent.kineticmerge.core
 
+import cats.Eq
 import cats.kernel.Order
-import com.google.common.hash.PrimitiveSink
-import com.sageserpent.kineticmerge.core.Token.{
-  Significant,
-  Whitespace,
-  WithTrailingWhitespace,
-  ident,
-  opt,
-  parse,
-  phrase,
-  rep,
-  whiteSpace
-}
+import com.google.common.hash.{Funnel, PrimitiveSink}
+import com.sageserpent.kineticmerge.core.Token.{Significant, Whitespace, WithTrailingWhitespace, ident, opt, parse, phrase, rep, whiteSpace}
 
 import scala.annotation.tailrec
 import scala.util.parsing.combinator.JavaTokenParsers
 
 object Token extends JavaTokenParsers:
+  given Order[Token] = Token.comparison
+  given Funnel[Token] = Token.funnel
+  given Eq[Token]     = Token.equality
+  
   override def skipWhitespace: Boolean = false
 
   def tokens(input: String): ParseResult[Vector[Token]] =
