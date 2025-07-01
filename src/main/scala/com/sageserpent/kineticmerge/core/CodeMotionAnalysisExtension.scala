@@ -1074,6 +1074,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           _.flatMap(section =>
             // NOTE: the substitution has to be further substituted in case we
             // have a forwarded edit or deletion from the opposite side in it.
+            // For a detailed example of this in operation, see:
+            // https://github.com/sageserpent-open/kineticMerge/issues/205.
             substituteFor(section).flatMap(substituteFor)
           )
         )(using specialCaseEquivalenceBasedOnOrdering)
