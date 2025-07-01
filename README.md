@@ -1,12 +1,12 @@
 # kineticMerge
 
+Merge a heavily refactored codebase and stay sane.
+
 [![Maven Central](https://index.scala-lang.org/sageserpent-open/kineticmerge/kinetic-merge/latest-by-scala-version.svg?color=2465cd&style=flat)](https://index.scala-lang.org/sageserpent-open/kineticmerge/kinetic-merge)
 
 [![Scala Steward badge](https://img.shields.io/badge/Scala_Steward-helping-blue.svg?style=flat&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAQCAMAAAARSr4IAAAAVFBMVEUAAACHjojlOy5NWlrKzcYRKjGFjIbp293YycuLa3pYY2LSqql4f3pCUFTgSjNodYRmcXUsPD/NTTbjRS+2jomhgnzNc223cGvZS0HaSD0XLjbaSjElhIr+AAAAAXRSTlMAQObYZgAAAHlJREFUCNdNyosOwyAIhWHAQS1Vt7a77/3fcxxdmv0xwmckutAR1nkm4ggbyEcg/wWmlGLDAA3oL50xi6fk5ffZ3E2E3QfZDCcCN2YtbEWZt+Drc6u6rlqv7Uk0LdKqqr5rk2UCRXOk0vmQKGfc94nOJyQjouF9H/wCc9gECEYfONoAAAAASUVORK5CYII=)](https://scala-steward.org)
 
 **Requires JRE 17 LTS or later since release 1.3.0.**
-
-Merge a heavily refactored codebase and stay sane.
 
 (**Release - 1.6.0**).
 
@@ -14,6 +14,7 @@ YouTube:
 
 - [Kinetic Merge: Merging through a File Split](https://youtu.be/JHb9DKK0LIA)
 - [Kinetic Merge: Complex Merge Demonstration](https://youtu.be/6jry6NKxGJA)
+- [Kinetic merge: merging code embedded inside an if-statement.](https://www.youtube.com/watch?v=sm4Naq_zJU0&t=2s)
 
 <video src="https://github.com/sageserpent-open/kineticMerge/assets/1765601/2d676e20-dce0-441a-b4a2-fcbaa8aff35d"><video/>
 
@@ -38,6 +39,8 @@ YouTube:
 
 Then run `cs install --contrib kinetic-merge`, and you're all set to go, it will put the latest release of
 `kinetic-merge` on your path.
+
+Run `cs update kinetic-merge` to check for and install any updated latest release.
 
 You can also invoke Kinetic Merge via Coursier without actually installing it:
 
