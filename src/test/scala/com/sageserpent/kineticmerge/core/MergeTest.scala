@@ -2450,8 +2450,6 @@ object MergeTest:
   end DelegatingMergeAlgebraWithContracts
 
   object DelegatingMergeAlgebraWithContracts:
-    // Leave this as an enumeration rather than as a Boolean as left- and
-    // right-edits might need to be checked later, too.
     enum State:
       case Neutral
       case Conflict
