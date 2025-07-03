@@ -946,6 +946,55 @@ class MergeTest:
   end leftEditVersusRightDeletionConflictWithFollowingLeftInsertion
 
   @Test
+  def leftEditVersusRightDeletionConflictWithFollowingCoincidentDeletion(): Unit =
+    val a = 1
+    val b = 2
+    val c = 3
+    val d = 4
+    val base = Vector(a, b, c, d)
+
+    val e = 5
+    val f = 6
+    val h = 7
+    val left = Vector(e, f, h)
+
+    val i = 8
+    val j = 9
+    val right = Vector(i, j)
+
+    val aei = Match.AllSides(baseElement = a, leftElement = e, rightElement = i)
+    val dhj = Match.AllSides(baseElement = d, leftElement = h, rightElement = j)
+    val matchesByElement: Map[Element, Match[Element]] = Map(
+      a -> aei,
+      e -> aei,
+      i -> aei,
+      d -> dhj,
+      h -> dhj,
+      j -> dhj
+    )
+
+    given Eq[Element] = matchesByElement.equivalent
+
+    given Sized[Element] = defaultElementSize
+
+    // NOTE: we expect `a` to be preserved as `e` and `i` before the coalesced conflict, with `d` to be preserved as `h` and `j` after the initial conflict coalesces with the coincident deletion of `c`.
+    val expectedMerge =
+      MergedWithConflicts(
+        leftElements = Vector(MultiSided.Preserved(a, e, i), MultiSided.Unique(f), MultiSided.Preserved(d, h, j)),
+        rightElements = Vector(MultiSided.Preserved(a, e, i), MultiSided.Preserved(d, h, j))
+      )
+
+    val AugmentedMergeResult(_, result) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(
+          new CoreMergeAlgebra
+        )
+      )(base, left, right): @unchecked
+
+    assert(result == expectedMerge)
+  end leftEditVersusRightDeletionConflictWithFollowingCoincidentDeletion
+
+  @Test
   def insertionConflict(): Unit =
     val a    = 1
     val base = Vector(a)
@@ -1284,6 +1333,56 @@ class MergeTest:
 
     assert(result == expectedMerge)
   end leftEditVersusRightDeletionConflictWithFollowingLeftInsertionAndThenRightEdit
+
+  @Test
+  def rightEditVersusLeftDeletionConflictWithFollowingCoincidentDeletion(): Unit =
+    val a = 1
+    val b = 2
+    val c = 3
+    val d = 4
+    val base = Vector(a, b, c, d)
+
+    val e = 5
+    val f = 6
+    val left = Vector(e, f)
+
+    val g = 7
+    val h = 8
+    val i = 9
+    val right = Vector(g, h, i)
+
+    val aeg = Match.AllSides(baseElement = a, leftElement = e, rightElement = g)
+    val dfi = Match.AllSides(baseElement = d, leftElement = f, rightElement = i)
+    val matchesByElement: Map[Element, Match[Element]] = Map(
+      a -> aeg,
+      e -> aeg,
+      g -> aeg,
+      d -> dfi,
+      f -> dfi,
+      i -> dfi
+    )
+
+    given Eq[Element] = matchesByElement.equivalent
+
+    given Sized[Element] = defaultElementSize
+
+    // NOTE: we expect `a` to be preserved as `e` and `g` before the coalesced conflict, with `d` to be preserved as `f` and `i` after the initial conflict coalesces with the coincident deletion of `c`.
+    val expectedMerge =
+      MergedWithConflicts(
+        leftElements = Vector(MultiSided.Preserved(a, e, g), MultiSided.Preserved(d, f, i)),
+        rightElements = Vector(MultiSided.Preserved(a, e, g), MultiSided.Unique(h), MultiSided.Preserved(d, f, i))
+      )
+
+    val AugmentedMergeResult(_, result) =
+      merge.of(mergeAlgebra =
+        DelegatingMergeAlgebraWithContracts(
+          new CoreMergeAlgebra
+        )
+      )(base, left, right): @unchecked
+
+    assert(result == expectedMerge)
+  end rightEditVersusLeftDeletionConflictWithFollowingCoincidentDeletion
+
 
   @Test
   def rightEditVersusLeftDeletionConflictDueToFollowingLeftDeletionAndThenRightEdit()
