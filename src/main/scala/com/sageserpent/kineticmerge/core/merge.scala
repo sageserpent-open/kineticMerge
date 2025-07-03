@@ -429,6 +429,27 @@ object merge extends StrictLogging:
             )
           )
 
+        case (
+              Seq(Contribution.Difference(followingBaseElement), _*),
+              _
+            ) =>
+          // TODO: clean this mess up!
+          logger.debug(
+            s"Conflict between left deletion of ${pprintCustomised(editedBaseElement)} and its edit on the right into ${pprintCustomised(rightElement)}, coalescing with following coincident deletion of ${pprintCustomised(followingBaseElement)}."
+          )
+          mergeBetweenRunsOfCommonElements(
+            baseTail,
+            left,
+            Contribution.Difference(rightElement) +: rightTail
+          )(
+            partialResult,
+            coalescence = conflictOperations.coalesceConflict(
+              Some(editedBaseElement),
+              None,
+              None
+            )
+          )
+
         case _ =>
           logger.debug(
             s"Conflict between left deletion of ${pprintCustomised(editedBaseElement)} and its edit on the right into ${pprintCustomised(rightElement)}."
@@ -480,6 +501,27 @@ object merge extends StrictLogging:
             coalescence = conflictOperations.coalesceConflict(
               None,
               Some(leftElement),
+              None
+            )
+          )
+
+        case (
+              Seq(Contribution.Difference(followingBaseElement), _*),
+              _
+            ) =>
+          // TODO: clean this mess up!
+          logger.debug(
+            s"Conflict between right deletion of ${pprintCustomised(editedBaseElement)} and its edit on the left into ${pprintCustomised(leftElement)}, coalescing with following coincident deletion of ${pprintCustomised(followingBaseElement)}."
+          )
+          mergeBetweenRunsOfCommonElements(
+            baseTail,
+            Contribution.Difference(leftElement) +: leftTail,
+            right
+          )(
+            partialResult,
+            coalescence = conflictOperations.coalesceConflict(
+              Some(editedBaseElement),
+              None,
               None
             )
           )
