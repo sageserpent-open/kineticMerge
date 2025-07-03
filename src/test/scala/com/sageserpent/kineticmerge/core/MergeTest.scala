@@ -2362,7 +2362,11 @@ object MergeTest:
     override def coincidentDeletion(
         result: AugmentedMergeResult[Element],
         deletedElement: Element
-    ): AugmentedMergeResult[Element] = AugmentedMergeResult(
+    ): AugmentedMergeResult[Element] =
+      // Should not follow a conflict directly with a coincident deletion - they should be coalesced instead.
+      require(State.Conflict != result.state)
+      
+      AugmentedMergeResult(
       state = State.Neutral,
       coreMergeResult = coreMergeAlgebra.coincidentDeletion(
         result.coreMergeResult,
