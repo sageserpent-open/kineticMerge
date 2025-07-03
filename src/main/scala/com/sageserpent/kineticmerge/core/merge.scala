@@ -390,12 +390,12 @@ object merge extends StrictLogging:
 
     inline def rightEditLeftDeletionConflict(
         base: Seq[Contribution[Element]],
-        partialResult: Result[Element],
-        editedBaseElement: Element,
-        baseTail: Seq[Contribution[Element]]
-    )(
-        conflictOperations: ConflictOperations,
         left: Seq[Contribution[Element]],
+        right: Seq[Contribution[Element]],
+        partialResult: Result[Element],
+        conflictOperations: ConflictOperations,
+        editedBaseElement: Element,
+        baseTail: Seq[Contribution[Element]],
         rightElement: Element,
         rightTail: Seq[Contribution[Element]]
     ) =
@@ -433,15 +433,10 @@ object merge extends StrictLogging:
               Seq(Contribution.Difference(followingBaseElement), _*),
               _
             ) =>
-          // TODO: clean this mess up!
           logger.debug(
             s"Conflict between left deletion of ${pprintCustomised(editedBaseElement)} and its edit on the right into ${pprintCustomised(rightElement)}, coalescing with following coincident deletion of ${pprintCustomised(followingBaseElement)}."
           )
-          mergeBetweenRunsOfCommonElements(
-            baseTail,
-            left,
-            Contribution.Difference(rightElement) +: rightTail
-          )(
+          mergeBetweenRunsOfCommonElements(baseTail, left, right)(
             partialResult,
             coalescence = conflictOperations.coalesceConflict(
               Some(editedBaseElement),
@@ -466,12 +461,12 @@ object merge extends StrictLogging:
 
     inline def leftEditRightDeletionConflict(
         base: Seq[Contribution[Element]],
-        partialResult: Result[Element],
-        editedBaseElement: Element,
-        baseTail: Seq[Contribution[Element]]
-    )(
-        conflictOperations: ConflictOperations,
+        left: Seq[Contribution[Element]],
         right: Seq[Contribution[Element]],
+        partialResult: Result[Element],
+        conflictOperations: ConflictOperations,
+        editedBaseElement: Element,
+        baseTail: Seq[Contribution[Element]],
         leftElement: Element,
         leftTail: Seq[Contribution[Element]]
     ) =
@@ -509,15 +504,10 @@ object merge extends StrictLogging:
               Seq(Contribution.Difference(followingBaseElement), _*),
               _
             ) =>
-          // TODO: clean this mess up!
           logger.debug(
             s"Conflict between right deletion of ${pprintCustomised(editedBaseElement)} and its edit on the left into ${pprintCustomised(leftElement)}, coalescing with following coincident deletion of ${pprintCustomised(followingBaseElement)}."
           )
-          mergeBetweenRunsOfCommonElements(
-            baseTail,
-            Contribution.Difference(leftElement) +: leftTail,
-            right
-          )(
+          mergeBetweenRunsOfCommonElements(baseTail, left, right)(
             partialResult,
             coalescence = conflictOperations.coalesceConflict(
               Some(editedBaseElement),
@@ -1337,10 +1327,15 @@ object merge extends StrictLogging:
             ) => // Left edit / right deletion conflict.
           leftEditRightDeletionConflict(
             base,
+            left,
+            right,
             partialResult,
+            conflictOperations,
             editedBaseElement,
-            baseTail
-          )(conflictOperations, right, leftElement, leftTail)
+            baseTail,
+            leftElement,
+            leftTail
+          )
 
         // RIGHT...
         case (
@@ -1351,10 +1346,15 @@ object merge extends StrictLogging:
             ) => // Right edit / left deletion conflict.
           rightEditLeftDeletionConflict(
             base,
+            left,
+            right,
             partialResult,
+            conflictOperations,
             editedBaseElement,
-            baseTail
-          )(conflictOperations, left, rightElement, rightTail)
+            baseTail,
+            rightElement,
+            rightTail
+          )
 
         // SYMMETRIC...
         case (
