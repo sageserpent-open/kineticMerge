@@ -387,15 +387,32 @@ object FirstPassMergeResult:
             )
           )
           .focus(_.speculativeMigrationsBySource)
-          .modify(
-            editedElements.foldLeft(_)((partialResult, editedElement) =>
-              partialResult + (editedElement -> SpeculativeContentMigration
-                .Conflict(
-                  leftEditElements,
-                  rightEditElements,
-                  fileDeletionContext
-                ))
-            )
+          .modify(speculativeMigrationsBySource =>
+            // Although conflicts are coalesced in `merge.of`, from the point of
+            // view of speculative migrations, if there is a leading edited
+            // element, it acts as a single source of content migration and any
+            // following are considered to be sources of migrated deletions.
+
+            val withSpeculativeContentMigrations =
+              editedElements.headOption.fold(ifEmpty =
+                speculativeMigrationsBySource
+              )(leadingEditedElement =>
+                speculativeMigrationsBySource + (leadingEditedElement -> SpeculativeContentMigration
+                  .Conflict(
+                    leftEditElements,
+                    rightEditElements,
+                    fileDeletionContext
+                  ))
+              )
+
+            if editedElements.nonEmpty then
+              editedElements.tail.foldLeft(withSpeculativeContentMigrations)(
+                (partialResult, editedElement) =>
+                  partialResult + (editedElement -> SpeculativeContentMigration
+                    .CoincidentEditOrDeletion(fileDeletionContext))
+              )
+            else withSpeculativeContentMigrations
+            end if
           )
           .focus(_.speculativeMoveDestinations)
           .modify(
