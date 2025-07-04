@@ -69,12 +69,12 @@ object merge extends StrictLogging:
     *   , this breaks up the left-edits to preserve the sandwich in edited form
     *   in the merge. <p><p>Similarly, successive edits on the same side will be
     *   treated as isolated edits rather than allowing the first to greedily
-    *   capture all the [[Contribution.Difference]] elements.<p></p>Conflicts
+    *   capture all the [[Contribution.Difference]] elements. <p><p>Conflicts
     *   are also greedy, taking successive left- and right-insertions to make a
     *   longer conflict. This occurs even if following insertions could be made
     *   in isolation without causing a conflict. However, as mentioned above,
     *   edits are preferred over conflicts, so an edit will win out over a
-    *   conflict in taking insertions.<p></p>Coincident edits, where an element
+    *   conflict in taking insertions. <p><p>Coincident edits, where an element
     *   is a [[Contribution.Difference]] in {@code base} that is edited into a
     *   [[Contribution.CommonToLeftAndRightOnly]] in both the {@code left} and
     *   {@code right} are also greedy and will take successive
