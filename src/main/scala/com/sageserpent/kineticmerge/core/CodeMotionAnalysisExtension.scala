@@ -1073,21 +1073,45 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
         @tailrec
         def substituteThroughSectionsEliminatingAdjacentDuplicateSubstitutions(
-            sections: IndexedSeq[MultiSided[Section[Element]]]
+            sections: IndexedSeq[MultiSided[Section[Element]]],
+            previouslyAppliedSubstitutions: Set[
+              IndexedSeq[MultiSided[Section[Element]]]
+            ]
         ): IndexedSeq[MultiSided[Section[Element]]] =
-          val (_, withSubstitutionsInClumps) = Traverse[Seq]
+          val (
+            (_, previouslyAppliedSubstitutionsWithLatestAdded),
+            withSubstitutionsInClumps
+          ) = Traverse[Seq]
             .mapAccumulate(
-              None: Option[IndexedSeq[MultiSided[Section[Element]]]],
+              (
+                None: Option[IndexedSeq[MultiSided[Section[Element]]]],
+                previouslyAppliedSubstitutions
+              ),
               sections
-            ) { (priorSubstitution, section) =>
-              val substitution = substituteFor(section)
+            ) {
+              case (
+                    state @ (
+                      priorSubstitution,
+                      previouslyAppliedSubstitutionsPartialUpdate
+                    ),
+                    section
+                  ) =>
+                val substitution = substituteFor(section)
+                
+                if !previouslyAppliedSubstitutions.contains(substitution) then
+                  priorSubstitution match
+                    case Some(duplicatedSubstitution)
+                        if substitution == duplicatedSubstitution =>
+                      state -> IndexedSeq.empty
+                    case _ =>
+                      (
+                        Some(substitution),
+                        previouslyAppliedSubstitutionsPartialUpdate + substitution
+                      ) -> substitution
 
-              priorSubstitution match
-                case Some(duplicatedSubstitution)
-                    if substitution == duplicatedSubstitution =>
-                  priorSubstitution -> IndexedSeq.empty
-                case _ => Some(substitution) -> substitution
-              end match
+                  end match
+                else state -> IndexedSeq(section)
+                end if
             }
 
           val withLatestRoundOfSubstitutions =
@@ -1098,7 +1122,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             // edits or deletions. For a detailed example of this in operation,
             // see: https://github.com/sageserpent-open/kineticMerge/issues/205.
             substituteThroughSectionsEliminatingAdjacentDuplicateSubstitutions(
-              withLatestRoundOfSubstitutions
+              withLatestRoundOfSubstitutions,
+              previouslyAppliedSubstitutionsWithLatestAdded
             )
           else withLatestRoundOfSubstitutions
           end if
@@ -1106,7 +1131,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
         path -> mergeResult.transformElementsEnMasse { sections =>
           substituteThroughSectionsEliminatingAdjacentDuplicateSubstitutions(
-            sections
+            sections,
+            previouslyAppliedSubstitutions = Set.empty
           )
         }(using specialCaseEquivalenceBasedOnOrdering)
       end applySubstitutions
