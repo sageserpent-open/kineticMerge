@@ -1,6 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
-import cats.{Eq, Order}
+import cats.{Eq, Order, Traverse}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
 import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSidedMergeResult
@@ -1070,15 +1070,40 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           end if
         end substituteFor
 
-        path -> mergeResult.transformElementsEnMasse(
-          _.flatMap(section =>
-            // NOTE: the substitution has to be further substituted in case we
-            // have a forwarded edit or deletion from the opposite side in it.
-            // For a detailed example of this in operation, see:
-            // https://github.com/sageserpent-open/kineticMerge/issues/205.
-            substituteFor(section).flatMap(substituteFor)
+        def substituteThroughSectionsEliminatingAdjacentDuplicateSubstitutions(
+            sections: IndexedSeq[MultiSided[Section[Element]]]
+        ): IndexedSeq[MultiSided[Section[Element]]] =
+          val (_, withSubstitutionsInClumps) = Traverse[Seq]
+            .mapAccumulate(
+              None: Option[IndexedSeq[MultiSided[Section[Element]]]],
+              sections
+            ) { (priorSubstitution, section) =>
+              val substitution = substituteFor(section)
+
+              priorSubstitution match
+                case Some(duplicatedSubstitution)
+                    if substitution == duplicatedSubstitution =>
+                  priorSubstitution -> IndexedSeq.empty
+                case _ => Some(substitution) -> substitution
+              end match
+            }
+
+          withSubstitutionsInClumps.toIndexedSeq.flatten
+        end substituteThroughSectionsEliminatingAdjacentDuplicateSubstitutions
+
+        path -> mergeResult.transformElementsEnMasse { sections =>
+          val firstPassResult =
+            substituteThroughSectionsEliminatingAdjacentDuplicateSubstitutions(
+              sections
+            )
+          // NOTE: the substitution has to be further substituted in case we
+          // have a forwarded edit or deletion from the opposite side in it.
+          // For a detailed example of this in operation, see:
+          // https://github.com/sageserpent-open/kineticMerge/issues/205.
+          substituteThroughSectionsEliminatingAdjacentDuplicateSubstitutions(
+            firstPassResult
           )
-        )(using specialCaseEquivalenceBasedOnOrdering)
+        }(using specialCaseEquivalenceBasedOnOrdering)
       end applySubstitutions
 
       def resolveSections(
