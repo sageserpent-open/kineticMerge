@@ -18,6 +18,7 @@ import com.sageserpent.kineticmerge.core.merge.of as mergeOf
 import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
 
+import scala.annotation.tailrec
 import scala.collection.immutable.MultiDict
 import scala.collection.{IndexedSeqView, Searching}
 import scala.math.Ordering.Implicits.seqOrdering
@@ -1070,6 +1071,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           end if
         end substituteFor
 
+        @tailrec
         def substituteThroughSectionsEliminatingAdjacentDuplicateSubstitutions(
             sections: IndexedSeq[MultiSided[Section[Element]]]
         ): IndexedSeq[MultiSided[Section[Element]]] =
@@ -1088,20 +1090,23 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               end match
             }
 
-          withSubstitutionsInClumps.toIndexedSeq.flatten
+          val withLatestRoundOfSubstitutions =
+            withSubstitutionsInClumps.toIndexedSeq.flatten
+
+          if sections != withLatestRoundOfSubstitutions then
+            // Keep repeating passes of substitution in case we have forwarded
+            // edits or deletions. For a detailed example of this in operation,
+            // see: https://github.com/sageserpent-open/kineticMerge/issues/205.
+            substituteThroughSectionsEliminatingAdjacentDuplicateSubstitutions(
+              withLatestRoundOfSubstitutions
+            )
+          else withLatestRoundOfSubstitutions
+          end if
         end substituteThroughSectionsEliminatingAdjacentDuplicateSubstitutions
 
         path -> mergeResult.transformElementsEnMasse { sections =>
-          val firstPassResult =
-            substituteThroughSectionsEliminatingAdjacentDuplicateSubstitutions(
-              sections
-            )
-          // NOTE: the substitution has to be further substituted in case we
-          // have a forwarded edit or deletion from the opposite side in it.
-          // For a detailed example of this in operation, see:
-          // https://github.com/sageserpent-open/kineticMerge/issues/205.
           substituteThroughSectionsEliminatingAdjacentDuplicateSubstitutions(
-            firstPassResult
+            sections
           )
         }(using specialCaseEquivalenceBasedOnOrdering)
       end applySubstitutions
