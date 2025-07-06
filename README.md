@@ -8,7 +8,7 @@ Merge a heavily refactored codebase and stay sane.
 
 **Requires JRE 17 LTS or later since release 1.3.0.**
 
-(**Release - 1.6.0**).
+(**Release - 1.7.0**).
 
 YouTube:
 
