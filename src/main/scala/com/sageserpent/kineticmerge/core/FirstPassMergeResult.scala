@@ -73,14 +73,13 @@ object FirstPassMergeResult:
       ): FirstPassMergeResult[Element] = result
         .focus(_.recording)
         .modify(
-          _.record(
-            [Result[_]] =>
-              (mergeAlgebra: MergeAlgebra[Result, Element]) =>
-                mergeAlgebra.preservation(
-                  _,
-                  preservedBaseElement,
-                  preservedElementOnLeft,
-                  preservedElementOnRight
+          _.record([Result[_]] =>
+            (mergeAlgebra: MergeAlgebra[Result, Element]) =>
+              mergeAlgebra.preservation(
+                _,
+                preservedBaseElement,
+                preservedElementOnLeft,
+                preservedElementOnRight
               )
           )
         )
@@ -99,12 +98,11 @@ object FirstPassMergeResult:
         result
           .focus(_.recording)
           .modify(
-            _.record(
-              [Result[_]] =>
-                (mergeAlgebra: MergeAlgebra[Result, Element]) =>
-                  mergeAlgebra.leftInsertion(
-                    _,
-                    insertedElement
+            _.record([Result[_]] =>
+              (mergeAlgebra: MergeAlgebra[Result, Element]) =>
+                mergeAlgebra.leftInsertion(
+                  _,
+                  insertedElement
                 )
             )
           )
@@ -119,12 +117,11 @@ object FirstPassMergeResult:
         result
           .focus(_.recording)
           .modify(
-            _.record(
-              [Result[_]] =>
-                (mergeAlgebra: MergeAlgebra[Result, Element]) =>
-                  mergeAlgebra.rightInsertion(
-                    _,
-                    insertedElement
+            _.record([Result[_]] =>
+              (mergeAlgebra: MergeAlgebra[Result, Element]) =>
+                mergeAlgebra.rightInsertion(
+                  _,
+                  insertedElement
                 )
             )
           )
@@ -139,13 +136,12 @@ object FirstPassMergeResult:
       ): FirstPassMergeResult[Element] = result
         .focus(_.recording)
         .modify(
-          _.record(
-            [Result[_]] =>
-              (mergeAlgebra: MergeAlgebra[Result, Element]) =>
-                mergeAlgebra.coincidentInsertion(
-                  _,
-                  insertedElementOnLeft,
-                  insertedElementOnRight
+          _.record([Result[_]] =>
+            (mergeAlgebra: MergeAlgebra[Result, Element]) =>
+              mergeAlgebra.coincidentInsertion(
+                _,
+                insertedElementOnLeft,
+                insertedElementOnRight
               )
           )
         )
@@ -168,29 +164,28 @@ object FirstPassMergeResult:
         result
           .focus(_.recording)
           .modify(
-            _.record(
-              [Result[_]] =>
-                (mergeAlgebra: MergeAlgebra[Result, Element]) =>
-                  if inContextOfFileDeletion then
-                    // NOTE: in order to support compatibility with core Git
-                    // merge, when a file is deleted on just one side, we
-                    // pretend that all of its content is left untouched; this
-                    // means that the merge won't treat the deletion of the file
-                    // as being deletion of the content. If the content has
-                    // moved out to other files though, then the suppression
-                    // mechanism in `CodeMotionAnalysis.merge` will remove it
-                    // later on from the final merge result.
-                    mergeAlgebra.preservation(
-                      _,
-                      deletedBaseElement,
-                      deletedBaseElement,
-                      deletedRightElement
-                    )
-                  else
-                    mergeAlgebra.leftDeletion(
-                      _,
-                      deletedBaseElement,
-                      deletedRightElement
+            _.record([Result[_]] =>
+              (mergeAlgebra: MergeAlgebra[Result, Element]) =>
+                if inContextOfFileDeletion then
+                  // NOTE: in order to support compatibility with core Git
+                  // merge, when a file is deleted on just one side, we
+                  // pretend that all of its content is left untouched; this
+                  // means that the merge won't treat the deletion of the file
+                  // as being deletion of the content. If the content has
+                  // moved out to other files though, then the suppression
+                  // mechanism in `CodeMotionAnalysis.merge` will remove it
+                  // later on from the final merge result.
+                  mergeAlgebra.preservation(
+                    _,
+                    deletedBaseElement,
+                    deletedBaseElement,
+                    deletedRightElement
+                  )
+                else
+                  mergeAlgebra.leftDeletion(
+                    _,
+                    deletedBaseElement,
+                    deletedRightElement
                   )
             )
           )
@@ -215,29 +210,28 @@ object FirstPassMergeResult:
         result
           .focus(_.recording)
           .modify(
-            _.record(
-              [Result[_]] =>
-                (mergeAlgebra: MergeAlgebra[Result, Element]) =>
-                  if inContextOfFileDeletion then
-                    // NOTE: in order to support compatibility with core Git
-                    // merge, when a file is deleted on just one side, we
-                    // pretend that all of its content is left untouched; this
-                    // means that the merge won't treat the deletion of the file
-                    // as being deletion of the content. If the content has
-                    // moved out to other files though, then the suppression
-                    // mechanism in `CodeMotionAnalysis.merge` will remove it
-                    // later on from the final merge result.
-                    mergeAlgebra.preservation(
-                      _,
-                      deletedBaseElement,
-                      deletedLeftElement,
-                      deletedBaseElement
-                    )
-                  else
-                    mergeAlgebra.rightDeletion(
-                      _,
-                      deletedBaseElement,
-                      deletedLeftElement
+            _.record([Result[_]] =>
+              (mergeAlgebra: MergeAlgebra[Result, Element]) =>
+                if inContextOfFileDeletion then
+                  // NOTE: in order to support compatibility with core Git
+                  // merge, when a file is deleted on just one side, we
+                  // pretend that all of its content is left untouched; this
+                  // means that the merge won't treat the deletion of the file
+                  // as being deletion of the content. If the content has
+                  // moved out to other files though, then the suppression
+                  // mechanism in `CodeMotionAnalysis.merge` will remove it
+                  // later on from the final merge result.
+                  mergeAlgebra.preservation(
+                    _,
+                    deletedBaseElement,
+                    deletedLeftElement,
+                    deletedBaseElement
+                  )
+                else
+                  mergeAlgebra.rightDeletion(
+                    _,
+                    deletedBaseElement,
+                    deletedLeftElement
                   )
             )
           )
@@ -258,12 +252,11 @@ object FirstPassMergeResult:
         result
           .focus(_.recording)
           .modify(
-            _.record(
-              [Result[_]] =>
-                (mergeAlgebra: MergeAlgebra[Result, Element]) =>
-                  mergeAlgebra.coincidentDeletion(
-                    _,
-                    deletedElement
+            _.record([Result[_]] =>
+              (mergeAlgebra: MergeAlgebra[Result, Element]) =>
+                mergeAlgebra.coincidentDeletion(
+                  _,
+                  deletedElement
                 )
             )
           )
@@ -283,14 +276,13 @@ object FirstPassMergeResult:
         result
           .focus(_.recording)
           .modify(
-            _.record(
-              [Result[_]] =>
-                (mergeAlgebra: MergeAlgebra[Result, Element]) =>
-                  mergeAlgebra.leftEdit(
-                    _,
-                    editedBaseElement,
-                    editedRightElement,
-                    editElements
+            _.record([Result[_]] =>
+              (mergeAlgebra: MergeAlgebra[Result, Element]) =>
+                mergeAlgebra.leftEdit(
+                  _,
+                  editedBaseElement,
+                  editedRightElement,
+                  editElements
                 )
             )
           )
@@ -317,14 +309,13 @@ object FirstPassMergeResult:
         result
           .focus(_.recording)
           .modify(
-            _.record(
-              [Result[_]] =>
-                (mergeAlgebra: MergeAlgebra[Result, Element]) =>
-                  mergeAlgebra.rightEdit(
-                    _,
-                    editedBaseElement,
-                    editedLeftElement,
-                    editElements
+            _.record([Result[_]] =>
+              (mergeAlgebra: MergeAlgebra[Result, Element]) =>
+                mergeAlgebra.rightEdit(
+                  _,
+                  editedBaseElement,
+                  editedLeftElement,
+                  editElements
                 )
             )
           )
@@ -350,13 +341,12 @@ object FirstPassMergeResult:
         result
           .focus(_.recording)
           .modify(
-            _.record(
-              [Result[_]] =>
-                (mergeAlgebra: MergeAlgebra[Result, Element]) =>
-                  mergeAlgebra.coincidentEdit(
-                    _,
-                    editedElement,
-                    editElements
+            _.record([Result[_]] =>
+              (mergeAlgebra: MergeAlgebra[Result, Element]) =>
+                mergeAlgebra.coincidentEdit(
+                  _,
+                  editedElement,
+                  editElements
                 )
             )
           )
@@ -386,14 +376,13 @@ object FirstPassMergeResult:
         result
           .focus(_.recording)
           .modify(
-            _.record(
-              [Result[_]] =>
-                (mergeAlgebra: MergeAlgebra[Result, Element]) =>
-                  mergeAlgebra.conflict(
-                    _,
-                    editedElements,
-                    leftEditElements,
-                    rightEditElements
+            _.record([Result[_]] =>
+              (mergeAlgebra: MergeAlgebra[Result, Element]) =>
+                mergeAlgebra.conflict(
+                  _,
+                  editedElements,
+                  leftEditElements,
+                  rightEditElements
                 )
             )
           )

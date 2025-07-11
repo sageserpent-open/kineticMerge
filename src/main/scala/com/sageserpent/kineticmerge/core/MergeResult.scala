@@ -35,6 +35,8 @@ case class MergedWithConflicts[Content](
 ) extends MergeResult[Content]:
   require(leftElements != rightElements)
 
+  // The invariant guarantees this.
+
   override def transform[TransformedContent](
       transform: Content => TransformedContent
   )(using

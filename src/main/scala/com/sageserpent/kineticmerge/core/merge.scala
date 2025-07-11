@@ -69,12 +69,12 @@ object merge extends StrictLogging:
     *   , this breaks up the left-edits to preserve the sandwich in edited form
     *   in the merge. <p><p>Similarly, successive edits on the same side will be
     *   treated as isolated edits rather than allowing the first to greedily
-    *   capture all the [[Contribution.Difference]] elements.<p></p>Conflicts
+    *   capture all the [[Contribution.Difference]] elements. <p><p>Conflicts
     *   are also greedy, taking successive left- and right-insertions to make a
     *   longer conflict. This occurs even if following insertions could be made
     *   in isolation without causing a conflict. However, as mentioned above,
     *   edits are preferred over conflicts, so an edit will win out over a
-    *   conflict in taking insertions.<p></p>Coincident edits, where an element
+    *   conflict in taking insertions. <p><p>Coincident edits, where an element
     *   is a [[Contribution.Difference]] in {@code base} that is edited into a
     *   [[Contribution.CommonToLeftAndRightOnly]] in both the {@code left} and
     *   {@code right} are also greedy and will take successive
@@ -390,12 +390,12 @@ object merge extends StrictLogging:
 
     inline def rightEditLeftDeletionConflict(
         base: Seq[Contribution[Element]],
-        partialResult: Result[Element],
-        editedBaseElement: Element,
-        baseTail: Seq[Contribution[Element]]
-    )(
-        conflictOperations: ConflictOperations,
         left: Seq[Contribution[Element]],
+        right: Seq[Contribution[Element]],
+        partialResult: Result[Element],
+        conflictOperations: ConflictOperations,
+        editedBaseElement: Element,
+        baseTail: Seq[Contribution[Element]],
         rightElement: Element,
         rightTail: Seq[Contribution[Element]]
     ) =
@@ -429,6 +429,22 @@ object merge extends StrictLogging:
             )
           )
 
+        case (
+              Seq(Contribution.Difference(followingBaseElement), _*),
+              _
+            ) =>
+          logger.debug(
+            s"Conflict between left deletion of ${pprintCustomised(editedBaseElement)} and its edit on the right into ${pprintCustomised(rightElement)}, coalescing with following coincident deletion of ${pprintCustomised(followingBaseElement)}."
+          )
+          mergeBetweenRunsOfCommonElements(baseTail, left, right)(
+            partialResult,
+            coalescence = conflictOperations.coalesceConflict(
+              Some(editedBaseElement),
+              None,
+              None
+            )
+          )
+
         case _ =>
           logger.debug(
             s"Conflict between left deletion of ${pprintCustomised(editedBaseElement)} and its edit on the right into ${pprintCustomised(rightElement)}."
@@ -445,12 +461,12 @@ object merge extends StrictLogging:
 
     inline def leftEditRightDeletionConflict(
         base: Seq[Contribution[Element]],
-        partialResult: Result[Element],
-        editedBaseElement: Element,
-        baseTail: Seq[Contribution[Element]]
-    )(
-        conflictOperations: ConflictOperations,
+        left: Seq[Contribution[Element]],
         right: Seq[Contribution[Element]],
+        partialResult: Result[Element],
+        conflictOperations: ConflictOperations,
+        editedBaseElement: Element,
+        baseTail: Seq[Contribution[Element]],
         leftElement: Element,
         leftTail: Seq[Contribution[Element]]
     ) =
@@ -480,6 +496,22 @@ object merge extends StrictLogging:
             coalescence = conflictOperations.coalesceConflict(
               None,
               Some(leftElement),
+              None
+            )
+          )
+
+        case (
+              Seq(Contribution.Difference(followingBaseElement), _*),
+              _
+            ) =>
+          logger.debug(
+            s"Conflict between right deletion of ${pprintCustomised(editedBaseElement)} and its edit on the left into ${pprintCustomised(leftElement)}, coalescing with following coincident deletion of ${pprintCustomised(followingBaseElement)}."
+          )
+          mergeBetweenRunsOfCommonElements(baseTail, left, right)(
+            partialResult,
+            coalescence = conflictOperations.coalesceConflict(
+              Some(editedBaseElement),
+              None,
               None
             )
           )
@@ -1295,10 +1327,15 @@ object merge extends StrictLogging:
             ) => // Left edit / right deletion conflict.
           leftEditRightDeletionConflict(
             base,
+            left,
+            right,
             partialResult,
+            conflictOperations,
             editedBaseElement,
-            baseTail
-          )(conflictOperations, right, leftElement, leftTail)
+            baseTail,
+            leftElement,
+            leftTail
+          )
 
         // RIGHT...
         case (
@@ -1309,10 +1346,15 @@ object merge extends StrictLogging:
             ) => // Right edit / left deletion conflict.
           rightEditLeftDeletionConflict(
             base,
+            left,
+            right,
             partialResult,
+            conflictOperations,
             editedBaseElement,
-            baseTail
-          )(conflictOperations, left, rightElement, rightTail)
+            baseTail,
+            rightElement,
+            rightTail
+          )
 
         // SYMMETRIC...
         case (

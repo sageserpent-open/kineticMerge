@@ -1,7 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
-import cats.kernel.instances.SeqEq
-import cats.{Eq, Order}
+import cats.{Eq, Order, Traverse}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
 import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSidedMergeResult
@@ -19,6 +18,7 @@ import com.sageserpent.kineticmerge.core.merge.of as mergeOf
 import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
 
+import scala.annotation.tailrec
 import scala.collection.immutable.MultiDict
 import scala.collection.{IndexedSeqView, Searching}
 import scala.math.Ordering.Implicits.seqOrdering
@@ -82,7 +82,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
       val paths =
         codeMotionAnalysis.base.keySet ++ codeMotionAnalysis.left.keySet ++ codeMotionAnalysis.right.keySet
-      
+
       type SecondPassInput =
         Either[FullyMerged[IndexedSeq[Section[Element]]], Recording[
           Section[Element]
@@ -1056,13 +1056,70 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           end if
         end substituteFor
 
-        path -> mergeResult.transform(
-          _.flatMap(section =>
-            // NOTE: the substitution has to be further substituted in case we
-            // have a forwarded edit or deletion from the opposite side in it.
-            substituteFor(section).flatMap(substituteFor)
+        @tailrec
+        def substituteThroughSectionsEliminatingAdjacentDuplicateSubstitutions(
+            sections: IndexedSeq[MultiSided[Section[Element]]],
+            previouslyAppliedSubstitutions: Set[
+              IndexedSeq[MultiSided[Section[Element]]]
+            ]
+        ): IndexedSeq[MultiSided[Section[Element]]] =
+          val (
+            (_, previouslyAppliedSubstitutionsWithLatestAdded),
+            withSubstitutionsInClumps
+          ) = Traverse[Seq]
+            .mapAccumulate(
+              (
+                None: Option[IndexedSeq[MultiSided[Section[Element]]]],
+                previouslyAppliedSubstitutions
+              ),
+              sections
+            ) {
+              case (
+                    state @ (
+                      priorSubstitution,
+                      previouslyAppliedSubstitutionsPartialUpdate
+                    ),
+                    section
+                  ) =>
+                val substitution = substituteFor(section)
+
+                if !previouslyAppliedSubstitutions.contains(substitution) then
+                  priorSubstitution match
+                    case Some(duplicatedSubstitution)
+                        if substitution == duplicatedSubstitution =>
+                      state -> IndexedSeq.empty
+                    case _ =>
+                      (
+                        Some(substitution),
+                        previouslyAppliedSubstitutionsPartialUpdate + substitution
+                      ) -> substitution
+
+                  end match
+                else state -> IndexedSeq(section)
+                end if
+            }
+
+          val withLatestRoundOfSubstitutions =
+            withSubstitutionsInClumps.toIndexedSeq.flatten
+
+          if sections != withLatestRoundOfSubstitutions then
+            // Keep repeating passes of substitution in case we have forwarded
+            // edits or deletions. For a detailed example of this in operation,
+            // see: https://github.com/sageserpent-open/kineticMerge/issues/205.
+            substituteThroughSectionsEliminatingAdjacentDuplicateSubstitutions(
+              withLatestRoundOfSubstitutions,
+              previouslyAppliedSubstitutionsWithLatestAdded
+            )
+          else withLatestRoundOfSubstitutions
+          end if
+        end substituteThroughSectionsEliminatingAdjacentDuplicateSubstitutions
+
+        path -> mergeResult.transform { sections =>
+          substituteThroughSectionsEliminatingAdjacentDuplicateSubstitutions(
+            sections,
+            previouslyAppliedSubstitutions = Set.empty
           )
-        )(using specialCaseEquivalenceBasedOnOrdering)
+        }(using specialCaseEquivalenceBasedOnOrdering)
       end applySubstitutions
 
       def resolveSections(
