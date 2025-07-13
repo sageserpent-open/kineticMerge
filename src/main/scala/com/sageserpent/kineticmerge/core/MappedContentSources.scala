@@ -291,9 +291,9 @@ case class MappedContentSourcesOfTokens[Path](
   private class LineInformation(contents: IndexedSeq[Token]):
     private val cumulativeCharacterOffsetsOfTokensIncludingThePhantomOffTheEnd
         : IndexedSeq[Int] =
-      (0 until contents.size)
+      contents.indices
         .scanLeft(0)((cumulativeCharacterOffset, tokenIndex) =>
-          cumulativeCharacterOffset + contents(tokenIndex).text.size
+          cumulativeCharacterOffset + contents(tokenIndex).text.length
         )
 
     private val cumulativeCharacterOffsetsOfLines: Array[Int] =
