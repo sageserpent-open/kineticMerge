@@ -216,14 +216,13 @@ trait MappedContentSources[Path, Element]
 end MappedContentSources
 
 object MappedContentSourcesOfTokens:
-  private val linebreakExtraction =
-    """(?m:.*$(\s+?)^)""".r // Matches a single, possibly empty line; the nested parentheses capture the terminating linebreak sequence. A final line without a terminating linebreak is not matched.
+  private val linebreakExtraction = """\R""".r
 
-    /** @param line
-      *   One-relative line number within the entire content at some path.
-      * @param characterOffset
-      *   Zero-relative character offset from the start of the line.
-      */
+  /** @param line
+    *   One-relative line number within the entire content at some path.
+    * @param characterOffset
+    *   Zero-relative character offset from the start of the line.
+    */
   case class TextPosition(
       line: Int,
       characterOffset: Int
@@ -301,7 +300,7 @@ case class MappedContentSourcesOfTokens[Path](
       val textCoveredBySection = contents.map(_.text).mkString
 
       val offsetsFollowingLinebreaks =
-        linebreakExtraction.findAllMatchIn(textCoveredBySection).map(_.end(1))
+        linebreakExtraction.findAllMatchIn(textCoveredBySection).map(_.end(0))
 
       (Iterator(0) ++ offsetsFollowingLinebreaks).toArray
     end cumulativeCharacterOffsetsOfLines
