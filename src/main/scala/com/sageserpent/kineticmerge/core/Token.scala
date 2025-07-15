@@ -23,16 +23,13 @@ object Token extends JavaTokenParsers:
   def tokens(input: String): ParseResult[Vector[Token]] =
     parse(tokens, input).map(_.toVector)
 
-  private def tokens: Parser[List[Token]] = phrase(
-    opt(whitespaceRun) ~ rep(tokenWithPossibleFollowingWhitespace) ^^ {
-      case Some(whitespace) ~ tokens =>
-        whitespace +: tokens
-      case None ~ tokens =>
-        tokens
-    }
-  )
+  private val miscellaneous: Parser[String] =
+    """.""".r
 
-  private def tokenWithPossibleFollowingWhitespace: Parser[Token] =
+  private val whitespaceRun: Parser[Whitespace] =
+    whiteSpace ^^ Whitespace.apply
+
+  private val tokenWithPossibleFollowingWhitespace: Parser[Token] =
     ((ident | wholeNumber | decimalNumber | floatingPointNumber | stringLiteral | miscellaneous) ^^ Significant.apply) ~ opt(
       whitespaceRun
     ) ^^ {
@@ -42,11 +39,14 @@ object Token extends JavaTokenParsers:
         coreToken
     }
 
-  private def miscellaneous: Parser[String] =
-    ".".r
-
-  private def whitespaceRun: Parser[Token.Whitespace] =
-    whiteSpace ^^ Token.Whitespace.apply
+  private val tokens: Parser[List[Token]] = phrase(
+    opt(whitespaceRun) ~ rep(tokenWithPossibleFollowingWhitespace) ^^ {
+      case Some(whitespace) ~ tokens =>
+        whitespace +: tokens
+      case None ~ tokens =>
+        tokens
+    }
+  )
 
   @tailrec
   def equality(lhs: Token, rhs: Token): Boolean =
