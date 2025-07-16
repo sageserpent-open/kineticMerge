@@ -96,7 +96,11 @@ object Token extends JavaTokenParsers:
             WithTrailingWhitespace(rhsCoreToken, _)
           ) =>
         equality(lhs, rhsCoreToken)
-      case _ => lhs == rhs
+      case (Whitespace(_), Significant(_))                    => false
+      case (Significant(_), Whitespace(_))                    => false
+      case (Whitespace(lhsBlanks), Whitespace(rhsBlanks))     => true
+      case (Significant(lhsContent), Significant(rhsContent)) =>
+        lhsContent == rhsContent
   end equality
 
   @tailrec
@@ -119,19 +123,18 @@ object Token extends JavaTokenParsers:
             WithTrailingWhitespace(rhsCoreToken, _)
           ) =>
         comparison(lhs, rhsCoreToken)
-      case (Whitespace(_), Significant(_))                => -1
-      case (Significant(_), Whitespace(_))                => 1
-      case (Whitespace(lhsBlanks), Whitespace(rhsBlanks)) =>
-        Order.compare(lhsBlanks, rhsBlanks)
-      case (Significant(lhsLetters), Significant(rhsLetters)) =>
-        Order.compare(lhsLetters, rhsLetters)
+      case (Whitespace(_), Significant(_))                    => -1
+      case (Significant(_), Whitespace(_))                    => 1
+      case (Whitespace(lhsBlanks), Whitespace(rhsBlanks))     => 0
+      case (Significant(lhsContent), Significant(rhsContent)) =>
+        Order.compare(lhsContent, rhsContent)
   end comparison
 
   @tailrec
   def funnel(token: Token, primitiveSink: PrimitiveSink): Unit =
     token match
       case Whitespace(blanks)   =>
-      case Significant(letters) => letters.foreach(primitiveSink.putChar)
+      case Significant(content) => content.foreach(primitiveSink.putChar)
       case WithTrailingWhitespace(coreToken, _) =>
         funnel(coreToken, primitiveSink)
     end match
@@ -153,7 +156,7 @@ end Token
 trait Token:
   def text: String = this match
     case Whitespace(blanks)                            => blanks
-    case Significant(letters)                          => letters
+    case Significant(content)                          => content
     case WithTrailingWhitespace(coreToken, whitespace) =>
       coreToken.text ++ whitespace.text
 end Token
