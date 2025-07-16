@@ -10,25 +10,17 @@ import com.sageserpent.kineticmerge.core.Token.{
   opt,
   parse,
   phrase,
-  rep,
-  whiteSpace
+  rep
 }
 
 import scala.annotation.tailrec
 import scala.util.parsing.combinator.JavaTokenParsers
 
 object Token extends JavaTokenParsers:
-  override def skipWhitespace: Boolean = false
-
-  def tokens(input: String): ParseResult[Vector[Token]] =
-    parse(tokens, input).map(_.toVector)
-
   private val miscellaneous: Parser[String] =
     """.""".r
-
   private val whitespaceRun: Parser[Whitespace] =
     whiteSpace ^^ Whitespace.apply
-
   private val tokenWithPossibleFollowingWhitespace: Parser[Token] =
     ((ident | wholeNumber | decimalNumber | floatingPointNumber | stringLiteral | miscellaneous) ^^ Significant.apply) ~ opt(
       whitespaceRun
@@ -38,7 +30,6 @@ object Token extends JavaTokenParsers:
       case coreToken ~ None =>
         coreToken
     }
-
   private val tokens: Parser[List[Token]] = phrase(
     opt(whitespaceRun) ~ rep(tokenWithPossibleFollowingWhitespace) ^^ {
       case Some(whitespace) ~ tokens =>
@@ -47,6 +38,11 @@ object Token extends JavaTokenParsers:
         tokens
     }
   )
+
+  override def skipWhitespace: Boolean = false
+
+  def tokens(input: String): ParseResult[Vector[Token]] =
+    parse(tokens, input).map(_.toVector)
 
   @tailrec
   def equality(lhs: Token, rhs: Token): Boolean =
@@ -68,7 +64,11 @@ object Token extends JavaTokenParsers:
             WithTrailingWhitespace(rhsCoreToken, _)
           ) =>
         equality(lhs, rhsCoreToken)
-      case _ => lhs == rhs
+      case (Whitespace(_), Significant(_))                    => false
+      case (Significant(_), Whitespace(_))                    => false
+      case (Whitespace(lhsBlanks), Whitespace(rhsBlanks))     => true
+      case (Significant(lhsContent), Significant(rhsContent)) =>
+        lhsContent == rhsContent
   end equality
 
   @tailrec
@@ -91,19 +91,18 @@ object Token extends JavaTokenParsers:
             WithTrailingWhitespace(rhsCoreToken, _)
           ) =>
         comparison(lhs, rhsCoreToken)
-      case (Whitespace(_), Significant(_))                => -1
-      case (Significant(_), Whitespace(_))                => 1
-      case (Whitespace(lhsBlanks), Whitespace(rhsBlanks)) =>
-        Order.compare(lhsBlanks, rhsBlanks)
-      case (Significant(lhsLetters), Significant(rhsLetters)) =>
-        Order.compare(lhsLetters, rhsLetters)
+      case (Whitespace(_), Significant(_))                    => -1
+      case (Significant(_), Whitespace(_))                    => 1
+      case (Whitespace(lhsBlanks), Whitespace(rhsBlanks))     => 0
+      case (Significant(lhsContent), Significant(rhsContent)) =>
+        Order.compare(lhsContent, rhsContent)
   end comparison
 
   @tailrec
   def funnel(token: Token, primitiveSink: PrimitiveSink): Unit =
     token match
       case Whitespace(blanks)   =>
-      case Significant(letters) => letters.foreach(primitiveSink.putChar)
+      case Significant(content) => content.foreach(primitiveSink.putChar)
       case WithTrailingWhitespace(coreToken, _) =>
         funnel(coreToken, primitiveSink)
     end match
@@ -125,7 +124,7 @@ end Token
 trait Token:
   def text: String = this match
     case Whitespace(blanks)                            => blanks
-    case Significant(letters)                          => letters
+    case Significant(content)                          => content
     case WithTrailingWhitespace(coreToken, whitespace) =>
       coreToken.text ++ whitespace.text
 end Token
