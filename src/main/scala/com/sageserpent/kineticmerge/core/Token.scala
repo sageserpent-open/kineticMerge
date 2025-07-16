@@ -10,43 +10,71 @@ import com.sageserpent.kineticmerge.core.Token.{
   opt,
   parse,
   phrase,
-  rep,
-  whiteSpace
+  rep
 }
 
 import scala.annotation.tailrec
 import scala.util.parsing.combinator.JavaTokenParsers
 
 object Token extends JavaTokenParsers:
-  override def skipWhitespace: Boolean = false
-
-  def tokens(input: String): ParseResult[Vector[Token]] =
-    parse(tokens, input).map(_.toVector)
-
   private val miscellaneous: Parser[String] =
     """.""".r
-
-  private val whitespaceRun: Parser[Whitespace] =
-    whiteSpace ^^ Whitespace.apply
-
+  private val horizontalWhitespaceRun: Parser[Whitespace] =
+    """\h+""".r ^^ (content => Whitespace(content))
   private val tokenWithPossibleFollowingWhitespace: Parser[Token] =
     ((ident | wholeNumber | decimalNumber | floatingPointNumber | stringLiteral | miscellaneous) ^^ Significant.apply) ~ opt(
-      whitespaceRun
+      horizontalWhitespaceRun
     ) ^^ {
       case coreToken ~ Some(whitespace) =>
         WithTrailingWhitespace(coreToken, whitespace)
       case coreToken ~ None =>
         coreToken
     }
-
-  private val tokens: Parser[List[Token]] = phrase(
-    opt(whitespaceRun) ~ rep(tokenWithPossibleFollowingWhitespace) ^^ {
-      case Some(whitespace) ~ tokens =>
-        whitespace +: tokens
+    // NOTE: don't handle linebreaks as *individual* tokens, because the idea is
+    // to condense a run of linebreaks with the last token in the preceding
+    // line. Otherwise, we'll end up with the first linebreak being condensed
+    // and then a run of individual linebreaks, and this causes trivial sections
+    // to be generated that can on turn play havoc with merging.
+  private val linebreakRun: Parser[Whitespace] =
+    """\R+""".r ^^ (content => Whitespace(content))
+  private val line: Parser[List[Token]] =
+    opt(horizontalWhitespaceRun) ~ rep(
+      tokenWithPossibleFollowingWhitespace
+    ) ^^ {
+      case Some(leadingIndentation) ~ tokens =>
+        leadingIndentation +: tokens
       case None ~ tokens =>
         tokens
     }
+  private val tokens: Parser[List[Token]] = phrase(
+    (rep(line ~ linebreakRun ^^ { case line ~ linebreak =>
+      if line.isEmpty then List(linebreak)
+      else
+        val allButLastToken = line.init
+        val lastToken       = line.last
+
+        val lastTokenCondensedWithLinebreak = lastToken match
+          case Whitespace(blanks) => Whitespace(blanks ++ linebreak.blanks)
+          case significant: Significant =>
+            WithTrailingWhitespace(significant, linebreak)
+          case WithTrailingWhitespace(coreToken, Whitespace(blanks)) =>
+            WithTrailingWhitespace(
+              coreToken,
+              Whitespace(blanks ++ linebreak.blanks)
+            )
+
+        allButLastToken :+ lastTokenCondensedWithLinebreak
+    }) ^^ (_.flatten)) ~ opt(line) ^^ {
+      case contentFromLeadingLines ~ Some(finalLineWithoutLinebreak) =>
+        contentFromLeadingLines ++ finalLineWithoutLinebreak
+      case completeContent ~ None => completeContent
+    }
   )
+
+  override def skipWhitespace: Boolean = false
+
+  def tokens(input: String): ParseResult[Vector[Token]] =
+    parse(tokens, input).map(_.toVector)
 
   @tailrec
   def equality(lhs: Token, rhs: Token): Boolean =
