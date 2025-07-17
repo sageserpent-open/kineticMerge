@@ -48,38 +48,41 @@ object Token extends JavaTokenParsers:
         tokens
     }
   private val tokens: Parser[List[Token]] = phrase(
-    (rep(line ~ linebreakRun ^^ { case line ~ linebreak =>
-      if line.isEmpty then List(linebreak)
+    (rep(line ~ linebreakRun ^^ { case line ~ linebreakRun =>
+      if line.isEmpty then List(linebreakRun)
       else
         // This is only here because we're forced to work with `List`, and
         // traversing the same list twice for the init list and the last token
         // just feels wrong.
         @tailrec
-        def splitInitAndLast(
+        def condenseLastTokenWithLinebreak(
             tokens: List[Token],
-            partialInit: Vector[Token]
-        ): (List[Token], Token) =
-          require(tokens.nonEmpty)
+            allButLastToken: Vector[Token]
+        ): Vector[Token] =
+          // This is guarded by virtue of the enclosing if-statement.
           (tokens: @unchecked) match
-            case last :: Nil  => partialInit.toList -> last
+            case lastToken :: Nil =>
+              val lastTokenCondensedWithLinebreak = lastToken match
+                case Whitespace(blanks) =>
+                  Whitespace(blanks ++ linebreakRun.blanks)
+                case significant: Significant =>
+                  WithTrailingWhitespace(significant, linebreakRun)
+                case WithTrailingWhitespace(coreToken, Whitespace(blanks)) =>
+                  WithTrailingWhitespace(
+                    coreToken,
+                    Whitespace(blanks ++ linebreakRun.blanks)
+                  )
+
+              allButLastToken :+ lastTokenCondensedWithLinebreak
             case head :: tail =>
-              splitInitAndLast(tail, partialInit.appended(head))
+              condenseLastTokenWithLinebreak(
+                tail,
+                allButLastToken.appended(head)
+              )
           end match
-        end splitInitAndLast
+        end condenseLastTokenWithLinebreak
 
-        val (allButLastToken, lastToken) = splitInitAndLast(line, Vector.empty)
-
-        val lastTokenCondensedWithLinebreak = lastToken match
-          case Whitespace(blanks) => Whitespace(blanks ++ linebreak.blanks)
-          case significant: Significant =>
-            WithTrailingWhitespace(significant, linebreak)
-          case WithTrailingWhitespace(coreToken, Whitespace(blanks)) =>
-            WithTrailingWhitespace(
-              coreToken,
-              Whitespace(blanks ++ linebreak.blanks)
-            )
-
-        allButLastToken :+ lastTokenCondensedWithLinebreak
+        condenseLastTokenWithLinebreak(line, allButLastToken = Vector.empty)
     }) ^^ (_.flatten)) ~ opt(line) ^^ {
       case contentFromLeadingLines ~ Some(finalLineWithoutLinebreak) =>
         contentFromLeadingLines ++ finalLineWithoutLinebreak
