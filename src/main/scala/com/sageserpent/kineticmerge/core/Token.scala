@@ -60,7 +60,10 @@ object Token extends JavaTokenParsers:
                   Whitespace(blanks ++ linebreakRun.blanks)
                 case significant: Significant =>
                   WithTrailingWhitespace(significant, linebreakRun)
-                case WithTrailingWhitespace(coreToken, Whitespace(blanks)) =>
+                case WithTrailingWhitespace(
+                      coreToken,
+                      Whitespace(blanks)
+                    ) =>
                   WithTrailingWhitespace(
                     coreToken,
                     Whitespace(blanks ++ linebreakRun.blanks)
@@ -135,15 +138,15 @@ object Token extends JavaTokenParsers:
 
   case class Significant(content: String) extends Token
 
-  case class Whitespace(blanks: String) extends Token:
+  private case class Whitespace(blanks: String) extends Token:
     require(blanks.isBlank)
   end Whitespace
 
-  case class LeadingIndentation(indentation: String) extends Token:
+  private case class LeadingIndentation(indentation: String) extends Token:
     require(indentation.isBlank)
   end LeadingIndentation
 
-  case class WithTrailingWhitespace(
+  private case class WithTrailingWhitespace(
       coreToken: Significant,
       whitespace: Whitespace
   ) extends Token
