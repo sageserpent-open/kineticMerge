@@ -34,7 +34,8 @@ object Token extends JavaTokenParsers:
     // to condense a run of linebreaks with the last token in the preceding
     // line. Otherwise, we'll end up with the first linebreak being condensed
     // and then a run of individual linebreaks, and this causes trivial sections
-    // to be generated that can on turn play havoc with merging.
+    // to be generated that can in turn play havoc with merging; this is exposed
+    // by `MainTest.cleanMergeOfAFileAddedInBothBranches`.
   private val linebreakRun: Parser[Whitespace] =
     """\R+""".r ^^ (content => Whitespace(content))
   private val line: Parser[List[Token]] =
