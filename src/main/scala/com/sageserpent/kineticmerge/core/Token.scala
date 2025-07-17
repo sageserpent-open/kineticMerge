@@ -76,33 +76,8 @@ object Token extends JavaTokenParsers:
 
   def tokens(input: String): ParseResult[Vector[Token]] =
     parse(tokens, input).map(_.toVector)
-
-  @tailrec
-  def equality(lhs: Token, rhs: Token): Boolean =
-    lhs -> rhs match
-      // This first case is implied by the following two in combination via
-      // recursion, but it's clearer and more efficient this way.
-      case (
-            WithTrailingWhitespace(lhsCoreToken, _),
-            WithTrailingWhitespace(rhsCoreToken, _)
-          ) =>
-        equality(lhsCoreToken, rhsCoreToken)
-      case (
-            WithTrailingWhitespace(lhsCoreToken, _),
-            _
-          ) =>
-        equality(lhsCoreToken, rhs)
-      case (
-            _,
-            WithTrailingWhitespace(rhsCoreToken, _)
-          ) =>
-        equality(lhs, rhsCoreToken)
-      case (Whitespace(_), Significant(_))                    => false
-      case (Significant(_), Whitespace(_))                    => false
-      case (Whitespace(lhsBlanks), Whitespace(rhsBlanks))     => true
-      case (Significant(lhsContent), Significant(rhsContent)) =>
-        lhsContent == rhsContent
-  end equality
+  
+  def equality(lhs: Token, rhs: Token): Boolean = 0 == comparison(lhs, rhs)
 
   @tailrec
   def comparison(lhs: Token, rhs: Token): Int =
