@@ -51,8 +51,23 @@ object Token extends JavaTokenParsers:
     (rep(line ~ linebreakRun ^^ { case line ~ linebreak =>
       if line.isEmpty then List(linebreak)
       else
-        val allButLastToken = line.init
-        val lastToken       = line.last
+        // This is only here because we're forced to work with `List`, and
+        // traversing the same list twice for the init list and the last token
+        // just feels wrong.
+        @tailrec
+        def splitInitAndLast(
+            tokens: List[Token],
+            partialInit: Vector[Token]
+        ): (List[Token], Token) =
+          require(tokens.nonEmpty)
+          (tokens: @unchecked) match
+            case last :: Nil  => partialInit.toList -> last
+            case head :: tail =>
+              splitInitAndLast(tail, partialInit.appended(head))
+          end match
+        end splitInitAndLast
+
+        val (allButLastToken, lastToken) = splitInitAndLast(line, Vector.empty)
 
         val lastTokenCondensedWithLinebreak = lastToken match
           case Whitespace(blanks) => Whitespace(blanks ++ linebreak.blanks)
@@ -76,7 +91,7 @@ object Token extends JavaTokenParsers:
 
   def tokens(input: String): ParseResult[Vector[Token]] =
     parse(tokens, input).map(_.toVector)
-  
+
   def equality(lhs: Token, rhs: Token): Boolean = 0 == comparison(lhs, rhs)
 
   @tailrec
