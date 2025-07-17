@@ -2,16 +2,7 @@ package com.sageserpent.kineticmerge.core
 
 import cats.kernel.Order
 import com.google.common.hash.PrimitiveSink
-import com.sageserpent.kineticmerge.core.Token.{
-  Significant,
-  Whitespace,
-  WithTrailingWhitespace,
-  ident,
-  opt,
-  parse,
-  phrase,
-  rep
-}
+import com.sageserpent.kineticmerge.core.Token.*
 
 import scala.annotation.tailrec
 import scala.util.parsing.combinator.JavaTokenParsers
@@ -30,16 +21,10 @@ object Token extends JavaTokenParsers:
       case coreToken ~ None =>
         coreToken
     }
-    // NOTE: don't handle linebreaks as *individual* tokens, because the idea is
-    // to condense a run of linebreaks with the last token in the preceding
-    // line. Otherwise, we'll end up with the first linebreak being condensed
-    // and then a run of individual linebreaks, and this causes trivial sections
-    // to be generated that can in turn play havoc with merging; this is exposed
-    // by `MainTest.cleanMergeOfAFileAddedInBothBranches`.
-  private val linebreakRun: Parser[Whitespace] =
-    """\R+""".r ^^ (content => Whitespace(content))
+  private val leadingIndentation: Parser[LeadingIndentation] =
+    """\h+""".r ^^ (content => LeadingIndentation(content))
   private val line: Parser[List[Token]] =
-    opt(horizontalWhitespaceRun) ~ rep(
+    opt(leadingIndentation) ~ rep(
       tokenWithPossibleFollowingWhitespace
     ) ^^ {
       case Some(leadingIndentation) ~ tokens =>
@@ -47,6 +32,14 @@ object Token extends JavaTokenParsers:
       case None ~ tokens =>
         tokens
     }
+  // NOTE: don't handle linebreaks as *individual* tokens, because the idea is
+  // to condense a run of linebreaks with the last token in the preceding
+  // line. Otherwise, we'll end up with the first linebreak being condensed
+  // and then a run of individual linebreaks, and this causes trivial sections
+  // to be generated that can in turn play havoc with merging; this is exposed
+  // by `MainTest.cleanMergeOfAFileAddedInBothBranches`.
+  private val linebreakRun: Parser[Whitespace] =
+    """\R+""".r ^^ (content => Whitespace(content))
   private val tokens: Parser[List[Token]] = phrase(
     (rep(line ~ linebreakRun ^^ { case line ~ linebreakRun =>
       if line.isEmpty then List(linebreakRun)
@@ -117,9 +110,14 @@ object Token extends JavaTokenParsers:
             WithTrailingWhitespace(rhsCoreToken, _)
           ) =>
         comparison(lhs, rhsCoreToken)
+      case (LeadingIndentation(_), Significant(_))            => -1
+      case (Significant(_), LeadingIndentation(_))            => 1
+      case (LeadingIndentation(_), Whitespace(_))             => -1
+      case (Whitespace(_), LeadingIndentation(_))             => 1
       case (Whitespace(_), Significant(_))                    => -1
       case (Significant(_), Whitespace(_))                    => 1
-      case (Whitespace(lhsBlanks), Whitespace(rhsBlanks))     => 0
+      case (LeadingIndentation(_), LeadingIndentation(_))     => 0
+      case (Whitespace(_), Whitespace(_))                     => 0
       case (Significant(lhsContent), Significant(rhsContent)) =>
         Order.compare(lhsContent, rhsContent)
   end comparison
@@ -127,18 +125,23 @@ object Token extends JavaTokenParsers:
   @tailrec
   def funnel(token: Token, primitiveSink: PrimitiveSink): Unit =
     token match
-      case Whitespace(blanks)   =>
-      case Significant(content) => content.foreach(primitiveSink.putChar)
+      case LeadingIndentation(_) =>
+      case Whitespace(_)         =>
+      case Significant(content)  => content.foreach(primitiveSink.putChar)
       case WithTrailingWhitespace(coreToken, _) =>
         funnel(coreToken, primitiveSink)
     end match
   end funnel
 
+  case class Significant(content: String) extends Token
+
   case class Whitespace(blanks: String) extends Token:
     require(blanks.isBlank)
   end Whitespace
 
-  case class Significant(content: String) extends Token
+  case class LeadingIndentation(indentation: String) extends Token:
+    require(indentation.isBlank)
+  end LeadingIndentation
 
   case class WithTrailingWhitespace(
       coreToken: Significant,
@@ -149,6 +152,7 @@ end Token
 
 trait Token:
   def text: String = this match
+    case LeadingIndentation(indentation)               => indentation
     case Whitespace(blanks)                            => blanks
     case Significant(content)                          => content
     case WithTrailingWhitespace(coreToken, whitespace) =>
