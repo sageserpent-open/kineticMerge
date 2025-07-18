@@ -17,7 +17,7 @@ object Token extends JavaTokenParsers:
       horizontalWhitespaceRun
     ) ^^ {
       case coreToken ~ Some(whitespace) =>
-        WithTrailingWhitespace(coreToken, whitespace)
+        coreToken.condenseWithFollowingWhitespace(whitespace)
       case coreToken ~ None =>
         coreToken
     }
@@ -28,7 +28,13 @@ object Token extends JavaTokenParsers:
       tokenWithPossibleFollowingWhitespace
     ) ^^ {
       case Some(leadingIndentation) ~ tokens =>
-        leadingIndentation +: tokens
+        tokens match
+          case Nil                           => List(leadingIndentation)
+          case firstToken :: remainingTokens =>
+            WithLeadingIndentation(
+              leadingIndentation,
+              firstToken
+            ) :: remainingTokens
       case None ~ tokens =>
         tokens
     }
@@ -55,21 +61,9 @@ object Token extends JavaTokenParsers:
           // This is guarded by virtue of the enclosing if-statement.
           (tokens: @unchecked) match
             case lastToken :: Nil =>
-              val lastTokenCondensedWithLinebreak = lastToken match
-                case Whitespace(blanks) =>
-                  Whitespace(blanks ++ linebreakRun.blanks)
-                case significant: Significant =>
-                  WithTrailingWhitespace(significant, linebreakRun)
-                case WithTrailingWhitespace(
-                      coreToken,
-                      Whitespace(blanks)
-                    ) =>
-                  WithTrailingWhitespace(
-                    coreToken,
-                    Whitespace(blanks ++ linebreakRun.blanks)
-                  )
-
-              allButLastToken :+ lastTokenCondensedWithLinebreak
+              allButLastToken :+ lastToken.condenseWithFollowingWhitespace(
+                linebreakRun
+              )
             case head :: tail =>
               condenseLastTokenWithLinebreak(
                 tail,
@@ -99,6 +93,23 @@ object Token extends JavaTokenParsers:
       // This first case is implied by the following two in combination via
       // recursion, but it's clearer and more efficient this way.
       case (
+            WithLeadingIndentation(_, lhsCoreToken),
+            WithLeadingIndentation(_, rhsCoreToken)
+          ) =>
+        comparison(lhsCoreToken, rhsCoreToken)
+      case (
+            WithLeadingIndentation(_, lhsCoreToken),
+            _
+          ) =>
+        comparison(lhsCoreToken, rhs)
+      case (
+            _,
+            WithLeadingIndentation(_, rhsCoreToken)
+          ) =>
+        comparison(lhs, rhsCoreToken)
+      // This first case is implied by the following two in combination via
+      // recursion, but it's clearer and more efficient this way.
+      case (
             WithTrailingWhitespace(lhsCoreToken, _),
             WithTrailingWhitespace(rhsCoreToken, _)
           ) =>
@@ -113,10 +124,12 @@ object Token extends JavaTokenParsers:
             WithTrailingWhitespace(rhsCoreToken, _)
           ) =>
         comparison(lhs, rhsCoreToken)
-      case (LeadingIndentation(_), Significant(_))            => -1
-      case (Significant(_), LeadingIndentation(_))            => 1
-      case (LeadingIndentation(_), Whitespace(_))             => -1
-      case (Whitespace(_), LeadingIndentation(_))             => 1
+      case (LeadingIndentation(_), Significant(_)) => -1
+      case (Significant(_), LeadingIndentation(_)) => 1
+      // NOTE: treat leading indentation as being equal to whitespace, even if
+      // the tokens aren't condensed.
+      case (LeadingIndentation(_), Whitespace(_))             => 0
+      case (Whitespace(_), LeadingIndentation(_))             => 0
       case (Whitespace(_), Significant(_))                    => -1
       case (Significant(_), Whitespace(_))                    => 1
       case (LeadingIndentation(_), LeadingIndentation(_))     => 0
@@ -133,31 +146,62 @@ object Token extends JavaTokenParsers:
       case Significant(content)  => content.foreach(primitiveSink.putChar)
       case WithTrailingWhitespace(coreToken, _) =>
         funnel(coreToken, primitiveSink)
+      case WithLeadingIndentation(_, coreToken) =>
+        funnel(coreToken, primitiveSink)
     end match
   end funnel
 
-  case class Significant(content: String) extends Token
-
-  private case class Whitespace(blanks: String) extends Token:
-    require(blanks.isBlank)
-  end Whitespace
-
-  private case class LeadingIndentation(indentation: String) extends Token:
-    require(indentation.isBlank)
-  end LeadingIndentation
-
-  private case class WithTrailingWhitespace(
-      coreToken: Significant,
-      whitespace: Whitespace
-  ) extends Token
-
 end Token
 
-trait Token:
+enum Token:
+  this match
+    case LeadingIndentation(indentation) => require(indentation.isBlank)
+    case Whitespace(blanks)              => require(blanks.isBlank)
+    case Significant(content)            => require(!content.isBlank)
+    case _                               =>
+  end match
+
   def text: String = this match
     case LeadingIndentation(indentation)               => indentation
     case Whitespace(blanks)                            => blanks
     case Significant(content)                          => content
     case WithTrailingWhitespace(coreToken, whitespace) =>
       coreToken.text ++ whitespace.text
+    case WithLeadingIndentation(leadingIndentation, coreToken) =>
+      leadingIndentation.text ++ coreToken.text
+
+  def condenseWithFollowingWhitespace(whitespace: Whitespace): Token =
+    this match
+      case Whitespace(blanks) =>
+        Whitespace(blanks ++ whitespace.blanks)
+      case significant: Significant =>
+        WithTrailingWhitespace(significant, whitespace)
+      case WithTrailingWhitespace(
+            coreToken,
+            Whitespace(blanks)
+          ) =>
+        WithTrailingWhitespace(
+          coreToken,
+          Whitespace(blanks ++ whitespace.blanks)
+        )
+      case leadingIndentation: LeadingIndentation =>
+        WithLeadingIndentation(leadingIndentation, whitespace)
+      case WithLeadingIndentation(leadingIndentation, coreToken) =>
+        WithLeadingIndentation(
+          leadingIndentation,
+          coreToken.condenseWithFollowingWhitespace(whitespace)
+        )
+
+  case Significant(content: String)
+
+  case Whitespace(blanks: String)
+
+  case LeadingIndentation(indentation: String)
+
+  case WithTrailingWhitespace(coreToken: Significant, whitespace: Whitespace)
+
+  case WithLeadingIndentation(
+      leadingIndentation: LeadingIndentation,
+      coreToken: Token
+  )
 end Token
