@@ -462,7 +462,7 @@ object Main extends StrictLogging:
         // useless all-sides matches that create a *lot* of overhead. In
         // practice, avoiding small window sizes above one leads to a much
         // better merge as well.
-        4,
+        3,
       thresholdSizeFractionForMatching: Double = 0,
       minimumAmbiguousMatchSize: Int = 10,
       ambiguousMatchesThreshold: Int = 20
