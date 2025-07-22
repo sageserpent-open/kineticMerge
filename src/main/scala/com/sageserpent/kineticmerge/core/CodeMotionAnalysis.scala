@@ -2325,8 +2325,8 @@ object CodeMotionAnalysis extends StrictLogging:
         matchesAndTheirSections.sectionsAndTheirMatches
 
       val baseFilesByPath =
-        baseSources.filesByPathUtilising(
-          mandatorySections = matchesAndTheirSections.baseSections
+        baseSources.filesByPathUtilising(mandatorySections =
+          matchesAndTheirSections.baseSections
         )
 
       // NOTE: we collect the unmatched sections from the base side and use them
@@ -2344,14 +2344,12 @@ object CodeMotionAnalysis extends StrictLogging:
       }
 
       val leftFilesByPath =
-        leftSources.filesByPathUtilising(
-          mandatorySections = matchesAndTheirSections.leftSections,
-          candidateGapChunksByPath = candidateGapChunksByPath
+        leftSources.filesByPathUtilising(mandatorySections =
+          matchesAndTheirSections.leftSections
         )
       val rightFilesByPath =
-        rightSources.filesByPathUtilising(
-          mandatorySections = matchesAndTheirSections.rightSections,
-          candidateGapChunksByPath = candidateGapChunksByPath
+        rightSources.filesByPathUtilising(mandatorySections =
+          matchesAndTheirSections.rightSections
         )
 
       Right(new CodeMotionAnalysis[Path, Element]:

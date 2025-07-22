@@ -8,7 +8,6 @@ import com.typesafe.scalalogging.StrictLogging
 import pprint.Tree
 
 import java.util.Arrays as JavaArrays
-import scala.collection.immutable.SortedSet
 import scala.collection.mutable.Map as MutableMap
 
 trait MappedContentSources[Path, Element]
@@ -18,17 +17,12 @@ trait MappedContentSources[Path, Element]
   val label: String
 
   override def filesByPathUtilising(
-      mandatorySections: Set[Section[Element]],
-      candidateGapChunksByPath: Map[Path, Set[IndexedSeq[Element]]]
+      mandatorySections: Set[Section[Element]]
   ): Map[Path, File[Element]] =
     val sectionsByPath = mandatorySections.groupBy(pathFor)
 
     contentsByPath.map { case (path, content) =>
       val pertinentSections = sectionsByPath.getOrElse(path, Set.empty)
-
-      val candidateGapChunksInDescendingSizeOrder = SortedSet.from(
-        candidateGapChunksByPath.getOrElse(path, Set.empty)
-      )(Ordering.by((_: IndexedSeq[Element]).size).reverse)
 
       path -> File(
         if content.nonEmpty then
@@ -64,63 +58,12 @@ trait MappedContentSources[Path, Element]
                 gapStart: Int,
                 onePastGapEnd: Int
             ): IndexedSeq[Section[Element]] =
-              val gapSize = onePastGapEnd - gapStart
+              val fillerSection = this.section(path)(
+                gapStart,
+                onePastGapEnd - gapStart
+              )
 
-              val gapContent = contentsByPath(path)
-                .slice(gapStart, onePastGapEnd)
-
-              val biggestChunkContainedInGapContent =
-                candidateGapChunksInDescendingSizeOrder
-                  .dropWhile(chunk =>
-                    chunk.size > gapSize || !gapContent
-                      .containsSlice(chunk)
-                  )
-                  .headOption
-
-              biggestChunkContainedInGapContent.fold(
-                ifEmpty =
-                  val fillerSection = this.section(path)(
-                    gapStart,
-                    onePastGapEnd - gapStart
-                  )
-
-                  IndexedSeq(fillerSection)
-              ) { chunk =>
-                val chunkStartInGapContent =
-                  gapContent.indexOfSlice(chunk)
-
-                assume(-1 != chunkStartInGapContent)
-
-                val onePastChunkEnd =
-                  chunkStartInGapContent + chunk.size
-
-                val prefixSection =
-                  Option.when(0 < chunkStartInGapContent)(
-                    this.section(path)(
-                      gapStart,
-                      chunkStartInGapContent
-                    )
-                  )
-
-                val chunkSection = this.section(path)(
-                  gapStart + chunkStartInGapContent,
-                  chunk.size
-                )
-
-                val suffixSection =
-                  Option.when(gapSize > onePastChunkEnd)(
-                    this.section(path)(
-                      gapStart + onePastChunkEnd,
-                      gapSize - onePastChunkEnd
-                    )
-                  )
-
-                val fillerSections = (prefixSection ++ Iterator(
-                  chunkSection
-                ) ++ suffixSection).toIndexedSeq
-
-                fillerSections
-              }
+              IndexedSeq(fillerSection)
             end gapFilling
 
             val (onePastLastEndOffset, contiguousSections) =
