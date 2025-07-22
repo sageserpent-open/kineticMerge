@@ -184,6 +184,26 @@ object CodeMotionAnalysis extends StrictLogging:
           )
       }
 
+      private def knockOutFromFingerprintedInclusions(
+          sources: Sources[Path, Element]
+      )(
+          fingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions],
+          knockedOut: Section[Element]
+      ): Map[Path, FingerprintedInclusions] =
+        val path = sources.pathFor(knockedOut)
+
+        fingerprintedInclusionsByPath.updatedWith(path)(
+          _.map(
+            _.removeRange(
+              CatsInclusiveRange(
+                start = knockedOut.startOffset,
+                end = knockedOut.onePastEndOffset - 1
+              )
+            )
+          )
+        )
+      end knockOutFromFingerprintedInclusions
+
       private lazy val empty = MatchesAndTheirSections(
         baseSectionsByPath = Map.empty,
         leftSectionsByPath = Map.empty,
@@ -1951,29 +1971,6 @@ object CodeMotionAnalysis extends StrictLogging:
       ): MatchesAndTheirSections =
         aMatch match
           case Match.AllSides(baseSection, leftSection, rightSection) =>
-            def knockOutFromFingerprintedInclusions(
-                sources: Sources[Path, Element]
-            )(
-                fingerprintedInclusionsByPath: Map[
-                  Path,
-                  FingerprintedInclusions
-                ],
-                knockedOut: Section[Element]
-            ): Map[Path, FingerprintedInclusions] =
-              val path = sources.pathFor(knockedOut)
-
-              fingerprintedInclusionsByPath.updatedWith(path)(
-                _.map(
-                  _.removeRange(
-                    CatsInclusiveRange(
-                      start = knockedOut.startOffset,
-                      end = knockedOut.onePastEndOffset - 1
-                    )
-                  )
-                )
-              )
-            end knockOutFromFingerprintedInclusions
-
             copy(
               baseSectionsByPath = baseIncluding(baseSection),
               leftSectionsByPath = leftIncluding(leftSection),
