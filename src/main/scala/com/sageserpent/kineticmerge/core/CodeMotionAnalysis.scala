@@ -204,7 +204,7 @@ object CodeMotionAnalysis extends StrictLogging:
         )
       end knockOutFromFingerprintedInclusions
 
-      private lazy val empty = MatchesAndTheirSections(
+      lazy val empty: MatchesAndTheirSections = MatchesAndTheirSections(
         baseSectionsByPath = Map.empty,
         leftSectionsByPath = Map.empty,
         rightSectionsByPath = Map.empty,
@@ -254,22 +254,28 @@ object CodeMotionAnalysis extends StrictLogging:
               maximumProgress = maximumPossibleMatchSize
             )(initialProgress = maximumPossibleMatchSize)
           ) { progressRecordingSession =>
-            withAllMatchesOfAtLeastTheSureFireWindowSize(
+            withAllMatches(
               matchesAndTheirSections = empty,
               looseExclusiveUpperBoundOnMaximumMatchSize =
                 1 + maximumPossibleMatchSize,
-              progressRecordingSession = progressRecordingSession
+              progressRecordingSession = progressRecordingSession,
+              tinyWindowSizesAllowed = false
             )
           }.get
         else empty
       end withAllMatchesOfAtLeastTheSureFireWindowSize
 
       @tailrec
-      private def withAllMatchesOfAtLeastTheSureFireWindowSize(
+      private def withAllMatches(
           matchesAndTheirSections: MatchesAndTheirSections,
           looseExclusiveUpperBoundOnMaximumMatchSize: Int,
-          progressRecordingSession: ProgressRecordingSession
+          progressRecordingSession: ProgressRecordingSession,
+          tinyWindowSizesAllowed: Boolean
       ): MatchesAndTheirSections =
+        val minimumMatchSizeConsidered =
+          if tinyWindowSizesAllowed then 1
+          else minimumSureFireWindowSizeAcrossAllFilesOverAllSides
+
         // Essentially a binary chop algorithm, but using
         // `fallbackImprovedState` to track the best solution.
         @tailrec
@@ -323,7 +329,8 @@ object CodeMotionAnalysis extends StrictLogging:
               pathInclusionsAfterTryingCandidate
             ) = matchesAndTheirSections.matchesForWindowSize(
               candidateWindowSize,
-              pathInclusions
+              pathInclusions,
+              tinyWindowSizesAllowed
             )
 
             estimatedWindowSizeForOptimalMatch match
@@ -347,11 +354,12 @@ object CodeMotionAnalysis extends StrictLogging:
                   s"Search has found an optimal match at window size: $candidateWindowSize, number of matches is: $numberOfMatchesForTheGivenWindowSize, restarting search to look for smaller matches."
                 )
                 progressRecordingSession.upTo(candidateWindowSize)
-                withAllMatchesOfAtLeastTheSureFireWindowSize(
+                withAllMatches(
                   stateAfterTryingCandidate,
                   looseExclusiveUpperBoundOnMaximumMatchSize =
                     candidateWindowSize,
-                  progressRecordingSession
+                  progressRecordingSession,
+                  tinyWindowSizesAllowed
                 )
               case Some(estimate) =>
                 // We have an improvement, move the lower bound up and note
@@ -381,15 +389,13 @@ object CodeMotionAnalysis extends StrictLogging:
                   )
                 end if
             end match
-          else if minimumSureFireWindowSizeAcrossAllFilesOverAllSides == looseExclusiveUpperBoundOnMaximumMatchSize
+          else if minimumMatchSizeConsidered == looseExclusiveUpperBoundOnMaximumMatchSize
           then
             // There is nowhere left to search.
             logger.debug(
-              s"Search for matches whose size is no less than the sure-fire match window size of: $minimumSureFireWindowSizeAcrossAllFilesOverAllSides has terminated; results are:\n${pprintCustomised(fallbackImprovedState)}"
+              s"Search for matches whose size is no less than: $minimumMatchSizeConsidered has terminated; results are:\n${pprintCustomised(fallbackImprovedState)}"
             )
-            progressRecordingSession.upTo(
-              minimumSureFireWindowSizeAcrossAllFilesOverAllSides
-            )
+            progressRecordingSession.upTo(minimumMatchSizeConsidered)
             fallbackImprovedState
           else
             // The optimal matches are in the fallback improved state; try
@@ -400,23 +406,23 @@ object CodeMotionAnalysis extends StrictLogging:
               s"Search has found optimal matches at window size: $bestMatchSize, restarting search to look for smaller matches."
             )
             progressRecordingSession.upTo(bestMatchSize)
-            withAllMatchesOfAtLeastTheSureFireWindowSize(
+            withAllMatches(
               fallbackImprovedState,
               looseExclusiveUpperBoundOnMaximumMatchSize = bestMatchSize,
-              progressRecordingSession
+              progressRecordingSession,
+              tinyWindowSizesAllowed
             )
           end if
         end keepTryingToImproveThis
 
         keepTryingToImproveThis(
-          bestMatchSize =
-            minimumSureFireWindowSizeAcrossAllFilesOverAllSides - 1,
+          bestMatchSize = minimumMatchSizeConsidered - 1,
           looseExclusiveUpperBoundOnMaximumMatchSize,
           guessAtOptimalMatchSize = None,
           fallbackImprovedState = matchesAndTheirSections,
           pathInclusions = PathInclusions.all
         )
-      end withAllMatchesOfAtLeastTheSureFireWindowSize
+      end withAllMatches
 
       // NOTE: this is partially applied in the class so that it means: "is
       // there anything on the given side that subsumes `section`".
@@ -1119,6 +1125,109 @@ object CodeMotionAnalysis extends StrictLogging:
         }.get
       end withAllSmallFryMatches
 
+      def tinyMatchesOnly(): MatchesAndTheirSections =
+        val withContentCoveredByNonTinyMatchesKnockedOut =
+          val nonTinyMatches = sectionsAndTheirMatches.values.filter {
+            case Match.AllSides(baseSection, _, _) =>
+              minimumWindowSizeAcrossAllFilesOverAllSides <= baseSection.size
+            case Match.BaseAndLeft(baseSection, _) =>
+              minimumWindowSizeAcrossAllFilesOverAllSides <= baseSection.size
+            case Match.BaseAndRight(baseSection, _) =>
+              minimumWindowSizeAcrossAllFilesOverAllSides <= baseSection.size
+            case Match.LeftAndRight(leftSection, _) =>
+              minimumWindowSizeAcrossAllFilesOverAllSides <= leftSection.size
+          }
+
+          nonTinyMatches.foldLeft(MatchesAndTheirSections.empty) {
+            case (
+                  partialResult,
+                  Match.AllSides(baseSection, leftSection, rightSection)
+                ) =>
+              partialResult.copy(
+                baseFingerprintedInclusionsByPath =
+                  knockOutFromFingerprintedInclusions(baseSources)(
+                    partialResult.baseFingerprintedInclusionsByPath,
+                    baseSection
+                  ),
+                leftFingerprintedInclusionsByPath =
+                  knockOutFromFingerprintedInclusions(leftSources)(
+                    partialResult.leftFingerprintedInclusionsByPath,
+                    leftSection
+                  ),
+                rightFingerprintedInclusionsByPath =
+                  knockOutFromFingerprintedInclusions(rightSources)(
+                    partialResult.rightFingerprintedInclusionsByPath,
+                    rightSection
+                  )
+              )
+            case (
+                  partialResult,
+                  Match.BaseAndLeft(baseSection, leftSection)
+                ) =>
+              partialResult.copy(
+                baseFingerprintedInclusionsByPath =
+                  knockOutFromFingerprintedInclusions(baseSources)(
+                    partialResult.baseFingerprintedInclusionsByPath,
+                    baseSection
+                  ),
+                leftFingerprintedInclusionsByPath =
+                  knockOutFromFingerprintedInclusions(leftSources)(
+                    partialResult.leftFingerprintedInclusionsByPath,
+                    leftSection
+                  )
+              )
+            case (
+                  partialResult,
+                  Match.BaseAndRight(baseSection, rightSection)
+                ) =>
+              partialResult.copy(
+                baseFingerprintedInclusionsByPath =
+                  knockOutFromFingerprintedInclusions(baseSources)(
+                    partialResult.baseFingerprintedInclusionsByPath,
+                    baseSection
+                  ),
+                rightFingerprintedInclusionsByPath =
+                  knockOutFromFingerprintedInclusions(rightSources)(
+                    partialResult.rightFingerprintedInclusionsByPath,
+                    rightSection
+                  )
+              )
+            case (
+                  partialResult,
+                  Match.LeftAndRight(leftSection, rightSection)
+                ) =>
+              partialResult.copy(
+                leftFingerprintedInclusionsByPath =
+                  knockOutFromFingerprintedInclusions(leftSources)(
+                    partialResult.leftFingerprintedInclusionsByPath,
+                    leftSection
+                  ),
+                rightFingerprintedInclusionsByPath =
+                  knockOutFromFingerprintedInclusions(rightSources)(
+                    partialResult.rightFingerprintedInclusionsByPath,
+                    rightSection
+                  )
+              )
+          }
+        end withContentCoveredByNonTinyMatchesKnockedOut
+
+        Using(
+          progressRecording.newSession(
+            label = "Minimum match size considered:",
+            maximumProgress = minimumWindowSizeAcrossAllFilesOverAllSides
+          )(initialProgress = minimumWindowSizeAcrossAllFilesOverAllSides)
+        ) { progressRecordingSession =>
+          withAllMatches(
+            matchesAndTheirSections =
+              withContentCoveredByNonTinyMatchesKnockedOut,
+            looseExclusiveUpperBoundOnMaximumMatchSize =
+              minimumWindowSizeAcrossAllFilesOverAllSides,
+            progressRecordingSession = progressRecordingSession,
+            tinyWindowSizesAllowed = true
+          )
+        }.get
+      end tinyMatchesOnly
+
       @tailrec
       private final def withAllSmallFryMatches(
           candidateWindowSize: Int,
@@ -1141,7 +1250,11 @@ object CodeMotionAnalysis extends StrictLogging:
           _,
           _
         ) =
-          this.matchesForWindowSize(candidateWindowSize, PathInclusions.all)
+          this.matchesForWindowSize(
+            candidateWindowSize,
+            PathInclusions.all,
+            tinyWindowSizesAllowed = false
+          )
 
         if candidateWindowSize > minimumWindowSizeAcrossAllFilesOverAllSides
         then
@@ -1176,7 +1289,8 @@ object CodeMotionAnalysis extends StrictLogging:
 
       private def matchesForWindowSize(
           windowSize: Int,
-          pathInclusions: PathInclusions
+          pathInclusions: PathInclusions,
+          tinyWindowSizesAllowed: Boolean
       ): MatchingResult =
         require(0 < windowSize)
 
@@ -1257,7 +1371,9 @@ object CodeMotionAnalysis extends StrictLogging:
             .filter { case (path, file) =>
               pathIsIncluded(path) && {
                 val fileSize          = file.size
-                val minimumWindowSize = thresholdSizeForMatching(fileSize)
+                val minimumWindowSize =
+                  if tinyWindowSizesAllowed then 1
+                  else thresholdSizeForMatching(fileSize)
 
                 minimumWindowSize to fileSize contains windowSize
               }
@@ -1667,7 +1783,7 @@ object CodeMotionAnalysis extends StrictLogging:
         )
       end matchesForWindowSize
 
-      private def withMatches(
+      def withMatches(
           matches: Set[GenericMatch],
           haveTrimmedMatches: Boolean
       ): MatchingResult =
@@ -2308,11 +2424,25 @@ object CodeMotionAnalysis extends StrictLogging:
         val withAllMatchesOfAtLeastTheSureFireWindowSize =
           MatchesAndTheirSections.withAllMatchesOfAtLeastTheSureFireWindowSize()
 
-        (if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > minimumWindowSizeAcrossAllFilesOverAllSides
-         then
-           withAllMatchesOfAtLeastTheSureFireWindowSize
-             .withAllSmallFryMatches()
-         else withAllMatchesOfAtLeastTheSureFireWindowSize).reconcileMatches
+        val withAllMatchesOfAtLeastTheMinimumWindowSize =
+          if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > minimumWindowSizeAcrossAllFilesOverAllSides
+          then
+            withAllMatchesOfAtLeastTheSureFireWindowSize
+              .withAllSmallFryMatches()
+          else withAllMatchesOfAtLeastTheSureFireWindowSize
+
+        val lastChanceMatchesOnly =
+          withAllMatchesOfAtLeastTheMinimumWindowSize
+            .tinyMatchesOnly()
+            .reconcileMatches
+            .purgedOfMatchesWithOverlappingSections(enabled = true)
+            .sectionsAndTheirMatches
+            .values
+
+        withAllMatchesOfAtLeastTheMinimumWindowSize
+          .withMatches(lastChanceMatchesOnly.toSet, haveTrimmedMatches = false)
+          .matchesAndTheirSections
+          .reconcileMatches
           .purgedOfMatchesWithOverlappingSections(
             suppressMatchesInvolvingOverlappingSections
           )
@@ -2325,21 +2455,6 @@ object CodeMotionAnalysis extends StrictLogging:
         baseSources.filesByPathUtilising(mandatorySections =
           matchesAndTheirSections.baseSections
         )
-
-      // NOTE: we collect the unmatched sections from the base side and use them
-      // to break up gap fills for the left- and right-sides. This gives the
-      // downstream merge a chance to make last-minute matches of its own
-      // between small unmatched sections that are deleted from the base and
-      // their counterparts on the left or right. See
-      // https://github.com/sageserpent-open/kineticMerge/issues/42 and
-      // https://github.com/sageserpent-open/kineticMerge/issues/43.
-      val candidateGapChunksByPath = baseFilesByPath.map { case (path, file) =>
-        path -> file.sections
-          .filterNot(sectionsAndTheirMatches.containsKey)
-          .map(_.content)
-          .toSet
-      }
-
       val leftFilesByPath =
         leftSources.filesByPathUtilising(mandatorySections =
           matchesAndTheirSections.leftSections
