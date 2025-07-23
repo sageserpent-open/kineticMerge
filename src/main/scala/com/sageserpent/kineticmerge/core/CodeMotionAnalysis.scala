@@ -204,7 +204,7 @@ object CodeMotionAnalysis extends StrictLogging:
         )
       end knockOutFromFingerprintedInclusions
 
-      private lazy val empty = MatchesAndTheirSections(
+      lazy val empty: MatchesAndTheirSections = MatchesAndTheirSections(
         baseSectionsByPath = Map.empty,
         leftSectionsByPath = Map.empty,
         rightSectionsByPath = Map.empty,
@@ -1783,7 +1783,7 @@ object CodeMotionAnalysis extends StrictLogging:
         )
       end matchesForWindowSize
 
-      private def withMatches(
+      def withMatches(
           matches: Set[GenericMatch],
           haveTrimmedMatches: Boolean
       ): MatchingResult =
@@ -2431,10 +2431,26 @@ object CodeMotionAnalysis extends StrictLogging:
               .withAllSmallFryMatches()
           else withAllMatchesOfAtLeastTheSureFireWindowSize
 
-        val withAllLastChanceMatches =
-          withAllMatchesOfAtLeastTheMinimumWindowSize.withAllLastChanceMatches()
+        val lastChanceMatchesOnly =
+          MatchesAndTheirSections.empty
+            .copy(
+              baseFingerprintedInclusionsByPath =
+                withAllMatchesOfAtLeastTheMinimumWindowSize.baseFingerprintedInclusionsByPath,
+              leftFingerprintedInclusionsByPath =
+                withAllMatchesOfAtLeastTheMinimumWindowSize.leftFingerprintedInclusionsByPath,
+              rightFingerprintedInclusionsByPath =
+                withAllMatchesOfAtLeastTheMinimumWindowSize.rightFingerprintedInclusionsByPath
+            )
+            .withAllLastChanceMatches()
+            .reconcileMatches
+            .purgedOfMatchesWithOverlappingSections(enabled = true)
+            .sectionsAndTheirMatches
+            .values
 
-        withAllLastChanceMatches.reconcileMatches
+        withAllMatchesOfAtLeastTheMinimumWindowSize
+          .withMatches(lastChanceMatchesOnly.toSet, haveTrimmedMatches = false)
+          .matchesAndTheirSections
+          .reconcileMatches
           .purgedOfMatchesWithOverlappingSections(
             suppressMatchesInvolvingOverlappingSections
           )
