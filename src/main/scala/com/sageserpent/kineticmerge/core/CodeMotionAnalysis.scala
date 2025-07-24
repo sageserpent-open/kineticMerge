@@ -1125,20 +1125,20 @@ object CodeMotionAnalysis extends StrictLogging:
         }.get
       end withAllSmallFryMatches
 
-      def withAllLastChanceMatches(): MatchesAndTheirSections =
+      def tinyMatchesOnly(): MatchesAndTheirSections =
         val withContentCoveredByNonTinyMatchesKnockedOut =
           val nonTinyMatches = sectionsAndTheirMatches.values.filter {
             case Match.AllSides(baseSection, _, _) =>
-              minimumWindowSizeAcrossAllFilesOverAllSides >= baseSection.size
+              minimumWindowSizeAcrossAllFilesOverAllSides <= baseSection.size
             case Match.BaseAndLeft(baseSection, _) =>
-              minimumWindowSizeAcrossAllFilesOverAllSides >= baseSection.size
+              minimumWindowSizeAcrossAllFilesOverAllSides <= baseSection.size
             case Match.BaseAndRight(baseSection, _) =>
-              minimumWindowSizeAcrossAllFilesOverAllSides >= baseSection.size
+              minimumWindowSizeAcrossAllFilesOverAllSides <= baseSection.size
             case Match.LeftAndRight(leftSection, _) =>
-              minimumWindowSizeAcrossAllFilesOverAllSides >= leftSection.size
+              minimumWindowSizeAcrossAllFilesOverAllSides <= leftSection.size
           }
 
-          nonTinyMatches.foldLeft(this) {
+          nonTinyMatches.foldLeft(MatchesAndTheirSections.empty) {
             case (
                   partialResult,
                   Match.AllSides(baseSection, leftSection, rightSection)
@@ -1226,7 +1226,7 @@ object CodeMotionAnalysis extends StrictLogging:
             tinyWindowSizesAllowed = true
           )
         }.get
-      end withAllLastChanceMatches
+      end tinyMatchesOnly
 
       @tailrec
       private final def withAllSmallFryMatches(
@@ -2432,16 +2432,8 @@ object CodeMotionAnalysis extends StrictLogging:
           else withAllMatchesOfAtLeastTheSureFireWindowSize
 
         val lastChanceMatchesOnly =
-          MatchesAndTheirSections.empty
-            .copy(
-              baseFingerprintedInclusionsByPath =
-                withAllMatchesOfAtLeastTheMinimumWindowSize.baseFingerprintedInclusionsByPath,
-              leftFingerprintedInclusionsByPath =
-                withAllMatchesOfAtLeastTheMinimumWindowSize.leftFingerprintedInclusionsByPath,
-              rightFingerprintedInclusionsByPath =
-                withAllMatchesOfAtLeastTheMinimumWindowSize.rightFingerprintedInclusionsByPath
-            )
-            .withAllLastChanceMatches()
+          withAllMatchesOfAtLeastTheMinimumWindowSize
+            .tinyMatchesOnly()
             .reconcileMatches
             .purgedOfMatchesWithOverlappingSections(enabled = true)
             .sectionsAndTheirMatches
