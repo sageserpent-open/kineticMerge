@@ -1146,17 +1146,17 @@ object CodeMotionAnalysis extends StrictLogging:
               partialResult.copy(
                 baseFingerprintedInclusionsByPath =
                   knockOutFromFingerprintedInclusions(baseSources)(
-                    baseFingerprintedInclusionsByPath,
+                    partialResult.baseFingerprintedInclusionsByPath,
                     baseSection
                   ),
                 leftFingerprintedInclusionsByPath =
                   knockOutFromFingerprintedInclusions(leftSources)(
-                    leftFingerprintedInclusionsByPath,
+                    partialResult.leftFingerprintedInclusionsByPath,
                     leftSection
                   ),
                 rightFingerprintedInclusionsByPath =
                   knockOutFromFingerprintedInclusions(rightSources)(
-                    rightFingerprintedInclusionsByPath,
+                    partialResult.rightFingerprintedInclusionsByPath,
                     rightSection
                   )
               )
@@ -1167,12 +1167,12 @@ object CodeMotionAnalysis extends StrictLogging:
               partialResult.copy(
                 baseFingerprintedInclusionsByPath =
                   knockOutFromFingerprintedInclusions(baseSources)(
-                    baseFingerprintedInclusionsByPath,
+                    partialResult.baseFingerprintedInclusionsByPath,
                     baseSection
                   ),
                 leftFingerprintedInclusionsByPath =
                   knockOutFromFingerprintedInclusions(leftSources)(
-                    leftFingerprintedInclusionsByPath,
+                    partialResult.leftFingerprintedInclusionsByPath,
                     leftSection
                   )
               )
@@ -1183,12 +1183,12 @@ object CodeMotionAnalysis extends StrictLogging:
               partialResult.copy(
                 baseFingerprintedInclusionsByPath =
                   knockOutFromFingerprintedInclusions(baseSources)(
-                    baseFingerprintedInclusionsByPath,
+                    partialResult.baseFingerprintedInclusionsByPath,
                     baseSection
                   ),
                 rightFingerprintedInclusionsByPath =
                   knockOutFromFingerprintedInclusions(rightSources)(
-                    rightFingerprintedInclusionsByPath,
+                    partialResult.rightFingerprintedInclusionsByPath,
                     rightSection
                   )
               )
@@ -1199,12 +1199,12 @@ object CodeMotionAnalysis extends StrictLogging:
               partialResult.copy(
                 leftFingerprintedInclusionsByPath =
                   knockOutFromFingerprintedInclusions(leftSources)(
-                    leftFingerprintedInclusionsByPath,
+                    partialResult.leftFingerprintedInclusionsByPath,
                     leftSection
                   ),
                 rightFingerprintedInclusionsByPath =
                   knockOutFromFingerprintedInclusions(rightSources)(
-                    rightFingerprintedInclusionsByPath,
+                    partialResult.rightFingerprintedInclusionsByPath,
                     rightSection
                   )
               )
@@ -2455,21 +2455,6 @@ object CodeMotionAnalysis extends StrictLogging:
         baseSources.filesByPathUtilising(mandatorySections =
           matchesAndTheirSections.baseSections
         )
-
-      // NOTE: we collect the unmatched sections from the base side and use them
-      // to break up gap fills for the left- and right-sides. This gives the
-      // downstream merge a chance to make last-minute matches of its own
-      // between small unmatched sections that are deleted from the base and
-      // their counterparts on the left or right. See
-      // https://github.com/sageserpent-open/kineticMerge/issues/42 and
-      // https://github.com/sageserpent-open/kineticMerge/issues/43.
-      val candidateGapChunksByPath = baseFilesByPath.map { case (path, file) =>
-        path -> file.sections
-          .filterNot(sectionsAndTheirMatches.containsKey)
-          .map(_.content)
-          .toSet
-      }
-
       val leftFilesByPath =
         leftSources.filesByPathUtilising(mandatorySections =
           matchesAndTheirSections.leftSections
