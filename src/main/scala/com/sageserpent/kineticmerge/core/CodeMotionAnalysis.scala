@@ -2420,7 +2420,7 @@ object CodeMotionAnalysis extends StrictLogging:
     end PotentialMatchKey
 
     try
-      val matchesAndTheirSections =
+      val (matchesAndTheirSections, tinyMatchesAndTheirSectionsOnly) =
         val withAllMatchesOfAtLeastTheSureFireWindowSize =
           MatchesAndTheirSections.withAllMatchesOfAtLeastTheSureFireWindowSize()
 
@@ -2431,37 +2431,36 @@ object CodeMotionAnalysis extends StrictLogging:
               .withAllSmallFryMatches()
           else withAllMatchesOfAtLeastTheSureFireWindowSize
 
-        val lastChanceMatchesOnly =
-          withAllMatchesOfAtLeastTheMinimumWindowSize
-            .tinyMatchesOnly()
-            .reconcileMatches
-            .purgedOfMatchesWithOverlappingSections(enabled = true)
-            .sectionsAndTheirMatches
-            .values
-
-        withAllMatchesOfAtLeastTheMinimumWindowSize
-          .withMatches(lastChanceMatchesOnly.toSet, haveTrimmedMatches = false)
-          .matchesAndTheirSections
-          .reconcileMatches
+        withAllMatchesOfAtLeastTheMinimumWindowSize.reconcileMatches
           .purgedOfMatchesWithOverlappingSections(
             suppressMatchesInvolvingOverlappingSections
-          )
-      end matchesAndTheirSections
+          ) -> withAllMatchesOfAtLeastTheMinimumWindowSize
+          .tinyMatchesOnly()
+          .reconcileMatches
+          .purgedOfMatchesWithOverlappingSections(enabled = true)
+      end val
 
       val sectionsAndTheirMatches =
         matchesAndTheirSections.sectionsAndTheirMatches
 
+      // Use the sections covered by the tiny matches to break up gap fills on
+      // all sides. This gives the downstream merge a chance to make last-minute
+      // matches of its own between small unmatched sections that are deleted
+      // from the base and their counterparts on the left or right.
+      // See https://github.com/sageserpent-open/kineticMerge/issues/42 and
+      // https://github.com/sageserpent-open/kineticMerge/issues/43.
+
       val baseFilesByPath =
         baseSources.filesByPathUtilising(mandatorySections =
-          matchesAndTheirSections.baseSections
+          matchesAndTheirSections.baseSections ++ tinyMatchesAndTheirSectionsOnly.baseSections
         )
       val leftFilesByPath =
         leftSources.filesByPathUtilising(mandatorySections =
-          matchesAndTheirSections.leftSections
+          matchesAndTheirSections.leftSections ++ tinyMatchesAndTheirSectionsOnly.leftSections
         )
       val rightFilesByPath =
         rightSources.filesByPathUtilising(mandatorySections =
-          matchesAndTheirSections.rightSections
+          matchesAndTheirSections.rightSections ++ tinyMatchesAndTheirSectionsOnly.rightSections
         )
 
       Right(new CodeMotionAnalysis[Path, Element]:
