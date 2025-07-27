@@ -459,10 +459,8 @@ object Main extends StrictLogging:
       noFastForward: Boolean = false,
       minimumMatchSize: Int =
         // Don't allow monograph matches - these would bombard the merge with
-        // useless all-sides matches that create a *lot* of overhead. In
-        // practice, avoiding small window sizes above one leads to a much
-        // better merge as well.
-        4,
+        // useless all-sides matches that create a *lot* of overhead.
+        2,
       thresholdSizeFractionForMatching: Double = 0,
       minimumAmbiguousMatchSize: Int = 10,
       ambiguousMatchesThreshold: Int = 20
@@ -869,39 +867,6 @@ object Main extends StrictLogging:
             yield path -> BothContributeADeletion(bestAncestorCommitIdContent)
         }
     end mergeInputsOf
-
-    private def blobAndContentFor(
-        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
-    )(
-        path: Path
-    ): Workflow[
-      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
-    ] =
-      IO {
-        val line = os
-          .proc("git", "ls-tree", commitIdOrBranchName, path)
-          .call(workingDirectory)
-          .out
-          .text()
-
-        line.split(whitespaceRun) match
-          case Array(mode, _, blobId, _) =>
-            val content = os
-              .proc("git", "cat-file", "blob", blobId)
-              .call(workingDirectory)
-              .out
-              .text()
-
-            (
-              mode.taggedWith[Tags.Mode],
-              blobId.taggedWith[Tags.BlobId],
-              content.taggedWith[Tags.Content]
-            )
-        end match
-      }.labelExceptionWith(errorMessage =
-        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
-      )
-    end blobAndContentFor
 
     def mergeWithRollback(
         ourBranchHead: String @@ Main.Tags.CommitOrBranchName,
@@ -2068,6 +2033,39 @@ object Main extends StrictLogging:
       yield withRenameVersusDeletionConflicts.goodForAMergeCommit
       end for
     end indexUpdates
+
+    private def blobAndContentFor(
+        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
+    )(
+        path: Path
+    ): Workflow[
+      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
+    ] =
+      IO {
+        val line = os
+          .proc("git", "ls-tree", commitIdOrBranchName, path)
+          .call(workingDirectory)
+          .out
+          .text()
+
+        line.split(whitespaceRun) match
+          case Array(mode, _, blobId, _) =>
+            val content = os
+              .proc("git", "cat-file", "blob", blobId)
+              .call(workingDirectory)
+              .out
+              .text()
+
+            (
+              mode.taggedWith[Tags.Mode],
+              blobId.taggedWith[Tags.BlobId],
+              content.taggedWith[Tags.Content]
+            )
+        end match
+      }.labelExceptionWith(errorMessage =
+        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
+      )
+    end blobAndContentFor
 
     private def deleteFile(path: Path): Workflow[Unit] = IO {
       os.remove(path): Unit
