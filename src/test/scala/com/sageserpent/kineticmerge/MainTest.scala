@@ -560,19 +560,6 @@ object MainTest extends ProseExamples:
     assert(currentStatus(path).isEmpty)
   end verifyTrivialMergeMovesToTheMostAdvancedCommitWithACleanIndex
 
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
-
-  private def currentCommit(path: Path) =
-    os.proc("git", "log", "-1", "--format=tformat:%H")
-      .call(path)
-      .out
-      .text()
-      .strip
-
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
-
   private def verifyMergeMakesANewCommitWithACleanIndex(path: Path)(
       commitOfOneBranch: String,
       commitOfTheOtherBranch: String,
@@ -685,6 +672,25 @@ object MainTest extends ProseExamples:
     assert(currentStatus(path).nonEmpty)
   end verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit
 
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
+  private def currentCommit(path: Path) =
+    os.proc("git", "log", "-1", "--format=tformat:%H")
+      .call(path)
+      .out
+      .text()
+      .strip
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+
+  private def mergeHead(path: Path) =
+    os.read(mergeHeadPath(path)).strip()
+
+  private def mergeHeadPath(path: Path) =
+    path / ".git" / "MERGE_HEAD"
+
   private def verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
       path: Path
   )(
@@ -716,12 +722,6 @@ object MainTest extends ProseExamples:
 
     currentStatus(path)
   end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
-
-  private def mergeHead(path: Path) =
-    os.read(mergeHeadPath(path)).strip()
-
-  private def mergeHeadPath(path: Path) =
-    path / ".git" / "MERGE_HEAD"
 
   private def gitRepository(): ImperativeResource[Path] =
     for
@@ -813,7 +813,7 @@ class MainTest:
                   else advancedBranch                          -> masterBranch
 
                 val exitCode = Main.mergeTheirBranch(
-                  ApplicationRequest(
+                  ApplicationRequest.default.copy(
                     theirBranchHead =
                       theirBranch.taggedWith[Tags.CommitOrBranchName],
                     noCommit = noCommit,
@@ -914,7 +914,7 @@ class MainTest:
                 else masterBranch                  -> newFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                ApplicationRequest(
+                ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
                   noCommit = noCommit,
@@ -983,7 +983,7 @@ class MainTest:
                 else masterBranch                      -> deletedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                ApplicationRequest(
+                ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
                   noCommit = noCommit,
@@ -1058,7 +1058,7 @@ class MainTest:
                 else masterBranch                     -> benignTwinBranch
 
               val exitCode = Main.mergeTheirBranch(
-                ApplicationRequest(
+                ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
                   noCommit = noCommit,
@@ -1131,7 +1131,7 @@ class MainTest:
                 else masterBranch                   -> evilTwinBranch
 
               val exitCode = Main.mergeTheirBranch(
-                ApplicationRequest(
+                ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
                   minimumAmbiguousMatchSize = 0
@@ -1209,7 +1209,7 @@ class MainTest:
                 else masterBranch                      -> deletedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                ApplicationRequest(
+                ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
                   minimumAmbiguousMatchSize = 0
@@ -1298,7 +1298,7 @@ class MainTest:
                 else masterBranch                      -> deletedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                ApplicationRequest(
+                ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
                   minimumAmbiguousMatchSize = 0
@@ -1384,7 +1384,7 @@ class MainTest:
                 else masterBranch                      -> deletedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                ApplicationRequest(
+                ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
                   minimumAmbiguousMatchSize = 0
@@ -1468,7 +1468,7 @@ class MainTest:
                 else masterBranch -> concurrentlyModifiedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                ApplicationRequest(
+                ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
                   minimumAmbiguousMatchSize = 0
@@ -1551,7 +1551,7 @@ class MainTest:
                 else masterBranch               -> concurrentlyDeletedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                ApplicationRequest(
+                ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
                   noCommit = noCommit,
@@ -1630,7 +1630,7 @@ class MainTest:
                 else masterBranch -> concurrentlyModifiedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                ApplicationRequest(
+                ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
                   noCommit = noCommit,
@@ -1699,7 +1699,7 @@ class MainTest:
                 else masterBranch                    -> movedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                ApplicationRequest(
+                ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
                   noCommit = noCommit,
@@ -1784,7 +1784,7 @@ class MainTest:
                   else masterBranch                    -> splitFileBranch
 
                 val exitCode = Main.mergeTheirBranch(
-                  ApplicationRequest(
+                  ApplicationRequest.default.copy(
                     theirBranchHead =
                       theirBranch.taggedWith[Tags.CommitOrBranchName],
                     noCommit = noCommit,
@@ -1888,7 +1888,7 @@ class MainTest:
                   else masterBranch -> condensedFilesBranch
 
                 val exitCode = Main.mergeTheirBranch(
-                  ApplicationRequest(
+                  ApplicationRequest.default.copy(
                     theirBranchHead =
                       theirBranch.taggedWith[Tags.CommitOrBranchName],
                     noCommit = noCommit,
@@ -1968,7 +1968,7 @@ class MainTest:
                 else masterBranch                       -> swappedFilesBranch
 
               val exitCode = Main.mergeTheirBranch(
-                ApplicationRequest(
+                ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
                   noCommit = noCommit,
@@ -2050,7 +2050,7 @@ class MainTest:
                 else masterBranch                       -> swappedFilesBranch
 
               val exitCode = Main.mergeTheirBranch(
-                ApplicationRequest(
+                ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
                   noCommit = noCommit,
@@ -2207,7 +2207,7 @@ class MainTest:
                 else movedFileBranch
 
               val _ = Main.mergeTheirBranch(
-                ApplicationRequest(
+                ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
                   noCommit = noCommit,
@@ -2258,7 +2258,7 @@ class MainTest:
                 else masterBranch                    -> movedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                ApplicationRequest(
+                ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
                   noCommit = noCommit,
@@ -2332,7 +2332,7 @@ class MainTest:
                 else masterBranch                    -> movedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                ApplicationRequest(
+                ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
                   noCommit = noCommit,
@@ -2410,7 +2410,7 @@ class MainTest:
                 else masterBranch                        -> condensedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                ApplicationRequest(
+                ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
                   noCommit = noCommit,
@@ -2484,7 +2484,7 @@ class MainTest:
                 else masterBranch                    -> movedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                ApplicationRequest(
+                ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
                   noCommit = noCommit,
@@ -2566,7 +2566,7 @@ class MainTest:
                 else masterBranch                    -> movedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
-                ApplicationRequest(
+                ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
                   noCommit = noCommit,
@@ -2648,7 +2648,7 @@ class MainTest:
                 else masterBranch               -> casesLimitStrategyMovesBranch
 
               val exitCode = Main.mergeTheirBranch(
-                ApplicationRequest(
+                ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
                   noCommit = noCommit,
