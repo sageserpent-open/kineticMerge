@@ -243,38 +243,20 @@ object CodeMotionAnalysis extends StrictLogging:
           ): Boolean = true
       end PathInclusions
 
-      // TODO - move this to the actual class, by analogy with
-      // `withAllSmallFryMatches`...
-      def withAllMatchesOfAtLeastTheSureFireWindowSize()
-          : MatchesAndTheirSections =
-        if 0 < maximumPossibleMatchSize then
-          Using(
-            progressRecording.newSession(
-              label = "Minimum match size considered:",
-              maximumProgress = maximumPossibleMatchSize
-            )(initialProgress = maximumPossibleMatchSize)
-          ) { progressRecordingSession =>
-            withAllMatches(
-              matchesAndTheirSections = empty,
-              looseExclusiveUpperBoundOnMaximumMatchSize =
-                1 + maximumPossibleMatchSize,
-              progressRecordingSession = progressRecordingSession,
-              tinyWindowSizesAllowed = false
-            )
-          }.get
-        else empty
-      end withAllMatchesOfAtLeastTheSureFireWindowSize
+      trait MatchSearchingContext:
+        val minimumMatchSizeConsidered: Int
+        def thresholdSize(fileSize: Int): Int
+      end MatchSearchingContext
 
       @tailrec
-      private def withAllMatches(
+      private final def withAllMatches(
           matchesAndTheirSections: MatchesAndTheirSections,
-          looseExclusiveUpperBoundOnMaximumMatchSize: Int,
+          looseExclusiveUpperBoundOnMaximumMatchSize: Int
+      )(using
           progressRecordingSession: ProgressRecordingSession,
-          tinyWindowSizesAllowed: Boolean
+          matchSearchingContext: MatchSearchingContext
       ): MatchesAndTheirSections =
-        val minimumMatchSizeConsidered =
-          if tinyWindowSizesAllowed then 1
-          else minimumSureFireWindowSizeAcrossAllFilesOverAllSides
+        import matchSearchingContext.*
 
         // Essentially a binary chop algorithm, but using
         // `fallbackImprovedState` to track the best solution.
@@ -330,7 +312,7 @@ object CodeMotionAnalysis extends StrictLogging:
             ) = matchesAndTheirSections.matchesForWindowSize(
               candidateWindowSize,
               pathInclusions,
-              tinyWindowSizesAllowed
+              thresholdSize
             )
 
             estimatedWindowSizeForOptimalMatch match
@@ -357,9 +339,7 @@ object CodeMotionAnalysis extends StrictLogging:
                 withAllMatches(
                   stateAfterTryingCandidate,
                   looseExclusiveUpperBoundOnMaximumMatchSize =
-                    candidateWindowSize,
-                  progressRecordingSession,
-                  tinyWindowSizesAllowed
+                    candidateWindowSize
                 )
               case Some(estimate) =>
                 // We have an improvement, move the lower bound up and note
@@ -408,9 +388,7 @@ object CodeMotionAnalysis extends StrictLogging:
             progressRecordingSession.upTo(bestMatchSize)
             withAllMatches(
               fallbackImprovedState,
-              looseExclusiveUpperBoundOnMaximumMatchSize = bestMatchSize,
-              progressRecordingSession,
-              tinyWindowSizesAllowed
+              looseExclusiveUpperBoundOnMaximumMatchSize = bestMatchSize
             )
           end if
         end keepTryingToImproveThis
@@ -423,6 +401,31 @@ object CodeMotionAnalysis extends StrictLogging:
           pathInclusions = PathInclusions.all
         )
       end withAllMatches
+
+      def withAllMatchesOfAtLeastTheSureFireWindowSize()
+          : MatchesAndTheirSections =
+        if 0 < maximumPossibleMatchSize then
+          Using(
+            progressRecording.newSession(
+              label = "Minimum match size considered:",
+              maximumProgress = maximumPossibleMatchSize
+            )(initialProgress = maximumPossibleMatchSize)
+          ) { progressRecordingSession =>
+            given MatchSearchingContext =
+              new MatchSearchingContext:
+                override val minimumMatchSizeConsidered: Int =
+                  minimumSureFireWindowSizeAcrossAllFilesOverAllSides
+                override def thresholdSize(fileSize: Int): Int =
+                  thresholdSizeForMatching(fileSize)
+
+            withAllMatches(
+              matchesAndTheirSections = empty,
+              looseExclusiveUpperBoundOnMaximumMatchSize =
+                1 + maximumPossibleMatchSize
+            )(using progressRecordingSession)
+          }.get
+        else empty
+      end withAllMatchesOfAtLeastTheSureFireWindowSize
 
       // NOTE: this is partially applied in the class so that it means: "is
       // there anything on the given side that subsumes `section`".
@@ -1118,8 +1121,7 @@ object CodeMotionAnalysis extends StrictLogging:
             maximumProgress = maximumSmallFryWindowSize
           )(initialProgress = maximumSmallFryWindowSize)
         ) { progressRecordingSession =>
-          withAllSmallFryMatches(
-            maximumSmallFryWindowSize,
+          withAllSmallFryMatches(maximumSmallFryWindowSize)(using
             progressRecordingSession
           )
         }.get
@@ -1217,20 +1219,24 @@ object CodeMotionAnalysis extends StrictLogging:
             maximumProgress = minimumWindowSizeAcrossAllFilesOverAllSides
           )(initialProgress = minimumWindowSizeAcrossAllFilesOverAllSides)
         ) { progressRecordingSession =>
+          given MatchSearchingContext =
+            new MatchSearchingContext:
+              override val minimumMatchSizeConsidered: Int   = 1
+              override def thresholdSize(fileSize: Int): Int = 1
+
           withAllMatches(
             matchesAndTheirSections =
               withContentCoveredByNonTinyMatchesKnockedOut,
             looseExclusiveUpperBoundOnMaximumMatchSize =
-              minimumWindowSizeAcrossAllFilesOverAllSides,
-            progressRecordingSession = progressRecordingSession,
-            tinyWindowSizesAllowed = true
-          )
+              minimumWindowSizeAcrossAllFilesOverAllSides
+          )(using progressRecordingSession)
         }.get
       end tinyMatchesOnly
 
       @tailrec
       private final def withAllSmallFryMatches(
-          candidateWindowSize: Int,
+          candidateWindowSize: Int
+      )(using
           progressRecordingSession: ProgressRecordingSession
       ): MatchesAndTheirSections =
         require(
@@ -1253,7 +1259,7 @@ object CodeMotionAnalysis extends StrictLogging:
           this.matchesForWindowSize(
             candidateWindowSize,
             PathInclusions.all,
-            tinyWindowSizesAllowed = false
+            thresholdSizeForMatching
           )
 
         if candidateWindowSize > minimumWindowSizeAcrossAllFilesOverAllSides
@@ -1265,9 +1271,8 @@ object CodeMotionAnalysis extends StrictLogging:
           end if
           progressRecordingSession.upTo(candidateWindowSize)
 
-          stateAfterTryingCandidate.withAllSmallFryMatches(
-            candidateWindowSize = candidateWindowSize - 1,
-            progressRecordingSession = progressRecordingSession
+          stateAfterTryingCandidate.withAllSmallFryMatches(candidateWindowSize =
+            candidateWindowSize - 1
           )
         else
           if 0 < numberOfMatchesForTheGivenWindowSize then
@@ -1290,7 +1295,7 @@ object CodeMotionAnalysis extends StrictLogging:
       private def matchesForWindowSize(
           windowSize: Int,
           pathInclusions: PathInclusions,
-          tinyWindowSizesAllowed: Boolean
+          thresholdSize: Int => Int
       ): MatchingResult =
         require(0 < windowSize)
 
@@ -1371,9 +1376,7 @@ object CodeMotionAnalysis extends StrictLogging:
             .filter { case (path, file) =>
               pathIsIncluded(path) && {
                 val fileSize          = file.size
-                val minimumWindowSize =
-                  if tinyWindowSizesAllowed then 1
-                  else thresholdSizeForMatching(fileSize)
+                val minimumWindowSize = thresholdSize(fileSize)
 
                 minimumWindowSize to fileSize contains windowSize
               }
