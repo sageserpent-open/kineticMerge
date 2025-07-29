@@ -14,9 +14,7 @@ package com.sageserpent.kineticmerge.core
   *   consistent.
   */
 trait Sources[Path, Element]:
-  val filesByPath: Map[Path, File[Element]] = filesByPathUtilising(
-    Set.empty
-  )
+  val filesByPath: Map[Path, File[Element]] = filesByPathUtilising(Set.empty)
 
   def paths: Set[Path]
 
@@ -48,14 +46,8 @@ trait Sources[Path, Element]:
     * @note
     *   {@code mandatorySections} may be an empty set - this then yields an
     *   initial coarse breakdown into files of one section each.
-    * @note
-    *   {@code candidateGapChunksByPath} is used when filling gaps - if a gap on
-    *   a path has a candidate chunk as a subsequence, the gap will be split up
-    *   so that the chunk forms its own section. Only one candidate chunk is
-    *   used for a gap fill (if any).
     */
   def filesByPathUtilising(
-      mandatorySections: Set[Section[Element]],
-      candidateGapChunksByPath: Map[Path, Set[IndexedSeq[Element]]] = Map.empty
+      mandatorySections: Set[Section[Element]]
   ): Map[Path, File[Element]]
 end Sources

@@ -80,6 +80,18 @@ object Main extends StrictLogging:
     )
   end main
 
+  /** @param commandLineArguments
+    *   Command line arguments as varargs.
+    * @return
+    *   The exit code as a plain integer, suitable for consumption by both Scala
+    *   and Java client code.
+    */
+  @varargs
+  def apply(commandLineArguments: String*): Int = apply(
+    progressRecording = NoProgressRecording,
+    commandLineArguments = commandLineArguments*
+  )
+
   /** @param progressRecording
     * @param commandLineArguments
     *   Command line arguments as varargs.
@@ -133,7 +145,7 @@ object Main extends StrictLogging:
               .copy(minimumMatchSize = minimumMatchSize)
           )
           .text(
-            "Minimum number of tokens for a match to be considered. Default of 4."
+            s"Minimum number of tokens for a match to be considered. Default of ${ApplicationRequest.default.minimumMatchSize}."
           ),
         opt[String](name = "match-threshold")
           .validate(matchThreshold =>
@@ -170,14 +182,14 @@ object Main extends StrictLogging:
             )
           }
           .text(
-            "Minimum fraction of a containing file's size for a section of text to qualify for matching. Default of zero for no restriction."
+            s"Minimum fraction of a containing file's size for a section of text to qualify for matching; zero implying no restriction. Default of ${ApplicationRequest.default.thresholdSizeFractionForMatching}."
           ),
         opt[Int](name = "minimum-ambiguous-match-size")
           .validate(minimumAmbiguousMatchSize =>
             if 0 <= minimumAmbiguousMatchSize then success
             else
               failure(
-                s"Minimum match size must be zero or positive. Default of 10."
+                "Minimum ambiguous match size must be zero or positive."
               )
           )
           .action((minimumAmbiguousMatchSize, commandLineArguments) =>
@@ -185,7 +197,7 @@ object Main extends StrictLogging:
               .copy(minimumAmbiguousMatchSize = minimumAmbiguousMatchSize)
           )
           .text(
-            "Minimum number of tokens for an ambiguous match to be considered."
+            s"Minimum number of tokens for an ambiguous match to be considered. Default of ${ApplicationRequest.default.minimumAmbiguousMatchSize}."
           ),
         opt[Int](name = "ambiguous-matches-threshold")
           .validate(ambiguousMatchesThreshold =>
@@ -197,7 +209,7 @@ object Main extends StrictLogging:
               .copy(ambiguousMatchesThreshold = ambiguousMatchesThreshold)
           )
           .text(
-            "Maximum number of matches of the same kind that can refer to the same matched content. Default of 20."
+            s"Maximum number of matches of the same kind that can refer to the same matched content. Default of ${ApplicationRequest.default.ambiguousMatchesThreshold}."
           ),
         arg[String](name = "<their branch to merge into ours>")
           .action((theirBranch, commandLineArguments) =>
@@ -244,7 +256,7 @@ object Main extends StrictLogging:
         .parse(
           parser,
           commandLineArguments,
-          ApplicationRequest(),
+          ApplicationRequest.default,
           new DefaultOEffectSetup:
             // Don't terminate the application, let execution return back to the
             // caller via a glorified long-jump.
@@ -394,9 +406,6 @@ object Main extends StrictLogging:
     exitCode
   end mergeTheirBranch
 
-  private def right[Payload](payload: Payload): Workflow[Payload] =
-    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
-
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
       EitherT
@@ -416,20 +425,11 @@ object Main extends StrictLogging:
       workflow.semiflatTap(_ => WriterT.tell(List(Right(message))))
   end extension
 
+  private def right[Payload](payload: Payload): Workflow[Payload] =
+    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
+
   private def underline(anything: Any): Str =
     fansi.Underlined.On(anything.toString)
-
-  /** @param commandLineArguments
-    *   Command line arguments as varargs.
-    * @return
-    *   The exit code as a plain integer, suitable for consumption by both Scala
-    *   and Java client code.
-    */
-  @varargs
-  def apply(commandLineArguments: String*): Int = apply(
-    progressRecording = NoProgressRecording,
-    commandLineArguments = commandLineArguments*
-  )
 
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](
@@ -453,19 +453,13 @@ object Main extends StrictLogging:
     yield temporaryFile
 
   case class ApplicationRequest(
-      theirBranchHead: String @@ Main.Tags.CommitOrBranchName =
-        noBranchProvided,
-      noCommit: Boolean = false,
-      noFastForward: Boolean = false,
-      minimumMatchSize: Int =
-        // Don't allow monograph matches - these would bombard the merge with
-        // useless all-sides matches that create a *lot* of overhead. In
-        // practice, avoiding small window sizes above one leads to a much
-        // better merge as well.
-        3,
-      thresholdSizeFractionForMatching: Double = 0,
-      minimumAmbiguousMatchSize: Int = 10,
-      ambiguousMatchesThreshold: Int = 20
+      theirBranchHead: String @@ Main.Tags.CommitOrBranchName,
+      noCommit: Boolean,
+      noFastForward: Boolean,
+      minimumMatchSize: Int,
+      thresholdSizeFractionForMatching: Double,
+      minimumAmbiguousMatchSize: Int,
+      ambiguousMatchesThreshold: Int
   )
 
   enum Change:
@@ -869,39 +863,6 @@ object Main extends StrictLogging:
             yield path -> BothContributeADeletion(bestAncestorCommitIdContent)
         }
     end mergeInputsOf
-
-    private def blobAndContentFor(
-        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
-    )(
-        path: Path
-    ): Workflow[
-      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
-    ] =
-      IO {
-        val line = os
-          .proc("git", "ls-tree", commitIdOrBranchName, path)
-          .call(workingDirectory)
-          .out
-          .text()
-
-        line.split(whitespaceRun) match
-          case Array(mode, _, blobId, _) =>
-            val content = os
-              .proc("git", "cat-file", "blob", blobId)
-              .call(workingDirectory)
-              .out
-              .text()
-
-            (
-              mode.taggedWith[Tags.Mode],
-              blobId.taggedWith[Tags.BlobId],
-              content.taggedWith[Tags.Content]
-            )
-        end match
-      }.labelExceptionWith(errorMessage =
-        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
-      )
-    end blobAndContentFor
 
     def mergeWithRollback(
         ourBranchHead: String @@ Main.Tags.CommitOrBranchName,
@@ -2069,6 +2030,39 @@ object Main extends StrictLogging:
       end for
     end indexUpdates
 
+    private def blobAndContentFor(
+        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
+    )(
+        path: Path
+    ): Workflow[
+      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
+    ] =
+      IO {
+        val line = os
+          .proc("git", "ls-tree", commitIdOrBranchName, path)
+          .call(workingDirectory)
+          .out
+          .text()
+
+        line.split(whitespaceRun) match
+          case Array(mode, _, blobId, _) =>
+            val content = os
+              .proc("git", "cat-file", "blob", blobId)
+              .call(workingDirectory)
+              .out
+              .text()
+
+            (
+              mode.taggedWith[Tags.Mode],
+              blobId.taggedWith[Tags.BlobId],
+              content.taggedWith[Tags.Content]
+            )
+        end match
+      }.labelExceptionWith(errorMessage =
+        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
+      )
+    end blobAndContentFor
+
     private def deleteFile(path: Path): Workflow[Unit] = IO {
       os.remove(path): Unit
     }.labelExceptionWith(errorMessage =
@@ -2197,6 +2191,21 @@ object Main extends StrictLogging:
       )
     end recordAdditionInIndex
   end InWorkingDirectory
+
+  object ApplicationRequest:
+    val default: ApplicationRequest = ApplicationRequest(
+      theirBranchHead = noBranchProvided,
+      noCommit = false,
+      noFastForward = false,
+      minimumMatchSize =
+        // Don't allow monograph matches - these would bombard the merge with
+        // useless all-sides matches that create a *lot* of overhead.
+        2,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 10,
+      ambiguousMatchesThreshold = 20
+    )
+  end ApplicationRequest
 
   object Tags:
     trait Mode
