@@ -1097,7 +1097,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     section
                   ) =>
                 val substitution = substituteFor(section)
-                
+
                 if !previouslyAppliedSubstitutions.contains(substitution) then
                   priorSubstitution match
                     case Some(duplicatedSubstitution)
