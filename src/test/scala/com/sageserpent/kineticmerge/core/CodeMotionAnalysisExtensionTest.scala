@@ -1,7 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
-import cats.kernel.instances.SeqEq
-import com.google.common.hash.{HashFunction, Hashing}
+import cats.{Eq, Order}
+import com.google.common.hash.{Funnel, HashFunction, Hashing}
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.Configuration
@@ -26,6 +26,12 @@ object CodeMotionAnalysisExtensionTest:
     tokens.map(_.text).mkString
 
   given HashFunction = Hashing.murmur3_32_fixed()
+
+  given Order[Token] = Token.comparison
+
+  given Funnel[Token] = Token.funnel
+
+  given Eq[Token] = Token.equality
 
 end CodeMotionAnalysisExtensionTest
 

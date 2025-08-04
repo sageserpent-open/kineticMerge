@@ -4,6 +4,7 @@ import cats.Eq
 import cats.kernel.instances.SeqEq
 
 object ContentResolution:
+  given Eq[Token]             = Token.equality
   given Eq[IndexedSeq[Token]] = SeqEq[Token].asInstanceOf[Eq[IndexedSeq[Token]]]
 
   def apply(

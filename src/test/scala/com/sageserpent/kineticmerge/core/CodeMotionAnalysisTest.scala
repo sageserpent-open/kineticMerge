@@ -1743,11 +1743,10 @@ object CodeMotionAnalysisTest:
     end section
 
     abstract override def filesByPathUtilising(
-        mandatorySections: Set[Section[SourcesContracts.this.Element]],
-        candidateGapChunksByPath: Map[Path, Set[IndexedSeq[Element]]]
+        mandatorySections: Set[Section[SourcesContracts.this.Element]]
     ): Map[SourcesContracts.this.Path, File[Element]] =
       val result =
-        super.filesByPathUtilising(mandatorySections, candidateGapChunksByPath)
+        super.filesByPathUtilising(mandatorySections)
 
       assert(result.keys == paths)
 
