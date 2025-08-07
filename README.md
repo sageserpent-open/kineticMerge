@@ -191,7 +191,7 @@ undiscovered. However, setting this right down to one token can lead to a bombar
 likely for a single token to be repeated many times across the codebase (and indeed the same goes for to matches of two
 tokens).
 
-The default is set to 4; this seems to work well enough in practice.
+The default is set to 3; this seems to work well enough in practice.
 
 `--match-threshold`: this is a looser alternative to `--minimum-match-size` where content in a file is only eligible for
 match discovery if its size in tokens is at least a fraction of that file's size *as measured in content tokens*. This
