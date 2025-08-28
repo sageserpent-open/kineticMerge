@@ -10,3 +10,7 @@ target/
 /.project
 /.bsp
 /htmlReport
+.bloop
+.metals
+project/metals.sbt
+.vscode
