@@ -393,7 +393,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   _: MultiSided.Coincident[Item],
                   _: MultiSided.Preserved[Item]
                 ) =>
-              // A coincident LHS is greater than a preserved RHS.
+              // A coincident LHS is less than a preserved RHS.
               -1
             case _ =>
               // A coincident LHS is greater than a unique RHS, and a preserved
