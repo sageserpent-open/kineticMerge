@@ -319,6 +319,8 @@ object Main extends StrictLogging:
 
       ourBranchHead <- inTopLevelWorkingDirectory.ourBranchHead()
 
+      _ <- inTopLevelWorkingDirectory.theirCommitId(theirBranchHead)
+
       oursAlreadyContainsTheirs <- inTopLevelWorkingDirectory
         .firstBranchIsContainedBySecond(
           theirBranchHead,
