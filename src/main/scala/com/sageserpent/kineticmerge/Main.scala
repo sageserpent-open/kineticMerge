@@ -355,14 +355,12 @@ object Main extends StrictLogging:
               .bestAncestorCommitId(ourBranchHead, theirBranchHead)
 
             ourChanges <- inTopLevelWorkingDirectory.changes(
-              inTopLevelWorkingDirectory,
               ourBranchHead,
               bestAncestorCommitId,
               possessive = "our"
             )
 
             theirChanges <- inTopLevelWorkingDirectory.changes(
-              inTopLevelWorkingDirectory,
               theirBranchHead,
               bestAncestorCommitId,
               possessive = "their"
@@ -609,7 +607,6 @@ object Main extends StrictLogging:
       )
 
     def changes(
-        inTopLevelWorkingDirectory: InWorkingDirectory,
         branchOrCommit: String @@ Main.Tags.CommitOrBranchName,
         bestAncestorCommitId: String @@ Main.Tags.CommitOrBranchName,
         possessive: String
@@ -628,9 +625,7 @@ object Main extends StrictLogging:
       }.labelExceptionWith(errorMessage =
         s"Could not determine changes made on $possessive branch ${underline(branchOrCommit)} since ancestor commit ${underline(bestAncestorCommitId)}."
       ).flatMap(
-        _.traverse(
-          inTopLevelWorkingDirectory.pathChangeFor(branchOrCommit)
-        )
+        _.traverse(pathChangeFor(branchOrCommit))
       ).map(_.toMap)
 
     def pathChangeFor(commitIdOrBranchName: String @@ Tags.CommitOrBranchName)(
@@ -659,6 +654,39 @@ object Main extends StrictLogging:
       }.labelExceptionWith(errorMessage =
         s"Unexpected error - can't parse changes reported by Git ${underline(line)}."
       ).flatMap { case (path, changed) => changed.map(path -> _) }
+
+    private def blobAndContentFor(
+        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
+    )(
+        path: Path
+    ): Workflow[
+      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
+    ] =
+      IO {
+        val line = os
+          .proc("git", "ls-tree", commitIdOrBranchName, path)
+          .call(workingDirectory)
+          .out
+          .text()
+
+        line.split(whitespaceRun) match
+          case Array(mode, _, blobId, _) =>
+            val content = os
+              .proc("git", "cat-file", "blob", blobId)
+              .call(workingDirectory)
+              .out
+              .text()
+
+            (
+              mode.taggedWith[Tags.Mode],
+              blobId.taggedWith[Tags.BlobId],
+              content.taggedWith[Tags.Content]
+            )
+        end match
+      }.labelExceptionWith(errorMessage =
+        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
+      )
+    end blobAndContentFor
 
     def mergeInputsOf(
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
@@ -1007,8 +1035,13 @@ object Main extends StrictLogging:
         theirBranchHead: String @@ Main.Tags.CommitOrBranchName
     ): Workflow[String @@ Tags.CommitOrBranchName] =
       IO {
-        os.proc("git", "rev-parse", theirBranchHead)
-          .call(workingDirectory)
+        os.proc(
+          "git",
+          "rev-parse",
+          "--verify",
+          "--end-of-options",
+          theirBranchHead
+        ).call(workingDirectory)
           .out
           .text()
           .taggedWith[Tags.CommitOrBranchName]
@@ -2029,39 +2062,6 @@ object Main extends StrictLogging:
       yield withRenameVersusDeletionConflicts.goodForAMergeCommit
       end for
     end indexUpdates
-
-    private def blobAndContentFor(
-        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
-    )(
-        path: Path
-    ): Workflow[
-      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
-    ] =
-      IO {
-        val line = os
-          .proc("git", "ls-tree", commitIdOrBranchName, path)
-          .call(workingDirectory)
-          .out
-          .text()
-
-        line.split(whitespaceRun) match
-          case Array(mode, _, blobId, _) =>
-            val content = os
-              .proc("git", "cat-file", "blob", blobId)
-              .call(workingDirectory)
-              .out
-              .text()
-
-            (
-              mode.taggedWith[Tags.Mode],
-              blobId.taggedWith[Tags.BlobId],
-              content.taggedWith[Tags.Content]
-            )
-        end match
-      }.labelExceptionWith(errorMessage =
-        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
-      )
-    end blobAndContentFor
 
     private def deleteFile(path: Path): Workflow[Unit] = IO {
       os.remove(path): Unit
