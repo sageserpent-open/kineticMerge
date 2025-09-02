@@ -24,7 +24,7 @@ YouTube:
 
 ## Goals
 
-- Merge two branches of a Git repository *across the entire codebase*.
+- Merge two branches of a Git repository *holistically across the entire codebase*.
 - Take into account the motion of code in either branch due to refactoring.
 - Handle file renames, file splits, file concatenation.
 - Handle code being excised from one place in a file and moved elsewhere in that file or to somewhere within another
