@@ -167,16 +167,16 @@ you're doing before you use the third technique.
 ```text
   --help                   Output this summary.
   --version                Show the version of this command.
-  --no-commit              Do not commit a successful merge - leave merged changes staged in the index for review.
-  --no-ff                  Prevent fast-forward merge - make a merge commit instead.
+  --no-commit              Do not commit a successful merge - leave merged changes staged in the index for review. Off by default.
+  --no-ff                  Prevent fast-forward merge - make a merge commit instead. Off by default.
   --minimum-match-size <value>
-                           Minimum number of tokens for a match to be considered.
+                           Minimum number of tokens for a match to be considered. Default of 2.
   --match-threshold <value>
-                           Minimum fraction of a containing file's size for a section of text to qualify for matching.
+                           Minimum fraction of a containing file's size for a section of text to qualify for matching; zero implying no restriction. Default of 0.0.
   --minimum-ambiguous-match-size <value>
-                           Minimum number of tokens for an ambiguous match to be considered.
+                           Minimum number of tokens for an ambiguous match to be considered. Default of 10.
   --ambiguous-matches-threshold <value>
-                           Maximum number of matches of the same kind that can refer to the same matched content.
+                           Maximum number of matches of the same kind that can refer to the same matched content. Default of 20.
 ```
 
 Hopefully `--help` and `--version` are self-explanatory.
