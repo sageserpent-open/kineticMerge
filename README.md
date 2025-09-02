@@ -188,10 +188,9 @@ Where it gets interesting is:
 `--minimum-match-size`: this is the minimum size of content measured *in tokens* required for a match across two or more
 sides of the merge to be eligible for discovery. Making this larger means that potential matches of content may be left
 undiscovered. However, setting this right down to one token can lead to a bombardment of useless matches because it is
-likely for a single token to be repeated many times across the codebase (and indeed the same goes for to matches of two
-tokens).
+likely for a single token to be repeated many times across the codebase.
 
-The default is set to 3; this seems to work well enough in practice.
+The default is set to 2; this seems to work well enough in practice.
 
 `--match-threshold`: this is a looser alternative to `--minimum-match-size` where content in a file is only eligible for
 match discovery if its size in tokens is at least a fraction of that file's size *as measured in content tokens*. This
