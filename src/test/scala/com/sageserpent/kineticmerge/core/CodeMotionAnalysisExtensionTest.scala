@@ -781,14 +781,13 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           heyDiddleDiddleWithIntraFileMoveAndSurroundingInsertions,
           heyDiddleDiddleWithIntraFileMoveAndSurroundingInsertionsExpectedMerge
         ),
-        // This has been thrown into the Too-Hard-Basket once again...
-//        (
-//          "Intra-file code motion migrated across the file rename - variation.",
-//          heyDiddleDiddleInModernForm,
-//          heyDiddleDiddleInPsychoticForm,
-//          heyDiddleDiddleWithIntraFileMove,
-//          heyDiddleDiddleInPsychoticFormExpectedMerge
-//        ),
+        (
+          "Intra-file code motion migrated across the file rename - variation.",
+          heyDiddleDiddleInModernForm,
+          heyDiddleDiddleInPsychoticForm,
+          heyDiddleDiddleWithIntraFileMove,
+          heyDiddleDiddleInPsychoticFormExpectedMerge
+),
         (
           "Inserted context migrated across the file rename with a deletion at the destination.",
           heyDiddleDiddleInModernForm,

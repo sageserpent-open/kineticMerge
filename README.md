@@ -8,7 +8,7 @@ Merge a heavily refactored codebase and stay sane.
 
 **Requires JRE 17 LTS or later since release 1.3.0.**
 
-(**Release - 1.7.0**).
+(**Release - 1.9.0**).
 
 YouTube:
 
@@ -167,16 +167,16 @@ you're doing before you use the third technique.
 ```text
   --help                   Output this summary.
   --version                Show the version of this command.
-  --no-commit              Do not commit a successful merge - leave merged changes staged in the index for review.
-  --no-ff                  Prevent fast-forward merge - make a merge commit instead.
+  --no-commit              Do not commit a successful merge - leave merged changes staged in the index for review. Off by default.
+  --no-ff                  Prevent fast-forward merge - make a merge commit instead. Off by default.
   --minimum-match-size <value>
-                           Minimum number of tokens for a match to be considered.
+                           Minimum number of tokens for a match to be considered. Default of 2.
   --match-threshold <value>
-                           Minimum fraction of a containing file's size for a section of text to qualify for matching.
+                           Minimum fraction of a containing file's size for a section of text to qualify for matching; zero implying no restriction. Default of 0.0.
   --minimum-ambiguous-match-size <value>
-                           Minimum number of tokens for an ambiguous match to be considered.
+                           Minimum number of tokens for an ambiguous match to be considered. Default of 10.
   --ambiguous-matches-threshold <value>
-                           Maximum number of matches of the same kind that can refer to the same matched content.
+                           Maximum number of matches of the same kind that can refer to the same matched content. Default of 20.
 ```
 
 Hopefully `--help` and `--version` are self-explanatory.
@@ -188,10 +188,9 @@ Where it gets interesting is:
 `--minimum-match-size`: this is the minimum size of content measured *in tokens* required for a match across two or more
 sides of the merge to be eligible for discovery. Making this larger means that potential matches of content may be left
 undiscovered. However, setting this right down to one token can lead to a bombardment of useless matches because it is
-likely for a single token to be repeated many times across the codebase (and indeed the same goes for to matches of two
-tokens).
+likely for a single token to be repeated many times across the codebase.
 
-The default is set to 4; this seems to work well enough in practice.
+The default is set to 2; this seems to work well enough in practice.
 
 `--match-threshold`: this is a looser alternative to `--minimum-match-size` where content in a file is only eligible for
 match discovery if its size in tokens is at least a fraction of that file's size *as measured in content tokens*. This

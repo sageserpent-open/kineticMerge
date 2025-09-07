@@ -51,7 +51,10 @@ case class MoveDestinationsReport[Element](
       moveDestinations.description(source)
     )
 
-  def all: Set[Element] = moveDestinationsBySources.values.flatMap(_.all).toSet
+  lazy val all: Set[Element] = moveDestinationsBySources.values.flatMap(_.all).toSet
+
+  lazy val ambiguous: Set[Element] =
+    moveDestinationsBySources.values.filter(_.isAmbiguous).flatMap(_.all).toSet
 end MoveDestinationsReport
 
 object MoveDestinationsReport:

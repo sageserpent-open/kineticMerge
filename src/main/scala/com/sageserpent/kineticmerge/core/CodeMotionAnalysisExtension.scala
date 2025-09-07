@@ -1,7 +1,10 @@
 package com.sageserpent.kineticmerge.core
 
+import cats.syntax.apply.catsSyntaxTuple2Semigroupal
+import cats.syntax.traverse.toTraverseOps
 import cats.{Eq, Order, Traverse}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
+import com.sageserpent.kineticmerge.core
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
 import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSidedMergeResult
 import com.sageserpent.kineticmerge.core.FirstPassMergeResult.{
@@ -371,7 +374,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   _: MultiSided.Coincident[Item],
                   _: MultiSided.Preserved[Item]
                 ) =>
-              // A coincident LHS is greater than a preserved RHS.
+              // A coincident LHS is less than a preserved RHS.
               -1
             case _ =>
               // A coincident LHS is greater than a unique RHS, and a preserved
@@ -851,13 +854,25 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         ): IndexedSeq[MultiSided[Section[Element]]] =
           sections
             .foldLeft(
-              IndexedSeq.empty[MultiSided[Section[Element]]] -> IndexedSeq
-                .empty[MultiSided[Section[Element]]]
+              (
+                IndexedSeq.empty[MultiSided[Section[Element]]],
+                IndexedSeq
+                  .empty[MultiSided[Section[Element]]],
+                false
+              )
             ) {
               case (
-                    (partialResult, deferredSplice),
+                    (
+                      partialResult,
+                      deferredSplice,
+                      anchorPrecedingDeferredSpliceIsAmbiguous
+                    ),
                     section @ MultiSided.Unique(candidateAnchorDestination)
                   ) =>
+                // TODO: shouldn't the helper `deduplicateWhenPossible` from
+                // further down be used here to thin out the splice
+                // alternatives?
+
                 val precedingSpliceAlternatives =
                   splicesByAnchoredMoveDestination
                     .get(
@@ -892,6 +907,11 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                         )
                     end match
                   }
+
+                val anchorIsAmbiguous =
+                  moveDestinationsReport.ambiguous.contains(
+                    candidateAnchorDestination
+                  )
 
                 val succeedingSpliceAlternatives =
                   splicesByAnchoredMoveDestination
@@ -941,42 +961,138 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     // `candidateAnchorDestination` is not an anchor after all,
                     // so we can splice in the deferred migration from the
                     // previous preceding anchor.
-                    (partialResult
-                      .appendMigratedSplices(
-                        deferredSplice
-                      ) :+ section) -> IndexedSeq.empty
+                    (
+                      partialResult
+                        .appendMigratedSplices(
+                          deferredSplice
+                        ) :+ section,
+                      IndexedSeq.empty,
+                      false
+                    )
 
                   case (
                         Some(precedingMigrationSplice),
                         _
                       ) =>
                     // We have encountered a succeeding anchor...
-                    if Ordering[Seq[MultiSided[Section[Element]]]].equiv(
-                        deferredSplice,
-                        precedingMigrationSplice
+
+                    @tailrec
+                    def deduplicateWhenPossible(
+                        first: MultiSided[Section[Element]],
+                        second: MultiSided[Section[Element]]
+                    ): Option[MultiSided[Section[Element]]] =
+                      (first, second) match
+                        case (
+                              MultiSided.Preserved(_, firstLeft, firstRight),
+                              MultiSided.Coincident(_, _)
+                            ) =>
+                          deduplicateWhenPossible(
+                            MultiSided.Coincident(firstLeft, firstRight),
+                            second
+                          )
+                        case (
+                              MultiSided.Coincident(_, _),
+                              MultiSided.Preserved(_, secondLeft, secondRight)
+                            ) =>
+                          deduplicateWhenPossible(
+                            first,
+                            MultiSided.Coincident(secondLeft, secondRight)
+                          )
+                        case (
+                              MultiSided.Preserved(firstBase, _, _),
+                              MultiSided.Unique(_)
+                            ) =>
+                          deduplicateWhenPossible(
+                            MultiSided.Unique(firstBase),
+                            second
+                          )
+                        case (
+                              MultiSided.Unique(_),
+                              MultiSided.Preserved(secondBase, _, _)
+                            ) =>
+                          deduplicateWhenPossible(
+                            first,
+                            MultiSided.Unique(secondBase)
+                          )
+                        case (
+                              MultiSided.Coincident(firstLeft, _),
+                              MultiSided.Unique(_)
+                            ) =>
+                          deduplicateWhenPossible(
+                            MultiSided.Unique(firstLeft),
+                            second
+                          )
+                        case (
+                              MultiSided.Unique(_),
+                              MultiSided.Coincident(secondLeft, _)
+                            ) =>
+                          deduplicateWhenPossible(
+                            first,
+                            MultiSided.Unique(secondLeft)
+                          )
+                        case _ =>
+                          Option.when(
+                            Ordering[MultiSided[Section[Element]]]
+                              .equiv(first, second)
+                          )(first)
+
+                    val potentiallyDeduplicated = deferredSplice
+                      .map(Some.apply)
+                      .zipAll(
+                        precedingMigrationSplice.map(Some.apply),
+                        None,
+                        None
                       )
-                    then
-                      // The deferred migration from the previous preceding
-                      // anchor and the succeeding anchor just encountered
-                      // bracket the same migration.
-                      (partialResult
+                      .map(pair => pair.flatMapN(deduplicateWhenPossible))
+                      .toVector
+                      .sequence
+
+                    def oneSpliceOnly(
+                        deduplicated: IndexedSeq[MultiSided[Section[Element]]]
+                    ) = (
+                      partialResult
                         .appendMigratedSplices(
-                          deferredSplice
-                        ) :+ section) -> succeedingSplice
-                        .getOrElse(IndexedSeq.empty)
-                    else
+                          deduplicated
+                        ) :+ section,
+                      succeedingSplice.getOrElse(
+                        IndexedSeq.empty
+                      ),
+                      anchorIsAmbiguous
+                    )
+
+                    def twoSplices =
+                      (
+                        partialResult
+                          .appendMigratedSplices(
+                            deferredSplice
+                          )
+                          .appendMigratedSplices(
+                            precedingMigrationSplice
+                          ) :+ section,
+                        succeedingSplice
+                          .getOrElse(IndexedSeq.empty),
+                        anchorIsAmbiguous
+                      )
+
+                    potentiallyDeduplicated.fold(ifEmpty =
                       // The deferred migration from the previous preceding
                       // anchor and the succeeding anchor each contribute their
                       // own migration.
-                      (partialResult
-                        .appendMigratedSplices(
-                          deferredSplice
-                        )
-                        .appendMigratedSplices(
-                          precedingMigrationSplice
-                        ) :+ section) -> succeedingSplice
-                        .getOrElse(IndexedSeq.empty)
-                    end if
+                      (
+                        anchorPrecedingDeferredSpliceIsAmbiguous,
+                        anchorIsAmbiguous
+                      ) match
+                        case (true, true)   => twoSplices
+                        case (false, false) => twoSplices
+                        case (true, false)  =>
+                          oneSpliceOnly(precedingMigrationSplice)
+                        case (false, true) => oneSpliceOnly(deferredSplice)
+                    )(deduplicated =>
+                      // The deferred migration from the previous preceding
+                      // anchor and the succeeding anchor just encountered
+                      // bracket the same migration.
+                      oneSpliceOnly(deduplicated)
+                    )
 
                   case (
                         None,
@@ -985,19 +1101,28 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     // We have encountered a preceding anchor, so the deferred
                     // migration from the previous preceding anchor can finally
                     // be added to the partial result.
-                    (partialResult.appendMigratedSplices(
-                      deferredSplice
-                    ) :+ section) -> succeedingMigrationSplice
+                    (
+                      partialResult.appendMigratedSplices(
+                        deferredSplice
+                      ) :+ section,
+                      succeedingMigrationSplice,
+                      anchorIsAmbiguous
+                    )
                 end match
-              case ((partialResult, deferredSplice), section) =>
-                // `section` is not an anchor, so we can splice in the deferred
-                // migration from the previous preceding anchor.
-                (partialResult
-                  .appendMigratedSplices(
-                    deferredSplice
-                  ) :+ section) -> IndexedSeq.empty
+              case ((partialResult, deferredSplice, _), section) =>
+                // If this matches, then `section` is definitely not an anchor,
+                // so we can splice in the deferred migration from the previous
+                // preceding anchor.
+                (
+                  partialResult
+                    .appendMigratedSplices(
+                      deferredSplice
+                    ) :+ section,
+                  IndexedSeq.empty,
+                  false
+                )
             } match
-            case (partialResult, deferredMigration) =>
+            case (partialResult, deferredMigration, _) =>
               partialResult.appendMigratedSplices(deferredMigration)
 
         path -> withSuppressions.transform(

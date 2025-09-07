@@ -320,6 +320,8 @@ object Main extends StrictLogging:
 
       ourBranchHead <- inTopLevelWorkingDirectory.ourBranchHead()
 
+      _ <- inTopLevelWorkingDirectory.theirCommitId(theirBranchHead)
+
       oursAlreadyContainsTheirs <- inTopLevelWorkingDirectory
         .firstBranchIsContainedBySecond(
           theirBranchHead,
@@ -356,14 +358,12 @@ object Main extends StrictLogging:
               .bestAncestorCommitId(ourBranchHead, theirBranchHead)
 
             ourChanges <- inTopLevelWorkingDirectory.changes(
-              inTopLevelWorkingDirectory,
               ourBranchHead,
               bestAncestorCommitId,
               possessive = "our"
             )
 
             theirChanges <- inTopLevelWorkingDirectory.changes(
-              inTopLevelWorkingDirectory,
               theirBranchHead,
               bestAncestorCommitId,
               possessive = "their"
@@ -610,7 +610,6 @@ object Main extends StrictLogging:
       )
 
     def changes(
-        inTopLevelWorkingDirectory: InWorkingDirectory,
         branchOrCommit: String @@ Main.Tags.CommitOrBranchName,
         bestAncestorCommitId: String @@ Main.Tags.CommitOrBranchName,
         possessive: String
@@ -629,9 +628,7 @@ object Main extends StrictLogging:
       }.labelExceptionWith(errorMessage =
         s"Could not determine changes made on $possessive branch ${underline(branchOrCommit)} since ancestor commit ${underline(bestAncestorCommitId)}."
       ).flatMap(
-        _.traverse(
-          inTopLevelWorkingDirectory.pathChangeFor(branchOrCommit)
-        )
+        _.traverse(pathChangeFor(branchOrCommit))
       ).map(_.toMap)
 
     def pathChangeFor(commitIdOrBranchName: String @@ Tags.CommitOrBranchName)(
@@ -1004,12 +1001,17 @@ object Main extends StrictLogging:
       )
     end mergeWithRollback
 
-    private def theirCommitId(
+    def theirCommitId(
         theirBranchHead: String @@ Main.Tags.CommitOrBranchName
     ): Workflow[String @@ Tags.CommitOrBranchName] =
       IO {
-        os.proc("git", "rev-parse", theirBranchHead)
-          .call(workingDirectory)
+        os.proc(
+          "git",
+          "rev-parse",
+          "--verify",
+          "--end-of-options",
+          theirBranchHead
+        ).call(workingDirectory)
           .out
           .text()
           .taggedWith[Tags.CommitOrBranchName]
