@@ -1234,6 +1234,11 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   ) =>
                 val substitution = substituteFor(section)
 
+                // NOTE: the use of `previouslyAppliedSubstitutions` in the
+                // if-condition is *not* a mistake - it's perfectly OK (and
+                // expected) to perform the same substitution in different
+                // places; this check is to stop doing this in successive
+                // recursive passes.
                 if !previouslyAppliedSubstitutions.contains(substitution) then
                   priorSubstitution match
                     case Some(duplicatedSubstitution)
