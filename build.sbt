@@ -79,7 +79,7 @@ lazy val root = (project in file("."))
       name.value
     },
     packageExecutable := (packageExecutable dependsOn publishLocal).value,
-    libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.9.5",
+    libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.9.6",
     libraryDependencies += "ch.qos.logback"    % "logback-core"    % "1.5.18",
     libraryDependencies += "ch.qos.logback"    % "logback-classic" % "1.5.18",
     libraryDependencies += "org.typelevel"    %% "cats-core"       % "2.9.0",
