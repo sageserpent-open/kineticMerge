@@ -7,10 +7,7 @@ import com.sageserpent.kineticmerge.core.MultiSided.given
 import com.sageserpent.kineticmerge.core.merge.MergeAlgebra
 
 trait MergeResult[Element: Eq]:
-  // TODO: remove these two...
-  def transformElementsEnMasse[TransformedElement](
-      transform: IndexedSeq[Element] => IndexedSeq[TransformedElement]
-  )(using equality: Eq[TransformedElement]): MergeResult[TransformedElement]
+  // TODO: remove this...
   def flattenContent: IndexedSeq[Element]
 
   def map[Transformed: Eq](
@@ -66,11 +63,6 @@ end extension
 
 case class FullyMerged[Element: Eq](elements: IndexedSeq[Element])
     extends MergeResult[Element]:
-  override def transformElementsEnMasse[TransformedElement](
-      transform: IndexedSeq[Element] => IndexedSeq[TransformedElement]
-  )(using equality: Eq[TransformedElement]): MergeResult[TransformedElement] =
-    FullyMerged(transform(elements))
-
   override def flattenContent: IndexedSeq[Element] = elements
 
   override def map[Transformed: Eq](
@@ -113,12 +105,7 @@ case class MergedWithConflicts[Element: Eq](
     rightElements: IndexedSeq[Element]
 ) extends MergeResult[Element]:
   require(!leftElements.corresponds(rightElements)(Eq.eqv))
-
-  override def transformElementsEnMasse[TransformedElement](
-      transform: IndexedSeq[Element] => IndexedSeq[TransformedElement]
-  )(using equality: Eq[TransformedElement]): MergeResult[TransformedElement] =
-    resolveIfNecessary(transform(leftElements), transform(rightElements))
-
+  
   override def flattenContent: IndexedSeq[Element] =
     // TODO: should really merge these and then flatten out the conflicting
     // parts, rather than just plonking one entire sequence after the other.

@@ -2,7 +2,7 @@ package com.sageserpent.kineticmerge.core
 
 import cats.syntax.apply.catsSyntaxTuple2Semigroupal
 import cats.syntax.traverse.toTraverseOps
-import cats.{Eq, Order, Traverse}
+import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.sageserpent.kineticmerge.core
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
@@ -807,8 +807,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
         extension (precedingSection: Option[MultiSided[Section[Element]]])
           private def notingMigratedSplice(
-              migratedSplice: Seq[MultiSided[Section[Element]]]
-          ): Seq[MultiSided[Section[Element]]] =
+              migratedSplice: IndexedSeq[MultiSided[Section[Element]]]
+          ): IndexedSeq[MultiSided[Section[Element]]] =
             if migratedSplice.nonEmpty then
               precedingSection.fold(ifEmpty =
                 logger.debug(
@@ -825,19 +825,18 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         end extension
 
         def insertAnchoredSplices(
-            sections: IndexedSeq[MultiSided[Section[Element]]]
-        ): IndexedSeq[MultiSided[Section[Element]]] =
+            side: MergeResult.Side[MultiSided[Section[Element]]]
+        ): MergeResult.Side[MultiSided[Section[Element]]] =
           val (
             (precedingSectionForLoggingContext, deferredMigration, _),
-            chunks
-          ) = Traverse[Seq].mapAccumulate(
+            sideWithAccumulatedSplices
+          ) = side.innerFlatMapAccumulate(
             (
               None: Option[MultiSided[Section[Element]]],
               IndexedSeq
                 .empty[MultiSided[Section[Element]]],
               false
-            ),
-            sections
+            )
           ) {
             case (
                   (
@@ -1103,19 +1102,18 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               ) :+ section)
           }
 
-          chunks.toIndexedSeq.flatten ++ precedingSectionForLoggingContext
-            .notingMigratedSplice(
+          sideWithAccumulatedSplices.append(
+            precedingSectionForLoggingContext.notingMigratedSplice(
               deferredMigration
             )
+          )
         end insertAnchoredSplices
 
         // This takes a sequence of elements of one type and replaces with
         // another sequence of arbitrary structure but of the same element type.
         // Each element is processed in a context influenced by its
         // predecessors... a kind of map-accumulate!
-        path -> withSuppressions.transformElementsEnMasse(
-          insertAnchoredSplices
-        )(using specialCaseEquivalenceBasedOnOrdering)
+        path -> withSuppressions.onEachSide(insertAnchoredSplices)
       end applySplices
 
       def applySubstitutions(
@@ -1225,7 +1223,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           else withLatestRoundOfSubstitutions
           end if
         end substituteThroughSectionsEliminatingAdjacentDuplicateSubstitutions
-        
+
         path -> mergeResult.onEachSide { side =>
           substituteThroughSectionsEliminatingAdjacentDuplicateSubstitutions(
             side,
