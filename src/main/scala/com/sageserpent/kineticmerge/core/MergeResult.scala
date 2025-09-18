@@ -1,39 +1,104 @@
 package com.sageserpent.kineticmerge.core
 
-import cats.Eq
+import cats.{Eq, Traverse}
 import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSidedMergeResult
+import com.sageserpent.kineticmerge.core.MergedWithConflicts.resolveIfNecessary
+import com.sageserpent.kineticmerge.core.MultiSided.given
 import com.sageserpent.kineticmerge.core.merge.MergeAlgebra
 
-trait MergeResult[Element]:
+trait MergeResult[Element: Eq]:
+  // TODO: remove these two...
   def transformElementsEnMasse[TransformedElement](
       transform: IndexedSeq[Element] => IndexedSeq[TransformedElement]
   )(using equality: Eq[TransformedElement]): MergeResult[TransformedElement]
+  def flattenContent: IndexedSeq[Element]
 
-  /** Yields content in a form suitable for being potentially nested within
-    * either side of a larger [[MergedWithConflicts]]. This is necessary because
-    * Git doesn't model nested conflicts, where one side of a conflict can
-    * contain a smaller conflict. <p>This occurs because splicing can generate
-    * such nested conflicts housed within a larger conflict between move
-    * destination anchors on one side (with the splice) and some other
-    * conflicting content on the opposite side to the anchors.
-    * @return
-    *   The elements as single [[IndexedSeq]].
+  def map[Transformed: Eq](
+      transform: Element => Transformed
+  ): MergeResult[Transformed]
+
+  def innerFlatMap[Transformed: Eq](
+      transform: Element => IndexedSeq[Transformed]
+  ): MergeResult[Transformed]
+
+  def filter(predicate: Element => Boolean): MergeResult[Element]
+
+  def filterNot(predicate: Element => Boolean): MergeResult[Element] = filter(
+    predicate.andThen(!_)
+  )
+
+  def onEachSide[Transformed: Eq](
+      transform: MergeResult.Side[Element] => MergeResult.Side[Transformed]
+  ): MergeResult[Transformed]
+end MergeResult
+
+object MergeResult:
+  // TODO: ensure that `Side` can only be constructed by `MergeResult` and
+  // friends...
+  case class Side[Element: Eq](elements: IndexedSeq[Element]):
+    def innerFlatMapAccumulate[State, Transformed: Eq](initialState: State)(
+        statefulTransform: (State, Element) => (State, IndexedSeq[Transformed])
+    ): (State, Side[Transformed]) =
+      val (finalState, clumps) =
+        Traverse[Seq].mapAccumulate(initialState, elements)(statefulTransform)
+
+      finalState -> Side(clumps.toIndexedSeq.flatten)
+    end innerFlatMapAccumulate
+
+    def append(elements: IndexedSeq[Element]): Side[Element] = Side(
+      this.elements ++ elements
+    )
+  end Side
+end MergeResult
+
+extension [Element](mergeResult: MergeResult[MergeResult[Element]])
+  /** This is necessary because Git doesn't model nested conflicts, where one
+    * side of a conflict can contain a smaller conflict. <p>This occurs because
+    * splicing can generate such nested conflicts housed within a larger
+    * conflict between move destination anchors on one side (with the splice)
+    * and some other conflicting content on the opposite side to the anchors.
+    *
     * @see
     *   https://github.com/sageserpent-open/kineticMerge/issues/160
     */
-  def flattenContent: IndexedSeq[Element]
-end MergeResult
+  def flatten: MergeResult[Element] = ???
+end extension
 
-case class FullyMerged[Element](elements: IndexedSeq[Element])
+case class FullyMerged[Element: Eq](elements: IndexedSeq[Element])
     extends MergeResult[Element]:
-
   override def transformElementsEnMasse[TransformedElement](
       transform: IndexedSeq[Element] => IndexedSeq[TransformedElement]
   )(using equality: Eq[TransformedElement]): MergeResult[TransformedElement] =
     FullyMerged(transform(elements))
 
   override def flattenContent: IndexedSeq[Element] = elements
+
+  override def map[Transformed: Eq](
+      transform: Element => Transformed
+  ): MergeResult[Transformed] = FullyMerged(elements.map(transform))
+
+  override def innerFlatMap[Transformed: Eq](
+      transform: Element => IndexedSeq[Transformed]
+  ): MergeResult[Transformed] = FullyMerged(elements.flatMap(transform))
+
+  override def filter(predicate: Element => Boolean): MergeResult[Element] =
+    FullyMerged(elements.filter(predicate))
+
+  override def onEachSide[Transformed: Eq](
+      transform: MergeResult.Side[Element] => MergeResult.Side[Transformed]
+  ): MergeResult[Transformed] =
+    FullyMerged(transform(MergeResult.Side(elements)).elements)
 end FullyMerged
+
+object MergedWithConflicts:
+  private def resolveIfNecessary[Element: Eq](
+      leftElements: IndexedSeq[Element],
+      rightElements: IndexedSeq[Element]
+  ): MergeResult[Element] =
+    if leftElements.corresponds(rightElements)(Eq.eqv) then
+      FullyMerged(leftElements)
+    else MergedWithConflicts(leftElements, rightElements)
+end MergedWithConflicts
 
 /** @param leftElements
   *   The left hand form of the merge. Has all the clean merges, plus the left
@@ -43,35 +108,57 @@ end FullyMerged
   *   side of the conflicts.
   * @tparam Element
   */
-case class MergedWithConflicts[Element](
+case class MergedWithConflicts[Element: Eq](
     leftElements: IndexedSeq[Element],
     rightElements: IndexedSeq[Element]
 ) extends MergeResult[Element]:
-  require(leftElements != rightElements)
-
-  // The invariant guarantees this.
+  require(!leftElements.corresponds(rightElements)(Eq.eqv))
 
   override def transformElementsEnMasse[TransformedElement](
       transform: IndexedSeq[Element] => IndexedSeq[TransformedElement]
   )(using equality: Eq[TransformedElement]): MergeResult[TransformedElement] =
-    val transformedLeftElements  = transform(leftElements)
-    val transformedRightElements = transform(rightElements)
-
-    // Just in case the conflict was resolved by the migrated changes...
-    if transformedLeftElements.corresponds(transformedRightElements)(
-        equality.eqv
-      )
-    then FullyMerged(transformedLeftElements)
-    else
-      MergedWithConflicts(
-        transformedLeftElements,
-        transformedRightElements
-      )
-    end if
-  end transformElementsEnMasse
+    resolveIfNecessary(transform(leftElements), transform(rightElements))
 
   override def flattenContent: IndexedSeq[Element] =
+    // TODO: should really merge these and then flatten out the conflicting
+    // parts, rather than just plonking one entire sequence after the other.
     leftElements ++ rightElements
+
+  override def map[Transformed: Eq](
+      transform: Element => Transformed
+  ): MergeResult[Transformed] = resolveIfNecessary(
+    leftElements.map(transform),
+    rightElements.map(transform)
+  )
+
+  override def innerFlatMap[Transformed: Eq](
+      transform: Element => IndexedSeq[Transformed]
+  ): MergeResult[Transformed] = resolveIfNecessary(
+    leftElements.flatMap(transform),
+    rightElements.flatMap(transform)
+  )
+
+  override def filter(predicate: Element => Boolean): MergeResult[Element] =
+    resolveIfNecessary(
+      leftElements.filter(predicate),
+      rightElements.filter(predicate)
+    )
+
+  override def onEachSide[Transformed: Eq](
+      transform: MergeResult.Side[Element] => MergeResult.Side[Transformed]
+  ): MergeResult[Transformed] =
+    val leftTransformedElements = transform(
+      MergeResult.Side(leftElements)
+    ).elements
+    val rightTransformedElements = transform(
+      MergeResult.Side(rightElements)
+    ).elements
+
+    if leftTransformedElements.corresponds(rightTransformedElements)(Eq.eqv)
+    then FullyMerged(leftTransformedElements)
+    else MergedWithConflicts(leftTransformedElements, rightTransformedElements)
+    end if
+  end onEachSide
 end MergedWithConflicts
 
 object CoreMergeAlgebra:

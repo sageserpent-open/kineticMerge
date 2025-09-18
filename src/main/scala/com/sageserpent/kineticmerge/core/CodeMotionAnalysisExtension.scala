@@ -366,46 +366,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           seqOrdering(summon[Order[Element]].toOrdering)
         )
 
-      given multiSidedOrdering[Item](using
-          itemOrdering: Ordering[Item]
-      ): Ordering[MultiSided[Item]] with
-        override def compare(x: MultiSided[Item], y: MultiSided[Item]): Int =
-          (x, y) match
-            case (MultiSided.Unique(uniqueX), MultiSided.Unique(uniqueY)) =>
-              itemOrdering.compare(uniqueX, uniqueY)
-            case (
-                  MultiSided.Coincident(leftX, rightX),
-                  MultiSided.Coincident(leftY, rightY)
-                ) =>
-              Ordering[(Item, Item)].compare(
-                (leftX, rightX),
-                (leftY, rightY)
-              )
-            case (
-                  MultiSided.Preserved(baseX, leftX, rightX),
-                  MultiSided.Preserved(baseY, leftY, rightY)
-                ) =>
-              Ordering[(Item, Item, Item)].compare(
-                (baseX, leftX, rightX),
-                (baseY, leftY, rightY)
-              )
-            case (_: MultiSided.Unique[Item], _) =>
-              // A unique LHS is less than anything that isn't unique.
-              -1
-            case (
-                  _: MultiSided.Coincident[Item],
-                  _: MultiSided.Preserved[Item]
-                ) =>
-              // A coincident LHS is less than a preserved RHS.
-              -1
-            case _ =>
-              // A coincident LHS is greater than a unique RHS, and a preserved
-              // LHS is greater than anything that isn't preserved.
-              +1
-          end match
-        end compare
-      end multiSidedOrdering
-
       val specialCaseEquivalenceBasedOnOrdering
           : Eq[MultiSided[Section[Element]]] =
         Order.fromOrdering[MultiSided[Section[Element]]]
@@ -827,17 +787,15 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       ): (Path, MultiSidedMergeResult[Section[Element]]) =
         // Apply the suppressions....
 
-        val withSuppressions = mergeResult.transformElementsEnMasse(
-          _.filterNot {
-            case MultiSided.Unique(section) =>
-              spliceMigrationSuppressions.contains(section)
-            case MultiSided.Preserved(_, leftSection, rightSection) =>
-              spliceMigrationSuppressions.contains(
-                leftSection
-              ) || spliceMigrationSuppressions.contains(rightSection)
-            case _ => false
-          }
-        )(using specialCaseEquivalenceBasedOnOrdering)
+        val withSuppressions = mergeResult.filterNot {
+          case MultiSided.Unique(section) =>
+            spliceMigrationSuppressions.contains(section)
+          case MultiSided.Preserved(_, leftSection, rightSection) =>
+            spliceMigrationSuppressions.contains(
+              leftSection
+            ) || spliceMigrationSuppressions.contains(rightSection)
+          case _ => false
+        }
 
         // Insert the splices....
 
@@ -1151,6 +1109,10 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             )
         end insertAnchoredSplices
 
+        // This takes a sequence of elements of one type and replaces with
+        // another sequence of arbitrary structure but of the same element type.
+        // Each element is processed in a context influenced by its
+        // predecessors... a kind of map-accumulate!
         path -> withSuppressions.transformElementsEnMasse(
           insertAnchoredSplices
         )(using specialCaseEquivalenceBasedOnOrdering)
@@ -1209,56 +1171,50 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
         @tailrec
         def substituteThroughSectionsEliminatingAdjacentDuplicateSubstitutions(
-            sections: IndexedSeq[MultiSided[Section[Element]]],
+            side: MergeResult.Side[MultiSided[Section[Element]]],
             previouslyAppliedSubstitutions: Set[
               IndexedSeq[MultiSided[Section[Element]]]
             ]
-        ): IndexedSeq[MultiSided[Section[Element]]] =
+        ): MergeResult.Side[MultiSided[Section[Element]]] =
           val (
             (_, previouslyAppliedSubstitutionsWithLatestAdded),
-            withSubstitutionsInClumps
-          ) = Traverse[Seq]
-            .mapAccumulate(
-              (
-                None: Option[IndexedSeq[MultiSided[Section[Element]]]],
-                previouslyAppliedSubstitutions
-              ),
-              sections
-            ) {
-              case (
-                    state @ (
-                      priorSubstitution,
-                      previouslyAppliedSubstitutionsPartialUpdate
-                    ),
-                    section
-                  ) =>
-                val substitution = substituteFor(section)
+            withLatestRoundOfSubstitutions
+          ) = side.innerFlatMapAccumulate(
+            (None: Option[
+              IndexedSeq[MultiSided[Section[Element]]]
+            ]) -> previouslyAppliedSubstitutions
+          ) {
+            case (
+                  state @ (
+                    priorSubstitution,
+                    previouslyAppliedSubstitutionsPartialUpdate
+                  ),
+                  section
+                ) =>
+              val substitution = substituteFor(section)
 
-                // NOTE: the use of `previouslyAppliedSubstitutions` in the
-                // if-condition is *not* a mistake - it's perfectly OK (and
-                // expected) to perform the same substitution in different
-                // places; this check is to stop doing this in successive
-                // recursive passes.
-                if !previouslyAppliedSubstitutions.contains(substitution) then
-                  priorSubstitution match
-                    case Some(duplicatedSubstitution)
-                        if substitution == duplicatedSubstitution =>
-                      state -> IndexedSeq.empty
-                    case _ =>
-                      (
-                        Some(substitution),
-                        previouslyAppliedSubstitutionsPartialUpdate + substitution
-                      ) -> substitution
+              // NOTE: the use of `previouslyAppliedSubstitutions` in the
+              // if-condition is *not* a mistake - it's perfectly OK (and
+              // expected) to perform the same substitution in different
+              // places; this check is to stop doing this in successive
+              // recursive passes.
+              if !previouslyAppliedSubstitutions.contains(substitution) then
+                priorSubstitution match
+                  case Some(duplicatedSubstitution)
+                      if substitution == duplicatedSubstitution =>
+                    state -> IndexedSeq.empty
+                  case _ =>
+                    (
+                      Some(substitution),
+                      previouslyAppliedSubstitutionsPartialUpdate + substitution
+                    ) -> substitution
 
-                  end match
-                else state -> IndexedSeq(section)
-                end if
-            }
+                end match
+              else state -> IndexedSeq(section)
+              end if
+          }
 
-          val withLatestRoundOfSubstitutions =
-            withSubstitutionsInClumps.toIndexedSeq.flatten
-
-          if sections != withLatestRoundOfSubstitutions then
+          if side != withLatestRoundOfSubstitutions then
             // Keep repeating passes of substitution in case we have forwarded
             // edits or deletions. For a detailed example of this in operation,
             // see: https://github.com/sageserpent-open/kineticMerge/issues/205.
@@ -1269,20 +1225,20 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           else withLatestRoundOfSubstitutions
           end if
         end substituteThroughSectionsEliminatingAdjacentDuplicateSubstitutions
-
-        path -> mergeResult.transformElementsEnMasse { sections =>
+        
+        path -> mergeResult.onEachSide { side =>
           substituteThroughSectionsEliminatingAdjacentDuplicateSubstitutions(
-            sections,
+            side,
             previouslyAppliedSubstitutions = Set.empty
           )
-        }(using specialCaseEquivalenceBasedOnOrdering)
+        }
       end applySubstitutions
 
       def resolveSections(
           path: Path,
           mergeResult: MultiSidedMergeResult[Section[Element]]
       ): (Path, MergeResult[Element]) =
-        path -> mergeResult.transformElementsEnMasse(_.flatMap(resolution))
+        path -> mergeResult.innerFlatMap(resolution)
       end resolveSections
 
       val secondPassMergeResultsByPath
@@ -1292,9 +1248,11 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             path -> recording
               .playback(conflictResolvingMergeAlgebra)
           case (path, Left(fullyMerged)) =>
-            path -> fullyMerged.transformElementsEnMasse(
-              _.map(MultiSided.Unique.apply)
-            )(using specialCaseEquivalenceBasedOnOrdering)
+            path -> fullyMerged.map(
+              MultiSided.Unique.apply: Section[Element] => MultiSided[
+                Section[Element]
+              ]
+            )
         }
 
       secondPassMergeResultsByPath
