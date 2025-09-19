@@ -574,8 +574,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       end anchoredContentFromModeDestinationSide
 
       case class MigrationSplices(
-          precedingSplice: IndexedSeq[MultiSided[Section[Element]]],
-          succeedingSplice: IndexedSeq[MultiSided[Section[Element]]],
+          precedingSplice: Seq[MultiSided[Section[Element]]],
+          succeedingSplice: Seq[MultiSided[Section[Element]]],
           spliceMigrationSuppressions: Set[Section[Element]]
       )
 
@@ -727,11 +727,11 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       val (
         splicesByAnchoredMoveDestination: MultiDict[
           (Section[Element], AnchoringSense),
-          IndexedSeq[MultiSided[Section[Element]]]
+          Seq[MultiSided[Section[Element]]]
         ],
         spliceMigrationSuppressions: Set[Section[Element]]
       ) = anchoredMoves.foldLeft(
-        MultiDict.empty[(Section[Element], AnchoringSense), IndexedSeq[
+        MultiDict.empty[(Section[Element], AnchoringSense), Seq[
           MultiSided[Section[Element]]
         ]] -> Set.empty[Section[Element]]
       ) {
@@ -807,8 +807,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
         extension (precedingSection: Option[MultiSided[Section[Element]]])
           private def notingMigratedSplice(
-              migratedSplice: IndexedSeq[MultiSided[Section[Element]]]
-          ): IndexedSeq[MultiSided[Section[Element]]] =
+              migratedSplice: Seq[MultiSided[Section[Element]]]
+          ): Seq[MultiSided[Section[Element]]] =
             if migratedSplice.nonEmpty then
               precedingSection.fold(ifEmpty =
                 logger.debug(
@@ -833,8 +833,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           ) = side.innerFlatMapAccumulate(
             (
               None: Option[MultiSided[Section[Element]]],
-              IndexedSeq
-                .empty[MultiSided[Section[Element]]],
+              Seq.empty[MultiSided[Section[Element]]],
               false
             )
           ) {
@@ -1024,7 +1023,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     .sequence
 
                   def oneSpliceOnly(
-                      deduplicated: IndexedSeq[MultiSided[Section[Element]]]
+                      deduplicated: Seq[MultiSided[Section[Element]]]
                   ) =
                     (
                       Some(section),

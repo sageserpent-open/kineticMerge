@@ -8,14 +8,14 @@ import com.sageserpent.kineticmerge.core.merge.MergeAlgebra
 
 trait MergeResult[Element: Eq]:
   // TODO: remove this...
-  def flattenContent: IndexedSeq[Element]
+  def flattenContent: Seq[Element]
 
   def map[Transformed: Eq](
       transform: Element => Transformed
   ): MergeResult[Transformed]
 
   def innerFlatMap[Transformed: Eq](
-      transform: Element => IndexedSeq[Transformed]
+      transform: Element => Seq[Transformed]
   ): MergeResult[Transformed]
 
   def filter(predicate: Element => Boolean): MergeResult[Element]
@@ -32,17 +32,17 @@ end MergeResult
 object MergeResult:
   // TODO: ensure that `Side` can only be constructed by `MergeResult` and
   // friends...
-  case class Side[Element: Eq](elements: IndexedSeq[Element]):
+  case class Side[Element: Eq](elements: Seq[Element]):
     def innerFlatMapAccumulate[State, Transformed: Eq](initialState: State)(
-        statefulTransform: (State, Element) => (State, IndexedSeq[Transformed])
+        statefulTransform: (State, Element) => (State, Seq[Transformed])
     ): (State, Side[Transformed]) =
       val (finalState, clumps) =
         Traverse[Seq].mapAccumulate(initialState, elements)(statefulTransform)
 
-      finalState -> Side(clumps.toIndexedSeq.flatten)
+      finalState -> Side(clumps.flatten)
     end innerFlatMapAccumulate
 
-    def append(elements: IndexedSeq[Element]): Side[Element] = Side(
+    def append(elements: Seq[Element]): Side[Element] = Side(
       this.elements ++ elements
     )
   end Side
@@ -61,16 +61,16 @@ extension [Element](mergeResult: MergeResult[MergeResult[Element]])
   def flatten: MergeResult[Element] = ???
 end extension
 
-case class FullyMerged[Element: Eq](elements: IndexedSeq[Element])
+case class FullyMerged[Element: Eq](elements: Seq[Element])
     extends MergeResult[Element]:
-  override def flattenContent: IndexedSeq[Element] = elements
+  override def flattenContent: Seq[Element] = elements
 
   override def map[Transformed: Eq](
       transform: Element => Transformed
   ): MergeResult[Transformed] = FullyMerged(elements.map(transform))
 
   override def innerFlatMap[Transformed: Eq](
-      transform: Element => IndexedSeq[Transformed]
+      transform: Element => Seq[Transformed]
   ): MergeResult[Transformed] = FullyMerged(elements.flatMap(transform))
 
   override def filter(predicate: Element => Boolean): MergeResult[Element] =
@@ -84,8 +84,8 @@ end FullyMerged
 
 object MergedWithConflicts:
   private def resolveIfNecessary[Element: Eq](
-      leftElements: IndexedSeq[Element],
-      rightElements: IndexedSeq[Element]
+      leftElements: Seq[Element],
+      rightElements: Seq[Element]
   ): MergeResult[Element] =
     if leftElements.corresponds(rightElements)(Eq.eqv) then
       FullyMerged(leftElements)
@@ -101,12 +101,12 @@ end MergedWithConflicts
   * @tparam Element
   */
 case class MergedWithConflicts[Element: Eq](
-    leftElements: IndexedSeq[Element],
-    rightElements: IndexedSeq[Element]
+    leftElements: Seq[Element],
+    rightElements: Seq[Element]
 ) extends MergeResult[Element]:
   require(!leftElements.corresponds(rightElements)(Eq.eqv))
   
-  override def flattenContent: IndexedSeq[Element] =
+  override def flattenContent: Seq[Element] =
     // TODO: should really merge these and then flatten out the conflicting
     // parts, rather than just plonking one entire sequence after the other.
     leftElements ++ rightElements
@@ -119,7 +119,7 @@ case class MergedWithConflicts[Element: Eq](
   )
 
   override def innerFlatMap[Transformed: Eq](
-      transform: Element => IndexedSeq[Transformed]
+      transform: Element => Seq[Transformed]
   ): MergeResult[Transformed] = resolveIfNecessary(
     leftElements.flatMap(transform),
     rightElements.flatMap(transform)

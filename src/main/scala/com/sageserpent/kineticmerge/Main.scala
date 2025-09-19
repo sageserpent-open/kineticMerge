@@ -2092,7 +2092,7 @@ object Main extends StrictLogging:
       )
 
     private def reconstituteTextFrom(
-        tokens: IndexedSeq[Token]
+        tokens: Seq[Token]
     ): String @@ Main.Tags.Content =
       tokens.map(_.text).mkString.taggedWith[Tags.Content]
 

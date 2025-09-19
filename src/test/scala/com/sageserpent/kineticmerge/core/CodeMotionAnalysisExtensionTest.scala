@@ -21,7 +21,7 @@ import scala.util.Right
 object CodeMotionAnalysisExtensionTest:
   type FakePath = String
 
-  def reconstituteTextFrom(tokens: IndexedSeq[Token]) =
+  def reconstituteTextFrom(tokens: Seq[Token]): String =
     tokens.map(_.text).mkString
 
   given Eq[Token]     = Token.equality

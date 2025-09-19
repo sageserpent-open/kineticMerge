@@ -1892,7 +1892,7 @@ object MergeTest:
     
     def validate(result: MultiSidedMergeResult[Element]): Unit =
       def baseIsPreservedCorrectlyIn(
-          elements: IndexedSeq[MultiSided[Element]]
+          elements: Seq[MultiSided[Element]]
       ): Set[MultiSided[Element]] =
         val preserved = base.collect(baseElement =>
           matchesByElement.get(baseElement) match
@@ -1910,7 +1910,7 @@ object MergeTest:
 
       end baseIsPreservedCorrectlyIn
 
-      def leftAppearsCorrectlyIn(elements: IndexedSeq[MultiSided[Element]]): Set[MultiSided[Element]] =
+      def leftAppearsCorrectlyIn(elements: Seq[MultiSided[Element]]): Set[MultiSided[Element]] =
         val appears = left.collect(leftElement =>
           matchesByElement.get(leftElement) match
             case Some(Match.AllSides(baseElement, leftElement, rightElement)) =>
@@ -1929,7 +1929,7 @@ object MergeTest:
         appears.toSet
       end leftAppearsCorrectlyIn
 
-      def rightAppearsCorrectlyIn(elements: IndexedSeq[MultiSided[Element]]): Set[MultiSided[Element]] =
+      def rightAppearsCorrectlyIn(elements: Seq[MultiSided[Element]]): Set[MultiSided[Element]] =
         val appears = right.collect(rightElement =>
           matchesByElement.get(rightElement) match
             case Some(Match.AllSides(baseElement, leftElement, rightElement)) =>
