@@ -111,7 +111,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             end match
 
       type SecondPassInput =
-        Either[FullyMerged[Section[Element]], Recording[Section[Element]]]
+        Either[MergeResult[Section[Element]], Recording[Section[Element]]]
 
       case class AggregatedInitialMergeResult(
           secondPassInputsByPath: Map[Path, SecondPassInput],
@@ -135,9 +135,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             .focus(_.secondPassInputsByPath)
             .modify(
               _ + (path -> Left(
-                FullyMerged(
-                  leftSections
-                )
+                MergeResult.empty[Section[Element]].addResolved(leftSections)
               ))
             )
             .focus(_.speculativeMoveDestinations)
@@ -155,9 +153,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             .focus(_.secondPassInputsByPath)
             .modify(
               _ + (path -> Left(
-                FullyMerged(
-                  rightSections
-                )
+                MergeResult.empty[Section[Element]].addResolved(rightSections)
               ))
             )
             .focus(_.speculativeMoveDestinations)

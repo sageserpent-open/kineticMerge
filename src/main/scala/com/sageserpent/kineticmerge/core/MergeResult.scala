@@ -2,50 +2,236 @@ package com.sageserpent.kineticmerge.core
 
 import cats.{Eq, Traverse}
 import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSidedMergeResult
-import com.sageserpent.kineticmerge.core.MergedWithConflicts.resolveIfNecessary
-import com.sageserpent.kineticmerge.core.MultiSided.given
+import com.sageserpent.kineticmerge.core.MergeResult.{
+  Segment,
+  coalescing,
+  segmentFor
+}
 import com.sageserpent.kineticmerge.core.merge.MergeAlgebra
 
-trait MergeResult[Element: Eq]:
+import scala.collection.decorators.*
+
+case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
+  // Resolved and conflicting segments should be coalesced.
+  require(segments.isEmpty || segments.zip(segments.tail).forall {
+    case (Segment.Resolved(_), Segment.Conflicted(_, _)) => true
+    case (Segment.Conflicted(_, _), Segment.Resolved(_)) => true
+    case _                                               => false
+  })
+
+  def addResolved(element: Element): MergeResult[Element] = segments.lastOption
+    .fold(ifEmpty = MergeResult(Seq(Segment.Resolved(Seq(element))))) {
+      case Segment.Resolved(segmentElements) =>
+        MergeResult(
+          segments.init :+ Segment.Resolved(segmentElements :+ element)
+        )
+      case Segment.Conflicted(_, _) =>
+        MergeResult(segments :+ Segment.Resolved(Seq(element)))
+    }
+
+  def addResolved(elements: Seq[Element]): MergeResult[Element] =
+    segments.lastOption
+      .fold(ifEmpty = MergeResult(Seq(Segment.Resolved(elements)))) {
+        case Segment.Resolved(segmentElements) =>
+          MergeResult(
+            segments.init :+ Segment.Resolved(segmentElements ++ elements)
+          )
+        case Segment.Conflicted(_, _) =>
+          MergeResult(segments :+ Segment.Resolved(elements))
+      }
+
+  def addConflicted(
+      leftElements: Seq[Element],
+      rightElements: Seq[Element]
+  ): MergeResult[Element] = segments.lastOption
+    .fold(ifEmpty =
+      MergeResult(Seq(Segment.Conflicted(leftElements, rightElements)))
+    ) {
+      case Segment.Resolved(_) =>
+        MergeResult(segments :+ Segment.Conflicted(leftElements, rightElements))
+      case Segment.Conflicted(segmentLeftElements, segmentRightElements) =>
+        MergeResult(
+          segments.init :+ Segment.Conflicted(
+            segmentLeftElements ++ leftElements,
+            segmentRightElements ++ rightElements
+          )
+        )
+    }
+
   // TODO: remove this...
-  def flattenContent: Seq[Element]
+  def flattenContent: Seq[Element] = segments.flatMap {
+    case Segment.Resolved(elements) => elements
+    case Segment.Conflicted(
+          leftElements,
+          rightElements
+        ) =>
+      // TODO: should really merge these and then flatten out the conflicting
+      // parts, rather than just plonking one entire sequence after the other.
+      leftElements ++ rightElements
+  }
 
   def map[Transformed: Eq](
       transform: Element => Transformed
-  ): MergeResult[Transformed]
+  ): MergeResult[Transformed] = MergeResult.coalescing(segments.flatMap {
+    case Segment.Resolved(elements) =>
+      segmentFor(elements.map(transform))
+    case Segment.Conflicted(leftElements, rightElements) =>
+      segmentFor(
+        leftElements.map(transform),
+        rightElements.map(transform)
+      )
+  })
 
   def innerFlatMap[Transformed: Eq](
       transform: Element => Seq[Transformed]
-  ): MergeResult[Transformed]
-
-  def filter(predicate: Element => Boolean): MergeResult[Element]
+  ): MergeResult[Transformed] = MergeResult.coalescing(segments.flatMap {
+    case Segment.Resolved(elements) =>
+      segmentFor(elements.flatMap(transform))
+    case Segment.Conflicted(leftElements, rightElements) =>
+      segmentFor(
+        leftElements.flatMap(transform),
+        rightElements.flatMap(transform)
+      )
+  })
 
   def filterNot(predicate: Element => Boolean): MergeResult[Element] = filter(
     predicate.andThen(!_)
   )
 
+  def filter(predicate: Element => Boolean): MergeResult[Element] =
+    MergeResult.coalescing(
+      segments.flatMap {
+        case Segment.Resolved(elements) =>
+          segmentFor(elements.filter(predicate))
+        case Segment.Conflicted(leftElements, rightElements) =>
+          segmentFor(
+            leftElements.filter(predicate),
+            rightElements.filter(predicate)
+          )
+      }
+    )
+
   def onEachSide[Transformed: Eq](
       transform: MergeResult.Side[Element] => MergeResult.Side[Transformed]
-  ): MergeResult[Transformed]
+  ): MergeResult[Transformed] =
+    val leftSide = segments.zipWithIndex.flatMap {
+      case (Segment.Resolved(elements), label) => elements.map(_ -> label)
+      case (Segment.Conflicted(leftElements, _), label) =>
+        leftElements.map(_ -> label)
+    }
+
+    val rightSide = segments.zipWithIndex.flatMap {
+      case (Segment.Resolved(elements), label) => elements.map(_ -> label)
+      case (Segment.Conflicted(_, rightElements), label) =>
+        rightElements.map(_ -> label)
+    }
+
+    val extraSegmentLabel = 1 + leftSide.lastOption
+      .fold(ifEmpty = 0)(_._2)
+      .max(rightSide.lastOption.fold(ifEmpty = 0)(_._2))
+
+    val MergeResult.Side(leftTransformed) = transform(
+      MergeResult.Side(leftSide)
+    )
+
+    val MergeResult.Side(rightTransformed) = transform(
+      MergeResult.Side(rightSide)
+    )
+
+    val leftSegmentGroups = leftTransformed.groupMap(_._2)(_._1)
+
+    val rightSegmentGroups = rightTransformed.groupMap(_._2)(_._1)
+
+    coalescing(
+      leftSegmentGroups
+        .mergeByKey(rightSegmentGroups)
+        .values
+        .flatMap((_: @unchecked) match
+          case (Some(left), Some(right)) =>
+            segmentFor(left, right)
+          case (Some(left), None)  => segmentFor(left)
+          case (None, Some(right)) => segmentFor(right))
+        .toSeq
+    )
+  end onEachSide
 end MergeResult
 
 object MergeResult:
-  // TODO: ensure that `Side` can only be constructed by `MergeResult` and
-  // friends...
-  case class Side[Element: Eq](elements: Seq[Element]):
+  private def coalescing[Element: Eq](
+      segments: Seq[Segment[Element]]
+  ): MergeResult[Element] =
+    segments.foldLeft(empty) {
+      case (partialResult, Segment.Resolved(elements)) =>
+        partialResult.addResolved(elements)
+      case (partialResult, Segment.Conflicted(leftElements, rightElements)) =>
+        partialResult.addConflicted(leftElements, rightElements)
+    }
+
+  def empty[Element: Eq]: MergeResult[Element] = MergeResult(
+    IndexedSeq.empty
+  )
+
+  private def segmentFor[Element: Eq](
+      leftElements: Seq[Element],
+      rightElements: Seq[Element]
+  ): Option[Segment[Element]] =
+    if leftElements.corresponds(rightElements)(Eq.eqv) then
+      Option.unless(leftElements.isEmpty)(Segment.Resolved(leftElements))
+    else
+      Option.unless(leftElements.isEmpty && rightElements.isEmpty)(
+        Segment.Conflicted(leftElements, rightElements)
+      )
+
+  private def segmentFor[Element: Eq](
+      elements: Seq[Element]
+  ): Option[Segment[Element]] =
+    Option.unless(elements.isEmpty)(Segment.Resolved(elements))
+
+  case class Side[Element: Eq](
+      elementsWithSegmentLabels: Seq[(Element, Int)]
+  ):
     def innerFlatMapAccumulate[State, Transformed: Eq](initialState: State)(
         statefulTransform: (State, Element) => (State, Seq[Transformed])
     ): (State, Side[Transformed]) =
       val (finalState, clumps) =
-        Traverse[Seq].mapAccumulate(initialState, elements)(statefulTransform)
+        Traverse[Seq].mapAccumulate(initialState, elementsWithSegmentLabels) {
+          case (accumulatedState, (element, label)) =>
+            val (nextState, transformed) =
+              statefulTransform(accumulatedState, element)
 
-      finalState -> Side(clumps.flatten)
+            nextState -> transformed.map(_ -> label)
+        }
+
+      finalState -> Side(elementsWithSegmentLabels = clumps.flatten)
     end innerFlatMapAccumulate
 
-    def append(elements: Seq[Element]): Side[Element] = Side(
-      this.elements ++ elements
-    )
+    def append(elements: Seq[Element]): Side[Element] =
+      Side(elementsWithSegmentLabels =
+        this.elementsWithSegmentLabels ++ elements.map(_ -> Int.MaxValue)
+      )
   end Side
+
+  enum Segment[Element: Eq]:
+    this match
+      case Resolved(elements)                      => require(elements.nonEmpty)
+      case Conflicted(leftElements, rightElements) =>
+        // NOTE: it's OK if just *one* side is empty.
+        require(leftElements.nonEmpty || rightElements.nonEmpty)
+        require(!leftElements.corresponds(rightElements)(Eq.eqv))
+    end match
+
+    case Resolved(elements: Seq[Element])(using eq: Eq[Element])
+    // Don't bother representing different flavours of conflicts, namely left
+    // edit / right edit, left deletion / right edit, left edit / right deletion
+    // or left insertion / right insertion. These aren't modelled separately in
+    // `MergeAlgebra`, and that is fine as it is for now.
+    case Conflicted(
+        // If this is empty, it represents a left-deletion.
+        leftElements: Seq[Element],
+        // If this is empty, it represents a right-deletion.
+        rightElements: Seq[Element]
+    )(using eq: Eq[Element])
+  end Segment
 end MergeResult
 
 extension [Element](mergeResult: MergeResult[MergeResult[Element]])
@@ -61,91 +247,31 @@ extension [Element](mergeResult: MergeResult[MergeResult[Element]])
   def flatten: MergeResult[Element] = ???
 end extension
 
-case class FullyMerged[Element: Eq](elements: Seq[Element])
-    extends MergeResult[Element]:
-  override def flattenContent: Seq[Element] = elements
-
-  override def map[Transformed: Eq](
-      transform: Element => Transformed
-  ): MergeResult[Transformed] = FullyMerged(elements.map(transform))
-
-  override def innerFlatMap[Transformed: Eq](
-      transform: Element => Seq[Transformed]
-  ): MergeResult[Transformed] = FullyMerged(elements.flatMap(transform))
-
-  override def filter(predicate: Element => Boolean): MergeResult[Element] =
-    FullyMerged(elements.filter(predicate))
-
-  override def onEachSide[Transformed: Eq](
-      transform: MergeResult.Side[Element] => MergeResult.Side[Transformed]
-  ): MergeResult[Transformed] =
-    FullyMerged(transform(MergeResult.Side(elements)).elements)
+object FullyMerged:
+  def unapply[Element](
+      result: MergeResult[Element]
+  ): Option[Seq[Element]] = Traverse[Seq].flatTraverse(result.segments) {
+    case MergeResult.Segment.Resolved(elements) => Some(elements)
+    case MergeResult.Segment.Conflicted(_, _)   => None
+  }
 end FullyMerged
 
 object MergedWithConflicts:
-  private def resolveIfNecessary[Element: Eq](
-      leftElements: Seq[Element],
-      rightElements: Seq[Element]
-  ): MergeResult[Element] =
-    if leftElements.corresponds(rightElements)(Eq.eqv) then
-      FullyMerged(leftElements)
-    else MergedWithConflicts(leftElements, rightElements)
-end MergedWithConflicts
+  def unapply[Element](
+      result: MergeResult[Element]
+  ): Option[(Seq[Element], Seq[Element])] =
+    Option.when(result.segments.exists {
+      case MergeResult.Segment.Conflicted(_, _) => true
+      case MergeResult.Segment.Resolved(_)      => false
+    })(result.segments.flatMap {
+      case MergeResult.Segment.Resolved(elements)          => elements
+      case MergeResult.Segment.Conflicted(leftElements, _) => leftElements
+    } -> result.segments.flatMap {
+      case MergeResult.Segment.Resolved(elements)           => elements
+      case MergeResult.Segment.Conflicted(_, rightElements) => rightElements
+    })
+  end unapply
 
-/** @param leftElements
-  *   The left hand form of the merge. Has all the clean merges, plus the left
-  *   side of the conflicts.
-  * @param rightElements
-  *   The right hand form of the merge. Has all the clean merges, plus the right
-  *   side of the conflicts.
-  * @tparam Element
-  */
-case class MergedWithConflicts[Element: Eq](
-    leftElements: Seq[Element],
-    rightElements: Seq[Element]
-) extends MergeResult[Element]:
-  require(!leftElements.corresponds(rightElements)(Eq.eqv))
-  
-  override def flattenContent: Seq[Element] =
-    // TODO: should really merge these and then flatten out the conflicting
-    // parts, rather than just plonking one entire sequence after the other.
-    leftElements ++ rightElements
-
-  override def map[Transformed: Eq](
-      transform: Element => Transformed
-  ): MergeResult[Transformed] = resolveIfNecessary(
-    leftElements.map(transform),
-    rightElements.map(transform)
-  )
-
-  override def innerFlatMap[Transformed: Eq](
-      transform: Element => Seq[Transformed]
-  ): MergeResult[Transformed] = resolveIfNecessary(
-    leftElements.flatMap(transform),
-    rightElements.flatMap(transform)
-  )
-
-  override def filter(predicate: Element => Boolean): MergeResult[Element] =
-    resolveIfNecessary(
-      leftElements.filter(predicate),
-      rightElements.filter(predicate)
-    )
-
-  override def onEachSide[Transformed: Eq](
-      transform: MergeResult.Side[Element] => MergeResult.Side[Transformed]
-  ): MergeResult[Transformed] =
-    val leftTransformedElements = transform(
-      MergeResult.Side(leftElements)
-    ).elements
-    val rightTransformedElements = transform(
-      MergeResult.Side(rightElements)
-    ).elements
-
-    if leftTransformedElements.corresponds(rightTransformedElements)(Eq.eqv)
-    then FullyMerged(leftTransformedElements)
-    else MergedWithConflicts(leftTransformedElements, rightTransformedElements)
-    end if
-  end onEachSide
 end MergedWithConflicts
 
 object CoreMergeAlgebra:
@@ -154,9 +280,7 @@ end CoreMergeAlgebra
 
 class CoreMergeAlgebra[Element: Eq]
     extends MergeAlgebra[MultiSidedMergeResult, Element]:
-  override def empty: MultiSidedMergeResult[Element] = FullyMerged(
-    IndexedSeq.empty
-  )
+  override def empty: MultiSidedMergeResult[Element] = MergeResult.empty
 
   override def preservation(
       result: MultiSidedMergeResult[Element],
@@ -170,15 +294,7 @@ class CoreMergeAlgebra[Element: Eq]
       preservedElementOnRight
     )
 
-    result match
-      case FullyMerged(elements) =>
-        FullyMerged(elements :+ preserved)
-      case MergedWithConflicts(leftElements, rightElements) =>
-        MergedWithConflicts(
-          leftElements :+ preserved,
-          rightElements :+ preserved
-        )
-    end match
+    result.addResolved(preserved)
   end preservation
 
   override def leftInsertion(
@@ -187,15 +303,7 @@ class CoreMergeAlgebra[Element: Eq]
   ): MultiSidedMergeResult[Element] =
     val multiSided = MultiSided.Unique(insertedElement)
 
-    result match
-      case FullyMerged(elements) =>
-        FullyMerged(elements :+ multiSided)
-      case MergedWithConflicts(leftElements, rightElements) =>
-        MergedWithConflicts(
-          leftElements :+ multiSided,
-          rightElements :+ multiSided
-        )
-    end match
+    result.addResolved(multiSided)
   end leftInsertion
 
   override def rightInsertion(
@@ -204,15 +312,7 @@ class CoreMergeAlgebra[Element: Eq]
   ): MultiSidedMergeResult[Element] =
     val multiSided = MultiSided.Unique(insertedElement)
 
-    result match
-      case FullyMerged(elements) =>
-        FullyMerged(elements :+ multiSided)
-      case MergedWithConflicts(leftElements, rightElements) =>
-        MergedWithConflicts(
-          leftElements :+ multiSided,
-          rightElements :+ multiSided
-        )
-    end match
+    result.addResolved(multiSided)
   end rightInsertion
 
   override def coincidentInsertion(
@@ -223,15 +323,7 @@ class CoreMergeAlgebra[Element: Eq]
     val coincident =
       MultiSided.Coincident(insertedElementOnLeft, insertedElementOnRight)
 
-    result match
-      case FullyMerged(elements) =>
-        FullyMerged(elements :+ coincident)
-      case MergedWithConflicts(leftElements, rightElements) =>
-        MergedWithConflicts(
-          leftElements :+ coincident,
-          rightElements :+ coincident
-        )
-    end match
+    result.addResolved(coincident)
   end coincidentInsertion
 
   override def leftDeletion(
@@ -259,15 +351,7 @@ class CoreMergeAlgebra[Element: Eq]
   ): MultiSidedMergeResult[Element] =
     val multiSided = editElements map MultiSided.Unique.apply
 
-    result match
-      case FullyMerged(elements) =>
-        FullyMerged(elements ++ multiSided)
-      case MergedWithConflicts(leftElements, rightElements) =>
-        MergedWithConflicts(
-          leftElements ++ multiSided,
-          rightElements ++ multiSided
-        )
-    end match
+    result.addResolved(multiSided)
   end leftEdit
 
   override def rightEdit(
@@ -278,15 +362,7 @@ class CoreMergeAlgebra[Element: Eq]
   ): MultiSidedMergeResult[Element] =
     val multiSided = editElements map MultiSided.Unique.apply
 
-    result match
-      case FullyMerged(elements) =>
-        FullyMerged(elements ++ multiSided)
-      case MergedWithConflicts(leftElements, rightElements) =>
-        MergedWithConflicts(
-          leftElements ++ multiSided,
-          rightElements ++ multiSided
-        )
-    end match
+    result.addResolved(multiSided)
   end rightEdit
 
   override def coincidentEdit(
@@ -299,15 +375,7 @@ class CoreMergeAlgebra[Element: Eq]
         MultiSided.Coincident(leftEditElement, rightEditElement)
     }
 
-    result match
-      case FullyMerged(elements) =>
-        FullyMerged(elements ++ coincident)
-      case MergedWithConflicts(leftElements, rightElements) =>
-        MergedWithConflicts(
-          leftElements ++ coincident,
-          rightElements ++ coincident
-        )
-    end match
+    result.addResolved(coincident)
   end coincidentEdit
 
   override def conflict(
@@ -319,17 +387,6 @@ class CoreMergeAlgebra[Element: Eq]
     val leftResolved  = leftEditElements map MultiSided.Unique.apply
     val rightResolved = rightEditElements map MultiSided.Unique.apply
 
-    result match
-      case FullyMerged(elements) =>
-        MergedWithConflicts(
-          elements ++ leftResolved,
-          elements ++ rightResolved
-        )
-      case MergedWithConflicts(leftElements, rightElements) =>
-        MergedWithConflicts(
-          leftElements ++ leftResolved,
-          rightElements ++ rightResolved
-        )
-    end match
+    result.addConflicted(leftResolved, rightResolved)
   end conflict
 end CoreMergeAlgebra
