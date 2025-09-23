@@ -114,29 +114,21 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
   def onEachSide[Transformed: Eq](
       transform: MergeResult.Side[Element] => MergeResult.Side[Transformed]
   ): MergeResult[Transformed] =
-    val leftSide = segments.zipWithIndex.flatMap {
+    val leftSide = MergeResult.Side(segments.zipWithIndex.flatMap {
       case (Segment.Resolved(elements), label) => elements.map(_ -> label)
       case (Segment.Conflicted(leftElements, _), label) =>
         leftElements.map(_ -> label)
-    }
+    })
 
-    val rightSide = segments.zipWithIndex.flatMap {
+    val rightSide = MergeResult.Side(segments.zipWithIndex.flatMap {
       case (Segment.Resolved(elements), label) => elements.map(_ -> label)
       case (Segment.Conflicted(_, rightElements), label) =>
         rightElements.map(_ -> label)
-    }
+    })
 
-    val extraSegmentLabel = 1 + leftSide.lastOption
-      .fold(ifEmpty = 0)(_._2)
-      .max(rightSide.lastOption.fold(ifEmpty = 0)(_._2))
+    val MergeResult.Side(leftTransformed) = transform(leftSide)
 
-    val MergeResult.Side(leftTransformed) = transform(
-      MergeResult.Side(leftSide)
-    )
-
-    val MergeResult.Side(rightTransformed) = transform(
-      MergeResult.Side(rightSide)
-    )
+    val MergeResult.Side(rightTransformed) = transform(rightSide)
 
     val leftSegmentGroups = leftTransformed.groupMap(_._2)(_._1)
 
