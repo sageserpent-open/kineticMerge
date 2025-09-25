@@ -34,6 +34,87 @@ class MergeResultTest:
         assert(recoveredElements == elements)
       }
   end addingOnlyResolvedElementsYieldsThemViaTheFullyMergedPattern
+
+  @TestFactory
+  def addingTheLeftElementsOfAConflictedMergeYieldsThemViaTheMergedWithConflictsPattern()
+      : DynamicTests =
+    (for
+      elements                       <- trialsApi.integers(0, 20).lists
+      clumps                         <- elements.nonEmptyClumps
+      potentiallyConflictingElements <- trialsApi
+        .alternate(
+          trialsApi.only(None),
+          trialsApi.integers(0, 20).lists.map(Some.apply)
+        )
+        .listsOfSize(clumps.size)
+        .filter(_.exists(_.nonEmpty))
+    yield (elements, clumps.zip(potentiallyConflictingElements)))
+      .withLimit(1000)
+      .dynamicTests { (elements, clumpsWithPotentialConflicts) =>
+        clumpsWithPotentialConflicts.foreach {
+          case (left, Some(right)) if left == right =>
+            // When building up a `MergeResult`, it is a precondition that any
+            // conflicts should be genuine.
+            Trials.reject()
+          case _ =>
+        }
+
+        val mergeResult =
+          clumpsWithPotentialConflicts.foldLeft(MergeResult.empty[Int]) {
+            case (partialResult, (List(singleton), None)) =>
+              partialResult.addResolved(singleton)
+            case (partialResult, (multiple, None)) =>
+              partialResult.addResolved(multiple)
+            case (partialResult, (left, Some(right))) =>
+              partialResult.addConflicted(left, right)
+          }
+
+        val MergedWithConflicts(recoveredLeftElements, _) =
+          mergeResult: @unchecked
+
+        assert(recoveredLeftElements == elements)
+      }
+
+  @TestFactory
+  def addingTheRightElementsOfAConflictedMergeYieldsThemViaTheMergedWithConflictsPattern()
+      : DynamicTests =
+    (for
+      elements                       <- trialsApi.integers(0, 20).lists
+      clumps                         <- elements.nonEmptyClumps
+      potentiallyConflictingElements <- trialsApi
+        .alternate(
+          trialsApi.only(None),
+          trialsApi.integers(0, 20).lists.map(Some.apply)
+        )
+        .listsOfSize(clumps.size)
+        .filter(_.exists(_.nonEmpty))
+    yield (elements, potentiallyConflictingElements.zip(clumps)))
+      .withLimit(1000)
+      .dynamicTests { (elements, clumpsWithPotentialConflicts) =>
+        clumpsWithPotentialConflicts.foreach {
+          case (Some(left), right) if left == right =>
+            // When building up a `MergeResult`, it is a precondition that any
+            // conflicts should be genuine.
+            Trials.reject()
+          case _ =>
+        }
+
+        val mergeResult =
+          clumpsWithPotentialConflicts.foldLeft(MergeResult.empty[Int]) {
+            case (partialResult, (None, List(singleton))) =>
+              partialResult.addResolved(singleton)
+            case (partialResult, (None, multiple)) =>
+              partialResult.addResolved(multiple)
+            case (partialResult, (Some(left), right)) =>
+              partialResult.addConflicted(left, right)
+          }
+
+        val MergedWithConflicts(_, recoveredRightElements) =
+          mergeResult: @unchecked
+
+        assert(recoveredRightElements == elements)
+      }
+
 end MergeResultTest
 
 object MergeResultTest:
