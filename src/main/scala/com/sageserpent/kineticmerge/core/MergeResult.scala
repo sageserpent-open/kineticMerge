@@ -50,11 +50,18 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
       case Segment.Resolved(_) =>
         MergeResult(segments :+ Segment.Conflicted(leftElements, rightElements))
       case Segment.Conflicted(segmentLeftElements, segmentRightElements) =>
+        val leftElementsConcatenated  = segmentLeftElements ++ leftElements
+        val rightElementsConcatenated = segmentRightElements ++ rightElements
+
         MergeResult(
-          segments.init :+ Segment.Conflicted(
-            segmentLeftElements ++ leftElements,
-            segmentRightElements ++ rightElements
-          )
+          segments.init :+
+            (if Eq.eqv(leftElementsConcatenated, rightElementsConcatenated) then
+               Segment.Resolved(leftElementsConcatenated)
+             else
+               Segment.Conflicted(
+                 leftElementsConcatenated,
+                 rightElementsConcatenated
+               ))
         )
     }
 
