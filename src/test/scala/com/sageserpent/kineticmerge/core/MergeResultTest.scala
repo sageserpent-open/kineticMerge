@@ -115,6 +115,130 @@ class MergeResultTest:
         assert(recoveredRightElements == elements)
       }
 
+  @TestFactory
+  def filterMapAndFlatMap(): DynamicTests =
+    (for clumps <- trialsApi
+        .integers(0, 20)
+        .lists
+        .filter(_.nonEmpty)
+        .or(
+          trialsApi
+            .integers(0, 20)
+            .lists
+            .and(trialsApi.integers(0, 20).lists)
+            .trials
+            .filter { case (left, right) => left != right }
+        )
+        .lists
+    yield clumps)
+      .withLimit(1000)
+      .dynamicTests { clumps =>
+
+        val mergeResult = clumps.foldLeft(MergeResult.empty[Int]) {
+          case (partialResult, Left(List(singleton))) =>
+            partialResult.addResolved(singleton)
+          case (partialResult, Left(multiple)) =>
+            partialResult.addResolved(multiple)
+          case (partialResult, Right((left, right))) =>
+            partialResult.addConflicted(left, right)
+        }
+
+        def filtration(input: Int): Boolean   = 0 == input % 2
+        def mapping(input: Int): Int          = input / 2
+        def flatMapping(input: Int): Seq[Int] =
+          Seq.tabulate(input % 4)(identity).map(input + _)
+
+        mergeResult match
+          case FullyMerged(elements) =>
+            {
+              val FullyMerged(filteredElements) =
+                mergeResult.filter(filtration): @unchecked
+
+              mergeResult.filter(filtration) match
+                case FullyMerged(filteredElements) =>
+                  assert(elements.filter(filtration) == filteredElements)
+              end match
+            }
+
+            {
+              val FullyMerged(mappedElements) =
+                mergeResult.map(mapping): @unchecked
+
+              assert(elements.map(mapping) == mappedElements)
+            }
+
+            {
+              val FullyMerged(flatMappedElements) =
+                mergeResult.innerFlatMap(flatMapping): @unchecked
+
+              assert(elements.flatMap(flatMapping) == flatMappedElements)
+            }
+
+          case MergedWithConflicts(leftElements, rightElements) =>
+            {
+              mergeResult.filter(filtration) match
+                case MergedWithConflicts(
+                      leftFilteredElements,
+                      rightFilteredElements
+                    ) =>
+                  assert(
+                    leftElements.filter(filtration) == leftFilteredElements
+                  )
+                  assert(
+                    rightElements.filter(filtration) == rightFilteredElements
+                  )
+
+                case FullyMerged(filteredElements) =>
+                  assert(
+                    leftElements.filter(filtration) == filteredElements
+                  )
+                  assert(
+                    rightElements.filter(filtration) == filteredElements
+                  )
+            }
+
+            {
+              mergeResult.map(mapping) match
+                case MergedWithConflicts(
+                      leftMappedElements,
+                      rightMappedElements
+                    ) =>
+                  assert(leftElements.map(mapping) == leftMappedElements)
+                  assert(rightElements.map(mapping) == rightMappedElements)
+
+                case FullyMerged(mappedElements) =>
+                  assert(leftElements.map(mapping) == mappedElements)
+                  assert(rightElements.map(mapping) == mappedElements)
+            }
+
+            {
+              mergeResult.innerFlatMap(flatMapping) match
+                case MergedWithConflicts(
+                      leftFlatMappedElements,
+                      rightFlatMappedElements
+                    ) =>
+                  assert(
+                    leftElements.flatMap(flatMapping) == leftFlatMappedElements
+                  )
+                  assert(
+                    rightElements
+                      .flatMap(flatMapping) == rightFlatMappedElements
+                  )
+
+                case FullyMerged(flatMappedElements) =>
+                  assert(
+                    leftElements.flatMap(flatMapping) == flatMappedElements
+                  )
+                  assert(
+                    rightElements.flatMap(flatMapping) == flatMappedElements
+                  )
+            }
+
+        end match
+
+      }
+  end filterMapAndFlatMap
+
 end MergeResultTest
 
 object MergeResultTest:
