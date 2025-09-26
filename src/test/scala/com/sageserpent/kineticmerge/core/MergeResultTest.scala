@@ -133,7 +133,6 @@ class MergeResultTest:
     yield clumps)
       .withLimit(1000)
       .dynamicTests { clumps =>
-
         val mergeResult = clumps.foldLeft(MergeResult.empty[Int]) {
           case (partialResult, Left(List(singleton))) =>
             partialResult.addResolved(singleton)
@@ -233,11 +232,56 @@ class MergeResultTest:
                     rightElements.flatMap(flatMapping) == flatMappedElements
                   )
             }
-
         end match
-
       }
   end filterMapAndFlatMap
+
+  @TestFactory
+  def localisationOfConflicts(): DynamicTests =
+    (for sequencesOfResolvedRunsAlternatingWithConflictsInPairs <- trialsApi
+        .integers(0, 20)
+        .lists
+        .flatMap(_.nonEmptyClumps)
+        .flatMap(resolvedRuns =>
+          trialsApi
+            .integers(0, 20)
+            .lists
+            .and(trialsApi.integers(0, 20).lists)
+            .trials
+            .filter { case (left, right) => left != right }
+            .listsOfSize(resolvedRuns.size)
+            .map(resolvedRuns zip _)
+        )
+    yield sequencesOfResolvedRunsAlternatingWithConflictsInPairs)
+      .withLimit(1000)
+      .dynamicTests { resolvedRunsAlternatingWithConflictsInPairs =>
+
+        val mergeResult = resolvedRunsAlternatingWithConflictsInPairs.foldLeft(
+          MergeResult.empty[Int]
+        ) { case (partialResult, (resolvedRun, (left, right))) =>
+          partialResult.addResolved(resolvedRun).addConflicted(left, right)
+        }
+
+        // As the resolved runs and conflicts alternate, there is no possibility
+        // of coalescence of either. So each pair should contribute a resolved
+        // and a conflicted segment...
+
+        assert(
+          resolvedRunsAlternatingWithConflictsInPairs.size == mergeResult.segments
+            .count {
+              case MergeResult.Segment.Resolved(_)      => true
+              case MergeResult.Segment.Conflicted(_, _) => false
+            }
+        )
+
+        assert(
+          resolvedRunsAlternatingWithConflictsInPairs.size == mergeResult.segments
+            .count {
+              case MergeResult.Segment.Resolved(_)      => false
+              case MergeResult.Segment.Conflicted(_, _) => true
+            }
+        )
+      }
 
 end MergeResultTest
 
