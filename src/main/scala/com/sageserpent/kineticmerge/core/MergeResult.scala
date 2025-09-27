@@ -144,13 +144,14 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
     coalescing(
       leftSegmentGroups
         .mergeByKey(rightSegmentGroups)
-        .values
+        .toSeq
+        .sortBy(_._1)
+        .map(_._2)
         .flatMap((_: @unchecked) match
           case (Some(left), Some(right)) =>
             segmentFor(left, right)
-          case (Some(left), None)  => segmentFor(left)
-          case (None, Some(right)) => segmentFor(right))
-        .toSeq
+          case (Some(left), None)  => segmentFor(left, Seq.empty)
+          case (None, Some(right)) => segmentFor(Seq.empty, right))
     )
   end onEachSide
 end MergeResult
