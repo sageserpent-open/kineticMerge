@@ -283,6 +283,54 @@ class MergeResultTest:
         )
       }
 
+  @TestFactory
+  def preservationOfLocalisedConflicts(): DynamicTests =
+    (for sequencesOfResolvedRunsAlternatingWithConflictsInPairs <- trialsApi
+        .integers(0, 20)
+        .lists
+        .flatMap(_.nonEmptyClumps)
+        .flatMap(resolvedRuns =>
+          trialsApi
+            .integers(0, 20)
+            .lists
+            .and(trialsApi.integers(0, 20).lists)
+            .trials
+            .filter { case (left, right) => left != right }
+            .listsOfSize(resolvedRuns.size)
+            .map(resolvedRuns zip _)
+        )
+    yield sequencesOfResolvedRunsAlternatingWithConflictsInPairs)
+      .withLimit(1000)
+      .dynamicTests { resolvedRunsAlternatingWithConflictsInPairs =>
+
+        val mergeResult = resolvedRunsAlternatingWithConflictsInPairs.foldLeft(
+          MergeResult.empty[Int]
+        ) { case (partialResult, (resolvedRun, (left, right))) =>
+          partialResult.addResolved(resolvedRun).addConflicted(left, right)
+        }
+
+        // As the resolved runs and conflicts alternate, there is no possibility
+        // of coalescence of either. So each pair should contribute a resolved
+        // and a conflicted segment...
+
+        val mergeResultSharingSameConflictLocalisation =
+          mergeResult.onEachSide(
+            _.innerFlatMapAccumulate(())((state, element) =>
+              state -> Seq(2 * element, 1 + 2 * element)
+            )._2
+          )
+
+        val roundTrippedMergeResultSharingSameConflictLocalisation =
+          mergeResultSharingSameConflictLocalisation.onEachSide(
+            _.innerFlatMapAccumulate(())((state, element) =>
+              state -> Seq(element).filter(1 == _ % 2).map(_ / 2)
+            )._2
+          )
+
+        assert(
+          mergeResult.segments == roundTrippedMergeResultSharingSameConflictLocalisation.segments
+        )
+      }
 end MergeResultTest
 
 object MergeResultTest:
