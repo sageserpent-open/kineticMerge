@@ -51,7 +51,8 @@ case class MoveDestinationsReport[Element](
       moveDestinations.description(source)
     )
 
-  lazy val all: Set[Element] = moveDestinationsBySources.values.flatMap(_.all).toSet
+  lazy val all: Set[Element] =
+    moveDestinationsBySources.values.flatMap(_.all).toSet
 
   lazy val ambiguous: Set[Element] =
     moveDestinationsBySources.values.filter(_.isAmbiguous).flatMap(_.all).toSet
@@ -143,7 +144,7 @@ object MoveDestinationsReport:
         .toSet
 
     val substitutionsByDestination
-        : MultiDict[MultiSided[Element], IndexedSeq[MultiSided[Element]]] =
+        : MultiDict[MultiSided[Element], Seq[MultiSided[Element]]] =
       MultiDict.from(
         moveDestinationsBySource.toSeq.flatMap((source, moveDestinations) =>
           if !moveDestinations.isDivergent
@@ -436,7 +437,7 @@ object MoveDestinationsReport:
   case class MoveEvaluation[Element](
       moveDestinationsReport: MoveDestinationsReport[Element],
       migratedEditSuppressions: Set[Element],
-      substitutionsByDestination: MultiDict[MultiSided[Element], IndexedSeq[
+      substitutionsByDestination: MultiDict[MultiSided[Element], Seq[
         MultiSided[Element]
       ]],
       anchoredMoves: Set[AnchoredMove[Element]]

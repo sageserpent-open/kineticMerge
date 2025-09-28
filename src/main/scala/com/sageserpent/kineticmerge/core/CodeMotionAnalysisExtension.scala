@@ -1117,14 +1117,14 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       ): (Path, MultiSidedMergeResult[Section[Element]]) =
         def substituteFor(
             section: MultiSided[Section[Element]]
-        ): IndexedSeq[MultiSided[Section[Element]]] =
+        ): Seq[MultiSided[Section[Element]]] =
           val substitutions = substitutionsByDestination
             .get(section)
 
           if substitutions.nonEmpty then
             val uniqueSubstitutions = uniqueSortedItemsFrom(substitutions)
 
-            val substitution: IndexedSeq[MultiSided[Section[Element]]] =
+            val substitution: Seq[MultiSided[Section[Element]]] =
               uniqueSubstitutions match
                 case head :: Nil => head
                 case _           =>
@@ -1166,7 +1166,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         def substituteThroughSectionsEliminatingAdjacentDuplicateSubstitutions(
             side: MergeResult.Side[MultiSided[Section[Element]]],
             previouslyAppliedSubstitutions: Set[
-              IndexedSeq[MultiSided[Section[Element]]]
+              Seq[MultiSided[Section[Element]]]
             ]
         ): MergeResult.Side[MultiSided[Section[Element]]] =
           val (
@@ -1174,7 +1174,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             withLatestRoundOfSubstitutions
           ) = side.innerFlatMapAccumulate(
             (None: Option[
-              IndexedSeq[MultiSided[Section[Element]]]
+              Seq[MultiSided[Section[Element]]]
             ]) -> previouslyAppliedSubstitutions
           ) {
             case (
