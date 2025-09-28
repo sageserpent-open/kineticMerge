@@ -1,6 +1,5 @@
 package com.sageserpent.kineticmerge.core
 
-import cats.syntax.apply.catsSyntaxTuple2Semigroupal
 import cats.syntax.traverse.toTraverseOps
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
@@ -1007,16 +1006,14 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                             .equiv(first, second)
                         )(first)
 
-                  val potentiallyDeduplicated = deferredSplice
-                    .map(Some.apply)
-                    .zipAll(
-                      precedingMigrationSplice.map(Some.apply),
-                      None,
-                      None
-                    )
-                    .map(pair => pair.flatMapN(deduplicateWhenPossible))
-                    .toVector
-                    .sequence
+                  val potentiallyDeduplicated =
+                    if deferredSplice.size == precedingMigrationSplice.size then
+                      deferredSplice
+                        .zip(precedingMigrationSplice)
+                        .map(deduplicateWhenPossible)
+                        .toVector
+                        .sequence
+                    else None
 
                   def oneSpliceOnly(
                       deduplicated: Seq[MultiSided[Section[Element]]]
