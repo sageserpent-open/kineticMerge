@@ -19,6 +19,13 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
     case _                                               => false
   })
 
+  export segments.{isEmpty, nonEmpty}
+
+  def fuseWith(another: MergeResult[Element])(
+      elementFusion: (Element, Element) => Option[Element]
+  ): Option[MergeResult[Element]] =
+    ???
+
   def addResolved(element: Element): MergeResult[Element] = segments.lastOption
     .fold(ifEmpty = MergeResult(Seq(Segment.Resolved(Seq(element))))) {
       case Segment.Resolved(segmentElements) =>
@@ -64,18 +71,6 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
                ))
         )
     }
-
-  // TODO: remove this...
-  def flattenContent: Seq[Element] = segments.flatMap {
-    case Segment.Resolved(elements) => elements
-    case Segment.Conflicted(
-          leftElements,
-          rightElements
-        ) =>
-      // TODO: should really merge these and then flatten out the conflicting
-      // parts, rather than just plonking one entire sequence after the other.
-      leftElements ++ rightElements
-  }
 
   def map[Transformed: Eq](
       transform: Element => Transformed
@@ -157,6 +152,21 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
 end MergeResult
 
 object MergeResult:
+  given mergeResultOrdering[Item](using
+      itemOrdering: Ordering[Item]
+  ): Ordering[MergeResult[Item]] = ???
+
+  given mergeResultEquality[Item](using
+      itemEquality: Eq[Item]
+  ): Eq[MergeResult[Item]] = ???
+
+  def of[Element: Eq](elements: Element*): MergeResult[Element] =
+    empty.addResolved(elements)
+
+  def empty[Element: Eq]: MergeResult[Element] = MergeResult(
+    IndexedSeq.empty
+  )
+
   private def coalescing[Element: Eq](
       segments: Seq[Segment[Element]]
   ): MergeResult[Element] =
@@ -166,10 +176,6 @@ object MergeResult:
       case (partialResult, Segment.Conflicted(leftElements, rightElements)) =>
         partialResult.addConflicted(leftElements, rightElements)
     }
-
-  def empty[Element: Eq]: MergeResult[Element] = MergeResult(
-    IndexedSeq.empty
-  )
 
   private def segmentFor[Element: Eq](
       leftElements: Seq[Element],

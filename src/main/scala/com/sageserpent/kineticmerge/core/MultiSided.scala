@@ -43,13 +43,13 @@ object MultiSided:
     end compare
   end multiSidedOrdering
 
-  given multiSidedEq[Item](using
-      itemEq: Eq[Item]
+  given multiSidedEquality[Item](using
+      itemEquality: Eq[Item]
   ): Eq[MultiSided[Item]] with
     override def eqv(x: MultiSided[Item], y: MultiSided[Item]): Boolean =
       (x, y) match
         case (MultiSided.Unique(uniqueX), MultiSided.Unique(uniqueY)) =>
-          itemEq.eqv(uniqueX, uniqueY)
+          itemEquality.eqv(uniqueX, uniqueY)
         case (
               MultiSided.Coincident(leftX, rightX),
               MultiSided.Coincident(leftY, rightY)
@@ -70,7 +70,7 @@ object MultiSided:
       end match
     end eqv
 
-  end multiSidedEq
+  end multiSidedEquality
 end MultiSided
 
 enum MultiSided[Element: Eq]:

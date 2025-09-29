@@ -1,6 +1,5 @@
 package com.sageserpent.kineticmerge.core
 
-import cats.syntax.traverse.toTraverseOps
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.sageserpent.kineticmerge.core
@@ -11,6 +10,7 @@ import com.sageserpent.kineticmerge.core.FirstPassMergeResult.{
   Recording
 }
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Sized
+import com.sageserpent.kineticmerge.core.MergeResult.given
 import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{
   AnchoredMove,
   MoveEvaluation,
@@ -134,7 +134,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             .focus(_.secondPassInputsByPath)
             .modify(
               _ + (path -> Left(
-                MergeResult.empty[Section[Element]].addResolved(leftSections)
+                MergeResult.of(leftSections*)
               ))
             )
             .focus(_.speculativeMoveDestinations)
@@ -152,7 +152,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             .focus(_.secondPassInputsByPath)
             .modify(
               _ + (path -> Left(
-                MergeResult.empty[Section[Element]].addResolved(rightSections)
+                MergeResult.of(rightSections*)
               ))
             )
             .focus(_.speculativeMoveDestinations)
@@ -569,8 +569,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       end anchoredContentFromModeDestinationSide
 
       case class MigrationSplices(
-          precedingSplice: Seq[MultiSided[Section[Element]]],
-          succeedingSplice: Seq[MultiSided[Section[Element]]],
+          precedingSplice: MergeResult[MultiSided[Section[Element]]],
+          succeedingSplice: MergeResult[MultiSided[Section[Element]]],
           spliceMigrationSuppressions: Set[Section[Element]]
       )
 
@@ -713,8 +713,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           )
 
         MigrationSplices(
-          precedingMerge.flattenContent,
-          succeedingMerge.flattenContent,
+          precedingMerge,
+          succeedingMerge,
           spliceMigrationSuppressions
         )
       end mergesFrom
@@ -722,11 +722,11 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       val (
         splicesByAnchoredMoveDestination: MultiDict[
           (Section[Element], AnchoringSense),
-          Seq[MultiSided[Section[Element]]]
+          MergeResult[MultiSided[Section[Element]]]
         ],
         spliceMigrationSuppressions: Set[Section[Element]]
       ) = anchoredMoves.foldLeft(
-        MultiDict.empty[(Section[Element], AnchoringSense), Seq[
+        MultiDict.empty[(Section[Element], AnchoringSense), MergeResult[
           MultiSided[Section[Element]]
         ]] -> Set.empty[Section[Element]]
       ) {
@@ -802,8 +802,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
         extension (precedingSection: Option[MultiSided[Section[Element]]])
           private def notingMigratedSplice(
-              migratedSplice: Seq[MultiSided[Section[Element]]]
-          ): Seq[MultiSided[Section[Element]]] =
+              migratedSplice: MergeResult[MultiSided[Section[Element]]]
+          ): MergeResult[MultiSided[Section[Element]]] =
             if migratedSplice.nonEmpty then
               precedingSection.fold(ifEmpty =
                 logger.debug(
@@ -821,14 +821,14 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
         def insertAnchoredSplices(
             side: MergeResult.Side[MultiSided[Section[Element]]]
-        ): MergeResult.Side[MultiSided[Section[Element]]] =
+        ): MergeResult.Side[MergeResult[MultiSided[Section[Element]]]] =
           val (
             (precedingSectionForLoggingContext, deferredMigration, _),
             sideWithAccumulatedSplices
           ) = side.innerFlatMapAccumulate(
             (
               None: Option[MultiSided[Section[Element]]],
-              Seq.empty[MultiSided[Section[Element]]],
+              MergeResult.empty[MultiSided[Section[Element]]],
               false
             )
           ) {
@@ -934,11 +934,14 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   // previous preceding anchor.
                   (
                     Some(section),
-                    IndexedSeq.empty,
+                    MergeResult.empty[MultiSided[Section[Element]]],
                     false
-                  ) -> (precedingSectionForLoggingContext.notingMigratedSplice(
-                    deferredSplice
-                  ) :+ section)
+                  ) -> Seq(
+                    precedingSectionForLoggingContext.notingMigratedSplice(
+                      deferredSplice
+                    ),
+                    MergeResult.of[MultiSided[Section[Element]]](section)
+                  )
 
                 case (
                       Some(precedingMigrationSplice),
@@ -1006,42 +1009,46 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                             .equiv(first, second)
                         )(first)
 
-                  val potentiallyDeduplicated =
-                    if deferredSplice.size == precedingMigrationSplice.size then
-                      deferredSplice
-                        .zip(precedingMigrationSplice)
-                        .map(deduplicateWhenPossible)
-                        .toVector
-                        .sequence
-                    else None
+                  val potentiallyDeduplicated = deferredSplice.fuseWith(
+                    precedingMigrationSplice
+                  )(deduplicateWhenPossible)
 
                   def oneSpliceOnly(
-                      deduplicated: Seq[MultiSided[Section[Element]]]
+                      deduplicated: MergeResult[MultiSided[Section[Element]]]
                   ) =
                     (
                       Some(section),
                       succeedingSplice.getOrElse(
-                        IndexedSeq.empty
+                        MergeResult.empty[MultiSided[Section[Element]]]
                       ),
                       anchorIsAmbiguous
-                    ) -> (precedingSectionForLoggingContext
-                      .notingMigratedSplice(
-                        deduplicated
-                      ) :+ section)
+                    ) -> Seq(
+                      precedingSectionForLoggingContext
+                        .notingMigratedSplice(
+                          deduplicated
+                        ),
+                      MergeResult.of[MultiSided[Section[Element]]](section)
+                    )
 
                   def twoSplices =
                     (
                       Some(section),
                       succeedingSplice
-                        .getOrElse(IndexedSeq.empty),
+                        .getOrElse(
+                          MergeResult.empty[MultiSided[Section[Element]]]
+                        ),
                       anchorIsAmbiguous
-                    ) -> (precedingSectionForLoggingContext
-                      .notingMigratedSplice(
-                        deferredSplice
-                      ) ++ precedingSectionForLoggingContext
-                      .notingMigratedSplice(
-                        precedingMigrationSplice
-                      ) :+ section)
+                    ) -> Seq(
+                      precedingSectionForLoggingContext
+                        .notingMigratedSplice(
+                          deferredSplice
+                        ),
+                      precedingSectionForLoggingContext
+                        .notingMigratedSplice(
+                          precedingMigrationSplice
+                        ),
+                      MergeResult.of[MultiSided[Section[Element]]](section)
+                    )
 
                   potentiallyDeduplicated.fold(ifEmpty =
                     // The deferred migration from the previous preceding
@@ -1074,9 +1081,12 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     Some(section),
                     succeedingMigrationSplice,
                     anchorIsAmbiguous
-                  ) -> (precedingSectionForLoggingContext.notingMigratedSplice(
-                    deferredSplice
-                  ) :+ section)
+                  ) -> Seq(
+                    precedingSectionForLoggingContext.notingMigratedSplice(
+                      deferredSplice
+                    ),
+                    MergeResult.of[MultiSided[Section[Element]]](section)
+                  )
               end match
             case (
                   (precedingSectionForLoggingContext, deferredSplice, _),
@@ -1087,25 +1097,26 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               // preceding anchor.
               (
                 Some(section),
-                IndexedSeq.empty,
+                MergeResult.empty[MultiSided[Section[Element]]],
                 false
-              ) -> (precedingSectionForLoggingContext.notingMigratedSplice(
-                deferredSplice
-              ) :+ section)
+              ) -> Seq(
+                precedingSectionForLoggingContext.notingMigratedSplice(
+                  deferredSplice
+                ),
+                MergeResult.of[MultiSided[Section[Element]]](section)
+              )
           }
 
           sideWithAccumulatedSplices.append(
-            precedingSectionForLoggingContext.notingMigratedSplice(
-              deferredMigration
+            Seq(
+              precedingSectionForLoggingContext.notingMigratedSplice(
+                deferredMigration
+              )
             )
           )
         end insertAnchoredSplices
 
-        // This takes a sequence of elements of one type and replaces with
-        // another sequence of arbitrary structure but of the same element type.
-        // Each element is processed in a context influenced by its
-        // predecessors... a kind of map-accumulate!
-        path -> withSuppressions.onEachSide(insertAnchoredSplices)
+        path -> withSuppressions.onEachSide(insertAnchoredSplices).flatten
       end applySplices
 
       def applySubstitutions(
