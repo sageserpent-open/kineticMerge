@@ -10,6 +10,7 @@ import com.sageserpent.kineticmerge.core.MergeResult.{
 import com.sageserpent.kineticmerge.core.merge.MergeAlgebra
 
 import scala.collection.decorators.*
+import scala.math.Ordering.Implicits.seqOrdering
 
 case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
   // Resolved and conflicting segments should be coalesced.
@@ -24,7 +25,11 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
   def fuseWith(another: MergeResult[Element])(
       elementFusion: (Element, Element) => Option[Element]
   ): Option[MergeResult[Element]] =
-    ???
+    if segments.size != another.segments.size then None
+    else
+      Traverse[Seq]
+        .traverse(segments.zip(another.segments))(_.fuseWith(_)(elementFusion))
+        .map(MergeResult.apply)
 
   def addResolved(element: Element): MergeResult[Element] = segments.lastOption
     .fold(ifEmpty = MergeResult(Seq(Segment.Resolved(Seq(element))))) {
@@ -152,20 +157,41 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
 end MergeResult
 
 object MergeResult:
-  given mergeResultOrdering[Item](using
-      itemOrdering: Ordering[Item]
-  ): Ordering[MergeResult[Item]] = ???
+  given mergeResultOrdering[Element](using
+      elementOrdering: Ordering[Element]
+  ): Ordering[MergeResult[Element]] = Ordering.by(_.segments)
 
-  given mergeResultEquality[Item](using
-      itemEquality: Eq[Item]
-  ): Eq[MergeResult[Item]] = ???
+  given mergeResultEquality[Element](using
+      elementEquality: Eq[Element]
+  ): Eq[MergeResult[Element]] = Eq.by(_.segments)
 
   def of[Element: Eq](elements: Element*): MergeResult[Element] =
     empty.addResolved(elements)
 
-  def empty[Element: Eq]: MergeResult[Element] = MergeResult(
-    IndexedSeq.empty
-  )
+  def flatten[Element: Eq](
+      nestedMergeResults: MergeResult[MergeResult[Element]]
+  ): MergeResult[Element] =
+    MergeResult.coalescing(nestedMergeResults.segments.flatMap {
+      case Segment.Resolved(mergeResults) =>
+        mergeResults.flatMap(_.segments)
+      case Segment.Conflicted(leftMergeResults, rightMergeResults) =>
+        def flattenWithinEnclosingConflict(
+            segment: MergeResult.Segment[Element]
+        ) =
+          segment match
+            case Segment.Resolved(elements)                      => elements
+            case Segment.Conflicted(leftElements, rightElements) =>
+              leftElements ++ rightElements
+
+        MergeResult.segmentFor(
+          leftMergeResults
+            .flatMap(_.segments)
+            .flatMap(flattenWithinEnclosingConflict),
+          rightMergeResults
+            .flatMap(_.segments)
+            .flatMap(flattenWithinEnclosingConflict)
+        )
+    })
 
   private def coalescing[Element: Eq](
       segments: Seq[Segment[Element]]
@@ -176,6 +202,10 @@ object MergeResult:
       case (partialResult, Segment.Conflicted(leftElements, rightElements)) =>
         partialResult.addConflicted(leftElements, rightElements)
     }
+
+  def empty[Element: Eq]: MergeResult[Element] = MergeResult(
+    IndexedSeq.empty
+  )
 
   private def segmentFor[Element: Eq](
       leftElements: Seq[Element],
@@ -226,6 +256,33 @@ object MergeResult:
         require(!leftElements.corresponds(rightElements)(Eq.eqv))
     end match
 
+    def fuseWith(another: Segment[Element])(
+        elementFusion: (Element, Element) => Option[Element]
+    ): Option[Segment[Element]] = (this, another) match
+      case (Resolved(elementsOfThis), Resolved(elementsOfAnother)) =>
+        for fusedElements <- Traverse[Seq]
+            .traverse(elementsOfThis.zip(elementsOfAnother))(
+              elementFusion(_, _)
+            )
+        yield Resolved(fusedElements)
+
+      case (
+            Conflicted(leftThis, rightThis),
+            Conflicted(leftAnother, rightAnother)
+          ) =>
+        for
+          leftFusion <- Traverse[Seq]
+            .traverse(leftThis.zip(leftAnother))(
+              elementFusion(_, _)
+            )
+          rightFusion <- Traverse[Seq]
+            .traverse(rightThis.zip(rightAnother))(
+              elementFusion(_, _)
+            )
+        yield Conflicted(leftFusion, rightFusion)
+
+      case _ => None
+
     case Resolved(elements: Seq[Element])(using eq: Eq[Element])
     // Don't bother representing different flavours of conflicts, namely left
     // edit / right edit, left deletion / right edit, left edit / right deletion
@@ -238,9 +295,50 @@ object MergeResult:
         rightElements: Seq[Element]
     )(using eq: Eq[Element])
   end Segment
+
+  given segmentOrdering[Element](using
+      elementOrdering: Ordering[Element]
+  ): Ordering[Segment[Element]] with
+    override def compare(x: Segment[Element], y: Segment[Element]): Int =
+      (x, y) match
+        case (
+              Segment.Resolved(elementsFromX),
+              Segment.Resolved(elementFromY)
+            ) =>
+          Ordering[Seq[Element]].compare(elementsFromX, elementFromY)
+        case (
+              Segment.Conflicted(leftX, rightX),
+              Segment.Conflicted(leftY, rightY)
+            ) =>
+          Ordering[Seq[Element]].compare(leftX, leftY) match
+            case 0       => Ordering[Seq[Element]].compare(rightX, rightY)
+            case nonZero => nonZero
+        case (Segment.Resolved(_), Segment.Conflicted(_, _)) => -1
+        case (Segment.Conflicted(_, _), Segment.Resolved(_)) => 1
+  end segmentOrdering
+
+  given segmentEquality[Element](using
+      elementEquality: Eq[Element]
+  ): Eq[Segment[Element]] with
+    override def eqv(x: Segment[Element], y: Segment[Element]): Boolean =
+      (x, y) match
+        case (
+              Segment.Resolved(elementsFromX),
+              Segment.Resolved(elementFromY)
+            ) =>
+          Eq[Seq[Element]].eqv(elementsFromX, elementFromY)
+        case (
+              Segment.Conflicted(leftX, rightX),
+              Segment.Conflicted(leftY, rightY)
+            ) =>
+          if Eq[Seq[Element]].eqv(leftX, leftY) then
+            Eq[Seq[Element]].eqv(rightX, rightY)
+          else false
+        case _ => false
+  end segmentEquality
 end MergeResult
 
-extension [Element](mergeResult: MergeResult[MergeResult[Element]])
+extension [Element: Eq](nestedMergeResults: MergeResult[MergeResult[Element]])
   /** This is necessary because Git doesn't model nested conflicts, where one
     * side of a conflict can contain a smaller conflict. <p>This occurs because
     * splicing can generate such nested conflicts housed within a larger
@@ -250,7 +348,7 @@ extension [Element](mergeResult: MergeResult[MergeResult[Element]])
     * @see
     *   https://github.com/sageserpent-open/kineticMerge/issues/160
     */
-  def flatten: MergeResult[Element] = ???
+  def flatten: MergeResult[Element] = MergeResult.flatten(nestedMergeResults)
 end extension
 
 object FullyMerged:
