@@ -1457,6 +1457,39 @@ object Main extends StrictLogging:
         }
       end fileRenamingReportUsing
 
+      def lastMinuteResolution(
+          path: Path,
+          baseTemporaryFile: Path,
+          leftTemporaryFile: Path,
+          rightTemporaryFile: Path,
+          baseLabel: String,
+          leftLabel: String,
+          rightLabel: String
+      ) =
+        val exitCode =
+          os.proc(
+            "git",
+            "merge-file",
+            "-L",
+            leftLabel,
+            "-L",
+            baseLabel,
+            "-L",
+            rightLabel,
+            leftTemporaryFile,
+            baseTemporaryFile,
+            rightTemporaryFile
+          ).call(workingDirectory, check = false)
+            .exitCode
+
+        if 0 <= exitCode then right(0 == exitCode)
+        else
+          left(
+            s"Unexpected error: could not generate conflicted file contents on behalf of ${underline(path)} in temporary file ${underline(leftTemporaryFile)}"
+          )
+        end if
+      end lastMinuteResolution
+
       for
         codeMotionAnalysis: CodeMotionAnalysis[Path, Token] <- EitherT
           .fromEither[WorkflowLogWriter] {
@@ -1850,31 +1883,15 @@ object Main extends StrictLogging:
                       content = rightContent
                     )
 
-                    lastMinuteResolution <-
-                      val noPriorContentName = "no prior content"
-
-                      val exitCode =
-                        os.proc(
-                          "git",
-                          "merge-file",
-                          "-L",
-                          ourBranchHead,
-                          "-L",
-                          s"'$noPriorContentName'",
-                          "-L",
-                          theirBranchHead,
-                          leftTemporaryFile,
-                          fakeBaseTemporaryFile,
-                          rightTemporaryFile
-                        ).call(workingDirectory, check = false)
-                          .exitCode
-
-                      if 0 <= exitCode then right(0 == exitCode)
-                      else
-                        left(
-                          s"Unexpected error: could not generate conflicted file contents on behalf of ${underline(path)} in temporary file ${underline(leftTemporaryFile)}"
-                        )
-                      end if
+                    lastMinuteResolution <- lastMinuteResolution(
+                      path,
+                      fakeBaseTemporaryFile,
+                      leftTemporaryFile,
+                      rightTemporaryFile,
+                      baseLabel = "no prior content",
+                      leftLabel = ourBranchHead,
+                      rightLabel = theirBranchHead
+                    )
                     _ <- IO {
                       os.copy.over(leftTemporaryFile, path)
                     }.labelExceptionWith(errorMessage =
@@ -1953,29 +1970,15 @@ object Main extends StrictLogging:
                       content = rightContent
                     )
 
-                    lastMinuteResolution <-
-                      val exitCode =
-                        os.proc(
-                          "git",
-                          "merge-file",
-                          "-L",
-                          ourBranchHead,
-                          "-L",
-                          bestAncestorCommitId,
-                          "-L",
-                          theirBranchHead,
-                          leftTemporaryFile,
-                          baseTemporaryFile,
-                          rightTemporaryFile
-                        ).call(workingDirectory, check = false)
-                          .exitCode
-
-                      if 0 <= exitCode then right(0 == exitCode)
-                      else
-                        left(
-                          s"Unexpected error: could not generate conflicted file contents on behalf of ${underline(path)} in temporary file ${underline(leftTemporaryFile)}"
-                        )
-                      end if
+                    lastMinuteResolution <- lastMinuteResolution(
+                      path,
+                      baseTemporaryFile,
+                      leftTemporaryFile,
+                      rightTemporaryFile,
+                      baseLabel = bestAncestorCommitId,
+                      leftLabel = ourBranchHead,
+                      rightLabel = theirBranchHead
+                    )
                     _ <- IO {
                       os.copy.over(leftTemporaryFile, path)
                     }.labelExceptionWith(errorMessage =
