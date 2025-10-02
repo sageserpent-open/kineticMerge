@@ -25,6 +25,9 @@ import scala.io.Source
 import scala.util.Try
 
 object Main extends StrictLogging:
+  private case class EarlyTermination(exitCode: Int @@ Tags.ExitCode)
+      extends RuntimeException
+
   // NOTE: the use of Git below is based on spike work on MacOS - the version of
   // Git shipped tends to be a *long* way behind the latest release, so the
   // latest and greatest versions of commands are not always available. At time
@@ -247,9 +250,6 @@ object Main extends StrictLogging:
         )
       )
     end parser
-
-    case class EarlyTermination(exitCode: Int @@ Tags.ExitCode)
-        extends RuntimeException
 
     val applicationRequest: Try[Option[ApplicationRequest]] = Try {
       OParser
@@ -630,7 +630,9 @@ object Main extends StrictLogging:
         _.traverse(pathChangeFor(branchOrCommit))
       ).map(_.toMap)
 
-    def pathChangeFor(commitIdOrBranchName: String @@ Tags.CommitOrBranchName)(
+    private def pathChangeFor(
+        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
+    )(
         line: String
     ): Workflow[(Path, Change)] =
       IO {
@@ -1952,8 +1954,6 @@ object Main extends StrictLogging:
                     )
 
                     lastMinuteResolution <-
-                      val noPriorContentName = "no prior content"
-
                       val exitCode =
                         os.proc(
                           "git",
@@ -1961,7 +1961,7 @@ object Main extends StrictLogging:
                           "-L",
                           ourBranchHead,
                           "-L",
-                          s"'$noPriorContentName'",
+                          bestAncestorCommitId,
                           "-L",
                           theirBranchHead,
                           leftTemporaryFile,
