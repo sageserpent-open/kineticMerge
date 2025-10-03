@@ -1519,7 +1519,72 @@ object Main extends StrictLogging:
         accumulatedMergeState <- mergeInputs.foldM(
           AccumulatedMergeState.initial
         ) { case (partialResult, (path, mergeInput)) =>
-          def recordConflictedMergeOfFile(
+          def recordConflictedMergeOfAddedFile(
+              partialResult: AccumulatedMergeState,
+              path: Path,
+              mode: String @@ Tags.Mode,
+              leftContent: String @@ Tags.Content,
+              rightContent: String @@ Tags.Content
+          ) =
+            for
+              fakeBaseTemporaryFile <- temporaryFile(
+                suffix = ".base",
+                content = "".taggedWith[Tags.Content]
+              )
+
+              leftTemporaryFile <- temporaryFile(
+                suffix = ".left",
+                content = leftContent
+              )
+
+              rightTemporaryFile <- temporaryFile(
+                suffix = ".right",
+                content = rightContent
+              )
+
+              lastMinuteResolution <- lastMinuteResolution(
+                path,
+                fakeBaseTemporaryFile,
+                leftTemporaryFile,
+                rightTemporaryFile,
+                baseLabel = "no prior content",
+                leftLabel = ourBranchHead,
+                rightLabel = theirBranchHead
+              )
+              _ <- IO {
+                os.copy.over(leftTemporaryFile, path)
+              }.labelExceptionWith(errorMessage =
+                s"Unexpected error: could not copy results of conflicted merge in ${underline(leftTemporaryFile)} to working directory tree file ${underline(path)}."
+              )
+
+              leftBlob  <- storeBlobFor(path, leftContent)
+              rightBlob <- storeBlobFor(path, rightContent)
+              _         <- recordDeletionInIndex(path)
+              _         <- recordConflictModificationInIndex(
+                stageIndex = ourStageIndex
+              )(
+                ourBranchHead,
+                path,
+                mode,
+                leftBlob
+              )
+              _ <- recordConflictModificationInIndex(
+                stageIndex = theirStageIndex
+              )(
+                theirBranchHead,
+                path,
+                mode,
+                rightBlob
+              )
+            yield partialResult.copy(
+              goodForAMergeCommit = false,
+              conflictingAdditionPathsAndTheirLastMinuteResolutions =
+                partialResult.conflictingAdditionPathsAndTheirLastMinuteResolutions + (path -> lastMinuteResolution)
+            )
+            end for
+          end recordConflictedMergeOfAddedFile
+
+          def recordConflictedMergeOfModifiedFile(
               partialResult: AccumulatedMergeState,
               path: Path,
               bestAncestorCommitIdMode: String @@ Tags.Mode,
@@ -1593,7 +1658,7 @@ object Main extends StrictLogging:
               )
             yield partialResult.copy(goodForAMergeCommit = false)
             end for
-          end recordConflictedMergeOfFile
+          end recordConflictedMergeOfModifiedFile
 
           def recordCleanMergeOfFile(
               partialResult: AccumulatedMergeState,
@@ -1680,7 +1745,7 @@ object Main extends StrictLogging:
                   val leftContent  = reconstituteTextFrom(leftTokens)
                   val rightContent = reconstituteTextFrom(rightTokens)
 
-                  recordConflictedMergeOfFile(
+                  recordConflictedMergeOfModifiedFile(
                     partialResult,
                     path,
                     bestAncestorCommitIdMode,
@@ -1724,7 +1789,7 @@ object Main extends StrictLogging:
                   val leftContent  = reconstituteTextFrom(leftTokens)
                   val rightContent = reconstituteTextFrom(rightTokens)
 
-                  recordConflictedMergeOfFile(
+                  recordConflictedMergeOfModifiedFile(
                     partialResult,
                     path,
                     bestAncestorCommitIdMode,
@@ -1757,62 +1822,13 @@ object Main extends StrictLogging:
                   val leftContent  = reconstituteTextFrom(leftTokens)
                   val rightContent = reconstituteTextFrom(rightTokens)
 
-                  for
-                    fakeBaseTemporaryFile <- temporaryFile(
-                      suffix = ".base",
-                      content = "".taggedWith[Tags.Content]
-                    )
-
-                    leftTemporaryFile <- temporaryFile(
-                      suffix = ".left",
-                      content = leftContent
-                    )
-
-                    rightTemporaryFile <- temporaryFile(
-                      suffix = ".right",
-                      content = rightContent
-                    )
-
-                    lastMinuteResolution <- lastMinuteResolution(
-                      path,
-                      fakeBaseTemporaryFile,
-                      leftTemporaryFile,
-                      rightTemporaryFile,
-                      baseLabel = "no prior content",
-                      leftLabel = ourBranchHead,
-                      rightLabel = theirBranchHead
-                    )
-                    _ <- IO {
-                      os.copy.over(leftTemporaryFile, path)
-                    }.labelExceptionWith(errorMessage =
-                      s"Unexpected error: could not copy results of conflicted merge in ${underline(leftTemporaryFile)} to working directory tree file ${underline(path)}."
-                    )
-
-                    leftBlob  <- storeBlobFor(path, leftContent)
-                    rightBlob <- storeBlobFor(path, rightContent)
-                    _         <- recordDeletionInIndex(path)
-                    _         <- recordConflictModificationInIndex(
-                      stageIndex = ourStageIndex
-                    )(
-                      ourBranchHead,
-                      path,
-                      ourAddition.mode,
-                      leftBlob
-                    )
-                    _ <- recordConflictModificationInIndex(
-                      stageIndex = theirStageIndex
-                    )(
-                      theirBranchHead,
-                      path,
-                      ourAddition.mode,
-                      rightBlob
-                    )
-                  yield partialResult.copy(
-                    goodForAMergeCommit = false,
-                    conflictingAdditionPathsAndTheirLastMinuteResolutions =
-                      partialResult.conflictingAdditionPathsAndTheirLastMinuteResolutions + (path -> lastMinuteResolution)
+                  recordConflictedMergeOfAddedFile(
+                    partialResult,
+                    path,
+                    ourAddition.mode,
+                    leftContent,
+                    rightContent
                   )
-                  end for
 
             case JustTheirAddition(theirAddition) =>
               mergeResultsByPath(path) match
@@ -1842,62 +1858,13 @@ object Main extends StrictLogging:
                   val leftContent  = reconstituteTextFrom(leftTokens)
                   val rightContent = reconstituteTextFrom(rightTokens)
 
-                  for
-                    fakeBaseTemporaryFile <- temporaryFile(
-                      suffix = ".base",
-                      content = "".taggedWith[Tags.Content]
-                    )
-
-                    leftTemporaryFile <- temporaryFile(
-                      suffix = ".left",
-                      content = leftContent
-                    )
-
-                    rightTemporaryFile <- temporaryFile(
-                      suffix = ".right",
-                      content = rightContent
-                    )
-
-                    lastMinuteResolution <- lastMinuteResolution(
-                      path,
-                      fakeBaseTemporaryFile,
-                      leftTemporaryFile,
-                      rightTemporaryFile,
-                      baseLabel = "no prior content",
-                      leftLabel = ourBranchHead,
-                      rightLabel = theirBranchHead
-                    )
-                    _ <- IO {
-                      os.copy.over(leftTemporaryFile, path)
-                    }.labelExceptionWith(errorMessage =
-                      s"Unexpected error: could not copy results of conflicted merge in ${underline(leftTemporaryFile)} to working directory tree file ${underline(path)}."
-                    )
-
-                    leftBlob  <- storeBlobFor(path, leftContent)
-                    rightBlob <- storeBlobFor(path, rightContent)
-                    _         <- recordDeletionInIndex(path)
-                    _         <- recordConflictModificationInIndex(
-                      stageIndex = ourStageIndex
-                    )(
-                      ourBranchHead,
-                      path,
-                      theirAddition.mode,
-                      leftBlob
-                    )
-                    _ <- recordConflictModificationInIndex(
-                      stageIndex = theirStageIndex
-                    )(
-                      theirBranchHead,
-                      path,
-                      theirAddition.mode,
-                      rightBlob
-                    )
-                  yield partialResult.copy(
-                    goodForAMergeCommit = false,
-                    conflictingAdditionPathsAndTheirLastMinuteResolutions =
-                      partialResult.conflictingAdditionPathsAndTheirLastMinuteResolutions + (path -> lastMinuteResolution)
+                  recordConflictedMergeOfAddedFile(
+                    partialResult,
+                    path,
+                    theirAddition.mode,
+                    leftContent,
+                    rightContent
                   )
-                  end for
 
             case JustOurDeletion(_) =>
               // NOTE: we don't consult `mergeResultsByPath` because we know the
@@ -2103,62 +2070,13 @@ object Main extends StrictLogging:
                   val leftContent  = reconstituteTextFrom(leftTokens)
                   val rightContent = reconstituteTextFrom(rightTokens)
 
-                  for
-                    fakeBaseTemporaryFile <- temporaryFile(
-                      suffix = ".base",
-                      content = "".taggedWith[Tags.Content]
-                    )
-
-                    leftTemporaryFile <- temporaryFile(
-                      suffix = ".left",
-                      content = leftContent
-                    )
-
-                    rightTemporaryFile <- temporaryFile(
-                      suffix = ".right",
-                      content = rightContent
-                    )
-
-                    lastMinuteResolution <- lastMinuteResolution(
-                      path,
-                      fakeBaseTemporaryFile,
-                      leftTemporaryFile,
-                      rightTemporaryFile,
-                      baseLabel = "no prior content",
-                      leftLabel = ourBranchHead,
-                      rightLabel = theirBranchHead
-                    )
-                    _ <- IO {
-                      os.copy.over(leftTemporaryFile, path)
-                    }.labelExceptionWith(errorMessage =
-                      s"Unexpected error: could not copy results of conflicted merge in ${underline(leftTemporaryFile)} to working directory tree file ${underline(path)}."
-                    )
-
-                    leftBlob  <- storeBlobFor(path, leftContent)
-                    rightBlob <- storeBlobFor(path, rightContent)
-                    _         <- recordDeletionInIndex(path)
-                    _         <- recordConflictModificationInIndex(
-                      stageIndex = ourStageIndex
-                    )(
-                      ourBranchHead,
-                      path,
-                      mergedFileMode,
-                      leftBlob
-                    )
-                    _ <- recordConflictModificationInIndex(
-                      stageIndex = theirStageIndex
-                    )(
-                      theirBranchHead,
-                      path,
-                      mergedFileMode,
-                      rightBlob
-                    )
-                  yield partialResult.copy(
-                    goodForAMergeCommit = false,
-                    conflictingAdditionPathsAndTheirLastMinuteResolutions =
-                      partialResult.conflictingAdditionPathsAndTheirLastMinuteResolutions + (path -> lastMinuteResolution)
+                  recordConflictedMergeOfAddedFile(
+                    partialResult,
+                    path,
+                    mergedFileMode,
+                    leftContent,
+                    rightContent
                   )
-                  end for
 
             case BothContributeAModification(
                   _,
@@ -2183,7 +2101,7 @@ object Main extends StrictLogging:
                   val leftContent  = reconstituteTextFrom(leftTokens)
                   val rightContent = reconstituteTextFrom(rightTokens)
 
-                  recordConflictedMergeOfFile(
+                  recordConflictedMergeOfModifiedFile(
                     partialResult,
                     path,
                     bestAncestorCommitIdMode,
