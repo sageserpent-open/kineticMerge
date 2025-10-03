@@ -1558,6 +1558,24 @@ object Main extends StrictLogging:
               )
             yield partialResult
 
+          def bringInFileContentFromTheirBranch(
+              partialResult: AccumulatedMergeState,
+              path: Path,
+              mode: String @@ Tags.Mode,
+              blobId: String @@ Tags.BlobId
+          ) =
+            for
+              _ <- restoreFileFromBlobId(
+                path,
+                blobId
+              )
+              _ <- recordModificationInIndex(
+                path,
+                mode,
+                blobId
+              )
+            yield partialResult
+
           mergeInput match
             case JustOurModification(
                   ourModification,
@@ -1672,17 +1690,12 @@ object Main extends StrictLogging:
                       theirModification.mode
                     )
                   else
-                    for
-                      _ <- restoreFileFromBlobId(
-                        path,
-                        theirModification.blobId
-                      )
-                      _ <- recordModificationInIndex(
-                        path,
-                        theirModification.mode,
-                        theirModification.blobId
-                      )
-                    yield partialResult
+                    bringInFileContentFromTheirBranch(
+                      partialResult,
+                      path,
+                      theirModification.mode,
+                      theirModification.blobId
+                    )
                   end if
 
                 case MergedWithConflicts(leftTokens, rightTokens) =>
@@ -1849,17 +1862,12 @@ object Main extends StrictLogging:
                       theirAddition.mode
                     )
                   else
-                    for
-                      _ <- restoreFileFromBlobId(
-                        path,
-                        theirAddition.blobId
-                      )
-                      _ <- recordAdditionInIndex(
-                        path,
-                        theirAddition.mode,
-                        theirAddition.blobId
-                      )
-                    yield partialResult
+                    bringInFileContentFromTheirBranch(
+                      partialResult,
+                      path,
+                      theirAddition.mode,
+                      theirAddition.blobId
+                    )
                   end if
 
                 case MergedWithConflicts(leftTokens, rightTokens) =>
