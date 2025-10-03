@@ -617,6 +617,9 @@ object MainTest extends ProseExamples:
       case Array(postMergeCommit, parents*) => postMergeCommit -> parents
     : @unchecked
 
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
   private def verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit(
       path: Path
   )(
@@ -643,6 +646,19 @@ object MainTest extends ProseExamples:
 
     assert(status.isEmpty)
   end verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit
+
+  private def currentCommit(path: Path) =
+    os.proc("git", "log", "-1", "--format=tformat:%H")
+      .call(path)
+      .out
+      .text()
+      .strip
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+
+  private def mergeHeadPath(path: Path) =
+    path / ".git" / "MERGE_HEAD"
 
   private def verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit(
       path: Path
@@ -672,24 +688,8 @@ object MainTest extends ProseExamples:
     assert(currentStatus(path).nonEmpty)
   end verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit
 
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
-
-  private def currentCommit(path: Path) =
-    os.proc("git", "log", "-1", "--format=tformat:%H")
-      .call(path)
-      .out
-      .text()
-      .strip
-
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
-
   private def mergeHead(path: Path) =
     os.read(mergeHeadPath(path)).strip()
-
-  private def mergeHeadPath(path: Path) =
-    path / ".git" / "MERGE_HEAD"
 
   private def verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
       path: Path
@@ -2097,9 +2097,9 @@ class MainTest:
 
   @TestFactory
   def issue48BugReproduction(): DynamicTests =
-    (trialsApi.booleans and trialsApi.booleans)
+    (trialsApi.booleans and trialsApi.booleans and trialsApi.booleans)
       .withLimit(10)
-      .dynamicTests { case (flipBranches, noCommit) =>
+      .dynamicTests { case (flipBranches, noCommit, emptyRenamedFileInBase) =>
         gitRepository()
           .use(path =>
             IO {
@@ -2121,12 +2121,24 @@ class MainTest:
                 println(
                   os.proc("git", "add", originalFilename).call(path).out.text()
                 )
+
+                if emptyRenamedFileInBase then
+                  os.write(path / renamedFilename, "")
+                  println(
+                    os.proc("git", "add", renamedFilename).call(path).out.text()
+                  )
+                end if
+
                 println(
                   os.proc(
                     "git",
                     "commit",
                     "-m",
-                    s"'Introducing `$originalFilename`.'"
+                    s"'Introducing `$originalFilename`${
+                        if emptyRenamedFileInBase
+                        then s" (and an empty `$renamedFilename`)"
+                        else ""
+                      }.'"
                   ).call(path)
                     .out
                     .text()
@@ -2141,8 +2153,7 @@ class MainTest:
                 os.remove(
                   path / originalFilename
                 )
-                os.write(
-                  path / renamedFilename,
+                val renamedFileContent =
                   """
                     |This is the first line,
                     |followed by the second.
@@ -2151,7 +2162,18 @@ class MainTest:
                     |Need a hint? No, good - you're a quick study.
                     |THE END.
                     |""".stripMargin
-                )
+
+                if emptyRenamedFileInBase then
+                  os.write.over(
+                    path / renamedFilename,
+                    renamedFileContent
+                  )
+                else
+                  os.write(
+                    path / renamedFilename,
+                    renamedFileContent
+                  )
+                end if
 
                 println(
                   os.proc("git", "rm", originalFilename).call(path).out.text()
@@ -2164,7 +2186,9 @@ class MainTest:
                     "git",
                     "commit",
                     "-m",
-                    s"'Renaming `$originalFilename` to `$renamedFilename` with an edit.'"
+                    s"'Renaming `$originalFilename` to ${
+                        if emptyRenamedFileInBase then "existing " else ""
+                      }`$renamedFilename` with an edit.'"
                   ).call(path)
                     .out
                     .text()
