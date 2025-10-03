@@ -25,9 +25,6 @@ import scala.io.Source
 import scala.util.Try
 
 object Main extends StrictLogging:
-  private case class EarlyTermination(exitCode: Int @@ Tags.ExitCode)
-      extends RuntimeException
-
   // NOTE: the use of Git below is based on spike work on MacOS - the version of
   // Git shipped tends to be a *long* way behind the latest release, so the
   // latest and greatest versions of commands are not always available. At time
@@ -39,17 +36,13 @@ object Main extends StrictLogging:
   private type WorkflowLogWriter[Payload] = WriterT[IO, WorkflowLog, Payload]
   private type Workflow[Payload]          =
     EitherT[WorkflowLogWriter, String @@ Tags.ErrorMessage, Payload]
-
-  private val whitespaceRun = "\\s+"
-
+  private val whitespaceRun                                       = "\\s+"
   private val noBranchProvided: String @@ Tags.CommitOrBranchName =
     "".taggedWith[Tags.CommitOrBranchName]
-
   private val fakeModeForDeletion: String @@ Tags.Mode =
     "0".taggedWith[Tags.Mode]
   private val fakeBlobIdForDeletion: String @@ Tags.BlobId =
     "0000000000000000000000000000000000000000".taggedWith[Tags.BlobId]
-
   private val successfulMerge: Int @@ Tags.ExitCode =
     0.taggedWith[Tags.ExitCode]
   private val conflictedMerge: Int @@ Tags.ExitCode =
@@ -57,14 +50,12 @@ object Main extends StrictLogging:
   private val incorrectCommandLine: Int @@ Tags.ExitCode =
     2.taggedWith[Tags.ExitCode]
   private val error: Int @@ Tags.ExitCode = 3.taggedWith[Tags.ExitCode]
-
   private val bestCommonAncestorStageIndex: Int @@ Tags.StageIndex =
     1.taggedWith[Tags.StageIndex]
   private val ourStageIndex: Int @@ Tags.StageIndex =
     2.taggedWith[Tags.StageIndex]
   private val theirStageIndex: Int @@ Tags.StageIndex =
     3.taggedWith[Tags.StageIndex]
-
   // NOTE: allow a degree of overlap between the alternate groups, this avoids
   // doing any downstream disambiguation between a percentage and either an
   // implied or an explicit fraction in the range [0, 1].
@@ -406,6 +397,9 @@ object Main extends StrictLogging:
     exitCode
   end mergeTheirBranch
 
+  private def right[Payload](payload: Payload): Workflow[Payload] =
+    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
+
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
       EitherT
@@ -424,9 +418,6 @@ object Main extends StrictLogging:
     private def logOperation(message: String): Workflow[Payload] =
       workflow.semiflatTap(_ => WriterT.tell(List(Right(message))))
   end extension
-
-  private def right[Payload](payload: Payload): Workflow[Payload] =
-    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
 
   private def underline(anything: Any): Str =
     fansi.Underlined.On(anything.toString)
@@ -522,6 +513,9 @@ object Main extends StrictLogging:
         bestAncestorCommitIdContent: String @@ Tags.Content
     )
   end MergeInput
+
+  private case class EarlyTermination(exitCode: Int @@ Tags.ExitCode)
+      extends RuntimeException
 
   private case class InWorkingDirectory(
       workingDirectory: Path
@@ -1545,6 +1539,25 @@ object Main extends StrictLogging:
                   ).logOperation(description)
               }
 
+          def recordCleanlyMergedFile(
+              partialResult: AccumulatedMergeState,
+              path: Path,
+              mergedFileContent: String @@ Tags.Content,
+              mode: String @@ Tags.Mode
+          ) =
+            for
+              blobId <- storeBlobFor(path, mergedFileContent)
+              _      <- restoreFileFromBlobId(
+                path,
+                blobId
+              )
+              _ <- recordModificationInIndex(
+                path,
+                mode,
+                blobId
+              )
+            yield partialResult
+
           mergeInput match
             case JustOurModification(
                   ourModification,
@@ -1560,18 +1573,12 @@ object Main extends StrictLogging:
                     mergedFileContent != ourModification.content
 
                   if ourModificationWasTweakedByTheMerge then
-                    for
-                      blobId <- storeBlobFor(path, mergedFileContent)
-                      _      <- restoreFileFromBlobId(
-                        path,
-                        blobId
-                      )
-                      _ <- recordModificationInIndex(
-                        path,
-                        ourModification.mode,
-                        blobId
-                      )
-                    yield partialResult
+                    recordCleanlyMergedFile(
+                      partialResult,
+                      path,
+                      mergedFileContent,
+                      ourModification.mode
+                    )
                   else right(partialResult)
                   end if
 
@@ -1658,18 +1665,12 @@ object Main extends StrictLogging:
                     mergedFileContent != theirModification.content
 
                   if theirModificationWasTweakedByTheMerge then
-                    for
-                      blobId <- storeBlobFor(path, mergedFileContent)
-                      _      <- restoreFileFromBlobId(
-                        path,
-                        blobId
-                      )
-                      _ <- recordModificationInIndex(
-                        path,
-                        theirModification.mode,
-                        blobId
-                      )
-                    yield partialResult
+                    recordCleanlyMergedFile(
+                      partialResult,
+                      path,
+                      mergedFileContent,
+                      theirModification.mode
+                    )
                   else
                     for
                       _ <- restoreFileFromBlobId(
@@ -1762,18 +1763,12 @@ object Main extends StrictLogging:
                     mergedFileContent != ourAddition.content
 
                   if ourAdditionWasTweakedByTheMerge then
-                    for
-                      blobId <- storeBlobFor(path, mergedFileContent)
-                      _      <- restoreFileFromBlobId(
-                        path,
-                        blobId
-                      )
-                      _ <- recordModificationInIndex(
-                        path,
-                        ourAddition.mode,
-                        blobId
-                      )
-                    yield partialResult
+                    recordCleanlyMergedFile(
+                      partialResult,
+                      path,
+                      mergedFileContent,
+                      ourAddition.mode
+                    )
                   else right(partialResult)
                   end if
 
@@ -1847,18 +1842,12 @@ object Main extends StrictLogging:
                     mergedFileContent != theirAddition.content
 
                   if theirAdditionWasTweakedByTheMerge then
-                    for
-                      blobId <- storeBlobFor(path, mergedFileContent)
-                      _      <- restoreFileFromBlobId(
-                        path,
-                        blobId
-                      )
-                      _ <- recordAdditionInIndex(
-                        path,
-                        theirAddition.mode,
-                        blobId
-                      )
-                    yield partialResult
+                    recordCleanlyMergedFile(
+                      partialResult,
+                      path,
+                      mergedFileContent,
+                      theirAddition.mode
+                    )
                   else
                     for
                       _ <- restoreFileFromBlobId(
@@ -2127,19 +2116,12 @@ object Main extends StrictLogging:
                 case FullyMerged(tokens) =>
                   val mergedFileContent = reconstituteTextFrom(tokens)
 
-                  for
-                    blobId <- storeBlobFor(path, mergedFileContent)
-                    _      <- restoreFileFromBlobId(
-                      path,
-                      blobId
-                    )
-                    _ <- recordModificationInIndex(
-                      path,
-                      mergedFileMode,
-                      blobId
-                    )
-                  yield partialResult
-                  end for
+                  recordCleanlyMergedFile(
+                    partialResult,
+                    path,
+                    mergedFileContent,
+                    mergedFileMode
+                  )
 
                 case MergedWithConflicts(leftTokens, rightTokens) =>
                   val leftContent  = reconstituteTextFrom(leftTokens)
@@ -2214,19 +2196,12 @@ object Main extends StrictLogging:
                 case FullyMerged(tokens) =>
                   val mergedFileContent = reconstituteTextFrom(tokens)
 
-                  for
-                    blobId <- storeBlobFor(path, mergedFileContent)
-                    _      <- restoreFileFromBlobId(
-                      path,
-                      blobId
-                    )
-                    _ <- recordModificationInIndex(
-                      path,
-                      mergedFileMode,
-                      blobId
-                    )
-                  yield partialResult
-                  end for
+                  recordCleanlyMergedFile(
+                    partialResult,
+                    path,
+                    mergedFileContent,
+                    mergedFileMode
+                  )
 
                 case MergedWithConflicts(leftTokens, rightTokens) =>
                   val leftContent  = reconstituteTextFrom(leftTokens)
