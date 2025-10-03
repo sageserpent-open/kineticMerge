@@ -1596,65 +1596,185 @@ object Main extends StrictLogging:
               end if
 
             case JustOurAddition(ourAddition) =>
-              val FullyMerged(tokens) =
-                mergeResultsByPath(path): @unchecked
+              mergeResultsByPath(path) match
+                case FullyMerged(tokens) =>
+                  val mergedFileContent = reconstituteTextFrom(tokens)
 
-              val mergedFileContent = reconstituteTextFrom(tokens)
+                  val ourAdditionWasTweakedByTheMerge =
+                    mergedFileContent != ourAddition.content
 
-              val ourAdditionWasTweakedByTheMerge =
-                mergedFileContent != ourAddition.content
+                  if ourAdditionWasTweakedByTheMerge then
+                    for
+                      blobId <- storeBlobFor(path, mergedFileContent)
+                      _      <- restoreFileFromBlobId(
+                        path,
+                        blobId
+                      )
+                      _ <- recordModificationInIndex(
+                        path,
+                        ourAddition.mode,
+                        blobId
+                      )
+                    yield partialResult
+                  else right(partialResult)
+                  end if
 
-              if ourAdditionWasTweakedByTheMerge then
-                for
-                  blobId <- storeBlobFor(path, mergedFileContent)
-                  _      <- restoreFileFromBlobId(
-                    path,
-                    blobId
+                case MergedWithConflicts(leftTokens, rightTokens) =>
+                  val leftContent  = reconstituteTextFrom(leftTokens)
+                  val rightContent = reconstituteTextFrom(rightTokens)
+
+                  for
+                    fakeBaseTemporaryFile <- temporaryFile(
+                      suffix = ".base",
+                      content = "".taggedWith[Tags.Content]
+                    )
+
+                    leftTemporaryFile <- temporaryFile(
+                      suffix = ".left",
+                      content = leftContent
+                    )
+
+                    rightTemporaryFile <- temporaryFile(
+                      suffix = ".right",
+                      content = rightContent
+                    )
+
+                    lastMinuteResolution <- lastMinuteResolution(
+                      path,
+                      fakeBaseTemporaryFile,
+                      leftTemporaryFile,
+                      rightTemporaryFile,
+                      baseLabel = "no prior content",
+                      leftLabel = ourBranchHead,
+                      rightLabel = theirBranchHead
+                    )
+                    _ <- IO {
+                      os.copy.over(leftTemporaryFile, path)
+                    }.labelExceptionWith(errorMessage =
+                      s"Unexpected error: could not copy results of conflicted merge in ${underline(leftTemporaryFile)} to working directory tree file ${underline(path)}."
+                    )
+
+                    leftBlob  <- storeBlobFor(path, leftContent)
+                    rightBlob <- storeBlobFor(path, rightContent)
+                    _         <- recordDeletionInIndex(path)
+                    _         <- recordConflictModificationInIndex(
+                      stageIndex = ourStageIndex
+                    )(
+                      ourBranchHead,
+                      path,
+                      ourAddition.mode,
+                      leftBlob
+                    )
+                    _ <- recordConflictModificationInIndex(
+                      stageIndex = theirStageIndex
+                    )(
+                      theirBranchHead,
+                      path,
+                      ourAddition.mode,
+                      rightBlob
+                    )
+                  yield partialResult.copy(
+                    goodForAMergeCommit = false,
+                    conflictingAdditionPathsAndTheirLastMinuteResolutions =
+                      partialResult.conflictingAdditionPathsAndTheirLastMinuteResolutions + (path -> lastMinuteResolution)
                   )
-                  _ <- recordModificationInIndex(
-                    path,
-                    ourAddition.mode,
-                    blobId
-                  )
-                yield partialResult
-              else right(partialResult)
-              end if
+                  end for
 
             case JustTheirAddition(theirAddition) =>
-              val FullyMerged(tokens) =
-                mergeResultsByPath(path): @unchecked
+              mergeResultsByPath(path) match
+                case FullyMerged(tokens) =>
+                  val mergedFileContent = reconstituteTextFrom(tokens)
 
-              val mergedFileContent = reconstituteTextFrom(tokens)
+                  val theirAdditionWasTweakedByTheMerge =
+                    mergedFileContent != theirAddition.content
 
-              val theirAdditionWasTweakedByTheMerge =
-                mergedFileContent != theirAddition.content
+                  if theirAdditionWasTweakedByTheMerge then
+                    for
+                      blobId <- storeBlobFor(path, mergedFileContent)
+                      _      <- restoreFileFromBlobId(
+                        path,
+                        blobId
+                      )
+                      _ <- recordAdditionInIndex(
+                        path,
+                        theirAddition.mode,
+                        blobId
+                      )
+                    yield partialResult
+                  else
+                    for
+                      _ <- restoreFileFromBlobId(
+                        path,
+                        theirAddition.blobId
+                      )
+                      _ <- recordAdditionInIndex(
+                        path,
+                        theirAddition.mode,
+                        theirAddition.blobId
+                      )
+                    yield partialResult
+                  end if
 
-              if theirAdditionWasTweakedByTheMerge then
-                for
-                  blobId <- storeBlobFor(path, mergedFileContent)
-                  _      <- restoreFileFromBlobId(
-                    path,
-                    blobId
+                case MergedWithConflicts(leftTokens, rightTokens) =>
+                  val leftContent  = reconstituteTextFrom(leftTokens)
+                  val rightContent = reconstituteTextFrom(rightTokens)
+
+                  for
+                    fakeBaseTemporaryFile <- temporaryFile(
+                      suffix = ".base",
+                      content = "".taggedWith[Tags.Content]
+                    )
+
+                    leftTemporaryFile <- temporaryFile(
+                      suffix = ".left",
+                      content = leftContent
+                    )
+
+                    rightTemporaryFile <- temporaryFile(
+                      suffix = ".right",
+                      content = rightContent
+                    )
+
+                    lastMinuteResolution <- lastMinuteResolution(
+                      path,
+                      fakeBaseTemporaryFile,
+                      leftTemporaryFile,
+                      rightTemporaryFile,
+                      baseLabel = "no prior content",
+                      leftLabel = ourBranchHead,
+                      rightLabel = theirBranchHead
+                    )
+                    _ <- IO {
+                      os.copy.over(leftTemporaryFile, path)
+                    }.labelExceptionWith(errorMessage =
+                      s"Unexpected error: could not copy results of conflicted merge in ${underline(leftTemporaryFile)} to working directory tree file ${underline(path)}."
+                    )
+
+                    leftBlob  <- storeBlobFor(path, leftContent)
+                    rightBlob <- storeBlobFor(path, rightContent)
+                    _         <- recordDeletionInIndex(path)
+                    _         <- recordConflictModificationInIndex(
+                      stageIndex = ourStageIndex
+                    )(
+                      ourBranchHead,
+                      path,
+                      theirAddition.mode,
+                      leftBlob
+                    )
+                    _ <- recordConflictModificationInIndex(
+                      stageIndex = theirStageIndex
+                    )(
+                      theirBranchHead,
+                      path,
+                      theirAddition.mode,
+                      rightBlob
+                    )
+                  yield partialResult.copy(
+                    goodForAMergeCommit = false,
+                    conflictingAdditionPathsAndTheirLastMinuteResolutions =
+                      partialResult.conflictingAdditionPathsAndTheirLastMinuteResolutions + (path -> lastMinuteResolution)
                   )
-                  _ <- recordAdditionInIndex(
-                    path,
-                    theirAddition.mode,
-                    blobId
-                  )
-                yield partialResult
-              else
-                for
-                  _ <- restoreFileFromBlobId(
-                    path,
-                    theirAddition.blobId
-                  )
-                  _ <- recordAdditionInIndex(
-                    path,
-                    theirAddition.mode,
-                    theirAddition.blobId
-                  )
-                yield partialResult
-              end if
+                  end for
 
             case JustOurDeletion(_) =>
               // NOTE: we don't consult `mergeResultsByPath` because we know the
