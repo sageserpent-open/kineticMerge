@@ -935,7 +935,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   (
                     Some(section),
                     MergeResult.empty[MultiSided[Section[Element]]],
-                    false
+                    true
                   ) -> Seq(
                     precedingSectionForLoggingContext.notingMigratedSplice(
                       deferredSplice
@@ -1098,7 +1098,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               (
                 Some(section),
                 MergeResult.empty[MultiSided[Section[Element]]],
-                false
+                true
               ) -> Seq(
                 precedingSectionForLoggingContext.notingMigratedSplice(
                   deferredSplice
