@@ -921,23 +921,21 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 }
               end succeedingSplice
 
-              (
-                precedingSplice,
-                succeedingSplice
-              ) match
+              precedingSplice match
                 // NOTE: avoid use of lenses in the cases below when we
                 // already have to pattern match deeply anyway...
-                case (
-                      None,
-                      None
-                    ) =>
-                  // `candidateAnchorDestination` is not an anchor after all,
-                  // so we can splice in the deferred migration from the
-                  // previous preceding anchor.
+                case None =>
+                  // `candidateAnchorDestination` is not a succeeding anchor, so
+                  // we can splice in the deferred migration from the previous
+                  // preceding anchor.
                   (
                     Some(section),
-                    MergeResult.empty[MultiSided[Section[Element]]],
-                    true
+                    succeedingSplice.getOrElse(
+                      MergeResult.empty[MultiSided[Section[Element]]]
+                    ),
+                    succeedingSplice.fold(ifEmpty = true)(_ =>
+                      anchorIsAmbiguous
+                    )
                   ) -> Seq(
                     precedingSectionForLoggingContext.notingMigratedSplice(
                       deferredSplice
@@ -945,10 +943,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     MergeResult.of[MultiSided[Section[Element]]](section)
                   )
 
-                case (
-                      Some(precedingMigrationSplice),
-                      _
-                    ) =>
+                case Some(precedingMigrationSplice) =>
                   // We have encountered a succeeding anchor...
 
                   @tailrec
@@ -1070,24 +1065,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                     // anchor and the succeeding anchor just encountered
                     // bracket the same migration.
                     oneSpliceOnly(deduplicated)
-                  )
-
-                case (
-                      None,
-                      Some(succeedingMigrationSplice)
-                    ) =>
-                  // We have encountered a preceding anchor, so the deferred
-                  // migration from the previous preceding anchor can finally
-                  // be added to the partial result.
-                  (
-                    Some(section),
-                    succeedingMigrationSplice,
-                    anchorIsAmbiguous
-                  ) -> Seq(
-                    precedingSectionForLoggingContext.notingMigratedSplice(
-                      deferredSplice
-                    ),
-                    MergeResult.of[MultiSided[Section[Element]]](section)
                   )
               end match
             case (
