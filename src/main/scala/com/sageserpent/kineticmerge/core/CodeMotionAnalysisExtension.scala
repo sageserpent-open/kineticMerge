@@ -1018,7 +1018,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       succeedingSplice.getOrElse(
                         MergeResult.empty[MultiSided[Section[Element]]]
                       ),
-                      anchorIsAmbiguous
+                      succeedingSplice.fold(ifEmpty = true)(_ =>
+                        anchorIsAmbiguous
+                      )
                     ) -> Seq(
                       precedingSectionForLoggingContext
                         .notingMigratedSplice(
@@ -1030,11 +1032,12 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   def twoSplices =
                     (
                       Some(section),
-                      succeedingSplice
-                        .getOrElse(
-                          MergeResult.empty[MultiSided[Section[Element]]]
-                        ),
-                      anchorIsAmbiguous
+                      succeedingSplice.getOrElse(
+                        MergeResult.empty[MultiSided[Section[Element]]]
+                      ),
+                      succeedingSplice.fold(ifEmpty = true)(_ =>
+                        anchorIsAmbiguous
+                      )
                     ) -> Seq(
                       precedingSectionForLoggingContext
                         .notingMigratedSplice(
