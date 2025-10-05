@@ -822,21 +822,24 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         def insertAnchoredSplices(
             side: MergeResult.Side[MultiSided[Section[Element]]]
         ): MergeResult.Side[MergeResult[MultiSided[Section[Element]]]] =
+          case class Deferral(
+              deferredSplice: MergeResult[MultiSided[Section[Element]]],
+              anchorPrecedingDeferredSpliceIsAmbiguous: Boolean
+          )
+
           val (
-            (precedingSectionForLoggingContext, deferredMigration, _),
+            (precedingSectionForLoggingContext, deferral),
             sideWithAccumulatedSplices
           ) = side.innerFlatMapAccumulate(
             (
               None: Option[MultiSided[Section[Element]]],
-              MergeResult.empty[MultiSided[Section[Element]]],
-              false
+              None: Option[Deferral]
             )
           ) {
             case (
                   (
                     precedingSectionForLoggingContext,
-                    deferredSplice,
-                    anchorPrecedingDeferredSpliceIsAmbiguous
+                    deferral
                   ),
                   section @ MultiSided.Unique(candidateAnchorDestination)
                 ) =>
@@ -930,148 +933,153 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   // preceding anchor.
                   (
                     Some(section),
-                    succeedingSplice.getOrElse(
-                      MergeResult.empty[MultiSided[Section[Element]]]
-                    ),
-                    succeedingSplice.fold(ifEmpty = true)(_ =>
-                      anchorIsAmbiguous
+                    succeedingSplice.map(Deferral(_, anchorIsAmbiguous))
+                  ) -> deferral.fold(ifEmpty =
+                    Seq(MergeResult.of[MultiSided[Section[Element]]](section))
+                  ) { case Deferral(deferredSplice, _) =>
+                    Seq(
+                      precedingSectionForLoggingContext.notingMigratedSplice(
+                        deferredSplice
+                      ),
+                      MergeResult.of[MultiSided[Section[Element]]](section)
                     )
-                  ) -> Seq(
-                    precedingSectionForLoggingContext.notingMigratedSplice(
-                      deferredSplice
-                    ),
-                    MergeResult.of[MultiSided[Section[Element]]](section)
-                  )
+                  }
 
                 case Some(precedingMigrationSplice) =>
                   // We have encountered a succeeding anchor...
-
-                  @tailrec
-                  def deduplicateWhenPossible(
-                      first: MultiSided[Section[Element]],
-                      second: MultiSided[Section[Element]]
-                  ): Option[MultiSided[Section[Element]]] =
-                    (first, second) match
-                      case (
-                            MultiSided.Preserved(_, firstLeft, firstRight),
-                            MultiSided.Coincident(_, _)
-                          ) =>
-                        deduplicateWhenPossible(
-                          MultiSided.Coincident(firstLeft, firstRight),
-                          second
-                        )
-                      case (
-                            MultiSided.Coincident(_, _),
-                            MultiSided.Preserved(_, secondLeft, secondRight)
-                          ) =>
-                        deduplicateWhenPossible(
-                          first,
-                          MultiSided.Coincident(secondLeft, secondRight)
-                        )
-                      case (
-                            MultiSided.Preserved(firstBase, _, _),
-                            MultiSided.Unique(_)
-                          ) =>
-                        deduplicateWhenPossible(
-                          MultiSided.Unique(firstBase),
-                          second
-                        )
-                      case (
-                            MultiSided.Unique(_),
-                            MultiSided.Preserved(secondBase, _, _)
-                          ) =>
-                        deduplicateWhenPossible(
-                          first,
-                          MultiSided.Unique(secondBase)
-                        )
-                      case (
-                            MultiSided.Coincident(firstLeft, _),
-                            MultiSided.Unique(_)
-                          ) =>
-                        deduplicateWhenPossible(
-                          MultiSided.Unique(firstLeft),
-                          second
-                        )
-                      case (
-                            MultiSided.Unique(_),
-                            MultiSided.Coincident(secondLeft, _)
-                          ) =>
-                        deduplicateWhenPossible(
-                          first,
-                          MultiSided.Unique(secondLeft)
-                        )
-                      case _ =>
-                        Option.when(
-                          Ordering[MultiSided[Section[Element]]]
-                            .equiv(first, second)
-                        )(first)
-
-                  val potentiallyDeduplicated = deferredSplice.fuseWith(
-                    precedingMigrationSplice
-                  )(deduplicateWhenPossible)
-
-                  def oneSpliceOnly(
-                      deduplicated: MergeResult[MultiSided[Section[Element]]]
-                  ) =
+                  deferral.fold(ifEmpty =
                     (
                       Some(section),
-                      succeedingSplice.getOrElse(
-                        MergeResult.empty[MultiSided[Section[Element]]]
-                      ),
-                      succeedingSplice.fold(ifEmpty = true)(_ =>
-                        anchorIsAmbiguous
-                      )
+                      succeedingSplice.map(Deferral(_, anchorIsAmbiguous))
                     ) -> Seq(
                       precedingSectionForLoggingContext
-                        .notingMigratedSplice(
-                          deduplicated
-                        ),
+                        .notingMigratedSplice(precedingMigrationSplice),
                       MergeResult.of[MultiSided[Section[Element]]](section)
                     )
+                  ) {
+                    case Deferral(
+                          deferredSplice,
+                          anchorPrecedingDeferredSpliceIsAmbiguous
+                        ) =>
+                      @tailrec
+                      def deduplicateWhenPossible(
+                          first: MultiSided[Section[Element]],
+                          second: MultiSided[Section[Element]]
+                      ): Option[MultiSided[Section[Element]]] =
+                        (first, second) match
+                          case (
+                                MultiSided.Preserved(_, firstLeft, firstRight),
+                                MultiSided.Coincident(_, _)
+                              ) =>
+                            deduplicateWhenPossible(
+                              MultiSided.Coincident(firstLeft, firstRight),
+                              second
+                            )
+                          case (
+                                MultiSided.Coincident(_, _),
+                                MultiSided.Preserved(_, secondLeft, secondRight)
+                              ) =>
+                            deduplicateWhenPossible(
+                              first,
+                              MultiSided.Coincident(secondLeft, secondRight)
+                            )
+                          case (
+                                MultiSided.Preserved(firstBase, _, _),
+                                MultiSided.Unique(_)
+                              ) =>
+                            deduplicateWhenPossible(
+                              MultiSided.Unique(firstBase),
+                              second
+                            )
+                          case (
+                                MultiSided.Unique(_),
+                                MultiSided.Preserved(secondBase, _, _)
+                              ) =>
+                            deduplicateWhenPossible(
+                              first,
+                              MultiSided.Unique(secondBase)
+                            )
+                          case (
+                                MultiSided.Coincident(firstLeft, _),
+                                MultiSided.Unique(_)
+                              ) =>
+                            deduplicateWhenPossible(
+                              MultiSided.Unique(firstLeft),
+                              second
+                            )
+                          case (
+                                MultiSided.Unique(_),
+                                MultiSided.Coincident(secondLeft, _)
+                              ) =>
+                            deduplicateWhenPossible(
+                              first,
+                              MultiSided.Unique(secondLeft)
+                            )
+                          case _ =>
+                            Option.when(
+                              Ordering[MultiSided[Section[Element]]]
+                                .equiv(first, second)
+                            )(first)
 
-                  def twoSplices =
-                    (
-                      Some(section),
-                      succeedingSplice.getOrElse(
-                        MergeResult.empty[MultiSided[Section[Element]]]
-                      ),
-                      succeedingSplice.fold(ifEmpty = true)(_ =>
-                        anchorIsAmbiguous
+                      val potentiallyDeduplicated = deferredSplice.fuseWith(
+                        precedingMigrationSplice
+                      )(deduplicateWhenPossible)
+
+                      def oneSpliceOnly(
+                          deduplicated: MergeResult[
+                            MultiSided[Section[Element]]
+                          ]
+                      ) =
+                        (
+                          Some(section),
+                          succeedingSplice.map(Deferral(_, anchorIsAmbiguous))
+                        ) -> Seq(
+                          precedingSectionForLoggingContext
+                            .notingMigratedSplice(
+                              deduplicated
+                            ),
+                          MergeResult.of[MultiSided[Section[Element]]](section)
+                        )
+
+                      def twoSplices =
+                        (
+                          Some(section),
+                          succeedingSplice.map(Deferral(_, anchorIsAmbiguous))
+                        ) -> Seq(
+                          precedingSectionForLoggingContext
+                            .notingMigratedSplice(
+                              deferredSplice
+                            ),
+                          precedingSectionForLoggingContext
+                            .notingMigratedSplice(
+                              precedingMigrationSplice
+                            ),
+                          MergeResult.of[MultiSided[Section[Element]]](section)
+                        )
+
+                      potentiallyDeduplicated.fold(ifEmpty =
+                        // The deferred migration from the previous preceding
+                        // anchor and the succeeding anchor each contribute
+                        // their own migration.
+                        (
+                          anchorPrecedingDeferredSpliceIsAmbiguous,
+                          anchorIsAmbiguous
+                        ) match
+                          case (true, true)   => twoSplices
+                          case (false, false) => twoSplices
+                          case (true, false)  =>
+                            oneSpliceOnly(precedingMigrationSplice)
+                          case (false, true) => oneSpliceOnly(deferredSplice)
+                      )(deduplicated =>
+                        // The deferred migration from the previous preceding
+                        // anchor and the succeeding anchor just encountered
+                        // bracket the same migration.
+                        oneSpliceOnly(deduplicated)
                       )
-                    ) -> Seq(
-                      precedingSectionForLoggingContext
-                        .notingMigratedSplice(
-                          deferredSplice
-                        ),
-                      precedingSectionForLoggingContext
-                        .notingMigratedSplice(
-                          precedingMigrationSplice
-                        ),
-                      MergeResult.of[MultiSided[Section[Element]]](section)
-                    )
-
-                  potentiallyDeduplicated.fold(ifEmpty =
-                    // The deferred migration from the previous preceding
-                    // anchor and the succeeding anchor each contribute their
-                    // own migration.
-                    (
-                      anchorPrecedingDeferredSpliceIsAmbiguous,
-                      anchorIsAmbiguous
-                    ) match
-                      case (true, true)   => twoSplices
-                      case (false, false) => twoSplices
-                      case (true, false)  =>
-                        oneSpliceOnly(precedingMigrationSplice)
-                      case (false, true) => oneSpliceOnly(deferredSplice)
-                  )(deduplicated =>
-                    // The deferred migration from the previous preceding
-                    // anchor and the succeeding anchor just encountered
-                    // bracket the same migration.
-                    oneSpliceOnly(deduplicated)
-                  )
+                  }
               end match
             case (
-                  (precedingSectionForLoggingContext, deferredSplice, _),
+                  (precedingSectionForLoggingContext, deferral),
                   section
                 ) =>
               // If this matches, then `section` is definitely not an anchor,
@@ -1079,23 +1087,29 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               // preceding anchor.
               (
                 Some(section),
-                MergeResult.empty[MultiSided[Section[Element]]],
-                true
-              ) -> Seq(
-                precedingSectionForLoggingContext.notingMigratedSplice(
-                  deferredSplice
-                ),
-                MergeResult.of[MultiSided[Section[Element]]](section)
-              )
+                None
+              ) -> deferral.fold(ifEmpty =
+                Seq(MergeResult.of[MultiSided[Section[Element]]](section))
+              ) { case Deferral(deferredSplice, _) =>
+                Seq(
+                  precedingSectionForLoggingContext.notingMigratedSplice(
+                    deferredSplice
+                  ),
+                  MergeResult.of[MultiSided[Section[Element]]](section)
+                )
+              }
           }
 
-          sideWithAccumulatedSplices.append(
-            Seq(
-              precedingSectionForLoggingContext.notingMigratedSplice(
-                deferredMigration
+          deferral.fold(ifEmpty = sideWithAccumulatedSplices) {
+            case Deferral(deferredSplice, _) =>
+              sideWithAccumulatedSplices.append(
+                Seq(
+                  precedingSectionForLoggingContext.notingMigratedSplice(
+                    deferredSplice
+                  )
+                )
               )
-            )
-          )
+          }
         end insertAnchoredSplices
 
         path -> withSuppressions.onEachSide(insertAnchoredSplices).flatten
