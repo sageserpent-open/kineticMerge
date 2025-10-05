@@ -287,7 +287,7 @@ class MergeResultTest:
                 mergeResult.onEachSide(side =>
                   side
                     .innerFlatMapAccumulate(())((_, element) =>
-                      () -> Seq(element).map(mapping)
+                      () -> Seq(mapping(element))
                     )
                     ._2
                 ): @unchecked
@@ -300,7 +300,7 @@ class MergeResultTest:
                 mergeResult.onEachSide(side =>
                   side
                     .innerFlatMapAccumulate(())((_, element) =>
-                      () -> Seq(element).flatMap(flatMapping)
+                      () -> flatMapping(element)
                     )
                     ._2
                 ): @unchecked
@@ -341,7 +341,7 @@ class MergeResultTest:
               mergeResult.onEachSide(side =>
                 side
                   .innerFlatMapAccumulate(())((_, element) =>
-                    () -> Seq(element).map(mapping)
+                    () -> Seq(mapping(element))
                   )
                   ._2
               ) match
@@ -361,7 +361,7 @@ class MergeResultTest:
               mergeResult.onEachSide(side =>
                 side
                   .innerFlatMapAccumulate(())((_, element) =>
-                    () -> Seq(element).flatMap(flatMapping)
+                    () -> flatMapping(element)
                   )
                   ._2
               ) match
