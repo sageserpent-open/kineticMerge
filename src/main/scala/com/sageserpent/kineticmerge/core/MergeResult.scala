@@ -137,41 +137,46 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
   def onEachSide[Transformed: Eq](
       transform: MergeResult.Side[Element] => MergeResult.Side[Transformed]
   ): MergeResult[Transformed] =
-    // TODO: if there is just one resolved segment, don't make two passes
-    // through it!
+    segments match
+      case Seq(Segment.Resolved(elements)) =>
+        val singleSide = MergeResult.Side(elements.map(_ -> 0))
 
-    val leftSide = MergeResult.Side(segments.zipWithIndex.flatMap {
-      case (Segment.Resolved(elements), label) => elements.map(_ -> label)
-      case (Segment.Conflicted(leftElements, _), label) =>
-        leftElements.map(_ -> label)
-    })
+        val MergeResult.Side(transformed) = transform(singleSide)
 
-    val rightSide = MergeResult.Side(segments.zipWithIndex.flatMap {
-      case (Segment.Resolved(elements), label) => elements.map(_ -> label)
-      case (Segment.Conflicted(_, rightElements), label) =>
-        rightElements.map(_ -> label)
-    })
+        MergeResult(segmentFor(transformed.map(_._1)).toSeq)
+      case _ =>
+        val leftSide = MergeResult.Side(segments.zipWithIndex.flatMap {
+          case (Segment.Resolved(elements), label) => elements.map(_ -> label)
+          case (Segment.Conflicted(leftElements, _), label) =>
+            leftElements.map(_ -> label)
+        })
 
-    val MergeResult.Side(leftTransformed) = transform(leftSide)
+        val rightSide = MergeResult.Side(segments.zipWithIndex.flatMap {
+          case (Segment.Resolved(elements), label) => elements.map(_ -> label)
+          case (Segment.Conflicted(_, rightElements), label) =>
+            rightElements.map(_ -> label)
+        })
 
-    val MergeResult.Side(rightTransformed) = transform(rightSide)
+        val MergeResult.Side(leftTransformed) = transform(leftSide)
 
-    val leftSegmentGroups = leftTransformed.groupMap(_._2)(_._1)
+        val MergeResult.Side(rightTransformed) = transform(rightSide)
 
-    val rightSegmentGroups = rightTransformed.groupMap(_._2)(_._1)
+        val leftSegmentGroups = leftTransformed.groupMap(_._2)(_._1)
 
-    coalescing(
-      leftSegmentGroups
-        .mergeByKey(rightSegmentGroups)
-        .toSeq
-        .sortBy(_._1)
-        .map(_._2)
-        .flatMap((_: @unchecked) match
-          case (Some(left), Some(right)) =>
-            segmentFor(left, right)
-          case (Some(left), None)  => segmentFor(left, Seq.empty)
-          case (None, Some(right)) => segmentFor(Seq.empty, right))
-    )
+        val rightSegmentGroups = rightTransformed.groupMap(_._2)(_._1)
+
+        coalescing(
+          leftSegmentGroups
+            .mergeByKey(rightSegmentGroups)
+            .toSeq
+            .sortBy(_._1)
+            .map(_._2)
+            .flatMap((_: @unchecked) match
+              case (Some(left), Some(right)) =>
+                segmentFor(left, right)
+              case (Some(left), None)  => segmentFor(left, Seq.empty)
+              case (None, Some(right)) => segmentFor(Seq.empty, right))
+        )
   end onEachSide
 end MergeResult
 
