@@ -12,6 +12,22 @@ import com.sageserpent.kineticmerge.core.merge.MergeAlgebra
 import scala.collection.decorators.*
 import scala.math.Ordering.Implicits.seqOrdering
 
+/** The result of a merge; it may be used for merges of an entire file or splice
+  * merges. The merged elements are organised into a sequence of [[Segment]]
+  * instances - these alternate between resolved runs of elements and localised
+  * conflicts.<p> The usual filtration, mapping and a kind of flat-mapping are
+  * provided - these will try to preserve the segment structure insofar as
+  * locally conflicted segments remain so after the operation; otherwise any
+  * such resolved conflict is coalesced with its neighbours if
+  * appropriate.<p>Segments are never completely empty of elements, although it
+  * is possible to have a conflict where just one side is empty. So if a segment
+  * becomes completely empty after an operation, it will be removed.<p>It is
+  * also possible to view a [[MergeResult]] from either [[Side]], applying a
+  * restructuring operation to the sides (this may be optimised to just once if
+  * there is just one resolved segment).
+  * @param segments
+  * @tparam Element
+  */
 case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
   // Resolved and conflicting segments should be coalesced.
   require(segments.isEmpty || segments.zip(segments.tail).forall {
@@ -121,6 +137,9 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
   def onEachSide[Transformed: Eq](
       transform: MergeResult.Side[Element] => MergeResult.Side[Transformed]
   ): MergeResult[Transformed] =
+    // TODO: if there is just one resolved segment, don't make two passes
+    // through it!
+
     val leftSide = MergeResult.Side(segments.zipWithIndex.flatMap {
       case (Segment.Resolved(elements), label) => elements.map(_ -> label)
       case (Segment.Conflicted(leftElements, _), label) =>
