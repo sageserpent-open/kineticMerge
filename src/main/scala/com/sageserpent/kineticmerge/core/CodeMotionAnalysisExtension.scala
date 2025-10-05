@@ -844,13 +844,13 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               // further down be used here to thin out the splice
               // alternatives?
 
-              val precedingSpliceAlternatives =
-                splicesByAnchoredMoveDestination
-                  .get(
-                    candidateAnchorDestination -> AnchoringSense.Successor
-                  )
-
               val precedingSplice =
+                val precedingSpliceAlternatives =
+                  splicesByAnchoredMoveDestination
+                    .get(
+                      candidateAnchorDestination -> AnchoringSense.Successor
+                    )
+
                 Option.when(precedingSpliceAlternatives.nonEmpty) {
                   val uniqueSplices =
                     uniqueSortedItemsFrom(precedingSpliceAlternatives)
@@ -878,19 +878,20 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       )
                   end match
                 }
+              end precedingSplice
 
               val anchorIsAmbiguous =
                 moveDestinationsReport.ambiguous.contains(
                   candidateAnchorDestination
                 )
 
-              val succeedingSpliceAlternatives =
-                splicesByAnchoredMoveDestination
-                  .get(
-                    candidateAnchorDestination -> AnchoringSense.Predecessor
-                  )
-
               val succeedingSplice =
+                val succeedingSpliceAlternatives =
+                  splicesByAnchoredMoveDestination
+                    .get(
+                      candidateAnchorDestination -> AnchoringSense.Predecessor
+                    )
+
                 Option.when(succeedingSpliceAlternatives.nonEmpty) {
                   val uniqueSplices =
                     uniqueSortedItemsFrom(succeedingSpliceAlternatives)
@@ -918,6 +919,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       )
                   end match
                 }
+              end succeedingSplice
 
               (
                 precedingSplice,
