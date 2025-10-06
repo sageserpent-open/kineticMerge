@@ -822,7 +822,131 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         def attemptLastMinuteResolutionViaContextOfContributions(
             mergeResult: MergeResult[MultiSided[Section[Element]]],
             anchoringSense: AnchoringSense
-        ): MergeResult[MultiSided[Section[Element]]] = mergeResult
+        ): MergeResult[MultiSided[Section[Element]]] =
+          Option
+            .when(mergeResult.isConflicted)(anchoringSense)
+            .flatMap {
+              case AnchoringSense.Predecessor => mergeResult.lastOption
+              case AnchoringSense.Successor   => mergeResult.headOption
+            }
+            .collect {
+              case MergeResult.Segment.Conflicted(
+                    leftSections,
+                    rightSections
+                  ) =>
+                val leftAffixSize = (anchoringSense match
+                  case AnchoringSense.Predecessor => rightSections.lastOption
+                  case AnchoringSense.Successor   => rightSections.headOption
+                ).collect { case MultiSided.Unique(element) =>
+                  element
+                }.flatMap { adjacentToRightContext =>
+                  val rightFile = codeMotionAnalysis.right(
+                    codeMotionAnalysis.rightPathFor(adjacentToRightContext)
+                  )
+
+                  val Searching.Found(indexOfSection) =
+                    rightFile.searchByStartOffset(
+                      adjacentToRightContext.startOffset
+                    ): @unchecked
+
+                  val rightContext = anchoringSense match
+                    case AnchoringSense.Predecessor =>
+                      rightFile.sections
+                        .drop(1 + indexOfSection)
+                        .flatMap(_.content)
+                    case AnchoringSense.Successor =>
+                      rightFile.sections
+                        .take(indexOfSection)
+                        .flatMap(_.content)
+
+                  val leftPotentialAffix = leftSections.collect {
+                    case MultiSided.Unique(element) => element
+                  } flatMap (_.content)
+
+                  Option.when(
+                    leftPotentialAffix.nonEmpty && (anchoringSense match
+                      case AnchoringSense.Predecessor =>
+                        rightContext.startsWith(leftPotentialAffix)
+                      case AnchoringSense.Successor =>
+                        rightContext.endsWith(leftPotentialAffix))
+                  )(
+                    leftPotentialAffix.size
+                  )
+                }.getOrElse(0)
+
+                val rightAffixSize = (anchoringSense match
+                  case AnchoringSense.Predecessor => leftSections.lastOption
+                  case AnchoringSense.Successor   => leftSections.headOption
+                ).collect { case MultiSided.Unique(element) =>
+                  element
+                }.flatMap { adjacentToLeftContext =>
+                  val leftFile = codeMotionAnalysis.left(
+                    codeMotionAnalysis.leftPathFor(adjacentToLeftContext)
+                  )
+
+                  val Searching.Found(indexOfSection) =
+                    leftFile.searchByStartOffset(
+                      adjacentToLeftContext.startOffset
+                    ): @unchecked
+
+                  val leftContext = anchoringSense match
+                    case AnchoringSense.Predecessor =>
+                      leftFile.sections
+                        .drop(1 + indexOfSection)
+                        .flatMap(_.content)
+                    case AnchoringSense.Successor =>
+                      leftFile.sections.take(indexOfSection).flatMap(_.content)
+
+                  val rightPotentialAffix = rightSections.collect {
+                    case MultiSided.Unique(element) => element
+                  } flatMap (_.content)
+
+                  Option.when(
+                    rightPotentialAffix.nonEmpty && (anchoringSense match
+                      case AnchoringSense.Predecessor =>
+                        leftContext.startsWith(rightPotentialAffix)
+                      case AnchoringSense.Successor =>
+                        leftContext.endsWith(rightPotentialAffix))
+                  )(
+                    rightPotentialAffix.size
+                  )
+                }.getOrElse(0)
+
+                if leftAffixSize > rightAffixSize then
+                  // Use the left sections as replacement context for the
+                  // right sections.
+                  anchoringSense match
+                    case AnchoringSense.Predecessor =>
+                      mergeResult.tail :+ MergeResult.Segment.Resolved(
+                        rightSections ++ leftSections
+                      )
+                    case AnchoringSense.Successor =>
+                      MergeResult.Segment.Resolved(
+                        leftSections ++ rightSections
+                      ) +: mergeResult.init
+                  end match
+                else if leftAffixSize < rightAffixSize then
+                  // Use the right sections as replacement context for the
+                  // left sections.
+                  anchoringSense match
+                    case AnchoringSense.Predecessor =>
+                      mergeResult.tail :+ MergeResult.Segment.Resolved(
+                        leftSections ++ rightSections
+                      )
+                    case AnchoringSense.Successor =>
+                      MergeResult.Segment.Resolved(
+                        rightSections ++ leftSections
+                      ) +: mergeResult.init
+                  end match
+                else
+                  // Neither can serve as replacement context; either that or
+                  // they are both as good as each other. The conflict can't be
+                  // resolved.
+                  mergeResult
+                end if
+            }
+            .getOrElse(mergeResult)
+        end attemptLastMinuteResolutionViaContextOfContributions
 
         def insertAnchoredSplices(
             side: MergeResult.Side[MultiSided[Section[Element]]]

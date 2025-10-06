@@ -36,7 +36,11 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
     case _                                               => false
   })
 
-  export segments.{isEmpty, nonEmpty}
+  export segments.{isEmpty, nonEmpty, headOption, lastOption}
+
+  def isConflicted: Boolean = segments match
+    case Seq(Segment.Resolved(_)) => false
+    case _                        => true
 
   def fuseWith(another: MergeResult[Element])(
       elementFusion: (Element, Element) => Option[Element]
@@ -178,6 +182,18 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
               case (None, Some(right)) => segmentFor(Seq.empty, right))
         )
   end onEachSide
+
+  inline def tail: MergeResult[Element] = MergeResult(segments.tail)
+
+  inline def init: MergeResult[Element] = MergeResult(segments.init)
+
+  inline def :+(segment: Segment[Element]): MergeResult[Element] = coalescing(
+    segments :+ segment
+  )
+
+  inline def +:(segment: Segment[Element]): MergeResult[Element] = coalescing(
+    segment +: segments
+  )
 end MergeResult
 
 object MergeResult:
