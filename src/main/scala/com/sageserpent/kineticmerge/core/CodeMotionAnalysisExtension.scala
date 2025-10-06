@@ -819,6 +819,11 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             migratedSplice
         end extension
 
+        def attemptLastMinuteResolutionViaContextOfContributions(
+            mergeResult: MergeResult[MultiSided[Section[Element]]],
+            anchoringSense: AnchoringSense
+        ): MergeResult[MultiSided[Section[Element]]] = mergeResult
+
         def insertAnchoredSplices(
             side: MergeResult.Side[MultiSided[Section[Element]]]
         ): MergeResult.Side[MergeResult[MultiSided[Section[Element]]]] =
@@ -939,7 +944,10 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   ) { case Deferral(deferredSplice, _) =>
                     Seq(
                       precedingSectionForLoggingContext.notingMigratedSplice(
-                        deferredSplice
+                        attemptLastMinuteResolutionViaContextOfContributions(
+                          deferredSplice,
+                          AnchoringSense.Predecessor
+                        )
                       ),
                       MergeResult.of[MultiSided[Section[Element]]](section)
                     )
@@ -1025,6 +1033,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                         precedingMigrationSplice
                       )(deduplicateWhenPossible)
 
+                      // The previous preceding anchor from the deferred
+                      // migration and the succeeding anchor just encountered
+                      // splice in a bracketed shared migration.
                       def oneSpliceOnly(
                           deduplicated: MergeResult[
                             MultiSided[Section[Element]]
@@ -1041,6 +1052,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                           MergeResult.of[MultiSided[Section[Element]]](section)
                         )
 
+                      // The previous preceding anchor from the deferred
+                      // migration and the succeeding anchor just encountered
+                      // splice in their own migrations separately.
                       def twoSplices =
                         (
                           Some(section),
@@ -1048,19 +1062,22 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                         ) -> Seq(
                           precedingSectionForLoggingContext
                             .notingMigratedSplice(
-                              deferredSplice
+                              attemptLastMinuteResolutionViaContextOfContributions(
+                                deferredSplice,
+                                AnchoringSense.Predecessor
+                              )
                             ),
                           precedingSectionForLoggingContext
                             .notingMigratedSplice(
-                              precedingMigrationSplice
+                              attemptLastMinuteResolutionViaContextOfContributions(
+                                precedingMigrationSplice,
+                                AnchoringSense.Successor
+                              )
                             ),
                           MergeResult.of[MultiSided[Section[Element]]](section)
                         )
 
                       potentiallyDeduplicated.fold(ifEmpty =
-                        // The deferred migration from the previous preceding
-                        // anchor and the succeeding anchor each contribute
-                        // their own migration.
                         (
                           anchorPrecedingDeferredSpliceIsAmbiguous,
                           anchorIsAmbiguous
@@ -1070,12 +1087,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                           case (true, false)  =>
                             oneSpliceOnly(precedingMigrationSplice)
                           case (false, true) => oneSpliceOnly(deferredSplice)
-                      )(deduplicated =>
-                        // The deferred migration from the previous preceding
-                        // anchor and the succeeding anchor just encountered
-                        // bracket the same migration.
-                        oneSpliceOnly(deduplicated)
-                      )
+                      )(deduplicated => oneSpliceOnly(deduplicated))
                   }
               end match
             case (
@@ -1093,7 +1105,10 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               ) { case Deferral(deferredSplice, _) =>
                 Seq(
                   precedingSectionForLoggingContext.notingMigratedSplice(
-                    deferredSplice
+                    attemptLastMinuteResolutionViaContextOfContributions(
+                      deferredSplice,
+                      AnchoringSense.Predecessor
+                    )
                   ),
                   MergeResult.of[MultiSided[Section[Element]]](section)
                 )
@@ -1102,10 +1117,15 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
           deferral.fold(ifEmpty = sideWithAccumulatedSplices) {
             case Deferral(deferredSplice, _) =>
+              // Splice in the remaining deferred migration from the previous
+              // preceding anchor as there is nothing else left to consider.
               sideWithAccumulatedSplices.append(
                 Seq(
                   precedingSectionForLoggingContext.notingMigratedSplice(
-                    deferredSplice
+                    attemptLastMinuteResolutionViaContextOfContributions(
+                      deferredSplice,
+                      AnchoringSense.Predecessor
+                    )
                   )
                 )
               )
