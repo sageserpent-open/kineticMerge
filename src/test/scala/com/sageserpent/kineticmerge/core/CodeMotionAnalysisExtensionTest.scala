@@ -882,7 +882,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           makeLeadingLinesFromBothHalvesAdjacentWithSomeLeadingDeletionWordPlayExpectedMerge
         )
       )
-      .withLimit(5)
+      .and(Trials.api.booleans)
+      .withLimit(10)
       .dynamicTests {
         case (
               (
@@ -891,7 +892,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
                 (proverbsLeftContent, palindromesLeftContent),
                 combinedRightContent,
                 expectedMergeContent
-              )
+              ),
+              mirrorImage
             ) =>
           println(fansi.Color.Yellow(s"*** $label ***"))
 
@@ -903,22 +905,43 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
             label = "base"
           )
 
-          val leftSources = MappedContentSourcesOfTokens(
-            contentsByPath = Map(
-              proverbsPath    -> tokens(proverbsLeftContent).get,
-              palindromesPath -> tokens(palindromesLeftContent).get
-            ),
-            label = "left"
-          )
+          val leftSources =
+            if mirrorImage then
+              MappedContentSourcesOfTokens(
+                contentsByPath = Map(
+                  combinedPath -> tokens(
+                    combinedRightContent
+                  ).get
+                ),
+                label = "right"
+              )
+            else
+              MappedContentSourcesOfTokens(
+                contentsByPath = Map(
+                  proverbsPath    -> tokens(proverbsLeftContent).get,
+                  palindromesPath -> tokens(palindromesLeftContent).get
+                ),
+                label = "left"
+              )
 
-          val rightSources = MappedContentSourcesOfTokens(
-            contentsByPath = Map(
-              combinedPath -> tokens(
-                combinedRightContent
-              ).get
-            ),
-            label = "right"
-          )
+          val rightSources =
+            if mirrorImage then
+              MappedContentSourcesOfTokens(
+                contentsByPath = Map(
+                  proverbsPath    -> tokens(proverbsLeftContent).get,
+                  palindromesPath -> tokens(palindromesLeftContent).get
+                ),
+                label = "left"
+              )
+            else
+              MappedContentSourcesOfTokens(
+                contentsByPath = Map(
+                  combinedPath -> tokens(
+                    combinedRightContent
+                  ).get
+                ),
+                label = "right"
+              )
 
           val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
             baseSources = baseSources,
