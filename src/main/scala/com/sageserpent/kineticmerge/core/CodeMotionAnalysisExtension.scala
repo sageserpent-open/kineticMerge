@@ -1085,7 +1085,12 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       succeedingSplice.map(Deferral(_, anchorIsAmbiguous))
                     ) -> Seq(
                       precedingSectionForLoggingContext
-                        .notingMigratedSplice(precedingMigrationSplice),
+                        .notingMigratedSplice(
+                          attemptLastMinuteResolutionViaContextOfContributions(
+                            precedingMigrationSplice,
+                            AnchoringSense.Successor
+                          )
+                        ),
                       MergeResult.of[MultiSided[Section[Element]]](section)
                     )
                   ) {
