@@ -866,9 +866,15 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   Option.when(
                     leftPotentialAffix.nonEmpty && (anchoringSense match
                       case AnchoringSense.Predecessor =>
-                        rightContext.startsWith(leftPotentialAffix)
+                        // NOTE: like `.startsWith`, only using `Eq`.
+                        rightContext
+                          .take(leftPotentialAffix.size)
+                          .corresponds(leftPotentialAffix)(Eq.eqv)
                       case AnchoringSense.Successor =>
-                        rightContext.endsWith(leftPotentialAffix))
+                        // NOTE: like `.endsWith`, only using `Eq`.
+                        rightContext
+                          .takeRight(leftPotentialAffix.size)
+                          .corresponds(leftPotentialAffix)(Eq.eqv))
                   )(
                     leftPotentialAffix.size
                   )
@@ -904,9 +910,15 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   Option.when(
                     rightPotentialAffix.nonEmpty && (anchoringSense match
                       case AnchoringSense.Predecessor =>
-                        leftContext.startsWith(rightPotentialAffix)
+                        // NOTE: like `.startsWith`, only using `Eq`.
+                        leftContext
+                          .take(rightPotentialAffix.size)
+                          .corresponds(rightPotentialAffix)(Eq.eqv)
                       case AnchoringSense.Successor =>
-                        leftContext.endsWith(rightPotentialAffix))
+                        // NOTE: like `.endsWith`, only using `Eq`.
+                        leftContext
+                          .takeRight(rightPotentialAffix.size)
+                          .corresponds(rightPotentialAffix)(Eq.eqv))
                   )(
                     rightPotentialAffix.size
                   )
