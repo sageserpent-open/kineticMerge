@@ -823,6 +823,14 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             mergeResult: MergeResult[MultiSided[Section[Element]]],
             anchoringSense: AnchoringSense
         ): MergeResult[MultiSided[Section[Element]]] =
+          // Look for a conflict at the other end of a conflicted merge result
+          // (this will be a splice) away from its *single* anchor; this may be
+          // the entire splice. Then see if either side of the conflict turns
+          // out to be a suffix or prefix (depending on whether the anchor
+          // precedes or succeeds the splice) of whatever context originally
+          // came before or after the side's contribution. Take the side with
+          // the longest such affix and use it as a replacement context for the
+          // other side, resolving the conflicted merge.
           Option
             .when(mergeResult.isConflicted)(anchoringSense)
             .flatMap {
