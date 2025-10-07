@@ -403,32 +403,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
   end issue42BugReproduction
 
-  private def verifyContent(
-      path: FakePath,
-      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
-  )(
-      expectedTokens: IndexedSeq[Token],
-      equality: (Token, Token) => Boolean = Token.equality
-  ): Unit =
-    println(fansi.Color.Yellow(s"Checking $path...\n"))
-    println(fansi.Color.Yellow("Expected..."))
-    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
-
-    mergeResultsByPath(path) match
-      case FullyMerged(result) =>
-        println(fansi.Color.Yellow("Fully merged result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(result)))
-        assert(result.corresponds(expectedTokens)(equality))
-      case MergedWithConflicts(leftResult, rightResult) =>
-        println(fansi.Color.Red(s"Left result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
-        println(fansi.Color.Red(s"Right result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
-
-        fail("Should have seen a clean merge.")
-    end match
-  end verifyContent
-
   @Test
   def codeMotion(): Unit =
     val configuration = Configuration(
@@ -993,6 +967,38 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           verifyAbsenceOfContent(palindromesPath, mergeResultsByPath)
       }
   end codeMotionAcrossTwoFilesWhoseContentIsCombinedTogetherToMakeANewReplacementFile
+
+  private def verifyAbsenceOfContent(
+      path: FakePath,
+      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
+  ): Unit =
+    mergeResultsByPath(path) match
+      case FullyMerged(result) =>
+        assert(
+          result.isEmpty,
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render + fansi.Color
+            .Green(
+              reconstituteTextFrom(result)
+            )
+            .render
+        )
+      case MergedWithConflicts(leftResult, rightResult) =>
+        fail(
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render + fansi.Color.Red(s"\nLeft result...\n")
+            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
+            + fansi.Color.Red(s"\nRight result...\n").render
+            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
+        )
+    end match
+  end verifyAbsenceOfContent
 
   @Test
   def furtherMigrationOfAMigratedEditAsAnInsertion(): Unit =
@@ -2034,38 +2040,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     }
   end issue144BugReproduction
 
-  private def verifyAbsenceOfContent(
-      path: FakePath,
-      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
-  ): Unit =
-    mergeResultsByPath(path) match
-      case FullyMerged(result) =>
-        assert(
-          result.isEmpty,
-          fansi.Color
-            .Yellow(
-              s"\nShould not have this content at $path...\n"
-            )
-            .render + fansi.Color
-            .Green(
-              reconstituteTextFrom(result)
-            )
-            .render
-        )
-      case MergedWithConflicts(leftResult, rightResult) =>
-        fail(
-          fansi.Color
-            .Yellow(
-              s"\nShould not have this content at $path...\n"
-            )
-            .render + fansi.Color.Red(s"\nLeft result...\n")
-            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
-            + fansi.Color.Red(s"\nRight result...\n").render
-            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
-        )
-    end match
-  end verifyAbsenceOfContent
-
   @Test
   def issue236BugReproduction(): Unit =
     val configuration = Configuration(
@@ -2223,8 +2197,34 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )
   end issue236BugReproduction
 
-  @Test
-  def lastMinuteConflictResolution(): Unit =
+  private def verifyContent(
+      path: FakePath,
+      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
+  )(
+      expectedTokens: IndexedSeq[Token],
+      equality: (Token, Token) => Boolean = Token.equality
+  ): Unit =
+    println(fansi.Color.Yellow(s"Checking $path...\n"))
+    println(fansi.Color.Yellow("Expected..."))
+    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
+
+    mergeResultsByPath(path) match
+      case FullyMerged(result) =>
+        println(fansi.Color.Yellow("Fully merged result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(result)))
+        assert(result.corresponds(expectedTokens)(equality))
+      case MergedWithConflicts(leftResult, rightResult) =>
+        println(fansi.Color.Red(s"Left result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+        println(fansi.Color.Red(s"Right result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+        fail("Should have seen a clean merge.")
+    end match
+  end verifyContent
+
+  @TestFactory
+  def lastMinuteConflictResolution(): DynamicTests =
     val configuration = Configuration(
       minimumMatchSize = 3,
       thresholdSizeFractionForMatching = 0,
@@ -2232,21 +2232,24 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       ambiguousMatchesThreshold = 10
     )
 
-    val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
 
-    val baseSources = MappedContentSourcesOfTokens(
-      contentsByPath = Map(placeholderPath -> tokens("""
+      val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
+
+      val baseTokens = tokens("""
           |Fable, able
           |Cradle, babble
           |Grumble, crumble
           |Coddle, doddle
           |Amble, dandle
           |Double, trouble
-          |""".stripMargin).get),
-      label = "base"
-    )
-    val leftSources = MappedContentSourcesOfTokens(
-      contentsByPath = Map(placeholderPath -> tokens("""
+          |""".stripMargin).get
+
+      val baseSources = MappedContentSourcesOfTokens(
+        contentsByPath = Map(placeholderPath -> baseTokens),
+        label = "base"
+      )
+      val sideWithMoveDestinations = tokens("""
           |Fable, able
           |doddle
           |Amble, dandle
@@ -2255,11 +2258,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           |Cradle, babble
           |Grumble
           |Double, trouble
-          |""".stripMargin).get),
-      label = "left"
-    )
-    val rightSources = MappedContentSourcesOfTokens(
-      contentsByPath = Map(placeholderPath -> tokens("""
+          |""".stripMargin).get
+
+      val sideOppositeToMoveDestinations = tokens("""
           |Fable, able
           |Cradle, babble, addle
           |Grumble, crumble
@@ -2267,34 +2268,47 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           |mumble
           |Amble, dandle
           |Double, trouble
-          |""".stripMargin).get),
-      label = "right"
-    )
+          |""".stripMargin).get
 
-    val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
-      baseSources = baseSources,
-      leftSources = leftSources,
-      rightSources = rightSources
-    )(configuration): @unchecked
+      val leftSources = MappedContentSourcesOfTokens(
+        contentsByPath = Map(
+          placeholderPath -> (if mirrorImage then sideOppositeToMoveDestinations
+                              else sideWithMoveDestinations)
+        ),
+        label = "left"
+      )
 
-    val (mergeResultsByPath, _) =
-      codeMotionAnalysis.merge
+      val rightSources = MappedContentSourcesOfTokens(
+        contentsByPath = Map(
+          placeholderPath -> (if mirrorImage then sideWithMoveDestinations
+                              else sideOppositeToMoveDestinations)
+        ),
+        label = "right"
+      )
 
-    val expectedContent = """
-        |Fable, able
-        |doddle
-        |mumble
-        |Amble, dandle
-        |Grumble, crumble
-        |Coddle, doddle
-        |Cradle, babble, addle
-        |Grumble
-        |Double, trouble
-        |""".stripMargin
+      val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+        baseSources = baseSources,
+        leftSources = leftSources,
+        rightSources = rightSources
+      )(configuration): @unchecked
 
-    verifyContent(placeholderPath, mergeResultsByPath)(
-      tokens(expectedContent).get
-    )
+      val (mergeResultsByPath, _) =
+        codeMotionAnalysis.merge
+
+      val expectedTokens = tokens("""
+          |Fable, able
+          |doddle
+          |mumble
+          |Amble, dandle
+          |Grumble, crumble
+          |Coddle, doddle
+          |Cradle, babble, addle
+          |Grumble
+          |Double, trouble
+          |""".stripMargin).get
+
+      verifyContent(placeholderPath, mergeResultsByPath)(expectedTokens)
+    }
   end lastMinuteConflictResolution
 
 end CodeMotionAnalysisExtensionTest
