@@ -408,7 +408,6 @@ class MergeResultTest:
     yield sequencesOfResolvedRunsAlternatingWithConflictsInPairs)
       .withLimit(1000)
       .dynamicTests { resolvedRunsAlternatingWithConflictsInPairs =>
-
         val mergeResult = resolvedRunsAlternatingWithConflictsInPairs.foldLeft(
           MergeResult.empty[Int]
         ) { case (partialResult, (resolvedRun, (left, right))) =>
@@ -455,7 +454,6 @@ class MergeResultTest:
     yield sequencesOfResolvedRunsAlternatingWithConflictsInPairs)
       .withLimit(1000)
       .dynamicTests { resolvedRunsAlternatingWithConflictsInPairs =>
-
         val mergeResult = resolvedRunsAlternatingWithConflictsInPairs.foldLeft(
           MergeResult.empty[Int]
         ) { case (partialResult, (resolvedRun, (left, right))) =>

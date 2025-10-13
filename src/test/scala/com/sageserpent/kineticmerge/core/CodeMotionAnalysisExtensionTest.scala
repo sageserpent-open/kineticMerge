@@ -2233,7 +2233,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )
 
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
-
       val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
 
       val baseTokens = tokens("""
