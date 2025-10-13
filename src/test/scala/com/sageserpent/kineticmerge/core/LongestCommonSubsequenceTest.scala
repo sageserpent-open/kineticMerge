@@ -51,7 +51,6 @@ class LongestCommonSubsequenceTest:
         (
           testCase: TestCase
         ) =>
-
           val coreSize = testCase.core.size
 
           extension (sequence: IndexedSeq[Contribution[Element]])
