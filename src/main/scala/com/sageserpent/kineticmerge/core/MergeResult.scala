@@ -49,7 +49,7 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
     else
       Traverse[Seq]
         .traverse(segments.zip(another.segments))(_.fuseWith(_)(elementFusion))
-        .map(MergeResult.apply)
+        .map(MergeResult.apply[Element])
 
   def addResolved(element: Element): MergeResult[Element] = segments.lastOption
     .fold(ifEmpty = MergeResult(Seq(Segment.Resolved(Seq(element))))) {
@@ -208,6 +208,10 @@ object MergeResult:
   def of[Element: Eq](elements: Element*): MergeResult[Element] =
     empty.addResolved(elements)
 
+  def empty[Element: Eq]: MergeResult[Element] = MergeResult(
+    IndexedSeq.empty
+  )
+
   def flatten[Element: Eq](
       nestedMergeResults: MergeResult[MergeResult[Element]]
   ): MergeResult[Element] =
@@ -242,10 +246,6 @@ object MergeResult:
       case (partialResult, Segment.Conflicted(leftElements, rightElements)) =>
         partialResult.addConflicted(leftElements, rightElements)
     }
-
-  def empty[Element: Eq]: MergeResult[Element] = MergeResult(
-    IndexedSeq.empty
-  )
 
   private def segmentFor[Element: Eq](
       leftElements: Seq[Element],
