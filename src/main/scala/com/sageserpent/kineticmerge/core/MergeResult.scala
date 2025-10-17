@@ -208,10 +208,6 @@ object MergeResult:
   def of[Element: Eq](elements: Element*): MergeResult[Element] =
     empty.addResolved(elements)
 
-  def empty[Element: Eq]: MergeResult[Element] = MergeResult(
-    IndexedSeq.empty
-  )
-
   def flatten[Element: Eq](
       nestedMergeResults: MergeResult[MergeResult[Element]]
   ): MergeResult[Element] =
@@ -246,6 +242,10 @@ object MergeResult:
       case (partialResult, Segment.Conflicted(leftElements, rightElements)) =>
         partialResult.addConflicted(leftElements, rightElements)
     }
+
+  def empty[Element: Eq]: MergeResult[Element] = MergeResult(
+    IndexedSeq.empty
+  )
 
   private def segmentFor[Element: Eq](
       leftElements: Seq[Element],
@@ -350,9 +350,8 @@ object MergeResult:
               Segment.Conflicted(leftX, rightX),
               Segment.Conflicted(leftY, rightY)
             ) =>
-          Ordering[Seq[Element]].compare(leftX, leftY) match
-            case 0       => Ordering[Seq[Element]].compare(rightX, rightY)
-            case nonZero => nonZero
+          Ordering[(Seq[Element], Seq[Element])]
+            .compare((leftX, rightX), (leftY, rightY))
         case (Segment.Resolved(_), Segment.Conflicted(_, _)) => -1
         case (Segment.Conflicted(_, _), Segment.Resolved(_)) => 1
   end segmentOrdering
@@ -371,9 +370,7 @@ object MergeResult:
               Segment.Conflicted(leftX, rightX),
               Segment.Conflicted(leftY, rightY)
             ) =>
-          if Eq[Seq[Element]].eqv(leftX, leftY) then
-            Eq[Seq[Element]].eqv(rightX, rightY)
-          else false
+          Eq[(Seq[Element], Seq[Element])].eqv((leftX, rightX), (leftY, rightY))
         case _ => false
   end segmentEquality
 end MergeResult
