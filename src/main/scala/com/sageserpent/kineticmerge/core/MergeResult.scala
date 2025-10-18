@@ -197,13 +197,11 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
 end MergeResult
 
 object MergeResult:
-  given mergeResultOrdering[Element](using
-      elementOrdering: Ordering[Element]
-  ): Ordering[MergeResult[Element]] = Ordering.by(_.segments)
+  given mergeResultOrdering[Element: Ordering]: Ordering[MergeResult[Element]] =
+    Ordering.by(_.segments)
 
-  given mergeResultEquality[Element](using
-      elementEquality: Eq[Element]
-  ): Eq[MergeResult[Element]] = Eq.by(_.segments)
+  given mergeResultEquality[Element: Eq]: Eq[MergeResult[Element]] =
+    Eq.by(_.segments)
 
   def of[Element: Eq](elements: Element*): MergeResult[Element] =
     empty.addResolved(elements)
