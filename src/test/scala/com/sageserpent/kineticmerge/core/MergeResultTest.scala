@@ -121,8 +121,48 @@ class MergeResultTest:
         assert(recoveredRightElements == elements)
       }
 
-  // TODO:
-  // `addingTheBaseElementsOfAConflictedMergeYieldsThemViaTheMergedWithConflictsPattern`...
+  @TestFactory
+  def addingTheBaseElementsOfAConflictedMergeYieldsThemViaTheMergedWithConflictsPattern()
+      : DynamicTests =
+    (for
+      elements                       <- trialsApi.integers(0, 20).lists
+      clumps                         <- elements.nonEmptyClumps
+      potentiallyConflictingElements <- trialsApi
+        .alternate(
+          trialsApi.only(None),
+          (trialsApi
+            .integers(0, 20)
+            .lists and trialsApi.integers(0, 20).lists).trials.map(Some.apply)
+        )
+        .listsOfSize(clumps.size)
+        .filter(_.exists(_.nonEmpty))
+    yield (elements, clumps.zip(potentiallyConflictingElements)))
+      .withLimit(1000)
+      .dynamicTests { (elements, clumpsWithPotentialConflicts) =>
+        clumpsWithPotentialConflicts.foreach {
+          case (base, Some((left, right)))
+              if base == left || base == right || left == right =>
+            // When building up a `MergeResult`, it is a precondition that any
+            // conflicts should be genuine.
+            Trials.reject()
+          case _ =>
+        }
+
+        val mergeResult =
+          clumpsWithPotentialConflicts.foldLeft(MergeResult.empty[Int]) {
+            case (partialResult, (List(singleton), None)) =>
+              partialResult.addResolved(singleton)
+            case (partialResult, (multiple, None)) =>
+              partialResult.addResolved(multiple)
+            case (partialResult, (base, Some((left, right)))) =>
+              partialResult.addConflicted(base, left, right)
+          }
+
+        val MergedWithConflicts(recoveredBaseElements, _, _) =
+          mergeResult: @unchecked
+
+        assert(recoveredBaseElements == elements)
+      }
 
   @TestFactory
   def filterMapAndFlatMap(): DynamicTests =
