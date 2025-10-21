@@ -1974,8 +1974,6 @@ object MergeTest:
             )
 
           case MergedWithConflicts(baseElements, leftElements, rightElements) =>
-            // TODO: what expectations should `baseElements` satisfy?
-            
             val basePreservationsOnLeft = baseIsPreservedCorrectlyIn(
               leftElements
             )
@@ -1986,6 +1984,9 @@ object MergeTest:
             val rightAppearances = rightAppearsCorrectlyIn(
               rightElements
             )
+
+            assert(basePreservationsOnLeft.subsetOf(baseElements.toSet))
+            assert(basePreservationsOnRight.subsetOf(baseElements.toSet))
 
             assert(
               basePreservationsOnLeft == basePreservationsOnRight
@@ -2059,7 +2060,6 @@ object MergeTest:
       priorEditClaimingLeftInsertion: Boolean = false,
       priorEditClaimingRightInsertion: Boolean = false
   ):
-    import MoveConstraints.*
 
     def choices: Trials[Move] = predecessorMove match
       case LeftInsertion =>
