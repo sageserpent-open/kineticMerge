@@ -15,7 +15,7 @@ import com.sageserpent.kineticmerge.core.Token.tokens
 import com.softwaremill.tagging.*
 import com.typesafe.scalalogging.StrictLogging
 import fansi.Str
-import os.{CommandResult, Path, RelPath}
+import os.{Path, RelPath}
 import scopt.{DefaultOEffectSetup, OParser}
 
 import scala.annotation.varargs
@@ -1741,7 +1741,7 @@ object Main extends StrictLogging:
                   else right(partialResult)
                   end if
 
-                case MergedWithConflicts(leftTokens, rightTokens) =>
+                case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
                   val leftContent  = reconstituteTextFrom(leftTokens)
                   val rightContent = reconstituteTextFrom(rightTokens)
 
@@ -1785,7 +1785,7 @@ object Main extends StrictLogging:
                     )
                   end if
 
-                case MergedWithConflicts(leftTokens, rightTokens) =>
+                case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
                   val leftContent  = reconstituteTextFrom(leftTokens)
                   val rightContent = reconstituteTextFrom(rightTokens)
 
@@ -1818,7 +1818,7 @@ object Main extends StrictLogging:
                   else right(partialResult)
                   end if
 
-                case MergedWithConflicts(leftTokens, rightTokens) =>
+                case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
                   val leftContent  = reconstituteTextFrom(leftTokens)
                   val rightContent = reconstituteTextFrom(rightTokens)
 
@@ -1854,7 +1854,7 @@ object Main extends StrictLogging:
                     )
                   end if
 
-                case MergedWithConflicts(leftTokens, rightTokens) =>
+                case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
                   val leftContent  = reconstituteTextFrom(leftTokens)
                   val rightContent = reconstituteTextFrom(rightTokens)
 
@@ -1894,8 +1894,8 @@ object Main extends StrictLogging:
                   _
                 ) =>
               val tokens = mergeResultsByPath(path) match
-                case FullyMerged(mergedTokens)               => mergedTokens
-                case MergedWithConflicts(ourMergedTokens, _) =>
+                case FullyMerged(mergedTokens)                  => mergedTokens
+                case MergedWithConflicts(_, ourMergedTokens, _) =>
                   // We don't care about their view of the merge - their
                   // side simply deleted the whole file, so it contributes
                   // nothing interesting to the merge; the only point of the
@@ -1977,8 +1977,8 @@ object Main extends StrictLogging:
                   _
                 ) =>
               val tokens = mergeResultsByPath(path) match
-                case FullyMerged(mergedTokens)                 => mergedTokens
-                case MergedWithConflicts(_, theirMergedTokens) =>
+                case FullyMerged(mergedTokens) => mergedTokens
+                case MergedWithConflicts(_, _, theirMergedTokens) =>
                   // We don't care about our view of the merge - our side
                   // simply deleted the whole file, so it contributes
                   // nothing interesting to the merge; the only point of the
@@ -2066,7 +2066,7 @@ object Main extends StrictLogging:
                     mergedFileMode
                   )
 
-                case MergedWithConflicts(leftTokens, rightTokens) =>
+                case MergedWithConflicts(_, leftTokens, rightTokens) =>
                   val leftContent  = reconstituteTextFrom(leftTokens)
                   val rightContent = reconstituteTextFrom(rightTokens)
 
@@ -2097,7 +2097,7 @@ object Main extends StrictLogging:
                     mergedFileMode
                   )
 
-                case MergedWithConflicts(leftTokens, rightTokens) =>
+                case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
                   val leftContent  = reconstituteTextFrom(leftTokens)
                   val rightContent = reconstituteTextFrom(rightTokens)
 

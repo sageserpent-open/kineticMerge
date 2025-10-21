@@ -73,6 +73,7 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
       }
 
   def addConflicted(
+      baseElements: Seq[Element],
       leftElements: Seq[Element],
       rightElements: Seq[Element]
   ): MergeResult[Element] = segments.lastOption
@@ -238,7 +239,7 @@ object MergeResult:
       case (partialResult, Segment.Resolved(elements)) =>
         partialResult.addResolved(elements)
       case (partialResult, Segment.Conflicted(leftElements, rightElements)) =>
-        partialResult.addConflicted(leftElements, rightElements)
+        partialResult.addConflicted(???, leftElements, rightElements)
     }
 
   def empty[Element: Eq]: MergeResult[Element] = MergeResult(
@@ -398,17 +399,23 @@ end FullyMerged
 object MergedWithConflicts:
   def unapply[Element](
       result: MergeResult[Element]
-  ): Option[(Seq[Element], Seq[Element])] =
+  ): Option[(Seq[Element], Seq[Element], Seq[Element])] =
     Option.when(result.segments.exists {
       case MergeResult.Segment.Conflicted(_, _) => true
       case MergeResult.Segment.Resolved(_)      => false
-    })(result.segments.flatMap {
-      case MergeResult.Segment.Resolved(elements)          => elements
-      case MergeResult.Segment.Conflicted(leftElements, _) => leftElements
-    } -> result.segments.flatMap {
-      case MergeResult.Segment.Resolved(elements)           => elements
-      case MergeResult.Segment.Conflicted(_, rightElements) => rightElements
-    })
+    })(
+      (
+        ???,
+        result.segments.flatMap {
+          case MergeResult.Segment.Resolved(elements)          => elements
+          case MergeResult.Segment.Conflicted(leftElements, _) => leftElements
+        },
+        result.segments.flatMap {
+          case MergeResult.Segment.Resolved(elements)           => elements
+          case MergeResult.Segment.Conflicted(_, rightElements) => rightElements
+        }
+      )
+    )
   end unapply
 
 end MergedWithConflicts
@@ -523,9 +530,10 @@ class CoreMergeAlgebra[Element: Eq]
       leftEditElements: IndexedSeq[Element],
       rightEditElements: IndexedSeq[Element]
   ): MultiSidedMergeResult[Element] =
-    val leftResolved  = leftEditElements map MultiSided.Unique.apply
-    val rightResolved = rightEditElements map MultiSided.Unique.apply
+    val editedResolved = editedElements map MultiSided.Unique.apply
+    val leftResolved   = leftEditElements map MultiSided.Unique.apply
+    val rightResolved  = rightEditElements map MultiSided.Unique.apply
 
-    result.addConflicted(leftResolved, rightResolved)
+    result.addConflicted(editedResolved, leftResolved, rightResolved)
   end conflict
 end CoreMergeAlgebra

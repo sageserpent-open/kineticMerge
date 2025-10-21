@@ -44,7 +44,9 @@ class MergeResultTest:
       potentiallyConflictingElements <- trialsApi
         .alternate(
           trialsApi.only(None),
-          trialsApi.integers(0, 20).lists.map(Some.apply)
+          (trialsApi
+            .integers(0, 20)
+            .lists and trialsApi.integers(0, 20).lists).trials.map(Some.apply)
         )
         .listsOfSize(clumps.size)
         .filter(_.exists(_.nonEmpty))
@@ -52,7 +54,8 @@ class MergeResultTest:
       .withLimit(1000)
       .dynamicTests { (elements, clumpsWithPotentialConflicts) =>
         clumpsWithPotentialConflicts.foreach {
-          case (left, Some(right)) if left == right =>
+          case (left, Some((base, right)))
+              if base == left || base == right || left == right =>
             // When building up a `MergeResult`, it is a precondition that any
             // conflicts should be genuine.
             Trials.reject()
@@ -65,11 +68,11 @@ class MergeResultTest:
               partialResult.addResolved(singleton)
             case (partialResult, (multiple, None)) =>
               partialResult.addResolved(multiple)
-            case (partialResult, (left, Some(right))) =>
-              partialResult.addConflicted(left, right)
+            case (partialResult, (left, Some((base, right)))) =>
+              partialResult.addConflicted(base, left, right)
           }
 
-        val MergedWithConflicts(recoveredLeftElements, _) =
+        val MergedWithConflicts(_, recoveredLeftElements, _) =
           mergeResult: @unchecked
 
         assert(recoveredLeftElements == elements)
@@ -84,7 +87,9 @@ class MergeResultTest:
       potentiallyConflictingElements <- trialsApi
         .alternate(
           trialsApi.only(None),
-          trialsApi.integers(0, 20).lists.map(Some.apply)
+          (trialsApi
+            .integers(0, 20)
+            .lists and trialsApi.integers(0, 20).lists).trials.map(Some.apply)
         )
         .listsOfSize(clumps.size)
         .filter(_.exists(_.nonEmpty))
@@ -92,7 +97,8 @@ class MergeResultTest:
       .withLimit(1000)
       .dynamicTests { (elements, clumpsWithPotentialConflicts) =>
         clumpsWithPotentialConflicts.foreach {
-          case (Some(left), right) if left == right =>
+          case (Some((base, left)), right)
+              if base == left || base == right || left == right =>
             // When building up a `MergeResult`, it is a precondition that any
             // conflicts should be genuine.
             Trials.reject()
@@ -105,15 +111,18 @@ class MergeResultTest:
               partialResult.addResolved(singleton)
             case (partialResult, (None, multiple)) =>
               partialResult.addResolved(multiple)
-            case (partialResult, (Some(left), right)) =>
-              partialResult.addConflicted(left, right)
+            case (partialResult, (Some((base, left)), right)) =>
+              partialResult.addConflicted(base, left, right)
           }
 
-        val MergedWithConflicts(_, recoveredRightElements) =
+        val MergedWithConflicts(_, _, recoveredRightElements) =
           mergeResult: @unchecked
 
         assert(recoveredRightElements == elements)
       }
+
+  // TODO:
+  // `addingTheBaseElementsOfAConflictedMergeYieldsThemViaTheMergedWithConflictsPattern`...
 
   @TestFactory
   def filterMapAndFlatMap(): DynamicTests =
@@ -122,12 +131,12 @@ class MergeResultTest:
         .lists
         .filter(_.nonEmpty)
         .or(
-          trialsApi
+          (trialsApi.integers(0, 20).lists and trialsApi
             .integers(0, 20)
-            .lists
-            .and(trialsApi.integers(0, 20).lists)
-            .trials
-            .filter { case (left, right) => left != right }
+            .lists and trialsApi.integers(0, 20).lists).trials
+            .filter { case (base, left, right) =>
+              base != left && base != right && left != right
+            }
         )
         .lists
     yield clumps)
@@ -138,8 +147,8 @@ class MergeResultTest:
             partialResult.addResolved(singleton)
           case (partialResult, Left(multiple)) =>
             partialResult.addResolved(multiple)
-          case (partialResult, Right((left, right))) =>
-            partialResult.addConflicted(left, right)
+          case (partialResult, Right((base, left, right))) =>
+            partialResult.addConflicted(base, left, right)
         }
 
         def filtration(input: Int): Boolean   = 0 == input % 2
@@ -170,13 +179,17 @@ class MergeResultTest:
               assert(elements.flatMap(flatMapping) == flatMappedElements)
             }
 
-          case MergedWithConflicts(leftElements, rightElements) =>
+          case MergedWithConflicts(baseElements, leftElements, rightElements) =>
             {
               mergeResult.filter(filtration) match
                 case MergedWithConflicts(
+                      baseFilteredElements,
                       leftFilteredElements,
                       rightFilteredElements
                     ) =>
+                  assert(
+                    baseElements.filter(filtration) == baseFilteredElements
+                  )
                   assert(
                     leftElements.filter(filtration) == leftFilteredElements
                   )
@@ -196,9 +209,11 @@ class MergeResultTest:
             {
               mergeResult.map(mapping) match
                 case MergedWithConflicts(
+                      baseMappedElements,
                       leftMappedElements,
                       rightMappedElements
                     ) =>
+                  assert(baseElements.map(mapping) == baseMappedElements)
                   assert(leftElements.map(mapping) == leftMappedElements)
                   assert(rightElements.map(mapping) == rightMappedElements)
 
@@ -210,9 +225,13 @@ class MergeResultTest:
             {
               mergeResult.innerFlatMap(flatMapping) match
                 case MergedWithConflicts(
+                      baseFlatMappedElements,
                       leftFlatMappedElements,
                       rightFlatMappedElements
                     ) =>
+                  assert(
+                    baseElements.flatMap(flatMapping) == baseFlatMappedElements
+                  )
                   assert(
                     leftElements.flatMap(flatMapping) == leftFlatMappedElements
                   )
@@ -240,12 +259,12 @@ class MergeResultTest:
         .lists
         .filter(_.nonEmpty)
         .or(
-          trialsApi
+          (trialsApi.integers(0, 20).lists and trialsApi
             .integers(0, 20)
-            .lists
-            .and(trialsApi.integers(0, 20).lists)
-            .trials
-            .filter { case (left, right) => left != right }
+            .lists and trialsApi.integers(0, 20).lists).trials
+            .filter { case (base, left, right) =>
+              base != left && base != right && left != right
+            }
         )
         .lists
     yield clumps)
@@ -256,8 +275,8 @@ class MergeResultTest:
             partialResult.addResolved(singleton)
           case (partialResult, Left(multiple)) =>
             partialResult.addResolved(multiple)
-          case (partialResult, Right((left, right))) =>
-            partialResult.addConflicted(left, right)
+          case (partialResult, Right((base, left, right))) =>
+            partialResult.addConflicted(base, left, right)
         }
 
         def filtration(input: Int): Boolean = 0 == input % 2
@@ -308,7 +327,7 @@ class MergeResultTest:
               assert(elements.flatMap(flatMapping) == flatMappedElements)
             }
 
-          case MergedWithConflicts(leftElements, rightElements) =>
+          case MergedWithConflicts(baseElements, leftElements, rightElements) =>
             {
               mergeResult.onEachSide(side =>
                 side
@@ -318,9 +337,13 @@ class MergeResultTest:
                   ._2
               ) match
                 case MergedWithConflicts(
+                      baseFilteredElements,
                       leftFilteredElements,
                       rightFilteredElements
                     ) =>
+                  assert(
+                    baseElements.filter(filtration) == baseFilteredElements
+                  )
                   assert(
                     leftElements.filter(filtration) == leftFilteredElements
                   )
@@ -346,9 +369,11 @@ class MergeResultTest:
                   ._2
               ) match
                 case MergedWithConflicts(
+                      baseMappedElements,
                       leftMappedElements,
                       rightMappedElements
                     ) =>
+                  assert(baseElements.map(mapping) == baseMappedElements)
                   assert(leftElements.map(mapping) == leftMappedElements)
                   assert(rightElements.map(mapping) == rightMappedElements)
 
@@ -366,9 +391,13 @@ class MergeResultTest:
                   ._2
               ) match
                 case MergedWithConflicts(
+                      baseFlatMappedElements,
                       leftFlatMappedElements,
                       rightFlatMappedElements
                     ) =>
+                  assert(
+                    baseElements.flatMap(flatMapping) == baseFlatMappedElements
+                  )
                   assert(
                     leftElements.flatMap(flatMapping) == leftFlatMappedElements
                   )
@@ -396,12 +425,12 @@ class MergeResultTest:
         .lists
         .flatMap(_.nonEmptyClumps)
         .flatMap(resolvedRuns =>
-          trialsApi
+          (trialsApi.integers(0, 20).lists and trialsApi
             .integers(0, 20)
-            .lists
-            .and(trialsApi.integers(0, 20).lists)
-            .trials
-            .filter { case (left, right) => left != right }
+            .lists and trialsApi.integers(0, 20).lists).trials
+            .filter { case (base, left, right) =>
+              base != left && base != right && left != right
+            }
             .listsOfSize(resolvedRuns.size)
             .map(resolvedRuns zip _)
         )
@@ -410,8 +439,10 @@ class MergeResultTest:
       .dynamicTests { resolvedRunsAlternatingWithConflictsInPairs =>
         val mergeResult = resolvedRunsAlternatingWithConflictsInPairs.foldLeft(
           MergeResult.empty[Int]
-        ) { case (partialResult, (resolvedRun, (left, right))) =>
-          partialResult.addResolved(resolvedRun).addConflicted(left, right)
+        ) { case (partialResult, (resolvedRun, (base, left, right))) =>
+          partialResult
+            .addResolved(resolvedRun)
+            .addConflicted(base, left, right)
         }
 
         // As the resolved runs and conflicts alternate, there is no possibility
@@ -442,12 +473,12 @@ class MergeResultTest:
         .lists
         .flatMap(_.nonEmptyClumps)
         .flatMap(resolvedRuns =>
-          trialsApi
+          (trialsApi.integers(0, 20).lists and trialsApi
             .integers(0, 20)
-            .lists
-            .and(trialsApi.integers(0, 20).lists)
-            .trials
-            .filter { case (left, right) => left != right }
+            .lists and trialsApi.integers(0, 20).lists).trials
+            .filter { case (base, left, right) =>
+              base != left && base != right && left != right
+            }
             .listsOfSize(resolvedRuns.size)
             .map(resolvedRuns zip _)
         )
@@ -456,8 +487,10 @@ class MergeResultTest:
       .dynamicTests { resolvedRunsAlternatingWithConflictsInPairs =>
         val mergeResult = resolvedRunsAlternatingWithConflictsInPairs.foldLeft(
           MergeResult.empty[Int]
-        ) { case (partialResult, (resolvedRun, (left, right))) =>
-          partialResult.addResolved(resolvedRun).addConflicted(left, right)
+        ) { case (partialResult, (resolvedRun, (base, left, right))) =>
+          partialResult
+            .addResolved(resolvedRun)
+            .addConflicted(base, left, right)
         }
 
         // As the resolved runs and conflicts alternate, there is no possibility

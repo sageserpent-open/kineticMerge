@@ -696,6 +696,7 @@ class MergeTest:
     val expectedMerge: MergeResult[MultiSided[Element]] =
       MergeResult.empty[MultiSided[Element]]
         .addConflicted(
+          baseElements = Seq(MultiSided.Unique(a)),
           leftElements = Seq(MultiSided.Unique(c)),
           rightElements = Seq(MultiSided.Unique(e)))
         .addResolved(MultiSided.Preserved(b, d, f))
@@ -742,6 +743,7 @@ class MergeTest:
     val expectedMerge: MergeResult[MultiSided[Element]] =
       MergeResult.empty[MultiSided[Element]]
         .addConflicted(
+          baseElements = Seq(MultiSided.Unique(a), MultiSided.Unique(b)),
           leftElements = Seq(MultiSided.Unique(d), MultiSided.Unique(e)),
           rightElements = Seq(MultiSided.Unique(g), MultiSided.Unique(h)))
         .addResolved(MultiSided.Preserved(c, f, i))
@@ -790,6 +792,7 @@ class MergeTest:
     val expectedMerge: MergeResult[MultiSided[Element]] =
       MergeResult.empty[MultiSided[Element]]
         .addConflicted(
+          baseElements = Seq(MultiSided.Unique(a)),
           leftElements = Seq(MultiSided.Unique(d)),
           rightElements = Seq.empty)
         .addResolved(Seq(MultiSided.Unique(g), MultiSided.Unique(h), MultiSided.Preserved(c, f, i)))
@@ -838,6 +841,7 @@ class MergeTest:
     val expectedMerge: MergeResult[MultiSided[Element]] =
       MergeResult.empty[MultiSided[Element]]
         .addConflicted(
+          baseElements = Seq(MultiSided.Unique(a)),
           leftElements = Seq.empty,
           rightElements = Seq(MultiSided.Unique(g)))
         .addResolved(Seq(MultiSided.Unique(d), MultiSided.Unique(e), MultiSided.Preserved(c, f, i)))
@@ -888,6 +892,7 @@ class MergeTest:
       MergeResult.empty[MultiSided[Element]]
         .addResolved(MultiSided.Preserved(a, c, g))
         .addConflicted(
+          baseElements = Seq.empty,
           leftElements = Seq(MultiSided.Unique(d), MultiSided.Unique(e)),
           rightElements = Seq(MultiSided.Unique(h)))
         .addResolved(MultiSided.Preserved(b, f, i))
@@ -938,6 +943,7 @@ class MergeTest:
       MergeResult.empty[MultiSided[Element]]
         .addResolved(MultiSided.Preserved(a, d, h))
         .addConflicted(
+          baseElements = Seq(MultiSided.Unique(b)),
           leftElements = Seq(MultiSided.Unique(e), MultiSided.Unique(f)),
           rightElements = Seq.empty)
         .addResolved(MultiSided.Preserved(c, g, i))
@@ -989,6 +995,7 @@ class MergeTest:
       MergeResult.empty[MultiSided[Element]]
         .addResolved(MultiSided.Preserved(a, e, i))
         .addConflicted(
+          baseElements = Seq(MultiSided.Unique(b), MultiSided.Unique(c)),
           leftElements = Seq(MultiSided.Unique(f)),
           rightElements = Seq.empty)
         .addResolved(MultiSided.Preserved(d, h, j))
@@ -1031,6 +1038,7 @@ class MergeTest:
     val expectedMerge: MergeResult[MultiSided[Element]] =
       MergeResult.empty[MultiSided[Element]]
         .addConflicted(
+          baseElements = Seq.empty,
           leftElements = Seq(MultiSided.Unique(b)),
           rightElements = Seq(MultiSided.Unique(d)))
         .addResolved(MultiSided.Preserved(a, c, e))
@@ -1075,6 +1083,7 @@ class MergeTest:
     val expectedMerge: MergeResult[MultiSided[Element]] =
       MergeResult.empty[MultiSided[Element]]
         .addConflicted(
+          baseElements = Seq.empty,
           leftElements = Seq(MultiSided.Unique(b), MultiSided.Unique(c)),
           rightElements = Seq(MultiSided.Unique(e), MultiSided.Unique(f)))
         .addResolved(MultiSided.Preserved(a, d, g))
@@ -1124,6 +1133,7 @@ class MergeTest:
     val expectedMerge: MergeResult[MultiSided[Element]] =
       MergeResult.empty[MultiSided[Element]]
         .addConflicted(
+          baseElements = Seq(MultiSided.Unique(a)),
           leftElements = Seq(MultiSided.Unique(c)),
           rightElements = Seq(MultiSided.Unique(f)))
         .addResolved(Seq(MultiSided.Coincident(d, g), MultiSided.Preserved(b, e, h)))
@@ -1168,6 +1178,7 @@ class MergeTest:
     val expectedMerge: MergeResult[MultiSided[Element]] =
       MergeResult.empty[MultiSided[Element]]
         .addConflicted(
+          baseElements = Seq(MultiSided.Unique(a), MultiSided.Unique(b)),
           leftElements = Seq(MultiSided.Unique(d)),
           rightElements = Seq(MultiSided.Unique(f)))
         .addResolved(MultiSided.Preserved(c, e, g))
@@ -1203,9 +1214,12 @@ class MergeTest:
 
     // NOTE: we expect the initial edit conflict to coalesce with the following
     // insertion conflict.
-    val expectedMerge: MergeResult[MultiSided[Element]] = MergeResult.empty[MultiSided[Element]].addConflicted(
-        leftElements = Vector(MultiSided.Unique(b), MultiSided.Unique(c)),
-        rightElements = Vector(MultiSided.Unique(d), MultiSided.Unique(e))
+    val expectedMerge: MergeResult[MultiSided[Element]] = 
+      MergeResult.empty[MultiSided[Element]]
+        .addConflicted(
+          baseElements = Seq(MultiSided.Unique(a)),
+          leftElements = Vector(MultiSided.Unique(b), MultiSided.Unique(c)),
+          rightElements = Vector(MultiSided.Unique(d), MultiSided.Unique(e))
       )
 
     val AugmentedMergeResult(_, result) =
@@ -1244,6 +1258,7 @@ class MergeTest:
     val expectedMerge: MergeResult[MultiSided[Element]] =
       MergeResult.empty[MultiSided[Element]]
         .addConflicted(
+          baseElements = Seq(MultiSided.Unique(a)),
           leftElements = Seq(MultiSided.Unique(b), MultiSided.Unique(c)),
           rightElements = Seq(MultiSided.Unique(e)))
         .addResolved(MultiSided.Coincident(d, f))
@@ -1291,6 +1306,7 @@ class MergeTest:
     val expectedMerge: MergeResult[MultiSided[Element]] =
       MergeResult.empty[MultiSided[Element]]
         .addConflicted(
+          baseElements = Seq(MultiSided.Unique(a)),
           leftElements = Seq(MultiSided.Unique(d)),
           rightElements = Seq.empty)
         .addResolved(MultiSided.Unique(f))
@@ -1334,6 +1350,7 @@ class MergeTest:
     val expectedMerge: MergeResult[MultiSided[Element]] =
       MergeResult.empty[MultiSided[Element]]
         .addConflicted(
+          baseElements = Seq(MultiSided.Unique(a)),
           leftElements = Seq(MultiSided.Unique(c), MultiSided.Unique(d)),
           rightElements = Seq.empty)
         .addResolved(MultiSided.Unique(f))
@@ -1385,6 +1402,7 @@ class MergeTest:
       MergeResult.empty[MultiSided[Element]]
         .addResolved(MultiSided.Preserved(a, e, g))
         .addConflicted(
+          baseElements = Seq(MultiSided.Unique(b), MultiSided.Unique(c)),
           leftElements = Seq.empty,
           rightElements = Seq(MultiSided.Unique(h)))
         .addResolved(MultiSided.Preserved(d, f, i))
@@ -1432,6 +1450,7 @@ class MergeTest:
     val expectedMerge: MergeResult[MultiSided[Element]] =
       MergeResult.empty[MultiSided[Element]]
         .addConflicted(
+          baseElements = Seq(MultiSided.Unique(a)),
           leftElements = Seq.empty,
           rightElements = Seq(MultiSided.Unique(e)))
         .addResolved(MultiSided.Unique(g))
@@ -1474,6 +1493,7 @@ class MergeTest:
     val expectedMerge: MergeResult[MultiSided[Element]] =
       MergeResult.empty[MultiSided[Element]]
         .addConflicted(
+          baseElements = Seq(MultiSided.Unique(a)),
           leftElements = Seq.empty,
           rightElements = Seq(MultiSided.Unique(d), MultiSided.Unique(e)))
         .addResolved(MultiSided.Unique(c))
@@ -1571,7 +1591,7 @@ class MergeTest:
           ): @unchecked
 
         result match
-          case MergedWithConflicts(_, _) =>
+          case MergedWithConflicts(_, _, _) =>
             println("*************")
             pprintln(testCase)
 
@@ -1953,7 +1973,9 @@ object MergeTest:
               (basePreservations union leftAppearances union rightAppearances) == elements.toSet
             )
 
-          case MergedWithConflicts(leftElements, rightElements) =>
+          case MergedWithConflicts(baseElements, leftElements, rightElements) =>
+            // TODO: what expectations should `baseElements` satisfy?
+            
             val basePreservationsOnLeft = baseIsPreservedCorrectlyIn(
               leftElements
             )
