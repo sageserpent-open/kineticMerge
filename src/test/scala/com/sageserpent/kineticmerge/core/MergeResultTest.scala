@@ -239,6 +239,9 @@ class MergeResultTest:
 
                 case FullyMerged(filteredElements) =>
                   assert(
+                    baseElements.filter(filtration) == filteredElements
+                  )
+                  assert(
                     leftElements.filter(filtration) == filteredElements
                   )
                   assert(
@@ -258,6 +261,7 @@ class MergeResultTest:
                   assert(rightElements.map(mapping) == rightMappedElements)
 
                 case FullyMerged(mappedElements) =>
+                  assert(baseElements.map(mapping) == mappedElements)
                   assert(leftElements.map(mapping) == mappedElements)
                   assert(rightElements.map(mapping) == mappedElements)
             }
@@ -281,6 +285,9 @@ class MergeResultTest:
                   )
 
                 case FullyMerged(flatMappedElements) =>
+                  assert(
+                    baseElements.flatMap(flatMapping) == flatMappedElements
+                  )
                   assert(
                     leftElements.flatMap(flatMapping) == flatMappedElements
                   )
@@ -492,16 +499,16 @@ class MergeResultTest:
         assert(
           resolvedRunsAlternatingWithConflictsInPairs.size == mergeResult.segments
             .count {
-              case MergeResult.Segment.Resolved(_)      => true
-              case MergeResult.Segment.Conflicted(_, _) => false
+              case MergeResult.Segment.Resolved(_)         => true
+              case MergeResult.Segment.Conflicted(_, _, _) => false
             }
         )
 
         assert(
           resolvedRunsAlternatingWithConflictsInPairs.size == mergeResult.segments
             .count {
-              case MergeResult.Segment.Resolved(_)      => false
-              case MergeResult.Segment.Conflicted(_, _) => true
+              case MergeResult.Segment.Resolved(_)         => false
+              case MergeResult.Segment.Conflicted(_, _, _) => true
             }
         )
       }

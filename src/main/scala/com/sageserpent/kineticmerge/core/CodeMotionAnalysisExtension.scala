@@ -839,6 +839,7 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             }
             .collect {
               case MergeResult.Segment.Conflicted(
+                    _,
                     leftSections,
                     rightSections
                   ) =>
