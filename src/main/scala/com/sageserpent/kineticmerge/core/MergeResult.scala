@@ -101,8 +101,9 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
 
         MergeResult(
           segments.init :+
-            (if Eq.eqv(leftElementsConcatenated, rightElementsConcatenated) then
-               Segment.Resolved(leftElementsConcatenated)
+            (if Eq.eqv(baseElementsConcatenated, leftElementsConcatenated) && Eq
+                 .eqv(baseElementsConcatenated, rightElementsConcatenated)
+             then Segment.Resolved(leftElementsConcatenated)
              else
                Segment.Conflicted(
                  baseElementsConcatenated,
