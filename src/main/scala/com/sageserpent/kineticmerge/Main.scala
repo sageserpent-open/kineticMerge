@@ -1476,6 +1476,7 @@ object Main extends StrictLogging:
           os.proc(
             "git",
             "merge-file",
+            "--diff3",
             "-L",
             leftLabel,
             "-L",
@@ -1588,16 +1589,15 @@ object Main extends StrictLogging:
               partialResult: AccumulatedMergeState,
               path: Path,
               bestAncestorCommitIdMode: String @@ Tags.Mode,
-              bestAncestorCommitIdBlobId: String @@ Tags.BlobId,
-              bestAncestorCommitIdContent: String @@ Tags.Content,
               mode: String @@ Tags.Mode,
+              baseContent: String @@ Tags.Content,
               leftContent: String @@ Tags.Content,
               rightContent: String @@ Tags.Content
           ) =
             for
               baseTemporaryFile <- temporaryFile(
                 suffix = ".base",
-                content = bestAncestorCommitIdContent
+                content = baseContent
               )
 
               leftTemporaryFile <- temporaryFile(
@@ -1625,6 +1625,7 @@ object Main extends StrictLogging:
                 s"Unexpected error: could not copy results of conflicted merge in ${underline(leftTemporaryFile)} to working directory tree file ${underline(path)}."
               )
 
+              baseBlob  <- storeBlobFor(path, baseContent)
               leftBlob  <- storeBlobFor(path, leftContent)
               rightBlob <- storeBlobFor(path, rightContent)
               _         <- recordDeletionInIndex(path)
@@ -1634,7 +1635,7 @@ object Main extends StrictLogging:
                 bestAncestorCommitId,
                 path,
                 bestAncestorCommitIdMode,
-                bestAncestorCommitIdBlobId
+                baseBlob
               )
               _ <- recordConflictModificationInIndex(
                 stageIndex = ourStageIndex
@@ -1742,6 +1743,7 @@ object Main extends StrictLogging:
                   end if
 
                 case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
+                  val baseContent  = reconstituteTextFrom(baseTokens)
                   val leftContent  = reconstituteTextFrom(leftTokens)
                   val rightContent = reconstituteTextFrom(rightTokens)
 
@@ -1749,9 +1751,8 @@ object Main extends StrictLogging:
                     partialResult,
                     path,
                     bestAncestorCommitIdMode,
-                    bestAncestorCommitIdBlobId,
-                    bestAncestorCommitIdContent,
                     ourModification.mode,
+                    baseContent,
                     leftContent,
                     rightContent
                   )
@@ -1786,6 +1787,7 @@ object Main extends StrictLogging:
                   end if
 
                 case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
+                  val baseContent  = reconstituteTextFrom(baseTokens)
                   val leftContent  = reconstituteTextFrom(leftTokens)
                   val rightContent = reconstituteTextFrom(rightTokens)
 
@@ -1793,9 +1795,8 @@ object Main extends StrictLogging:
                     partialResult,
                     path,
                     bestAncestorCommitIdMode,
-                    bestAncestorCommitIdBlobId,
-                    bestAncestorCommitIdContent,
                     theirModification.mode,
+                    baseContent,
                     leftContent,
                     rightContent
                   )
@@ -2098,6 +2099,7 @@ object Main extends StrictLogging:
                   )
 
                 case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
+                  val baseContent  = reconstituteTextFrom(baseTokens)
                   val leftContent  = reconstituteTextFrom(leftTokens)
                   val rightContent = reconstituteTextFrom(rightTokens)
 
@@ -2105,9 +2107,8 @@ object Main extends StrictLogging:
                     partialResult,
                     path,
                     bestAncestorCommitIdMode,
-                    bestAncestorCommitIdBlobId,
-                    bestAncestorCommitIdContent,
                     mergedFileMode,
+                    baseContent,
                     leftContent,
                     rightContent
                   )
