@@ -240,26 +240,49 @@ class MergeResultTest:
         }
 
         // As the resolved runs and conflicts alternate, there is no possibility
-        // of coalescence of either. So each pair should contribute a resolved
-        // and a conflicted segment...
+        // of coalescence of either in the initial merge result. Each pair
+        // should contribute a resolved and a conflicted segment. This pairing
+        // of segments should be preserved when transforming via a lossless
+        // round trip.
 
-        val mergeResultSharingSameConflictLocalisation =
-          mergeResult.onEachSide(
-            _.innerFlatMapAccumulate(())((state, element) =>
-              state -> Seq(2 * element, 1 + 2 * element)
-            )._2
+        {
+          // Use the direct API to round-trip...
+
+          val mergeResultSharingSameConflictLocalisation =
+            mergeResult
+              .innerFlatMap(element => Seq(2 * element, 1 + 2 * element))
+
+          val roundTrippedMergeResultSharingSameConflictLocalisation =
+            mergeResultSharingSameConflictLocalisation
+              .filter(1 == _ % 2)
+              .map(_ / 2)
+
+          assert(
+            mergeResult.segments == roundTrippedMergeResultSharingSameConflictLocalisation.segments
           )
+        }
 
-        val roundTrippedMergeResultSharingSameConflictLocalisation =
-          mergeResultSharingSameConflictLocalisation.onEachSide(
-            _.innerFlatMapAccumulate(())((state, element) =>
-              state -> Seq(element).filter(1 == _ % 2).map(_ / 2)
-            )._2
+        {
+          // Use the side-based API to round-trip...
+
+          val mergeResultSharingSameConflictLocalisation =
+            mergeResult.onEachSide(
+              _.innerFlatMapAccumulate(())((state, element) =>
+                state -> Seq(2 * element, 1 + 2 * element)
+              )._2
+            )
+
+          val roundTrippedMergeResultSharingSameConflictLocalisation =
+            mergeResultSharingSameConflictLocalisation.onEachSide(
+              _.innerFlatMapAccumulate(())((state, element) =>
+                state -> Seq(element).filter(1 == _ % 2).map(_ / 2)
+              )._2
+            )
+
+          assert(
+            mergeResult.segments == roundTrippedMergeResultSharingSameConflictLocalisation.segments
           )
-
-        assert(
-          mergeResult.segments == roundTrippedMergeResultSharingSameConflictLocalisation.segments
-        )
+        }
       }
 end MergeResultTest
 
