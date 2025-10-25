@@ -99,18 +99,21 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
         val leftElementsConcatenated  = segmentLeftElements ++ leftElements
         val rightElementsConcatenated = segmentRightElements ++ rightElements
 
-        MergeResult(
-          segments.init :+
-            (if Eq.eqv(baseElementsConcatenated, leftElementsConcatenated) && Eq
-                 .eqv(baseElementsConcatenated, rightElementsConcatenated)
-             then Segment.Resolved(leftElementsConcatenated)
-             else
-               Segment.Conflicted(
-                 baseElementsConcatenated,
-                 leftElementsConcatenated,
-                 rightElementsConcatenated
-               ))
-        )
+        // NOTE: because the enclosing method is called by
+        // `MergeResult.coalescing`, whose callers have already called
+        // `MergeResult.segmentFor`; this is a bit inefficient, but we rely on
+        // this being a rare occurrence.
+        // NOTE: in this case, we know we have elements on at least two sides
+        // from the existing segment that the new elements are being coalesced
+        // with, so we don't expect the `None` case to arise,
+        val Some(coalescedSegment) = segmentFor(
+          baseElementsConcatenated,
+          leftElementsConcatenated,
+          rightElementsConcatenated
+        ): @unchecked
+
+        MergeResult(segments.init :+ coalescedSegment)
+
     }
 
   def map[Transformed: Eq](
