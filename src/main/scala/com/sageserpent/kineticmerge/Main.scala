@@ -1823,13 +1823,27 @@ object Main extends StrictLogging:
                   val leftContent  = reconstituteTextFrom(leftTokens)
                   val rightContent = reconstituteTextFrom(rightTokens)
 
-                  recordConflictedMergeOfAddedFile(
-                    partialResult,
-                    path,
-                    ourAddition.mode,
-                    leftContent,
-                    rightContent
-                  )
+                  if baseTokens.nonEmpty then
+                    val baseContent = reconstituteTextFrom(baseTokens)
+
+                    recordConflictedMergeOfModifiedFile(
+                      partialResult,
+                      path,
+                      ourAddition.mode,
+                      ourAddition.mode,
+                      baseContent,
+                      leftContent,
+                      rightContent
+                    )
+                  else
+                    recordConflictedMergeOfAddedFile(
+                      partialResult,
+                      path,
+                      ourAddition.mode,
+                      leftContent,
+                      rightContent
+                    )
+                  end if
 
             case JustTheirAddition(theirAddition) =>
               mergeResultsByPath(path) match
@@ -1859,13 +1873,27 @@ object Main extends StrictLogging:
                   val leftContent  = reconstituteTextFrom(leftTokens)
                   val rightContent = reconstituteTextFrom(rightTokens)
 
-                  recordConflictedMergeOfAddedFile(
-                    partialResult,
-                    path,
-                    theirAddition.mode,
-                    leftContent,
-                    rightContent
-                  )
+                  if baseTokens.nonEmpty then
+                    val baseContent = reconstituteTextFrom(baseTokens)
+
+                    recordConflictedMergeOfModifiedFile(
+                      partialResult,
+                      path,
+                      theirAddition.mode,
+                      theirAddition.mode,
+                      baseContent,
+                      leftContent,
+                      rightContent
+                    )
+                  else
+                    recordConflictedMergeOfAddedFile(
+                      partialResult,
+                      path,
+                      theirAddition.mode,
+                      leftContent,
+                      rightContent
+                    )
+                  end if
 
             case JustOurDeletion(_) =>
               // NOTE: we don't consult `mergeResultsByPath` because we know the
@@ -2067,17 +2095,31 @@ object Main extends StrictLogging:
                     mergedFileMode
                   )
 
-                case MergedWithConflicts(_, leftTokens, rightTokens) =>
+                case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
                   val leftContent  = reconstituteTextFrom(leftTokens)
                   val rightContent = reconstituteTextFrom(rightTokens)
 
-                  recordConflictedMergeOfAddedFile(
-                    partialResult,
-                    path,
-                    mergedFileMode,
-                    leftContent,
-                    rightContent
-                  )
+                  if baseTokens.nonEmpty then
+                    val baseContent = reconstituteTextFrom(baseTokens)
+
+                    recordConflictedMergeOfModifiedFile(
+                      partialResult,
+                      path,
+                      mergedFileMode,
+                      mergedFileMode,
+                      baseContent,
+                      leftContent,
+                      rightContent
+                    )
+                  else
+                    recordConflictedMergeOfAddedFile(
+                      partialResult,
+                      path,
+                      mergedFileMode,
+                      leftContent,
+                      rightContent
+                    )
+                  end if
 
             case BothContributeAModification(
                   _,
