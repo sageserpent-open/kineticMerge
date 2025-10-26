@@ -26,6 +26,7 @@ import scala.collection.{IndexedSeqView, Searching}
 import scala.math.Ordering.Implicits.seqOrdering
 
 object CodeMotionAnalysisExtension extends StrictLogging:
+  type Element = Token
 
   /** Add merging capability to a [[CodeMotionAnalysis]].
     *
@@ -34,9 +35,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
     * extension as a temporary measure.
     */
 
-  extension [Path, Element: Eq: Order](
+  extension [Path](
       codeMotionAnalysis: CodeMotionAnalysis[Path, Element]
-  )
+  )(using Order[Element])
     def merge: (
         Map[Path, MergeResult[Element]],
         MoveDestinationsReport[Section[Element]]
