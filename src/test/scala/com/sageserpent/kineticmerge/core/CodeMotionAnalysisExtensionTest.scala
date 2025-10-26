@@ -1888,34 +1888,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     }
   end contentIsEmptiedOnOneSide
 
-  private def verifyContent(
-      path: FakePath,
-      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
-  )(
-      expectedTokens: IndexedSeq[Token],
-      equality: (Token, Token) => Boolean = Token.equality
-  ): Unit =
-    println(fansi.Color.Yellow(s"Checking $path...\n"))
-    println(fansi.Color.Yellow("Expected..."))
-    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
-
-    mergeResultsByPath(path) match
-      case FullyMerged(result) =>
-        println(fansi.Color.Yellow("Fully merged result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(result)))
-        assert(result.corresponds(expectedTokens)(equality))
-      case MergedWithConflicts(baseResult, leftResult, rightResult) =>
-        println(fansi.Color.Red(s"Base result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(baseResult)))
-        println(fansi.Color.Red(s"Left result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
-        println(fansi.Color.Red(s"Right result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
-
-        fail("Should have seen a clean merge.")
-    end match
-  end verifyContent
-
   @TestFactory
   def fileIsAbsentOnOneSide(): DynamicTests =
     val configuration = Configuration(
@@ -2230,6 +2202,34 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     )
   end issue236BugReproduction
 
+  private def verifyContent(
+      path: FakePath,
+      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
+  )(
+      expectedTokens: IndexedSeq[Token],
+      equality: (Token, Token) => Boolean = Token.equality
+  ): Unit =
+    println(fansi.Color.Yellow(s"Checking $path...\n"))
+    println(fansi.Color.Yellow("Expected..."))
+    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
+
+    mergeResultsByPath(path) match
+      case FullyMerged(result) =>
+        println(fansi.Color.Yellow("Fully merged result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(result)))
+        assert(result.corresponds(expectedTokens)(equality))
+      case MergedWithConflicts(baseResult, leftResult, rightResult) =>
+        println(fansi.Color.Red(s"Base result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(baseResult)))
+        println(fansi.Color.Red(s"Left result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+        println(fansi.Color.Red(s"Right result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+        fail("Should have seen a clean merge.")
+    end match
+  end verifyContent
+
   @TestFactory
   def lastMinuteConflictResolution(): DynamicTests =
     val configuration = Configuration(
@@ -2316,6 +2316,60 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       verifyContent(placeholderPath, mergeResultsByPath)(expectedTokens)
     }
   end lastMinuteConflictResolution
+
+  @Test
+  def issue247BugReproduction(): Unit =
+    val configuration = Configuration(
+      minimumMatchSize = 4,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
+
+    val baseSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(placeholderPath -> tokens("""
+          |Merge a heavily refactored codebase and stay sane.
+          |""".stripMargin).get),
+      label = "base"
+    )
+    val leftSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(placeholderPath -> tokens("""
+          |Merge a heavily refactored codebase and stay in, lame.
+          |""".stripMargin).get),
+      label = "left"
+    )
+    val rightSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(placeholderPath -> tokens("""
+          |Merge a heavily refactored codebase and stay in lane.
+          |""".stripMargin).get),
+      label = "right"
+    )
+
+    val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+      baseSources = baseSources,
+      leftSources = leftSources,
+      rightSources = rightSources
+    )(configuration): @unchecked
+
+    val (mergeResultsByPath, _) =
+      codeMotionAnalysis.merge
+
+    val Some(MergedWithConflicts(baseContent, leftContent, rightContent)) =
+      mergeResultsByPath.get(placeholderPath): @unchecked
+
+    assert(tokens("""
+                    |Merge a heavily refactored codebase and stay in.
+                    |""".stripMargin).get == baseContent)
+
+    assert(tokens("""
+                    |Merge a heavily refactored codebase and stay in, lame.
+                    |""".stripMargin).get == leftContent)
+    assert(tokens("""
+                    |Merge a heavily refactored codebase and stay in lane.
+                    |""".stripMargin).get == rightContent)
+  end issue247BugReproduction
 
 end CodeMotionAnalysisExtensionTest
 
