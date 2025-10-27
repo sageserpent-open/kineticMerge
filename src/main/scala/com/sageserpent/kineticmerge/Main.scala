@@ -74,6 +74,18 @@ object Main extends StrictLogging:
     )
   end main
 
+  /** @param commandLineArguments
+    *   Command line arguments as varargs.
+    * @return
+    *   The exit code as a plain integer, suitable for consumption by both Scala
+    *   and Java client code.
+    */
+  @varargs
+  def apply(commandLineArguments: String*): Int = apply(
+    progressRecording = NoProgressRecording,
+    commandLineArguments = commandLineArguments*
+  )
+
   /** @param progressRecording
     * @param commandLineArguments
     *   Command line arguments as varargs.
@@ -388,9 +400,6 @@ object Main extends StrictLogging:
   private def right[Payload](payload: Payload): Workflow[Payload] =
     EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
 
-  private def underline(anything: Any): Str =
-    fansi.Underlined.On(anything.toString)
-
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
       EitherT
@@ -410,17 +419,8 @@ object Main extends StrictLogging:
       workflow.semiflatTap(_ => WriterT.tell(List(Right(message))))
   end extension
 
-  /** @param commandLineArguments
-    *   Command line arguments as varargs.
-    * @return
-    *   The exit code as a plain integer, suitable for consumption by both Scala
-    *   and Java client code.
-    */
-  @varargs
-  def apply(commandLineArguments: String*): Int = apply(
-    progressRecording = NoProgressRecording,
-    commandLineArguments = commandLineArguments*
-  )
+  private def underline(anything: Any): Str =
+    fansi.Underlined.On(anything.toString)
 
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](
@@ -1940,7 +1940,6 @@ object Main extends StrictLogging:
                   yield partialResult.copy(goodForAMergeCommit = false)
                 else
                   for
-                    _                      <- prelude
                     _                      <- recordDeletionInIndex(path)
                     _                      <- deleteFile(path)
                     decoratedPartialResult <-
@@ -2024,9 +2023,7 @@ object Main extends StrictLogging:
                   yield partialResult.copy(goodForAMergeCommit = false)
                 else
                   for
-                    _                      <- prelude
                     _                      <- recordDeletionInIndex(path)
-                    _                      <- deleteFile(path)
                     decoratedPartialResult <-
                       captureRenamesOfPathDeletedOnJustOneSide
                   yield decoratedPartialResult
