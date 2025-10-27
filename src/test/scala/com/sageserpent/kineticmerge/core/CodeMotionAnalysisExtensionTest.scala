@@ -624,7 +624,10 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         val (mergeResultsByPath, _) =
           codeMotionAnalysis.merge
 
-        verifyContent(placeholderPath, mergeResultsByPath)(expected, _ == _)
+        verifyContent(placeholderPath, mergeResultsByPath)(
+          expected,
+          _ == _ // This makes verification whitespace-sensitive.
+        )
     }
   end whitespaceOnlyEditing
 
@@ -712,7 +715,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
         verifyContent(renamedForCodeMotionPath, mergeResultsByPath)(
           expected,
-          _ == _
+          _ == _ // This makes verification whitespace-sensitive.
         )
       }
   end whitespaceOnlyEditingWithCodeMotion
@@ -2358,6 +2361,9 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
     val Some(MergedWithConflicts(baseContent, leftContent, rightContent)) =
       mergeResultsByPath.get(placeholderPath): @unchecked
+
+    // NOTE: these assertions use `==`, rather than `Token.equality`: this makes
+    // them whitespace-sensitive.
 
     assert(tokens("""
                     |Merge a heavily refactored codebase and stay in.
