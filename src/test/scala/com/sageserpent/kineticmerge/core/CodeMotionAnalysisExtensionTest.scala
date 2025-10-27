@@ -624,7 +624,10 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         val (mergeResultsByPath, _) =
           codeMotionAnalysis.merge
 
-        verifyContent(placeholderPath, mergeResultsByPath)(expected, _ == _)
+        verifyContent(placeholderPath, mergeResultsByPath)(
+          expected,
+          _ == _ // This makes verification whitespace-sensitive.
+        )
     }
   end whitespaceOnlyEditing
 
@@ -712,7 +715,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
 
         verifyContent(renamedForCodeMotionPath, mergeResultsByPath)(
           expected,
-          _ == _
+          _ == _ // This makes verification whitespace-sensitive.
         )
       }
   end whitespaceOnlyEditingWithCodeMotion
@@ -831,6 +834,41 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           verifyAbsenceOfContent(originalPath, mergeResultsByPath)
       }
   end codeMotionAcrossAFileRename
+
+  private def verifyAbsenceOfContent(
+      path: FakePath,
+      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
+  ): Unit =
+    mergeResultsByPath(path) match
+      case FullyMerged(result) =>
+        assert(
+          result.isEmpty,
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render + fansi.Color
+            .Green(
+              reconstituteTextFrom(result)
+            )
+            .render
+        )
+      case MergedWithConflicts(baseResult, leftResult, rightResult) =>
+        fail(
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render
+            + fansi.Color.Red(s"\nBase result...\n")
+            + fansi.Color.Green(reconstituteTextFrom(baseResult)).render
+            + fansi.Color.Red(s"\nLeft result...\n")
+            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
+            + fansi.Color.Red(s"\nRight result...\n").render
+            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
+        )
+    end match
+  end verifyAbsenceOfContent
 
   @TestFactory
   def codeMotionAcrossTwoFilesWhoseContentIsCombinedTogetherToMakeANewReplacementFile()
@@ -2037,41 +2075,6 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       )
     }
   end issue144BugReproduction
-
-  private def verifyAbsenceOfContent(
-      path: FakePath,
-      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
-  ): Unit =
-    mergeResultsByPath(path) match
-      case FullyMerged(result) =>
-        assert(
-          result.isEmpty,
-          fansi.Color
-            .Yellow(
-              s"\nShould not have this content at $path...\n"
-            )
-            .render + fansi.Color
-            .Green(
-              reconstituteTextFrom(result)
-            )
-            .render
-        )
-      case MergedWithConflicts(baseResult, leftResult, rightResult) =>
-        fail(
-          fansi.Color
-            .Yellow(
-              s"\nShould not have this content at $path...\n"
-            )
-            .render
-            + fansi.Color.Red(s"\nBase result...\n")
-            + fansi.Color.Green(reconstituteTextFrom(baseResult)).render
-            + fansi.Color.Red(s"\nLeft result...\n")
-            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
-            + fansi.Color.Red(s"\nRight result...\n").render
-            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
-        )
-    end match
-  end verifyAbsenceOfContent
 
   @Test
   def issue236BugReproduction(): Unit =
