@@ -95,7 +95,6 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                 rightElement
               ) =>
             // Look at the content and use *exact* comparison.
-
             val lhsIsCompletelyUnchanged =
               baseElement.content == leftElement.content
             val rhsIsCompletelyUnchanged =
