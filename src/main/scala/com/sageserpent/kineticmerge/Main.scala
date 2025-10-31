@@ -928,7 +928,7 @@ object Main extends StrictLogging:
                     s"Unexpected error: could not advance branch ${underline(ourBranchHead)} to commit ${underline(commitId)}."
                   )
                 _ <- right(()).logOperation(
-                  s"Successful merge, made a new commit ${underline(commitId)}"
+                  s"Successful merge, made a new commit ${underline(commitId)}."
                 )
               yield successfulMerge
             else
