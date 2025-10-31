@@ -367,9 +367,9 @@ object Main extends StrictLogging:
 
             exitCode <-
               inTopLevelWorkingDirectory.mergeWithRollback(
+                bestAncestorCommitId,
                 ourBranchHead,
                 theirBranchHead,
-                bestAncestorCommitId,
                 mergeInputs,
                 noCommit,
                 noFastForward,
@@ -866,9 +866,9 @@ object Main extends StrictLogging:
     end mergeInputsOf
 
     def mergeWithRollback(
-        ourBranchHead: String @@ Main.Tags.CommitOrBranchName,
-        theirBranchHead: String @@ Main.Tags.CommitOrBranchName,
-        bestAncestorCommitId: String @@ Main.Tags.CommitOrBranchName,
+        bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
+        ourBranchHead: String @@ Tags.CommitOrBranchName,
+        theirBranchHead: String @@ Tags.CommitOrBranchName,
         mergeInputs: List[(Path, MergeInput)],
         noCommit: Boolean,
         noFastForward: Boolean,
