@@ -370,11 +370,10 @@ object Main extends StrictLogging:
                 bestAncestorCommitId,
                 ourBranchHead,
                 theirBranchHead,
-                mergeInputs,
                 noCommit,
                 noFastForward,
                 configuration
-              )
+              )(mergeInputs)
           yield exitCode
           end for
     yield exitCode
@@ -869,11 +868,10 @@ object Main extends StrictLogging:
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
         ourBranchHead: String @@ Tags.CommitOrBranchName,
         theirBranchHead: String @@ Tags.CommitOrBranchName,
-        mergeInputs: List[(Path, MergeInput)],
         noCommit: Boolean,
         noFastForward: Boolean,
         configuration: Configuration
-    ): Workflow[Int @@ Tags.ExitCode] =
+    )(mergeInputs: List[(Path, MergeInput)]): Workflow[Int @@ Tags.ExitCode] =
       val workflow =
         for
           goodForAMergeCommit <- indexUpdates(
@@ -1264,14 +1262,14 @@ object Main extends StrictLogging:
                   )
                 case (None, Some(originalPathRenamedOnTheRight)) =>
                   right(()).logOperation(
-                    s"Conflict - file ${underline(path)} was added on our branch ${underline(ourBranchHead)} and is a rename on their branch ${underline(theirBranchHead)} of ${underline(originalPathRenamedOnTheRight)}."
+                    s"Conflict - file ${underline(path)} was added on our branch ${underline(ourBranchHead)} and is a rename on their branch ${underline(theirBranchHead)} of ${underline(originalPathRenamedOnTheRight)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
                   )
                 case (
                       Some(originalPathRenamedOnTheLeft),
                       Some(originalPathRenamedOnTheRight)
                     ) =>
                   right(()).logOperation(
-                    s"Conflict - file ${underline(path)} is a rename on our branch ${underline(ourBranchHead)} of ${underline(originalPathRenamedOnTheLeft)} and is a rename on their branch ${underline(theirBranchHead)} of ${underline(originalPathRenamedOnTheRight)}."
+                    s"Conflict - file ${underline(path)} is a rename on our branch ${underline(ourBranchHead)} of ${underline(originalPathRenamedOnTheLeft)} and is a rename on their branch ${underline(theirBranchHead)} of ${underline(originalPathRenamedOnTheRight)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
                   )
             }
 
@@ -1689,8 +1687,8 @@ object Main extends StrictLogging:
             case JustOurModification(
                   ourModification,
                   bestAncestorCommitIdMode,
-                  bestAncestorCommitIdBlobId,
-                  bestAncestorCommitIdContent
+                  _,
+                  _
                 ) =>
               mergeResultsByPath(path) match
                 case FullyMerged(tokens) =>
@@ -1727,8 +1725,8 @@ object Main extends StrictLogging:
             case JustTheirModification(
                   theirModification,
                   bestAncestorCommitIdMode,
-                  bestAncestorCommitIdBlobId,
-                  bestAncestorCommitIdContent
+                  _,
+                  _
                 ) =>
               mergeResultsByPath(path) match
                 case FullyMerged(tokens) =>
@@ -1892,6 +1890,7 @@ object Main extends StrictLogging:
               val tokens = mergeResultsByPath(path) match
                 case FullyMerged(mergedTokens)                  => mergedTokens
                 case MergedWithConflicts(_, ourMergedTokens, _) =>
+                  // TODO: what about the base's view of the merge?
                   // We don't care about their view of the merge - their
                   // side simply deleted the whole file, so it contributes
                   // nothing interesting to the merge; the only point of the
@@ -1974,6 +1973,7 @@ object Main extends StrictLogging:
               val tokens = mergeResultsByPath(path) match
                 case FullyMerged(mergedTokens) => mergedTokens
                 case MergedWithConflicts(_, _, theirMergedTokens) =>
+                  // TODO: what about the base's view of the merge?
                   // We don't care about our view of the merge - our side
                   // simply deleted the whole file, so it contributes
                   // nothing interesting to the merge; the only point of the
@@ -2089,8 +2089,8 @@ object Main extends StrictLogging:
                   _,
                   _,
                   bestAncestorCommitIdMode,
-                  bestAncestorCommitIdBlobId,
-                  bestAncestorCommitIdContent,
+                  _,
+                  _,
                   mergedFileMode
                 ) =>
               mergeResultsByPath(path) match
