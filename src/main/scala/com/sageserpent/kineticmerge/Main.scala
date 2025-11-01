@@ -470,13 +470,11 @@ object Main extends StrictLogging:
     case JustOurModification(
         ourModification: Change.Modification,
         bestAncestorCommitIdMode: String @@ Tags.Mode,
-        bestAncestorCommitIdBlobId: String @@ Tags.BlobId,
         bestAncestorCommitIdContent: String @@ Tags.Content
     )
     case JustTheirModification(
         theirModification: Change.Modification,
         bestAncestorCommitIdMode: String @@ Tags.Mode,
-        bestAncestorCommitIdBlobId: String @@ Tags.BlobId,
         bestAncestorCommitIdContent: String @@ Tags.Content
     )
     case JustOurAddition(ourAddition: Change.Addition)
@@ -504,7 +502,6 @@ object Main extends StrictLogging:
         ourModification: Change.Modification,
         theirModification: Change.Modification,
         bestAncestorCommitIdMode: String @@ Tags.Mode,
-        bestAncestorCommitIdBlobId: String @@ Tags.BlobId,
         bestAncestorCommitIdContent: String @@ Tags.Content,
         mergedFileMode: String @@ Tags.Mode
     )
@@ -703,7 +700,6 @@ object Main extends StrictLogging:
             yield path -> JustOurModification(
               ourModification,
               bestAncestorCommitIdMode,
-              bestAncestorCommitIdBlobId,
               bestAncestorCommitIdContent
             )
 
@@ -719,7 +715,6 @@ object Main extends StrictLogging:
             yield path -> JustTheirModification(
               theirModification,
               bestAncestorCommitIdMode,
-              bestAncestorCommitIdBlobId,
               bestAncestorCommitIdContent
             )
 
@@ -843,7 +838,6 @@ object Main extends StrictLogging:
               ourModification,
               theirModification,
               bestAncestorCommitIdMode,
-              bestAncestorCommitIdBlobId,
               bestAncestorCommitIdContent,
               mergedFileMode
             )
@@ -1059,7 +1053,6 @@ object Main extends StrictLogging:
               case JustOurModification(
                     ourModification,
                     _,
-                    _,
                     bestAncestorCommitIdContent
                   ) =>
                 val unchangedContent = tokens(bestAncestorCommitIdContent).get
@@ -1075,7 +1068,6 @@ object Main extends StrictLogging:
 
               case JustTheirModification(
                     theirModification,
-                    _,
                     _,
                     bestAncestorCommitIdContent
                   ) =>
@@ -1183,7 +1175,6 @@ object Main extends StrictLogging:
               case BothContributeAModification(
                     ourModification,
                     theirModification,
-                    _,
                     _,
                     bestAncestorCommitIdContent,
                     _
@@ -1687,7 +1678,6 @@ object Main extends StrictLogging:
             case JustOurModification(
                   ourModification,
                   bestAncestorCommitIdMode,
-                  _,
                   _
                 ) =>
               mergeResultsByPath(path) match
@@ -1725,7 +1715,6 @@ object Main extends StrictLogging:
             case JustTheirModification(
                   theirModification,
                   bestAncestorCommitIdMode,
-                  _,
                   _
                 ) =>
               mergeResultsByPath(path) match
@@ -1979,6 +1968,8 @@ object Main extends StrictLogging:
                   // nothing interesting to the merge; the only point of the
                   // merge here was to pick up propagated edits / deletions
                   // and to note move destinations.
+                  // TODO: is this even necessary? How would there be merge
+                  // conflicts?
                   theirMergedTokens
 
               val mergedFileContent = reconstituteTextFrom(tokens)
@@ -2089,7 +2080,6 @@ object Main extends StrictLogging:
                   _,
                   _,
                   bestAncestorCommitIdMode,
-                  _,
                   _,
                   mergedFileMode
                 ) =>
