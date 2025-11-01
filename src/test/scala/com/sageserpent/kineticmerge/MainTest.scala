@@ -812,7 +812,7 @@ class MainTest:
                   if ourBranchIsBehindTheirs then masterBranch -> advancedBranch
                   else advancedBranch                          -> masterBranch
 
-                val exitCode = Main.mergeTheirBranch(
+                val exitCode = Main.mergeSides(
                   ApplicationRequest.default.copy(
                     theirBranchHead =
                       theirBranch.taggedWith[Tags.CommitOrBranchName],
@@ -913,7 +913,7 @@ class MainTest:
                 if flipBranches then newFileBranch -> masterBranch
                 else masterBranch                  -> newFileBranch
 
-              val exitCode = Main.mergeTheirBranch(
+              val exitCode = Main.mergeSides(
                 ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
@@ -982,7 +982,7 @@ class MainTest:
                 if flipBranches then deletedFileBranch -> masterBranch
                 else masterBranch                      -> deletedFileBranch
 
-              val exitCode = Main.mergeTheirBranch(
+              val exitCode = Main.mergeSides(
                 ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
@@ -1057,7 +1057,7 @@ class MainTest:
                 if flipBranches then benignTwinBranch -> masterBranch
                 else masterBranch                     -> benignTwinBranch
 
-              val exitCode = Main.mergeTheirBranch(
+              val exitCode = Main.mergeSides(
                 ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
@@ -1130,7 +1130,7 @@ class MainTest:
                 if flipBranches then evilTwinBranch -> masterBranch
                 else masterBranch                   -> evilTwinBranch
 
-              val exitCode = Main.mergeTheirBranch(
+              val exitCode = Main.mergeSides(
                 ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
@@ -1208,7 +1208,7 @@ class MainTest:
                 if flipBranches then deletedFileBranch -> masterBranch
                 else masterBranch                      -> deletedFileBranch
 
-              val exitCode = Main.mergeTheirBranch(
+              val exitCode = Main.mergeSides(
                 ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
@@ -1297,7 +1297,7 @@ class MainTest:
                 if flipBranches then deletedFileBranch -> masterBranch
                 else masterBranch                      -> deletedFileBranch
 
-              val exitCode = Main.mergeTheirBranch(
+              val exitCode = Main.mergeSides(
                 ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
@@ -1383,7 +1383,7 @@ class MainTest:
                 if flipBranches then deletedFileBranch -> masterBranch
                 else masterBranch                      -> deletedFileBranch
 
-              val exitCode = Main.mergeTheirBranch(
+              val exitCode = Main.mergeSides(
                 ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
@@ -1467,7 +1467,7 @@ class MainTest:
                   concurrentlyModifiedFileBranch -> masterBranch
                 else masterBranch -> concurrentlyModifiedFileBranch
 
-              val exitCode = Main.mergeTheirBranch(
+              val exitCode = Main.mergeSides(
                 ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
@@ -1550,7 +1550,7 @@ class MainTest:
                   concurrentlyDeletedFileBranch -> masterBranch
                 else masterBranch               -> concurrentlyDeletedFileBranch
 
-              val exitCode = Main.mergeTheirBranch(
+              val exitCode = Main.mergeSides(
                 ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
@@ -1629,7 +1629,7 @@ class MainTest:
                   concurrentlyModifiedFileBranch -> masterBranch
                 else masterBranch -> concurrentlyModifiedFileBranch
 
-              val exitCode = Main.mergeTheirBranch(
+              val exitCode = Main.mergeSides(
                 ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
@@ -1698,7 +1698,7 @@ class MainTest:
                 if flipBranches then movedFileBranch -> masterBranch
                 else masterBranch                    -> movedFileBranch
 
-              val exitCode = Main.mergeTheirBranch(
+              val exitCode = Main.mergeSides(
                 ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
@@ -1783,7 +1783,7 @@ class MainTest:
                   if flipBranches then splitFileBranch -> masterBranch
                   else masterBranch                    -> splitFileBranch
 
-                val exitCode = Main.mergeTheirBranch(
+                val exitCode = Main.mergeSides(
                   ApplicationRequest.default.copy(
                     theirBranchHead =
                       theirBranch.taggedWith[Tags.CommitOrBranchName],
@@ -1887,7 +1887,7 @@ class MainTest:
                   if flipBranches then condensedFilesBranch -> masterBranch
                   else masterBranch -> condensedFilesBranch
 
-                val exitCode = Main.mergeTheirBranch(
+                val exitCode = Main.mergeSides(
                   ApplicationRequest.default.copy(
                     theirBranchHead =
                       theirBranch.taggedWith[Tags.CommitOrBranchName],
@@ -1967,7 +1967,7 @@ class MainTest:
                 if flipBranches then swappedFilesBranch -> masterBranch
                 else masterBranch                       -> swappedFilesBranch
 
-              val exitCode = Main.mergeTheirBranch(
+              val exitCode = Main.mergeSides(
                 ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
@@ -2049,7 +2049,7 @@ class MainTest:
                 if flipBranches then swappedFilesBranch -> masterBranch
                 else masterBranch                       -> swappedFilesBranch
 
-              val exitCode = Main.mergeTheirBranch(
+              val exitCode = Main.mergeSides(
                 ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
@@ -2230,7 +2230,7 @@ class MainTest:
                 if flipBranches then masterBranch
                 else movedFileBranch
 
-              val _ = Main.mergeTheirBranch(
+              val _ = Main.mergeSides(
                 ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
@@ -2281,7 +2281,7 @@ class MainTest:
                 if flipBranches then movedFileBranch -> masterBranch
                 else masterBranch                    -> movedFileBranch
 
-              val exitCode = Main.mergeTheirBranch(
+              val exitCode = Main.mergeSides(
                 ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
@@ -2355,7 +2355,7 @@ class MainTest:
                 if flipBranches then movedFileBranch -> masterBranch
                 else masterBranch                    -> movedFileBranch
 
-              val exitCode = Main.mergeTheirBranch(
+              val exitCode = Main.mergeSides(
                 ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
@@ -2433,7 +2433,7 @@ class MainTest:
                 if flipBranches then condensedFileBranch -> masterBranch
                 else masterBranch                        -> condensedFileBranch
 
-              val exitCode = Main.mergeTheirBranch(
+              val exitCode = Main.mergeSides(
                 ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
@@ -2507,7 +2507,7 @@ class MainTest:
                 if flipBranches then movedFileBranch -> masterBranch
                 else masterBranch                    -> movedFileBranch
 
-              val exitCode = Main.mergeTheirBranch(
+              val exitCode = Main.mergeSides(
                 ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
@@ -2589,7 +2589,7 @@ class MainTest:
                 if flipBranches then movedFileBranch -> masterBranch
                 else masterBranch                    -> movedFileBranch
 
-              val exitCode = Main.mergeTheirBranch(
+              val exitCode = Main.mergeSides(
                 ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
@@ -2671,7 +2671,7 @@ class MainTest:
                   casesLimitStrategyMovesBranch -> masterBranch
                 else masterBranch               -> casesLimitStrategyMovesBranch
 
-              val exitCode = Main.mergeTheirBranch(
+              val exitCode = Main.mergeSides(
                 ApplicationRequest.default.copy(
                   theirBranchHead =
                     theirBranch.taggedWith[Tags.CommitOrBranchName],
