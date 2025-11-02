@@ -1584,7 +1584,16 @@ object Main extends StrictLogging:
         path: RelPath
     ) =
       IO {
-        os.copy.over(sourceDirectory / path, targetDirectory / path)
+        // NOTE: have to be pedantic about copying, because `path` may refer to
+        // non-existent directories, and there may or may not be a file at the
+        // destination already. Yes, there is `os.copy.over`, but that is quite
+        // fragile.
+        os.remove(targetDirectory / path, checkExists = false)
+        os.copy(
+          sourceDirectory / path,
+          targetDirectory / path,
+          createFolders = true
+        )
       }.labelExceptionWith(errorMessage =
         s"Unexpected error: could not copy file ${underline(path)} from ${underline(sourceDirectory)} into target directory ${underline(targetDirectory)}."
       )
