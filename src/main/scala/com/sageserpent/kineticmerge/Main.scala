@@ -1343,6 +1343,7 @@ object Main extends StrictLogging:
               // `CodeMotionAnalysisExtension.mergeResultsByPath` and does not
               // necessarily remove the content.
               for
+                _                      <- deleteFile(baseDirectory)(path)
                 _                      <- deleteFile(theirDirectory)(path)
                 decoratedPartialResult <-
                   captureRenamesOfPathDeletedOnJustOneSide
@@ -1355,6 +1356,7 @@ object Main extends StrictLogging:
               // `CodeMotionAnalysisExtension.mergeResultsByPath` and does not
               // necessarily remove the content.
               for
+                _                      <- deleteFile(baseDirectory)(path)
                 _                      <- deleteFile(ourDirectory)(path)
                 decoratedPartialResult <-
                   captureRenamesOfPathDeletedOnJustOneSide
@@ -1367,7 +1369,6 @@ object Main extends StrictLogging:
               val tokens = mergeResultsByPath(path) match
                 case FullyMerged(mergedTokens)                  => mergedTokens
                 case MergedWithConflicts(_, ourMergedTokens, _) =>
-                  // TODO: what about the base's view of the merge?
                   // We don't care about their view of the merge - their
                   // side simply deleted the whole file, so it contributes
                   // nothing interesting to the merge; the only point of the
@@ -1390,6 +1391,7 @@ object Main extends StrictLogging:
                   yield partialResult.copy(cleanlyMerged = false)
                 else
                   for
+                    _                      <- deleteFile(baseDirectory)(path)
                     _                      <- deleteFile(ourDirectory)(path)
                     decoratedPartialResult <-
                       captureRenamesOfPathDeletedOnJustOneSide
@@ -1407,7 +1409,6 @@ object Main extends StrictLogging:
               val tokens = mergeResultsByPath(path) match
                 case FullyMerged(mergedTokens) => mergedTokens
                 case MergedWithConflicts(_, _, theirMergedTokens) =>
-                  // TODO: what about the base's view of the merge?
                   // We don't care about our view of the merge - our side
                   // simply deleted the whole file, so it contributes
                   // nothing interesting to the merge; the only point of the
@@ -1430,6 +1431,7 @@ object Main extends StrictLogging:
                   yield partialResult.copy(cleanlyMerged = false)
                 else
                   for
+                    _                      <- deleteFile(baseDirectory)(path)
                     _                      <- deleteFile(theirDirectory)(path)
                     decoratedPartialResult <-
                       captureRenamesOfPathDeletedOnJustOneSide
