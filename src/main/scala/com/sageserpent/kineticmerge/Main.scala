@@ -446,7 +446,7 @@ object Main extends StrictLogging:
         containedFiles <-
           if isReallyADirectory then
             IO {
-              os.walk(absolutePathOfDirectory, skip = os.isDir): Seq[Path]
+              os.walk(absolutePathOfDirectory).filter(os.isFile): Seq[Path]
             }.labelExceptionWith(
               s"Could not list files within directory tree for ${underline(absolutePathOfDirectory)}."
             )
