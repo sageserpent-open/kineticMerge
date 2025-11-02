@@ -316,7 +316,8 @@ object Main extends StrictLogging:
 
     log.foreach {
       case Left(errorMessage)      => Console.err.println(errorMessage)
-      case Right(operationMessage) => Console.println(operationMessage)
+      case Right(operationMessage) =>
+        if !quiet then Console.println(operationMessage)
     }
 
     exitCode
@@ -370,7 +371,6 @@ object Main extends StrictLogging:
 
   case class ApplicationRequest(
       mergeSideDirectories: Seq[FilePath],
-      // TODO: this isn't used yet!
       quiet: Boolean,
       minimumMatchSize: Int,
       thresholdSizeFractionForMatching: Double,

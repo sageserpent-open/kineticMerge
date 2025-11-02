@@ -567,6 +567,12 @@ object MainTest extends ProseExamples:
       .text()
       .strip
 
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
   private def verifyMergeMakesANewCommitWithACleanIndex(path: Path)(
       commitOfOneBranch: String,
       commitOfTheOtherBranch: String,
@@ -623,12 +629,6 @@ object MainTest extends ProseExamples:
       .split("\\s+") match
       case Array(postMergeCommit, parents*) => postMergeCommit -> parents
     : @unchecked
-
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
-
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
 
   private def verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit(
       path: Path
@@ -841,6 +841,7 @@ class MainTest:
                     ApplicationRequest.default.copy(
                       mergeSideDirectories =
                         Seq(baseDirectory, leftDirectory, rightDirectory),
+                      quiet = false,
                       minimumAmbiguousMatchSize = 0
                     )
                   )(workingDirectory =
