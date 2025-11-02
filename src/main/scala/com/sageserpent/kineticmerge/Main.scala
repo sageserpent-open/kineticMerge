@@ -485,7 +485,13 @@ object Main extends StrictLogging:
       Map.from(
         deletedPaths.map(path => path -> Change.Deletion) ++ addedPaths.map(
           path => path -> Change.Addition(after(path))
-        ) ++ modifiedPaths.map(path => path -> Change.Modification(after(path)))
+        ) ++ modifiedPaths.collect({ (path: RelPath) =>
+          val contentBefore = before(path)
+          val contentAfter  = after(path)
+          Option.when(contentAfter != contentBefore)(
+            path -> Change.Modification(contentAfter)
+          )
+        }.unlift)
       )
     end changes
 
