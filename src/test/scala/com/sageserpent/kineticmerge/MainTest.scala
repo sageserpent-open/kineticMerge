@@ -913,55 +913,53 @@ class MainTest:
       }
   end cleanMergeBringingInANewFile
 
-//  @TestFactory
-//  def cleanMergeDeletingAFile(): DynamicTests =
-//    (optionalSubdirectories and trialsApi.booleans)
-//      .withLimit(10)
-//      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
-//        gitRepository()
-//          .use(path =>
-//            IO {
-//              optionalSubdirectory
-//                .foreach(subdirectory => os.makeDir(path / subdirectory))
-//
-//              introducingArthur(path)
-//
-//              val deletedFileBranch = "deletedFileBranch"
-//
-//              makeNewBranch(path)(deletedFileBranch)
-//
-//              exeuntArthur(path)
-//
-//              val commitOfDeletedFileBranch = currentCommit(path)
-//
-//              checkoutBranch(path)(masterBranch)
-//
-//              enterTysonStageLeft(path)
-//
-//              val commitOfMasterBranch = currentCommit(path)
-//
-//              if flipBranches then checkoutBranch(path)(deletedFileBranch)
-//              end if
-//
-//              val (ourBranch, theirBranch) =
-//                if flipBranches then deletedFileBranch -> masterBranch
-//                else masterBranch                      -> deletedFileBranch
-//
-//              val exitCode = Main.mergeSides(
-//                ApplicationRequest.default.copy(
-//                  theirBranchHead =
-//                    theirBranch.taggedWith[Tags.CommitOrBranchName],
-//                  minimumAmbiguousMatchSize = 0
-//                )
-//              )(workingDirectory =
-//                optionalSubdirectory.fold(ifEmpty = path)(path / _)
-//              )
-//            }
-//          )
-//          .unsafeRunSync()
-//      }
-//  end cleanMergeDeletingAFile
-//
+  @TestFactory
+  def cleanMergeDeletingAFile(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingArthur(path)
+
+              val deletedFileBranch = "deletedFileBranch"
+
+              makeNewBranch(path)(deletedFileBranch)
+
+              exeuntArthur(path)
+
+              val commitOfDeletedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              enterTysonStageLeft(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then checkoutBranch(path)(deletedFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then deletedFileBranch -> masterBranch
+                else masterBranch                      -> deletedFileBranch
+
+              val exitCode = mergeWrapper(
+                optionalSubdirectory,
+                path,
+                ourBranch,
+                theirBranch,
+                minimumAmbiguousMatchSize = 0
+              )
+            }
+          )
+          .unsafeRunSync()
+      }
+  end cleanMergeDeletingAFile
+
 //  @TestFactory
 //  def cleanMergeOfAFileAddedInBothBranches(): DynamicTests =
 //    (optionalSubdirectories and trialsApi.booleans)
