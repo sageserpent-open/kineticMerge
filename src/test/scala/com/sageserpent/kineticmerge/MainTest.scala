@@ -796,6 +796,32 @@ object MainTest extends ProseExamples:
     val rightDirectory = os.temp.dir(prefix = "right")
     snapshotRepositoryInto(path)(rightDirectory, theirBranch)
 
+    val basePathAndContents = os
+      .walk(baseDirectory)
+      .filter(os.isFile)
+      .map(path => path.relativeTo(baseDirectory) -> os.read(path))
+      .toSet
+    val leftPathAndContents = os
+      .walk(leftDirectory)
+      .filter(os.isFile)
+      .map(path => path.relativeTo(leftDirectory) -> os.read(path))
+      .toSet
+    val rightPathAndContents = os
+      .walk(rightDirectory)
+      .filter(os.isFile)
+      .map(path => path.relativeTo(rightDirectory) -> os.read(path))
+      .toSet
+
+    val unchanged =
+      (basePathAndContents intersect leftPathAndContents intersect rightPathAndContents)
+        .map(_._1)
+
+    unchanged.foreach { path =>
+      os.remove(baseDirectory / path)
+      os.remove(leftDirectory / path)
+      os.remove(rightDirectory / path)
+    }
+
     Main.mergeSides(
       ApplicationRequest.default.copy(
         mergeSideDirectories =
