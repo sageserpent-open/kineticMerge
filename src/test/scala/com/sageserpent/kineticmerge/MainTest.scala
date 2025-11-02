@@ -773,6 +773,39 @@ object MainTest extends ProseExamples:
       ).get
     )(tokenEquality)
 
+  private def mergeWrapper(
+      optionalSubdirectory: Option[RelPath],
+      path: Path,
+      ourBranch: String,
+      theirBranch: String,
+      minimumAmbiguousMatchSize: Int
+  ) =
+    val commonAncestor = os
+      .proc("git", "merge-base", ourBranch, theirBranch)
+      .call(path)
+      .out
+      .text()
+      .strip()
+
+    val baseDirectory = os.temp.dir(prefix = "base")
+    snapshotRepositoryInto(path)(baseDirectory, commonAncestor)
+
+    val leftDirectory = os.temp.dir(prefix = "left")
+    snapshotRepositoryInto(path)(leftDirectory, ourBranch)
+
+    val rightDirectory = os.temp.dir(prefix = "right")
+    snapshotRepositoryInto(path)(rightDirectory, theirBranch)
+
+    Main.mergeSides(
+      ApplicationRequest.default.copy(
+        mergeSideDirectories =
+          Seq(baseDirectory, leftDirectory, rightDirectory),
+        quiet = false,
+        minimumAmbiguousMatchSize = minimumAmbiguousMatchSize
+      )
+    )(workingDirectory = optionalSubdirectory.fold(ifEmpty = path)(path / _))
+  end mergeWrapper
+
   private def snapshotRepositoryInto(
       source: Path
   )(destination: Path, branch: String): Unit =
@@ -820,89 +853,66 @@ class MainTest:
                   if ourBranchIsBehindTheirs then masterBranch -> advancedBranch
                   else advancedBranch                          -> masterBranch
 
-                val exitCode =
-                  val commonAncestor = os
-                    .proc("git", "merge-base", ourBranch, theirBranch)
-                    .call(path)
-                    .out
-                    .text()
-                    .strip()
-
-                  val baseDirectory = os.temp.dir(prefix = "base")
-                  snapshotRepositoryInto(path)(baseDirectory, commonAncestor)
-
-                  val leftDirectory = os.temp.dir(prefix = "left")
-                  snapshotRepositoryInto(path)(leftDirectory, ourBranch)
-
-                  val rightDirectory = os.temp.dir(prefix = "right")
-                  snapshotRepositoryInto(path)(rightDirectory, theirBranch)
-
-                  Main.mergeSides(
-                    ApplicationRequest.default.copy(
-                      mergeSideDirectories =
-                        Seq(baseDirectory, leftDirectory, rightDirectory),
-                      quiet = false,
-                      minimumAmbiguousMatchSize = 0
-                    )
-                  )(workingDirectory =
-                    optionalSubdirectory.fold(ifEmpty = path)(path / _)
-                  )
-                end exitCode
+                val exitCode = mergeWrapper(
+                  optionalSubdirectory,
+                  path,
+                  ourBranch,
+                  theirBranch,
+                  minimumAmbiguousMatchSize = 0
+                )
               }
             )
             .unsafeRunSync()
       }
   end trivialMerge
 
-//  @TestFactory
-//  def cleanMergeBringingInANewFile(): DynamicTests =
-//    (optionalSubdirectories and trialsApi.booleans)
-//      .withLimit(10)
-//      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
-//        gitRepository()
-//          .use(path =>
-//            IO {
-//              optionalSubdirectory
-//                .foreach(subdirectory => os.makeDir(path / subdirectory))
-//
-//              introducingArthur(path)
-//
-//              val newFileBranch = "newFileBranch"
-//
-//              makeNewBranch(path)(newFileBranch)
-//
-//              enterTysonStageLeft(path)
-//
-//              val commitOfNewFileBranch = currentCommit(path)
-//
-//              checkoutBranch(path)(masterBranch)
-//
-//              arthurContinues(path)
-//
-//              val commitOfMasterBranch = currentCommit(path)
-//
-//              if flipBranches then checkoutBranch(path)(newFileBranch)
-//              end if
-//
-//              val (ourBranch, theirBranch) =
-//                if flipBranches then newFileBranch -> masterBranch
-//                else masterBranch                  -> newFileBranch
-//
-//              val exitCode = Main.mergeSides(
-//                ApplicationRequest.default.copy(
-//                  theirBranchHead =
-//                    theirBranch.taggedWith[Tags.CommitOrBranchName],
-//                  minimumAmbiguousMatchSize = 0
-//                )
-//              )(workingDirectory =
-//                optionalSubdirectory.fold(ifEmpty = path)(path / _)
-//              )
-//            }
-//          )
-//          .unsafeRunSync()
-//      }
-//  end cleanMergeBringingInANewFile
-//
+  @TestFactory
+  def cleanMergeBringingInANewFile(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingArthur(path)
+
+              val newFileBranch = "newFileBranch"
+
+              makeNewBranch(path)(newFileBranch)
+
+              enterTysonStageLeft(path)
+
+              val commitOfNewFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              arthurContinues(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then checkoutBranch(path)(newFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then newFileBranch -> masterBranch
+                else masterBranch                  -> newFileBranch
+
+              val exitCode = mergeWrapper(
+                optionalSubdirectory,
+                path,
+                ourBranch,
+                theirBranch,
+                minimumAmbiguousMatchSize = 0
+              )
+            }
+          )
+          .unsafeRunSync()
+      }
+  end cleanMergeBringingInANewFile
+
 //  @TestFactory
 //  def cleanMergeDeletingAFile(): DynamicTests =
 //    (optionalSubdirectories and trialsApi.booleans)
