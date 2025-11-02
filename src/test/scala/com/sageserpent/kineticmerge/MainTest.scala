@@ -822,7 +822,7 @@ object MainTest extends ProseExamples:
       os.remove(rightDirectory / path)
     }
 
-    Main.mergeSides(
+    val exitCode = Main.mergeSides(
       ApplicationRequest.default.copy(
         mergeSideDirectories =
           Seq(baseDirectory, leftDirectory, rightDirectory),
@@ -830,6 +830,10 @@ object MainTest extends ProseExamples:
         minimumAmbiguousMatchSize = minimumAmbiguousMatchSize
       )
     )(workingDirectory = optionalSubdirectory.fold(ifEmpty = path)(path / _))
+
+    assert(
+      2 > exitCode
+    ) // Either a successful merge or a conflict should be the outcome for these tests.
   end mergeWrapper
 
   private def snapshotRepositoryInto(
@@ -879,7 +883,7 @@ class MainTest:
                   if ourBranchIsBehindTheirs then masterBranch -> advancedBranch
                   else advancedBranch                          -> masterBranch
 
-                val exitCode = mergeWrapper(
+                mergeWrapper(
                   optionalSubdirectory,
                   path,
                   ourBranch,
@@ -926,7 +930,7 @@ class MainTest:
                 if flipBranches then newFileBranch -> masterBranch
                 else masterBranch                  -> newFileBranch
 
-              val exitCode = mergeWrapper(
+              mergeWrapper(
                 optionalSubdirectory,
                 path,
                 ourBranch,
@@ -973,7 +977,7 @@ class MainTest:
                 if flipBranches then deletedFileBranch -> masterBranch
                 else masterBranch                      -> deletedFileBranch
 
-              val exitCode = mergeWrapper(
+              mergeWrapper(
                 optionalSubdirectory,
                 path,
                 ourBranch,
@@ -986,732 +990,706 @@ class MainTest:
       }
   end cleanMergeDeletingAFile
 
-//  @TestFactory
-//  def cleanMergeOfAFileAddedInBothBranches(): DynamicTests =
-//    (optionalSubdirectories and trialsApi.booleans)
-//      .withLimit(10)
-//      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
-//        gitRepository()
-//          .use(path =>
-//            IO {
-//              optionalSubdirectory
-//                .foreach(subdirectory => os.makeDir(path / subdirectory))
-//
-//              sandraStopsByBriefly(path)
-//
-//              val benignTwinBranch = "benignTwin"
-//
-//              makeNewBranch(path)(benignTwinBranch)
-//
-//              introducingArthur(path)
-//
-//              arthurContinues(path)
-//
-//              val commitOfBenignTwinBranch = currentCommit(path)
-//
-//              checkoutBranch(path)(masterBranch)
-//
-//              introducingArthur(path)
-//
-//              sandraHeadsOffHome(path)
-//
-//              arthurClearsHisThroat(path)
-//
-//              val commitOfMasterBranch = currentCommit(path).strip
-//
-//              if flipBranches then checkoutBranch(path)(benignTwinBranch)
-//              end if
-//
-//              val (ourBranch, theirBranch) =
-//                if flipBranches then benignTwinBranch -> masterBranch
-//                else masterBranch                     -> benignTwinBranch
-//
-//              val exitCode = Main.mergeSides(
-//                ApplicationRequest.default.copy(
-//                  theirBranchHead =
-//                    theirBranch.taggedWith[Tags.CommitOrBranchName],
-//                  minimumAmbiguousMatchSize = 0
-//                )
-//              )(workingDirectory =
-//                optionalSubdirectory.fold(ifEmpty = path)(path / _)
-//              )
-//            }
-//          )
-//          .unsafeRunSync()
-//      }
-//  end cleanMergeOfAFileAddedInBothBranches
-//
-//  @TestFactory
-//  def conflictingAdditionOfTheSameFile(): DynamicTests =
-//    (optionalSubdirectories and trialsApi.booleans)
-//      .withLimit(4)
-//      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
-//        gitRepository()
-//          .use(path =>
-//            IO {
-//              optionalSubdirectory
-//                .foreach(subdirectory => os.makeDir(path / subdirectory))
-//
-//              introducingArthur(path)
-//
-//              sandraStopsByBriefly(path)
-//
-//              val evilTwinBranch = "evilTwin"
-//
-//              makeNewBranch(path)(evilTwinBranch)
-//
-//              evilTysonMakesDramaticEntranceExulting(path)
-//
-//              val commitOfEvilTwinBranch = currentCommit(path)
-//
-//              checkoutBranch(path)(masterBranch)
-//
-//              sandraHeadsOffHome(path)
-//
-//              enterTysonStageLeft(path)
-//
-//              val commitOfMasterBranch = currentCommit(path).strip
-//
-//              if flipBranches then checkoutBranch(path)(evilTwinBranch)
-//              end if
-//
-//              val (ourBranch, theirBranch) =
-//                if flipBranches then evilTwinBranch -> masterBranch
-//                else masterBranch                   -> evilTwinBranch
-//
-//              val exitCode = Main.mergeSides(
-//                ApplicationRequest.default.copy(
-//                  theirBranchHead =
-//                    theirBranch.taggedWith[Tags.CommitOrBranchName],
-//                  minimumAmbiguousMatchSize = 0
-//                )
-//              )(workingDirectory =
-//                optionalSubdirectory.fold(ifEmpty = path)(path / _)
-//              )
-//            }
-//          )
-//          .unsafeRunSync()
-//      }
-//  end conflictingAdditionOfTheSameFile
-//
-//  @TestFactory
-//  def conflictingInsertModificationAndDeletionOfTheSameFile(): DynamicTests =
-//    (optionalSubdirectories and trialsApi.booleans)
-//      .withLimit(4)
-//      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
-//        gitRepository()
-//          .use(path =>
-//            IO {
-//              optionalSubdirectory
-//                .foreach(subdirectory => os.makeDir(path / subdirectory))
-//
-//              introducingArthur(path)
-//
-//              sandraStopsByBriefly(path)
-//
-//              val deletedFileBranch = "deletedFileBranch"
-//
-//              makeNewBranch(path)(deletedFileBranch)
-//
-//              enterTysonStageLeft(path)
-//
-//              exeuntArthur(path)
-//
-//              val commitOfDeletedFileBranch = currentCommit(path)
-//
-//              checkoutBranch(path)(masterBranch)
-//
-//              sandraHeadsOffHome(path)
-//
-//              arthurContinues(path)
-//
-//              val commitOfMasterBranch = currentCommit(path)
-//
-//              val arthurOnTheRecord = os.read(path / arthur)
-//
-//              if flipBranches then checkoutBranch(path)(deletedFileBranch)
-//              end if
-//
-//              val (ourBranch, theirBranch) =
-//                if flipBranches then deletedFileBranch -> masterBranch
-//                else masterBranch                      -> deletedFileBranch
-//
-//              val exitCode = Main.mergeSides(
-//                ApplicationRequest.default.copy(
-//                  theirBranchHead =
-//                    theirBranch.taggedWith[Tags.CommitOrBranchName],
-//                  minimumAmbiguousMatchSize = 0
-//                )
-//              )(workingDirectory =
-//                optionalSubdirectory.fold(ifEmpty = path)(path / _)
-//              )
-//            }
-//          )
-//          .unsafeRunSync()
-//      }
-//  end conflictingInsertModificationAndDeletionOfTheSameFile
-//
-//  @TestFactory
-//  def conflictingEditModificationAndDeletionOfTheSameFile(): DynamicTests =
-//    (optionalSubdirectories and trialsApi.booleans)
-//      .withLimit(4)
-//      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
-//        gitRepository()
-//          .use(path =>
-//            IO {
-//              optionalSubdirectory
-//                .foreach(subdirectory => os.makeDir(path / subdirectory))
-//
-//              introducingArthur(path)
-//
-//              sandraStopsByBriefly(path)
-//
-//              val deletedFileBranch = "deletedFileBranch"
-//
-//              makeNewBranch(path)(deletedFileBranch)
-//
-//              enterTysonStageLeft(path)
-//
-//              exeuntArthur(path)
-//
-//              val commitOfDeletedFileBranch = currentCommit(path)
-//
-//              checkoutBranch(path)(masterBranch)
-//
-//              sandraHeadsOffHome(path)
-//
-//              // NOTE: this keeps the *original* content; we need to be sure
-//              // that isn't lost in the merge.
-//              arthurBecomesAnExpertOnCasesLimitStrategy(path)
-//
-//              val commitOfMasterBranch = currentCommit(path)
-//
-//              val arthurOnTheRecord = os.read(path / arthur)
-//
-//              if flipBranches then checkoutBranch(path)(deletedFileBranch)
-//              end if
-//
-//              val (ourBranch, theirBranch) =
-//                if flipBranches then deletedFileBranch -> masterBranch
-//                else masterBranch                      -> deletedFileBranch
-//
-//              val exitCode = Main.mergeSides(
-//                ApplicationRequest.default.copy(
-//                  theirBranchHead =
-//                    theirBranch.taggedWith[Tags.CommitOrBranchName],
-//                  minimumAmbiguousMatchSize = 0
-//                )
-//              )(workingDirectory =
-//                optionalSubdirectory.fold(ifEmpty = path)(path / _)
-//              )
-//            }
-//          )
-//          .unsafeRunSync()
-//      }
-//  end conflictingEditModificationAndDeletionOfTheSameFile
-//
-//  @TestFactory
-//  def conflictingContentClearanceModificationAndDeletionOfTheSameFile()
-//      : DynamicTests =
-//    (optionalSubdirectories and trialsApi.booleans)
-//      .withLimit(4)
-//      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
-//        gitRepository()
-//          .use(path =>
-//            IO {
-//              optionalSubdirectory
-//                .foreach(subdirectory => os.makeDir(path / subdirectory))
-//
-//              introducingArthur(path)
-//
-//              sandraStopsByBriefly(path)
-//
-//              val deletedFileBranch = "deletedFileBranch"
-//
-//              makeNewBranch(path)(deletedFileBranch)
-//
-//              enterTysonStageLeft(path)
-//
-//              exeuntArthur(path)
-//
-//              val commitOfDeletedFileBranch = currentCommit(path)
-//
-//              checkoutBranch(path)(masterBranch)
-//
-//              sandraHeadsOffHome(path)
-//
-//              arthurDeniesHavingSaidAnything(path)
-//
-//              val commitOfMasterBranch = currentCommit(path)
-//
-//              if flipBranches then checkoutBranch(path)(deletedFileBranch)
-//              end if
-//
-//              val (ourBranch, theirBranch) =
-//                if flipBranches then deletedFileBranch -> masterBranch
-//                else masterBranch                      -> deletedFileBranch
-//
-//              val exitCode = Main.mergeSides(
-//                ApplicationRequest.default.copy(
-//                  theirBranchHead =
-//                    theirBranch.taggedWith[Tags.CommitOrBranchName],
-//                  minimumAmbiguousMatchSize = 0
-//                )
-//              )(workingDirectory =
-//                optionalSubdirectory.fold(ifEmpty = path)(path / _)
-//              )
-//            }
-//          )
-//          .unsafeRunSync()
-//      }
-//  end conflictingContentClearanceModificationAndDeletionOfTheSameFile
-//
-//  @TestFactory
-//  def conflictingModificationOfTheSameFile(): DynamicTests =
-//    (optionalSubdirectories and trialsApi.booleans)
-//      .withLimit(4)
-//      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
-//        gitRepository()
-//          .use(path =>
-//            IO {
-//              optionalSubdirectory
-//                .foreach(subdirectory => os.makeDir(path / subdirectory))
-//
-//              introducingArthur(path)
-//
-//              sandraStopsByBriefly(path)
-//
-//              val concurrentlyModifiedFileBranch =
-//                "concurrentlyModifiedFileBranch"
-//
-//              makeNewBranch(path)(concurrentlyModifiedFileBranch)
-//
-//              enterTysonStageLeft(path)
-//
-//              arthurElaborates(path)
-//
-//              val commitOfConcurrentlyModifiedFileBranch = currentCommit(path)
-//
-//              checkoutBranch(path)(masterBranch)
-//
-//              sandraHeadsOffHome(path)
-//
-//              arthurContinues(path)
-//
-//              val commitOfMasterBranch = currentCommit(path)
-//
-//              if flipBranches then
-//                checkoutBranch(path)(concurrentlyModifiedFileBranch)
-//              end if
-//
-//              val (ourBranch, theirBranch) =
-//                if flipBranches then
-//                  concurrentlyModifiedFileBranch -> masterBranch
-//                else masterBranch -> concurrentlyModifiedFileBranch
-//
-//              val exitCode = Main.mergeSides(
-//                ApplicationRequest.default.copy(
-//                  theirBranchHead =
-//                    theirBranch.taggedWith[Tags.CommitOrBranchName],
-//                  minimumAmbiguousMatchSize = 0
-//                )
-//              )(workingDirectory =
-//                optionalSubdirectory.fold(ifEmpty = path)(path / _)
-//              )
-//            }
-//          )
-//          .unsafeRunSync()
-//      }
-//  end conflictingModificationOfTheSameFile
-//
-//  @TestFactory
-//  def cleanMergeOfAFileDeletedInBothBranches(): DynamicTests =
-//    (optionalSubdirectories and trialsApi.booleans)
-//      .withLimit(10)
-//      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
-//        gitRepository()
-//          .use(path =>
-//            IO {
-//              optionalSubdirectory
-//                .foreach(subdirectory => os.makeDir(path / subdirectory))
-//
-//              introducingArthur(path)
-//
-//              sandraStopsByBriefly(path)
-//
-//              val concurrentlyDeletedFileBranch =
-//                "concurrentlyDeletedFileBranch"
-//
-//              makeNewBranch(path)(concurrentlyDeletedFileBranch)
-//
-//              enterTysonStageLeft(path)
-//
-//              exeuntArthur(path)
-//
-//              val commitOfConcurrentlyDeletedFileBranch = currentCommit(path)
-//
-//              checkoutBranch(path)(masterBranch)
-//
-//              sandraHeadsOffHome(path)
-//
-//              arthurContinues(path)
-//
-//              arthurExcusesHimself(path)
-//
-//              val commitOfMasterBranch = currentCommit(path)
-//
-//              if flipBranches then
-//                checkoutBranch(path)(concurrentlyDeletedFileBranch)
-//              end if
-//
-//              val (ourBranch, theirBranch) =
-//                if flipBranches then
-//                  concurrentlyDeletedFileBranch -> masterBranch
-//                else masterBranch               -> concurrentlyDeletedFileBranch
-//
-//              val exitCode = Main.mergeSides(
-//                ApplicationRequest.default.copy(
-//                  theirBranchHead =
-//                    theirBranch.taggedWith[Tags.CommitOrBranchName],
-//                  minimumAmbiguousMatchSize = 0
-//                )
-//              )(workingDirectory =
-//                optionalSubdirectory.fold(ifEmpty = path)(path / _)
-//              )
-//            }
-//          )
-//          .unsafeRunSync()
-//      }
-//  end cleanMergeOfAFileDeletedInBothBranches
-//
-//  @TestFactory
-//  def cleanMergeOfAFileModifiedInBothBranches(): DynamicTests =
-//    (optionalSubdirectories and trialsApi.booleans)
-//      .withLimit(10)
-//      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
-//        gitRepository()
-//          .use(path =>
-//            IO {
-//              optionalSubdirectory
-//                .foreach(subdirectory => os.makeDir(path / subdirectory))
-//
-//              introducingArthur(path)
-//
-//              sandraStopsByBriefly(path)
-//
-//              val concurrentlyModifiedFileBranch =
-//                "concurrentlyModifiedFileBranch"
-//
-//              makeNewBranch(path)(concurrentlyModifiedFileBranch)
-//
-//              enterTysonStageLeft(path)
-//
-//              arthurCorrectsHimself(path)
-//
-//              val commitOfConcurrentlyModifiedFileBranch = currentCommit(path)
-//
-//              checkoutBranch(path)(masterBranch)
-//
-//              sandraHeadsOffHome(path)
-//
-//              arthurContinues(path)
-//
-//              val commitOfMasterBranch = currentCommit(path)
-//
-//              if flipBranches then
-//                checkoutBranch(path)(concurrentlyModifiedFileBranch)
-//              end if
-//
-//              val (ourBranch, theirBranch) =
-//                if flipBranches then
-//                  concurrentlyModifiedFileBranch -> masterBranch
-//                else masterBranch -> concurrentlyModifiedFileBranch
-//
-//              val exitCode = Main.mergeSides(
-//                ApplicationRequest.default.copy(
-//                  theirBranchHead =
-//                    theirBranch.taggedWith[Tags.CommitOrBranchName],
-//                  minimumAmbiguousMatchSize = 0
-//                )
-//              )(workingDirectory =
-//                optionalSubdirectory.fold(ifEmpty = path)(path / _)
-//              )
-//            }
-//          )
-//          .unsafeRunSync()
-//      }
-//  end cleanMergeOfAFileModifiedInBothBranches
-//
-//  @TestFactory
-//  def anEditAndADeletionPropagatingThroughAFileMove(): DynamicTests =
-//    (optionalSubdirectories and trialsApi.booleans)
-//      .withLimit(10)
-//      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
-//        gitRepository()
-//          .use(path =>
-//            IO {
-//              optionalSubdirectory
-//                .foreach(subdirectory => os.makeDir(path / subdirectory))
-//
-//              introducingCasesLimitStrategy(path)
-//
-//              val movedFileBranch = "movedFileBranch"
-//
-//              makeNewBranch(path)(movedFileBranch)
-//
-//              moveCasesLimitStrategy(path)
-//
-//              val commitOfMovedFileBranch = currentCommit(path)
-//
-//              checkoutBranch(path)(masterBranch)
-//
-//              editingCasesLimitStrategy(path)
-//
-//              val commitOfMasterBranch = currentCommit(path)
-//
-//              if flipBranches then checkoutBranch(path)(movedFileBranch)
-//              end if
-//
-//              val (ourBranch, theirBranch) =
-//                if flipBranches then movedFileBranch -> masterBranch
-//                else masterBranch                    -> movedFileBranch
-//
-//              val exitCode = Main.mergeSides(
-//                ApplicationRequest.default.copy(
-//                  theirBranchHead =
-//                    theirBranch.taggedWith[Tags.CommitOrBranchName],
-//                  minimumAmbiguousMatchSize = 5
-//                )
-//              )(workingDirectory =
-//                optionalSubdirectory.fold(ifEmpty = path)(path / _)
-//              )
-//            }
-//          )
-//          .unsafeRunSync()
-//      }
-//  end anEditAndADeletionPropagatingThroughAFileMove
-//
-//  @TestFactory
-//  def anEditAndADeletionPropagatingThroughAFileSplit(): DynamicTests =
-//    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
-//      .withLimit(20)
-//      .dynamicTests {
-//        case (
-//              optionalSubdirectory,
-//              flipBranches,
-//              loseOriginalFileInSplit
-//            ) =>
-//          gitRepository()
-//            .use(path =>
-//              IO {
-//                optionalSubdirectory
-//                  .foreach(subdirectory => os.makeDir(path / subdirectory))
-//
-//                introducingCasesLimitStrategy(path)
-//
-//                val splitFileBranch = "splitFileBranch"
-//
-//                makeNewBranch(path)(splitFileBranch)
-//
-//                splittingCasesLimitStrategy(path)
-//
-//                if loseOriginalFileInSplit then moveCasesLimitStrategy(path)
-//                end if
-//
-//                val commitOfSplitFileBranch = currentCommit(path)
-//
-//                checkoutBranch(path)(masterBranch)
-//
-//                editingCasesLimitStrategy(path)
-//
-//                val commitOfMasterBranch = currentCommit(path)
-//
-//                if flipBranches then checkoutBranch(path)(splitFileBranch)
-//                end if
-//
-//                val (ourBranch, theirBranch) =
-//                  if flipBranches then splitFileBranch -> masterBranch
-//                  else masterBranch                    -> splitFileBranch
-//
-//                val exitCode = Main.mergeSides(
-//                  ApplicationRequest.default.copy(
-//                    theirBranchHead =
-//                      theirBranch.taggedWith[Tags.CommitOrBranchName],
-//                    minimumAmbiguousMatchSize = 5
-//                  )
-//                )(workingDirectory =
-//                  optionalSubdirectory.fold(ifEmpty = path)(path / _)
-//                )
-//              }
-//            )
-//            .unsafeRunSync()
-//      }
-//  end anEditAndADeletionPropagatingThroughAFileSplit
-//
-//  @TestFactory
-//  def anEditAndADeletionPropagatingThroughAFileCondensation(): DynamicTests =
-//    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
-//      .withLimit(20)
-//      .dynamicTests {
-//        case (
-//              optionalSubdirectory,
-//              flipBranches,
-//              loseBothOriginalFilesInJoin
-//            ) =>
-//          gitRepository()
-//            .use(path =>
-//              IO {
-//                optionalSubdirectory
-//                  .foreach(subdirectory => os.makeDir(path / subdirectory))
-//
-//                // What follows is
-//                // `anEditAndADeletionPropagatingThroughAFileSplit` in
-//                // reverse...
-//
-//                introducingInterfaceOnlyCasesLimitStrategy(path)
-//                introducingCasesLimitStrategies(path)
-//
-//                val condensedFilesBranch = "condensedFilesBranch"
-//
-//                makeNewBranch(path)(condensedFilesBranch)
-//
-//                condensingCasesLimitStrategy(path)
-//
-//                if loseBothOriginalFilesInJoin then moveCasesLimitStrategy(path)
-//                end if
-//
-//                val commitOfCondensedFilesBranch = currentCommit(path)
-//
-//                checkoutBranch(path)(masterBranch)
-//
-//                editingInterfaceOnlyCasesLimitStrategy(path)
-//                editingCasesLimitStrategies(path)
-//
-//                val commitOfMasterBranch = currentCommit(path)
-//
-//                if flipBranches then checkoutBranch(path)(condensedFilesBranch)
-//                end if
-//
-//                val (ourBranch, theirBranch) =
-//                  if flipBranches then condensedFilesBranch -> masterBranch
-//                  else masterBranch -> condensedFilesBranch
-//
-//                val exitCode = Main.mergeSides(
-//                  ApplicationRequest.default.copy(
-//                    theirBranchHead =
-//                      theirBranch.taggedWith[Tags.CommitOrBranchName],
-//                    minimumAmbiguousMatchSize = 5
-//                  )
-//                )(workingDirectory =
-//                  optionalSubdirectory.fold(ifEmpty = path)(path / _)
-//                )
-//              }
-//            )
-//            .unsafeRunSync()
-//      }
-//  end anEditAndADeletionPropagatingThroughAFileCondensation
-//
-//  @TestFactory
-//  def twoFilesSwappingAroundWithModificationOfOne(): DynamicTests =
-//    (optionalSubdirectories and trialsApi.booleans)
-//      .withLimit(10)
-//      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
-//        gitRepository()
-//          .use(path =>
-//            IO {
-//              optionalSubdirectory
-//                .foreach(subdirectory => os.makeDir(path / subdirectory))
-//
-//              introducingCasesLimitStrategy(path)
-//              introducingExpectyFlavouredAssert(path)
-//
-//              val swappedFilesBranch = "swappedFileBranch"
-//
-//              makeNewBranch(path)(swappedFilesBranch)
-//
-//              swapTheTwoFiles(path)
-//
-//              val commitOfSwappedFilesBranch = currentCommit(path)
-//
-//              checkoutBranch(path)(masterBranch)
-//
-//              editingExpectyFlavouredAssert(path)
-//
-//              val commitOfMasterBranch = currentCommit(path)
-//
-//              if flipBranches then checkoutBranch(path)(swappedFilesBranch)
-//              end if
-//
-//              val (ourBranch, theirBranch) =
-//                if flipBranches then swappedFilesBranch -> masterBranch
-//                else masterBranch                       -> swappedFilesBranch
-//
-//              val exitCode = Main.mergeSides(
-//                ApplicationRequest.default.copy(
-//                  theirBranchHead =
-//                    theirBranch.taggedWith[Tags.CommitOrBranchName],
-//                  minimumAmbiguousMatchSize = 0
-//                )
-//              )(workingDirectory =
-//                optionalSubdirectory.fold(ifEmpty = path)(path / _)
-//              )
-//            }
-//          )
-//          .unsafeRunSync()
-//      }
-//  end twoFilesSwappingAroundWithModificationOfOne
-//
-//  @TestFactory
-//  def twoFilesSwappingAroundWithModificationsToBoth(): DynamicTests =
-//    (optionalSubdirectories and trialsApi.booleans)
-//      .withLimit(10)
-//      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
-//        gitRepository()
-//          .use(path =>
-//            IO {
-//              optionalSubdirectory
-//                .foreach(subdirectory => os.makeDir(path / subdirectory))
-//
-//              introducingCasesLimitStrategy(path)
-//              introducingExpectyFlavouredAssert(path)
-//
-//              val swappedFilesBranch = "swappedFileBranch"
-//
-//              makeNewBranch(path)(swappedFilesBranch)
-//
-//              swapTheTwoFiles(path)
-//
-//              val commitOfSwappedFilesBranch = currentCommit(path)
-//
-//              checkoutBranch(path)(masterBranch)
-//
-//              editingCasesLimitStrategy(path)
-//              editingExpectyFlavouredAssert(path)
-//
-//              val commitOfMasterBranch = currentCommit(path)
-//
-//              if flipBranches then checkoutBranch(path)(swappedFilesBranch)
-//              end if
-//
-//              val (ourBranch, theirBranch) =
-//                if flipBranches then swappedFilesBranch -> masterBranch
-//                else masterBranch                       -> swappedFilesBranch
-//
-//              val exitCode = Main.mergeSides(
-//                ApplicationRequest.default.copy(
-//                  theirBranchHead =
-//                    theirBranch.taggedWith[Tags.CommitOrBranchName],
-//                  minimumAmbiguousMatchSize = 5
-//                )
-//              )(workingDirectory =
-//                optionalSubdirectory.fold(ifEmpty = path)(path / _)
-//              )
-//            }
-//          )
-//          .unsafeRunSync()
-//      }
-//  end twoFilesSwappingAroundWithModificationsToBoth
-//
+  @TestFactory
+  def cleanMergeOfAFileAddedInBothBranches(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              sandraStopsByBriefly(path)
+
+              val benignTwinBranch = "benignTwin"
+
+              makeNewBranch(path)(benignTwinBranch)
+
+              introducingArthur(path)
+
+              arthurContinues(path)
+
+              val commitOfBenignTwinBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              introducingArthur(path)
+
+              sandraHeadsOffHome(path)
+
+              arthurClearsHisThroat(path)
+
+              val commitOfMasterBranch = currentCommit(path).strip
+
+              if flipBranches then checkoutBranch(path)(benignTwinBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then benignTwinBranch -> masterBranch
+                else masterBranch                     -> benignTwinBranch
+
+              mergeWrapper(
+                optionalSubdirectory,
+                path,
+                ourBranch,
+                theirBranch,
+                minimumAmbiguousMatchSize = 0
+              )
+            }
+          )
+          .unsafeRunSync()
+      }
+  end cleanMergeOfAFileAddedInBothBranches
+
+  @TestFactory
+  def conflictingAdditionOfTheSameFile(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(4)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingArthur(path)
+
+              sandraStopsByBriefly(path)
+
+              val evilTwinBranch = "evilTwin"
+
+              makeNewBranch(path)(evilTwinBranch)
+
+              evilTysonMakesDramaticEntranceExulting(path)
+
+              val commitOfEvilTwinBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              sandraHeadsOffHome(path)
+
+              enterTysonStageLeft(path)
+
+              val commitOfMasterBranch = currentCommit(path).strip
+
+              if flipBranches then checkoutBranch(path)(evilTwinBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then evilTwinBranch -> masterBranch
+                else masterBranch                   -> evilTwinBranch
+
+              mergeWrapper(
+                optionalSubdirectory,
+                path,
+                ourBranch,
+                theirBranch,
+                minimumAmbiguousMatchSize = 0
+              )
+            }
+          )
+          .unsafeRunSync()
+      }
+  end conflictingAdditionOfTheSameFile
+
+  @TestFactory
+  def conflictingInsertModificationAndDeletionOfTheSameFile(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(4)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingArthur(path)
+
+              sandraStopsByBriefly(path)
+
+              val deletedFileBranch = "deletedFileBranch"
+
+              makeNewBranch(path)(deletedFileBranch)
+
+              enterTysonStageLeft(path)
+
+              exeuntArthur(path)
+
+              val commitOfDeletedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              sandraHeadsOffHome(path)
+
+              arthurContinues(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              val arthurOnTheRecord = os.read(path / arthur)
+
+              if flipBranches then checkoutBranch(path)(deletedFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then deletedFileBranch -> masterBranch
+                else masterBranch                      -> deletedFileBranch
+
+              mergeWrapper(
+                optionalSubdirectory,
+                path,
+                ourBranch,
+                theirBranch,
+                minimumAmbiguousMatchSize = 0
+              )
+            }
+          )
+          .unsafeRunSync()
+      }
+  end conflictingInsertModificationAndDeletionOfTheSameFile
+
+  @TestFactory
+  def conflictingEditModificationAndDeletionOfTheSameFile(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(4)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingArthur(path)
+
+              sandraStopsByBriefly(path)
+
+              val deletedFileBranch = "deletedFileBranch"
+
+              makeNewBranch(path)(deletedFileBranch)
+
+              enterTysonStageLeft(path)
+
+              exeuntArthur(path)
+
+              val commitOfDeletedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              sandraHeadsOffHome(path)
+
+              // NOTE: this keeps the *original* content; we need to be sure
+              // that isn't lost in the merge.
+              arthurBecomesAnExpertOnCasesLimitStrategy(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              val arthurOnTheRecord = os.read(path / arthur)
+
+              if flipBranches then checkoutBranch(path)(deletedFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then deletedFileBranch -> masterBranch
+                else masterBranch                      -> deletedFileBranch
+
+              mergeWrapper(
+                optionalSubdirectory,
+                path,
+                ourBranch,
+                theirBranch,
+                minimumAmbiguousMatchSize = 0
+              )
+            }
+          )
+          .unsafeRunSync()
+      }
+  end conflictingEditModificationAndDeletionOfTheSameFile
+
+  @TestFactory
+  def conflictingContentClearanceModificationAndDeletionOfTheSameFile()
+      : DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(4)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingArthur(path)
+
+              sandraStopsByBriefly(path)
+
+              val deletedFileBranch = "deletedFileBranch"
+
+              makeNewBranch(path)(deletedFileBranch)
+
+              enterTysonStageLeft(path)
+
+              exeuntArthur(path)
+
+              val commitOfDeletedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              sandraHeadsOffHome(path)
+
+              arthurDeniesHavingSaidAnything(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then checkoutBranch(path)(deletedFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then deletedFileBranch -> masterBranch
+                else masterBranch                      -> deletedFileBranch
+
+              mergeWrapper(
+                optionalSubdirectory,
+                path,
+                ourBranch,
+                theirBranch,
+                minimumAmbiguousMatchSize = 0
+              )
+            }
+          )
+          .unsafeRunSync()
+      }
+  end conflictingContentClearanceModificationAndDeletionOfTheSameFile
+
+  @TestFactory
+  def conflictingModificationOfTheSameFile(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(4)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingArthur(path)
+
+              sandraStopsByBriefly(path)
+
+              val concurrentlyModifiedFileBranch =
+                "concurrentlyModifiedFileBranch"
+
+              makeNewBranch(path)(concurrentlyModifiedFileBranch)
+
+              enterTysonStageLeft(path)
+
+              arthurElaborates(path)
+
+              val commitOfConcurrentlyModifiedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              sandraHeadsOffHome(path)
+
+              arthurContinues(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then
+                checkoutBranch(path)(concurrentlyModifiedFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then
+                  concurrentlyModifiedFileBranch -> masterBranch
+                else masterBranch -> concurrentlyModifiedFileBranch
+
+              mergeWrapper(
+                optionalSubdirectory,
+                path,
+                ourBranch,
+                theirBranch,
+                minimumAmbiguousMatchSize = 0
+              )
+            }
+          )
+          .unsafeRunSync()
+      }
+  end conflictingModificationOfTheSameFile
+
+  @TestFactory
+  def cleanMergeOfAFileDeletedInBothBranches(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingArthur(path)
+
+              sandraStopsByBriefly(path)
+
+              val concurrentlyDeletedFileBranch =
+                "concurrentlyDeletedFileBranch"
+
+              makeNewBranch(path)(concurrentlyDeletedFileBranch)
+
+              enterTysonStageLeft(path)
+
+              exeuntArthur(path)
+
+              val commitOfConcurrentlyDeletedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              sandraHeadsOffHome(path)
+
+              arthurContinues(path)
+
+              arthurExcusesHimself(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then
+                checkoutBranch(path)(concurrentlyDeletedFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then
+                  concurrentlyDeletedFileBranch -> masterBranch
+                else masterBranch               -> concurrentlyDeletedFileBranch
+
+              mergeWrapper(
+                optionalSubdirectory,
+                path,
+                ourBranch,
+                theirBranch,
+                minimumAmbiguousMatchSize = 0
+              )
+            }
+          )
+          .unsafeRunSync()
+      }
+  end cleanMergeOfAFileDeletedInBothBranches
+
+  @TestFactory
+  def cleanMergeOfAFileModifiedInBothBranches(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingArthur(path)
+
+              sandraStopsByBriefly(path)
+
+              val concurrentlyModifiedFileBranch =
+                "concurrentlyModifiedFileBranch"
+
+              makeNewBranch(path)(concurrentlyModifiedFileBranch)
+
+              enterTysonStageLeft(path)
+
+              arthurCorrectsHimself(path)
+
+              val commitOfConcurrentlyModifiedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              sandraHeadsOffHome(path)
+
+              arthurContinues(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then
+                checkoutBranch(path)(concurrentlyModifiedFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then
+                  concurrentlyModifiedFileBranch -> masterBranch
+                else masterBranch -> concurrentlyModifiedFileBranch
+
+              mergeWrapper(
+                optionalSubdirectory,
+                path,
+                ourBranch,
+                theirBranch,
+                minimumAmbiguousMatchSize = 0
+              )
+            }
+          )
+          .unsafeRunSync()
+      }
+  end cleanMergeOfAFileModifiedInBothBranches
+
+  @TestFactory
+  def anEditAndADeletionPropagatingThroughAFileMove(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingCasesLimitStrategy(path)
+
+              val movedFileBranch = "movedFileBranch"
+
+              makeNewBranch(path)(movedFileBranch)
+
+              moveCasesLimitStrategy(path)
+
+              val commitOfMovedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              editingCasesLimitStrategy(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then checkoutBranch(path)(movedFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then movedFileBranch -> masterBranch
+                else masterBranch                    -> movedFileBranch
+
+              mergeWrapper(
+                optionalSubdirectory,
+                path,
+                ourBranch,
+                theirBranch,
+                minimumAmbiguousMatchSize = 5
+              )
+            }
+          )
+          .unsafeRunSync()
+      }
+  end anEditAndADeletionPropagatingThroughAFileMove
+
+  @TestFactory
+  def anEditAndADeletionPropagatingThroughAFileSplit(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
+      .withLimit(20)
+      .dynamicTests {
+        case (
+              optionalSubdirectory,
+              flipBranches,
+              loseOriginalFileInSplit
+            ) =>
+          gitRepository()
+            .use(path =>
+              IO {
+                optionalSubdirectory
+                  .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+                introducingCasesLimitStrategy(path)
+
+                val splitFileBranch = "splitFileBranch"
+
+                makeNewBranch(path)(splitFileBranch)
+
+                splittingCasesLimitStrategy(path)
+
+                if loseOriginalFileInSplit then moveCasesLimitStrategy(path)
+                end if
+
+                val commitOfSplitFileBranch = currentCommit(path)
+
+                checkoutBranch(path)(masterBranch)
+
+                editingCasesLimitStrategy(path)
+
+                val commitOfMasterBranch = currentCommit(path)
+
+                if flipBranches then checkoutBranch(path)(splitFileBranch)
+                end if
+
+                val (ourBranch, theirBranch) =
+                  if flipBranches then splitFileBranch -> masterBranch
+                  else masterBranch                    -> splitFileBranch
+
+                mergeWrapper(
+                  optionalSubdirectory,
+                  path,
+                  ourBranch,
+                  theirBranch,
+                  minimumAmbiguousMatchSize = 5
+                )
+              }
+            )
+            .unsafeRunSync()
+      }
+  end anEditAndADeletionPropagatingThroughAFileSplit
+
+  @TestFactory
+  def anEditAndADeletionPropagatingThroughAFileCondensation(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
+      .withLimit(20)
+      .dynamicTests {
+        case (
+              optionalSubdirectory,
+              flipBranches,
+              loseBothOriginalFilesInJoin
+            ) =>
+          gitRepository()
+            .use(path =>
+              IO {
+                optionalSubdirectory
+                  .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+                // What follows is
+                // `anEditAndADeletionPropagatingThroughAFileSplit` in
+                // reverse...
+
+                introducingInterfaceOnlyCasesLimitStrategy(path)
+                introducingCasesLimitStrategies(path)
+
+                val condensedFilesBranch = "condensedFilesBranch"
+
+                makeNewBranch(path)(condensedFilesBranch)
+
+                condensingCasesLimitStrategy(path)
+
+                if loseBothOriginalFilesInJoin then moveCasesLimitStrategy(path)
+                end if
+
+                val commitOfCondensedFilesBranch = currentCommit(path)
+
+                checkoutBranch(path)(masterBranch)
+
+                editingInterfaceOnlyCasesLimitStrategy(path)
+                editingCasesLimitStrategies(path)
+
+                val commitOfMasterBranch = currentCommit(path)
+
+                if flipBranches then checkoutBranch(path)(condensedFilesBranch)
+                end if
+
+                val (ourBranch, theirBranch) =
+                  if flipBranches then condensedFilesBranch -> masterBranch
+                  else masterBranch -> condensedFilesBranch
+
+                mergeWrapper(
+                  optionalSubdirectory,
+                  path,
+                  ourBranch,
+                  theirBranch,
+                  minimumAmbiguousMatchSize = 5
+                )
+              }
+            )
+            .unsafeRunSync()
+      }
+  end anEditAndADeletionPropagatingThroughAFileCondensation
+
+  @TestFactory
+  def twoFilesSwappingAroundWithModificationOfOne(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingCasesLimitStrategy(path)
+              introducingExpectyFlavouredAssert(path)
+
+              val swappedFilesBranch = "swappedFileBranch"
+
+              makeNewBranch(path)(swappedFilesBranch)
+
+              swapTheTwoFiles(path)
+
+              val commitOfSwappedFilesBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              editingExpectyFlavouredAssert(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then checkoutBranch(path)(swappedFilesBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then swappedFilesBranch -> masterBranch
+                else masterBranch                       -> swappedFilesBranch
+
+              mergeWrapper(
+                optionalSubdirectory,
+                path,
+                ourBranch,
+                theirBranch,
+                minimumAmbiguousMatchSize = 0
+              )
+            }
+          )
+          .unsafeRunSync()
+      }
+  end twoFilesSwappingAroundWithModificationOfOne
+
+  @TestFactory
+  def twoFilesSwappingAroundWithModificationsToBoth(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingCasesLimitStrategy(path)
+              introducingExpectyFlavouredAssert(path)
+
+              val swappedFilesBranch = "swappedFileBranch"
+
+              makeNewBranch(path)(swappedFilesBranch)
+
+              swapTheTwoFiles(path)
+
+              val commitOfSwappedFilesBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              editingCasesLimitStrategy(path)
+              editingExpectyFlavouredAssert(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then checkoutBranch(path)(swappedFilesBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then swappedFilesBranch -> masterBranch
+                else masterBranch                       -> swappedFilesBranch
+
+              mergeWrapper(
+                optionalSubdirectory,
+                path,
+                ourBranch,
+                theirBranch,
+                minimumAmbiguousMatchSize = 5
+              )
+            }
+          )
+          .unsafeRunSync()
+      }
+  end twoFilesSwappingAroundWithModificationsToBoth
+
 //  @TestFactory
 //  def issue48BugReproduction(): DynamicTests =
 //    (trialsApi.booleans and trialsApi.booleans)
@@ -1860,319 +1838,307 @@ class MainTest:
 //      }
 //  end issue48BugReproduction
 //
-//  @TestFactory
-//  def conflictingDeletionAndFileMoveOfTheSameFile(): DynamicTests =
-//    (optionalSubdirectories and trialsApi.booleans)
-//      .withLimit(10)
-//      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
-//        gitRepository()
-//          .use(path =>
-//            IO {
-//              optionalSubdirectory
-//                .foreach(subdirectory => os.makeDir(path / subdirectory))
-//
-//              introducingCasesLimitStrategy(path)
-//
-//              val movedFileBranch = "movedFileBranch"
-//
-//              makeNewBranch(path)(movedFileBranch)
-//
-//              moveCasesLimitStrategy(path)
-//
-//              val commitOfMovedFileBranch = currentCommit(path)
-//
-//              checkoutBranch(path)(masterBranch)
-//
-//              removingCasesLimitStrategy(path)
-//
-//              val commitOfMasterBranch = currentCommit(path)
-//
-//              if flipBranches then checkoutBranch(path)(movedFileBranch)
-//              end if
-//
-//              val (ourBranch, theirBranch) =
-//                if flipBranches then movedFileBranch -> masterBranch
-//                else masterBranch                    -> movedFileBranch
-//
-//              val exitCode = Main.mergeSides(
-//                ApplicationRequest.default.copy(
-//                  theirBranchHead =
-//                    theirBranch.taggedWith[Tags.CommitOrBranchName],
-//                  minimumAmbiguousMatchSize = 5
-//                )
-//              )(workingDirectory =
-//                optionalSubdirectory.fold(ifEmpty = path)(path / _)
-//              )
-//            }
-//          )
-//          .unsafeRunSync()
-//      }
-//  end conflictingDeletionAndFileMoveOfTheSameFile
-//
-//  @TestFactory
-//  def conflictingDeletionAndEditedFileMoveOfTheSameFile(): DynamicTests =
-//    (optionalSubdirectories and trialsApi.booleans)
-//      .withLimit(10)
-//      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
-//        gitRepository()
-//          .use(path =>
-//            IO {
-//              optionalSubdirectory
-//                .foreach(subdirectory => os.makeDir(path / subdirectory))
-//
-//              introducingCasesLimitStrategy(path)
-//
-//              val movedFileBranch = "movedFileBranch"
-//
-//              makeNewBranch(path)(movedFileBranch)
-//
-//              editingCasesLimitStrategy(path)
-//
-//              moveCasesLimitStrategy(path)
-//
-//              val commitOfMovedFileBranch = currentCommit(path)
-//
-//              checkoutBranch(path)(masterBranch)
-//
-//              removingCasesLimitStrategy(path)
-//
-//              val commitOfMasterBranch = currentCommit(path)
-//
-//              if flipBranches then checkoutBranch(path)(movedFileBranch)
-//              end if
-//
-//              val (ourBranch, theirBranch) =
-//                if flipBranches then movedFileBranch -> masterBranch
-//                else masterBranch                    -> movedFileBranch
-//
-//              val exitCode = Main.mergeSides(
-//                ApplicationRequest.default.copy(
-//                  theirBranchHead =
-//                    theirBranch.taggedWith[Tags.CommitOrBranchName],
-//                  minimumAmbiguousMatchSize = 5
-//                )
-//              )(workingDirectory =
-//                optionalSubdirectory.fold(ifEmpty = path)(path / _)
-//              )
-//            }
-//          )
-//          .unsafeRunSync()
-//      }
-//  end conflictingDeletionAndEditedFileMoveOfTheSameFile
-//
-//  @TestFactory
-//  def cleanMergeOfDeletionAndFileCondensationOfTheSameFile(): DynamicTests =
-//    (optionalSubdirectories and trialsApi.booleans)
-//      .withLimit(10)
-//      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
-//        gitRepository()
-//          .use(path =>
-//            IO {
-//              optionalSubdirectory
-//                .foreach(subdirectory => os.makeDir(path / subdirectory))
-//
-//              introducingCasesLimitStrategy(path)
-//
-//              introducingArthur(path)
-//
-//              val condensedFileBranch = "condensedFileBranch"
-//
-//              makeNewBranch(path)(condensedFileBranch)
-//
-//              removingCasesLimitStrategy(path)
-//
-//              arthurBecomesAnExpertOnCasesLimitStrategy(path)
-//
-//              val commitOfCondensedFileBranch = currentCommit(path)
-//
-//              checkoutBranch(path)(masterBranch)
-//
-//              sandraStopsByBriefly(path)
-//
-//              removingCasesLimitStrategy(path)
-//
-//              val commitOfMasterBranch = currentCommit(path)
-//
-//              if flipBranches then checkoutBranch(path)(condensedFileBranch)
-//              end if
-//
-//              val (ourBranch, theirBranch) =
-//                if flipBranches then condensedFileBranch -> masterBranch
-//                else masterBranch                        -> condensedFileBranch
-//
-//              val exitCode = Main.mergeSides(
-//                ApplicationRequest.default.copy(
-//                  theirBranchHead =
-//                    theirBranch.taggedWith[Tags.CommitOrBranchName],
-//                  minimumAmbiguousMatchSize = 5
-//                )
-//              )(workingDirectory =
-//                optionalSubdirectory.fold(ifEmpty = path)(path / _)
-//              )
-//            }
-//          )
-//          .unsafeRunSync()
-//      }
-//  end cleanMergeOfDeletionAndFileCondensationOfTheSameFile
-//
-//  @TestFactory
-//  def conflictingDeletionAndReplacementWithFileMoveOfTheSameFile()
-//      : DynamicTests =
-//    (optionalSubdirectories and trialsApi.booleans)
-//      .withLimit(10)
-//      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
-//        gitRepository()
-//          .use(path =>
-//            IO {
-//              optionalSubdirectory
-//                .foreach(subdirectory => os.makeDir(path / subdirectory))
-//
-//              introducingCasesLimitStrategy(path)
-//
-//              val movedFileBranch = "movedFileBranch"
-//
-//              makeNewBranch(path)(movedFileBranch)
-//
-//              moveCasesLimitStrategy(path)
-//
-//              reintroducingCasesLimitStrategy(path)
-//
-//              val commitOfMovedFileBranch = currentCommit(path)
-//
-//              checkoutBranch(path)(masterBranch)
-//
-//              removingCasesLimitStrategy(path)
-//
-//              val commitOfMasterBranch = currentCommit(path)
-//
-//              if flipBranches then checkoutBranch(path)(movedFileBranch)
-//              end if
-//
-//              val (ourBranch, theirBranch) =
-//                if flipBranches then movedFileBranch -> masterBranch
-//                else masterBranch                    -> movedFileBranch
-//
-//              val exitCode = Main.mergeSides(
-//                ApplicationRequest.default.copy(
-//                  theirBranchHead =
-//                    theirBranch.taggedWith[Tags.CommitOrBranchName],
-//                  minimumAmbiguousMatchSize = 5
-//                )
-//              )(workingDirectory =
-//                optionalSubdirectory.fold(ifEmpty = path)(path / _)
-//              )
-//            }
-//          )
-//          .unsafeRunSync()
-//      }
-//  end conflictingDeletionAndReplacementWithFileMoveOfTheSameFile
-//
-//  @TestFactory
-//  def conflictingDeletionAndReplacementWithEditedFileMoveOfTheSameFile()
-//      : DynamicTests =
-//    (optionalSubdirectories and trialsApi.booleans)
-//      .withLimit(10)
-//      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
-//        gitRepository()
-//          .use(path =>
-//            IO {
-//              optionalSubdirectory
-//                .foreach(subdirectory => os.makeDir(path / subdirectory))
-//
-//              introducingCasesLimitStrategy(path)
-//
-//              val movedFileBranch = "movedFileBranch"
-//
-//              makeNewBranch(path)(movedFileBranch)
-//
-//              editingCasesLimitStrategy(path)
-//
-//              moveCasesLimitStrategy(path)
-//
-//              reintroducingCasesLimitStrategy(path)
-//
-//              val commitOfMovedFileBranch = currentCommit(path)
-//
-//              checkoutBranch(path)(masterBranch)
-//
-//              removingCasesLimitStrategy(path)
-//
-//              val commitOfMasterBranch = currentCommit(path)
-//
-//              if flipBranches then checkoutBranch(path)(movedFileBranch)
-//              end if
-//
-//              val (ourBranch, theirBranch) =
-//                if flipBranches then movedFileBranch -> masterBranch
-//                else masterBranch                    -> movedFileBranch
-//
-//              val exitCode = Main.mergeSides(
-//                ApplicationRequest.default.copy(
-//                  theirBranchHead =
-//                    theirBranch.taggedWith[Tags.CommitOrBranchName],
-//                  minimumAmbiguousMatchSize = 5
-//                )
-//              )(workingDirectory =
-//                optionalSubdirectory.fold(ifEmpty = path)(path / _)
-//              )
-//            }
-//          )
-//          .unsafeRunSync()
-//      }
-//  end conflictingDeletionAndReplacementWithEditedFileMoveOfTheSameFile
-//
-//  @TestFactory
-//  def conflictingConvergingFileMovesFromDifferentFiles(): DynamicTests =
-//    (optionalSubdirectories and trialsApi.booleans)
-//      .withLimit(10)
-//      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
-//        gitRepository()
-//          .use(path =>
-//            IO {
-//              optionalSubdirectory
-//                .foreach(subdirectory => os.makeDir(path / subdirectory))
-//
-//              introducingCasesLimitStrategy(path)
-//
-//              introducingArthur(path)
-//
-//              val casesLimitStrategyMovesBranch =
-//                "casesLimitStrategyMovesBranch"
-//
-//              makeNewBranch(path)(casesLimitStrategyMovesBranch)
-//
-//              moveCasesLimitStrategy(path)
-//
-//              val commitOfMovedFileBranch = currentCommit(path)
-//
-//              checkoutBranch(path)(masterBranch)
-//
-//              arthurTakesOnAPseudonym(path)
-//
-//              val commitOfMasterBranch = currentCommit(path)
-//
-//              if flipBranches then
-//                checkoutBranch(path)(casesLimitStrategyMovesBranch)
-//              end if
-//
-//              val (ourBranch, theirBranch) =
-//                if flipBranches then
-//                  casesLimitStrategyMovesBranch -> masterBranch
-//                else masterBranch               -> casesLimitStrategyMovesBranch
-//
-//              val exitCode = Main.mergeSides(
-//                ApplicationRequest.default.copy(
-//                  theirBranchHead =
-//                    theirBranch.taggedWith[Tags.CommitOrBranchName],
-//                  minimumAmbiguousMatchSize = 5
-//                )
-//              )(workingDirectory =
-//                optionalSubdirectory.fold(ifEmpty = path)(path / _)
-//              )
-//            }
-//          )
-//          .unsafeRunSync()
-//      }
-//  end conflictingConvergingFileMovesFromDifferentFiles
+  @TestFactory
+  def conflictingDeletionAndFileMoveOfTheSameFile(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingCasesLimitStrategy(path)
+
+              val movedFileBranch = "movedFileBranch"
+
+              makeNewBranch(path)(movedFileBranch)
+
+              moveCasesLimitStrategy(path)
+
+              val commitOfMovedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              removingCasesLimitStrategy(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then checkoutBranch(path)(movedFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then movedFileBranch -> masterBranch
+                else masterBranch                    -> movedFileBranch
+
+              mergeWrapper(
+                optionalSubdirectory,
+                path,
+                ourBranch,
+                theirBranch,
+                minimumAmbiguousMatchSize = 5
+              )
+            }
+          )
+          .unsafeRunSync()
+      }
+  end conflictingDeletionAndFileMoveOfTheSameFile
+
+  @TestFactory
+  def conflictingDeletionAndEditedFileMoveOfTheSameFile(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingCasesLimitStrategy(path)
+
+              val movedFileBranch = "movedFileBranch"
+
+              makeNewBranch(path)(movedFileBranch)
+
+              editingCasesLimitStrategy(path)
+
+              moveCasesLimitStrategy(path)
+
+              val commitOfMovedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              removingCasesLimitStrategy(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then checkoutBranch(path)(movedFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then movedFileBranch -> masterBranch
+                else masterBranch                    -> movedFileBranch
+
+              mergeWrapper(
+                optionalSubdirectory,
+                path,
+                ourBranch,
+                theirBranch,
+                minimumAmbiguousMatchSize = 5
+              )
+            }
+          )
+          .unsafeRunSync()
+      }
+  end conflictingDeletionAndEditedFileMoveOfTheSameFile
+
+  @TestFactory
+  def cleanMergeOfDeletionAndFileCondensationOfTheSameFile(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingCasesLimitStrategy(path)
+
+              introducingArthur(path)
+
+              val condensedFileBranch = "condensedFileBranch"
+
+              makeNewBranch(path)(condensedFileBranch)
+
+              removingCasesLimitStrategy(path)
+
+              arthurBecomesAnExpertOnCasesLimitStrategy(path)
+
+              val commitOfCondensedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              sandraStopsByBriefly(path)
+
+              removingCasesLimitStrategy(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then checkoutBranch(path)(condensedFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then condensedFileBranch -> masterBranch
+                else masterBranch                        -> condensedFileBranch
+
+              mergeWrapper(
+                optionalSubdirectory,
+                path,
+                ourBranch,
+                theirBranch,
+                minimumAmbiguousMatchSize = 5
+              )
+            }
+          )
+          .unsafeRunSync()
+      }
+  end cleanMergeOfDeletionAndFileCondensationOfTheSameFile
+
+  @TestFactory
+  def conflictingDeletionAndReplacementWithFileMoveOfTheSameFile()
+      : DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingCasesLimitStrategy(path)
+
+              val movedFileBranch = "movedFileBranch"
+
+              makeNewBranch(path)(movedFileBranch)
+
+              moveCasesLimitStrategy(path)
+
+              reintroducingCasesLimitStrategy(path)
+
+              val commitOfMovedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              removingCasesLimitStrategy(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then checkoutBranch(path)(movedFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then movedFileBranch -> masterBranch
+                else masterBranch                    -> movedFileBranch
+
+              mergeWrapper(
+                optionalSubdirectory,
+                path,
+                ourBranch,
+                theirBranch,
+                minimumAmbiguousMatchSize = 5
+              )
+            }
+          )
+          .unsafeRunSync()
+      }
+  end conflictingDeletionAndReplacementWithFileMoveOfTheSameFile
+
+  @TestFactory
+  def conflictingDeletionAndReplacementWithEditedFileMoveOfTheSameFile()
+      : DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingCasesLimitStrategy(path)
+
+              val movedFileBranch = "movedFileBranch"
+
+              makeNewBranch(path)(movedFileBranch)
+
+              editingCasesLimitStrategy(path)
+
+              moveCasesLimitStrategy(path)
+
+              reintroducingCasesLimitStrategy(path)
+
+              val commitOfMovedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              removingCasesLimitStrategy(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then checkoutBranch(path)(movedFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then movedFileBranch -> masterBranch
+                else masterBranch                    -> movedFileBranch
+
+              mergeWrapper(
+                optionalSubdirectory,
+                path,
+                ourBranch,
+                theirBranch,
+                minimumAmbiguousMatchSize = 5
+              )
+            }
+          )
+          .unsafeRunSync()
+      }
+  end conflictingDeletionAndReplacementWithEditedFileMoveOfTheSameFile
+
+  @TestFactory
+  def conflictingConvergingFileMovesFromDifferentFiles(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingCasesLimitStrategy(path)
+
+              introducingArthur(path)
+
+              val casesLimitStrategyMovesBranch =
+                "casesLimitStrategyMovesBranch"
+
+              makeNewBranch(path)(casesLimitStrategyMovesBranch)
+
+              moveCasesLimitStrategy(path)
+
+              val commitOfMovedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              arthurTakesOnAPseudonym(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then
+                checkoutBranch(path)(casesLimitStrategyMovesBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then
+                  casesLimitStrategyMovesBranch -> masterBranch
+                else masterBranch               -> casesLimitStrategyMovesBranch
+
+              mergeWrapper(
+                optionalSubdirectory,
+                path,
+                ourBranch,
+                theirBranch,
+                minimumAmbiguousMatchSize = 5
+              )
+            }
+          )
+          .unsafeRunSync()
+      }
+  end conflictingConvergingFileMovesFromDifferentFiles
 
 end MainTest
