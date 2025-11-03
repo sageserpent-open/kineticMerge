@@ -1892,7 +1892,7 @@ class MainTest:
                 minimumAmbiguousMatchSize = 5
               )
 
-              verifyConflictedMerge(baseDirectory, ourDirectory, theirDirectory)
+              verifyCleanMerge(baseDirectory, ourDirectory, theirDirectory)
             }
           )
           .unsafeRunSync()
