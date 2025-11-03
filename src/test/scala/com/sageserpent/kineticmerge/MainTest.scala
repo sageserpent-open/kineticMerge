@@ -539,189 +539,12 @@ object MainTest extends ProseExamples:
     )
   end swapTheTwoFiles
 
-  private def verifyTrivialMergeMovesToTheMostAdvancedCommitWithACleanIndex(
-      path: Path
-  )(
-      commitOfAdvancedBranch: String,
-      ourBranch: String,
-      exitCode: Int @@ Main.Tags.ExitCode
-  ): Unit =
-    assert(exitCode == 0)
-
-    val branchName = currentBranch(path)
-
-    assert(branchName == ourBranch)
-
-    val postMergeCommitOfAdvancedBranch =
-      currentCommit(path)
-
-    assert(postMergeCommitOfAdvancedBranch == commitOfAdvancedBranch)
-
-    assert(currentStatus(path).isEmpty)
-  end verifyTrivialMergeMovesToTheMostAdvancedCommitWithACleanIndex
-
   private def currentCommit(path: Path) =
     os.proc("git", "log", "-1", "--format=tformat:%H")
       .call(path)
       .out
       .text()
       .strip
-
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
-
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
-
-  private def verifyMergeMakesANewCommitWithACleanIndex(path: Path)(
-      commitOfOneBranch: String,
-      commitOfTheOtherBranch: String,
-      ourBranch: String,
-      exitCode: Int @@ Main.Tags.ExitCode
-  ): Unit =
-    assert(exitCode == 0)
-
-    val branchName = currentBranch(path)
-
-    assert(branchName == ourBranch)
-
-    val (postMergeCommit, parents) = currentMergeCommit(path)
-
-    assert(parents.size == 2)
-
-    assert(postMergeCommit != commitOfOneBranch)
-    assert(postMergeCommit != commitOfTheOtherBranch)
-
-    val commitOfOneBranchIsAncestor =
-      os.proc(
-        "git",
-        "merge-base",
-        "--is-ancestor",
-        commitOfOneBranch,
-        postMergeCommit
-      ).call(path, check = false)
-        .exitCode == 0
-
-    assert(commitOfOneBranchIsAncestor)
-
-    val commitOfTheOtherBranchIsAncestor =
-      os.proc(
-        "git",
-        "merge-base",
-        "--is-ancestor",
-        commitOfTheOtherBranch,
-        postMergeCommit
-      ).call(path, check = false)
-        .exitCode == 0
-
-    assert(commitOfTheOtherBranchIsAncestor)
-
-    assert(currentStatus(path).isEmpty)
-  end verifyMergeMakesANewCommitWithACleanIndex
-
-  private def currentMergeCommit(path: Path): (String, Seq[String]) =
-    os
-      .proc(s"git", "log", "-1", "--format=tformat:%H %P")
-      .call(path)
-      .out
-      .text()
-      .strip
-      .split("\\s+") match
-      case Array(postMergeCommit, parents*) => postMergeCommit -> parents
-    : @unchecked
-
-  private def verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit(
-      path: Path
-  )(
-      commitOfAdvancedBranch: String,
-      ourBranch: String,
-      exitCode: Int @@ Main.Tags.ExitCode
-  ): Unit =
-    assert(exitCode == 0)
-
-    val branchName = currentBranch(path)
-
-    assert(branchName == ourBranch)
-
-    val postMergeCommit =
-      currentCommit(path)
-
-    assert(
-      postMergeCommit == commitOfAdvancedBranch
-    )
-
-    assert(!os.exists(mergeHeadPath(path)))
-
-    val status = os.proc("git", "status", "--short").call(path).out.text().strip
-
-    assert(status.isEmpty)
-  end verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit
-
-  private def verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit(
-      path: Path
-  )(
-      commitOfAdvancedBranch: String,
-      commitOfRetardedBranch: String,
-      ourBranch: String,
-      exitCode: Int @@ Main.Tags.ExitCode
-  ): Unit =
-    assert(exitCode == 1)
-
-    val branchName = currentBranch(path)
-
-    assert(branchName == ourBranch)
-
-    val postMergeCommit =
-      currentCommit(path)
-
-    assert(
-      postMergeCommit == commitOfRetardedBranch
-    )
-
-    assert(
-      mergeHead(path) == commitOfAdvancedBranch
-    )
-
-    assert(currentStatus(path).nonEmpty)
-  end verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit
-
-  private def verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
-      path: Path
-  )(
-      flipBranches: Boolean,
-      commitOfNonMasterFileBranch: String,
-      commitOfMasterBranch: String,
-      ourBranch: String,
-      exitCode: Int @@ Main.Tags.ExitCode
-  ): String =
-    assert(exitCode == 1)
-
-    val branchName = currentBranch(path)
-
-    assert(branchName == ourBranch)
-
-    val postMergeCommit = currentCommit(path)
-
-    assert(
-      postMergeCommit == (if flipBranches then commitOfNonMasterFileBranch
-                          else commitOfMasterBranch)
-    )
-
-    assert(
-      mergeHead(path) == (if flipBranches then commitOfMasterBranch
-                          else commitOfNonMasterFileBranch)
-    )
-
-    assert(currentStatus(path).nonEmpty)
-
-    currentStatus(path)
-  end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
-
-  private def mergeHead(path: Path) =
-    os.read(mergeHeadPath(path)).strip()
-
-  private def mergeHeadPath(path: Path) =
-    path / ".git" / "MERGE_HEAD"
 
   private def gitRepository(): ImperativeResource[Path] =
     for
@@ -779,7 +602,7 @@ object MainTest extends ProseExamples:
       ourBranch: String,
       theirBranch: String,
       minimumAmbiguousMatchSize: Int
-  ) =
+  ): Unit =
     val commonAncestor = os
       .proc("git", "merge-base", ourBranch, theirBranch)
       .call(path)
