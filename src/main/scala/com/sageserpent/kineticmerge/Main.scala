@@ -1590,12 +1590,7 @@ object Main extends StrictLogging:
         path: RelPath
     ) =
       IO {
-        // NOTE: have to be pedantic about copying, because `path` may refer to
-        // non-existent directories, and there may or may not be a file at the
-        // destination already. Yes, there is `os.copy.over`, but that is quite
-        // fragile.
-        os.remove(targetDirectory / path, checkExists = false)
-        os.copy(
+        os.copy.over(
           sourceDirectory / path,
           targetDirectory / path,
           createFolders = true
@@ -1618,12 +1613,7 @@ object Main extends StrictLogging:
           s"Unexpected error: could not create absolute path for ${underline(path)} relative to directory ${underline(directory)}."
         )
         _ <- IO {
-          // NOTE: have to be pedantic about writing, because `path` may refer
-          // to non-existent directories, and there may or may not be a file at
-          // the destination already. Yes, there is `os.write.over`, but that is
-          // quite fragile.
-          os.remove(absolutePath, checkExists = false)
-          os.write(absolutePath, content, createFolders = true)
+          os.write.over(absolutePath, content, createFolders = true)
         }.labelExceptionWith(errorMessage =
           s"Unexpected error - could not write to file ${underline(absolutePath)}."
         )
