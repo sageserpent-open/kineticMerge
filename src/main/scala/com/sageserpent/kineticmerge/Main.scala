@@ -1404,6 +1404,9 @@ object Main extends StrictLogging:
                       )
                   yield partialResult.copy(cleanlyMerged = false)
                 else
+                  // If our content is modified to being empty, this is taken to
+                  // mean that all of our original content has been migrated to
+                  // one or more other files.
                   for
                     _                      <- deleteFile(baseDirectory)(path)
                     _                      <- deleteFile(ourDirectory)(path)
@@ -1444,6 +1447,9 @@ object Main extends StrictLogging:
                       )
                   yield partialResult.copy(cleanlyMerged = false)
                 else
+                  // If their content is modified to being empty, this is taken
+                  // to mean that all of our original content has been migrated
+                  // to one or more other files.
                   for
                     _                      <- deleteFile(baseDirectory)(path)
                     _                      <- deleteFile(theirDirectory)(path)
