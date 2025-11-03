@@ -1927,6 +1927,9 @@ object Main extends StrictLogging:
                     )
                   yield partialResult.copy(goodForAMergeCommit = false)
                 else
+                  // If our content is modified to being empty, this is taken to
+                  // mean that all of our original content has been migrated to
+                  // one or more other files.
                   for
                     _                      <- recordDeletionInIndex(path)
                     _                      <- deleteFile(path)
@@ -2013,6 +2016,9 @@ object Main extends StrictLogging:
                     )
                   yield partialResult.copy(goodForAMergeCommit = false)
                 else
+                  // If their content is modified to being empty, this is taken
+                  // to mean that all of our original content has been migrated
+                  // to one or more other files.
                   for
                     _                      <- recordDeletionInIndex(path)
                     decoratedPartialResult <-
