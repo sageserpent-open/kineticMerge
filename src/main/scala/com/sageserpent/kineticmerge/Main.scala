@@ -495,6 +495,8 @@ object Main extends StrictLogging:
       )
     end changes
 
+[
+      (String @@ Tags.Content)
     def mergeInputsOf(
         baseDirectory: Path,
         ourDirectory: Path,
@@ -1577,7 +1579,11 @@ object Main extends StrictLogging:
                           partialResult.conflictingDeletedPathsByRightRenamePath ++ rightRenamePaths
                             .map(_ -> path)
                       )
-                    else partialResult
+                    else
+                      // The content has moved out into new files on both sides.
+                      // This might involve divergent or coincident moves,
+                      // however no special action needs to be taken here.
+                      partialResult
                   ).logOperation(description)
               }
           end match
