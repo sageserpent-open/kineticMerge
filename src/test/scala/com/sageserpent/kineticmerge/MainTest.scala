@@ -678,7 +678,7 @@ object MainTest extends ProseExamples:
   ): Unit =
     val baseContents  = contentsByRelativePathOf(baseDirectory)
     val leftContents  = contentsByRelativePathOf(leftDirectory)
-    val rightContents = contentsByRelativePathOf(leftDirectory)
+    val rightContents = contentsByRelativePathOf(rightDirectory)
 
     assert(baseContents == leftContents && baseContents == rightContents)
   end verifyCleanMerge
@@ -696,7 +696,7 @@ object MainTest extends ProseExamples:
   ): Unit =
     val baseContents  = contentsByRelativePathOf(baseDirectory)
     val leftContents  = contentsByRelativePathOf(leftDirectory)
-    val rightContents = contentsByRelativePathOf(leftDirectory)
+    val rightContents = contentsByRelativePathOf(rightDirectory)
 
     val commonToAllThreeSides =
       baseContents intersect leftContents intersect rightContents
