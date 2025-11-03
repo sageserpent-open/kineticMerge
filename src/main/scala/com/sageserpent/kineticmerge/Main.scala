@@ -1172,7 +1172,9 @@ object Main extends StrictLogging:
                       mergedFileContent
                     )
                   else
-                    for _ <- copyFileOver(ourDirectory, theirDirectory)(path)
+                    for
+                      _ <- copyFileOver(ourDirectory, baseDirectory)(path)
+                      _ <- copyFileOver(ourDirectory, theirDirectory)(path)
                     yield partialResult
                   end if
 
@@ -1215,7 +1217,9 @@ object Main extends StrictLogging:
                       mergedFileContent
                     )
                   else
-                    for _ <- copyFileOver(theirDirectory, ourDirectory)(path)
+                    for
+                      _ <- copyFileOver(theirDirectory, baseDirectory)(path)
+                      _ <- copyFileOver(theirDirectory, ourDirectory)(path)
                     yield partialResult
                   end if
 
@@ -1255,7 +1259,9 @@ object Main extends StrictLogging:
                       mergedFileContent
                     )
                   else
-                    for _ <- copyFileOver(ourDirectory, theirDirectory)(path)
+                    for
+                      _ <- copyFileOver(ourDirectory, baseDirectory)(path)
+                      _ <- copyFileOver(ourDirectory, theirDirectory)(path)
                     yield partialResult
                   end if
 
@@ -1308,7 +1314,9 @@ object Main extends StrictLogging:
                       mergedFileContent
                     )
                   else
-                    for _ <- copyFileOver(theirDirectory, ourDirectory)(path)
+                    for
+                      _ <- copyFileOver(theirDirectory, baseDirectory)(path)
+                      _ <- copyFileOver(theirDirectory, ourDirectory)(path)
                     yield partialResult
                   end if
 
