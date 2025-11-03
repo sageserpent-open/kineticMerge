@@ -602,7 +602,7 @@ object MainTest extends ProseExamples:
       ourBranch: String,
       theirBranch: String,
       minimumAmbiguousMatchSize: Int
-  ): Unit =
+  ): (Path, Path, Path) =
     val commonAncestor = os
       .proc("git", "merge-base", ourBranch, theirBranch)
       .call(path)
@@ -657,6 +657,8 @@ object MainTest extends ProseExamples:
     assert(
       2 > exitCode
     ) // Either a successful merge or a conflict should be the outcome for these tests.
+
+    (baseDirectory, leftDirectory, rightDirectory)
   end mergeWrapper
 
   private def snapshotRepositoryInto(
@@ -668,6 +670,52 @@ object MainTest extends ProseExamples:
         .out
         .text()
     )
+
+  private def verifyCleanMerge(
+      baseDirectory: Path,
+      leftDirectory: Path,
+      rightDirectory: Path
+  ): Unit =
+    val baseContents  = contentsByRelativePathOf(baseDirectory)
+    val leftContents  = contentsByRelativePathOf(leftDirectory)
+    val rightContents = contentsByRelativePathOf(leftDirectory)
+
+    assert(baseContents == leftContents && baseContents == rightContents)
+  end verifyCleanMerge
+
+  private def contentsByRelativePathOf(directory: Path) =
+    os
+      .walk(directory)
+      .filter(os.isFile)
+      .map(path => path.relativeTo(directory) -> os.read(path))
+
+  private def verifyConflictedMerge(
+      baseDirectory: Path,
+      leftDirectory: Path,
+      rightDirectory: Path
+  ): Unit =
+    val baseContents  = contentsByRelativePathOf(baseDirectory)
+    val leftContents  = contentsByRelativePathOf(leftDirectory)
+    val rightContents = contentsByRelativePathOf(leftDirectory)
+
+    val commonToAllThreeSides =
+      baseContents intersect leftContents intersect rightContents
+
+    val baseDifferences  = baseContents.diff(commonToAllThreeSides)
+    val leftDifferences  = leftContents.diff(commonToAllThreeSides)
+    val rightDifferences = rightContents.diff(commonToAllThreeSides)
+
+    assert(
+      baseDifferences.nonEmpty || leftDifferences.nonEmpty || rightDifferences.nonEmpty
+    )
+
+    // The differences should be across all three sides when they occur...
+    assert(
+      (baseDifferences intersect leftDifferences).isEmpty &&
+        (baseDifferences intersect rightDifferences).isEmpty &&
+        (leftDifferences intersect rightDifferences).isEmpty
+    )
+  end verifyConflictedMerge
 end MainTest
 
 class MainTest:
@@ -706,13 +754,16 @@ class MainTest:
                   if ourBranchIsBehindTheirs then masterBranch -> advancedBranch
                   else advancedBranch                          -> masterBranch
 
-                mergeWrapper(
-                  optionalSubdirectory,
-                  path,
-                  ourBranch,
-                  theirBranch,
-                  minimumAmbiguousMatchSize = 0
-                )
+                val (baseDirectory, ourDirectory, theirDirectory) =
+                  mergeWrapper(
+                    optionalSubdirectory,
+                    path,
+                    ourBranch,
+                    theirBranch,
+                    minimumAmbiguousMatchSize = 0
+                  )
+
+                verifyCleanMerge(baseDirectory, ourDirectory, theirDirectory)
               }
             )
             .unsafeRunSync()
@@ -753,13 +804,15 @@ class MainTest:
                 if flipBranches then newFileBranch -> masterBranch
                 else masterBranch                  -> newFileBranch
 
-              mergeWrapper(
+              val (baseDirectory, ourDirectory, theirDirectory) = mergeWrapper(
                 optionalSubdirectory,
                 path,
                 ourBranch,
                 theirBranch,
                 minimumAmbiguousMatchSize = 0
               )
+
+              verifyCleanMerge(baseDirectory, ourDirectory, theirDirectory)
             }
           )
           .unsafeRunSync()
@@ -800,13 +853,15 @@ class MainTest:
                 if flipBranches then deletedFileBranch -> masterBranch
                 else masterBranch                      -> deletedFileBranch
 
-              mergeWrapper(
+              val (baseDirectory, ourDirectory, theirDirectory) = mergeWrapper(
                 optionalSubdirectory,
                 path,
                 ourBranch,
                 theirBranch,
                 minimumAmbiguousMatchSize = 0
               )
+
+              verifyCleanMerge(baseDirectory, ourDirectory, theirDirectory)
             }
           )
           .unsafeRunSync()
@@ -853,13 +908,15 @@ class MainTest:
                 if flipBranches then benignTwinBranch -> masterBranch
                 else masterBranch                     -> benignTwinBranch
 
-              mergeWrapper(
+              val (baseDirectory, ourDirectory, theirDirectory) = mergeWrapper(
                 optionalSubdirectory,
                 path,
                 ourBranch,
                 theirBranch,
                 minimumAmbiguousMatchSize = 0
               )
+
+              verifyCleanMerge(baseDirectory, ourDirectory, theirDirectory)
             }
           )
           .unsafeRunSync()
@@ -904,13 +961,15 @@ class MainTest:
                 if flipBranches then evilTwinBranch -> masterBranch
                 else masterBranch                   -> evilTwinBranch
 
-              mergeWrapper(
+              val (baseDirectory, ourDirectory, theirDirectory) = mergeWrapper(
                 optionalSubdirectory,
                 path,
                 ourBranch,
                 theirBranch,
                 minimumAmbiguousMatchSize = 0
               )
+
+              verifyConflictedMerge(baseDirectory, ourDirectory, theirDirectory)
             }
           )
           .unsafeRunSync()
@@ -959,13 +1018,15 @@ class MainTest:
                 if flipBranches then deletedFileBranch -> masterBranch
                 else masterBranch                      -> deletedFileBranch
 
-              mergeWrapper(
+              val (baseDirectory, ourDirectory, theirDirectory) = mergeWrapper(
                 optionalSubdirectory,
                 path,
                 ourBranch,
                 theirBranch,
                 minimumAmbiguousMatchSize = 0
               )
+
+              verifyConflictedMerge(baseDirectory, ourDirectory, theirDirectory)
             }
           )
           .unsafeRunSync()
@@ -1016,13 +1077,15 @@ class MainTest:
                 if flipBranches then deletedFileBranch -> masterBranch
                 else masterBranch                      -> deletedFileBranch
 
-              mergeWrapper(
+              val (baseDirectory, ourDirectory, theirDirectory) = mergeWrapper(
                 optionalSubdirectory,
                 path,
                 ourBranch,
                 theirBranch,
                 minimumAmbiguousMatchSize = 0
               )
+
+              verifyConflictedMerge(baseDirectory, ourDirectory, theirDirectory)
             }
           )
           .unsafeRunSync()
@@ -1070,13 +1133,15 @@ class MainTest:
                 if flipBranches then deletedFileBranch -> masterBranch
                 else masterBranch                      -> deletedFileBranch
 
-              mergeWrapper(
+              val (baseDirectory, ourDirectory, theirDirectory) = mergeWrapper(
                 optionalSubdirectory,
                 path,
                 ourBranch,
                 theirBranch,
                 minimumAmbiguousMatchSize = 0
               )
+
+              verifyConflictedMerge(baseDirectory, ourDirectory, theirDirectory)
             }
           )
           .unsafeRunSync()
@@ -1126,13 +1191,15 @@ class MainTest:
                   concurrentlyModifiedFileBranch -> masterBranch
                 else masterBranch -> concurrentlyModifiedFileBranch
 
-              mergeWrapper(
+              val (baseDirectory, ourDirectory, theirDirectory) = mergeWrapper(
                 optionalSubdirectory,
                 path,
                 ourBranch,
                 theirBranch,
                 minimumAmbiguousMatchSize = 0
               )
+
+              verifyConflictedMerge(baseDirectory, ourDirectory, theirDirectory)
             }
           )
           .unsafeRunSync()
@@ -1184,13 +1251,15 @@ class MainTest:
                   concurrentlyDeletedFileBranch -> masterBranch
                 else masterBranch               -> concurrentlyDeletedFileBranch
 
-              mergeWrapper(
+              val (baseDirectory, ourDirectory, theirDirectory) = mergeWrapper(
                 optionalSubdirectory,
                 path,
                 ourBranch,
                 theirBranch,
                 minimumAmbiguousMatchSize = 0
               )
+
+              verifyCleanMerge(baseDirectory, ourDirectory, theirDirectory)
             }
           )
           .unsafeRunSync()
@@ -1240,13 +1309,15 @@ class MainTest:
                   concurrentlyModifiedFileBranch -> masterBranch
                 else masterBranch -> concurrentlyModifiedFileBranch
 
-              mergeWrapper(
+              val (baseDirectory, ourDirectory, theirDirectory) = mergeWrapper(
                 optionalSubdirectory,
                 path,
                 ourBranch,
                 theirBranch,
                 minimumAmbiguousMatchSize = 0
               )
+
+              verifyCleanMerge(baseDirectory, ourDirectory, theirDirectory)
             }
           )
           .unsafeRunSync()
@@ -1287,13 +1358,15 @@ class MainTest:
                 if flipBranches then movedFileBranch -> masterBranch
                 else masterBranch                    -> movedFileBranch
 
-              mergeWrapper(
+              val (baseDirectory, ourDirectory, theirDirectory) = mergeWrapper(
                 optionalSubdirectory,
                 path,
                 ourBranch,
                 theirBranch,
                 minimumAmbiguousMatchSize = 5
               )
+
+              verifyCleanMerge(baseDirectory, ourDirectory, theirDirectory)
             }
           )
           .unsafeRunSync()
@@ -1342,13 +1415,16 @@ class MainTest:
                   if flipBranches then splitFileBranch -> masterBranch
                   else masterBranch                    -> splitFileBranch
 
-                mergeWrapper(
-                  optionalSubdirectory,
-                  path,
-                  ourBranch,
-                  theirBranch,
-                  minimumAmbiguousMatchSize = 5
-                )
+                val (baseDirectory, ourDirectory, theirDirectory) =
+                  mergeWrapper(
+                    optionalSubdirectory,
+                    path,
+                    ourBranch,
+                    theirBranch,
+                    minimumAmbiguousMatchSize = 5
+                  )
+
+                verifyCleanMerge(baseDirectory, ourDirectory, theirDirectory)
               }
             )
             .unsafeRunSync()
@@ -1403,13 +1479,16 @@ class MainTest:
                   if flipBranches then condensedFilesBranch -> masterBranch
                   else masterBranch -> condensedFilesBranch
 
-                mergeWrapper(
-                  optionalSubdirectory,
-                  path,
-                  ourBranch,
-                  theirBranch,
-                  minimumAmbiguousMatchSize = 5
-                )
+                val (baseDirectory, ourDirectory, theirDirectory) =
+                  mergeWrapper(
+                    optionalSubdirectory,
+                    path,
+                    ourBranch,
+                    theirBranch,
+                    minimumAmbiguousMatchSize = 5
+                  )
+
+                verifyCleanMerge(baseDirectory, ourDirectory, theirDirectory)
               }
             )
             .unsafeRunSync()
@@ -1451,13 +1530,15 @@ class MainTest:
                 if flipBranches then swappedFilesBranch -> masterBranch
                 else masterBranch                       -> swappedFilesBranch
 
-              mergeWrapper(
+              val (baseDirectory, ourDirectory, theirDirectory) = mergeWrapper(
                 optionalSubdirectory,
                 path,
                 ourBranch,
                 theirBranch,
                 minimumAmbiguousMatchSize = 0
               )
+
+              verifyCleanMerge(baseDirectory, ourDirectory, theirDirectory)
             }
           )
           .unsafeRunSync()
@@ -1500,13 +1581,15 @@ class MainTest:
                 if flipBranches then swappedFilesBranch -> masterBranch
                 else masterBranch                       -> swappedFilesBranch
 
-              mergeWrapper(
+              val (baseDirectory, ourDirectory, theirDirectory) = mergeWrapper(
                 optionalSubdirectory,
                 path,
                 ourBranch,
                 theirBranch,
                 minimumAmbiguousMatchSize = 5
               )
+
+              verifyCleanMerge(baseDirectory, ourDirectory, theirDirectory)
             }
           )
           .unsafeRunSync()
@@ -1695,13 +1778,15 @@ class MainTest:
                 if flipBranches then movedFileBranch -> masterBranch
                 else masterBranch                    -> movedFileBranch
 
-              mergeWrapper(
+              val (baseDirectory, ourDirectory, theirDirectory) = mergeWrapper(
                 optionalSubdirectory,
                 path,
                 ourBranch,
                 theirBranch,
                 minimumAmbiguousMatchSize = 5
               )
+
+              verifyConflictedMerge(baseDirectory, ourDirectory, theirDirectory)
             }
           )
           .unsafeRunSync()
@@ -1744,13 +1829,15 @@ class MainTest:
                 if flipBranches then movedFileBranch -> masterBranch
                 else masterBranch                    -> movedFileBranch
 
-              mergeWrapper(
+              val (baseDirectory, ourDirectory, theirDirectory) = mergeWrapper(
                 optionalSubdirectory,
                 path,
                 ourBranch,
                 theirBranch,
                 minimumAmbiguousMatchSize = 5
               )
+
+              verifyConflictedMerge(baseDirectory, ourDirectory, theirDirectory)
             }
           )
           .unsafeRunSync()
@@ -1797,13 +1884,15 @@ class MainTest:
                 if flipBranches then condensedFileBranch -> masterBranch
                 else masterBranch                        -> condensedFileBranch
 
-              mergeWrapper(
+              val (baseDirectory, ourDirectory, theirDirectory) = mergeWrapper(
                 optionalSubdirectory,
                 path,
                 ourBranch,
                 theirBranch,
                 minimumAmbiguousMatchSize = 5
               )
+
+              verifyConflictedMerge(baseDirectory, ourDirectory, theirDirectory)
             }
           )
           .unsafeRunSync()
@@ -1847,13 +1936,15 @@ class MainTest:
                 if flipBranches then movedFileBranch -> masterBranch
                 else masterBranch                    -> movedFileBranch
 
-              mergeWrapper(
+              val (baseDirectory, ourDirectory, theirDirectory) = mergeWrapper(
                 optionalSubdirectory,
                 path,
                 ourBranch,
                 theirBranch,
                 minimumAmbiguousMatchSize = 5
               )
+
+              verifyConflictedMerge(baseDirectory, ourDirectory, theirDirectory)
             }
           )
           .unsafeRunSync()
@@ -1899,13 +1990,15 @@ class MainTest:
                 if flipBranches then movedFileBranch -> masterBranch
                 else masterBranch                    -> movedFileBranch
 
-              mergeWrapper(
+              val (baseDirectory, ourDirectory, theirDirectory) = mergeWrapper(
                 optionalSubdirectory,
                 path,
                 ourBranch,
                 theirBranch,
                 minimumAmbiguousMatchSize = 5
               )
+
+              verifyConflictedMerge(baseDirectory, ourDirectory, theirDirectory)
             }
           )
           .unsafeRunSync()
@@ -1951,13 +2044,15 @@ class MainTest:
                   casesLimitStrategyMovesBranch -> masterBranch
                 else masterBranch               -> casesLimitStrategyMovesBranch
 
-              mergeWrapper(
+              val (baseDirectory, ourDirectory, theirDirectory) = mergeWrapper(
                 optionalSubdirectory,
                 path,
                 ourBranch,
                 theirBranch,
                 minimumAmbiguousMatchSize = 5
               )
+
+              verifyConflictedMerge(baseDirectory, ourDirectory, theirDirectory)
             }
           )
           .unsafeRunSync()
