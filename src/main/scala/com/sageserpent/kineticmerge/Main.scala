@@ -495,8 +495,6 @@ object Main extends StrictLogging:
       )
     end changes
 
-[
-      (String @@ Tags.Content)
     def mergeInputsOf(
         baseDirectory: Path,
         ourDirectory: Path,
