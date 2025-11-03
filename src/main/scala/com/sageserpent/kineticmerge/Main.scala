@@ -1618,7 +1618,12 @@ object Main extends StrictLogging:
           s"Unexpected error: could not create absolute path for ${underline(path)} relative to directory ${underline(directory)}."
         )
         _ <- IO {
-          os.write.over(absolutePath, content)
+          // NOTE: have to be pedantic about writing, because `path` may refer
+          // to non-existent directories, and there may or may not be a file at
+          // the destination already. Yes, there is `os.write.over`, but that is
+          // quite fragile.
+          os.remove(absolutePath, checkExists = false)
+          os.write(absolutePath, content, createFolders = true)
         }.labelExceptionWith(errorMessage =
           s"Unexpected error - could not write to file ${underline(absolutePath)}."
         )
