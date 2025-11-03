@@ -683,12 +683,6 @@ object MainTest extends ProseExamples:
     assert(baseContents == leftContents && baseContents == rightContents)
   end verifyCleanMerge
 
-  private def contentsByRelativePathOf(directory: Path) =
-    os
-      .walk(directory)
-      .filter(os.isFile)
-      .map(path => path.relativeTo(directory) -> os.read(path))
-
   private def verifyConflictedMerge(
       baseDirectory: Path,
       leftDirectory: Path,
@@ -716,6 +710,12 @@ object MainTest extends ProseExamples:
         (leftDifferences intersect rightDifferences).isEmpty
     )
   end verifyConflictedMerge
+
+  private def contentsByRelativePathOf(directory: Path) =
+    os
+      .walk(directory)
+      .filter(os.isFile)
+      .map(path => path.relativeTo(directory) -> os.read(path))
 end MainTest
 
 class MainTest:
@@ -1027,6 +1027,15 @@ class MainTest:
               )
 
               verifyConflictedMerge(baseDirectory, ourDirectory, theirDirectory)
+
+              assert(
+                contentMatches(expected = arthurOnTheRecord)(
+                  os.read(
+                    (if flipBranches then theirDirectory
+                     else ourDirectory) / arthur
+                  )
+                )
+              )
             }
           )
           .unsafeRunSync()
@@ -1086,6 +1095,15 @@ class MainTest:
               )
 
               verifyConflictedMerge(baseDirectory, ourDirectory, theirDirectory)
+
+              assert(
+                contentMatches(expected = arthurOnTheRecord)(
+                  os.read(
+                    (if flipBranches then theirDirectory
+                     else ourDirectory) / arthur
+                  )
+                )
+              )
             }
           )
           .unsafeRunSync()
@@ -1367,6 +1385,12 @@ class MainTest:
               )
 
               verifyCleanMerge(baseDirectory, ourDirectory, theirDirectory)
+
+              assert(
+                contentMatches(expected = editedCasesLimitStrategyContent)(
+                  os.read(ourDirectory / movedCasesLimitStrategy)
+                )
+              )
             }
           )
           .unsafeRunSync()
@@ -1425,6 +1449,27 @@ class MainTest:
                   )
 
                 verifyCleanMerge(baseDirectory, ourDirectory, theirDirectory)
+
+                assert(
+                  contentMatches(
+                    expected =
+                      justTheInterfaceForCasesLimitStrategyExpectedContent
+                  )(
+                    os.read(
+                      ourDirectory / (if loseOriginalFileInSplit then
+                                        movedCasesLimitStrategy
+                                      else casesLimitStrategy)
+                    )
+                  )
+                )
+
+                assert(
+                  contentMatches(expected =
+                    excisedCasesLimitStrategiesExpectedContent
+                  )(
+                    os.read(ourDirectory / excisedCasesLimitStrategies)
+                  )
+                )
               }
             )
             .unsafeRunSync()
@@ -1489,6 +1534,16 @@ class MainTest:
                   )
 
                 verifyCleanMerge(baseDirectory, ourDirectory, theirDirectory)
+
+                assert(
+                  contentMatches(expected = baseCasesLimitStrategyContent)(
+                    os.read(
+                      ourDirectory / (if loseBothOriginalFilesInJoin
+                                      then movedCasesLimitStrategy
+                                      else casesLimitStrategy)
+                    )
+                  )
+                )
               }
             )
             .unsafeRunSync()
@@ -1539,6 +1594,18 @@ class MainTest:
               )
 
               verifyCleanMerge(baseDirectory, ourDirectory, theirDirectory)
+
+              assert(
+                contentMatches(expected = editedExpectyFlavouredAssertContent)(
+                  os.read(ourDirectory / casesLimitStrategy)
+                )
+              )
+
+              assert(
+                contentMatches(expected = baseCasesLimitStrategyContent)(
+                  os.read(ourDirectory / expectyFlavouredAssert)
+                )
+              )
             }
           )
           .unsafeRunSync()
@@ -1590,6 +1657,17 @@ class MainTest:
               )
 
               verifyCleanMerge(baseDirectory, ourDirectory, theirDirectory)
+
+              assert(
+                contentMatches(expected = editedExpectyFlavouredAssertContent)(
+                  os.read(ourDirectory / casesLimitStrategy)
+                )
+              )
+              assert(
+                contentMatches(expected = editedCasesLimitStrategyContent)(
+                  os.read(ourDirectory / expectyFlavouredAssert)
+                )
+              )
             }
           )
           .unsafeRunSync()
@@ -1787,6 +1865,15 @@ class MainTest:
               )
 
               verifyConflictedMerge(baseDirectory, ourDirectory, theirDirectory)
+
+              assert(
+                contentMatches(expected = baseCasesLimitStrategyContent)(
+                  os.read(
+                    (if flipBranches then ourDirectory
+                     else theirDirectory) / movedCasesLimitStrategy
+                  )
+                )
+              )
             }
           )
           .unsafeRunSync()
@@ -1838,6 +1925,15 @@ class MainTest:
               )
 
               verifyConflictedMerge(baseDirectory, ourDirectory, theirDirectory)
+
+              assert(
+                contentMatches(expected = editedCasesLimitStrategyContent)(
+                  os.read(
+                    (if flipBranches then ourDirectory
+                     else theirDirectory) / movedCasesLimitStrategy
+                  )
+                )
+              )
             }
           )
           .unsafeRunSync()
@@ -1945,6 +2041,24 @@ class MainTest:
               )
 
               verifyConflictedMerge(baseDirectory, ourDirectory, theirDirectory)
+
+              assert(
+                contentMatches(expected = replacementCasesLimitStrategyContent)(
+                  os.read(
+                    (if flipBranches then ourDirectory
+                     else theirDirectory) / casesLimitStrategy
+                  )
+                )
+              )
+
+              assert(
+                contentMatches(expected = baseCasesLimitStrategyContent)(
+                  os.read(
+                    (if flipBranches then ourDirectory
+                     else theirDirectory) / movedCasesLimitStrategy
+                  )
+                )
+              )
             }
           )
           .unsafeRunSync()
@@ -1999,6 +2113,24 @@ class MainTest:
               )
 
               verifyConflictedMerge(baseDirectory, ourDirectory, theirDirectory)
+
+              assert(
+                contentMatches(expected = replacementCasesLimitStrategyContent)(
+                  os.read(
+                    (if flipBranches then ourDirectory
+                     else theirDirectory) / casesLimitStrategy
+                  )
+                )
+              )
+
+              assert(
+                contentMatches(expected = editedCasesLimitStrategyContent)(
+                  os.read(
+                    (if flipBranches then ourDirectory
+                     else theirDirectory) / movedCasesLimitStrategy
+                  )
+                )
+              )
             }
           )
           .unsafeRunSync()
