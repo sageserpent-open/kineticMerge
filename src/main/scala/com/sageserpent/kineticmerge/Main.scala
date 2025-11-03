@@ -1113,7 +1113,7 @@ object Main extends StrictLogging:
           end recordConflictedMergeOfModifiedFile
 
           def recordCleanMergeOfFile(
-              baseDirectory: Option[Path],
+              baseDirectory: Path,
               ourDirectory: Path,
               theirDirectory: Path
           )(
@@ -1122,9 +1122,7 @@ object Main extends StrictLogging:
               mergedFileContent: String @@ Tags.Content
           ) =
             for
-              _ <- baseDirectory.fold(ifEmpty = right(()))(
-                writeFileFor(_)(path, mergedFileContent)
-              )
+              _ <- writeFileFor(baseDirectory)(path, mergedFileContent)
               _ <- writeFileFor(ourDirectory)(path, mergedFileContent)
               _ <- writeFileFor(theirDirectory)(path, mergedFileContent)
             yield partialResult
@@ -1163,7 +1161,7 @@ object Main extends StrictLogging:
 
                   if ourModificationWasTweakedByTheMerge then
                     recordCleanMergeOfFile(
-                      Some(baseDirectory),
+                      baseDirectory,
                       ourDirectory,
                       theirDirectory
                     )(
@@ -1208,7 +1206,7 @@ object Main extends StrictLogging:
 
                   if theirModificationWasTweakedByTheMerge then
                     recordCleanMergeOfFile(
-                      Some(baseDirectory),
+                      baseDirectory,
                       ourDirectory,
                       theirDirectory
                     )(
@@ -1250,7 +1248,7 @@ object Main extends StrictLogging:
 
                   if ourAdditionWasTweakedByTheMerge then
                     recordCleanMergeOfFile(
-                      None,
+                      baseDirectory,
                       ourDirectory,
                       theirDirectory
                     )(
@@ -1305,7 +1303,7 @@ object Main extends StrictLogging:
 
                   if theirAdditionWasTweakedByTheMerge then
                     recordCleanMergeOfFile(
-                      None,
+                      baseDirectory,
                       ourDirectory,
                       theirDirectory
                     )(
@@ -1471,7 +1469,7 @@ object Main extends StrictLogging:
                   val mergedFileContent = reconstituteTextFrom(tokens)
 
                   recordCleanMergeOfFile(
-                    None,
+                    baseDirectory,
                     ourDirectory,
                     theirDirectory
                   )(
@@ -1520,7 +1518,7 @@ object Main extends StrictLogging:
                   val mergedFileContent = reconstituteTextFrom(tokens)
 
                   recordCleanMergeOfFile(
-                    Some(baseDirectory),
+                    baseDirectory,
                     ourDirectory,
                     theirDirectory
                   )(
