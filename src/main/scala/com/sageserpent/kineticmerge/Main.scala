@@ -1548,9 +1548,10 @@ object Main extends StrictLogging:
 
             case BothContributeADeletion(_) =>
               fileRenamingReport(path).fold(ifEmpty =
-                right(partialResult).logOperation(
-                  s"Coincidental deletion of file ${underline(path)} from our directory ${underline(ourDirectory)} and from their directory ${underline(theirDirectory)}."
-                )
+                for _ <- deleteFile(baseDirectory)(path).logOperation(
+                    s"Coincidental deletion of file ${underline(path)} from our directory ${underline(ourDirectory)} and from their directory ${underline(theirDirectory)}."
+                  )
+                yield partialResult
               ) {
                 case FileRenamingReport(
                       description,
