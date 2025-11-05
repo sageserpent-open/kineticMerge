@@ -893,6 +893,14 @@ class MainTest:
 
               checkoutBranch(path)(masterBranch)
 
+              // This is purely to prevent the following call to
+              // `introducingArthur` from making a *duplicate commit* of the one
+              // already done on the master branch. Otherwise, if Git infers a
+              // duplicate commit, then the common ancestor will include the
+              // Arthur file; thus we will not be testing file addition, rather
+              // *modification*.
+              enterTysonStageLeft(path)
+
               introducingArthur(path)
 
               sandraHeadsOffHome(path)
