@@ -74,6 +74,18 @@ object Main extends StrictLogging:
     )
   end main
 
+  /** @param commandLineArguments
+    *   Command line arguments as varargs.
+    * @return
+    *   The exit code as a plain integer, suitable for consumption by both Scala
+    *   and Java client code.
+    */
+  @varargs
+  def apply(commandLineArguments: String*): Int = apply(
+    progressRecording = NoProgressRecording,
+    commandLineArguments = commandLineArguments*
+  )
+
   /** @param progressRecording
     * @param commandLineArguments
     *   Command line arguments as varargs.
@@ -387,9 +399,6 @@ object Main extends StrictLogging:
   private def right[Payload](payload: Payload): Workflow[Payload] =
     EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
 
-  private def underline(anything: Any): Str =
-    fansi.Underlined.On(anything.toString)
-
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
       EitherT
@@ -409,17 +418,8 @@ object Main extends StrictLogging:
       workflow.semiflatTap(_ => WriterT.tell(List(Right(message))))
   end extension
 
-  /** @param commandLineArguments
-    *   Command line arguments as varargs.
-    * @return
-    *   The exit code as a plain integer, suitable for consumption by both Scala
-    *   and Java client code.
-    */
-  @varargs
-  def apply(commandLineArguments: String*): Int = apply(
-    progressRecording = NoProgressRecording,
-    commandLineArguments = commandLineArguments*
-  )
+  private def underline(anything: Any): Str =
+    fansi.Underlined.On(anything.toString)
 
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](
@@ -895,6 +895,39 @@ object Main extends StrictLogging:
         }
     end mergeInputsOf
 
+    private def blobAndContentFor(
+        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
+    )(
+        path: Path
+    ): Workflow[
+      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
+    ] =
+      IO {
+        val line = os
+          .proc("git", "ls-tree", commitIdOrBranchName, path)
+          .call(workingDirectory)
+          .out
+          .text()
+
+        line.split(whitespaceRun) match
+          case Array(mode, _, blobId, _) =>
+            val content = os
+              .proc("git", "cat-file", "blob", blobId)
+              .call(workingDirectory)
+              .out
+              .text()
+
+            (
+              mode.taggedWith[Tags.Mode],
+              blobId.taggedWith[Tags.BlobId],
+              content.taggedWith[Tags.Content]
+            )
+        end match
+      }.labelExceptionWith(errorMessage =
+        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
+      )
+    end blobAndContentFor
+
     def mergeWithRollback(
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
         ourBranchHead: String @@ Tags.CommitOrBranchName,
@@ -1124,24 +1157,28 @@ object Main extends StrictLogging:
                 else passThrough
 
               case JustOurAddition(ourAddition) =>
-                (
-                  baseContentsByPath,
-                  leftContentsByPath + (path -> tokens(
-                    ourAddition.content
-                  ).get),
-                  rightContentsByPath,
-                  newPathsOnLeftOrRight + path
-                )
+                if !ourAddition.binaryContent then
+                  (
+                    baseContentsByPath,
+                    leftContentsByPath + (path -> tokens(
+                      ourAddition.content
+                    ).get),
+                    rightContentsByPath,
+                    newPathsOnLeftOrRight + path
+                  )
+                else passThrough
 
               case JustTheirAddition(theirAddition) =>
-                (
-                  baseContentsByPath,
-                  leftContentsByPath,
-                  rightContentsByPath + (path -> tokens(
-                    theirAddition.content
-                  ).get),
-                  newPathsOnLeftOrRight + path
-                )
+                if !theirAddition.binaryContent then
+                  (
+                    baseContentsByPath,
+                    leftContentsByPath,
+                    rightContentsByPath + (path -> tokens(
+                      theirAddition.content
+                    ).get),
+                    newPathsOnLeftOrRight + path
+                  )
+                else passThrough
 
               case JustOurDeletion(bestAncestorCommitIdContent) =>
                 val unchangedContent = tokens(bestAncestorCommitIdContent).get
@@ -1868,98 +1905,116 @@ object Main extends StrictLogging:
                 )
 
             case JustOurAddition(ourAddition) =>
-              mergeResultsByPath(path) match
-                case FullyMerged(tokens) =>
-                  val mergedFileContent = reconstituteTextFrom(tokens)
+              if !ourAddition.binaryContent then
+                mergeResultsByPath(path) match
+                  case FullyMerged(tokens) =>
+                    val mergedFileContent = reconstituteTextFrom(tokens)
 
-                  val ourAdditionWasTweakedByTheMerge =
-                    mergedFileContent != ourAddition.content
+                    val ourAdditionWasTweakedByTheMerge =
+                      mergedFileContent != ourAddition.content
 
-                  if ourAdditionWasTweakedByTheMerge then
-                    recordCleanMergeOfFile(
-                      partialResult,
-                      path,
-                      mergedFileContent,
-                      ourAddition.mode
-                    )
-                  else right(partialResult)
-                  end if
+                    if ourAdditionWasTweakedByTheMerge then
+                      recordCleanMergeOfFile(
+                        partialResult,
+                        path,
+                        mergedFileContent,
+                        ourAddition.mode
+                      )
+                    else right(partialResult)
+                    end if
 
-                case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
-                  val leftContent  = reconstituteTextFrom(leftTokens)
-                  val rightContent = reconstituteTextFrom(rightTokens)
+                  case MergedWithConflicts(
+                        baseTokens,
+                        leftTokens,
+                        rightTokens
+                      ) =>
+                    val leftContent  = reconstituteTextFrom(leftTokens)
+                    val rightContent = reconstituteTextFrom(rightTokens)
 
-                  if baseTokens.nonEmpty then
-                    val baseContent = reconstituteTextFrom(baseTokens)
+                    if baseTokens.nonEmpty then
+                      val baseContent = reconstituteTextFrom(baseTokens)
 
-                    recordConflictedMergeOfModifiedFile(
-                      partialResult,
-                      path,
-                      ourAddition.mode,
-                      ourAddition.mode,
-                      baseContent,
-                      leftContent,
-                      rightContent
-                    )
-                  else
-                    recordConflictedMergeOfAddedFile(
-                      partialResult,
-                      path,
-                      ourAddition.mode,
-                      leftContent,
-                      rightContent
-                    )
-                  end if
+                      recordConflictedMergeOfModifiedFile(
+                        partialResult,
+                        path,
+                        ourAddition.mode,
+                        ourAddition.mode,
+                        baseContent,
+                        leftContent,
+                        rightContent
+                      )
+                    else
+                      recordConflictedMergeOfAddedFile(
+                        partialResult,
+                        path,
+                        ourAddition.mode,
+                        leftContent,
+                        rightContent
+                      )
+                    end if
+              else right(partialResult)
 
             case JustTheirAddition(theirAddition) =>
-              mergeResultsByPath(path) match
-                case FullyMerged(tokens) =>
-                  val mergedFileContent = reconstituteTextFrom(tokens)
+              if !theirAddition.binaryContent then
+                mergeResultsByPath(path) match
+                  case FullyMerged(tokens) =>
+                    val mergedFileContent = reconstituteTextFrom(tokens)
 
-                  val theirAdditionWasTweakedByTheMerge =
-                    mergedFileContent != theirAddition.content
+                    val theirAdditionWasTweakedByTheMerge =
+                      mergedFileContent != theirAddition.content
 
-                  if theirAdditionWasTweakedByTheMerge then
-                    recordCleanMergeOfFile(
-                      partialResult,
-                      path,
-                      mergedFileContent,
-                      theirAddition.mode
-                    )
-                  else
-                    bringInFileContentFromTheirBranch(
-                      partialResult,
-                      path,
-                      theirAddition.mode,
-                      theirAddition.blobId
-                    )
-                  end if
+                    if theirAdditionWasTweakedByTheMerge then
+                      recordCleanMergeOfFile(
+                        partialResult,
+                        path,
+                        mergedFileContent,
+                        theirAddition.mode
+                      )
+                    else
+                      bringInFileContentFromTheirBranch(
+                        partialResult,
+                        path,
+                        theirAddition.mode,
+                        theirAddition.blobId
+                      )
+                    end if
 
-                case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
-                  val leftContent  = reconstituteTextFrom(leftTokens)
-                  val rightContent = reconstituteTextFrom(rightTokens)
+                  case MergedWithConflicts(
+                        baseTokens,
+                        leftTokens,
+                        rightTokens
+                      ) =>
+                    val leftContent  = reconstituteTextFrom(leftTokens)
+                    val rightContent = reconstituteTextFrom(rightTokens)
 
-                  if baseTokens.nonEmpty then
-                    val baseContent = reconstituteTextFrom(baseTokens)
+                    if baseTokens.nonEmpty then
+                      val baseContent = reconstituteTextFrom(baseTokens)
 
-                    recordConflictedMergeOfModifiedFile(
-                      partialResult,
-                      path,
-                      theirAddition.mode,
-                      theirAddition.mode,
-                      baseContent,
-                      leftContent,
-                      rightContent
-                    )
-                  else
-                    recordConflictedMergeOfAddedFile(
-                      partialResult,
-                      path,
-                      theirAddition.mode,
-                      leftContent,
-                      rightContent
-                    )
-                  end if
+                      recordConflictedMergeOfModifiedFile(
+                        partialResult,
+                        path,
+                        theirAddition.mode,
+                        theirAddition.mode,
+                        baseContent,
+                        leftContent,
+                        rightContent
+                      )
+                    else
+                      recordConflictedMergeOfAddedFile(
+                        partialResult,
+                        path,
+                        theirAddition.mode,
+                        leftContent,
+                        rightContent
+                      )
+                    end if
+              else
+                bringInFileContentFromTheirBranch(
+                  partialResult,
+                  path,
+                  theirAddition.mode,
+                  theirAddition.blobId
+                )
 
             case JustOurDeletion(_) =>
               // NOTE: we don't consult `mergeResultsByPath` because we know the
@@ -2301,39 +2356,6 @@ object Main extends StrictLogging:
       yield withRenameVersusDeletionConflicts.goodForAMergeCommit
       end for
     end indexUpdates
-
-    private def blobAndContentFor(
-        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
-    )(
-        path: Path
-    ): Workflow[
-      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
-    ] =
-      IO {
-        val line = os
-          .proc("git", "ls-tree", commitIdOrBranchName, path)
-          .call(workingDirectory)
-          .out
-          .text()
-
-        line.split(whitespaceRun) match
-          case Array(mode, _, blobId, _) =>
-            val content = os
-              .proc("git", "cat-file", "blob", blobId)
-              .call(workingDirectory)
-              .out
-              .text()
-
-            (
-              mode.taggedWith[Tags.Mode],
-              blobId.taggedWith[Tags.BlobId],
-              content.taggedWith[Tags.Content]
-            )
-        end match
-      }.labelExceptionWith(errorMessage =
-        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
-      )
-    end blobAndContentFor
 
     private def deleteFile(path: Path): Workflow[Unit] = IO {
       os.remove(path): Unit
