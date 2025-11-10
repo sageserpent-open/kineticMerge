@@ -17,10 +17,14 @@ import com.softwaremill.tagging.*
 import org.junit.jupiter.api.TestFactory
 import os.{Path, RelPath}
 
+import scala.util.Random
+
 object MainTest extends ProseExamples:
   private type ImperativeResource[Payload] = Resource[IO, Payload]
 
   private val masterBranch = "master"
+
+  private val binary = RelPath("pathPrefix1") / "binary.file"
 
   private val arthur = RelPath("pathPrefix1") / "arthur.txt"
 
@@ -64,6 +68,51 @@ object MainTest extends ProseExamples:
   private val editedExpectyFlavouredAssertContent = codeMotionExampleRight
   private val arthurIsMarkedWithConflictingUpdateAndDeletionInTheIndex =
     pathIsMarkedWithConflictingUpdateAndDeletionInTheIndex(arthur)
+
+  private def introduceBinaryFileFromSeed(path: Path)(seed: Int): Unit =
+    val content = byteArrayFromSeed(seed)
+
+    os.write(path / binary, content, createFolders = true)
+
+    println(os.proc("git", "add", binary).call(path).out.text())
+    println(
+      os.proc(
+        "git",
+        "commit",
+        "-m",
+        s"'Introducing a binary file using seed: $seed.'"
+      ).call(path)
+        .out
+        .text()
+    )
+  end introduceBinaryFileFromSeed
+
+  private def modifyBinaryFileWithSeed(path: Path)(seed: Int): Array[Byte] =
+    val content = byteArrayFromSeed(seed)
+
+    os.write.over(path / binary, content, createFolders = true)
+
+    println(
+      os.proc(
+        "git",
+        "commit",
+        "-am",
+        s"'Modifying a binary file using seed: $seed.'"
+      ).call(path)
+        .out
+        .text()
+    )
+
+    content
+  end modifyBinaryFileWithSeed
+
+  private def byteArrayFromSeed(seed: Int): Array[Byte] =
+    val random = new Random(seed)
+
+    val length = (1 + random.nextInt(100)) min 10
+
+    random.nextBytes(length)
+  end byteArrayFromSeed
 
   private def introducingArthur(path: Path): Unit =
     os.write(path / arthur, "Hello, my old mucker!\n", createFolders = true)
@@ -154,6 +203,23 @@ object MainTest extends ProseExamples:
         .text()
     )
   end arthurDeniesHavingSaidAnything
+
+  private def arthurIsAbsorbedIntoASimulationAsABinaryConstruct(
+      path: Path
+  ): Array[Byte] =
+    val content = byteArrayFromSeed("I'm Arthur, get me out of here!".hashCode)
+
+    os.write.over(path / arthur, content)
+
+    println(
+      os.proc("git", "commit", "-am", "'Arthur becomes a bit part in Tron.'")
+        .call(path)
+        .out
+        .text()
+    )
+
+    content
+  end arthurIsAbsorbedIntoASimulationAsABinaryConstruct
 
   private def enterTysonStageLeft(path: Path): Unit =
     os.write(path / tyson, s"$tysonResponse\n", createFolders = true)
@@ -617,9 +683,6 @@ object MainTest extends ProseExamples:
       case Array(postMergeCommit, parents*) => postMergeCommit -> parents
     : @unchecked
 
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
-
   private def verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit(
       path: Path
   )(
@@ -646,19 +709,6 @@ object MainTest extends ProseExamples:
 
     assert(status.isEmpty)
   end verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit
-
-  private def currentCommit(path: Path) =
-    os.proc("git", "log", "-1", "--format=tformat:%H")
-      .call(path)
-      .out
-      .text()
-      .strip
-
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
-
-  private def mergeHeadPath(path: Path) =
-    path / ".git" / "MERGE_HEAD"
 
   private def verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit(
       path: Path
@@ -688,8 +738,24 @@ object MainTest extends ProseExamples:
     assert(currentStatus(path).nonEmpty)
   end verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit
 
+  private def currentCommit(path: Path) =
+    os.proc("git", "log", "-1", "--format=tformat:%H")
+      .call(path)
+      .out
+      .text()
+      .strip
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
   private def mergeHead(path: Path) =
     os.read(mergeHeadPath(path)).strip()
+
+  private def mergeHeadPath(path: Path) =
+    path / ".git" / "MERGE_HEAD"
 
   private def verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
       path: Path
@@ -2710,4 +2776,92 @@ class MainTest:
       }
   end conflictingConvergingFileMovesFromDifferentFiles
 
+  @TestFactory
+  def cleanMergeOfABinaryFileModifiedInOneBranch(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches, noCommit) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introduceBinaryFileFromSeed(path)("original".hashCode)
+
+              sandraStopsByBriefly(path)
+
+              val modifiedFileBranch = "modifiedFileBranch"
+
+              makeNewBranch(path)(modifiedFileBranch)
+
+              enterTysonStageLeft(path)
+
+              val modifiedContent =
+                modifyBinaryFileWithSeed(path)("modified".hashCode)
+
+              val commitOfModifiedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              sandraHeadsOffHome(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then checkoutBranch(path)(modifiedFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then modifiedFileBranch -> masterBranch
+                else masterBranch                       -> modifiedFileBranch
+
+              val exitCode = Main.mergeTheirBranch(
+                ApplicationRequest.default.copy(
+                  theirBranchHead =
+                    theirBranch.taggedWith[Tags.CommitOrBranchName],
+                  noCommit = noCommit,
+                  minimumAmbiguousMatchSize = 0
+                )
+              )(workingDirectory =
+                optionalSubdirectory.fold(ifEmpty = path)(path / _)
+              )
+
+              if noCommit then
+                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                  path
+                )(
+                  flipBranches,
+                  commitOfModifiedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              else
+                verifyMergeMakesANewCommitWithACleanIndex(path)(
+                  commitOfModifiedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              end if
+
+              assert(
+                modifiedContent sameElements os.read.bytes(path / binary)
+              )
+            }
+          )
+          .unsafeRunSync()
+      }
+  end cleanMergeOfABinaryFileModifiedInOneBranch
+
+  @TestFactory
+  def conflictingMergeOfABinaryFileModifiedInBothBranches(): DynamicTests =
+    // TODO: this is a placeholder...
+    ???
+
+  @TestFactory
+  def twoFilesSwappingAroundWithModificationOfOneWithTheOtherBeingBinary()
+      : DynamicTests =
+    // TODO: this is a placeholder...
+    ???
 end MainTest
