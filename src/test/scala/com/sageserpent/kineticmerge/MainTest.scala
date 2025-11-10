@@ -278,6 +278,13 @@ object MainTest extends ProseExamples:
       s"UU\\s+$arthur".r.findFirstIn(status).isDefined
     )
 
+  private def binaryFileIsMarkedWithConflictingUpdatesInTheIndex(
+      status: String
+  ): Unit =
+    assert(
+      s"UU\\s+$binary".r.findFirstIn(status).isDefined
+    )
+
   private def arthurSaidConflictingThings(path: Path): Unit =
     val arthurSaid = os.read(path / arthur)
 
@@ -2859,8 +2866,99 @@ class MainTest:
 
   @TestFactory
   def conflictingMergeOfABinaryFileModifiedInBothBranches(): DynamicTests =
-    // TODO: this is a placeholder...
-    ???
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(4)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introduceBinaryFileFromSeed(path)(
+                "original".hashCode
+              )
+
+              sandraStopsByBriefly(path)
+
+              val concurrentlyModifiedFileBranch =
+                "concurrentlyModifiedFileBranch"
+
+              makeNewBranch(path)(concurrentlyModifiedFileBranch)
+
+              enterTysonStageLeft(path)
+
+              val concurrentlyModifiedContent = modifyBinaryFileWithSeed(path)(
+                "concurrentlyModified".hashCode
+              )
+
+              val commitOfConcurrentlyModifiedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              sandraHeadsOffHome(path)
+
+              val modifiedOnMasterContent = modifyBinaryFileWithSeed(path)(
+                "modifiedOnMaster".hashCode
+              )
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then
+                checkoutBranch(path)(concurrentlyModifiedFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then
+                  concurrentlyModifiedFileBranch -> masterBranch
+                else masterBranch -> concurrentlyModifiedFileBranch
+
+              val exitCode = Main.mergeTheirBranch(
+                ApplicationRequest.default.copy(
+                  theirBranchHead =
+                    theirBranch.taggedWith[Tags.CommitOrBranchName],
+                  minimumAmbiguousMatchSize = 0
+                )
+              )(workingDirectory =
+                optionalSubdirectory.fold(ifEmpty = path)(path / _)
+              )
+
+              val status =
+                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                  path
+                )(
+                  flipBranches,
+                  commitOfConcurrentlyModifiedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+
+              binaryFileIsMarkedWithConflictingUpdatesInTheIndex(status)
+
+              if flipBranches then
+                assert(
+                  concurrentlyModifiedContent sameElements os.read
+                    .bytes(path / binary)
+                )
+              else
+                assert(
+                  modifiedOnMasterContent sameElements os.read
+                    .bytes(path / binary)
+                )
+              end if
+
+              if flipBranches then
+                sandraIsMarkedAsDeletedInTheIndex(status)
+                noUpdatesInIndexForTyson(status)
+              else
+                noUpdatesInIndexForSandra(status)
+                tysonIsMarkedAsAddedInTheIndex(status)
+              end if
+            }
+          )
+          .unsafeRunSync()
+      }
 
   @TestFactory
   def twoFilesSwappingAroundWithModificationOfOneWithTheOtherBeingBinary()
