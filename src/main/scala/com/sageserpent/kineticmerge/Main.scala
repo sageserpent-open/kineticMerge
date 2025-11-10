@@ -74,18 +74,6 @@ object Main extends StrictLogging:
     )
   end main
 
-  /** @param commandLineArguments
-    *   Command line arguments as varargs.
-    * @return
-    *   The exit code as a plain integer, suitable for consumption by both Scala
-    *   and Java client code.
-    */
-  @varargs
-  def apply(commandLineArguments: String*): Int = apply(
-    progressRecording = NoProgressRecording,
-    commandLineArguments = commandLineArguments*
-  )
-
   /** @param progressRecording
     * @param commandLineArguments
     *   Command line arguments as varargs.
@@ -399,6 +387,9 @@ object Main extends StrictLogging:
   private def right[Payload](payload: Payload): Workflow[Payload] =
     EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
 
+  private def underline(anything: Any): Str =
+    fansi.Underlined.On(anything.toString)
+
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
       EitherT
@@ -418,8 +409,17 @@ object Main extends StrictLogging:
       workflow.semiflatTap(_ => WriterT.tell(List(Right(message))))
   end extension
 
-  private def underline(anything: Any): Str =
-    fansi.Underlined.On(anything.toString)
+  /** @param commandLineArguments
+    *   Command line arguments as varargs.
+    * @return
+    *   The exit code as a plain integer, suitable for consumption by both Scala
+    *   and Java client code.
+    */
+  @varargs
+  def apply(commandLineArguments: String*): Int = apply(
+    progressRecording = NoProgressRecording,
+    commandLineArguments = commandLineArguments*
+  )
 
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](
@@ -456,14 +456,16 @@ object Main extends StrictLogging:
     case Modification(
         mode: String @@ Tags.Mode,
         blobId: String @@ Tags.BlobId,
-        content: String @@ Tags.Content
+        content: String @@ Tags.Content,
+        binaryContentBeforeOrAfter: Boolean
     )
     case Addition(
         mode: String @@ Tags.Mode,
         blobId: String @@ Tags.BlobId,
-        content: String @@ Tags.Content
+        content: String @@ Tags.Content,
+        binaryContent: Boolean
     )
-    case Deletion
+    case Deletion(binaryContent: Boolean)
   end Change
 
   enum MergeInput:
@@ -607,27 +609,60 @@ object Main extends StrictLogging:
         bestAncestorCommitId: String @@ Main.Tags.CommitOrBranchName,
         possessive: String
     ): Workflow[Map[Path, Change]] =
-      IO {
-        os.proc(
-          "git",
-          "diff",
-          "--no-renames",
-          "--name-status",
-          bestAncestorCommitId,
-          branchOrCommit
-        ).call(workingDirectory)
-          .out
-          .lines()
-      }.labelExceptionWith(errorMessage =
-        s"Could not determine changes made on $possessive branch ${underline(branchOrCommit)} since ancestor commit ${underline(bestAncestorCommitId)}."
-      ).flatMap(
-        _.traverse(pathChangeFor(branchOrCommit))
-      ).map(_.toMap)
+      def snoop[X](x: X) =
+        println(x)
+        x
+      end snoop
+
+      for
+        statusLines <- IO {
+          os.proc(
+            "git",
+            "diff",
+            "--no-renames",
+            "--name-status",
+            bestAncestorCommitId,
+            branchOrCommit
+          ).call(workingDirectory)
+            .out
+            .lines()
+        }.labelExceptionWith(errorMessage =
+          s"Could not determine status for changes made on $possessive branch ${underline(branchOrCommit)} since ancestor commit ${underline(bestAncestorCommitId)}."
+        )
+
+        binaryFiles <- IO {
+          os.proc(
+            "git",
+            "diff",
+            "--no-renames",
+            "--numstat",
+            bestAncestorCommitId,
+            branchOrCommit
+          ).call(workingDirectory)
+            .out
+            .lines()
+            .collect {
+              _.split(whitespaceRun) match
+                case Array("-", "-", file) =>
+                  workingDirectory / RelPath(file)
+            }
+            .toSet
+        }.labelExceptionWith(errorMessage =
+          s"Could not determine if binary content was involved for changes made on $possessive branch ${underline(branchOrCommit)} since ancestor commit ${underline(bestAncestorCommitId)}."
+        )
+
+        result <- statusLines
+          .traverse(pathChangeFor(branchOrCommit)(_, binaryFiles.contains))
+          .map(_.toMap)
+      yield result
+      end for
+    end changes
 
     private def pathChangeFor(
         commitIdOrBranchName: String @@ Tags.CommitOrBranchName
     )(
-        line: String
+        line: String,
+        binaryContentInvolvedFor: Path => Boolean
     ): Workflow[(Path, Change)] =
       IO {
         line.split(whitespaceRun) match
@@ -635,19 +670,19 @@ object Main extends StrictLogging:
             val path = workingDirectory / RelPath(changedFile)
             path -> blobAndContentFor(commitIdOrBranchName)(
               path
-            ).map(
-              Change.Modification.apply.tupled
-            )
+            ).map(Change.Modification(_, _, _, binaryContentInvolvedFor(path)))
           case Array("A", addedFile) =>
             val path = workingDirectory / RelPath(addedFile)
             path -> blobAndContentFor(commitIdOrBranchName)(
               path
             ).map(
-              Change.Addition.apply.tupled
+              Change.Addition(_, _, _, binaryContentInvolvedFor(path))
             )
           case Array("D", deletedFile) =>
-            val path = RelPath(deletedFile)
-            workingDirectory / path -> right(Change.Deletion)
+            val path = workingDirectory / RelPath(deletedFile)
+            path -> right(
+              Change.Deletion(binaryContentInvolvedFor(path))
+            )
         end match
       }.labelExceptionWith(errorMessage =
         s"Unexpected error - can't parse changes reported by Git ${underline(line)}."
@@ -703,7 +738,7 @@ object Main extends StrictLogging:
                 path,
                 (
                   Some(_: Change.Addition),
-                  Some(Change.Deletion | _: Change.Modification)
+                  Some(_: Change.Deletion | _: Change.Modification)
                 )
               ) =>
             left(
@@ -713,7 +748,7 @@ object Main extends StrictLogging:
           case (
                 path,
                 (
-                  Some(Change.Deletion | _: Change.Modification),
+                  Some(_: Change.Deletion | _: Change.Modification),
                   Some(_: Change.Addition)
                 )
               ) =>
@@ -765,7 +800,7 @@ object Main extends StrictLogging:
 
           case (
                 path,
-                (Some(Change.Deletion), None)
+                (Some(_: Change.Deletion), None)
               ) =>
             for (
                 _,
@@ -776,7 +811,7 @@ object Main extends StrictLogging:
 
           case (
                 path,
-                (None, Some(Change.Deletion))
+                (None, Some(_: Change.Deletion))
               ) =>
             for (
                 _,
@@ -789,7 +824,7 @@ object Main extends StrictLogging:
                 path,
                 (
                   Some(ourModification: Change.Modification),
-                  Some(Change.Deletion)
+                  Some(_: Change.Deletion)
                 )
               ) =>
             for (
@@ -807,7 +842,7 @@ object Main extends StrictLogging:
           case (
                 path,
                 (
-                  Some(Change.Deletion),
+                  Some(_: Change.Deletion),
                   Some(theirModification: Change.Modification)
                 )
               ) =>
@@ -878,8 +913,8 @@ object Main extends StrictLogging:
           case (
                 path,
                 (
-                  Some(Change.Deletion),
-                  Some(Change.Deletion)
+                  Some(_: Change.Deletion),
+                  Some(_: Change.Deletion)
                 )
               ) =>
             for (
