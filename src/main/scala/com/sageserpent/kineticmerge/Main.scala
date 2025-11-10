@@ -1109,7 +1109,7 @@ object Main extends StrictLogging:
           )
         ) {
           case (
-                (
+                passThrough @ (
                   baseContentsByPath,
                   leftContentsByPath,
                   rightContentsByPath,
@@ -1123,32 +1123,36 @@ object Main extends StrictLogging:
                     _,
                     bestAncestorCommitIdContent
                   ) =>
-                val unchangedContent = tokens(bestAncestorCommitIdContent).get
+                if !ourModification.binaryContentBeforeOrAfter then
+                  val unchangedContent = tokens(bestAncestorCommitIdContent).get
 
-                (
-                  baseContentsByPath + (path -> unchangedContent),
-                  leftContentsByPath + (path -> tokens(
-                    ourModification.content
-                  ).get),
-                  rightContentsByPath + (path -> unchangedContent),
-                  newPathsOnLeftOrRight
-                )
+                  (
+                    baseContentsByPath + (path -> unchangedContent),
+                    leftContentsByPath + (path -> tokens(
+                      ourModification.content
+                    ).get),
+                    rightContentsByPath + (path -> unchangedContent),
+                    newPathsOnLeftOrRight
+                  )
+                else passThrough
 
               case JustTheirModification(
                     theirModification,
                     _,
                     bestAncestorCommitIdContent
                   ) =>
-                val unchangedContent = tokens(bestAncestorCommitIdContent).get
+                if !theirModification.binaryContentBeforeOrAfter then
+                  val unchangedContent = tokens(bestAncestorCommitIdContent).get
 
-                (
-                  baseContentsByPath + (path  -> unchangedContent),
-                  leftContentsByPath + (path  -> unchangedContent),
-                  rightContentsByPath + (path -> tokens(
-                    theirModification.content
-                  ).get),
-                  newPathsOnLeftOrRight
-                )
+                  (
+                    baseContentsByPath + (path  -> unchangedContent),
+                    leftContentsByPath + (path  -> unchangedContent),
+                    rightContentsByPath + (path -> tokens(
+                      theirModification.content
+                    ).get),
+                    newPathsOnLeftOrRight
+                  )
+                else passThrough
 
               case JustOurAddition(ourAddition) =>
                 (
@@ -1748,80 +1752,98 @@ object Main extends StrictLogging:
                   bestAncestorCommitIdMode,
                   _
                 ) =>
-              mergeResultsByPath(path) match
-                case FullyMerged(tokens) =>
-                  val mergedFileContent = reconstituteTextFrom(tokens)
+              if !ourModification.binaryContentBeforeOrAfter then
+                mergeResultsByPath(path) match
+                  case FullyMerged(tokens) =>
+                    val mergedFileContent = reconstituteTextFrom(tokens)
 
-                  val ourModificationWasTweakedByTheMerge =
-                    mergedFileContent != ourModification.content
+                    val ourModificationWasTweakedByTheMerge =
+                      mergedFileContent != ourModification.content
 
-                  if ourModificationWasTweakedByTheMerge then
-                    recordCleanMergeOfFile(
+                    if ourModificationWasTweakedByTheMerge then
+                      recordCleanMergeOfFile(
+                        partialResult,
+                        path,
+                        mergedFileContent,
+                        ourModification.mode
+                      )
+                    else right(partialResult)
+                    end if
+
+                  case MergedWithConflicts(
+                        baseTokens,
+                        leftTokens,
+                        rightTokens
+                      ) =>
+                    val baseContent  = reconstituteTextFrom(baseTokens)
+                    val leftContent  = reconstituteTextFrom(leftTokens)
+                    val rightContent = reconstituteTextFrom(rightTokens)
+
+                    recordConflictedMergeOfModifiedFile(
                       partialResult,
                       path,
-                      mergedFileContent,
-                      ourModification.mode
+                      bestAncestorCommitIdMode,
+                      ourModification.mode,
+                      baseContent,
+                      leftContent,
+                      rightContent
                     )
-                  else right(partialResult)
-                  end if
-
-                case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
-                  val baseContent  = reconstituteTextFrom(baseTokens)
-                  val leftContent  = reconstituteTextFrom(leftTokens)
-                  val rightContent = reconstituteTextFrom(rightTokens)
-
-                  recordConflictedMergeOfModifiedFile(
-                    partialResult,
-                    path,
-                    bestAncestorCommitIdMode,
-                    ourModification.mode,
-                    baseContent,
-                    leftContent,
-                    rightContent
-                  )
+              else right(partialResult)
 
             case JustTheirModification(
                   theirModification,
                   bestAncestorCommitIdMode,
                   _
                 ) =>
-              mergeResultsByPath(path) match
-                case FullyMerged(tokens) =>
-                  val mergedFileContent = reconstituteTextFrom(tokens)
+              if !theirModification.binaryContentBeforeOrAfter then
+                mergeResultsByPath(path) match
+                  case FullyMerged(tokens) =>
+                    val mergedFileContent = reconstituteTextFrom(tokens)
 
-                  val theirModificationWasTweakedByTheMerge =
-                    mergedFileContent != theirModification.content
+                    val theirModificationWasTweakedByTheMerge =
+                      mergedFileContent != theirModification.content
 
-                  if theirModificationWasTweakedByTheMerge then
-                    recordCleanMergeOfFile(
+                    if theirModificationWasTweakedByTheMerge then
+                      recordCleanMergeOfFile(
+                        partialResult,
+                        path,
+                        mergedFileContent,
+                        theirModification.mode
+                      )
+                    else
+                      bringInFileContentFromTheirBranch(
+                        partialResult,
+                        path,
+                        theirModification.mode,
+                        theirModification.blobId
+                      )
+                    end if
+
+                  case MergedWithConflicts(
+                        baseTokens,
+                        leftTokens,
+                        rightTokens
+                      ) =>
+                    val baseContent  = reconstituteTextFrom(baseTokens)
+                    val leftContent  = reconstituteTextFrom(leftTokens)
+                    val rightContent = reconstituteTextFrom(rightTokens)
+
+                    recordConflictedMergeOfModifiedFile(
                       partialResult,
                       path,
-                      mergedFileContent,
-                      theirModification.mode
-                    )
-                  else
-                    bringInFileContentFromTheirBranch(
-                      partialResult,
-                      path,
+                      bestAncestorCommitIdMode,
                       theirModification.mode,
-                      theirModification.blobId
+                      baseContent,
+                      leftContent,
+                      rightContent
                     )
-                  end if
-
-                case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
-                  val baseContent  = reconstituteTextFrom(baseTokens)
-                  val leftContent  = reconstituteTextFrom(leftTokens)
-                  val rightContent = reconstituteTextFrom(rightTokens)
-
-                  recordConflictedMergeOfModifiedFile(
-                    partialResult,
-                    path,
-                    bestAncestorCommitIdMode,
-                    theirModification.mode,
-                    baseContent,
-                    leftContent,
-                    rightContent
-                  )
+              else
+                bringInFileContentFromTheirBranch(
+                  partialResult,
+                  path,
+                  theirModification.mode,
+                  theirModification.blobId
+                )
 
             case JustOurAddition(ourAddition) =>
               mergeResultsByPath(path) match
