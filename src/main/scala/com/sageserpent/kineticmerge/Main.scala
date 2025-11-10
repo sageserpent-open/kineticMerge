@@ -504,6 +504,7 @@ object Main extends StrictLogging:
         ourModification: Change.Modification,
         theirModification: Change.Modification,
         bestAncestorCommitIdMode: String @@ Tags.Mode,
+        bestAncestorCommitIdBlobId: String @@ Tags.BlobId,
         bestAncestorCommitIdContent: String @@ Tags.Content,
         mergedFileMode: String @@ Tags.Mode
     )
@@ -687,39 +688,6 @@ object Main extends StrictLogging:
       }.labelExceptionWith(errorMessage =
         s"Unexpected error - can't parse changes reported by Git ${underline(line)}."
       ).flatMap { case (path, changed) => changed.map(path -> _) }
-
-    private def blobAndContentFor(
-        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
-    )(
-        path: Path
-    ): Workflow[
-      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
-    ] =
-      IO {
-        val line = os
-          .proc("git", "ls-tree", commitIdOrBranchName, path)
-          .call(workingDirectory)
-          .out
-          .text()
-
-        line.split(whitespaceRun) match
-          case Array(mode, _, blobId, _) =>
-            val content = os
-              .proc("git", "cat-file", "blob", blobId)
-              .call(workingDirectory)
-              .out
-              .text()
-
-            (
-              mode.taggedWith[Tags.Mode],
-              blobId.taggedWith[Tags.BlobId],
-              content.taggedWith[Tags.Content]
-            )
-        end match
-      }.labelExceptionWith(errorMessage =
-        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
-      )
-    end blobAndContentFor
 
     def mergeInputsOf(
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
@@ -906,6 +874,7 @@ object Main extends StrictLogging:
               ourModification,
               theirModification,
               bestAncestorCommitIdMode,
+              bestAncestorCommitIdBlobId,
               bestAncestorCommitIdContent,
               mergedFileMode
             )
@@ -1248,21 +1217,50 @@ object Main extends StrictLogging:
                     ourModification,
                     theirModification,
                     _,
+                    _,
                     bestAncestorCommitIdContent,
                     _
                   ) =>
                 (
-                  baseContentsByPath + (path -> tokens(
-                    bestAncestorCommitIdContent
-                  ).get),
-                  leftContentsByPath + (path -> tokens(
-                    ourModification.content
-                  ).get),
-                  rightContentsByPath + (path -> tokens(
-                    theirModification.content
-                  ).get),
-                  newPathsOnLeftOrRight
-                )
+                  ourModification.binaryContentBeforeOrAfter,
+                  theirModification.binaryContentBeforeOrAfter
+                ) match
+                  case (false, false) =>
+                    (
+                      baseContentsByPath + (path -> tokens(
+                        bestAncestorCommitIdContent
+                      ).get),
+                      leftContentsByPath + (path -> tokens(
+                        ourModification.content
+                      ).get),
+                      rightContentsByPath + (path -> tokens(
+                        theirModification.content
+                      ).get),
+                      newPathsOnLeftOrRight
+                    )
+                  case (true, false) =>
+                    (
+                      baseContentsByPath + (path -> tokens(
+                        bestAncestorCommitIdContent
+                      ).get),
+                      leftContentsByPath,
+                      rightContentsByPath + (path -> tokens(
+                        theirModification.content
+                      ).get),
+                      newPathsOnLeftOrRight
+                    )
+                  case (false, true) =>
+                    (
+                      baseContentsByPath + (path -> tokens(
+                        bestAncestorCommitIdContent
+                      ).get),
+                      leftContentsByPath + (path -> tokens(
+                        ourModification.content
+                      ).get),
+                      rightContentsByPath,
+                      newPathsOnLeftOrRight
+                    )
+                  case (true, true) => passThrough
 
               case BothContributeADeletion(bestAncestorCommitIdContent) =>
                 (
@@ -1525,6 +1523,48 @@ object Main extends StrictLogging:
         end if
       end lastMinuteResolution
 
+      def writeConflictedIndexEntries(
+          partialResult: AccumulatedMergeState,
+          path: Path,
+          bestAncestorCommitIdMode: String @@ Tags.Mode,
+          mode: String @@ Tags.Mode,
+          lastMinuteResolution: Boolean,
+          baseBlobId: String @@ Tags.BlobId,
+          leftBlobId: String @@ Tags.BlobId,
+          rightBlobId: String @@ Tags.BlobId
+      ) =
+        for
+          _ <- recordDeletionInIndex(path)
+          _ <- recordConflictModificationInIndex(
+            stageIndex = bestCommonAncestorStageIndex
+          )(
+            bestAncestorCommitId,
+            path,
+            bestAncestorCommitIdMode,
+            baseBlobId
+          )
+          _ <- recordConflictModificationInIndex(
+            stageIndex = ourStageIndex
+          )(
+            ourBranchHead,
+            path,
+            mode,
+            leftBlobId
+          )
+          _ <- recordConflictModificationInIndex(
+            stageIndex = theirStageIndex
+          )(
+            theirBranchHead,
+            path,
+            mode,
+            rightBlobId
+          ).logOperation(
+            s"Conflict - file ${underline(path)} was modified on our branch ${underline(
+                ourBranchHead
+              )} and modified on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
+          )
+        yield partialResult.copy(goodForAMergeCommit = false)
+
       for
         codeMotionAnalysis: CodeMotionAnalysis[Path, Token] <- EitherT
           .fromEither[WorkflowLogWriter] {
@@ -1653,39 +1693,21 @@ object Main extends StrictLogging:
                 s"Unexpected error: could not copy results of conflicted merge in ${underline(leftTemporaryFile)} to working directory tree file ${underline(path)}."
               )
 
-              baseBlob  <- storeBlobFor(path, baseContent)
-              leftBlob  <- storeBlobFor(path, leftContent)
-              rightBlob <- storeBlobFor(path, rightContent)
-              _         <- recordDeletionInIndex(path)
-              _         <- recordConflictModificationInIndex(
-                stageIndex = bestCommonAncestorStageIndex
-              )(
-                bestAncestorCommitId,
+              baseBlobId  <- storeBlobFor(path, baseContent)
+              leftBlobId  <- storeBlobFor(path, leftContent)
+              rightBlobId <- storeBlobFor(path, rightContent)
+
+              result <- writeConflictedIndexEntries(
+                partialResult,
                 path,
                 bestAncestorCommitIdMode,
-                baseBlob
-              )
-              _ <- recordConflictModificationInIndex(
-                stageIndex = ourStageIndex
-              )(
-                ourBranchHead,
-                path,
                 mode,
-                leftBlob
+                lastMinuteResolution,
+                baseBlobId,
+                leftBlobId,
+                rightBlobId
               )
-              _ <- recordConflictModificationInIndex(
-                stageIndex = theirStageIndex
-              )(
-                theirBranchHead,
-                path,
-                mode,
-                rightBlob
-              ).logOperation(
-                s"Conflict - file ${underline(path)} was modified on our branch ${underline(
-                    ourBranchHead
-                  )} and modified on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
-              )
-            yield partialResult.copy(goodForAMergeCommit = false)
+            yield result
             end for
           end recordConflictedMergeOfModifiedFile
 
@@ -2173,36 +2195,58 @@ object Main extends StrictLogging:
                   end if
 
             case BothContributeAModification(
-                  _,
-                  _,
+                  ourModification,
+                  theirModification,
                   bestAncestorCommitIdMode,
-                  _,
+                  bestAncestorCommitIdBlobId,
+                  bestAncestorCommitIdContent,
                   mergedFileMode
                 ) =>
-              mergeResultsByPath(path) match
-                case FullyMerged(tokens) =>
-                  val mergedFileContent = reconstituteTextFrom(tokens)
+              (
+                ourModification.binaryContentBeforeOrAfter,
+                theirModification.binaryContentBeforeOrAfter
+              ) match
+                // TODO: two lots of cases are missing!
+                case (false, false) =>
+                  mergeResultsByPath(path) match
+                    case FullyMerged(tokens) =>
+                      val mergedFileContent = reconstituteTextFrom(tokens)
 
-                  recordCleanMergeOfFile(
-                    partialResult,
-                    path,
-                    mergedFileContent,
-                    mergedFileMode
-                  )
+                      recordCleanMergeOfFile(
+                        partialResult,
+                        path,
+                        mergedFileContent,
+                        mergedFileMode
+                      )
 
-                case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
-                  val baseContent  = reconstituteTextFrom(baseTokens)
-                  val leftContent  = reconstituteTextFrom(leftTokens)
-                  val rightContent = reconstituteTextFrom(rightTokens)
+                    case MergedWithConflicts(
+                          baseTokens,
+                          leftTokens,
+                          rightTokens
+                        ) =>
+                      val baseContent  = reconstituteTextFrom(baseTokens)
+                      val leftContent  = reconstituteTextFrom(leftTokens)
+                      val rightContent = reconstituteTextFrom(rightTokens)
 
-                  recordConflictedMergeOfModifiedFile(
+                      recordConflictedMergeOfModifiedFile(
+                        partialResult,
+                        path,
+                        bestAncestorCommitIdMode,
+                        mergedFileMode,
+                        baseContent,
+                        leftContent,
+                        rightContent
+                      )
+                case (true, true) =>
+                  writeConflictedIndexEntries(
                     partialResult,
                     path,
                     bestAncestorCommitIdMode,
-                    mergedFileMode,
-                    baseContent,
-                    leftContent,
-                    rightContent
+                    bestAncestorCommitIdMode,
+                    lastMinuteResolution = false,
+                    bestAncestorCommitIdBlobId,
+                    ourModification.blobId,
+                    theirModification.blobId
                   )
 
             case BothContributeADeletion(_) =>
@@ -2257,6 +2301,39 @@ object Main extends StrictLogging:
       yield withRenameVersusDeletionConflicts.goodForAMergeCommit
       end for
     end indexUpdates
+
+    private def blobAndContentFor(
+        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
+    )(
+        path: Path
+    ): Workflow[
+      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
+    ] =
+      IO {
+        val line = os
+          .proc("git", "ls-tree", commitIdOrBranchName, path)
+          .call(workingDirectory)
+          .out
+          .text()
+
+        line.split(whitespaceRun) match
+          case Array(mode, _, blobId, _) =>
+            val content = os
+              .proc("git", "cat-file", "blob", blobId)
+              .call(workingDirectory)
+              .out
+              .text()
+
+            (
+              mode.taggedWith[Tags.Mode],
+              blobId.taggedWith[Tags.BlobId],
+              content.taggedWith[Tags.Content]
+            )
+        end match
+      }.labelExceptionWith(errorMessage =
+        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
+      )
+    end blobAndContentFor
 
     private def deleteFile(path: Path): Workflow[Unit] = IO {
       os.remove(path): Unit
