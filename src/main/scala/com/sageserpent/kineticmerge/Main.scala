@@ -2307,27 +2307,6 @@ object Main extends StrictLogging:
         ", but was resolved trivially when creating the conflicted file - leaving it marked as unresolved for now"
       else ""
 
-    private def recordAdditionInIndex(
-        path: Path,
-        mode: String @@ Tags.Mode,
-        blobId: String @@ Tags.BlobId
-    ): Workflow[Unit] =
-      IO {
-        val _ = os
-          .proc(
-            "git",
-            "update-index",
-            "--add",
-            "--cacheinfo",
-            mode,
-            blobId,
-            path relativeTo workingDirectory
-          )
-          .call(workingDirectory)
-      }.labelExceptionWith(
-        s"Unexpected error: could not update index for added file ${underline(path)}."
-      )
-    end recordAdditionInIndex
   end InWorkingDirectory
 
   object ApplicationRequest:
