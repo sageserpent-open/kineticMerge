@@ -569,6 +569,29 @@ object MainTest extends ProseExamples:
     random.nextBytes(length)
   end byteArrayFromSeed
 
+  private def introducingBinaryMovedCasesLimitStrategy(
+      path: Path
+  ): Array[Byte] =
+    val content = byteArrayFromSeed("Inspired by Andrew Koenig...".hashCode)
+
+    os.write(path / movedCasesLimitStrategy, content, createFolders = true)
+    println(
+      os.proc("git", "add", movedCasesLimitStrategy).call(path).out.text()
+    )
+    println(
+      os.proc(
+        "git",
+        "commit",
+        "-m",
+        "'`CasesLimitStrategy` is now a virus that makes the compiler replicate it.'"
+      ).call(path)
+        .out
+        .text()
+    )
+
+    content
+  end introducingBinaryMovedCasesLimitStrategy
+
   private def introducingExpectyFlavouredAssert(path: Path): Unit =
     os.write(
       path / expectyFlavouredAssert,
@@ -2969,83 +2992,93 @@ class MainTest:
   @TestFactory
   def anEditAndADeletionPropagatingThroughAFileMoveWithTheOriginalFileReplacedByABinary()
       : DynamicTests =
-    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
+    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans and trialsApi.booleans)
       .withLimit(10)
-      .dynamicTests { case (optionalSubdirectory, flipBranches, noCommit) =>
-        gitRepository()
-          .use(path =>
-            IO {
-              optionalSubdirectory
-                .foreach(subdirectory => os.makeDir(path / subdirectory))
+      .dynamicTests {
+        case (
+              optionalSubdirectory,
+              flipBranches,
+              noCommit,
+              theMovedFileIsShadowedWithABinaryToo
+            ) =>
+          gitRepository()
+            .use(path =>
+              IO {
+                optionalSubdirectory
+                  .foreach(subdirectory => os.makeDir(path / subdirectory))
 
-              introducingCasesLimitStrategy(path)
+                introducingCasesLimitStrategy(path)
 
-              val movedFileBranch = "movedFileBranch"
+                val movedFileBranch = "movedFileBranch"
 
-              makeNewBranch(path)(movedFileBranch)
+                makeNewBranch(path)(movedFileBranch)
 
-              moveCasesLimitStrategy(path)
+                moveCasesLimitStrategy(path)
 
-              val replacementContent =
-                reintroducingBinaryCasesLimitStrategy(path)
+                val replacementContent =
+                  reintroducingBinaryCasesLimitStrategy(path)
 
-              val commitOfMovedFileBranch = currentCommit(path)
+                val commitOfMovedFileBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+                checkoutBranch(path)(masterBranch)
 
-              editingCasesLimitStrategy(path)
+                editingCasesLimitStrategy(path)
 
-              val commitOfMasterBranch = currentCommit(path)
+                if theMovedFileIsShadowedWithABinaryToo then
+                  introducingBinaryMovedCasesLimitStrategy(path)
+                end if
 
-              if flipBranches then checkoutBranch(path)(movedFileBranch)
-              end if
+                val commitOfMasterBranch = currentCommit(path)
 
-              val (ourBranch, theirBranch) =
-                if flipBranches then movedFileBranch -> masterBranch
-                else masterBranch                    -> movedFileBranch
+                if flipBranches then checkoutBranch(path)(movedFileBranch)
+                end if
 
-              val exitCode = Main.mergeTheirBranch(
-                ApplicationRequest.default.copy(
-                  theirBranchHead =
-                    theirBranch.taggedWith[Tags.CommitOrBranchName],
-                  noCommit = noCommit,
-                  minimumAmbiguousMatchSize = 5
+                val (ourBranch, theirBranch) =
+                  if flipBranches then movedFileBranch -> masterBranch
+                  else masterBranch                    -> movedFileBranch
+
+                val exitCode = Main.mergeTheirBranch(
+                  ApplicationRequest.default.copy(
+                    theirBranchHead =
+                      theirBranch.taggedWith[Tags.CommitOrBranchName],
+                    noCommit = noCommit,
+                    minimumAmbiguousMatchSize = 5
+                  )
+                )(workingDirectory =
+                  optionalSubdirectory.fold(ifEmpty = path)(path / _)
                 )
-              )(workingDirectory =
-                optionalSubdirectory.fold(ifEmpty = path)(path / _)
-              )
 
-              if noCommit then
-                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
-                  path
-                )(
-                  flipBranches,
-                  commitOfMovedFileBranch,
-                  commitOfMasterBranch,
-                  ourBranch,
-                  exitCode
-                )
-              else
-                verifyMergeMakesANewCommitWithACleanIndex(path)(
-                  commitOfMovedFileBranch,
-                  commitOfMasterBranch,
-                  ourBranch,
-                  exitCode
-                )
-              end if
+                if noCommit then
+                  verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                    path
+                  )(
+                    flipBranches,
+                    commitOfMovedFileBranch,
+                    commitOfMasterBranch,
+                    ourBranch,
+                    exitCode
+                  )
+                else
+                  verifyMergeMakesANewCommitWithACleanIndex(path)(
+                    commitOfMovedFileBranch,
+                    commitOfMasterBranch,
+                    ourBranch,
+                    exitCode
+                  )
+                end if
 
-              assert(
-                contentMatches(expected = editedCasesLimitStrategyContent)(
-                  os.read(path / movedCasesLimitStrategy)
+                assert(
+                  contentMatches(expected = editedCasesLimitStrategyContent)(
+                    os.read(path / movedCasesLimitStrategy)
+                  )
                 )
-              )
-              assert(
-                replacementContent sameElements os.read
-                  .bytes(path / casesLimitStrategy)
-              )
-            }
-          )
-          .unsafeRunSync()
+                assert(
+                  replacementContent sameElements os.read
+                    .bytes(path / casesLimitStrategy)
+                )
+              }
+            )
+            .unsafeRunSync()
       }
   end anEditAndADeletionPropagatingThroughAFileMoveWithTheOriginalFileReplacedByABinary
 
