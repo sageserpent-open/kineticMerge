@@ -1226,45 +1226,24 @@ object Main extends StrictLogging:
                     _
                   ) =>
                 (
-                  ourModification.binaryContentBeforeOrAfter,
-                  theirModification.binaryContentBeforeOrAfter
-                ) match
-                  case (false, false) =>
-                    (
-                      baseContentsByPath + (path -> tokens(
-                        bestAncestorCommitIdContent
-                      ).get),
-                      leftContentsByPath + (path -> tokens(
-                        ourModification.content
-                      ).get),
-                      rightContentsByPath + (path -> tokens(
-                        theirModification.content
-                      ).get),
-                      newPathsOnLeftOrRight
-                    )
-                  case (true, false) =>
-                    (
-                      baseContentsByPath + (path -> tokens(
-                        bestAncestorCommitIdContent
-                      ).get),
-                      leftContentsByPath,
-                      rightContentsByPath + (path -> tokens(
-                        theirModification.content
-                      ).get),
-                      newPathsOnLeftOrRight
-                    )
-                  case (false, true) =>
-                    (
-                      baseContentsByPath + (path -> tokens(
-                        bestAncestorCommitIdContent
-                      ).get),
-                      leftContentsByPath + (path -> tokens(
-                        ourModification.content
-                      ).get),
-                      rightContentsByPath,
-                      newPathsOnLeftOrRight
-                    )
-                  case (true, true) => passThrough
+                  if !ourModification.binaryContentBeforeOrAfter || !theirModification.binaryContentBeforeOrAfter
+                  then
+                    baseContentsByPath + (path -> tokens(
+                      bestAncestorCommitIdContent
+                    ).get)
+                  else baseContentsByPath,
+                  if !ourModification.binaryContentBeforeOrAfter then
+                    leftContentsByPath + (path -> tokens(
+                      ourModification.content
+                    ).get)
+                  else leftContentsByPath,
+                  if !theirModification.binaryContentBeforeOrAfter then
+                    rightContentsByPath + (path -> tokens(
+                      theirModification.content
+                    ).get)
+                  else rightContentsByPath,
+                  newPathsOnLeftOrRight
+                )
 
               case BothContributeADeletion(bestAncestorCommitIdContent) =>
                 (
