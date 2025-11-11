@@ -2252,7 +2252,8 @@ object Main extends StrictLogging:
 
                 case (false, true) =>
                   // Treat this as if our side modified and their side
-                  // *replaced* the file.
+                  // *replaced* the file with binary content. We are always
+                  // looking to put the replacement binary into the worktree.
                   val tokens = justOurSidesViewOfTheMergedContentAt(path)
 
                   val mergedFileContent = reconstituteTextFrom(tokens)
@@ -2314,7 +2315,8 @@ object Main extends StrictLogging:
 
                 case (true, false) =>
                   // Treat this as if their side modified and our side
-                  // *replaced* the file.
+                  // *replaced* the file with binary content. We are always
+                  // looking to keep the replacement binary in the worktree.
                   val tokens = justTheirSidesViewOfTheMergedContentAt(path)
 
                   val mergedFileContent = reconstituteTextFrom(tokens)
