@@ -106,17 +106,6 @@ object MainTest extends ProseExamples:
     content
   end modifyBinaryFileWithSeed
 
-  private def byteArrayFromSeed(seed: Int): Array[Byte] =
-    val random = new Random(seed)
-
-    // NOTE: don't be tempted to shorten the length too much - otherwise Git
-    // will think the content is text after all, even though the Unix `file`
-    // command isn't fooled.
-    val length = (1 + random.nextInt(1000)) min 100
-
-    random.nextBytes(length)
-  end byteArrayFromSeed
-
   private def introducingArthur(path: Path): Unit =
     os.write(path / arthur, "Hello, my old mucker!\n", createFolders = true)
     println(os.proc("git", "add", arthur).call(path).out.text())
@@ -206,23 +195,6 @@ object MainTest extends ProseExamples:
         .text()
     )
   end arthurDeniesHavingSaidAnything
-
-  private def arthurIsAbsorbedIntoASimulationAsABinaryConstruct(
-      path: Path
-  ): Array[Byte] =
-    val content = byteArrayFromSeed("I'm Arthur, get me out of here!".hashCode)
-
-    os.write.over(path / arthur, content)
-
-    println(
-      os.proc("git", "commit", "-am", "'Arthur becomes a bit part in Tron.'")
-        .call(path)
-        .out
-        .text()
-    )
-
-    content
-  end arthurIsAbsorbedIntoASimulationAsABinaryConstruct
 
   private def enterTysonStageLeft(path: Path): Unit =
     os.write(path / tyson, s"$tysonResponse\n", createFolders = true)
@@ -563,6 +535,38 @@ object MainTest extends ProseExamples:
     )
   end arthurBecomesAnExpertOnCasesLimitStrategy
 
+  private def reintroducingBinaryCasesLimitStrategy(
+      path: Path
+  ): Array[Byte] =
+    val content = byteArrayFromSeed("Inspired by Andrew Koenig...".hashCode)
+
+    os.write(path / casesLimitStrategy, content, createFolders = true)
+    println(os.proc("git", "add", casesLimitStrategy).call(path).out.text())
+    println(
+      os.proc(
+        "git",
+        "commit",
+        "-m",
+        "'`CasesLimitStrategy` is now a virus that makes the compiler replicate it.'"
+      ).call(path)
+        .out
+        .text()
+    )
+
+    content
+  end reintroducingBinaryCasesLimitStrategy
+
+  private def byteArrayFromSeed(seed: Int): Array[Byte] =
+    val random = new Random(seed)
+
+    // NOTE: don't be tempted to shorten the length too much - otherwise Git
+    // will think the content is text after all, even though the Unix `file`
+    // command isn't fooled.
+    val length = (1 + random.nextInt(1000)) min 100
+
+    random.nextBytes(length)
+  end byteArrayFromSeed
+
   private def introducingExpectyFlavouredAssert(path: Path): Unit =
     os.write(
       path / expectyFlavouredAssert,
@@ -636,6 +640,9 @@ object MainTest extends ProseExamples:
     assert(currentStatus(path).isEmpty)
   end verifyTrivialMergeMovesToTheMostAdvancedCommitWithACleanIndex
 
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
   private def verifyMergeMakesANewCommitWithACleanIndex(path: Path)(
       commitOfOneBranch: String,
       commitOfTheOtherBranch: String,
@@ -693,12 +700,6 @@ object MainTest extends ProseExamples:
       case Array(postMergeCommit, parents*) => postMergeCommit -> parents
     : @unchecked
 
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
-
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
-
   private def verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit(
       path: Path
   )(
@@ -725,6 +726,9 @@ object MainTest extends ProseExamples:
 
     assert(status.isEmpty)
   end verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
 
   private def currentCommit(path: Path) =
     os.proc("git", "log", "-1", "--format=tformat:%H")
@@ -2961,8 +2965,86 @@ class MainTest:
       }
 
   @TestFactory
-  def twoFilesSwappingAroundWithModificationOfOneWithTheOtherBeingBinary()
+  def anEditAndADeletionPropagatingThroughAFileMoveWithTheOriginalFileReplacedByABinary()
       : DynamicTests =
-    // TODO: this is a placeholder...
-    ???
+    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches, noCommit) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingCasesLimitStrategy(path)
+
+              val movedFileBranch = "movedFileBranch"
+
+              makeNewBranch(path)(movedFileBranch)
+
+              moveCasesLimitStrategy(path)
+
+              val replacementContent =
+                reintroducingBinaryCasesLimitStrategy(path)
+
+              val commitOfMovedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              editingCasesLimitStrategy(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then checkoutBranch(path)(movedFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then movedFileBranch -> masterBranch
+                else masterBranch                    -> movedFileBranch
+
+              val exitCode = Main.mergeTheirBranch(
+                ApplicationRequest.default.copy(
+                  theirBranchHead =
+                    theirBranch.taggedWith[Tags.CommitOrBranchName],
+                  noCommit = noCommit,
+                  minimumAmbiguousMatchSize = 5
+                )
+              )(workingDirectory =
+                optionalSubdirectory.fold(ifEmpty = path)(path / _)
+              )
+
+              if noCommit then
+                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                  path
+                )(
+                  flipBranches,
+                  commitOfMovedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              else
+                verifyMergeMakesANewCommitWithACleanIndex(path)(
+                  commitOfMovedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              end if
+
+              assert(
+                contentMatches(expected = editedCasesLimitStrategyContent)(
+                  os.read(path / movedCasesLimitStrategy)
+                )
+              )
+              assert(
+                replacementContent sameElements os.read
+                  .bytes(path / casesLimitStrategy)
+              )
+            }
+          )
+          .unsafeRunSync()
+      }
+  end anEditAndADeletionPropagatingThroughAFileMoveWithTheOriginalFileReplacedByABinary
+
 end MainTest
