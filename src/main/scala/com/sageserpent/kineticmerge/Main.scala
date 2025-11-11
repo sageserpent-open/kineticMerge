@@ -895,39 +895,6 @@ object Main extends StrictLogging:
         }
     end mergeInputsOf
 
-    private def blobAndContentFor(
-        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
-    )(
-        path: Path
-    ): Workflow[
-      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
-    ] =
-      IO {
-        val line = os
-          .proc("git", "ls-tree", commitIdOrBranchName, path)
-          .call(workingDirectory)
-          .out
-          .text()
-
-        line.split(whitespaceRun) match
-          case Array(mode, _, blobId, _) =>
-            val content = os
-              .proc("git", "cat-file", "blob", blobId)
-              .call(workingDirectory)
-              .out
-              .text()
-
-            (
-              mode.taggedWith[Tags.Mode],
-              blobId.taggedWith[Tags.BlobId],
-              content.taggedWith[Tags.Content]
-            )
-        end match
-      }.labelExceptionWith(errorMessage =
-        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
-      )
-    end blobAndContentFor
-
     def mergeWithRollback(
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
         ourBranchHead: String @@ Tags.CommitOrBranchName,
@@ -1805,6 +1772,17 @@ object Main extends StrictLogging:
                   ).logOperation(description)
               }
 
+          def justOurSidesViewOfTheMergedContentAt(path: Path) =
+            mergeResultsByPath(path) match
+              case FullyMerged(mergedTokens)                  => mergedTokens
+              case MergedWithConflicts(_, ourMergedTokens, _) => ourMergedTokens
+
+          def justTheirSidesViewOfTheMergedContentAt(path: Path) =
+            mergeResultsByPath(path) match
+              case FullyMerged(mergedTokens)                    => mergedTokens
+              case MergedWithConflicts(_, _, theirMergedTokens) =>
+                theirMergedTokens
+
           mergeInput match
             case JustOurModification(
                   ourModification,
@@ -2043,18 +2021,7 @@ object Main extends StrictLogging:
                   bestAncestorCommitIdBlobId,
                   _
                 ) =>
-              val tokens = mergeResultsByPath(path) match
-                case FullyMerged(mergedTokens)                  => mergedTokens
-                case MergedWithConflicts(_, ourMergedTokens, _) =>
-                  // TODO: what about the base's view of the merge?
-                  // We don't care about their view of the merge - their
-                  // side simply deleted the whole file, so it contributes
-                  // nothing interesting to the merge; the only point of the
-                  // merge here was to pick up propagated edits / deletions
-                  // and to note move destinations.
-                  // TODO: is this even necessary? How would there be merge
-                  // conflicts?
-                  ourMergedTokens
+              val tokens = justOurSidesViewOfTheMergedContentAt(path)
 
               val mergedFileContent = reconstituteTextFrom(tokens)
               val ourModificationWasTweakedByTheMerge =
@@ -2096,7 +2063,8 @@ object Main extends StrictLogging:
                 else
                   // If our content is modified to being empty, this is taken to
                   // mean that all of our original content has been migrated to
-                  // one or more other files.
+                  // one or more other files. We can therefore resolve this as a
+                  // deletion.
                   for
                     _                      <- recordDeletionInIndex(path)
                     _                      <- deleteFile(path)
@@ -2129,18 +2097,7 @@ object Main extends StrictLogging:
                   bestAncestorCommitIdBlobId,
                   _
                 ) =>
-              val tokens = mergeResultsByPath(path) match
-                case FullyMerged(mergedTokens) => mergedTokens
-                case MergedWithConflicts(_, _, theirMergedTokens) =>
-                  // TODO: what about the base's view of the merge?
-                  // We don't care about our view of the merge - our side
-                  // simply deleted the whole file, so it contributes
-                  // nothing interesting to the merge; the only point of the
-                  // merge here was to pick up propagated edits / deletions
-                  // and to note move destinations.
-                  // TODO: is this even necessary? How would there be merge
-                  // conflicts?
-                  theirMergedTokens
+              val tokens = justTheirSidesViewOfTheMergedContentAt(path)
 
               val mergedFileContent = reconstituteTextFrom(tokens)
               val theirModificationWasTweakedByTheMerge =
@@ -2185,7 +2142,8 @@ object Main extends StrictLogging:
                 else
                   // If their content is modified to being empty, this is taken
                   // to mean that all of our original content has been migrated
-                  // to one or more other files.
+                  // to one or more other files. We can therefore resolve this
+                  // as a deletion.
                   for
                     _                      <- recordDeletionInIndex(path)
                     decoratedPartialResult <-
@@ -2261,7 +2219,6 @@ object Main extends StrictLogging:
                 ourModification.binaryContentBeforeOrAfter,
                 theirModification.binaryContentBeforeOrAfter
               ) match
-                // TODO: two lots of cases are missing!
                 case (false, false) =>
                   mergeResultsByPath(path) match
                     case FullyMerged(tokens) =>
@@ -2292,6 +2249,114 @@ object Main extends StrictLogging:
                         leftContent,
                         rightContent
                       )
+
+                case (false, true) =>
+                  // Treat this as if our side modified and their side
+                  // *replaced* the file.
+                  val tokens = justOurSidesViewOfTheMergedContentAt(path)
+
+                  val mergedFileContent = reconstituteTextFrom(tokens)
+                  val ourModificationWasTweakedByTheMerge =
+                    mergedFileContent != ourModification.content
+
+                  if ourModificationWasTweakedByTheMerge then
+                    if mergedFileContent.nonEmpty then
+                      for
+                        _ <- restoreFileFromBlobId(
+                          path,
+                          theirModification.blobId
+                        )
+                        blobId <- storeBlobFor(path, mergedFileContent)
+                        result <- writeConflictedIndexEntries(
+                          partialResult,
+                          path,
+                          bestAncestorCommitIdMode,
+                          bestAncestorCommitIdMode,
+                          lastMinuteResolution = false,
+                          bestAncestorCommitIdBlobId,
+                          blobId,
+                          theirModification.blobId
+                        )
+                      yield result
+                    else
+                      // If our content is modified to being empty, this is
+                      // taken to mean that all of our original content has been
+                      // migrated to one or more other files. We can therefore
+                      // resolve this in favour of the binary file.
+                      for
+                        _ <- bringInFileContentFromTheirBranch(
+                          partialResult,
+                          path,
+                          theirModification.mode,
+                          theirModification.blobId
+                        )
+                        decoratedPartialResult <-
+                          captureRenamesOfPathDeletedOnJustOneSide
+                      yield decoratedPartialResult
+                  else
+                    for
+                      _ <- restoreFileFromBlobId(
+                        path,
+                        theirModification.blobId
+                      )
+                      result <- writeConflictedIndexEntries(
+                        partialResult,
+                        path,
+                        bestAncestorCommitIdMode,
+                        bestAncestorCommitIdMode,
+                        lastMinuteResolution = false,
+                        bestAncestorCommitIdBlobId,
+                        ourModification.blobId,
+                        theirModification.blobId
+                      )
+                    yield result
+                  end if
+
+                case (true, false) =>
+                  // Treat this as if their side modified and our side
+                  // *replaced* the file.
+                  val tokens = justTheirSidesViewOfTheMergedContentAt(path)
+
+                  val mergedFileContent = reconstituteTextFrom(tokens)
+                  val theirModificationWasTweakedByTheMerge =
+                    mergedFileContent != theirModification.content
+
+                  if theirModificationWasTweakedByTheMerge then
+                    if mergedFileContent.nonEmpty then
+                      for
+                        blobId <- storeBlobFor(path, mergedFileContent)
+                        result <- writeConflictedIndexEntries(
+                          partialResult,
+                          path,
+                          bestAncestorCommitIdMode,
+                          bestAncestorCommitIdMode,
+                          lastMinuteResolution = false,
+                          bestAncestorCommitIdBlobId,
+                          ourModification.blobId,
+                          blobId
+                        )
+                      yield result
+                    else
+                      // If their content is modified to being empty, this is
+                      // taken to mean that all of our original content has been
+                      // migrated to one or more other files. We can therefore
+                      // resolve this in favour of the binary file.
+                      for decoratedPartialResult <-
+                          captureRenamesOfPathDeletedOnJustOneSide
+                      yield decoratedPartialResult
+                  else
+                    writeConflictedIndexEntries(
+                      partialResult,
+                      path,
+                      bestAncestorCommitIdMode,
+                      bestAncestorCommitIdMode,
+                      lastMinuteResolution = false,
+                      bestAncestorCommitIdBlobId,
+                      ourModification.blobId,
+                      theirModification.blobId
+                    )
+                  end if
+
                 case (true, true) =>
                   writeConflictedIndexEntries(
                     partialResult,
@@ -2356,6 +2421,39 @@ object Main extends StrictLogging:
       yield withRenameVersusDeletionConflicts.goodForAMergeCommit
       end for
     end indexUpdates
+
+    private def blobAndContentFor(
+        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
+    )(
+        path: Path
+    ): Workflow[
+      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
+    ] =
+      IO {
+        val line = os
+          .proc("git", "ls-tree", commitIdOrBranchName, path)
+          .call(workingDirectory)
+          .out
+          .text()
+
+        line.split(whitespaceRun) match
+          case Array(mode, _, blobId, _) =>
+            val content = os
+              .proc("git", "cat-file", "blob", blobId)
+              .call(workingDirectory)
+              .out
+              .text()
+
+            (
+              mode.taggedWith[Tags.Mode],
+              blobId.taggedWith[Tags.BlobId],
+              content.taggedWith[Tags.Content]
+            )
+        end match
+      }.labelExceptionWith(errorMessage =
+        s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
+      )
+    end blobAndContentFor
 
     private def deleteFile(path: Path): Workflow[Unit] = IO {
       os.remove(path): Unit
