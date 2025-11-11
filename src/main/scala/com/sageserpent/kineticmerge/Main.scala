@@ -1208,12 +1208,16 @@ object Main extends StrictLogging:
                   ) =>
                 (
                   baseContentsByPath,
-                  leftContentsByPath + (path -> tokens(
-                    ourAddition.content
-                  ).get),
-                  rightContentsByPath + (path -> tokens(
-                    theirAddition.content
-                  ).get),
+                  if !ourAddition.binaryContent then
+                    leftContentsByPath + (path -> tokens(
+                      ourAddition.content
+                    ).get)
+                  else leftContentsByPath,
+                  if !theirAddition.binaryContent then
+                    rightContentsByPath + (path -> tokens(
+                      theirAddition.content
+                    ).get)
+                  else rightContentsByPath,
                   newPathsOnLeftOrRight + path
                 )
 
