@@ -69,7 +69,7 @@ object MainTest extends ProseExamples:
   private val arthurIsMarkedWithConflictingUpdateAndDeletionInTheIndex =
     pathIsMarkedWithConflictingUpdateAndDeletionInTheIndex(arthur)
 
-  private def introduceBinaryFileFromSeed(path: Path)(seed: Int): Unit =
+  private def introduceBinaryFileFromSeed(path: Path)(seed: Int): Array[Byte] =
     val content = byteArrayFromSeed(seed)
 
     os.write(path / binary, content, createFolders = true)
@@ -85,6 +85,8 @@ object MainTest extends ProseExamples:
         .out
         .text()
     )
+
+    content
   end introduceBinaryFileFromSeed
 
   private def modifyBinaryFileWithSeed(path: Path)(seed: Int): Array[Byte] =
@@ -640,9 +642,6 @@ object MainTest extends ProseExamples:
     assert(currentStatus(path).isEmpty)
   end verifyTrivialMergeMovesToTheMostAdvancedCommitWithACleanIndex
 
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
-
   private def verifyMergeMakesANewCommitWithACleanIndex(path: Path)(
       commitOfOneBranch: String,
       commitOfTheOtherBranch: String,
@@ -727,19 +726,6 @@ object MainTest extends ProseExamples:
     assert(status.isEmpty)
   end verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit
 
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
-
-  private def currentCommit(path: Path) =
-    os.proc("git", "log", "-1", "--format=tformat:%H")
-      .call(path)
-      .out
-      .text()
-      .strip
-
-  private def mergeHeadPath(path: Path) =
-    path / ".git" / "MERGE_HEAD"
-
   private def verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit(
       path: Path
   )(
@@ -767,9 +753,6 @@ object MainTest extends ProseExamples:
 
     assert(currentStatus(path).nonEmpty)
   end verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit
-
-  private def mergeHead(path: Path) =
-    os.read(mergeHeadPath(path)).strip()
 
   private def verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
       path: Path
@@ -802,6 +785,25 @@ object MainTest extends ProseExamples:
 
     currentStatus(path)
   end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
+
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+
+  private def currentCommit(path: Path) =
+    os.proc("git", "log", "-1", "--format=tformat:%H")
+      .call(path)
+      .out
+      .text()
+      .strip
+
+  private def mergeHead(path: Path) =
+    os.read(mergeHeadPath(path)).strip()
+
+  private def mergeHeadPath(path: Path) =
+    path / ".git" / "MERGE_HEAD"
 
   private def gitRepository(): ImperativeResource[Path] =
     for
@@ -3046,5 +3048,93 @@ class MainTest:
           .unsafeRunSync()
       }
   end anEditAndADeletionPropagatingThroughAFileMoveWithTheOriginalFileReplacedByABinary
+
+  @TestFactory
+  def conflictingMergeOfABinaryFileAddedInBothBranches(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(4)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              sandraStopsByBriefly(path)
+
+              val evilTwinBranch =
+                "evilTwin"
+
+              makeNewBranch(path)(evilTwinBranch)
+
+              val evilTwinContent = introduceBinaryFileFromSeed(path)(
+                "evil incarnate...".hashCode
+              )
+
+              val commitOfEvilTwinBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              sandraHeadsOffHome(path)
+
+              val goodTwinContent = introduceBinaryFileFromSeed(path)(
+                "goodness, gracious".hashCode
+              )
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then checkoutBranch(path)(evilTwinBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then evilTwinBranch -> masterBranch
+                else masterBranch                   -> evilTwinBranch
+
+              val exitCode = Main.mergeTheirBranch(
+                ApplicationRequest.default.copy(
+                  theirBranchHead =
+                    theirBranch.taggedWith[Tags.CommitOrBranchName],
+                  minimumAmbiguousMatchSize = 0
+                )
+              )(workingDirectory =
+                optionalSubdirectory.fold(ifEmpty = path)(path / _)
+              )
+
+              val status =
+                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                  path
+                )(
+                  flipBranches,
+                  commitOfEvilTwinBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+
+              binaryFileIsMarkedWithConflictingUpdatesInTheIndex(status)
+
+              if flipBranches then
+                assert(
+                  evilTwinContent sameElements os.read
+                    .bytes(path / binary)
+                )
+              else
+                assert(
+                  goodTwinContent sameElements os.read
+                    .bytes(path / binary)
+                )
+              end if
+
+              if flipBranches then
+                sandraIsMarkedAsDeletedInTheIndex(status)
+                noUpdatesInIndexForTyson(status)
+              else
+                noUpdatesInIndexForSandra(status)
+                tysonIsMarkedAsAddedInTheIndex(status)
+              end if
+            }
+          )
+          .unsafeRunSync()
+      }
 
 end MainTest
