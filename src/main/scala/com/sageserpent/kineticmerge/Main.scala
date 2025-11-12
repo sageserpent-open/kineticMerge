@@ -2198,161 +2198,48 @@ object Main extends StrictLogging:
                   bestAncestorCommitIdContent,
                   mergedFileMode
                 ) =>
-              (
-                ourModification.binaryContentBeforeOrAfter,
-                theirModification.binaryContentBeforeOrAfter
-              ) match
-                case (false, false) =>
-                  mergeResultsByPath(path) match
-                    case FullyMerged(tokens) =>
-                      val mergedFileContent = reconstituteTextFrom(tokens)
+              if !ourModification.binaryContentBeforeOrAfter && !theirModification.binaryContentBeforeOrAfter
+              then
+                mergeResultsByPath(path) match
+                  case FullyMerged(tokens) =>
+                    val mergedFileContent = reconstituteTextFrom(tokens)
 
-                      recordCleanMergeOfFile(
-                        partialResult,
-                        path,
-                        mergedFileContent,
-                        mergedFileMode
-                      )
+                    recordCleanMergeOfFile(
+                      partialResult,
+                      path,
+                      mergedFileContent,
+                      mergedFileMode
+                    )
 
-                    case MergedWithConflicts(
-                          baseTokens,
-                          leftTokens,
-                          rightTokens
-                        ) =>
-                      val baseContent  = reconstituteTextFrom(baseTokens)
-                      val leftContent  = reconstituteTextFrom(leftTokens)
-                      val rightContent = reconstituteTextFrom(rightTokens)
+                  case MergedWithConflicts(
+                        baseTokens,
+                        leftTokens,
+                        rightTokens
+                      ) =>
+                    val baseContent  = reconstituteTextFrom(baseTokens)
+                    val leftContent  = reconstituteTextFrom(leftTokens)
+                    val rightContent = reconstituteTextFrom(rightTokens)
 
-                      recordConflictedMergeOfModifiedFile(
-                        partialResult,
-                        path,
-                        bestAncestorCommitIdMode,
-                        mergedFileMode,
-                        baseContent,
-                        leftContent,
-                        rightContent
-                      )
-
-                case (false, true) =>
-                  // Treat this as if our side modified and their side
-                  // *replaced* the file with binary content. We are always
-                  // looking to put the replacement binary into the worktree.
-                  val tokens = justOurSidesViewOfTheMergedContentAt(path)
-
-                  val mergedFileContent = reconstituteTextFrom(tokens)
-                  val ourModificationWasTweakedByTheMerge =
-                    mergedFileContent != ourModification.content
-
-                  if ourModificationWasTweakedByTheMerge then
-                    if mergedFileContent.nonEmpty then
-                      for
-                        _ <- restoreFileFromBlobId(
-                          path,
-                          theirModification.blobId
-                        )
-                        blobId <- storeBlobFor(path, mergedFileContent)
-                        result <- writeConflictedIndexEntries(
-                          partialResult,
-                          path,
-                          bestAncestorCommitIdMode,
-                          bestAncestorCommitIdMode,
-                          lastMinuteResolution = false,
-                          bestAncestorCommitIdBlobId,
-                          blobId,
-                          theirModification.blobId
-                        )
-                      yield result
-                    else
-                      // If our content is modified to being empty, this is
-                      // taken to mean that all of our original content has been
-                      // migrated to one or more other files. We can therefore
-                      // resolve this in favour of the binary file.
-                      for
-                        _ <- bringInFileContentFromTheirBranch(
-                          partialResult,
-                          path,
-                          theirModification.mode,
-                          theirModification.blobId
-                        )
-                        decoratedPartialResult <-
-                          captureRenamesOfPathDeletedOnJustOneSide
-                      yield decoratedPartialResult
-                  else
-                    for
-                      _ <- restoreFileFromBlobId(
-                        path,
-                        theirModification.blobId
-                      )
-                      result <- writeConflictedIndexEntries(
-                        partialResult,
-                        path,
-                        bestAncestorCommitIdMode,
-                        bestAncestorCommitIdMode,
-                        lastMinuteResolution = false,
-                        bestAncestorCommitIdBlobId,
-                        ourModification.blobId,
-                        theirModification.blobId
-                      )
-                    yield result
-                  end if
-
-                case (true, false) =>
-                  // Treat this as if their side modified and our side
-                  // *replaced* the file with binary content. We are always
-                  // looking to keep the replacement binary in the worktree.
-                  val tokens = justTheirSidesViewOfTheMergedContentAt(path)
-
-                  val mergedFileContent = reconstituteTextFrom(tokens)
-                  val theirModificationWasTweakedByTheMerge =
-                    mergedFileContent != theirModification.content
-
-                  if theirModificationWasTweakedByTheMerge then
-                    if mergedFileContent.nonEmpty then
-                      for
-                        blobId <- storeBlobFor(path, mergedFileContent)
-                        result <- writeConflictedIndexEntries(
-                          partialResult,
-                          path,
-                          bestAncestorCommitIdMode,
-                          bestAncestorCommitIdMode,
-                          lastMinuteResolution = false,
-                          bestAncestorCommitIdBlobId,
-                          ourModification.blobId,
-                          blobId
-                        )
-                      yield result
-                    else
-                      // If their content is modified to being empty, this is
-                      // taken to mean that all of our original content has been
-                      // migrated to one or more other files. We can therefore
-                      // resolve this in favour of the binary file.
-                      for decoratedPartialResult <-
-                          captureRenamesOfPathDeletedOnJustOneSide
-                      yield decoratedPartialResult
-                  else
-                    writeConflictedIndexEntries(
+                    recordConflictedMergeOfModifiedFile(
                       partialResult,
                       path,
                       bestAncestorCommitIdMode,
-                      bestAncestorCommitIdMode,
-                      lastMinuteResolution = false,
-                      bestAncestorCommitIdBlobId,
-                      ourModification.blobId,
-                      theirModification.blobId
+                      mergedFileMode,
+                      baseContent,
+                      leftContent,
+                      rightContent
                     )
-                  end if
-
-                case (true, true) =>
-                  writeConflictedIndexEntries(
-                    partialResult,
-                    path,
-                    bestAncestorCommitIdMode,
-                    bestAncestorCommitIdMode,
-                    lastMinuteResolution = false,
-                    bestAncestorCommitIdBlobId,
-                    ourModification.blobId,
-                    theirModification.blobId
-                  )
+              else
+                writeConflictedIndexEntries(
+                  partialResult,
+                  path,
+                  bestAncestorCommitIdMode,
+                  bestAncestorCommitIdMode,
+                  lastMinuteResolution = false,
+                  bestAncestorCommitIdBlobId,
+                  ourModification.blobId,
+                  theirModification.blobId
+                )
 
             case BothContributeADeletion(_) =>
               // We already have the deletion in our branch, so no need
