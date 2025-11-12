@@ -565,17 +565,6 @@ object MainTest extends ProseExamples:
     content
   end reintroducingBinaryCasesLimitStrategy
 
-  private def byteArrayFromSeed(seed: Int): Array[Byte] =
-    val random = new Random(seed)
-
-    // NOTE: don't be tempted to shorten the length too much - otherwise Git
-    // will think the content is text after all, even though the Unix `file`
-    // command isn't fooled.
-    val length = (1 + random.nextInt(1000)) min 100
-
-    random.nextBytes(length)
-  end byteArrayFromSeed
-
   private def introducingBinaryMovedCasesLimitStrategy(
       path: Path
   ): Array[Byte] =
@@ -598,6 +587,17 @@ object MainTest extends ProseExamples:
 
     content
   end introducingBinaryMovedCasesLimitStrategy
+
+  private def byteArrayFromSeed(seed: Int): Array[Byte] =
+    val random = new Random(seed)
+
+    // NOTE: don't be tempted to shorten the length too much - otherwise Git
+    // will think the content is text after all, even though the Unix `file`
+    // command isn't fooled.
+    val length = (1 + random.nextInt(1000)) min 100
+
+    random.nextBytes(length)
+  end byteArrayFromSeed
 
   private def introducingExpectyFlavouredAssert(path: Path): Unit =
     os.write(
@@ -671,6 +671,19 @@ object MainTest extends ProseExamples:
 
     assert(currentStatus(path).isEmpty)
   end verifyTrivialMergeMovesToTheMostAdvancedCommitWithACleanIndex
+
+  private def currentStatus(path: Path) =
+    os.proc(s"git", "status", "--short").call(path).out.text().strip
+
+  private def currentBranch(path: Path) =
+    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
+
+  private def currentCommit(path: Path) =
+    os.proc("git", "log", "-1", "--format=tformat:%H")
+      .call(path)
+      .out
+      .text()
+      .strip
 
   private def verifyMergeMakesANewCommitWithACleanIndex(path: Path)(
       commitOfOneBranch: String,
@@ -756,6 +769,9 @@ object MainTest extends ProseExamples:
     assert(status.isEmpty)
   end verifyATrivialNoFastForwardNoChangesMergeDoesNotMakeACommit
 
+  private def mergeHeadPath(path: Path) =
+    path / ".git" / "MERGE_HEAD"
+
   private def verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit(
       path: Path
   )(
@@ -783,6 +799,9 @@ object MainTest extends ProseExamples:
 
     assert(currentStatus(path).nonEmpty)
   end verifyATrivialNoFastForwardNoCommitMergeDoesNotMakeACommit
+
+  private def mergeHead(path: Path) =
+    os.read(mergeHeadPath(path)).strip()
 
   private def verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
       path: Path
@@ -815,25 +834,6 @@ object MainTest extends ProseExamples:
 
     currentStatus(path)
   end verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex
-
-  private def currentStatus(path: Path) =
-    os.proc(s"git", "status", "--short").call(path).out.text().strip
-
-  private def currentBranch(path: Path) =
-    os.proc("git", "branch", "--show-current").call(path).out.text().strip()
-
-  private def currentCommit(path: Path) =
-    os.proc("git", "log", "-1", "--format=tformat:%H")
-      .call(path)
-      .out
-      .text()
-      .strip
-
-  private def mergeHead(path: Path) =
-    os.read(mergeHeadPath(path)).strip()
-
-  private def mergeHeadPath(path: Path) =
-    path / ".git" / "MERGE_HEAD"
 
   private def gitRepository(): ImperativeResource[Path] =
     for
@@ -2901,7 +2901,7 @@ class MainTest:
   end cleanMergeOfABinaryFileModifiedInOneBranch
 
   @TestFactory
-  def conflictingMergeOfABinaryFileModifiedInBothBranches(): DynamicTests =
+  def conflictingModificationOfTheSameBinaryFile(): DynamicTests =
     (optionalSubdirectories and trialsApi.booleans)
       .withLimit(4)
       .dynamicTests { case (optionalSubdirectory, flipBranches) =>
@@ -2997,7 +2997,7 @@ class MainTest:
       }
 
   @TestFactory
-  def conflictingMergeOfABinaryFileAddedInBothBranches(): DynamicTests =
+  def conflictingAdditionOfTheSameBinaryFile(): DynamicTests =
     (optionalSubdirectories and trialsApi.booleans)
       .withLimit(4)
       .dynamicTests { case (optionalSubdirectory, flipBranches) =>
