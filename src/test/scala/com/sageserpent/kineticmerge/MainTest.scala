@@ -259,6 +259,13 @@ object MainTest extends ProseExamples:
       s"UU\\s+$binary".r.findFirstIn(status).isDefined
     )
 
+  private def binaryFileIsMarkedWithConflictingAdditionsInTheIndex(
+      status: String
+  ): Unit =
+    assert(
+      s"AA\\s+$binary".r.findFirstIn(status).isDefined
+    )
+
   private def arthurSaidConflictingThings(path: Path): Unit =
     val arthurSaid = os.read(path / arthur)
 
@@ -2988,7 +2995,7 @@ class MainTest:
           )
           .unsafeRunSync()
       }
-  
+
   @TestFactory
   def conflictingMergeOfABinaryFileAddedInBothBranches(): DynamicTests =
     (optionalSubdirectories and trialsApi.booleans)
@@ -3006,6 +3013,8 @@ class MainTest:
                 "evilTwin"
 
               makeNewBranch(path)(evilTwinBranch)
+
+              enterTysonStageLeft(path)
 
               val evilTwinContent = introduceBinaryFileFromSeed(path)(
                 "evil incarnate...".hashCode
@@ -3051,7 +3060,7 @@ class MainTest:
                   exitCode
                 )
 
-              binaryFileIsMarkedWithConflictingUpdatesInTheIndex(status)
+              binaryFileIsMarkedWithConflictingAdditionsInTheIndex(status)
 
               if flipBranches then
                 assert(
