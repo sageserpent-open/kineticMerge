@@ -1510,7 +1510,7 @@ object Main extends StrictLogging:
         end if
       end lastMinuteResolution
 
-      def writeConflictedIndexEntries(
+      def writeConflictedIndexEntriesForModification(
           partialResult: AccumulatedMergeState,
           path: Path,
           bestAncestorCommitIdMode: String @@ Tags.Mode,
@@ -1551,6 +1551,40 @@ object Main extends StrictLogging:
               )} and modified on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
           )
         yield partialResult.copy(goodForAMergeCommit = false)
+
+      def writeConflictedIndexEntriesForAddition(
+          partialResult: AccumulatedMergeState,
+          path: Path,
+          mode: String @@ Tags.Mode,
+          lastMinuteResolution: Boolean,
+          leftBlob: String @@ Tags.BlobId,
+          rightBlob: String @@ Tags.BlobId
+      ) =
+        for
+          _ <- recordDeletionInIndex(path)
+          _ <- recordConflictModificationInIndex(
+            stageIndex = ourStageIndex
+          )(
+            ourBranchHead,
+            path,
+            mode,
+            leftBlob
+          )
+          _ <- recordConflictModificationInIndex(
+            stageIndex = theirStageIndex
+          )(
+            theirBranchHead,
+            path,
+            mode,
+            rightBlob
+          )
+        yield partialResult.copy(
+          goodForAMergeCommit = false,
+          conflictingAdditionPathsAndTheirLastMinuteResolutions =
+            partialResult.conflictingAdditionPathsAndTheirLastMinuteResolutions + (path -> lastMinuteResolution)
+        )
+        end for
+      end writeConflictedIndexEntriesForAddition
 
       for
         codeMotionAnalysis: CodeMotionAnalysis[Path, Token] <- EitherT
@@ -1615,28 +1649,15 @@ object Main extends StrictLogging:
 
               leftBlob  <- storeBlobFor(path, leftContent)
               rightBlob <- storeBlobFor(path, rightContent)
-              _         <- recordDeletionInIndex(path)
-              _         <- recordConflictModificationInIndex(
-                stageIndex = ourStageIndex
-              )(
-                ourBranchHead,
+              result    <- writeConflictedIndexEntriesForAddition(
+                partialResult,
                 path,
                 mode,
-                leftBlob
-              )
-              _ <- recordConflictModificationInIndex(
-                stageIndex = theirStageIndex
-              )(
-                theirBranchHead,
-                path,
-                mode,
+                lastMinuteResolution,
+                leftBlob,
                 rightBlob
               )
-            yield partialResult.copy(
-              goodForAMergeCommit = false,
-              conflictingAdditionPathsAndTheirLastMinuteResolutions =
-                partialResult.conflictingAdditionPathsAndTheirLastMinuteResolutions + (path -> lastMinuteResolution)
-            )
+            yield result
             end for
           end recordConflictedMergeOfAddedFile
 
@@ -1684,7 +1705,7 @@ object Main extends StrictLogging:
               leftBlobId  <- storeBlobFor(path, leftContent)
               rightBlobId <- storeBlobFor(path, rightContent)
 
-              result <- writeConflictedIndexEntries(
+              result <- writeConflictedIndexEntriesForModification(
                 partialResult,
                 path,
                 bestAncestorCommitIdMode,
@@ -2152,43 +2173,62 @@ object Main extends StrictLogging:
                 yield partialResult.copy(goodForAMergeCommit = false)
               end if
 
-            case BothContributeAnAddition(_, _, mergedFileMode) =>
-              mergeResultsByPath(path) match
-                case FullyMerged(tokens) =>
-                  val mergedFileContent = reconstituteTextFrom(tokens)
+            case BothContributeAnAddition(
+                  ourAddition,
+                  theirAddition,
+                  mergedFileMode
+                ) =>
+              if !ourAddition.binaryContent && !theirAddition.binaryContent
+              then
+                mergeResultsByPath(path) match
+                  case FullyMerged(tokens) =>
+                    val mergedFileContent = reconstituteTextFrom(tokens)
 
-                  recordCleanMergeOfFile(
-                    partialResult,
-                    path,
-                    mergedFileContent,
-                    mergedFileMode
-                  )
-
-                case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
-                  val leftContent  = reconstituteTextFrom(leftTokens)
-                  val rightContent = reconstituteTextFrom(rightTokens)
-
-                  if baseTokens.nonEmpty then
-                    val baseContent = reconstituteTextFrom(baseTokens)
-
-                    recordConflictedMergeOfModifiedFile(
+                    recordCleanMergeOfFile(
                       partialResult,
                       path,
-                      mergedFileMode,
-                      mergedFileMode,
-                      baseContent,
-                      leftContent,
-                      rightContent
+                      mergedFileContent,
+                      mergedFileMode
                     )
-                  else
-                    recordConflictedMergeOfAddedFile(
-                      partialResult,
-                      path,
-                      mergedFileMode,
-                      leftContent,
-                      rightContent
-                    )
-                  end if
+
+                  case MergedWithConflicts(
+                        baseTokens,
+                        leftTokens,
+                        rightTokens
+                      ) =>
+                    val leftContent  = reconstituteTextFrom(leftTokens)
+                    val rightContent = reconstituteTextFrom(rightTokens)
+
+                    if baseTokens.nonEmpty then
+                      val baseContent = reconstituteTextFrom(baseTokens)
+
+                      recordConflictedMergeOfModifiedFile(
+                        partialResult,
+                        path,
+                        mergedFileMode,
+                        mergedFileMode,
+                        baseContent,
+                        leftContent,
+                        rightContent
+                      )
+                    else
+                      recordConflictedMergeOfAddedFile(
+                        partialResult,
+                        path,
+                        mergedFileMode,
+                        leftContent,
+                        rightContent
+                      )
+                    end if
+              else
+                writeConflictedIndexEntriesForAddition(
+                  partialResult,
+                  path,
+                  mergedFileMode,
+                  lastMinuteResolution = false,
+                  ourAddition.blobId,
+                  theirAddition.blobId
+                )
 
             case BothContributeAModification(
                   ourModification,
@@ -2230,11 +2270,11 @@ object Main extends StrictLogging:
                       rightContent
                     )
               else
-                writeConflictedIndexEntries(
+                writeConflictedIndexEntriesForModification(
                   partialResult,
                   path,
                   bestAncestorCommitIdMode,
-                  bestAncestorCommitIdMode,
+                  mergedFileMode,
                   lastMinuteResolution = false,
                   bestAncestorCommitIdBlobId,
                   ourModification.blobId,
