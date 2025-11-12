@@ -457,15 +457,15 @@ object Main extends StrictLogging:
         mode: String @@ Tags.Mode,
         blobId: String @@ Tags.BlobId,
         content: String @@ Tags.Content,
-        binaryContentBeforeOrAfter: Boolean
+        binaryContentBeforeOrAfterModification: Boolean
     )
     case Addition(
         mode: String @@ Tags.Mode,
         blobId: String @@ Tags.BlobId,
         content: String @@ Tags.Content,
-        binaryContent: Boolean
+        binaryContentAdded: Boolean
     )
-    case Deletion(binaryContent: Boolean)
+    case Deletion(binaryContentDeleted: Boolean)
   end Change
 
   enum MergeInput:
@@ -481,19 +481,27 @@ object Main extends StrictLogging:
     )
     case JustOurAddition(ourAddition: Change.Addition)
     case JustTheirAddition(theirAddition: Change.Addition)
-    case JustOurDeletion(bestAncestorCommitIdContent: String @@ Tags.Content)
-    case JustTheirDeletion(bestAncestorCommitIdContent: String @@ Tags.Content)
+    case JustOurDeletion(
+        bestAncestorCommitIdContent: String @@ Tags.Content,
+        binaryContentDeleted: Boolean
+    )
+    case JustTheirDeletion(
+        bestAncestorCommitIdContent: String @@ Tags.Content,
+        binaryContentDeleted: Boolean
+    )
     case OurModificationAndTheirDeletion(
         ourModification: Change.Modification,
         bestAncestorCommitIdMode: String @@ Tags.Mode,
         bestAncestorCommitIdBlobId: String @@ Tags.BlobId,
-        bestAncestorCommitIdContent: String @@ Tags.Content
+        bestAncestorCommitIdContent: String @@ Tags.Content,
+        binaryContentDeleted: Boolean
     )
     case TheirModificationAndOurDeletion(
         theirModification: Change.Modification,
         bestAncestorCommitIdMode: String @@ Tags.Mode,
         bestAncestorCommitIdBlobId: String @@ Tags.BlobId,
-        bestAncestorCommitIdContent: String @@ Tags.Content
+        bestAncestorCommitIdContent: String @@ Tags.Content,
+        binaryContentDeleted: Boolean
     )
     case BothContributeAnAddition(
         ourAddition: Change.Addition,
@@ -509,7 +517,8 @@ object Main extends StrictLogging:
         mergedFileMode: String @@ Tags.Mode
     )
     case BothContributeADeletion(
-        bestAncestorCommitIdContent: String @@ Tags.Content
+        bestAncestorCommitIdContent: String @@ Tags.Content,
+        binaryContentDeleted: Boolean
     )
   end MergeInput
 
@@ -768,31 +777,37 @@ object Main extends StrictLogging:
 
           case (
                 path,
-                (Some(_: Change.Deletion), None)
+                (Some(Change.Deletion(binaryContentDeleted)), None)
               ) =>
             for (
                 _,
                 _,
                 bestAncestorCommitIdContent
               ) <- blobAndContentFor(bestAncestorCommitId)(path)
-            yield path -> JustOurDeletion(bestAncestorCommitIdContent)
+            yield path -> JustOurDeletion(
+              bestAncestorCommitIdContent,
+              binaryContentDeleted
+            )
 
           case (
                 path,
-                (None, Some(_: Change.Deletion))
+                (None, Some(Change.Deletion(binaryContentDeleted)))
               ) =>
             for (
                 _,
                 _,
                 bestAncestorCommitIdContent
               ) <- blobAndContentFor(bestAncestorCommitId)(path)
-            yield path -> JustTheirDeletion(bestAncestorCommitIdContent)
+            yield path -> JustTheirDeletion(
+              bestAncestorCommitIdContent,
+              binaryContentDeleted
+            )
 
           case (
                 path,
                 (
                   Some(ourModification: Change.Modification),
-                  Some(_: Change.Deletion)
+                  Some(Change.Deletion(binaryContentDeleted))
                 )
               ) =>
             for (
@@ -804,13 +819,14 @@ object Main extends StrictLogging:
               ourModification,
               bestAncestorCommitIdMode,
               bestAncestorCommitIdBlobId,
-              bestAncestorCommitIdContent
+              bestAncestorCommitIdContent,
+              binaryContentDeleted
             )
 
           case (
                 path,
                 (
-                  Some(_: Change.Deletion),
+                  Some(Change.Deletion(binaryContentDeleted)),
                   Some(theirModification: Change.Modification)
                 )
               ) =>
@@ -823,7 +839,8 @@ object Main extends StrictLogging:
               theirModification,
               bestAncestorCommitIdMode,
               bestAncestorCommitIdBlobId,
-              bestAncestorCommitIdContent
+              bestAncestorCommitIdContent,
+              binaryContentDeleted
             )
 
           case (
@@ -882,16 +899,32 @@ object Main extends StrictLogging:
           case (
                 path,
                 (
-                  Some(_: Change.Deletion),
-                  Some(_: Change.Deletion)
+                  Some(Change.Deletion(binaryContentDeletedOnLeft)),
+                  Some(Change.Deletion(binaryContentDeletedOnRight))
                 )
               ) =>
-            for (
+            for
+              (
                 _,
                 _,
                 bestAncestorCommitIdContent
               ) <- blobAndContentFor(bestAncestorCommitId)(path)
-            yield path -> BothContributeADeletion(bestAncestorCommitIdContent)
+              _ <-
+                if binaryContentDeletedOnLeft != binaryContentDeletedOnRight
+                then
+                  def description(isBinary: Boolean) =
+                    if isBinary then "binary" else "text"
+
+                  left(
+                    s"Unexpected error: file ${underline(path)} is deleted on both our branch and their branch, " +
+                      s"but our branch thinks the original is ${description(binaryContentDeletedOnLeft)} " +
+                      s"and their branch thinks the original is ${description(binaryContentDeletedOnRight)}."
+                  )
+                else right(())
+            yield path -> BothContributeADeletion(
+              bestAncestorCommitIdContent,
+              binaryContentDeletedOnLeft
+            )
         }
     end mergeInputsOf
 
@@ -1092,7 +1125,7 @@ object Main extends StrictLogging:
                     _,
                     bestAncestorCommitIdContent
                   ) =>
-                if !ourModification.binaryContentBeforeOrAfter then
+                if !ourModification.binaryContentBeforeOrAfterModification then
                   val unchangedContent = tokens(bestAncestorCommitIdContent).get
 
                   (
@@ -1110,7 +1143,8 @@ object Main extends StrictLogging:
                     _,
                     bestAncestorCommitIdContent
                   ) =>
-                if !theirModification.binaryContentBeforeOrAfter then
+                if !theirModification.binaryContentBeforeOrAfterModification
+                then
                   val unchangedContent = tokens(bestAncestorCommitIdContent).get
 
                   (
@@ -1124,7 +1158,7 @@ object Main extends StrictLogging:
                 else passThrough
 
               case JustOurAddition(ourAddition) =>
-                if !ourAddition.binaryContent then
+                if !ourAddition.binaryContentAdded then
                   (
                     baseContentsByPath,
                     leftContentsByPath + (path -> tokens(
@@ -1136,7 +1170,7 @@ object Main extends StrictLogging:
                 else passThrough
 
               case JustTheirAddition(theirAddition) =>
-                if !theirAddition.binaryContent then
+                if !theirAddition.binaryContentAdded then
                   (
                     baseContentsByPath,
                     leftContentsByPath,
@@ -1147,7 +1181,10 @@ object Main extends StrictLogging:
                   )
                 else passThrough
 
-              case JustOurDeletion(bestAncestorCommitIdContent) =>
+              case JustOurDeletion(
+                    bestAncestorCommitIdContent,
+                    binaryContentDeleted
+                  ) =>
                 val unchangedContent = tokens(bestAncestorCommitIdContent).get
 
                 (
@@ -1157,7 +1194,10 @@ object Main extends StrictLogging:
                   newPathsOnLeftOrRight
                 )
 
-              case JustTheirDeletion(bestAncestorCommitIdContent) =>
+              case JustTheirDeletion(
+                    bestAncestorCommitIdContent,
+                    binaryContentDeleted
+                  ) =>
                 val unchangedContent = tokens(bestAncestorCommitIdContent).get
 
                 (
@@ -1171,7 +1211,8 @@ object Main extends StrictLogging:
                     ourModification,
                     _,
                     _,
-                    bestAncestorCommitIdContent
+                    bestAncestorCommitIdContent,
+                    binaryContentDeleted
                   ) =>
                 (
                   baseContentsByPath + (path -> tokens(
@@ -1188,7 +1229,8 @@ object Main extends StrictLogging:
                     theirModification,
                     _,
                     _,
-                    bestAncestorCommitIdContent
+                    bestAncestorCommitIdContent,
+                    binaryContentDeleted
                   ) =>
                 (
                   baseContentsByPath + (path -> tokens(
@@ -1208,12 +1250,12 @@ object Main extends StrictLogging:
                   ) =>
                 (
                   baseContentsByPath,
-                  if !ourAddition.binaryContent then
+                  if !ourAddition.binaryContentAdded then
                     leftContentsByPath + (path -> tokens(
                       ourAddition.content
                     ).get)
                   else leftContentsByPath,
-                  if !theirAddition.binaryContent then
+                  if !theirAddition.binaryContentAdded then
                     rightContentsByPath + (path -> tokens(
                       theirAddition.content
                     ).get)
@@ -1230,18 +1272,20 @@ object Main extends StrictLogging:
                     _
                   ) =>
                 (
-                  if !ourModification.binaryContentBeforeOrAfter || !theirModification.binaryContentBeforeOrAfter
+                  if !ourModification.binaryContentBeforeOrAfterModification || !theirModification.binaryContentBeforeOrAfterModification
                   then
                     baseContentsByPath + (path -> tokens(
                       bestAncestorCommitIdContent
                     ).get)
                   else baseContentsByPath,
-                  if !ourModification.binaryContentBeforeOrAfter then
+                  if !ourModification.binaryContentBeforeOrAfterModification
+                  then
                     leftContentsByPath + (path -> tokens(
                       ourModification.content
                     ).get)
                   else leftContentsByPath,
-                  if !theirModification.binaryContentBeforeOrAfter then
+                  if !theirModification.binaryContentBeforeOrAfterModification
+                  then
                     rightContentsByPath + (path -> tokens(
                       theirModification.content
                     ).get)
@@ -1249,7 +1293,10 @@ object Main extends StrictLogging:
                   newPathsOnLeftOrRight
                 )
 
-              case BothContributeADeletion(bestAncestorCommitIdContent) =>
+              case BothContributeADeletion(
+                    bestAncestorCommitIdContent,
+                    binaryContentDeleted
+                  ) =>
                 (
                   baseContentsByPath + (path -> tokens(
                     bestAncestorCommitIdContent
@@ -1793,7 +1840,7 @@ object Main extends StrictLogging:
                   bestAncestorCommitIdMode,
                   _
                 ) =>
-              if !ourModification.binaryContentBeforeOrAfter then
+              if !ourModification.binaryContentBeforeOrAfterModification then
                 mergeResultsByPath(path) match
                   case FullyMerged(tokens) =>
                     val mergedFileContent = reconstituteTextFrom(tokens)
@@ -1836,7 +1883,7 @@ object Main extends StrictLogging:
                   bestAncestorCommitIdMode,
                   _
                 ) =>
-              if !theirModification.binaryContentBeforeOrAfter then
+              if !theirModification.binaryContentBeforeOrAfterModification then
                 mergeResultsByPath(path) match
                   case FullyMerged(tokens) =>
                     val mergedFileContent = reconstituteTextFrom(tokens)
@@ -1887,7 +1934,7 @@ object Main extends StrictLogging:
                 )
 
             case JustOurAddition(ourAddition) =>
-              if !ourAddition.binaryContent then
+              if !ourAddition.binaryContentAdded then
                 mergeResultsByPath(path) match
                   case FullyMerged(tokens) =>
                     val mergedFileContent = reconstituteTextFrom(tokens)
@@ -1937,7 +1984,7 @@ object Main extends StrictLogging:
               else right(partialResult)
 
             case JustTheirAddition(theirAddition) =>
-              if !theirAddition.binaryContent then
+              if !theirAddition.binaryContentAdded then
                 mergeResultsByPath(path) match
                   case FullyMerged(tokens) =>
                     val mergedFileContent = reconstituteTextFrom(tokens)
@@ -1998,7 +2045,7 @@ object Main extends StrictLogging:
                   theirAddition.blobId
                 )
 
-            case JustOurDeletion(_) =>
+            case JustOurDeletion(_, _) =>
               // NOTE: we don't consult `mergeResultsByPath` because we know the
               // outcome already. This is important, because deletion of an
               // entire file on just one side is treated as a special case by
@@ -2006,7 +2053,7 @@ object Main extends StrictLogging:
               // necessarily remove the content.
               captureRenamesOfPathDeletedOnJustOneSide
 
-            case JustTheirDeletion(_) =>
+            case JustTheirDeletion(_, _) =>
               // NOTE: we don't consult `mergeResultsByPath` because we know the
               // outcome already. This is important, because deletion of an
               // entire file on just one side is treated as a special case by
@@ -2023,7 +2070,8 @@ object Main extends StrictLogging:
                   ourModification,
                   bestAncestorCommitIdMode,
                   bestAncestorCommitIdBlobId,
-                  _
+                  _,
+                  binaryContentDeleted
                 ) =>
               val tokens = justOurSidesViewOfTheMergedContentAt(path)
 
@@ -2099,7 +2147,8 @@ object Main extends StrictLogging:
                   theirModification,
                   bestAncestorCommitIdMode,
                   bestAncestorCommitIdBlobId,
-                  _
+                  _,
+                  binaryContentDeleted
                 ) =>
               val tokens = justTheirSidesViewOfTheMergedContentAt(path)
 
@@ -2178,7 +2227,7 @@ object Main extends StrictLogging:
                   theirAddition,
                   mergedFileMode
                 ) =>
-              if !ourAddition.binaryContent && !theirAddition.binaryContent
+              if !ourAddition.binaryContentAdded && !theirAddition.binaryContentAdded
               then
                 mergeResultsByPath(path) match
                   case FullyMerged(tokens) =>
@@ -2238,7 +2287,7 @@ object Main extends StrictLogging:
                   bestAncestorCommitIdContent,
                   mergedFileMode
                 ) =>
-              if !ourModification.binaryContentBeforeOrAfter && !theirModification.binaryContentBeforeOrAfter
+              if !ourModification.binaryContentBeforeOrAfterModification && !theirModification.binaryContentBeforeOrAfterModification
               then
                 mergeResultsByPath(path) match
                   case FullyMerged(tokens) =>
@@ -2281,7 +2330,7 @@ object Main extends StrictLogging:
                   theirModification.blobId
                 )
 
-            case BothContributeADeletion(_) =>
+            case BothContributeADeletion(_, binaryContentDeleted) =>
               // We already have the deletion in our branch, so no need
               // to update the index on behalf of this path, whatever happens...
               fileRenamingReport(path).fold(ifEmpty =
