@@ -1185,27 +1185,31 @@ object Main extends StrictLogging:
                     bestAncestorCommitIdContent,
                     binaryContentDeleted
                   ) =>
-                val unchangedContent = tokens(bestAncestorCommitIdContent).get
+                if !binaryContentDeleted then
+                  val deletedContent = tokens(bestAncestorCommitIdContent).get
 
-                (
-                  baseContentsByPath + (path -> unchangedContent),
-                  leftContentsByPath,
-                  rightContentsByPath + (path -> unchangedContent),
-                  newPathsOnLeftOrRight
-                )
+                  (
+                    baseContentsByPath + (path -> deletedContent),
+                    leftContentsByPath,
+                    rightContentsByPath + (path -> deletedContent),
+                    newPathsOnLeftOrRight
+                  )
+                else passThrough
 
               case JustTheirDeletion(
                     bestAncestorCommitIdContent,
                     binaryContentDeleted
                   ) =>
-                val unchangedContent = tokens(bestAncestorCommitIdContent).get
+                if !binaryContentDeleted then
+                  val deletedContent = tokens(bestAncestorCommitIdContent).get
 
-                (
-                  baseContentsByPath + (path -> unchangedContent),
-                  leftContentsByPath + (path -> unchangedContent),
-                  rightContentsByPath,
-                  newPathsOnLeftOrRight
-                )
+                  (
+                    baseContentsByPath + (path -> deletedContent),
+                    leftContentsByPath + (path -> deletedContent),
+                    rightContentsByPath,
+                    newPathsOnLeftOrRight
+                  )
+                else passThrough
 
               case OurModificationAndTheirDeletion(
                     ourModification,
@@ -1215,12 +1219,17 @@ object Main extends StrictLogging:
                     binaryContentDeleted
                   ) =>
                 (
-                  baseContentsByPath + (path -> tokens(
-                    bestAncestorCommitIdContent
-                  ).get),
-                  leftContentsByPath + (path -> tokens(
-                    ourModification.content
-                  ).get),
+                  if !binaryContentDeleted then
+                    baseContentsByPath + (path -> tokens(
+                      bestAncestorCommitIdContent
+                    ).get)
+                  else baseContentsByPath,
+                  if !ourModification.binaryContentBeforeOrAfterModification
+                  then
+                    leftContentsByPath + (path -> tokens(
+                      ourModification.content
+                    ).get)
+                  else leftContentsByPath,
                   rightContentsByPath,
                   newPathsOnLeftOrRight
                 )
@@ -1233,13 +1242,18 @@ object Main extends StrictLogging:
                     binaryContentDeleted
                   ) =>
                 (
-                  baseContentsByPath + (path -> tokens(
-                    bestAncestorCommitIdContent
-                  ).get),
+                  if !binaryContentDeleted then
+                    baseContentsByPath + (path -> tokens(
+                      bestAncestorCommitIdContent
+                    ).get)
+                  else baseContentsByPath,
                   leftContentsByPath,
-                  rightContentsByPath + (path -> tokens(
-                    theirModification.content
-                  ).get),
+                  if !theirModification.binaryContentBeforeOrAfterModification
+                  then
+                    rightContentsByPath + (path -> tokens(
+                      theirModification.content
+                    ).get)
+                  else rightContentsByPath,
                   newPathsOnLeftOrRight
                 )
 
@@ -1297,14 +1311,16 @@ object Main extends StrictLogging:
                     bestAncestorCommitIdContent,
                     binaryContentDeleted
                   ) =>
-                (
-                  baseContentsByPath + (path -> tokens(
-                    bestAncestorCommitIdContent
-                  ).get),
-                  leftContentsByPath,
-                  rightContentsByPath,
-                  newPathsOnLeftOrRight
-                )
+                if !binaryContentDeleted then
+                  (
+                    baseContentsByPath + (path -> tokens(
+                      bestAncestorCommitIdContent
+                    ).get),
+                    leftContentsByPath,
+                    rightContentsByPath,
+                    newPathsOnLeftOrRight
+                  )
+                else passThrough
         }
 
       val baseSources = MappedContentSourcesOfTokens(
@@ -2045,15 +2061,17 @@ object Main extends StrictLogging:
                   theirAddition.blobId
                 )
 
-            case JustOurDeletion(_, _) =>
+            case JustOurDeletion(_, binaryContentDeleted) =>
               // NOTE: we don't consult `mergeResultsByPath` because we know the
               // outcome already. This is important, because deletion of an
               // entire file on just one side is treated as a special case by
               // `CodeMotionAnalysisExtension.mergeResultsByPath` and does not
               // necessarily remove the content.
-              captureRenamesOfPathDeletedOnJustOneSide
+              if !binaryContentDeleted then
+                captureRenamesOfPathDeletedOnJustOneSide
+              else right(partialResult)
 
-            case JustTheirDeletion(_, _) =>
+            case JustTheirDeletion(_, binaryContentDeleted) =>
               // NOTE: we don't consult `mergeResultsByPath` because we know the
               // outcome already. This is important, because deletion of an
               // entire file on just one side is treated as a special case by
@@ -2063,7 +2081,9 @@ object Main extends StrictLogging:
                 _                      <- recordDeletionInIndex(path)
                 _                      <- deleteFile(path)
                 decoratedPartialResult <-
-                  captureRenamesOfPathDeletedOnJustOneSide
+                  if !binaryContentDeleted then
+                    captureRenamesOfPathDeletedOnJustOneSide
+                  else right(partialResult)
               yield decoratedPartialResult
 
             case OurModificationAndTheirDeletion(
@@ -2333,43 +2353,47 @@ object Main extends StrictLogging:
             case BothContributeADeletion(_, binaryContentDeleted) =>
               // We already have the deletion in our branch, so no need
               // to update the index on behalf of this path, whatever happens...
-              fileRenamingReport(path).fold(ifEmpty =
-                right(partialResult).logOperation(
-                  s"Coincidental deletion of file ${underline(path)} on our branch ${underline(ourBranchHead)} and on their branch ${underline(theirBranchHead)}."
-                )
-              ) {
-                case FileRenamingReport(
-                      description,
-                      leftRenamePaths,
-                      rightRenamePaths
-                    ) =>
-                  val isARenameVersusDeletionConflict =
-                    assume(
-                      leftRenamePaths.nonEmpty || rightRenamePaths.nonEmpty
-                    )
-                    // If all the moved content from `path` going into new files
-                    // ends up on just one side, then this is a conflict because
-                    // it implies an isolated deletion on the other side.
-                    leftRenamePaths.isEmpty || rightRenamePaths.isEmpty
-                  end isARenameVersusDeletionConflict
-
-                  right(
-                    if isARenameVersusDeletionConflict then
-                      partialResult.copy(
-                        conflictingDeletedPathsByLeftRenamePath =
-                          partialResult.conflictingDeletedPathsByLeftRenamePath ++ leftRenamePaths
-                            .map(_ -> path),
-                        conflictingDeletedPathsByRightRenamePath =
-                          partialResult.conflictingDeletedPathsByRightRenamePath ++ rightRenamePaths
-                            .map(_ -> path)
+              if !binaryContentDeleted then
+                fileRenamingReport(path).fold(ifEmpty =
+                  right(partialResult).logOperation(
+                    s"Coincidental deletion of file ${underline(path)} on our branch ${underline(ourBranchHead)} and on their branch ${underline(theirBranchHead)}."
+                  )
+                ) {
+                  case FileRenamingReport(
+                        description,
+                        leftRenamePaths,
+                        rightRenamePaths
+                      ) =>
+                    val isARenameVersusDeletionConflict =
+                      assume(
+                        leftRenamePaths.nonEmpty || rightRenamePaths.nonEmpty
                       )
-                    else
-                      // The content has moved out into new files on both sides.
-                      // This might involve divergent or coincident moves,
-                      // however no special action needs to be taken here.
-                      partialResult
-                  ).logOperation(description)
-              }
+                      // If all the moved content from `path` going into new
+                      // files ends up on just one side, then this is a conflict
+                      // because it implies an isolated deletion on the other
+                      // side.
+                      leftRenamePaths.isEmpty || rightRenamePaths.isEmpty
+                    end isARenameVersusDeletionConflict
+
+                    right(
+                      if isARenameVersusDeletionConflict then
+                        partialResult.copy(
+                          conflictingDeletedPathsByLeftRenamePath =
+                            partialResult.conflictingDeletedPathsByLeftRenamePath ++ leftRenamePaths
+                              .map(_ -> path),
+                          conflictingDeletedPathsByRightRenamePath =
+                            partialResult.conflictingDeletedPathsByRightRenamePath ++ rightRenamePaths
+                              .map(_ -> path)
+                        )
+                      else
+                        // The content has moved out into new files on both
+                        // sides. This might involve divergent or coincident
+                        // moves, however no special action needs to be taken
+                        // here.
+                        partialResult
+                    ).logOperation(description)
+                }
+              else right(partialResult)
           end match
         }
 
