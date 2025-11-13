@@ -619,11 +619,6 @@ object Main extends StrictLogging:
         bestAncestorCommitId: String @@ Main.Tags.CommitOrBranchName,
         possessive: String
     ): Workflow[Map[Path, Change]] =
-      def snoop[X](x: X) =
-        println(x)
-        x
-      end snoop
-
       for
         statusLines <- IO {
           os.proc(
