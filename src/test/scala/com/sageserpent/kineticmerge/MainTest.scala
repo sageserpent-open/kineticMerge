@@ -108,6 +108,16 @@ object MainTest extends ProseExamples:
     content
   end modifyBinaryFileWithSeed
 
+  private def removeBinaryFile(path: Path): Unit =
+    println(os.proc("git", "rm", binary).call(path).out.text())
+    println(
+      os.proc(s"git", "commit", "-m", "'Removing the binary file.'")
+        .call(path)
+        .out
+        .text()
+    )
+  end removeBinaryFile
+
   private def introducingArthur(path: Path): Unit =
     os.write(path / arthur, "Hello, my old mucker!\n", createFolders = true)
     println(os.proc("git", "add", arthur).call(path).out.text())
@@ -1123,6 +1133,8 @@ class MainTest:
                   exitCode
                 )
               end if
+
+              assert(!os.exists(path / arthur))
             }
           )
           .unsafeRunSync()
@@ -1700,6 +1712,7 @@ class MainTest:
                 )
               end if
 
+              assert(!os.exists(path / arthur))
             }
           )
           .unsafeRunSync()
@@ -3085,5 +3098,245 @@ class MainTest:
           )
           .unsafeRunSync()
       }
+
+  @TestFactory
+  def cleanMergeDeletingABinaryFile(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches, noCommit) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introduceBinaryFileFromSeed(path)("Going, going, gone!".hashCode)
+
+              val deletedFileBranch = "deletedFileBranch"
+
+              makeNewBranch(path)(deletedFileBranch)
+
+              removeBinaryFile(path)
+
+              val commitOfDeletedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              enterTysonStageLeft(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then checkoutBranch(path)(deletedFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then deletedFileBranch -> masterBranch
+                else masterBranch                      -> deletedFileBranch
+
+              val exitCode = Main.mergeTheirBranch(
+                ApplicationRequest.default.copy(
+                  theirBranchHead =
+                    theirBranch.taggedWith[Tags.CommitOrBranchName],
+                  noCommit = noCommit,
+                  minimumAmbiguousMatchSize = 0
+                )
+              )(workingDirectory =
+                optionalSubdirectory.fold(ifEmpty = path)(path / _)
+              )
+
+              if noCommit then
+                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                  path
+                )(
+                  flipBranches,
+                  commitOfDeletedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              else
+                verifyMergeMakesANewCommitWithACleanIndex(path)(
+                  commitOfDeletedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              end if
+
+              assert(!os.exists(path / binary))
+            }
+          )
+          .unsafeRunSync()
+      }
+  end cleanMergeDeletingABinaryFile
+
+  @TestFactory
+  def conflictingEditModificationAndDeletionOfTheSameBinaryFile()
+      : DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans)
+      .withLimit(4)
+      .dynamicTests { case (optionalSubdirectory, flipBranches) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introduceBinaryFileFromSeed(path)(
+                "original".hashCode
+              )
+
+              sandraStopsByBriefly(path)
+
+              val deletedFileBranch = "deletedFileBranch"
+
+              makeNewBranch(path)(deletedFileBranch)
+
+              enterTysonStageLeft(path)
+
+              removeBinaryFile(path)
+
+              val commitOfDeletedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              sandraHeadsOffHome(path)
+
+              val modifiedContent =
+                modifyBinaryFileWithSeed(path)("modified".hashCode)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then checkoutBranch(path)(deletedFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then deletedFileBranch -> masterBranch
+                else masterBranch                      -> deletedFileBranch
+
+              val exitCode = Main.mergeTheirBranch(
+                ApplicationRequest.default.copy(
+                  theirBranchHead =
+                    theirBranch.taggedWith[Tags.CommitOrBranchName],
+                  minimumAmbiguousMatchSize = 0
+                )
+              )(workingDirectory =
+                optionalSubdirectory.fold(ifEmpty = path)(path / _)
+              )
+
+              val status =
+                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                  path
+                )(
+                  flipBranches,
+                  commitOfDeletedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+
+              pathIsMarkedWithConflictingUpdateAndDeletionInTheIndex(binary)(
+                flipBranches,
+                status
+              )
+
+              assert(
+                modifiedContent sameElements os.read.bytes(path / binary)
+              )
+
+              if flipBranches then
+                sandraIsMarkedAsDeletedInTheIndex(status)
+                noUpdatesInIndexForTyson(status)
+              else
+                noUpdatesInIndexForSandra(status)
+                tysonIsMarkedAsAddedInTheIndex(status)
+              end if
+            }
+          )
+          .unsafeRunSync()
+      }
+  end conflictingEditModificationAndDeletionOfTheSameBinaryFile
+
+  @TestFactory
+  def cleanMergeOfABinaryFileDeletedInBothBranches(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches, noCommit) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introduceBinaryFileFromSeed(path)("Going, going, gone!".hashCode)
+
+              sandraStopsByBriefly(path)
+
+              val concurrentlyDeletedFileBranch =
+                "concurrentlyDeletedFileBranch"
+
+              makeNewBranch(path)(concurrentlyDeletedFileBranch)
+
+              enterTysonStageLeft(path)
+
+              removeBinaryFile(path)
+
+              val commitOfConcurrentlyDeletedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              sandraHeadsOffHome(path)
+
+              modifyBinaryFileWithSeed(path)("modifiedOnMaster".hashCode)
+
+              removeBinaryFile(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then
+                checkoutBranch(path)(concurrentlyDeletedFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then
+                  concurrentlyDeletedFileBranch -> masterBranch
+                else masterBranch               -> concurrentlyDeletedFileBranch
+
+              val exitCode = Main.mergeTheirBranch(
+                ApplicationRequest.default.copy(
+                  theirBranchHead =
+                    theirBranch.taggedWith[Tags.CommitOrBranchName],
+                  noCommit = noCommit,
+                  minimumAmbiguousMatchSize = 0
+                )
+              )(workingDirectory =
+                optionalSubdirectory.fold(ifEmpty = path)(path / _)
+              )
+
+              if noCommit then
+                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                  path
+                )(
+                  flipBranches,
+                  commitOfConcurrentlyDeletedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              else
+                verifyMergeMakesANewCommitWithACleanIndex(path)(
+                  commitOfConcurrentlyDeletedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              end if
+
+              assert(!os.exists(path / binary))
+            }
+          )
+          .unsafeRunSync()
+      }
+  end cleanMergeOfABinaryFileDeletedInBothBranches
 
 end MainTest
