@@ -74,18 +74,6 @@ object Main extends StrictLogging:
     )
   end main
 
-  /** @param commandLineArguments
-    *   Command line arguments as varargs.
-    * @return
-    *   The exit code as a plain integer, suitable for consumption by both Scala
-    *   and Java client code.
-    */
-  @varargs
-  def apply(commandLineArguments: String*): Int = apply(
-    progressRecording = NoProgressRecording,
-    commandLineArguments = commandLineArguments*
-  )
-
   /** @param progressRecording
     * @param commandLineArguments
     *   Command line arguments as varargs.
@@ -399,6 +387,9 @@ object Main extends StrictLogging:
   private def right[Payload](payload: Payload): Workflow[Payload] =
     EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
 
+  private def underline(anything: Any): Str =
+    fansi.Underlined.On(anything.toString)
+
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
       EitherT
@@ -418,8 +409,17 @@ object Main extends StrictLogging:
       workflow.semiflatTap(_ => WriterT.tell(List(Right(message))))
   end extension
 
-  private def underline(anything: Any): Str =
-    fansi.Underlined.On(anything.toString)
+  /** @param commandLineArguments
+    *   Command line arguments as varargs.
+    * @return
+    *   The exit code as a plain integer, suitable for consumption by both Scala
+    *   and Java client code.
+    */
+  @varargs
+  def apply(commandLineArguments: String*): Int = apply(
+    progressRecording = NoProgressRecording,
+    commandLineArguments = commandLineArguments*
+  )
 
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](
@@ -2093,12 +2093,6 @@ object Main extends StrictLogging:
                   _,
                   binaryContentDeleted
                 ) =>
-              val tokens = justOurSidesViewOfTheMergedContentAt(path)
-
-              val mergedFileContent = reconstituteTextFrom(tokens)
-              val ourModificationWasTweakedByTheMerge =
-                mergedFileContent != ourModification.content
-
               val prelude =
                 for
                   - <- recordDeletionInIndex(path)
@@ -2112,38 +2106,7 @@ object Main extends StrictLogging:
                   )
                 yield ()
 
-              if ourModificationWasTweakedByTheMerge then
-                if mergedFileContent.nonEmpty then
-                  for
-                    _      <- prelude
-                    blobId <- storeBlobFor(path, mergedFileContent)
-                    _      <- restoreFileFromBlobId(
-                      path,
-                      blobId
-                    )
-                    _ <- recordConflictModificationInIndex(
-                      stageIndex = ourStageIndex
-                    )(
-                      ourBranchHead,
-                      path,
-                      ourModification.mode,
-                      blobId
-                    ).logOperation(
-                      s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and deleted on their branch ${underline(theirBranchHead)}."
-                    )
-                  yield partialResult.copy(goodForAMergeCommit = false)
-                else
-                  // If our content is modified to being empty, this is taken to
-                  // mean that all of our original content has been migrated to
-                  // one or more other files. We can therefore resolve this as a
-                  // deletion.
-                  for
-                    _                      <- recordDeletionInIndex(path)
-                    _                      <- deleteFile(path)
-                    decoratedPartialResult <-
-                      captureRenamesOfPathDeletedOnJustOneSide
-                  yield decoratedPartialResult
-              else
+              def writeConflictingEntriesDirectFromBlobIds =
                 // The modified file would have been present on our branch;
                 // given that we started with a clean working directory
                 // tree, we just leave it there to match what Git merge
@@ -2161,6 +2124,49 @@ object Main extends StrictLogging:
                     s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and deleted on their branch ${underline(theirBranchHead)}."
                   )
                 yield partialResult.copy(goodForAMergeCommit = false)
+
+              if !binaryContentDeleted && !ourModification.binaryContentBeforeOrAfterModification
+              then
+                val tokens = justOurSidesViewOfTheMergedContentAt(path)
+
+                val mergedFileContent = reconstituteTextFrom(tokens)
+                val ourModificationWasTweakedByTheMerge =
+                  mergedFileContent != ourModification.content
+
+                if ourModificationWasTweakedByTheMerge then
+                  if mergedFileContent.nonEmpty then
+                    for
+                      _      <- prelude
+                      blobId <- storeBlobFor(path, mergedFileContent)
+                      _      <- restoreFileFromBlobId(
+                        path,
+                        blobId
+                      )
+                      _ <- recordConflictModificationInIndex(
+                        stageIndex = ourStageIndex
+                      )(
+                        ourBranchHead,
+                        path,
+                        ourModification.mode,
+                        blobId
+                      ).logOperation(
+                        s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and deleted on their branch ${underline(theirBranchHead)}."
+                      )
+                    yield partialResult.copy(goodForAMergeCommit = false)
+                  else
+                    // If our content is modified to being empty, this is taken
+                    // to mean that all of our original content has been
+                    // migrated to one or more other files. We can therefore
+                    // resolve this as a deletion.
+                    for
+                      _                      <- recordDeletionInIndex(path)
+                      _                      <- deleteFile(path)
+                      decoratedPartialResult <-
+                        captureRenamesOfPathDeletedOnJustOneSide
+                    yield decoratedPartialResult
+                else writeConflictingEntriesDirectFromBlobIds
+                end if
+              else writeConflictingEntriesDirectFromBlobIds
               end if
 
             case TheirModificationAndOurDeletion(
@@ -2170,12 +2176,6 @@ object Main extends StrictLogging:
                   _,
                   binaryContentDeleted
                 ) =>
-              val tokens = justTheirSidesViewOfTheMergedContentAt(path)
-
-              val mergedFileContent = reconstituteTextFrom(tokens)
-              val theirModificationWasTweakedByTheMerge =
-                mergedFileContent != theirModification.content
-
               val prelude =
                 for
                   _ <- recordDeletionInIndex(path)
@@ -2189,40 +2189,7 @@ object Main extends StrictLogging:
                   )
                 yield ()
 
-              // Git's merge updates the working directory tree with *their*
-              // modified file which wouldn't have been present on our
-              // branch prior to the merge. So that's what we do too.
-              if theirModificationWasTweakedByTheMerge then
-                if mergedFileContent.nonEmpty then
-                  for
-                    _      <- prelude
-                    blobId <- storeBlobFor(path, mergedFileContent)
-                    _      <- restoreFileFromBlobId(
-                      path,
-                      blobId
-                    )
-                    _ <- recordConflictModificationInIndex(
-                      stageIndex = theirStageIndex
-                    )(
-                      theirBranchHead,
-                      path,
-                      theirModification.mode,
-                      blobId
-                    ).logOperation(
-                      s"Conflict - file ${underline(path)} was deleted on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
-                    )
-                  yield partialResult.copy(goodForAMergeCommit = false)
-                else
-                  // If their content is modified to being empty, this is taken
-                  // to mean that all of our original content has been migrated
-                  // to one or more other files. We can therefore resolve this
-                  // as a deletion.
-                  for
-                    _                      <- recordDeletionInIndex(path)
-                    decoratedPartialResult <-
-                      captureRenamesOfPathDeletedOnJustOneSide
-                  yield decoratedPartialResult
-              else
+              def writeConflictingEntriesDirectFromBlobIds =
                 for
                   _ <- prelude
                   _ <- restoreFileFromBlobId(
@@ -2240,6 +2207,51 @@ object Main extends StrictLogging:
                     s"Conflict - file ${underline(path)} was deleted on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
                   )
                 yield partialResult.copy(goodForAMergeCommit = false)
+
+              if !binaryContentDeleted && !theirModification.binaryContentBeforeOrAfterModification
+              then
+                val tokens = justTheirSidesViewOfTheMergedContentAt(path)
+
+                val mergedFileContent = reconstituteTextFrom(tokens)
+                val theirModificationWasTweakedByTheMerge =
+                  mergedFileContent != theirModification.content
+
+                // Git's merge updates the working directory tree with *their*
+                // modified file which wouldn't have been present on our
+                // branch prior to the merge. So that's what we do too.
+                if theirModificationWasTweakedByTheMerge then
+                  if mergedFileContent.nonEmpty then
+                    for
+                      _      <- prelude
+                      blobId <- storeBlobFor(path, mergedFileContent)
+                      _      <- restoreFileFromBlobId(
+                        path,
+                        blobId
+                      )
+                      _ <- recordConflictModificationInIndex(
+                        stageIndex = theirStageIndex
+                      )(
+                        theirBranchHead,
+                        path,
+                        theirModification.mode,
+                        blobId
+                      ).logOperation(
+                        s"Conflict - file ${underline(path)} was deleted on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
+                      )
+                    yield partialResult.copy(goodForAMergeCommit = false)
+                  else
+                    // If their content is modified to being empty, this is
+                    // taken to mean that all of our original content has been
+                    // migrated to one or more other files. We can therefore
+                    // resolve this as a deletion.
+                    for
+                      _                      <- recordDeletionInIndex(path)
+                      decoratedPartialResult <-
+                        captureRenamesOfPathDeletedOnJustOneSide
+                    yield decoratedPartialResult
+                else writeConflictingEntriesDirectFromBlobIds
+                end if
+              else writeConflictingEntriesDirectFromBlobIds
               end if
 
             case BothContributeAnAddition(
