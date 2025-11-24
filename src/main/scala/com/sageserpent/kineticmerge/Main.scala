@@ -923,6 +923,52 @@ object Main extends StrictLogging:
         }
     end mergeInputsOf
 
+    private def blobAndContentFor(
+        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
+    )(
+        path: Path
+    ): Workflow[
+      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
+    ] =
+      for
+        Array(mode, entryType, entryId, _) <- IO {
+          val line = os
+            .proc("git", "ls-tree", commitIdOrBranchName, path)
+            .call(workingDirectory)
+            .out
+            .text()
+
+          line.split(whitespaceRun)
+        }.labelExceptionWith(errorMessage =
+          s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
+        )
+        content <-
+          entryType match
+            case "blob" =>
+              IO {
+                os
+                  .proc("git", "cat-file", "blob", entryId)
+                  .call(workingDirectory)
+                  .out
+                  .text()
+              }.labelExceptionWith(
+                s"Unexpected error - can't retrieve content for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)} using blob id: ${underline(entryId)}."
+              )
+            case "commit" =>
+              left(
+                s"Submodule changes not supported: encountered a submodule commit when trying to retrieve content for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}, the commit id is: ${underline(entryId)}."
+              )
+            case _ =>
+              left(
+                s"Unexpected error - Git reports an unsupported type ${underline(entryType)} for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}, the id is: ${underline(entryId)}."
+              )
+      yield (
+        mode.taggedWith[Tags.Mode],
+        entryId.taggedWith[Tags.BlobId],
+        content.taggedWith[Tags.Content]
+      )
+    end blobAndContentFor
+
     def mergeWithRollback(
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
         ourBranchHead: String @@ Tags.CommitOrBranchName,
@@ -1577,38 +1623,38 @@ object Main extends StrictLogging:
           baseBlobId: String @@ Tags.BlobId,
           leftBlobId: String @@ Tags.BlobId,
           rightBlobId: String @@ Tags.BlobId
-      ) =
-        for
-          _ <- recordDeletionInIndex(path)
-          _ <- recordConflictModificationInIndex(
-            stageIndex = bestCommonAncestorStageIndex
-          )(
-            bestAncestorCommitId,
-            path,
-            bestAncestorCommitIdMode,
-            baseBlobId
-          )
-          _ <- recordConflictModificationInIndex(
-            stageIndex = ourStageIndex
-          )(
-            ourBranchHead,
-            path,
-            mode,
-            leftBlobId
-          )
-          _ <- recordConflictModificationInIndex(
-            stageIndex = theirStageIndex
-          )(
-            theirBranchHead,
-            path,
-            mode,
-            rightBlobId
-          ).logOperation(
-            s"Conflict - file ${underline(path)} was modified on our branch ${underline(
-                ourBranchHead
-              )} and modified on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
-          )
-        yield partialResult.copy(goodForAMergeCommit = false)
+      ) = for
+        _ <- recordDeletionInIndex(path)
+        _ <- recordConflictModificationInIndex(
+          stageIndex = bestCommonAncestorStageIndex
+        )(
+          bestAncestorCommitId,
+          path,
+          bestAncestorCommitIdMode,
+          baseBlobId
+        )
+        _ <- recordConflictModificationInIndex(
+          stageIndex = ourStageIndex
+        )(
+          ourBranchHead,
+          path,
+          mode,
+          leftBlobId
+        )
+        _ <- recordConflictModificationInIndex(
+          stageIndex = theirStageIndex
+        )(
+          theirBranchHead,
+          path,
+          mode,
+          rightBlobId
+        ).logOperation(
+          s"Conflict - file ${underline(path)} was modified on our branch ${underline(
+              ourBranchHead
+            )} and modified on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
+        )
+      yield partialResult.copy(goodForAMergeCommit = false)
+      end writeConflictedIndexEntriesForModification
 
       def writeConflictedIndexEntriesForAddition(
           partialResult: AccumulatedMergeState,
@@ -1617,31 +1663,29 @@ object Main extends StrictLogging:
           lastMinuteResolution: Boolean,
           leftBlob: String @@ Tags.BlobId,
           rightBlob: String @@ Tags.BlobId
-      ) =
-        for
-          _ <- recordDeletionInIndex(path)
-          _ <- recordConflictModificationInIndex(
-            stageIndex = ourStageIndex
-          )(
-            ourBranchHead,
-            path,
-            mode,
-            leftBlob
-          )
-          _ <- recordConflictModificationInIndex(
-            stageIndex = theirStageIndex
-          )(
-            theirBranchHead,
-            path,
-            mode,
-            rightBlob
-          )
-        yield partialResult.copy(
-          goodForAMergeCommit = false,
-          conflictingAdditionPathsAndTheirLastMinuteResolutions =
-            partialResult.conflictingAdditionPathsAndTheirLastMinuteResolutions + (path -> lastMinuteResolution)
+      ) = for
+        _ <- recordDeletionInIndex(path)
+        _ <- recordConflictModificationInIndex(
+          stageIndex = ourStageIndex
+        )(
+          ourBranchHead,
+          path,
+          mode,
+          leftBlob
         )
-        end for
+        _ <- recordConflictModificationInIndex(
+          stageIndex = theirStageIndex
+        )(
+          theirBranchHead,
+          path,
+          mode,
+          rightBlob
+        )
+      yield partialResult.copy(
+        goodForAMergeCommit = false,
+        conflictingAdditionPathsAndTheirLastMinuteResolutions =
+          partialResult.conflictingAdditionPathsAndTheirLastMinuteResolutions + (path -> lastMinuteResolution)
+      )
       end writeConflictedIndexEntriesForAddition
 
       for
@@ -2101,7 +2145,7 @@ object Main extends StrictLogging:
                   )
                 yield ()
 
-              def writeConflictingEntriesDirectFromBlobIds =
+              def writeConflictingEntries =
                 // The modified file would have been present on our branch;
                 // given that we started with a clean working directory
                 // tree, we just leave it there to match what Git merge
@@ -2159,9 +2203,9 @@ object Main extends StrictLogging:
                       decoratedPartialResult <-
                         captureRenamesOfPathDeletedOnJustOneSide
                     yield decoratedPartialResult
-                else writeConflictingEntriesDirectFromBlobIds
+                else writeConflictingEntries
                 end if
-              else writeConflictingEntriesDirectFromBlobIds
+              else writeConflictingEntries
               end if
 
             case TheirModificationAndOurDeletion(
@@ -2184,7 +2228,7 @@ object Main extends StrictLogging:
                   )
                 yield ()
 
-              def writeConflictingEntriesDirectFromBlobIds =
+              def writeConflictingEntries =
                 for
                   _ <- prelude
                   _ <- restoreFileFromBlobId(
@@ -2244,9 +2288,9 @@ object Main extends StrictLogging:
                       decoratedPartialResult <-
                         captureRenamesOfPathDeletedOnJustOneSide
                     yield decoratedPartialResult
-                else writeConflictingEntriesDirectFromBlobIds
+                else writeConflictingEntries
                 end if
-              else writeConflictingEntriesDirectFromBlobIds
+              else writeConflictingEntries
               end if
 
             case BothContributeAnAddition(
@@ -2413,52 +2457,6 @@ object Main extends StrictLogging:
       yield withRenameVersusDeletionConflicts.goodForAMergeCommit
       end for
     end indexUpdates
-
-    private def blobAndContentFor(
-        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
-    )(
-        path: Path
-    ): Workflow[
-      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
-    ] =
-      for
-        Array(mode, entryType, entryId, _) <- IO {
-          val line = os
-            .proc("git", "ls-tree", commitIdOrBranchName, path)
-            .call(workingDirectory)
-            .out
-            .text()
-
-          line.split(whitespaceRun)
-        }.labelExceptionWith(errorMessage =
-          s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
-        )
-        content <-
-          entryType match
-            case "blob" =>
-              IO {
-                os
-                  .proc("git", "cat-file", "blob", entryId)
-                  .call(workingDirectory)
-                  .out
-                  .text()
-              }.labelExceptionWith(
-                s"Unexpected error - can't retrieve content for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)} using blob id: ${underline(entryId)}."
-              )
-            case "commit" =>
-              left(
-                s"Submodule changes not supported: encountered a submodule commit when trying to retrieve content for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}, the commit id is: ${underline(entryId)}."
-              )
-            case _ =>
-              left(
-                s"Unexpected error - Git reports an unsupported type ${underline(entryType)} for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}, the id is: ${underline(entryId)}."
-              )
-      yield (
-        mode.taggedWith[Tags.Mode],
-        entryId.taggedWith[Tags.BlobId],
-        content.taggedWith[Tags.Content]
-      )
-    end blobAndContentFor
 
     private def deleteFile(path: Path): Workflow[Unit] = IO {
       os.remove(path): Unit
