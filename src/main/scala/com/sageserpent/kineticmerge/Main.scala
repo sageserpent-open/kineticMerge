@@ -74,18 +74,6 @@ object Main extends StrictLogging:
     )
   end main
 
-  /** @param commandLineArguments
-    *   Command line arguments as varargs.
-    * @return
-    *   The exit code as a plain integer, suitable for consumption by both Scala
-    *   and Java client code.
-    */
-  @varargs
-  def apply(commandLineArguments: String*): Int = apply(
-    progressRecording = NoProgressRecording,
-    commandLineArguments = commandLineArguments*
-  )
-
   /** @param progressRecording
     * @param commandLineArguments
     *   Command line arguments as varargs.
@@ -399,6 +387,9 @@ object Main extends StrictLogging:
   private def right[Payload](payload: Payload): Workflow[Payload] =
     EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
 
+  private def underline(anything: Any): Str =
+    fansi.Underlined.On(anything.toString)
+
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
       EitherT
@@ -418,8 +409,21 @@ object Main extends StrictLogging:
       workflow.semiflatTap(_ => WriterT.tell(List(Right(message))))
   end extension
 
-  private def underline(anything: Any): Str =
-    fansi.Underlined.On(anything.toString)
+  extension (content: String @@ Tags.Content)
+    private def asTokens: Vector[Token] = tokens(content).get
+  end extension
+
+  /** @param commandLineArguments
+    *   Command line arguments as varargs.
+    * @return
+    *   The exit code as a plain integer, suitable for consumption by both Scala
+    *   and Java client code.
+    */
+  @varargs
+  def apply(commandLineArguments: String*): Int = apply(
+    progressRecording = NoProgressRecording,
+    commandLineArguments = commandLineArguments*
+  )
 
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](
@@ -1167,13 +1171,11 @@ object Main extends StrictLogging:
                     bestAncestorCommitIdContent
                   ) =>
                 if !ourModification.binaryContentBeforeOrAfterModification then
-                  val unchangedContent = tokens(bestAncestorCommitIdContent).get
+                  val unchangedContent = bestAncestorCommitIdContent.asTokens
 
                   (
                     baseContentsByPath + (path -> unchangedContent),
-                    leftContentsByPath + (path -> tokens(
-                      ourModification.content
-                    ).get),
+                    leftContentsByPath + (path -> ourModification.content.asTokens),
                     rightContentsByPath + (path -> unchangedContent),
                     newPathsOnLeftOrRight
                   )
@@ -1186,14 +1188,12 @@ object Main extends StrictLogging:
                   ) =>
                 if !theirModification.binaryContentBeforeOrAfterModification
                 then
-                  val unchangedContent = tokens(bestAncestorCommitIdContent).get
+                  val unchangedContent = bestAncestorCommitIdContent.asTokens
 
                   (
-                    baseContentsByPath + (path  -> unchangedContent),
-                    leftContentsByPath + (path  -> unchangedContent),
-                    rightContentsByPath + (path -> tokens(
-                      theirModification.content
-                    ).get),
+                    baseContentsByPath + (path -> unchangedContent),
+                    leftContentsByPath + (path -> unchangedContent),
+                    rightContentsByPath + (path -> theirModification.content.asTokens),
                     newPathsOnLeftOrRight
                   )
                 else passThrough
@@ -1202,9 +1202,7 @@ object Main extends StrictLogging:
                 if !ourAddition.binaryContentAdded then
                   (
                     baseContentsByPath,
-                    leftContentsByPath + (path -> tokens(
-                      ourAddition.content
-                    ).get),
+                    leftContentsByPath + (path -> ourAddition.content.asTokens),
                     rightContentsByPath,
                     newPathsOnLeftOrRight + path
                   )
@@ -1215,9 +1213,7 @@ object Main extends StrictLogging:
                   (
                     baseContentsByPath,
                     leftContentsByPath,
-                    rightContentsByPath + (path -> tokens(
-                      theirAddition.content
-                    ).get),
+                    rightContentsByPath + (path -> theirAddition.content.asTokens),
                     newPathsOnLeftOrRight + path
                   )
                 else passThrough
@@ -1227,7 +1223,7 @@ object Main extends StrictLogging:
                     binaryContentDeleted
                   ) =>
                 if !binaryContentDeleted then
-                  val deletedContent = tokens(bestAncestorCommitIdContent).get
+                  val deletedContent = bestAncestorCommitIdContent.asTokens
 
                   (
                     baseContentsByPath + (path -> deletedContent),
@@ -1242,7 +1238,7 @@ object Main extends StrictLogging:
                     binaryContentDeleted
                   ) =>
                 if !binaryContentDeleted then
-                  val deletedContent = tokens(bestAncestorCommitIdContent).get
+                  val deletedContent = bestAncestorCommitIdContent.asTokens
 
                   (
                     baseContentsByPath + (path -> deletedContent),
@@ -1261,15 +1257,11 @@ object Main extends StrictLogging:
                   ) =>
                 (
                   if !binaryContentDeleted then
-                    baseContentsByPath + (path -> tokens(
-                      bestAncestorCommitIdContent
-                    ).get)
+                    baseContentsByPath + (path -> bestAncestorCommitIdContent.asTokens)
                   else baseContentsByPath,
                   if !ourModification.binaryContentBeforeOrAfterModification
                   then
-                    leftContentsByPath + (path -> tokens(
-                      ourModification.content
-                    ).get)
+                    leftContentsByPath + (path -> ourModification.content.asTokens)
                   else leftContentsByPath,
                   rightContentsByPath,
                   newPathsOnLeftOrRight
@@ -1284,16 +1276,12 @@ object Main extends StrictLogging:
                   ) =>
                 (
                   if !binaryContentDeleted then
-                    baseContentsByPath + (path -> tokens(
-                      bestAncestorCommitIdContent
-                    ).get)
+                    baseContentsByPath + (path -> bestAncestorCommitIdContent.asTokens)
                   else baseContentsByPath,
                   leftContentsByPath,
                   if !theirModification.binaryContentBeforeOrAfterModification
                   then
-                    rightContentsByPath + (path -> tokens(
-                      theirModification.content
-                    ).get)
+                    rightContentsByPath + (path -> theirModification.content.asTokens)
                   else rightContentsByPath,
                   newPathsOnLeftOrRight
                 )
@@ -1306,14 +1294,10 @@ object Main extends StrictLogging:
                 (
                   baseContentsByPath,
                   if !ourAddition.binaryContentAdded then
-                    leftContentsByPath + (path -> tokens(
-                      ourAddition.content
-                    ).get)
+                    leftContentsByPath + (path -> ourAddition.content.asTokens)
                   else leftContentsByPath,
                   if !theirAddition.binaryContentAdded then
-                    rightContentsByPath + (path -> tokens(
-                      theirAddition.content
-                    ).get)
+                    rightContentsByPath + (path -> theirAddition.content.asTokens)
                   else rightContentsByPath,
                   newPathsOnLeftOrRight + path
                 )
@@ -1329,21 +1313,15 @@ object Main extends StrictLogging:
                 (
                   if !ourModification.binaryContentBeforeOrAfterModification || !theirModification.binaryContentBeforeOrAfterModification
                   then
-                    baseContentsByPath + (path -> tokens(
-                      bestAncestorCommitIdContent
-                    ).get)
+                    baseContentsByPath + (path -> bestAncestorCommitIdContent.asTokens)
                   else baseContentsByPath,
                   if !ourModification.binaryContentBeforeOrAfterModification
                   then
-                    leftContentsByPath + (path -> tokens(
-                      ourModification.content
-                    ).get)
+                    leftContentsByPath + (path -> ourModification.content.asTokens)
                   else leftContentsByPath,
                   if !theirModification.binaryContentBeforeOrAfterModification
                   then
-                    rightContentsByPath + (path -> tokens(
-                      theirModification.content
-                    ).get)
+                    rightContentsByPath + (path -> theirModification.content.asTokens)
                   else rightContentsByPath,
                   newPathsOnLeftOrRight
                 )
@@ -1354,9 +1332,7 @@ object Main extends StrictLogging:
                   ) =>
                 if !binaryContentDeleted then
                   (
-                    baseContentsByPath + (path -> tokens(
-                      bestAncestorCommitIdContent
-                    ).get),
+                    baseContentsByPath + (path -> bestAncestorCommitIdContent.asTokens),
                     leftContentsByPath,
                     rightContentsByPath,
                     newPathsOnLeftOrRight
@@ -1898,7 +1874,7 @@ object Main extends StrictLogging:
               if !ourModification.binaryContentBeforeOrAfterModification then
                 mergeResultsByPath(path) match
                   case FullyMerged(tokens) =>
-                    val mergedFileContent = reconstituteTextFrom(tokens)
+                    val mergedFileContent = reconstituteContentFrom(tokens)
 
                     val ourModificationWasTweakedByTheMerge =
                       mergedFileContent != ourModification.content
@@ -1918,9 +1894,9 @@ object Main extends StrictLogging:
                         leftTokens,
                         rightTokens
                       ) =>
-                    val baseContent  = reconstituteTextFrom(baseTokens)
-                    val leftContent  = reconstituteTextFrom(leftTokens)
-                    val rightContent = reconstituteTextFrom(rightTokens)
+                    val baseContent  = reconstituteContentFrom(baseTokens)
+                    val leftContent  = reconstituteContentFrom(leftTokens)
+                    val rightContent = reconstituteContentFrom(rightTokens)
 
                     recordConflictedMergeOfModifiedFile(
                       partialResult,
@@ -1941,7 +1917,7 @@ object Main extends StrictLogging:
               if !theirModification.binaryContentBeforeOrAfterModification then
                 mergeResultsByPath(path) match
                   case FullyMerged(tokens) =>
-                    val mergedFileContent = reconstituteTextFrom(tokens)
+                    val mergedFileContent = reconstituteContentFrom(tokens)
 
                     val theirModificationWasTweakedByTheMerge =
                       mergedFileContent != theirModification.content
@@ -1967,9 +1943,9 @@ object Main extends StrictLogging:
                         leftTokens,
                         rightTokens
                       ) =>
-                    val baseContent  = reconstituteTextFrom(baseTokens)
-                    val leftContent  = reconstituteTextFrom(leftTokens)
-                    val rightContent = reconstituteTextFrom(rightTokens)
+                    val baseContent  = reconstituteContentFrom(baseTokens)
+                    val leftContent  = reconstituteContentFrom(leftTokens)
+                    val rightContent = reconstituteContentFrom(rightTokens)
 
                     recordConflictedMergeOfModifiedFile(
                       partialResult,
@@ -1992,7 +1968,7 @@ object Main extends StrictLogging:
               if !ourAddition.binaryContentAdded then
                 mergeResultsByPath(path) match
                   case FullyMerged(tokens) =>
-                    val mergedFileContent = reconstituteTextFrom(tokens)
+                    val mergedFileContent = reconstituteContentFrom(tokens)
 
                     val ourAdditionWasTweakedByTheMerge =
                       mergedFileContent != ourAddition.content
@@ -2012,11 +1988,11 @@ object Main extends StrictLogging:
                         leftTokens,
                         rightTokens
                       ) =>
-                    val leftContent  = reconstituteTextFrom(leftTokens)
-                    val rightContent = reconstituteTextFrom(rightTokens)
+                    val leftContent  = reconstituteContentFrom(leftTokens)
+                    val rightContent = reconstituteContentFrom(rightTokens)
 
                     if baseTokens.nonEmpty then
-                      val baseContent = reconstituteTextFrom(baseTokens)
+                      val baseContent = reconstituteContentFrom(baseTokens)
 
                       recordConflictedMergeOfModifiedFile(
                         partialResult,
@@ -2042,7 +2018,7 @@ object Main extends StrictLogging:
               if !theirAddition.binaryContentAdded then
                 mergeResultsByPath(path) match
                   case FullyMerged(tokens) =>
-                    val mergedFileContent = reconstituteTextFrom(tokens)
+                    val mergedFileContent = reconstituteContentFrom(tokens)
 
                     val theirAdditionWasTweakedByTheMerge =
                       mergedFileContent != theirAddition.content
@@ -2068,11 +2044,11 @@ object Main extends StrictLogging:
                         leftTokens,
                         rightTokens
                       ) =>
-                    val leftContent  = reconstituteTextFrom(leftTokens)
-                    val rightContent = reconstituteTextFrom(rightTokens)
+                    val leftContent  = reconstituteContentFrom(leftTokens)
+                    val rightContent = reconstituteContentFrom(rightTokens)
 
                     if baseTokens.nonEmpty then
-                      val baseContent = reconstituteTextFrom(baseTokens)
+                      val baseContent = reconstituteContentFrom(baseTokens)
 
                       recordConflictedMergeOfModifiedFile(
                         partialResult,
@@ -2168,7 +2144,7 @@ object Main extends StrictLogging:
               then
                 val tokens = justOurSidesViewOfTheMergedContentAt(path)
 
-                val mergedFileContent = reconstituteTextFrom(tokens)
+                val mergedFileContent = reconstituteContentFrom(tokens)
                 val ourModificationWasTweakedByTheMerge =
                   mergedFileContent != ourModification.content
 
@@ -2251,7 +2227,7 @@ object Main extends StrictLogging:
               then
                 val tokens = justTheirSidesViewOfTheMergedContentAt(path)
 
-                val mergedFileContent = reconstituteTextFrom(tokens)
+                val mergedFileContent = reconstituteContentFrom(tokens)
                 val theirModificationWasTweakedByTheMerge =
                   mergedFileContent != theirModification.content
 
@@ -2302,7 +2278,7 @@ object Main extends StrictLogging:
               then
                 mergeResultsByPath(path) match
                   case FullyMerged(tokens) =>
-                    val mergedFileContent = reconstituteTextFrom(tokens)
+                    val mergedFileContent = reconstituteContentFrom(tokens)
 
                     recordCleanMergeOfFile(
                       partialResult,
@@ -2316,11 +2292,11 @@ object Main extends StrictLogging:
                         leftTokens,
                         rightTokens
                       ) =>
-                    val leftContent  = reconstituteTextFrom(leftTokens)
-                    val rightContent = reconstituteTextFrom(rightTokens)
+                    val leftContent  = reconstituteContentFrom(leftTokens)
+                    val rightContent = reconstituteContentFrom(rightTokens)
 
                     if baseTokens.nonEmpty then
-                      val baseContent = reconstituteTextFrom(baseTokens)
+                      val baseContent = reconstituteContentFrom(baseTokens)
 
                       recordConflictedMergeOfModifiedFile(
                         partialResult,
@@ -2362,7 +2338,7 @@ object Main extends StrictLogging:
               then
                 mergeResultsByPath(path) match
                   case FullyMerged(tokens) =>
-                    val mergedFileContent = reconstituteTextFrom(tokens)
+                    val mergedFileContent = reconstituteContentFrom(tokens)
 
                     recordCleanMergeOfFile(
                       partialResult,
@@ -2376,9 +2352,9 @@ object Main extends StrictLogging:
                         leftTokens,
                         rightTokens
                       ) =>
-                    val baseContent  = reconstituteTextFrom(baseTokens)
-                    val leftContent  = reconstituteTextFrom(leftTokens)
-                    val rightContent = reconstituteTextFrom(rightTokens)
+                    val baseContent  = reconstituteContentFrom(baseTokens)
+                    val leftContent  = reconstituteContentFrom(leftTokens)
+                    val rightContent = reconstituteContentFrom(rightTokens)
 
                     recordConflictedMergeOfModifiedFile(
                       partialResult,
@@ -2484,7 +2460,7 @@ object Main extends StrictLogging:
         s"Unexpected error: could not update working directory tree with file ${underline(path)}."
       )
 
-    private def reconstituteTextFrom(
+    private def reconstituteContentFrom(
         tokens: Seq[Token]
     ): String @@ Main.Tags.Content =
       tokens.map(_.text).mkString.taggedWith[Tags.Content]
