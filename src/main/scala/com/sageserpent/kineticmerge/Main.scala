@@ -74,6 +74,18 @@ object Main extends StrictLogging:
     )
   end main
 
+  /** @param commandLineArguments
+    *   Command line arguments as varargs.
+    * @return
+    *   The exit code as a plain integer, suitable for consumption by both Scala
+    *   and Java client code.
+    */
+  @varargs
+  def apply(commandLineArguments: String*): Int = apply(
+    progressRecording = NoProgressRecording,
+    commandLineArguments = commandLineArguments*
+  )
+
   /** @param progressRecording
     * @param commandLineArguments
     *   Command line arguments as varargs.
@@ -387,9 +399,6 @@ object Main extends StrictLogging:
   private def right[Payload](payload: Payload): Workflow[Payload] =
     EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
 
-  private def underline(anything: Any): Str =
-    fansi.Underlined.On(anything.toString)
-
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
       EitherT
@@ -413,17 +422,8 @@ object Main extends StrictLogging:
     private def asTokens: Vector[Token] = tokens(content).get
   end extension
 
-  /** @param commandLineArguments
-    *   Command line arguments as varargs.
-    * @return
-    *   The exit code as a plain integer, suitable for consumption by both Scala
-    *   and Java client code.
-    */
-  @varargs
-  def apply(commandLineArguments: String*): Int = apply(
-    progressRecording = NoProgressRecording,
-    commandLineArguments = commandLineArguments*
-  )
+  private def underline(anything: Any): Str =
+    fansi.Underlined.On(anything.toString)
 
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](
@@ -697,6 +697,52 @@ object Main extends StrictLogging:
         s"Unexpected error - can't parse changes reported by Git ${underline(line)}."
       ).flatMap { case (path, changed) => changed.map(path -> _) }
 
+    private def blobAndContentFor(
+        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
+    )(
+        path: Path
+    ): Workflow[
+      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
+    ] =
+      for
+        Array(mode, entryType, entryId, _) <- IO {
+          val line = os
+            .proc("git", "ls-tree", commitIdOrBranchName, path)
+            .call(workingDirectory)
+            .out
+            .text()
+
+          line.split(whitespaceRun)
+        }.labelExceptionWith(errorMessage =
+          s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
+        )
+        content <-
+          entryType match
+            case "blob" =>
+              IO {
+                os
+                  .proc("git", "cat-file", "blob", entryId)
+                  .call(workingDirectory)
+                  .out
+                  .text()
+              }.labelExceptionWith(
+                s"Unexpected error - can't retrieve content for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)} using blob id: ${underline(entryId)}."
+              )
+            case "commit" =>
+              left(
+                s"Submodule changes not supported: encountered a submodule commit when trying to retrieve content for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}, the commit id is: ${underline(entryId)}."
+              )
+            case _ =>
+              left(
+                s"Unexpected error - Git reports an unsupported type ${underline(entryType)} for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}, the id is: ${underline(entryId)}."
+              )
+      yield (
+        mode.taggedWith[Tags.Mode],
+        entryId.taggedWith[Tags.BlobId],
+        content.taggedWith[Tags.Content]
+      )
+    end blobAndContentFor
+
     def mergeInputsOf(
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
         ourBranchHead: String @@ Tags.CommitOrBranchName,
@@ -926,52 +972,6 @@ object Main extends StrictLogging:
             )
         }
     end mergeInputsOf
-
-    private def blobAndContentFor(
-        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
-    )(
-        path: Path
-    ): Workflow[
-      (String @@ Tags.Mode, String @@ Tags.BlobId, String @@ Tags.Content)
-    ] =
-      for
-        Array(mode, entryType, entryId, _) <- IO {
-          val line = os
-            .proc("git", "ls-tree", commitIdOrBranchName, path)
-            .call(workingDirectory)
-            .out
-            .text()
-
-          line.split(whitespaceRun)
-        }.labelExceptionWith(errorMessage =
-          s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
-        )
-        content <-
-          entryType match
-            case "blob" =>
-              IO {
-                os
-                  .proc("git", "cat-file", "blob", entryId)
-                  .call(workingDirectory)
-                  .out
-                  .text()
-              }.labelExceptionWith(
-                s"Unexpected error - can't retrieve content for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)} using blob id: ${underline(entryId)}."
-              )
-            case "commit" =>
-              left(
-                s"Submodule changes not supported: encountered a submodule commit when trying to retrieve content for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}, the commit id is: ${underline(entryId)}."
-              )
-            case _ =>
-              left(
-                s"Unexpected error - Git reports an unsupported type ${underline(entryType)} for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}, the id is: ${underline(entryId)}."
-              )
-      yield (
-        mode.taggedWith[Tags.Mode],
-        entryId.taggedWith[Tags.BlobId],
-        content.taggedWith[Tags.Content]
-      )
-    end blobAndContentFor
 
     def mergeWithRollback(
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
@@ -2140,7 +2140,7 @@ object Main extends StrictLogging:
                   )
                 yield partialResult.copy(goodForAMergeCommit = false)
 
-              if !binaryContentDeleted && !ourModification.binaryContentBeforeOrAfterModification
+              if !ourModification.binaryContentBeforeOrAfterModification
               then
                 val tokens = justOurSidesViewOfTheMergedContentAt(path)
 
@@ -2223,7 +2223,7 @@ object Main extends StrictLogging:
                   )
                 yield partialResult.copy(goodForAMergeCommit = false)
 
-              if !binaryContentDeleted && !theirModification.binaryContentBeforeOrAfterModification
+              if !theirModification.binaryContentBeforeOrAfterModification
               then
                 val tokens = justTheirSidesViewOfTheMergedContentAt(path)
 
@@ -2274,6 +2274,7 @@ object Main extends StrictLogging:
                   theirAddition,
                   mergedFileMode
                 ) =>
+              // TODO: suppose one is binary and the other isn't?
               if !ourAddition.binaryContentAdded && !theirAddition.binaryContentAdded
               then
                 mergeResultsByPath(path) match
@@ -2334,6 +2335,7 @@ object Main extends StrictLogging:
                   bestAncestorCommitIdContent,
                   mergedFileMode
                 ) =>
+              // TODO: suppose one is binary and the other isn't?
               if !ourModification.binaryContentBeforeOrAfterModification && !theirModification.binaryContentBeforeOrAfterModification
               then
                 mergeResultsByPath(path) match
