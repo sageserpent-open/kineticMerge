@@ -2476,9 +2476,73 @@ object Main extends StrictLogging:
                         rightContent
                       )
 
-                case (Some(ourContent), None) => ??? // TODO!
+                case (Some(ourContent), None) =>
+                  val tokens = justOurSidesViewOfTheMergedContentAt(path)
 
-                case (None, Some(theirContent)) => ??? // TODO!
+                  val mergedFileContent = reconstituteContentFrom(tokens)
+                  val ourModificationWasTweakedByTheMerge =
+                    mergedFileContent != ourContent
+
+                  if ourModificationWasTweakedByTheMerge then
+                    for
+                      blobId <- storeBlobFor(path, mergedFileContent)
+                      _      <- restoreFileFromBlobId(
+                        path,
+                        blobId
+                      )
+                      result <- writeConflictedIndexEntriesForAddition(
+                        partialResult,
+                        path,
+                        mergedFileMode,
+                        lastMinuteResolution = false,
+                        blobId,
+                        theirModification.blobId
+                      )
+                    yield result
+                  else
+                    writeConflictedIndexEntriesForAddition(
+                      partialResult,
+                      path,
+                      mergedFileMode,
+                      lastMinuteResolution = false,
+                      ourModification.blobId,
+                      theirModification.blobId
+                    )
+                  end if
+
+                case (None, Some(theirContent)) =>
+                  val tokens = justTheirSidesViewOfTheMergedContentAt(path)
+
+                  val mergedFileContent = reconstituteContentFrom(tokens)
+                  val theirModificationWasTweakedByTheMerge =
+                    mergedFileContent != theirContent
+
+                  if theirModificationWasTweakedByTheMerge then
+                    for
+                      blobId <- storeBlobFor(path, mergedFileContent)
+                      _      <- restoreFileFromBlobId(
+                        path,
+                        blobId
+                      )
+                      result <- writeConflictedIndexEntriesForAddition(
+                        partialResult,
+                        path,
+                        mergedFileMode,
+                        lastMinuteResolution = false,
+                        ourModification.blobId,
+                        blobId
+                      )
+                    yield result
+                  else
+                    writeConflictedIndexEntriesForAddition(
+                      partialResult,
+                      path,
+                      mergedFileMode,
+                      lastMinuteResolution = false,
+                      ourModification.blobId,
+                      theirModification.blobId
+                    )
+                  end if
 
                 case (None, None) =>
                   writeConflictedIndexEntriesForModification(
