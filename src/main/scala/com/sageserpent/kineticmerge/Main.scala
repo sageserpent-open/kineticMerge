@@ -984,43 +984,6 @@ object Main extends StrictLogging:
         }
     end mergeInputsOf
 
-    private def blobFor(
-        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
-    )(
-        path: Path
-    ): Workflow[
-      (String @@ Tags.Mode, String @@ Tags.BlobId)
-    ] =
-      for
-        Array(mode, entryType, entryId, _) <- IO {
-          val line = os
-            .proc("git", "ls-tree", commitIdOrBranchName, path)
-            .call(workingDirectory)
-            .out
-            .text()
-
-          line.split(whitespaceRun)
-        }.labelExceptionWith(errorMessage =
-          s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
-        )
-        _ <-
-          entryType match
-            case "blob" =>
-              right(())
-            case "commit" =>
-              left(
-                s"Submodule changes not supported: encountered a submodule commit when trying to retrieve blob for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}, the commit id is: ${underline(entryId)}."
-              )
-            case _ =>
-              left(
-                s"Unexpected error - Git reports an unsupported type ${underline(entryType)} when trying to retrieve blob for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}, the id is: ${underline(entryId)}."
-              )
-      yield (
-        mode.taggedWith[Tags.Mode],
-        entryId.taggedWith[Tags.BlobId]
-      )
-    end blobFor
-
     private def contentFor(
         commitIdOrBranchName: String @@ Tags.CommitOrBranchName,
         path: Path
@@ -2352,58 +2315,126 @@ object Main extends StrictLogging:
                   theirAddition,
                   mergedFileMode
                 ) =>
-              // TODO: suppose one is binary and the other isn't?
-              if ourAddition.content.isDefined && theirAddition.content.isDefined
-              then
-                mergeResultsByPath(path) match
-                  case FullyMerged(tokens) =>
-                    val mergedFileContent = reconstituteContentFrom(tokens)
+              (ourAddition.content, theirAddition.content) match
+                case (Some(_), Some(_)) =>
+                  mergeResultsByPath(path) match
+                    case FullyMerged(tokens) =>
+                      val mergedFileContent = reconstituteContentFrom(tokens)
 
-                    recordCleanMergeOfFile(
+                      recordCleanMergeOfFile(
+                        partialResult,
+                        path,
+                        mergedFileContent,
+                        mergedFileMode
+                      )
+
+                    case MergedWithConflicts(
+                          baseTokens,
+                          leftTokens,
+                          rightTokens
+                        ) =>
+                      val leftContent  = reconstituteContentFrom(leftTokens)
+                      val rightContent = reconstituteContentFrom(rightTokens)
+
+                      if baseTokens.nonEmpty then
+                        val baseContent = reconstituteContentFrom(baseTokens)
+
+                        recordConflictedMergeOfModifiedFile(
+                          partialResult,
+                          path,
+                          mergedFileMode,
+                          mergedFileMode,
+                          baseContent,
+                          leftContent,
+                          rightContent
+                        )
+                      else
+                        recordConflictedMergeOfAddedFile(
+                          partialResult,
+                          path,
+                          mergedFileMode,
+                          leftContent,
+                          rightContent
+                        )
+                      end if
+
+                case (Some(ourContent), None) =>
+                  val tokens = justOurSidesViewOfTheMergedContentAt(path)
+
+                  val mergedFileContent = reconstituteContentFrom(tokens)
+                  val ourModificationWasTweakedByTheMerge =
+                    mergedFileContent != ourContent
+
+                  if ourModificationWasTweakedByTheMerge then
+                    for
+                      blobId <- storeBlobFor(path, mergedFileContent)
+                      _      <- restoreFileFromBlobId(
+                        path,
+                        blobId
+                      )
+                      result <- writeConflictedIndexEntriesForAddition(
+                        partialResult,
+                        path,
+                        mergedFileMode,
+                        lastMinuteResolution = false,
+                        blobId,
+                        theirAddition.blobId
+                      )
+                    yield result
+                  else
+                    writeConflictedIndexEntriesForAddition(
                       partialResult,
                       path,
-                      mergedFileContent,
-                      mergedFileMode
+                      mergedFileMode,
+                      lastMinuteResolution = false,
+                      ourAddition.blobId,
+                      theirAddition.blobId
                     )
+                  end if
 
-                  case MergedWithConflicts(
-                        baseTokens,
-                        leftTokens,
-                        rightTokens
-                      ) =>
-                    val leftContent  = reconstituteContentFrom(leftTokens)
-                    val rightContent = reconstituteContentFrom(rightTokens)
+                case (None, Some(theirContent)) =>
+                  val tokens = justTheirSidesViewOfTheMergedContentAt(path)
 
-                    if baseTokens.nonEmpty then
-                      val baseContent = reconstituteContentFrom(baseTokens)
+                  val mergedFileContent = reconstituteContentFrom(tokens)
+                  val theirModificationWasTweakedByTheMerge =
+                    mergedFileContent != theirContent
 
-                      recordConflictedMergeOfModifiedFile(
+                  if theirModificationWasTweakedByTheMerge then
+                    for
+                      blobId <- storeBlobFor(path, mergedFileContent)
+                      _      <- restoreFileFromBlobId(
+                        path,
+                        blobId
+                      )
+                      result <- writeConflictedIndexEntriesForAddition(
                         partialResult,
                         path,
                         mergedFileMode,
-                        mergedFileMode,
-                        baseContent,
-                        leftContent,
-                        rightContent
+                        lastMinuteResolution = false,
+                        ourAddition.blobId,
+                        blobId
                       )
-                    else
-                      recordConflictedMergeOfAddedFile(
-                        partialResult,
-                        path,
-                        mergedFileMode,
-                        leftContent,
-                        rightContent
-                      )
-                    end if
-              else
-                writeConflictedIndexEntriesForAddition(
-                  partialResult,
-                  path,
-                  mergedFileMode,
-                  lastMinuteResolution = false,
-                  ourAddition.blobId,
-                  theirAddition.blobId
-                )
+                    yield result
+                  else
+                    writeConflictedIndexEntriesForAddition(
+                      partialResult,
+                      path,
+                      mergedFileMode,
+                      lastMinuteResolution = false,
+                      ourAddition.blobId,
+                      theirAddition.blobId
+                    )
+                  end if
+
+                case (None, None) =>
+                  writeConflictedIndexEntriesForAddition(
+                    partialResult,
+                    path,
+                    mergedFileMode,
+                    lastMinuteResolution = false,
+                    ourAddition.blobId,
+                    theirAddition.blobId
+                  )
 
             case BothContributeAModification(
                   ourModification,
@@ -2413,49 +2444,53 @@ object Main extends StrictLogging:
                   bestAncestorCommitIdContent,
                   mergedFileMode
                 ) =>
-              // TODO: suppose one is binary and the other isn't?
-              if ourModification.content.isDefined && theirModification.content.isDefined
-              then
-                mergeResultsByPath(path) match
-                  case FullyMerged(tokens) =>
-                    val mergedFileContent = reconstituteContentFrom(tokens)
+              (ourModification.content, theirModification.content) match
+                case (Some(_), Some(_)) =>
+                  mergeResultsByPath(path) match
+                    case FullyMerged(tokens) =>
+                      val mergedFileContent = reconstituteContentFrom(tokens)
 
-                    recordCleanMergeOfFile(
-                      partialResult,
-                      path,
-                      mergedFileContent,
-                      mergedFileMode
-                    )
+                      recordCleanMergeOfFile(
+                        partialResult,
+                        path,
+                        mergedFileContent,
+                        mergedFileMode
+                      )
 
-                  case MergedWithConflicts(
-                        baseTokens,
-                        leftTokens,
-                        rightTokens
-                      ) =>
-                    val baseContent  = reconstituteContentFrom(baseTokens)
-                    val leftContent  = reconstituteContentFrom(leftTokens)
-                    val rightContent = reconstituteContentFrom(rightTokens)
+                    case MergedWithConflicts(
+                          baseTokens,
+                          leftTokens,
+                          rightTokens
+                        ) =>
+                      val baseContent  = reconstituteContentFrom(baseTokens)
+                      val leftContent  = reconstituteContentFrom(leftTokens)
+                      val rightContent = reconstituteContentFrom(rightTokens)
 
-                    recordConflictedMergeOfModifiedFile(
-                      partialResult,
-                      path,
-                      bestAncestorCommitIdMode,
-                      mergedFileMode,
-                      baseContent,
-                      leftContent,
-                      rightContent
-                    )
-              else
-                writeConflictedIndexEntriesForModification(
-                  partialResult,
-                  path,
-                  bestAncestorCommitIdMode,
-                  mergedFileMode,
-                  lastMinuteResolution = false,
-                  bestAncestorCommitIdBlobId,
-                  ourModification.blobId,
-                  theirModification.blobId
-                )
+                      recordConflictedMergeOfModifiedFile(
+                        partialResult,
+                        path,
+                        bestAncestorCommitIdMode,
+                        mergedFileMode,
+                        baseContent,
+                        leftContent,
+                        rightContent
+                      )
+
+                case (Some(ourContent), None) => ??? // TODO!
+
+                case (None, Some(theirContent)) => ??? // TODO!
+
+                case (None, None) =>
+                  writeConflictedIndexEntriesForModification(
+                    partialResult,
+                    path,
+                    bestAncestorCommitIdMode,
+                    mergedFileMode,
+                    lastMinuteResolution = false,
+                    bestAncestorCommitIdBlobId,
+                    ourModification.blobId,
+                    theirModification.blobId
+                  )
 
             case BothContributeADeletion(bestAncestorCommitIdContent) =>
               // We already have the deletion in our branch, so no need
@@ -2513,6 +2548,43 @@ object Main extends StrictLogging:
       yield withRenameVersusDeletionConflicts.goodForAMergeCommit
       end for
     end indexUpdates
+
+    private def blobFor(
+        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
+    )(
+        path: Path
+    ): Workflow[
+      (String @@ Tags.Mode, String @@ Tags.BlobId)
+    ] =
+      for
+        Array(mode, entryType, entryId, _) <- IO {
+          val line = os
+            .proc("git", "ls-tree", commitIdOrBranchName, path)
+            .call(workingDirectory)
+            .out
+            .text()
+
+          line.split(whitespaceRun)
+        }.labelExceptionWith(errorMessage =
+          s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
+        )
+        _ <-
+          entryType match
+            case "blob" =>
+              right(())
+            case "commit" =>
+              left(
+                s"Submodule changes not supported: encountered a submodule commit when trying to retrieve blob for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}, the commit id is: ${underline(entryId)}."
+              )
+            case _ =>
+              left(
+                s"Unexpected error - Git reports an unsupported type ${underline(entryType)} when trying to retrieve blob for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}, the id is: ${underline(entryId)}."
+              )
+      yield (
+        mode.taggedWith[Tags.Mode],
+        entryId.taggedWith[Tags.BlobId]
+      )
+    end blobFor
 
     private def deleteFile(path: Path): Workflow[Unit] = IO {
       os.remove(path): Unit
