@@ -634,6 +634,13 @@ object Main extends StrictLogging:
         )
 
         binaryFiles <- IO {
+          // NOTE: this is imprecise for *modified* files, as we don't know
+          // whether a file was binary prior to modification, has been modified
+          // into a binary file or started out as and remains binary. To some
+          // extent we muddle through this where two changes from our or their
+          // branch can be combined to pin down whether the *base* file is
+          // textual, but otherwise it is possible for either our or their file
+          // to be considered binary when it is textual.
           os.proc(
             "git",
             "diff",
