@@ -710,6 +710,61 @@ object Main extends StrictLogging:
         s"Unexpected error - can't parse changes reported by Git ${underline(line)}."
       ).flatMap { case (path, changed) => changed.map(path -> _) }
 
+    private def contentFor(
+        commitIdOrBranchName: String @@ Tags.CommitOrBranchName,
+        path: Path
+    )(
+        blobId: String @@ Tags.BlobId
+    ): Workflow[String @@ Tags.Content] =
+      IO {
+        os
+          .proc("git", "cat-file", "blob", blobId)
+          .call(workingDirectory)
+          .out
+          .text()
+          .taggedWith[Tags.Content]
+      }.labelExceptionWith(
+        s"Unexpected error - can't retrieve content for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)} using blob id: ${underline(blobId)}."
+      )
+    end contentFor
+
+    private def blobFor(
+        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
+    )(
+        path: Path
+    ): Workflow[
+      (String @@ Tags.Mode, String @@ Tags.BlobId)
+    ] =
+      for
+        Array(mode, entryType, entryId, _) <- IO {
+          val line = os
+            .proc("git", "ls-tree", commitIdOrBranchName, path)
+            .call(workingDirectory)
+            .out
+            .text()
+
+          line.split(whitespaceRun)
+        }.labelExceptionWith(errorMessage =
+          s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
+        )
+        _ <-
+          entryType match
+            case "blob" =>
+              right(())
+            case "commit" =>
+              left(
+                s"Submodule changes not supported: encountered a submodule commit when trying to retrieve blob for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}, the commit id is: ${underline(entryId)}."
+              )
+            case _ =>
+              left(
+                s"Unexpected error - Git reports an unsupported type ${underline(entryType)} when trying to retrieve blob for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}, the id is: ${underline(entryId)}."
+              )
+      yield (
+        mode.taggedWith[Tags.Mode],
+        entryId.taggedWith[Tags.BlobId]
+      )
+    end blobFor
+
     def mergeInputsOf(
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
         ourBranchHead: String @@ Tags.CommitOrBranchName,
@@ -983,24 +1038,6 @@ object Main extends StrictLogging:
             yield path -> BothContributeADeletion(bestAncestorCommitIdContent)
         }
     end mergeInputsOf
-
-    private def contentFor(
-        commitIdOrBranchName: String @@ Tags.CommitOrBranchName,
-        path: Path
-    )(
-        blobId: String @@ Tags.BlobId
-    ): Workflow[String @@ Tags.Content] =
-      IO {
-        os
-          .proc("git", "cat-file", "blob", blobId)
-          .call(workingDirectory)
-          .out
-          .text()
-          .taggedWith[Tags.Content]
-      }.labelExceptionWith(
-        s"Unexpected error - can't retrieve content for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)} using blob id: ${underline(blobId)}."
-      )
-    end contentFor
 
     def mergeWithRollback(
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
@@ -2362,25 +2399,39 @@ object Main extends StrictLogging:
                   val tokens = justOurSidesViewOfTheMergedContentAt(path)
 
                   val mergedFileContent = reconstituteContentFrom(tokens)
+                  // TODO: check these names - this is an *addition*!
                   val ourModificationWasTweakedByTheMerge =
                     mergedFileContent != ourContent
 
                   if ourModificationWasTweakedByTheMerge then
-                    for
-                      blobId <- storeBlobFor(path, mergedFileContent)
-                      _      <- restoreFileFromBlobId(
-                        path,
-                        blobId
-                      )
-                      result <- writeConflictedIndexEntriesForAddition(
+                    if mergedFileContent.nonEmpty then
+                      for
+                        blobId <- storeBlobFor(path, mergedFileContent)
+                        _      <- restoreFileFromBlobId(
+                          path,
+                          blobId
+                        )
+                        result <- writeConflictedIndexEntriesForAddition(
+                          partialResult,
+                          path,
+                          mergedFileMode,
+                          lastMinuteResolution = false,
+                          blobId,
+                          theirAddition.blobId
+                        )
+                      yield result
+                    else
+                      // If our content is modified to being empty, this is
+                      // taken to mean that all of our original content has been
+                      // migrated to one or more other files. We can therefore
+                      // resolve this as an addition of binary content on their
+                      // side only.
+                      bringInFileContentFromTheirBranch(
                         partialResult,
                         path,
-                        mergedFileMode,
-                        lastMinuteResolution = false,
-                        blobId,
+                        theirAddition.mode,
                         theirAddition.blobId
                       )
-                    yield result
                   else
                     writeConflictedIndexEntriesForAddition(
                       partialResult,
@@ -2396,25 +2447,34 @@ object Main extends StrictLogging:
                   val tokens = justTheirSidesViewOfTheMergedContentAt(path)
 
                   val mergedFileContent = reconstituteContentFrom(tokens)
+                  // TODO: check these names - this is an *addition*!
                   val theirModificationWasTweakedByTheMerge =
                     mergedFileContent != theirContent
 
                   if theirModificationWasTweakedByTheMerge then
-                    for
-                      blobId <- storeBlobFor(path, mergedFileContent)
-                      _      <- restoreFileFromBlobId(
-                        path,
-                        blobId
-                      )
-                      result <- writeConflictedIndexEntriesForAddition(
-                        partialResult,
-                        path,
-                        mergedFileMode,
-                        lastMinuteResolution = false,
-                        ourAddition.blobId,
-                        blobId
-                      )
-                    yield result
+                    if mergedFileContent.nonEmpty then
+                      for
+                        blobId <- storeBlobFor(path, mergedFileContent)
+                        _      <- restoreFileFromBlobId(
+                          path,
+                          blobId
+                        )
+                        result <- writeConflictedIndexEntriesForAddition(
+                          partialResult,
+                          path,
+                          mergedFileMode,
+                          lastMinuteResolution = false,
+                          ourAddition.blobId,
+                          blobId
+                        )
+                      yield result
+                    else
+                      // If their content is modified to being empty, this is
+                      // taken to mean that all of our original content has been
+                      // migrated to one or more other files. We can therefore
+                      // resolve this as an addition of binary content on our
+                      // side only.
+                      right(partialResult)
                   else
                     writeConflictedIndexEntriesForAddition(
                       partialResult,
@@ -2484,27 +2544,44 @@ object Main extends StrictLogging:
                     mergedFileContent != ourContent
 
                   if ourModificationWasTweakedByTheMerge then
-                    for
-                      blobId <- storeBlobFor(path, mergedFileContent)
-                      _      <- restoreFileFromBlobId(
-                        path,
-                        blobId
-                      )
-                      result <- writeConflictedIndexEntriesForAddition(
+                    if mergedFileContent.nonEmpty then
+                      for
+                        blobId <- storeBlobFor(path, mergedFileContent)
+                        _      <- restoreFileFromBlobId(
+                          path,
+                          blobId
+                        )
+                        result <- writeConflictedIndexEntriesForModification(
+                          partialResult,
+                          path,
+                          bestAncestorCommitIdMode,
+                          mergedFileMode,
+                          lastMinuteResolution = false,
+                          bestAncestorCommitIdBlobId,
+                          blobId,
+                          theirModification.blobId
+                        )
+                      yield result
+                    else
+                      // If our content is modified to being empty, this is
+                      // taken to mean that all of our original content has been
+                      // migrated to one or more other files. We can therefore
+                      // resolve this as a modification into binary content on
+                      // their side only.
+                      bringInFileContentFromTheirBranch(
                         partialResult,
                         path,
-                        mergedFileMode,
-                        lastMinuteResolution = false,
-                        blobId,
+                        theirModification.mode,
                         theirModification.blobId
                       )
-                    yield result
                   else
-                    writeConflictedIndexEntriesForAddition(
+                    writeConflictedIndexEntriesForModification(
                       partialResult,
                       path,
+                      bestAncestorCommitIdMode,
                       mergedFileMode,
                       lastMinuteResolution = false,
+                      bestAncestorCommitIdBlobId,
                       ourModification.blobId,
                       theirModification.blobId
                     )
@@ -2518,27 +2595,39 @@ object Main extends StrictLogging:
                     mergedFileContent != theirContent
 
                   if theirModificationWasTweakedByTheMerge then
-                    for
-                      blobId <- storeBlobFor(path, mergedFileContent)
-                      _      <- restoreFileFromBlobId(
-                        path,
-                        blobId
-                      )
-                      result <- writeConflictedIndexEntriesForAddition(
-                        partialResult,
-                        path,
-                        mergedFileMode,
-                        lastMinuteResolution = false,
-                        ourModification.blobId,
-                        blobId
-                      )
-                    yield result
+                    if mergedFileContent.nonEmpty then
+                      for
+                        blobId <- storeBlobFor(path, mergedFileContent)
+                        _      <- restoreFileFromBlobId(
+                          path,
+                          blobId
+                        )
+                        result <- writeConflictedIndexEntriesForModification(
+                          partialResult,
+                          path,
+                          bestAncestorCommitIdMode,
+                          mergedFileMode,
+                          lastMinuteResolution = false,
+                          bestAncestorCommitIdBlobId,
+                          ourModification.blobId,
+                          blobId
+                        )
+                      yield result
+                    else
+                      // If their content is modified to being empty, this is
+                      // taken to mean that all of our original content has been
+                      // migrated to one or more other files. We can therefore
+                      // resolve this as a modification into binary content on
+                      // our side only.
+                      right(partialResult)
                   else
-                    writeConflictedIndexEntriesForAddition(
+                    writeConflictedIndexEntriesForModification(
                       partialResult,
                       path,
+                      bestAncestorCommitIdMode,
                       mergedFileMode,
                       lastMinuteResolution = false,
+                      bestAncestorCommitIdBlobId,
                       ourModification.blobId,
                       theirModification.blobId
                     )
@@ -2612,43 +2701,6 @@ object Main extends StrictLogging:
       yield withRenameVersusDeletionConflicts.goodForAMergeCommit
       end for
     end indexUpdates
-
-    private def blobFor(
-        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
-    )(
-        path: Path
-    ): Workflow[
-      (String @@ Tags.Mode, String @@ Tags.BlobId)
-    ] =
-      for
-        Array(mode, entryType, entryId, _) <- IO {
-          val line = os
-            .proc("git", "ls-tree", commitIdOrBranchName, path)
-            .call(workingDirectory)
-            .out
-            .text()
-
-          line.split(whitespaceRun)
-        }.labelExceptionWith(errorMessage =
-          s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
-        )
-        _ <-
-          entryType match
-            case "blob" =>
-              right(())
-            case "commit" =>
-              left(
-                s"Submodule changes not supported: encountered a submodule commit when trying to retrieve blob for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}, the commit id is: ${underline(entryId)}."
-              )
-            case _ =>
-              left(
-                s"Unexpected error - Git reports an unsupported type ${underline(entryType)} when trying to retrieve blob for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}, the id is: ${underline(entryId)}."
-              )
-      yield (
-        mode.taggedWith[Tags.Mode],
-        entryId.taggedWith[Tags.BlobId]
-      )
-    end blobFor
 
     private def deleteFile(path: Path): Workflow[Unit] = IO {
       os.remove(path): Unit
