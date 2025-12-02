@@ -2455,10 +2455,6 @@ object Main extends StrictLogging:
                     if mergedFileContent.nonEmpty then
                       for
                         blobId <- storeBlobFor(path, mergedFileContent)
-                        _      <- restoreFileFromBlobId(
-                          path,
-                          blobId
-                        )
                         result <- writeConflictedIndexEntriesForAddition(
                           partialResult,
                           path,
@@ -2598,10 +2594,6 @@ object Main extends StrictLogging:
                     if mergedFileContent.nonEmpty then
                       for
                         blobId <- storeBlobFor(path, mergedFileContent)
-                        _      <- restoreFileFromBlobId(
-                          path,
-                          blobId
-                        )
                         result <- writeConflictedIndexEntriesForModification(
                           partialResult,
                           path,
