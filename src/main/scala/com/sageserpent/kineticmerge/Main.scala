@@ -2399,11 +2399,10 @@ object Main extends StrictLogging:
                   val tokens = justOurSidesViewOfTheMergedContentAt(path)
 
                   val mergedFileContent = reconstituteContentFrom(tokens)
-                  // TODO: check these names - this is an *addition*!
-                  val ourModificationWasTweakedByTheMerge =
+                  val ourAdditionWasTweakedByTheMerge =
                     mergedFileContent != ourContent
 
-                  if ourModificationWasTweakedByTheMerge then
+                  if ourAdditionWasTweakedByTheMerge then
                     for
                       blobId <- storeBlobFor(path, mergedFileContent)
                       _      <- restoreFileFromBlobId(
@@ -2434,11 +2433,10 @@ object Main extends StrictLogging:
                   val tokens = justTheirSidesViewOfTheMergedContentAt(path)
 
                   val mergedFileContent = reconstituteContentFrom(tokens)
-                  // TODO: check these names - this is an *addition*!
-                  val theirModificationWasTweakedByTheMerge =
+                  val theirAdditionWasTweakedByTheMerge =
                     mergedFileContent != theirContent
 
-                  if theirModificationWasTweakedByTheMerge then
+                  if theirAdditionWasTweakedByTheMerge then
                     for
                       blobId <- storeBlobFor(path, mergedFileContent)
                       result <- writeConflictedIndexEntriesForAddition(
