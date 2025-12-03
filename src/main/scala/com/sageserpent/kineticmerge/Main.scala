@@ -2404,34 +2404,21 @@ object Main extends StrictLogging:
                     mergedFileContent != ourContent
 
                   if ourModificationWasTweakedByTheMerge then
-                    if mergedFileContent.nonEmpty then
-                      for
-                        blobId <- storeBlobFor(path, mergedFileContent)
-                        _      <- restoreFileFromBlobId(
-                          path,
-                          blobId
-                        )
-                        result <- writeConflictedIndexEntriesForAddition(
-                          partialResult,
-                          path,
-                          mergedFileMode,
-                          lastMinuteResolution = false,
-                          blobId,
-                          theirAddition.blobId
-                        )
-                      yield result
-                    else
-                      // If our content is modified to being empty, this is
-                      // taken to mean that all of our original content has been
-                      // migrated to one or more other files. We can therefore
-                      // resolve this as an addition of binary content on their
-                      // side only.
-                      bringInFileContentFromTheirBranch(
+                    for
+                      blobId <- storeBlobFor(path, mergedFileContent)
+                      _      <- restoreFileFromBlobId(
+                        path,
+                        blobId
+                      )
+                      result <- writeConflictedIndexEntriesForAddition(
                         partialResult,
                         path,
-                        theirAddition.mode,
+                        mergedFileMode,
+                        lastMinuteResolution = false,
+                        blobId,
                         theirAddition.blobId
                       )
+                    yield result
                   else
                     writeConflictedIndexEntriesForAddition(
                       partialResult,
@@ -2452,25 +2439,17 @@ object Main extends StrictLogging:
                     mergedFileContent != theirContent
 
                   if theirModificationWasTweakedByTheMerge then
-                    if mergedFileContent.nonEmpty then
-                      for
-                        blobId <- storeBlobFor(path, mergedFileContent)
-                        result <- writeConflictedIndexEntriesForAddition(
-                          partialResult,
-                          path,
-                          mergedFileMode,
-                          lastMinuteResolution = false,
-                          ourAddition.blobId,
-                          blobId
-                        )
-                      yield result
-                    else
-                      // If their content is modified to being empty, this is
-                      // taken to mean that all of our original content has been
-                      // migrated to one or more other files. We can therefore
-                      // resolve this as an addition of binary content on our
-                      // side only.
-                      right(partialResult)
+                    for
+                      blobId <- storeBlobFor(path, mergedFileContent)
+                      result <- writeConflictedIndexEntriesForAddition(
+                        partialResult,
+                        path,
+                        mergedFileMode,
+                        lastMinuteResolution = false,
+                        ourAddition.blobId,
+                        blobId
+                      )
+                    yield result
                   else
                     writeConflictedIndexEntriesForAddition(
                       partialResult,
