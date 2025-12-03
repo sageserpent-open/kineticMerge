@@ -1204,7 +1204,7 @@ object Main extends StrictLogging:
         baseContentsByPath,
         leftContentsByPath,
         rightContentsByPath,
-        newPathsOnLeftOrRight
+        newOrModifiedPathsOnLeftOrRight
       ) =
         mergeInputs.foldLeft(
           (
@@ -1219,7 +1219,7 @@ object Main extends StrictLogging:
                   baseContentsByPath,
                   leftContentsByPath,
                   rightContentsByPath,
-                  newPathsOnLeftOrRight
+                  newOrModifiedPathsOnLeftOrRight
                 ),
                 (path, mergeInput)
               ) =>
@@ -1237,7 +1237,7 @@ object Main extends StrictLogging:
                       baseContentsByPath + (path  -> baseContentTokens),
                       leftContentsByPath + (path  -> ourContent.asTokens),
                       rightContentsByPath + (path -> baseContentTokens),
-                      newPathsOnLeftOrRight
+                      newOrModifiedPathsOnLeftOrRight + path
                     )
                   case _ => passThrough
 
@@ -1254,7 +1254,7 @@ object Main extends StrictLogging:
                       baseContentsByPath + (path  -> baseContentTokens),
                       leftContentsByPath + (path  -> baseContentTokens),
                       rightContentsByPath + (path -> theirContent.asTokens),
-                      newPathsOnLeftOrRight
+                      newOrModifiedPathsOnLeftOrRight + path
                     )
                   case _ => passThrough
 
@@ -1264,7 +1264,7 @@ object Main extends StrictLogging:
                     baseContentsByPath,
                     leftContentsByPath + (path -> ourContent.asTokens),
                     rightContentsByPath,
-                    newPathsOnLeftOrRight + path
+                    newOrModifiedPathsOnLeftOrRight + path
                   )
                 )
 
@@ -1275,7 +1275,7 @@ object Main extends StrictLogging:
                       baseContentsByPath,
                       leftContentsByPath,
                       rightContentsByPath + (path -> theirContent.asTokens),
-                      newPathsOnLeftOrRight + path
+                      newOrModifiedPathsOnLeftOrRight + path
                     )
                 )
 
@@ -1288,7 +1288,7 @@ object Main extends StrictLogging:
                       baseContentsByPath + (path -> baseContentTokens),
                       leftContentsByPath,
                       rightContentsByPath + (path -> baseContentTokens),
-                      newPathsOnLeftOrRight
+                      newOrModifiedPathsOnLeftOrRight
                     )
                 }
 
@@ -1301,7 +1301,7 @@ object Main extends StrictLogging:
                       baseContentsByPath + (path -> baseContentTokens),
                       leftContentsByPath + (path -> baseContentTokens),
                       rightContentsByPath,
-                      newPathsOnLeftOrRight
+                      newOrModifiedPathsOnLeftOrRight
                     )
                 }
 
@@ -1322,7 +1322,7 @@ object Main extends StrictLogging:
                       leftContentsByPath + (path -> ourContent.asTokens)
                   ),
                   rightContentsByPath,
-                  newPathsOnLeftOrRight
+                  newOrModifiedPathsOnLeftOrRight + path
                 )
 
               case TheirModificationAndOurDeletion(
@@ -1342,7 +1342,7 @@ object Main extends StrictLogging:
                     theirContent =>
                       rightContentsByPath + (path -> theirContent.asTokens)
                   ),
-                  newPathsOnLeftOrRight
+                  newOrModifiedPathsOnLeftOrRight + path
                 )
 
               case BothContributeAnAddition(
@@ -1360,7 +1360,7 @@ object Main extends StrictLogging:
                     theirContent =>
                       rightContentsByPath + (path -> theirContent.asTokens)
                   ),
-                  newPathsOnLeftOrRight + path
+                  newOrModifiedPathsOnLeftOrRight + path
                 )
 
               case BothContributeAModification(
@@ -1385,7 +1385,7 @@ object Main extends StrictLogging:
                     theirContent =>
                       rightContentsByPath + (path -> theirContent.asTokens)
                   ),
-                  newPathsOnLeftOrRight
+                  newOrModifiedPathsOnLeftOrRight + path
                 )
 
               case BothContributeADeletion(bestAncestorCommitIdContent) =>
@@ -1395,7 +1395,7 @@ object Main extends StrictLogging:
                       baseContentsByPath + (path -> baseContent.asTokens),
                       leftContentsByPath,
                       rightContentsByPath,
-                      newPathsOnLeftOrRight
+                      newOrModifiedPathsOnLeftOrRight
                     )
                 )
         }
@@ -1538,7 +1538,7 @@ object Main extends StrictLogging:
                 .map(
                   _.allOnTheLeft
                     .map(leftSources.pathFor)
-                    .intersect(newPathsOnLeftOrRight)
+                    .intersect(newOrModifiedPathsOnLeftOrRight)
                     .map(_ -> baseSection)
                 )
             )
@@ -1554,7 +1554,7 @@ object Main extends StrictLogging:
                 .map(
                   _.allOnTheRight
                     .map(rightSources.pathFor)
-                    .intersect(newPathsOnLeftOrRight)
+                    .intersect(newOrModifiedPathsOnLeftOrRight)
                     .map(_ -> baseSection)
                 )
             )
@@ -2211,37 +2211,39 @@ object Main extends StrictLogging:
                   val ourModificationWasTweakedByTheMerge =
                     mergedFileContent != ourContent
 
-                  if ourModificationWasTweakedByTheMerge then
-                    if mergedFileContent.nonEmpty then
-                      for
-                        _      <- prelude
-                        blobId <- storeBlobFor(path, mergedFileContent)
-                        _      <- restoreFileFromBlobId(
-                          path,
-                          blobId
-                        )
-                        _ <- recordConflictModificationInIndex(
-                          stageIndex = ourStageIndex
-                        )(
-                          ourBranchHead,
-                          path,
-                          ourModification.mode,
-                          blobId
-                        ).logOperation(
-                          s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and deleted on their branch ${underline(theirBranchHead)}."
-                        )
-                      yield partialResult.copy(goodForAMergeCommit = false)
-                    else
-                      // If our content is modified to being empty, this is
-                      // taken to mean that all of our original content has been
-                      // migrated to one or more other files. We can therefore
-                      // resolve this as a deletion.
-                      for
-                        _                      <- recordDeletionInIndex(path)
-                        _                      <- deleteFile(path)
-                        decoratedPartialResult <-
-                          captureRenamesOfPathDeletedOnJustOneSide
-                      yield decoratedPartialResult
+                  if mergedFileContent.isEmpty && fileRenamingReport(
+                      path
+                    ).isDefined
+                  then
+                    // If our content was modified to being empty, this is
+                    // taken to mean that all of our original content has been
+                    // migrated to one or more other files. We can therefore
+                    // resolve this as a deletion.
+                    for
+                      _                      <- recordDeletionInIndex(path)
+                      _                      <- deleteFile(path)
+                      decoratedPartialResult <-
+                        captureRenamesOfPathDeletedOnJustOneSide
+                    yield decoratedPartialResult
+                  else if ourModificationWasTweakedByTheMerge then
+                    for
+                      _      <- prelude
+                      blobId <- storeBlobFor(path, mergedFileContent)
+                      _      <- restoreFileFromBlobId(
+                        path,
+                        blobId
+                      )
+                      _ <- recordConflictModificationInIndex(
+                        stageIndex = ourStageIndex
+                      )(
+                        ourBranchHead,
+                        path,
+                        ourModification.mode,
+                        blobId
+                      ).logOperation(
+                        s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and deleted on their branch ${underline(theirBranchHead)}."
+                      )
+                    yield partialResult.copy(goodForAMergeCommit = false)
                   else writeConflictingEntries
                   end if
               )
@@ -2294,37 +2296,40 @@ object Main extends StrictLogging:
 
                   // Git's merge updates the working directory tree with *their*
                   // modified file which wouldn't have been present on our
-                  // branch prior to the merge. So that's what we do too.
-                  if theirModificationWasTweakedByTheMerge then
-                    if mergedFileContent.nonEmpty then
-                      for
-                        _      <- prelude
-                        blobId <- storeBlobFor(path, mergedFileContent)
-                        _      <- restoreFileFromBlobId(
-                          path,
-                          blobId
-                        )
-                        _ <- recordConflictModificationInIndex(
-                          stageIndex = theirStageIndex
-                        )(
-                          theirBranchHead,
-                          path,
-                          theirModification.mode,
-                          blobId
-                        ).logOperation(
-                          s"Conflict - file ${underline(path)} was deleted on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
-                        )
-                      yield partialResult.copy(goodForAMergeCommit = false)
-                    else
-                      // If their content is modified to being empty, this is
-                      // taken to mean that all of our original content has been
-                      // migrated to one or more other files. We can therefore
-                      // resolve this as a deletion.
-                      for
-                        _                      <- recordDeletionInIndex(path)
-                        decoratedPartialResult <-
-                          captureRenamesOfPathDeletedOnJustOneSide
-                      yield decoratedPartialResult
+                  // branch prior to the merge. So that's what we do too by
+                  // default...
+                  if mergedFileContent.isEmpty && fileRenamingReport(
+                      path
+                    ).isDefined
+                  then
+                    // ... however, if their content was modified to being
+                    // empty, this is taken to mean that all of our original
+                    // content has been migrated to one or more other files. We
+                    // can therefore resolve this as a deletion.
+                    for
+                      _                      <- recordDeletionInIndex(path)
+                      decoratedPartialResult <-
+                        captureRenamesOfPathDeletedOnJustOneSide
+                    yield decoratedPartialResult
+                  else if theirModificationWasTweakedByTheMerge then
+                    for
+                      _      <- prelude
+                      blobId <- storeBlobFor(path, mergedFileContent)
+                      _      <- restoreFileFromBlobId(
+                        path,
+                        blobId
+                      )
+                      _ <- recordConflictModificationInIndex(
+                        stageIndex = theirStageIndex
+                      )(
+                        theirBranchHead,
+                        path,
+                        theirModification.mode,
+                        blobId
+                      ).logOperation(
+                        s"Conflict - file ${underline(path)} was deleted on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
+                      )
+                    yield partialResult.copy(goodForAMergeCommit = false)
                   else writeConflictingEntries
                   end if
               )
