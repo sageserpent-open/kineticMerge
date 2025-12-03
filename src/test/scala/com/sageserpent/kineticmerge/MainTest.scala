@@ -457,6 +457,16 @@ object MainTest extends ProseExamples:
     )
   end removingCasesLimitStrategy
 
+  private def emptyingCasesLimitStrategy(path: Path): Unit =
+    os.write.over(path / casesLimitStrategy, "")
+    println(
+      os.proc("git", "commit", "-am", "'Emptying `CasesLimitStrategy`.")
+        .call(path)
+        .out
+        .text()
+    )
+  end emptyingCasesLimitStrategy
+
   private def splittingCasesLimitStrategy(path: Path): Unit =
     os.write.over(
       path / casesLimitStrategy,
@@ -2379,6 +2389,78 @@ class MainTest:
           .unsafeRunSync()
       }
   end issue48BugReproduction
+
+  @TestFactory
+  def contentClearancePropagatingThroughAFileMove(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches, noCommit) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingCasesLimitStrategy(path)
+
+              val movedFileBranch = "movedFileBranch"
+
+              makeNewBranch(path)(movedFileBranch)
+
+              moveCasesLimitStrategy(path)
+
+              val commitOfMovedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              emptyingCasesLimitStrategy(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then checkoutBranch(path)(movedFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then movedFileBranch -> masterBranch
+                else masterBranch                    -> movedFileBranch
+
+              val exitCode = Main.mergeTheirBranch(
+                ApplicationRequest.default.copy(
+                  theirBranchHead =
+                    theirBranch.taggedWith[Tags.CommitOrBranchName],
+                  noCommit = noCommit,
+                  minimumAmbiguousMatchSize = 5
+                )
+              )(workingDirectory =
+                optionalSubdirectory.fold(ifEmpty = path)(path / _)
+              )
+
+              if noCommit then
+                verifyAConflictedOrNoCommitMergeDoesNotMakeACommitAndLeavesADirtyIndex(
+                  path
+                )(
+                  flipBranches,
+                  commitOfMovedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              else
+                verifyMergeMakesANewCommitWithACleanIndex(path)(
+                  commitOfMovedFileBranch,
+                  commitOfMasterBranch,
+                  ourBranch,
+                  exitCode
+                )
+              end if
+
+              assert(0 == os.size(path / movedCasesLimitStrategy))
+              assert(!os.exists(path / casesLimitStrategy))
+            }
+          )
+          .unsafeRunSync()
+      }
+  end contentClearancePropagatingThroughAFileMove
 
   @TestFactory
   def conflictingDeletionAndFileMoveOfTheSameFile(): DynamicTests =
