@@ -1211,7 +1211,7 @@ object Main extends StrictLogging:
             Map.empty[Path, IndexedSeq[Token]],
             Map.empty[Path, IndexedSeq[Token]],
             Map.empty[Path, IndexedSeq[Token]],
-            Set.empty[Path]
+            Map.empty[Path, Boolean]
           )
         ) {
           case (
@@ -1237,7 +1237,7 @@ object Main extends StrictLogging:
                       baseContentsByPath + (path  -> baseContentTokens),
                       leftContentsByPath + (path  -> ourContent.asTokens),
                       rightContentsByPath + (path -> baseContentTokens),
-                      newOrModifiedPathsOnLeftOrRight + path
+                      newOrModifiedPathsOnLeftOrRight + (path -> false)
                     )
                   case _ => passThrough
 
@@ -1254,7 +1254,7 @@ object Main extends StrictLogging:
                       baseContentsByPath + (path  -> baseContentTokens),
                       leftContentsByPath + (path  -> baseContentTokens),
                       rightContentsByPath + (path -> theirContent.asTokens),
-                      newOrModifiedPathsOnLeftOrRight + path
+                      newOrModifiedPathsOnLeftOrRight + (path -> false)
                     )
                   case _ => passThrough
 
@@ -1264,7 +1264,7 @@ object Main extends StrictLogging:
                     baseContentsByPath,
                     leftContentsByPath + (path -> ourContent.asTokens),
                     rightContentsByPath,
-                    newOrModifiedPathsOnLeftOrRight + path
+                    newOrModifiedPathsOnLeftOrRight + (path -> true)
                   )
                 )
 
@@ -1275,7 +1275,7 @@ object Main extends StrictLogging:
                       baseContentsByPath,
                       leftContentsByPath,
                       rightContentsByPath + (path -> theirContent.asTokens),
-                      newOrModifiedPathsOnLeftOrRight + path
+                      newOrModifiedPathsOnLeftOrRight + (path -> true)
                     )
                 )
 
@@ -1322,7 +1322,7 @@ object Main extends StrictLogging:
                       leftContentsByPath + (path -> ourContent.asTokens)
                   ),
                   rightContentsByPath,
-                  newOrModifiedPathsOnLeftOrRight + path
+                  newOrModifiedPathsOnLeftOrRight + (path -> false)
                 )
 
               case TheirModificationAndOurDeletion(
@@ -1342,7 +1342,7 @@ object Main extends StrictLogging:
                     theirContent =>
                       rightContentsByPath + (path -> theirContent.asTokens)
                   ),
-                  newOrModifiedPathsOnLeftOrRight + path
+                  newOrModifiedPathsOnLeftOrRight + (path -> false)
                 )
 
               case BothContributeAnAddition(
@@ -1360,7 +1360,7 @@ object Main extends StrictLogging:
                     theirContent =>
                       rightContentsByPath + (path -> theirContent.asTokens)
                   ),
-                  newOrModifiedPathsOnLeftOrRight + path
+                  newOrModifiedPathsOnLeftOrRight + (path -> true)
                 )
 
               case BothContributeAModification(
@@ -1385,7 +1385,7 @@ object Main extends StrictLogging:
                     theirContent =>
                       rightContentsByPath + (path -> theirContent.asTokens)
                   ),
-                  newOrModifiedPathsOnLeftOrRight + path
+                  newOrModifiedPathsOnLeftOrRight + (path -> false)
                 )
 
               case BothContributeADeletion(bestAncestorCommitIdContent) =>
@@ -1530,7 +1530,7 @@ object Main extends StrictLogging:
       )(path: Path): Option[FileRenamingReport] =
         val baseSections = codeMotionAnalysis.base(path).sections
 
-        val (leftRenamePaths, baseSectionsMovingLeftToNewFiles) =
+        val (leftRelocationPaths, baseSectionsMovingLeftToNewFiles) =
           baseSections
             .flatMap(baseSection =>
               moveDestinationsReport.moveDestinationsBySources
@@ -1538,7 +1538,7 @@ object Main extends StrictLogging:
                 .map(
                   _.allOnTheLeft
                     .map(leftSources.pathFor)
-                    .intersect(newOrModifiedPathsOnLeftOrRight)
+                    .filter(newOrModifiedPathsOnLeftOrRight.contains)
                     .map(_ -> baseSection)
                 )
             )
@@ -1546,7 +1546,7 @@ object Main extends StrictLogging:
             .unzip match
             case (paths, sections) => paths.toSet -> sections.toSet
 
-        val (rightRenamePaths, baseSectionsMovingRightToNewFiles) =
+        val (rightRelocationPaths, baseSectionsMovingRightToNewFiles) =
           baseSections
             .flatMap(baseSection =>
               moveDestinationsReport.moveDestinationsBySources
@@ -1554,7 +1554,7 @@ object Main extends StrictLogging:
                 .map(
                   _.allOnTheRight
                     .map(rightSources.pathFor)
-                    .intersect(newOrModifiedPathsOnLeftOrRight)
+                    .filter(newOrModifiedPathsOnLeftOrRight.contains)
                     .map(_ -> baseSection)
                 )
             )
@@ -1575,23 +1575,23 @@ object Main extends StrictLogging:
 
         Option.when(enoughContentHasMovedToConsiderAsRenaming) {
           val leftRenamingDetail = Option.unless(
-            leftRenamePaths.isEmpty
+            leftRelocationPaths.isEmpty
           )(
-            s"on our branch ${underline(ourBranchHead)} " ++ (if 1 < leftRenamePaths.size
+            s"on our branch ${underline(ourBranchHead)} " ++ (if 1 < leftRelocationPaths.size
                                                               then
-                                                                s"into files ${leftRenamePaths.map(underline).mkString(", ")}"
+                                                                s"into files ${leftRelocationPaths.map(underline).mkString(", ")}"
                                                               else
-                                                                s"to file ${underline(leftRenamePaths.head)}")
+                                                                s"to file ${underline(leftRelocationPaths.head)}")
           )
 
           val rightRenamingDetail = Option.unless(
-            rightRenamePaths.isEmpty
+            rightRelocationPaths.isEmpty
           )(
-            s"on their branch ${underline(theirBranchHead)} " ++ (if 1 < rightRenamePaths.size
+            s"on their branch ${underline(theirBranchHead)} " ++ (if 1 < rightRelocationPaths.size
                                                                   then
-                                                                    s"into files ${rightRenamePaths.map(underline).mkString(", ")}"
+                                                                    s"into files ${rightRelocationPaths.map(underline).mkString(", ")}"
                                                                   else
-                                                                    s"to file ${underline(rightRenamePaths.head)}")
+                                                                    s"to file ${underline(rightRelocationPaths.head)}")
           )
 
           val description =
@@ -1608,10 +1608,13 @@ object Main extends StrictLogging:
             end match
           end description
 
+          def relocationPathIsForARename(path: Path) =
+            newOrModifiedPathsOnLeftOrRight(path)
+
           FileRenamingReport(
             description,
-            leftRenamePaths,
-            rightRenamePaths
+            leftRelocationPaths.filter(relocationPathIsForARename),
+            rightRelocationPaths.filter(relocationPathIsForARename)
           )
         }
       end fileRenamingReportUsing
@@ -2448,20 +2451,16 @@ object Main extends StrictLogging:
               // We already have the deletion in our branch, so no need
               // to update the index on behalf of this path, whatever happens...
               if bestAncestorCommitIdContent.isDefined then
-                fileRenamingReport(path).fold(ifEmpty =
-                  right(partialResult).logOperation(
-                    s"Coincidental deletion of file ${underline(path)} on our branch ${underline(ourBranchHead)} and on their branch ${underline(theirBranchHead)}."
-                  )
-                ) {
-                  case FileRenamingReport(
-                        description,
-                        leftRenamePaths,
-                        rightRenamePaths
-                      ) =>
-                    val isARenameVersusDeletionConflict =
-                      assume(
-                        leftRenamePaths.nonEmpty || rightRenamePaths.nonEmpty
+                fileRenamingReport(path) match
+                  case Some(
+                        FileRenamingReport(
+                          description,
+                          leftRenamePaths,
+                          rightRenamePaths
+                        )
                       )
+                      if leftRenamePaths.nonEmpty || rightRenamePaths.nonEmpty =>
+                    val isARenameVersusDeletionConflict =
                       // If all the moved content from `path` going into new
                       // files ends up on just one side, then this is a conflict
                       // because it implies an isolated deletion on the other
@@ -2486,7 +2485,10 @@ object Main extends StrictLogging:
                         // here.
                         partialResult
                     ).logOperation(description)
-                }
+                  case _ =>
+                    right(partialResult).logOperation(
+                      s"Coincidental deletion of file ${underline(path)} on our branch ${underline(ourBranchHead)} and on their branch ${underline(theirBranchHead)}."
+                    )
               else right(partialResult)
           end match
         }
