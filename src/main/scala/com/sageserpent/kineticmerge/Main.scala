@@ -2486,33 +2486,29 @@ object Main extends StrictLogging:
                           leftRenamePaths,
                           rightRenamePaths
                         )
-                      )
-                      if leftRenamePaths.nonEmpty || rightRenamePaths.nonEmpty =>
-                    val isARenameVersusDeletionConflict =
-                      // If all the moved content from `path` going into new
-                      // files ends up on just one side, then this is a conflict
-                      // because it implies an isolated deletion on the other
-                      // side.
-                      leftRenamePaths.isEmpty || rightRenamePaths.isEmpty
-                    end isARenameVersusDeletionConflict
-
-                    right(
-                      if isARenameVersusDeletionConflict then
-                        partialResult.copy(
-                          conflictingDeletedPathsByLeftRenamePath =
-                            partialResult.conflictingDeletedPathsByLeftRenamePath ++ leftRenamePaths
-                              .map(_ -> path),
-                          conflictingDeletedPathsByRightRenamePath =
-                            partialResult.conflictingDeletedPathsByRightRenamePath ++ rightRenamePaths
-                              .map(_ -> path)
-                        )
-                      else
+                      ) =>
+                    (leftRenamePaths.nonEmpty, rightRenamePaths.nonEmpty) match
+                      case ((true, false) | (false, true)) =>
+                        // If all the moved content from `path` going into new
+                        // files ends up on just one side, then this is a
+                        // conflict because it implies an isolated deletion on
+                        // the other side.
+                        right(
+                          partialResult.copy(
+                            conflictingDeletedPathsByLeftRenamePath =
+                              partialResult.conflictingDeletedPathsByLeftRenamePath ++ leftRenamePaths
+                                .map(_ -> path),
+                            conflictingDeletedPathsByRightRenamePath =
+                              partialResult.conflictingDeletedPathsByRightRenamePath ++ rightRenamePaths
+                                .map(_ -> path)
+                          )
+                        ).logOperation(description)
+                      case ((true, true) | (false, false)) =>
                         // The content has moved out into new files on both
-                        // sides. This might involve divergent or coincident
-                        // moves, however no special action needs to be taken
-                        // here.
-                        partialResult
-                    ).logOperation(description)
+                        // sides, or existing files on either or both sides.
+                        // This might involve divergent or coincident moves,
+                        // however no special action needs to be taken here.
+                        right(partialResult).logOperation(description)
                   case _ =>
                     right(partialResult).logOperation(
                       s"Coincidental deletion of file ${underline(path)} on our branch ${underline(ourBranchHead)} and on their branch ${underline(theirBranchHead)}."
