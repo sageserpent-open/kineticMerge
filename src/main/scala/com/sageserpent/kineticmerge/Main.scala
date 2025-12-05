@@ -75,18 +75,6 @@ object Main extends StrictLogging:
     )
   end main
 
-  /** @param commandLineArguments
-    *   Command line arguments as varargs.
-    * @return
-    *   The exit code as a plain integer, suitable for consumption by both Scala
-    *   and Java client code.
-    */
-  @varargs
-  def apply(commandLineArguments: String*): Int = apply(
-    progressRecording = NoProgressRecording,
-    commandLineArguments = commandLineArguments*
-  )
-
   /** @param progressRecording
     * @param commandLineArguments
     *   Command line arguments as varargs.
@@ -400,6 +388,9 @@ object Main extends StrictLogging:
   private def right[Payload](payload: Payload): Workflow[Payload] =
     EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
 
+  private def underline(anything: Any): Str =
+    fansi.Underlined.On(anything.toString)
+
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
       EitherT
@@ -423,8 +414,17 @@ object Main extends StrictLogging:
     private def asTokens: Vector[Token] = tokens(content).get
   end extension
 
-  private def underline(anything: Any): Str =
-    fansi.Underlined.On(anything.toString)
+  /** @param commandLineArguments
+    *   Command line arguments as varargs.
+    * @return
+    *   The exit code as a plain integer, suitable for consumption by both Scala
+    *   and Java client code.
+    */
+  @varargs
+  def apply(commandLineArguments: String*): Int = apply(
+    progressRecording = NoProgressRecording,
+    commandLineArguments = commandLineArguments*
+  )
 
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](
@@ -1661,7 +1661,7 @@ object Main extends StrictLogging:
       end lastMinuteResolution
 
       def writeConflictedIndexEntriesForModification(
-          partialResult: AccumulatedMergeState,
+          accumulatedMergeState: AccumulatedMergeState,
           path: Path,
           bestAncestorCommitIdMode: String @@ Tags.Mode,
           mode: String @@ Tags.Mode,
@@ -1699,11 +1699,11 @@ object Main extends StrictLogging:
               ourBranchHead
             )} and modified on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
         )
-      yield partialResult.copy(goodForAMergeCommit = false)
+      yield accumulatedMergeState.copy(goodForAMergeCommit = false)
       end writeConflictedIndexEntriesForModification
 
       def writeConflictedIndexEntriesForAddition(
-          partialResult: AccumulatedMergeState,
+          accumulatedMergeState: AccumulatedMergeState,
           path: Path,
           mode: String @@ Tags.Mode,
           lastMinuteResolution: Boolean,
@@ -1727,10 +1727,10 @@ object Main extends StrictLogging:
           mode,
           rightBlob
         )
-      yield partialResult.copy(
+      yield accumulatedMergeState.copy(
         goodForAMergeCommit = false,
         conflictingAdditionPathsAndTheirLastMinuteResolutions =
-          partialResult.conflictingAdditionPathsAndTheirLastMinuteResolutions + (path -> lastMinuteResolution)
+          accumulatedMergeState.conflictingAdditionPathsAndTheirLastMinuteResolutions + (path -> lastMinuteResolution)
       )
       end writeConflictedIndexEntriesForAddition
 
@@ -1758,7 +1758,7 @@ object Main extends StrictLogging:
           AccumulatedMergeState.initial
         ) { case (partialResult, (path, mergeInput)) =>
           def recordConflictedMergeOfAddedFile(
-              partialResult: AccumulatedMergeState,
+              accumulatedMergeState: AccumulatedMergeState,
               path: Path,
               mode: String @@ Tags.Mode,
               leftContent: String @@ Tags.Content,
@@ -1798,7 +1798,7 @@ object Main extends StrictLogging:
               leftBlob  <- storeBlobFor(path, leftContent)
               rightBlob <- storeBlobFor(path, rightContent)
               result    <- writeConflictedIndexEntriesForAddition(
-                partialResult,
+                accumulatedMergeState,
                 path,
                 mode,
                 lastMinuteResolution,
@@ -1810,7 +1810,7 @@ object Main extends StrictLogging:
           end recordConflictedMergeOfAddedFile
 
           def recordConflictedMergeOfModifiedFile(
-              partialResult: AccumulatedMergeState,
+              accumulatedMergeState: AccumulatedMergeState,
               path: Path,
               bestAncestorCommitIdMode: String @@ Tags.Mode,
               mode: String @@ Tags.Mode,
@@ -1854,7 +1854,7 @@ object Main extends StrictLogging:
               rightBlobId <- storeBlobFor(path, rightContent)
 
               result <- writeConflictedIndexEntriesForModification(
-                partialResult,
+                accumulatedMergeState,
                 path,
                 bestAncestorCommitIdMode,
                 mode,
@@ -1868,7 +1868,7 @@ object Main extends StrictLogging:
           end recordConflictedMergeOfModifiedFile
 
           def recordCleanMergeOfFile(
-              partialResult: AccumulatedMergeState,
+              accumulatedMergeState: AccumulatedMergeState,
               path: Path,
               mergedFileContent: String @@ Tags.Content,
               mode: String @@ Tags.Mode
@@ -1884,10 +1884,10 @@ object Main extends StrictLogging:
                 mode,
                 blobId
               )
-            yield partialResult
+            yield accumulatedMergeState
 
           def bringInFileContentFromTheirBranch(
-              partialResult: AccumulatedMergeState,
+              accumulatedMergeState: AccumulatedMergeState,
               path: Path,
               mode: String @@ Tags.Mode,
               blobId: String @@ Tags.BlobId
@@ -1902,7 +1902,7 @@ object Main extends StrictLogging:
                 mode,
                 blobId
               )
-            yield partialResult
+            yield accumulatedMergeState
 
           def captureRenamesOfPathModified(
               accumulatedMergeState: AccumulatedMergeState
@@ -1913,21 +1913,23 @@ object Main extends StrictLogging:
                 right(accumulatedMergeState).logOperation
               )
 
-          def captureRenamesOfPathDeletedOnJustOneSide =
+          def captureRenamesOfPathDeletedOnJustOneSide(
+              accumulatedMergeState: AccumulatedMergeState
+          ) =
             fileRenamingReport(path)
-              .fold(ifEmpty = right(partialResult)) {
+              .fold(ifEmpty = right(accumulatedMergeState)) {
                 case FileRenamingReport(
                       description,
                       leftRenamePaths,
                       rightRenamePaths
                     ) =>
                   right(
-                    partialResult.copy(
+                    accumulatedMergeState.copy(
                       deletedPathsByLeftRenamePath =
-                        partialResult.deletedPathsByLeftRenamePath ++ leftRenamePaths
+                        accumulatedMergeState.deletedPathsByLeftRenamePath ++ leftRenamePaths
                           .map(_ -> path),
                       deletedPathsByRightRenamePath =
-                        partialResult.deletedPathsByRightRenamePath ++ rightRenamePaths
+                        accumulatedMergeState.deletedPathsByRightRenamePath ++ rightRenamePaths
                           .map(_ -> path)
                     )
                   ).logOperation(description)
@@ -2170,7 +2172,7 @@ object Main extends StrictLogging:
               // `CodeMotionAnalysisExtension.mergeResultsByPath` and does not
               // necessarily remove the content.
               if bestAncestorCommitIdContent.isDefined then
-                captureRenamesOfPathDeletedOnJustOneSide
+                captureRenamesOfPathDeletedOnJustOneSide(partialResult)
               else right(partialResult)
 
             case JustTheirDeletion(bestAncestorCommitIdContent) =>
@@ -2184,7 +2186,7 @@ object Main extends StrictLogging:
                 _                      <- deleteFile(path)
                 decoratedPartialResult <-
                   if bestAncestorCommitIdContent.isDefined then
-                    captureRenamesOfPathDeletedOnJustOneSide
+                    captureRenamesOfPathDeletedOnJustOneSide(partialResult)
                   else right(partialResult)
               yield decoratedPartialResult
 
@@ -2246,7 +2248,7 @@ object Main extends StrictLogging:
                       _                      <- recordDeletionInIndex(path)
                       _                      <- deleteFile(path)
                       decoratedPartialResult <-
-                        captureRenamesOfPathDeletedOnJustOneSide
+                        captureRenamesOfPathDeletedOnJustOneSide(partialResult)
                     yield decoratedPartialResult
                   else
                     {
@@ -2335,7 +2337,7 @@ object Main extends StrictLogging:
                     for
                       _                      <- recordDeletionInIndex(path)
                       decoratedPartialResult <-
-                        captureRenamesOfPathDeletedOnJustOneSide
+                        captureRenamesOfPathDeletedOnJustOneSide(partialResult)
                     yield decoratedPartialResult
                   else
                     {
@@ -2488,7 +2490,7 @@ object Main extends StrictLogging:
                         )
                       ) =>
                     (leftRenamePaths.nonEmpty, rightRenamePaths.nonEmpty) match
-                      case ((true, false) | (false, true)) =>
+                      case (true, false) | (false, true) =>
                         // If all the moved content from `path` going into new
                         // files ends up on just one side, then this is a
                         // conflict because it implies an isolated deletion on
@@ -2503,7 +2505,7 @@ object Main extends StrictLogging:
                                 .map(_ -> path)
                           )
                         ).logOperation(description)
-                      case ((true, true) | (false, false)) =>
+                      case (true, true) | (false, false) =>
                         // The content has moved out into new files on both
                         // sides, or existing files on either or both sides.
                         // This might involve divergent or coincident moves,
