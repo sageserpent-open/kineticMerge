@@ -703,6 +703,61 @@ object Main extends StrictLogging:
         s"Unexpected error - can't parse changes reported by Git ${underline(line)}."
       ).flatMap { case (path, changed) => changed.map(path -> _) }
 
+    private def blobFor(
+        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
+    )(
+        path: Path
+    ): Workflow[
+      (String @@ Tags.Mode, String @@ Tags.BlobId)
+    ] =
+      for
+        Array(mode, entryType, entryId, _) <- IO {
+          val line = os
+            .proc("git", "ls-tree", commitIdOrBranchName, path)
+            .call(workingDirectory)
+            .out
+            .text()
+
+          line.split(whitespaceRun)
+        }.labelExceptionWith(errorMessage =
+          s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
+        )
+        _ <-
+          entryType match
+            case "blob" =>
+              right(())
+            case "commit" =>
+              left(
+                s"Submodule changes not supported: encountered a submodule commit when trying to retrieve blob for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}, the commit id is: ${underline(entryId)}."
+              )
+            case _ =>
+              left(
+                s"Unexpected error - Git reports an unsupported type ${underline(entryType)} when trying to retrieve blob for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}, the id is: ${underline(entryId)}."
+              )
+      yield (
+        mode.taggedWith[Tags.Mode],
+        entryId.taggedWith[Tags.BlobId]
+      )
+    end blobFor
+
+    private def contentFor(
+        commitIdOrBranchName: String @@ Tags.CommitOrBranchName,
+        path: Path
+    )(
+        blobId: String @@ Tags.BlobId
+    ): Workflow[String @@ Tags.Content] =
+      IO {
+        os
+          .proc("git", "cat-file", "blob", blobId)
+          .call(workingDirectory)
+          .out
+          .text()
+          .taggedWith[Tags.Content]
+      }.labelExceptionWith(
+        s"Unexpected error - can't retrieve content for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)} using blob id: ${underline(blobId)}."
+      )
+    end contentFor
+
     def mergeInputsOf(
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
         ourBranchHead: String @@ Tags.CommitOrBranchName,
@@ -976,61 +1031,6 @@ object Main extends StrictLogging:
             yield path -> BothContributeADeletion(bestAncestorCommitIdContent)
         }
     end mergeInputsOf
-
-    private def blobFor(
-        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
-    )(
-        path: Path
-    ): Workflow[
-      (String @@ Tags.Mode, String @@ Tags.BlobId)
-    ] =
-      for
-        Array(mode, entryType, entryId, _) <- IO {
-          val line = os
-            .proc("git", "ls-tree", commitIdOrBranchName, path)
-            .call(workingDirectory)
-            .out
-            .text()
-
-          line.split(whitespaceRun)
-        }.labelExceptionWith(errorMessage =
-          s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
-        )
-        _ <-
-          entryType match
-            case "blob" =>
-              right(())
-            case "commit" =>
-              left(
-                s"Submodule changes not supported: encountered a submodule commit when trying to retrieve blob for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}, the commit id is: ${underline(entryId)}."
-              )
-            case _ =>
-              left(
-                s"Unexpected error - Git reports an unsupported type ${underline(entryType)} when trying to retrieve blob for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}, the id is: ${underline(entryId)}."
-              )
-      yield (
-        mode.taggedWith[Tags.Mode],
-        entryId.taggedWith[Tags.BlobId]
-      )
-    end blobFor
-
-    private def contentFor(
-        commitIdOrBranchName: String @@ Tags.CommitOrBranchName,
-        path: Path
-    )(
-        blobId: String @@ Tags.BlobId
-    ): Workflow[String @@ Tags.Content] =
-      IO {
-        os
-          .proc("git", "cat-file", "blob", blobId)
-          .call(workingDirectory)
-          .out
-          .text()
-          .taggedWith[Tags.Content]
-      }.labelExceptionWith(
-        s"Unexpected error - can't retrieve content for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)} using blob id: ${underline(blobId)}."
-      )
-    end contentFor
 
     def mergeWithRollback(
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
@@ -1543,6 +1543,7 @@ object Main extends StrictLogging:
                 .map(
                   _.allOnTheLeft
                     .map(leftSources.pathFor)
+                    .filter(path != _)
                     .filter(newOrModifiedPathsOnLeftOrRight.contains)
                     .map(_ -> baseSection)
                 )
@@ -1559,6 +1560,7 @@ object Main extends StrictLogging:
                 .map(
                   _.allOnTheRight
                     .map(rightSources.pathFor)
+                    .filter(path != _)
                     .filter(newOrModifiedPathsOnLeftOrRight.contains)
                     .map(_ -> baseSection)
                 )
@@ -1902,6 +1904,15 @@ object Main extends StrictLogging:
               )
             yield partialResult
 
+          def captureRenamesOfPathModified(
+              accumulatedMergeState: AccumulatedMergeState
+          ) =
+            fileRenamingReport(path)
+              .map(_.description)
+              .fold(ifEmpty = right(accumulatedMergeState))(
+                right(accumulatedMergeState).logOperation
+              )
+
           def captureRenamesOfPathDeletedOnJustOneSide =
             fileRenamingReport(path)
               .fold(ifEmpty = right(partialResult)) {
@@ -1941,41 +1952,43 @@ object Main extends StrictLogging:
                 ) =>
               ourModification.content.fold(ifEmpty = right(partialResult))(
                 ourContent =>
-                  mergeResultsByPath(path) match
-                    case FullyMerged(tokens) =>
-                      val mergedFileContent = reconstituteContentFrom(tokens)
+                  {
+                    mergeResultsByPath(path) match
+                      case FullyMerged(tokens) =>
+                        val mergedFileContent = reconstituteContentFrom(tokens)
 
-                      val ourModificationWasTweakedByTheMerge =
-                        mergedFileContent != ourContent
+                        val ourModificationWasTweakedByTheMerge =
+                          mergedFileContent != ourContent
 
-                      if ourModificationWasTweakedByTheMerge then
-                        recordCleanMergeOfFile(
+                        if ourModificationWasTweakedByTheMerge then
+                          recordCleanMergeOfFile(
+                            partialResult,
+                            path,
+                            mergedFileContent,
+                            ourModification.mode
+                          )
+                        else right(partialResult)
+                        end if
+
+                      case MergedWithConflicts(
+                            baseTokens,
+                            leftTokens,
+                            rightTokens
+                          ) =>
+                        val baseContent  = reconstituteContentFrom(baseTokens)
+                        val leftContent  = reconstituteContentFrom(leftTokens)
+                        val rightContent = reconstituteContentFrom(rightTokens)
+
+                        recordConflictedMergeOfModifiedFile(
                           partialResult,
                           path,
-                          mergedFileContent,
-                          ourModification.mode
+                          bestAncestorCommitIdMode,
+                          ourModification.mode,
+                          baseContent,
+                          leftContent,
+                          rightContent
                         )
-                      else right(partialResult)
-                      end if
-
-                    case MergedWithConflicts(
-                          baseTokens,
-                          leftTokens,
-                          rightTokens
-                        ) =>
-                      val baseContent  = reconstituteContentFrom(baseTokens)
-                      val leftContent  = reconstituteContentFrom(leftTokens)
-                      val rightContent = reconstituteContentFrom(rightTokens)
-
-                      recordConflictedMergeOfModifiedFile(
-                        partialResult,
-                        path,
-                        bestAncestorCommitIdMode,
-                        ourModification.mode,
-                        baseContent,
-                        leftContent,
-                        rightContent
-                      )
+                  }.flatMap(captureRenamesOfPathModified)
               )
 
             case JustTheirModification(
@@ -1991,47 +2004,49 @@ object Main extends StrictLogging:
                   theirModification.blobId
                 )
               )(theirContent =>
-                mergeResultsByPath(path) match
-                  case FullyMerged(tokens) =>
-                    val mergedFileContent = reconstituteContentFrom(tokens)
+                {
+                  mergeResultsByPath(path) match
+                    case FullyMerged(tokens) =>
+                      val mergedFileContent = reconstituteContentFrom(tokens)
 
-                    val theirModificationWasTweakedByTheMerge =
-                      mergedFileContent != theirContent
+                      val theirModificationWasTweakedByTheMerge =
+                        mergedFileContent != theirContent
 
-                    if theirModificationWasTweakedByTheMerge then
-                      recordCleanMergeOfFile(
+                      if theirModificationWasTweakedByTheMerge then
+                        recordCleanMergeOfFile(
+                          partialResult,
+                          path,
+                          mergedFileContent,
+                          theirModification.mode
+                        )
+                      else
+                        bringInFileContentFromTheirBranch(
+                          partialResult,
+                          path,
+                          theirModification.mode,
+                          theirModification.blobId
+                        )
+                      end if
+
+                    case MergedWithConflicts(
+                          baseTokens,
+                          leftTokens,
+                          rightTokens
+                        ) =>
+                      val baseContent  = reconstituteContentFrom(baseTokens)
+                      val leftContent  = reconstituteContentFrom(leftTokens)
+                      val rightContent = reconstituteContentFrom(rightTokens)
+
+                      recordConflictedMergeOfModifiedFile(
                         partialResult,
                         path,
-                        mergedFileContent,
-                        theirModification.mode
-                      )
-                    else
-                      bringInFileContentFromTheirBranch(
-                        partialResult,
-                        path,
+                        bestAncestorCommitIdMode,
                         theirModification.mode,
-                        theirModification.blobId
+                        baseContent,
+                        leftContent,
+                        rightContent
                       )
-                    end if
-
-                  case MergedWithConflicts(
-                        baseTokens,
-                        leftTokens,
-                        rightTokens
-                      ) =>
-                    val baseContent  = reconstituteContentFrom(baseTokens)
-                    val leftContent  = reconstituteContentFrom(leftTokens)
-                    val rightContent = reconstituteContentFrom(rightTokens)
-
-                    recordConflictedMergeOfModifiedFile(
-                      partialResult,
-                      path,
-                      bestAncestorCommitIdMode,
-                      theirModification.mode,
-                      baseContent,
-                      leftContent,
-                      rightContent
-                    )
+                }.flatMap(captureRenamesOfPathModified)
               )
 
             case JustOurAddition(ourAddition) =>
@@ -2233,26 +2248,29 @@ object Main extends StrictLogging:
                       decoratedPartialResult <-
                         captureRenamesOfPathDeletedOnJustOneSide
                     yield decoratedPartialResult
-                  else if ourModificationWasTweakedByTheMerge then
-                    for
-                      _      <- prelude
-                      blobId <- storeBlobFor(path, mergedFileContent)
-                      _      <- restoreFileFromBlobId(
-                        path,
-                        blobId
-                      )
-                      _ <- recordConflictModificationInIndex(
-                        stageIndex = ourStageIndex
-                      )(
-                        ourBranchHead,
-                        path,
-                        ourModification.mode,
-                        blobId
-                      ).logOperation(
-                        s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and deleted on their branch ${underline(theirBranchHead)}."
-                      )
-                    yield partialResult.copy(goodForAMergeCommit = false)
-                  else writeConflictingEntries
+                  else
+                    {
+                      if ourModificationWasTweakedByTheMerge then
+                        for
+                          _      <- prelude
+                          blobId <- storeBlobFor(path, mergedFileContent)
+                          _      <- restoreFileFromBlobId(
+                            path,
+                            blobId
+                          )
+                          _ <- recordConflictModificationInIndex(
+                            stageIndex = ourStageIndex
+                          )(
+                            ourBranchHead,
+                            path,
+                            ourModification.mode,
+                            blobId
+                          ).logOperation(
+                            s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and deleted on their branch ${underline(theirBranchHead)}."
+                          )
+                        yield partialResult.copy(goodForAMergeCommit = false)
+                      else writeConflictingEntries
+                    }.flatMap(captureRenamesOfPathModified)
                   end if
               )
 
@@ -2319,26 +2337,29 @@ object Main extends StrictLogging:
                       decoratedPartialResult <-
                         captureRenamesOfPathDeletedOnJustOneSide
                     yield decoratedPartialResult
-                  else if theirModificationWasTweakedByTheMerge then
-                    for
-                      _      <- prelude
-                      blobId <- storeBlobFor(path, mergedFileContent)
-                      _      <- restoreFileFromBlobId(
-                        path,
-                        blobId
-                      )
-                      _ <- recordConflictModificationInIndex(
-                        stageIndex = theirStageIndex
-                      )(
-                        theirBranchHead,
-                        path,
-                        theirModification.mode,
-                        blobId
-                      ).logOperation(
-                        s"Conflict - file ${underline(path)} was deleted on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
-                      )
-                    yield partialResult.copy(goodForAMergeCommit = false)
-                  else writeConflictingEntries
+                  else
+                    {
+                      if theirModificationWasTweakedByTheMerge then
+                        for
+                          _      <- prelude
+                          blobId <- storeBlobFor(path, mergedFileContent)
+                          _      <- restoreFileFromBlobId(
+                            path,
+                            blobId
+                          )
+                          _ <- recordConflictModificationInIndex(
+                            stageIndex = theirStageIndex
+                          )(
+                            theirBranchHead,
+                            path,
+                            theirModification.mode,
+                            blobId
+                          ).logOperation(
+                            s"Conflict - file ${underline(path)} was deleted on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
+                          )
+                        yield partialResult.copy(goodForAMergeCommit = false)
+                      else writeConflictingEntries
+                    }.flatMap(captureRenamesOfPathModified)
                   end if
               )
 
@@ -2411,35 +2432,37 @@ object Main extends StrictLogging:
               // TODO: suppose one is binary and the other isn't?
               if ourModification.content.isDefined && theirModification.content.isDefined
               then
-                mergeResultsByPath(path) match
-                  case FullyMerged(tokens) =>
-                    val mergedFileContent = reconstituteContentFrom(tokens)
+                {
+                  mergeResultsByPath(path) match
+                    case FullyMerged(tokens) =>
+                      val mergedFileContent = reconstituteContentFrom(tokens)
 
-                    recordCleanMergeOfFile(
-                      partialResult,
-                      path,
-                      mergedFileContent,
-                      mergedFileMode
-                    )
+                      recordCleanMergeOfFile(
+                        partialResult,
+                        path,
+                        mergedFileContent,
+                        mergedFileMode
+                      )
 
-                  case MergedWithConflicts(
-                        baseTokens,
-                        leftTokens,
-                        rightTokens
-                      ) =>
-                    val baseContent  = reconstituteContentFrom(baseTokens)
-                    val leftContent  = reconstituteContentFrom(leftTokens)
-                    val rightContent = reconstituteContentFrom(rightTokens)
+                    case MergedWithConflicts(
+                          baseTokens,
+                          leftTokens,
+                          rightTokens
+                        ) =>
+                      val baseContent  = reconstituteContentFrom(baseTokens)
+                      val leftContent  = reconstituteContentFrom(leftTokens)
+                      val rightContent = reconstituteContentFrom(rightTokens)
 
-                    recordConflictedMergeOfModifiedFile(
-                      partialResult,
-                      path,
-                      bestAncestorCommitIdMode,
-                      mergedFileMode,
-                      baseContent,
-                      leftContent,
-                      rightContent
-                    )
+                      recordConflictedMergeOfModifiedFile(
+                        partialResult,
+                        path,
+                        bestAncestorCommitIdMode,
+                        mergedFileMode,
+                        baseContent,
+                        leftContent,
+                        rightContent
+                      )
+                }.flatMap(captureRenamesOfPathModified)
               else
                 writeConflictedIndexEntriesForModification(
                   partialResult,
