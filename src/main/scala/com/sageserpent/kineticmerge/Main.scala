@@ -1200,6 +1200,11 @@ object Main extends StrictLogging:
       given Funnel[Token] = Token.funnel
       given HashFunction  = Hashing.murmur3_32_fixed()
 
+      enum PresentInMergeOutcome:
+        case Added
+        case Modified
+      end PresentInMergeOutcome
+
       val (
         baseContentsByPath,
         leftContentsByPath,
@@ -1211,7 +1216,7 @@ object Main extends StrictLogging:
             Map.empty[Path, IndexedSeq[Token]],
             Map.empty[Path, IndexedSeq[Token]],
             Map.empty[Path, IndexedSeq[Token]],
-            Map.empty[Path, Boolean]
+            Map.empty[Path, PresentInMergeOutcome]
           )
         ) {
           case (
@@ -1237,7 +1242,7 @@ object Main extends StrictLogging:
                       baseContentsByPath + (path  -> baseContentTokens),
                       leftContentsByPath + (path  -> ourContent.asTokens),
                       rightContentsByPath + (path -> baseContentTokens),
-                      newOrModifiedPathsOnLeftOrRight + (path -> false)
+                      newOrModifiedPathsOnLeftOrRight + (path -> PresentInMergeOutcome.Modified)
                     )
                   case _ => passThrough
 
@@ -1254,7 +1259,7 @@ object Main extends StrictLogging:
                       baseContentsByPath + (path  -> baseContentTokens),
                       leftContentsByPath + (path  -> baseContentTokens),
                       rightContentsByPath + (path -> theirContent.asTokens),
-                      newOrModifiedPathsOnLeftOrRight + (path -> false)
+                      newOrModifiedPathsOnLeftOrRight + (path -> PresentInMergeOutcome.Modified)
                     )
                   case _ => passThrough
 
@@ -1264,7 +1269,7 @@ object Main extends StrictLogging:
                     baseContentsByPath,
                     leftContentsByPath + (path -> ourContent.asTokens),
                     rightContentsByPath,
-                    newOrModifiedPathsOnLeftOrRight + (path -> true)
+                    newOrModifiedPathsOnLeftOrRight + (path -> PresentInMergeOutcome.Added)
                   )
                 )
 
@@ -1275,7 +1280,7 @@ object Main extends StrictLogging:
                       baseContentsByPath,
                       leftContentsByPath,
                       rightContentsByPath + (path -> theirContent.asTokens),
-                      newOrModifiedPathsOnLeftOrRight + (path -> true)
+                      newOrModifiedPathsOnLeftOrRight + (path -> PresentInMergeOutcome.Added)
                     )
                 )
 
@@ -1322,7 +1327,7 @@ object Main extends StrictLogging:
                       leftContentsByPath + (path -> ourContent.asTokens)
                   ),
                   rightContentsByPath,
-                  newOrModifiedPathsOnLeftOrRight + (path -> false)
+                  newOrModifiedPathsOnLeftOrRight + (path -> PresentInMergeOutcome.Modified)
                 )
 
               case TheirModificationAndOurDeletion(
@@ -1342,7 +1347,7 @@ object Main extends StrictLogging:
                     theirContent =>
                       rightContentsByPath + (path -> theirContent.asTokens)
                   ),
-                  newOrModifiedPathsOnLeftOrRight + (path -> false)
+                  newOrModifiedPathsOnLeftOrRight + (path -> PresentInMergeOutcome.Modified)
                 )
 
               case BothContributeAnAddition(
@@ -1360,7 +1365,7 @@ object Main extends StrictLogging:
                     theirContent =>
                       rightContentsByPath + (path -> theirContent.asTokens)
                   ),
-                  newOrModifiedPathsOnLeftOrRight + (path -> true)
+                  newOrModifiedPathsOnLeftOrRight + (path -> PresentInMergeOutcome.Added)
                 )
 
               case BothContributeAModification(
@@ -1385,7 +1390,7 @@ object Main extends StrictLogging:
                     theirContent =>
                       rightContentsByPath + (path -> theirContent.asTokens)
                   ),
-                  newOrModifiedPathsOnLeftOrRight + (path -> false)
+                  newOrModifiedPathsOnLeftOrRight + (path -> PresentInMergeOutcome.Added)
                 )
 
               case BothContributeADeletion(bestAncestorCommitIdContent) =>
@@ -1609,7 +1614,7 @@ object Main extends StrictLogging:
           end description
 
           def relocationPathIsForARename(path: Path) =
-            newOrModifiedPathsOnLeftOrRight(path)
+            PresentInMergeOutcome.Added == newOrModifiedPathsOnLeftOrRight(path)
 
           FileRenamingReport(
             description,
