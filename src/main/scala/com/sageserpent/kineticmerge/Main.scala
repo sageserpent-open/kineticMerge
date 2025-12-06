@@ -2481,13 +2481,15 @@ object Main extends StrictLogging:
               // We already have the deletion in our branch, so no need
               // to update the index on behalf of this path, whatever happens...
               if bestAncestorCommitIdContent.isDefined then
-                fileRenamingReport(path) match
-                  case Some(
-                        FileRenamingReport(
-                          description,
-                          leftRenamePaths,
-                          rightRenamePaths
-                        )
+                fileRenamingReport(path).fold(ifEmpty =
+                  right(partialResult).logOperation(
+                    s"Coincidental deletion of file ${underline(path)} on our branch ${underline(ourBranchHead)} and on their branch ${underline(theirBranchHead)}."
+                  )
+                ) {
+                  case FileRenamingReport(
+                        description,
+                        leftRenamePaths,
+                        rightRenamePaths
                       ) =>
                     (leftRenamePaths.nonEmpty, rightRenamePaths.nonEmpty) match
                       case (true, false) | (false, true) =>
@@ -2511,10 +2513,7 @@ object Main extends StrictLogging:
                         // This might involve divergent or coincident moves,
                         // however no special action needs to be taken here.
                         right(partialResult).logOperation(description)
-                  case _ =>
-                    right(partialResult).logOperation(
-                      s"Coincidental deletion of file ${underline(path)} on our branch ${underline(ourBranchHead)} and on their branch ${underline(theirBranchHead)}."
-                    )
+                }
               else right(partialResult)
           end match
         }
