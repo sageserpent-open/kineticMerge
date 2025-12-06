@@ -96,7 +96,7 @@ lazy val root = (project in file("."))
     libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "2.4.0",
     libraryDependencies += "com.lihaoyi"             %% "os-lib"  % "0.11.6",
     libraryDependencies += "com.lihaoyi"             %% "fansi"   % "0.5.1",
-    libraryDependencies += "com.lihaoyi"             %% "pprint"  % "0.9.5",
+    libraryDependencies += "com.lihaoyi"             %% "pprint"  % "0.9.6",
     libraryDependencies += "com.softwaremill.common" %% "tagging" % "2.3.5",
     libraryDependencies += "com.google.guava" % "guava"      % "33.5.0-jre",
     libraryDependencies += "de.sciss"        %% "fingertree" % "1.5.5",
@@ -104,7 +104,7 @@ lazy val root = (project in file("."))
     libraryDependencies += "me.tongfei" % "progressbar" % "0.10.1",
     libraryDependencies +=
       "org.scala-lang.modules" %% "scala-parallel-collections" % "1.2.0",
-    libraryDependencies += "com.sageserpent" %% "americium" % "1.22.1" % Test,
+    libraryDependencies += "com.sageserpent" %% "americium" % "1.23.0" % Test,
     libraryDependencies += "com.eed3si9n.expecty" %% "expecty" % "0.17.1" % Test,
     libraryDependencies += "org.apache.commons" % "commons-text" % "1.14.0" % Test,
     libraryDependencies += "com.github.sbt.junit" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
