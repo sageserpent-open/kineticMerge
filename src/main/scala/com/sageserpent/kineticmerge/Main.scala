@@ -1530,7 +1530,7 @@ object Main extends StrictLogging:
         )
       end AccumulatedMergeState
 
-      case class FileRenamingReport(
+      case class FileRelocationReport(
           description: String,
           leftRenamePaths: Set[Path],
           rightRenamePaths: Set[Path]
@@ -1539,10 +1539,10 @@ object Main extends StrictLogging:
       def fileRenamingReportUsing(
           codeMotionAnalysis: CodeMotionAnalysis[Path, Token],
           moveDestinationsReport: MoveDestinationsReport[Section[Token]]
-      )(path: Path): Option[FileRenamingReport] =
+      )(path: Path): Option[FileRelocationReport] =
         val baseSections = codeMotionAnalysis.base(path).sections
 
-        val (leftRelocationPaths, baseSectionsMovingLeftToNewFiles) =
+        val (leftDestinationPaths, baseSectionsMovingLeftToNewFiles) =
           baseSections
             .flatMap(baseSection =>
               moveDestinationsReport.moveDestinationsBySources
@@ -1559,7 +1559,7 @@ object Main extends StrictLogging:
             .unzip match
             case (paths, sections) => paths.toSet -> sections.toSet
 
-        val (rightRelocationPaths, baseSectionsMovingRightToNewFiles) =
+        val (rightDestinationPaths, baseSectionsMovingRightToNewFiles) =
           baseSections
             .flatMap(baseSection =>
               moveDestinationsReport.moveDestinationsBySources
@@ -1588,47 +1588,84 @@ object Main extends StrictLogging:
           baseSectionsThatHaveMovedToNewFiles.nonEmpty && 2 * movedContentSize >= totalContentSize
 
         Option.when(enoughContentHasMovedToConsiderAsRenaming) {
-          val leftRenamingDetail = Option.unless(
-            leftRelocationPaths.isEmpty
-          )(
-            s"on our branch ${underline(ourBranchHead)} " ++ (if 1 < leftRelocationPaths.size
-                                                              then
-                                                                s"into files ${leftRelocationPaths.map(underline).mkString(", ")}"
-                                                              else
-                                                                s"to file ${underline(leftRelocationPaths.head)}")
+          def destinationPathIsForARename(path: Path) =
+            PresentInMergeOutcome.Added == newOrModifiedPathsOnLeftOrRight(path)
+
+          val (leftRenamePaths, leftRelocationPaths) =
+            leftDestinationPaths.partition(destinationPathIsForARename)
+
+          val (rightRenamePaths, rightRelocationPaths) =
+            rightDestinationPaths.partition(destinationPathIsForARename)
+
+          def destinationDetailsFor(possessive: String)(
+              destinationPaths: Set[Path]
+          ): Option[String] = Option.unless(destinationPaths.isEmpty)(
+            s"on $possessive branch ${underline(ourBranchHead)} " ++ (if 1 < destinationPaths.size
+                                                                      then
+                                                                        s"into files ${destinationPaths.map(underline).mkString(", ")}"
+                                                                      else
+                                                                        s"to file ${underline(destinationPaths.head)}")
           )
 
-          val rightRenamingDetail = Option.unless(
-            rightRelocationPaths.isEmpty
-          )(
-            s"on their branch ${underline(theirBranchHead)} " ++ (if 1 < rightRelocationPaths.size
-                                                                  then
-                                                                    s"into files ${rightRelocationPaths.map(underline).mkString(", ")}"
-                                                                  else
-                                                                    s"to file ${underline(rightRelocationPaths.head)}")
-          )
+          val leftRenamingDetails =
+            destinationDetailsFor(possessive = "our")(leftRenamePaths)
+
+          val leftRelocationDetails =
+            destinationDetailsFor(possessive = "our")(leftRelocationPaths)
+
+          val rightRenamingDetails =
+            destinationDetailsFor(possessive = "their")(rightRenamePaths)
+
+          val rightRelocationDetails =
+            destinationDetailsFor(possessive = "their")(rightRelocationPaths)
 
           val description =
-            (leftRenamingDetail, rightRenamingDetail) match
-              case (Some(leftDetailPayload), None) =>
-                s"File ${underline(path)} was renamed $leftDetailPayload."
-              case (None, Some(rightDetailPayload)) =>
-                s"File ${underline(path)} was renamed $rightDetailPayload."
-              case (
-                    Some(leftDetailPayload),
-                    Some(rightDetailPayload)
-                  ) =>
-                s"File ${underline(path)} was renamed $leftDetailPayload and $rightDetailPayload."
+            def assembleDetails(action: String)(
+                leftDetails: Option[String],
+                rightDetails: Option[String]
+            ): Option[String] =
+              (leftDetails, rightDetails) match
+                case (Some(leftDetailPayload), None) =>
+                  Some(
+                    s"$action $leftDetailPayload"
+                  )
+                case (None, Some(rightDetailPayload)) =>
+                  Some(
+                    s"$action $rightDetailPayload"
+                  )
+                case (Some(leftDetailPayload), Some(rightDetailPayload)) =>
+                  Some(
+                    s"$action $leftDetailPayload and $rightDetailPayload"
+                  )
+                case (None, None) => None
+
+            val renameDescription = assembleDetails(action = "renamed")(
+              leftRenamingDetails,
+              rightRenamingDetails
+            )
+
+            val relocationDescription =
+              assembleDetails(action = "transplanted")(
+                leftRelocationDetails,
+                rightRelocationDetails
+              )
+
+            assume(renameDescription.nonEmpty || relocationDescription.nonEmpty)
+
+            (renameDescription, relocationDescription) match
+              case (Some(rename), Some(relocation)) =>
+                s"File ${underline(path)} was $rename; it was also $relocation."
+              case (Some(rename), None) =>
+                s"File ${underline(path)} was $rename."
+              case (None, Some(relocation)) =>
+                s"File ${underline(path)} was $relocation."
             end match
           end description
 
-          def relocationPathIsForARename(path: Path) =
-            PresentInMergeOutcome.Added == newOrModifiedPathsOnLeftOrRight(path)
-
-          FileRenamingReport(
+          FileRelocationReport(
             description,
-            leftRelocationPaths.filter(relocationPathIsForARename),
-            rightRelocationPaths.filter(relocationPathIsForARename)
+            leftRenamePaths,
+            rightRenamePaths
           )
         }
       end fileRenamingReportUsing
@@ -1925,7 +1962,7 @@ object Main extends StrictLogging:
           ) =
             fileRenamingReport(path)
               .fold(ifEmpty = right(accumulatedMergeState)) {
-                case FileRenamingReport(
+                case FileRelocationReport(
                       description,
                       leftRenamePaths,
                       rightRenamePaths
@@ -2656,7 +2693,7 @@ object Main extends StrictLogging:
                     s"Coincidental deletion of file ${underline(path)} on our branch ${underline(ourBranchHead)} and on their branch ${underline(theirBranchHead)}."
                   )
                 ) {
-                  case FileRenamingReport(
+                  case FileRelocationReport(
                         description,
                         leftRenamePaths,
                         rightRenamePaths
