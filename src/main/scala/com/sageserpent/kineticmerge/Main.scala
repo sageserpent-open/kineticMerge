@@ -1397,7 +1397,7 @@ object Main extends StrictLogging:
                     theirContent =>
                       rightContentsByPath + (path -> theirContent.asTokens)
                   ),
-                  newOrModifiedPathsOnLeftOrRight + (path -> PresentInMergeOutcome.Added)
+                  newOrModifiedPathsOnLeftOrRight + (path -> PresentInMergeOutcome.Modified)
                 )
 
               case BothContributeADeletion(bestAncestorCommitIdContent) =>
