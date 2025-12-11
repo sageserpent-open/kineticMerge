@@ -1591,10 +1591,10 @@ object Main extends StrictLogging:
           def destinationPathIsForARename(path: Path) =
             PresentInMergeOutcome.Added == newOrModifiedPathsOnLeftOrRight(path)
 
-          val (leftRenamePaths, leftRelocationPaths) =
+          val (leftRenamePaths, leftTransplantPaths) =
             leftDestinationPaths.partition(destinationPathIsForARename)
 
-          val (rightRenamePaths, rightRelocationPaths) =
+          val (rightRenamePaths, rightTransplantPaths) =
             rightDestinationPaths.partition(destinationPathIsForARename)
 
           def destinationDetailsFor(possessive: String)(
@@ -1610,14 +1610,14 @@ object Main extends StrictLogging:
           val leftRenamingDetails =
             destinationDetailsFor(possessive = "our")(leftRenamePaths)
 
-          val leftRelocationDetails =
-            destinationDetailsFor(possessive = "our")(leftRelocationPaths)
+          val leftTransplantationDetails =
+            destinationDetailsFor(possessive = "our")(leftTransplantPaths)
 
           val rightRenamingDetails =
             destinationDetailsFor(possessive = "their")(rightRenamePaths)
 
-          val rightRelocationDetails =
-            destinationDetailsFor(possessive = "their")(rightRelocationPaths)
+          val rightTransplantationDetails =
+            destinationDetailsFor(possessive = "their")(rightTransplantPaths)
 
           val description =
             def assembleDetails(action: String)(
@@ -1639,26 +1639,28 @@ object Main extends StrictLogging:
                   )
                 case (None, None) => None
 
-            val renameDescription = assembleDetails(action = "renamed")(
+            val renamingDescription = assembleDetails(action = "renamed")(
               leftRenamingDetails,
               rightRenamingDetails
             )
 
-            val relocationDescription =
+            val transplantationDescription =
               assembleDetails(action = "transplanted")(
-                leftRelocationDetails,
-                rightRelocationDetails
+                leftTransplantationDetails,
+                rightTransplantationDetails
               )
 
-            assume(renameDescription.nonEmpty || relocationDescription.nonEmpty)
+            assume(
+              renamingDescription.nonEmpty || transplantationDescription.nonEmpty
+            )
 
-            (renameDescription, relocationDescription) match
-              case (Some(rename), Some(relocation)) =>
-                s"File ${underline(path)} was $rename; it was also $relocation."
-              case (Some(rename), None) =>
-                s"File ${underline(path)} was $rename."
-              case (None, Some(relocation)) =>
-                s"File ${underline(path)} was $relocation."
+            (renamingDescription, transplantationDescription) match
+              case (Some(renaming), Some(transplantation)) =>
+                s"File ${underline(path)} was $renaming; it was also $transplantation."
+              case (Some(renaming), None) =>
+                s"File ${underline(path)} was $renaming."
+              case (None, Some(transplantation)) =>
+                s"File ${underline(path)} was $transplantation."
             end match
           end description
 
@@ -1751,8 +1753,8 @@ object Main extends StrictLogging:
           path: Path,
           mode: String @@ Tags.Mode,
           lastMinuteResolution: Boolean,
-          leftBlob: String @@ Tags.BlobId,
-          rightBlob: String @@ Tags.BlobId
+          leftBlobId: String @@ Tags.BlobId,
+          rightBlobId: String @@ Tags.BlobId
       ) = for
         _ <- recordDeletionInIndex(path)
         _ <- recordConflictModificationInIndex(
@@ -1761,7 +1763,7 @@ object Main extends StrictLogging:
           ourBranchHead,
           path,
           mode,
-          leftBlob
+          leftBlobId
         )
         _ <- recordConflictModificationInIndex(
           stageIndex = theirStageIndex
@@ -1769,7 +1771,7 @@ object Main extends StrictLogging:
           theirBranchHead,
           path,
           mode,
-          rightBlob
+          rightBlobId
         )
       yield accumulatedMergeState.copy(
         goodForAMergeCommit = false,
@@ -1839,15 +1841,15 @@ object Main extends StrictLogging:
                 s"Unexpected error: could not copy results of conflicted merge in ${underline(leftTemporaryFile)} to working directory tree file ${underline(path)}."
               )
 
-              leftBlob  <- storeBlobFor(path, leftContent)
-              rightBlob <- storeBlobFor(path, rightContent)
-              result    <- writeConflictedIndexEntriesForAddition(
+              leftBlobId  <- storeBlobFor(path, leftContent)
+              rightBlobId <- storeBlobFor(path, rightContent)
+              result      <- writeConflictedIndexEntriesForAddition(
                 accumulatedMergeState,
                 path,
                 mode,
                 lastMinuteResolution,
-                leftBlob,
-                rightBlob
+                leftBlobId,
+                rightBlobId
               )
             yield result
             end for
