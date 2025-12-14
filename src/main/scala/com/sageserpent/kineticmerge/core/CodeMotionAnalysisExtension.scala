@@ -716,32 +716,36 @@ object CodeMotionAnalysisExtension extends StrictLogging:
               )
               .getOrElse(IndexedSeq.empty)).toSet
 
-        val precedingMerge = precedingAnchoredContentFromOppositeSide
-          .fold(ifEmpty = MergeResult.empty[MultiSided[Section[Element]]])(
-            CachedAnchoredContentMerges
-              .of(
-                anchoredMove.moveDestinationSide,
-                precedingAnchoredContentFromSource,
-                _,
-                precedingAnchoredContentFromMoveDestinationSide
-              )
-          )
-
-        val succeedingMerge = succeedingAnchoredContentFromOppositeSide
-          .fold(ifEmpty = MergeResult.empty[MultiSided[Section[Element]]])(
-            CachedAnchoredContentMerges
-              .of(
-                anchoredMove.moveDestinationSide,
-                succeedingAnchoredContentFromSource,
-                _,
-                succeedingAnchoredContentFromMoveDestinationSide
-              )
-          )
+        def spliceFrom(
+            anchoredContentFromOppositeSide: Option[
+              IndexedSeq[Section[Element]]
+            ],
+            anchoredContentFromSource: IndexedSeq[Section[Element]],
+            anchoredContentFromMoveDestinationSide: IndexedSeq[Section[Element]]
+        ) =
+          anchoredContentFromOppositeSide
+            .fold(ifEmpty = MergeResult.empty[MultiSided[Section[Element]]])(
+              CachedAnchoredContentMerges
+                .of(
+                  anchoredMove.moveDestinationSide,
+                  anchoredContentFromSource,
+                  _,
+                  anchoredContentFromMoveDestinationSide
+                )
+            )
 
         MigrationSplices(
-          precedingMerge,
-          succeedingMerge,
-          spliceMigrationSuppressions
+          precedingSplice = spliceFrom(
+            precedingAnchoredContentFromOppositeSide,
+            precedingAnchoredContentFromSource,
+            precedingAnchoredContentFromMoveDestinationSide
+          ),
+          succeedingSplice = spliceFrom(
+            succeedingAnchoredContentFromOppositeSide,
+            succeedingAnchoredContentFromSource,
+            succeedingAnchoredContentFromMoveDestinationSide
+          ),
+          spliceMigrationSuppressions = spliceMigrationSuppressions
         )
       end mergesFrom
 
