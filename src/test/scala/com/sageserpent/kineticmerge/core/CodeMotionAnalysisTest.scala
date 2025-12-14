@@ -12,6 +12,7 @@ import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.{
 }
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.{*, given}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
+import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.{Order as _, *}
 
 import java.util.concurrent.TimeUnit
@@ -1347,7 +1348,7 @@ class CodeMotionAnalysisTest:
     val Right(
       analysis: CodeMotionAnalysis[Path, Element]
     ) =
-      Assertions.assertDoesNotThrow(() =>
+      assertDoesNotThrow(() =>
         CodeMotionAnalysis.of(
           baseSources,
           leftSources,
