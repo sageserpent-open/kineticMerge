@@ -450,7 +450,10 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       def anchoredContentFromOppositeSide(
           moveDestinationSide: Side,
           oppositeSideAnchor: OppositeSideAnchor[Section[Element]]
-      ): (IndexedSeq[Section[Element]], IndexedSeq[Section[Element]]) =
+      ): (
+          Option[IndexedSeq[Section[Element]]],
+          Option[IndexedSeq[Section[Element]]]
+      ) =
         val (file, preservations, coincidentInsertionsOrEdits) =
           moveDestinationSide match
             case Side.Left =>
@@ -486,37 +489,49 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
         oppositeSideAnchor match
           case OppositeSideAnchor.Plain(element) =>
-            precedingAnchoredContentUsingSelection(
-              file,
-              element
-            )(
-              selection
-            ) -> succeedingAnchoredContentUsingSelection(
-              file,
-              element
-            )(selection)
+            Some(
+              precedingAnchoredContentUsingSelection(
+                file,
+                element
+              )(
+                selection
+              )
+            ) -> Some(
+              succeedingAnchoredContentUsingSelection(
+                file,
+                element
+              )(selection)
+            )
           case OppositeSideAnchor.OnlyOneInMigratedEdit(element) =>
-            precedingAnchoredContentUsingSelection(
-              file,
-              element
-            )(
-              selection
-            ) -> succeedingAnchoredContentUsingSelection(
-              file,
-              element
-            )(selection)
+            Some(
+              precedingAnchoredContentUsingSelection(
+                file,
+                element
+              )(
+                selection
+              )
+            ) -> Some(
+              succeedingAnchoredContentUsingSelection(
+                file,
+                element
+              )(selection)
+            )
           case OppositeSideAnchor.FirstInMigratedEdit(element) =>
-            precedingAnchoredContentUsingSelection(
-              file,
-              element
-            )(
-              selection
-            ) -> IndexedSeq.empty
+            Some(
+              precedingAnchoredContentUsingSelection(
+                file,
+                element
+              )(
+                selection
+              )
+            ) -> None
           case OppositeSideAnchor.LastInMigratedEdit(element) =>
-            IndexedSeq.empty -> succeedingAnchoredContentUsingSelection(
-              file,
-              element
-            )(selection)
+            None -> Some(
+              succeedingAnchoredContentUsingSelection(
+                file,
+                element
+              )(selection)
+            )
         end match
       end anchoredContentFromOppositeSide
 
@@ -691,24 +706,36 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
         val spliceMigrationSuppressions =
           (precedingAnchoredContentFromOppositeSide
-            ++ precedingAnchoredContentFromMoveDestinationSide
+            .map(
+              _ ++ precedingAnchoredContentFromMoveDestinationSide
+            )
+            .getOrElse(IndexedSeq.empty)
             ++ succeedingAnchoredContentFromOppositeSide
-            ++ succeedingAnchoredContentFromMoveDestinationSide).toSet
+              .map(
+                _ ++ succeedingAnchoredContentFromMoveDestinationSide
+              )
+              .getOrElse(IndexedSeq.empty)).toSet
 
-        val precedingMerge = CachedAnchoredContentMerges
-          .of(
-            anchoredMove.moveDestinationSide,
-            precedingAnchoredContentFromSource,
-            precedingAnchoredContentFromOppositeSide,
-            precedingAnchoredContentFromMoveDestinationSide
+        val precedingMerge = precedingAnchoredContentFromOppositeSide
+          .fold(ifEmpty = MergeResult.empty[MultiSided[Section[Element]]])(
+            CachedAnchoredContentMerges
+              .of(
+                anchoredMove.moveDestinationSide,
+                precedingAnchoredContentFromSource,
+                _,
+                precedingAnchoredContentFromMoveDestinationSide
+              )
           )
 
-        val succeedingMerge = CachedAnchoredContentMerges
-          .of(
-            anchoredMove.moveDestinationSide,
-            succeedingAnchoredContentFromSource,
-            succeedingAnchoredContentFromOppositeSide,
-            succeedingAnchoredContentFromMoveDestinationSide
+        val succeedingMerge = succeedingAnchoredContentFromOppositeSide
+          .fold(ifEmpty = MergeResult.empty[MultiSided[Section[Element]]])(
+            CachedAnchoredContentMerges
+              .of(
+                anchoredMove.moveDestinationSide,
+                succeedingAnchoredContentFromSource,
+                _,
+                succeedingAnchoredContentFromMoveDestinationSide
+              )
           )
 
         MigrationSplices(
