@@ -2,7 +2,6 @@ package com.sageserpent.kineticmerge.core
 
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
-import com.sageserpent.kineticmerge.core
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
 import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSidedMergeResult
 import com.sageserpent.kineticmerge.core.FirstPassMergeResult.{
@@ -17,6 +16,11 @@ import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{
   OppositeSideAnchor
 }
 import com.sageserpent.kineticmerge.core.merge.of as mergeOf
+import com.sageserpent.kineticmerge.{
+  NoProgressRecording,
+  ProgressRecording,
+  core
+}
 import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
 
@@ -37,7 +41,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
   extension [Path, Element: Eq: Order](
       codeMotionAnalysis: CodeMotionAnalysis[Path, Element]
   )
-    def merge: (
+    def merge(using
+        progressRecording: ProgressRecording
+    ): (
         Map[Path, MergeResult[Element]],
         MoveDestinationsReport[Section[Element]]
     ) =
@@ -650,6 +656,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             ),
             _ =>
               updatedCache = true
+
+              given ProgressRecording = NoProgressRecording
 
               moveDestinationSide match
                 case Side.Left =>

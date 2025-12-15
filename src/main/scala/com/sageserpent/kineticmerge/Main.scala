@@ -1789,7 +1789,10 @@ object Main extends StrictLogging:
           }
           .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
 
-        (mergeResultsByPath, moveDestinationsReport) = codeMotionAnalysis.merge
+        (mergeResultsByPath, moveDestinationsReport) =
+          given ProgressRecording = configuration.progressRecording
+
+          codeMotionAnalysis.merge
 
         _ <- moveDestinationsReport.summarizeInText.foldLeft(right(()))(
           _ logOperation _

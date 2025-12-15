@@ -13,6 +13,7 @@ import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtensionTest.{
 }
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.Token.tokens
+import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording}
 import org.junit.jupiter.api.Assertions.{assertDoesNotThrow, fail}
 import org.junit.jupiter.api.{Test, TestFactory}
 
@@ -24,10 +25,11 @@ object CodeMotionAnalysisExtensionTest:
   def reconstituteTextFrom(tokens: Seq[Token]): String =
     tokens.map(_.text).mkString
 
-  given Eq[Token]     = Token.equality
-  given Order[Token]  = Token.comparison
-  given Funnel[Token] = Token.funnel
-  given HashFunction  = Hashing.murmur3_32_fixed()
+  given Eq[Token]         = Token.equality
+  given Order[Token]      = Token.comparison
+  given Funnel[Token]     = Token.funnel
+  given HashFunction      = Hashing.murmur3_32_fixed()
+  given ProgressRecording = NoProgressRecording
 
 end CodeMotionAnalysisExtensionTest
 
@@ -2336,7 +2338,8 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       // more than one section, namely ("Interloper", "Ancre"). This migrates a
       // preceding splice made from ("Base Input", "Deleted"), ("Opposite side
       // submission", "Deleted") and ("Destination contribution").
-      // This is a smoke test; as long as no exception is thrown, we're satisfied.
+      // This is a smoke test; as long as no exception is thrown, we're
+      // satisfied.
 
       val baseTokens = tokens("""
           |First line

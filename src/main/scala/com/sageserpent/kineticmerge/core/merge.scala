@@ -1,6 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.Eq
+import com.sageserpent.kineticmerge.ProgressRecording
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
   Contribution,
   Sized
@@ -87,7 +88,7 @@ object merge extends StrictLogging:
       base: IndexedSeq[Element],
       left: IndexedSeq[Element],
       right: IndexedSeq[Element]
-  ): Result[Element] =
+  )(using progressRecording: ProgressRecording): Result[Element] =
     def rightEditNotMaroonedByPriorCoincidentInsertion(
         leftTail: Seq[Contribution[Element]]
     ) =
