@@ -327,8 +327,14 @@ object LongestCommonSubsequence:
 
         Using(
           progressRecording.newSession(
-            label = s"Longest common subsequence swathes calculated:",
-            maximumProgress = maximumSwatheIndex
+            label = s"Longest common subsequence swathes completed:",
+            maximumProgress =
+              /* NOTE: although the maximum swathe index is defined in terms of
+               * the input *sizes*, we still need to add one as the LCS
+               * algorithm works in terms of off-by-one indices in the first
+               * place. Put another way, swathe zero exists even if the inputs
+               * are empty; it is included in the count. */
+              1 + maximumSwatheIndex
           )(initialProgress = 0)
         ) { progressRecordingSession =>
           val haveAdvancedToNextLeadingSwathe = IO {
@@ -568,7 +574,9 @@ object LongestCommonSubsequence:
                   )
                 end if
 
-                progressRecordingSession.upTo(swathes.indexOfLeadingSwathe)
+                val numberOfCompletedSwathes = 1 + swathes.indexOfLeadingSwathe
+
+                progressRecordingSession.upTo(numberOfCompletedSwathes)
               }
 
             IO.fromFuture(IO(topLevelSolution))
