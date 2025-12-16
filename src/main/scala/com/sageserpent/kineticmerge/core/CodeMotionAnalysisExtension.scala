@@ -19,6 +19,7 @@ import com.sageserpent.kineticmerge.core.merge.of as mergeOf
 import com.sageserpent.kineticmerge.{
   NoProgressRecording,
   ProgressRecording,
+  ProgressRecordingSession,
   core
 }
 import com.typesafe.scalalogging.StrictLogging
@@ -222,6 +223,16 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       ) =
         paths.foldLeft(AggregatedInitialMergeResult.empty) {
           case (partialMergeResult, path) =>
+            given ProgressRecording with
+              override def newSession(label: String, maximumProgress: Int)(
+                  initialProgress: Int
+              ): ProgressRecordingSession =
+                progressRecording.newSession(
+                  s"(Merging: $path) $label",
+                  maximumProgress
+                )(initialProgress)
+            end given
+
             val base  = codeMotionAnalysis.base.get(path).map(_.sections)
             val left  = codeMotionAnalysis.left.get(path).map(_.sections)
             val right = codeMotionAnalysis.right.get(path).map(_.sections)
