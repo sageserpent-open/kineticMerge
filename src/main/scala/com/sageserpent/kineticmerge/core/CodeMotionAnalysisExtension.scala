@@ -1053,19 +1053,21 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       candidateAnchorDestination -> AnchoringSense.Successor
                     )
 
-                Option.when(precedingSpliceAlternatives.nonEmpty) {
+                if precedingSpliceAlternatives.nonEmpty then
                   val uniqueSplices =
                     uniqueSortedItemsFrom(precedingSpliceAlternatives)
 
+                  assume(uniqueSplices.nonEmpty)
+
                   uniqueSplices match
-                    case head :: Nil =>
+                    case Seq(head) =>
                       logger.debug(
                         s"Encountered succeeding anchor destination: ${pprintCustomised(candidateAnchorDestination)} with associated preceding migration splice: ${pprintCustomised(head)}."
                       )
 
-                      head
+                      Some(head)
                     case _ =>
-                      throw new AdmissibleFailure(
+                      logger.info(
                         s"""
                                |Multiple potential splices before destination: $candidateAnchorDestination,
                                |these are:
@@ -1078,8 +1080,11 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                                |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${candidateAnchorDestination.size}.
                                 """.stripMargin
                       )
+
+                      None
                   end match
-                }
+                else None
+                end if
               end precedingSplice
 
               val anchorIsAmbiguous =
@@ -1094,19 +1099,21 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       candidateAnchorDestination -> AnchoringSense.Predecessor
                     )
 
-                Option.when(succeedingSpliceAlternatives.nonEmpty) {
+                if succeedingSpliceAlternatives.nonEmpty then
                   val uniqueSplices =
                     uniqueSortedItemsFrom(succeedingSpliceAlternatives)
 
+                  assume(uniqueSplices.nonEmpty)
+
                   uniqueSplices match
-                    case head :: Nil =>
+                    case Seq(head) =>
                       logger.debug(
                         s"Encountered preceding anchor destination: ${pprintCustomised(candidateAnchorDestination)} with associated following migration splice: ${pprintCustomised(head)}."
                       )
 
-                      head
+                      Some(head)
                     case _ =>
-                      throw new AdmissibleFailure(
+                      logger.info(
                         s"""
                                |Multiple potential splices after destination: $candidateAnchorDestination,
                                |these are:
@@ -1119,8 +1126,11 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                                |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${candidateAnchorDestination.size}.
                                 """.stripMargin
                       )
+
+                      None
                   end match
-                }
+                else None
+                end if
               end succeedingSplice
 
               precedingSplice match
