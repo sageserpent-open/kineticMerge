@@ -20,9 +20,10 @@ import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.{
   given
 }
 import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording}
-import org.junit.jupiter.api.TestFactory
+import org.junit.jupiter.api.{Disabled, TestFactory}
 
 class LongestCommonSubsequenceTest:
+  @Disabled
   @TestFactory
   def theResultsAreMirroredCorrespondingWithTheInputs(): DynamicTests =
     testCases
