@@ -20,10 +20,9 @@ import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.{
   given
 }
 import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording}
-import org.junit.jupiter.api.{Disabled, TestFactory}
+import org.junit.jupiter.api.TestFactory
 
 class LongestCommonSubsequenceTest:
-  @Disabled
   @TestFactory
   def theResultsAreMirroredCorrespondingWithTheInputs(): DynamicTests =
     testCases
@@ -34,11 +33,11 @@ class LongestCommonSubsequenceTest:
         ) =>
           given Sized[Element] = defaultElementSize
 
-          val LongestCommonSubsequence(base, left, right, _, _, _, _) =
+          val image @ LongestCommonSubsequence(base, left, right, _, _, _, _) =
             LongestCommonSubsequence
               .of(testCase.base, testCase.left, testCase.right)
 
-          val LongestCommonSubsequence(
+          val mirrorImage @ LongestCommonSubsequence(
             mirroredBase,
             mirroredLeft,
             mirroredRight,
@@ -50,19 +49,17 @@ class LongestCommonSubsequenceTest:
             LongestCommonSubsequence
               .of(testCase.base, testCase.right, testCase.left)
 
-          extension (self: IndexedSeq[Contribution[Element]])
-            private def mirror: IndexedSeq[Contribution[Element]] = self.map {
-              case Contribution.CommonToBaseAndLeftOnly(element) =>
-                Contribution.CommonToBaseAndRightOnly(element)
-              case Contribution.CommonToBaseAndRightOnly(element) =>
-                Contribution.CommonToBaseAndLeftOnly(element)
-              case otherwise => otherwise
-            }
-          end extension
-
-          assert(base == mirroredBase.mirror)
-          assert(left == mirroredRight.mirror)
-          assert(right == mirroredLeft.mirror)
+          try
+            assert(mirrorImage == image.mirror)
+          catch
+            case exception: AssertionError =>
+              // TODO: the LCS algorithm can switch between alternative
+              // solutions that are equally optimal when the input are mirrored.
+              // Ideally it impose some canonical choice, but for now this is a
+              // workaround...
+              if mirrorImage.size == image.size then Trials.reject()
+              else throw exception
+          end try
       )
 
   end theResultsAreMirroredCorrespondingWithTheInputs
