@@ -2,7 +2,6 @@ package com.sageserpent.kineticmerge.core
 
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
 import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSidedMergeResult
 import com.sageserpent.kineticmerge.core.FirstPassMergeResult.{
   FileDeletionContext,
@@ -1060,12 +1059,12 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   assume(uniqueSplices.nonEmpty)
 
                   uniqueSplices match
-                    case Seq(head) =>
+                    case Seq(splice) =>
                       logger.debug(
-                        s"Encountered succeeding anchor destination: ${pprintCustomised(candidateAnchorDestination)} with associated preceding migration splice: ${pprintCustomised(head)}."
+                        s"Encountered succeeding anchor destination: ${pprintCustomised(candidateAnchorDestination)} with associated preceding migration splice: ${pprintCustomised(splice)}."
                       )
 
-                      Some(head)
+                      Some(splice)
                     case _ =>
                       logger.info(
                         s"""
@@ -1106,12 +1105,12 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                   assume(uniqueSplices.nonEmpty)
 
                   uniqueSplices match
-                    case Seq(head) =>
+                    case Seq(splice) =>
                       logger.debug(
-                        s"Encountered preceding anchor destination: ${pprintCustomised(candidateAnchorDestination)} with associated following migration splice: ${pprintCustomised(head)}."
+                        s"Encountered preceding anchor destination: ${pprintCustomised(candidateAnchorDestination)} with associated following migration splice: ${pprintCustomised(splice)}."
                       )
 
-                      Some(head)
+                      Some(splice)
                     case _ =>
                       logger.info(
                         s"""
@@ -1357,40 +1356,44 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           if substitutions.nonEmpty then
             val uniqueSubstitutions = uniqueSortedItemsFrom(substitutions)
 
-            val substitution: Seq[MultiSided[Section[Element]]] =
-              uniqueSubstitutions match
-                case head :: Nil => head
-                case _           =>
-                  throw new AdmissibleFailure(
-                    s"""
-                       |Multiple potential changes migrated to destination: $section,
-                       |these are:
-                       |${uniqueSubstitutions
-                        .map(change =>
-                          if change.isEmpty then "DELETION"
-                          else s"EDIT: $change"
-                        )
-                        .zipWithIndex
-                        .map((change, index) => s"${1 + index}. $change")
-                        .mkString("\n")}
-                       |These are from ambiguous matches of text with the destination.
-                       |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${section.size}.
-                            """.stripMargin
+            assume(uniqueSubstitutions.nonEmpty)
+
+            uniqueSubstitutions match
+              case Seq(substitution) =>
+                if substitution.isEmpty then
+                  logger.debug(
+                    s"Applying migrated deletion to move destination: ${pprintCustomised(section)}."
                   )
+                else if !Ordering[Seq[MultiSided[Section[Element]]]]
+                    .equiv(substitution, IndexedSeq(section))
+                then
+                  logger.debug(
+                    s"Applying migrated edit into ${pprintCustomised(substitution)} to move destination: ${pprintCustomised(section)}."
+                  )
+                end if
 
-            if substitution.isEmpty then
-              logger.debug(
-                s"Applying migrated deletion to move destination: ${pprintCustomised(section)}."
-              )
-            else if !Ordering[Seq[MultiSided[Section[Element]]]]
-                .equiv(substitution, IndexedSeq(section))
-            then
-              logger.debug(
-                s"Applying migrated edit into ${pprintCustomised(substitution)} to move destination: ${pprintCustomised(section)}."
-              )
-            end if
+                substitution
 
-            substitution
+              case _ =>
+                logger.info(
+                  s"""
+                     |Multiple potential changes migrated to destination: $section,
+                     |these are:
+                     |${uniqueSubstitutions
+                      .map(change =>
+                        if change.isEmpty then "DELETION"
+                        else s"EDIT: $change"
+                      )
+                      .zipWithIndex
+                      .map((change, index) => s"${1 + index}. $change")
+                      .mkString("\n")}
+                     |These are from ambiguous matches of text with the destination.
+                     |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${section.size}.
+                            """.stripMargin
+                )
+
+                IndexedSeq(section)
+            end match
           else IndexedSeq(section)
           end if
         end substituteFor
