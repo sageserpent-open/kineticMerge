@@ -49,8 +49,7 @@ class LongestCommonSubsequenceTest:
             LongestCommonSubsequence
               .of(testCase.base, testCase.right, testCase.left)
 
-          try
-            assert(mirrorImage == image.mirror)
+          try assert(mirrorImage == image.mirror)
           catch
             case exception: AssertionError =>
               // TODO: the LCS algorithm can switch between alternative
