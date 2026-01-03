@@ -2,7 +2,6 @@ package com.sageserpent.kineticmerge.core
 
 import cats.collections.{Diet, Range as CatsInclusiveRange}
 import cats.implicits.catsKernelOrderingForOrder
-import cats.instances.seq.*
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction}
@@ -169,8 +168,6 @@ object CodeMotionAnalysis extends StrictLogging:
     type MatchedSections = MultiDict[Section[Element], GenericMatch]
 
     type FingerprintedInclusions = Diet[Int]
-
-    val tiebreakContentSamplingLimit = 5
 
     object MatchesAndTheirSections:
       private def fingerprintedInclusionsByPath(
@@ -1371,52 +1368,53 @@ object CodeMotionAnalysis extends StrictLogging:
         )(
             sources: Sources[Path, Element],
             fingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions]
-        ): MultiDict[PotentialMatchKey, Section[Element]] = MultiDict.from(
-          sources.filesByPath
-            .filter { case (path, file) =>
-              pathIsIncluded(path) && {
-                val fileSize          = file.size
-                val minimumWindowSize = thresholdSize(fileSize)
+        ): MultiDict[PotentialMatchKey[Element], Section[Element]] =
+          MultiDict.from(
+            sources.filesByPath
+              .filter { case (path, file) =>
+                pathIsIncluded(path) && {
+                  val fileSize          = file.size
+                  val minimumWindowSize = thresholdSize(fileSize)
 
-                minimumWindowSize to fileSize contains windowSize
+                  minimumWindowSize to fileSize contains windowSize
+                }
               }
-            }
-            // NOTE: the devil is in the details - `PotentialMatchKey`
-            // instances that refer to the same content, but are associated
-            // with different sections will collide if put into a map. We want
-            // to keep such associations distinct so that they can go into the
-            // `MultiDict`, so we change the type ascription to pick up the
-            // overload of `flatMap` that will build a sequence, *not* a map.
-            .toSeq
-            .flatMap { case passThrough @ (path, _) =>
-              val fingerprintedInclusions =
-                fingerprintedInclusionsByPath(path)
+              // NOTE: the devil is in the details - `PotentialMatchKey`
+              // instances that refer to the same content, but are associated
+              // with different sections will collide if put into a map. We want
+              // to keep such associations distinct so that they can go into the
+              // `MultiDict`, so we change the type ascription to pick up the
+              // overload of `flatMap` that will build a sequence, *not* a map.
+              .toSeq
+              .flatMap { case passThrough @ (path, _) =>
+                val fingerprintedInclusions =
+                  fingerprintedInclusionsByPath(path)
 
-              fingerprintedInclusions.toIterator
-                .filter(inclusion =>
-                  // The inclusion has to large enough to accommodate the
-                  // window size.
-                  windowSize + inclusion.start <= 1 + inclusion.end
-                )
-                .map(passThrough -> _)
-            }
-            .par
-            .flatMap { case ((path, file), CatsInclusiveRange(start, end)) =>
-              fingerprintStartIndices(
-                file.content.slice(start, 1 + end)
-              ).map((fingerprint, fingerprintStartIndex) =>
-                val section = sources
-                  .section(path)(
-                    start + fingerprintStartIndex,
-                    windowSize
+                fingerprintedInclusions.toIterator
+                  .filter(inclusion =>
+                    // The inclusion has to large enough to accommodate the
+                    // window size.
+                    windowSize + inclusion.start <= 1 + inclusion.end
                   )
-                PotentialMatchKey(
-                  fingerprint,
-                  impliedContent = section
-                ) -> section
-              )
-            }
-        )
+                  .map(passThrough -> _)
+              }
+              .par
+              .flatMap { case ((path, file), CatsInclusiveRange(start, end)) =>
+                fingerprintStartIndices(
+                  file.content.slice(start, 1 + end)
+                ).map((fingerprint, fingerprintStartIndex) =>
+                  val section = sources
+                    .section(path)(
+                      start + fingerprintStartIndex,
+                      windowSize
+                    )
+                  PotentialMatchKey(
+                    fingerprint,
+                    impliedContent = section
+                  ) -> section
+                )
+              }
+          )
         end sectionsByPotentialMatchKey
 
         val baseSectionsByPotentialMatchKey =
@@ -1436,9 +1434,9 @@ object CodeMotionAnalysis extends StrictLogging:
           )
 
         def matchKeysAcrossSides(
-            basePotentialMatchKeys: collection.Set[PotentialMatchKey],
-            leftPotentialMatchKeys: collection.Set[PotentialMatchKey],
-            rightPotentialMatchKeys: collection.Set[PotentialMatchKey],
+            basePotentialMatchKeys: collection.Set[PotentialMatchKey[Element]],
+            leftPotentialMatchKeys: collection.Set[PotentialMatchKey[Element]],
+            rightPotentialMatchKeys: collection.Set[PotentialMatchKey[Element]],
             haveTrimmedMatches: Boolean
         ): MatchingResult =
           val acrossBaseAndLeft =
@@ -1482,7 +1480,7 @@ object CodeMotionAnalysis extends StrictLogging:
 
           def allSidesMatchesFrom(
               fold: MatchesFold,
-              matchKeyAcrossAllSides: PotentialMatchKey
+              matchKeyAcrossAllSides: PotentialMatchKey[Element]
           ): MatchesFold =
             val potentialMatchesForSynchronisedFingerprint =
               val baseSectionsThatDoNotOverlap = LazyList
@@ -1571,7 +1569,7 @@ object CodeMotionAnalysis extends StrictLogging:
 
           def baseAndLeftMatchesFrom(
               fold: MatchesFold,
-              matchKeyAcrossAllSides: PotentialMatchKey
+              matchKeyAcrossAllSides: PotentialMatchKey[Element]
           ): MatchesFold =
             val potentialMatchesForSynchronisedFingerprint =
               val baseSectionsThatDoNotOverlap = LazyList
@@ -1635,7 +1633,7 @@ object CodeMotionAnalysis extends StrictLogging:
 
           def baseAndRightMatchesFrom(
               fold: MatchesFold,
-              matchKeyAcrossAllSides: PotentialMatchKey
+              matchKeyAcrossAllSides: PotentialMatchKey[Element]
           ): MatchesFold =
             val potentialMatchesForSynchronisedFingerprint =
               val baseSectionsThatDoNotOverlap = LazyList
@@ -1699,7 +1697,7 @@ object CodeMotionAnalysis extends StrictLogging:
 
           def leftAndRightMatchesFrom(
               fold: MatchesFold,
-              matchKeyAcrossAllSides: PotentialMatchKey
+              matchKeyAcrossAllSides: PotentialMatchKey[Element]
           ): MatchesFold =
             val potentialMatchesForSynchronisedFingerprint =
               val leftSectionsThatDoNotOverlap = LazyList
@@ -2368,59 +2366,6 @@ object CodeMotionAnalysis extends StrictLogging:
         }
       end withoutTheseMatches
     end MatchesAndTheirSections
-
-    object PotentialMatchKey:
-      val impliedContentEquality: Eq[Section[Element]] =
-        Eq.by[Section[Element], Seq[Element]](
-          _.content.take(tiebreakContentSamplingLimit)
-        )
-    end PotentialMatchKey
-
-    // NOTE: this is subtle - this type is used as an ordered key to find
-    // matches across sides; fingerprints can and do collide, so we need the
-    // content as a tiebreaker. However, we don't want to have to freight the
-    // content around for keys that will never match across sides - there are a
-    // lot of keys involved in finding matches at low window sizes, and large
-    // window sizes imply large content sizes.
-    //
-    // The solution is to rely on lazy evaluation semantics for ordering of
-    // pairs, and to evaluate the content of the section when it's really needed
-    // to break a tie on fingerprints. However, this means that when there are
-    // multiple matches whose keys collide, then only one key can represent the
-    // matches in a `SortedMultiDict` - so we expect to see keys whose section
-    // is unrelated to some of the matches it is associated with, but is a
-    // legitimate key for them nonetheless.
-    case class PotentialMatchKey(
-        fingerprint: BigInt,
-        impliedContent: Section[Element]
-    ):
-      // NOTE: instances of `PotentialMatchKey` are intended to be put into sets
-      // using hashing, so we may as well get on with it and compute the
-      // inevitable hash code.
-      private val cachedHashCode: Int =
-        val hasher = hashFunction.newHasher()
-
-        hasher.putBytes(fingerprint.toByteArray)
-
-        impliedContent.content
-          .take(tiebreakContentSamplingLimit)
-          .foreach(hasher.putObject(_, summon[Funnel[Element]]))
-
-        hasher.hash().asInt()
-      end cachedHashCode
-
-      override def equals(another: Any): Boolean =
-        another.asInstanceOf[Matchable] match
-          case PotentialMatchKey(anotherFingerprint, anotherImpliedContent) =>
-            fingerprint == anotherFingerprint && PotentialMatchKey.impliedContentEquality
-              .eqv(
-                impliedContent,
-                anotherImpliedContent
-              )
-          case _ => false
-
-      override def hashCode(): Int = cachedHashCode
-    end PotentialMatchKey
 
     try
       val (matchesAndTheirSections, tinyMatchesAndTheirSectionsOnly) =
