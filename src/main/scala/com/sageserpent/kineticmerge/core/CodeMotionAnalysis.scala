@@ -1,9 +1,9 @@
 package com.sageserpent.kineticmerge.core
 
+import cats.Eq
 import cats.collections.{Diet, Range as CatsInclusiveRange}
 import cats.implicits.catsKernelOrderingForOrder
 import cats.instances.seq.*
-import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction}
 import com.sageserpent.kineticmerge
@@ -66,7 +66,7 @@ object CodeMotionAnalysis extends StrictLogging:
     *   instances and thence into [[Section]] instances for each of the three
     *   sources.
     */
-  def of[Path, Element: Eq: Order: Funnel](
+  def of[Path, Element: Eq: Funnel](
       baseSources: Sources[Path, Element],
       leftSources: Sources[Path, Element],
       rightSources: Sources[Path, Element]
