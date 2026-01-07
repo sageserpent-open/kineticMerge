@@ -108,14 +108,14 @@ object CodeMotionAnalysis extends StrictLogging:
       s"Analysis considering right paths:\n\n${rightSizesByPath.mkString(newline)}\n"
     )
 
-    // TODO: suppose all the sources are empty? Could this happen?
     val fileSizes = SortedMultiSet.from(
       baseSizesByPath.values ++ leftSizesByPath.values ++ rightSizesByPath.values
     )
 
     val totalContentSize = fileSizes.sum
 
-    val minimumFileSizeAcrossAllFilesOverAllSides = fileSizes.head
+    val minimumFileSizeAcrossAllFilesOverAllSides =
+      fileSizes.headOption.getOrElse(0)
 
     def thresholdSizeForMatching(fileSize: Int) =
       (thresholdSizeFractionForMatching * fileSize).floor.toInt
@@ -134,9 +134,10 @@ object CodeMotionAnalysis extends StrictLogging:
         baseSizesByPath.values.maxOption,
         leftSizesByPath.values.maxOption,
         rightSizesByPath.values.maxOption
-      ).flatten.sorted(Ordering[Int].reverse).take(2).last
+      ).flatten.sorted(Ordering[Int].reverse).take(2).lastOption.getOrElse(0)
 
-    val maximumFileSizeAcrossAllFilesOverAllSides = fileSizes.last
+    val maximumFileSizeAcrossAllFilesOverAllSides =
+      fileSizes.lastOption.getOrElse(0)
 
     // This is the minimum window size that would be allowed in *all* files
     // across the sources.
