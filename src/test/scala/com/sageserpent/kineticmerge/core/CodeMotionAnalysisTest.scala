@@ -1719,6 +1719,72 @@ class CodeMotionAnalysisTest:
     )
   end complexFragmentationOfASinglePairwiseMatch
 
+  @TestFactory
+  def sourcesWithoutPaths(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = Int.MaxValue
+    )
+
+    val pathsAndTheirContent = Map(1 -> (1 to 10), 2 -> (11 to 20))
+
+    val numbersOfSourcesWithoutPaths = trialsApi.integers(0, 2)
+
+    val testCases = for
+      numberOfSourcesWithoutPaths <- numbersOfSourcesWithoutPaths
+      contents = Vector.fill(numberOfSourcesWithoutPaths)(
+        pathsAndTheirContent
+      ) ++ Vector.fill(3 - numberOfSourcesWithoutPaths)(
+        Map.empty[Int, IndexedSeq[Int]]
+      )
+      permutation <- trialsApi.indexPermutations(3)
+    yield numberOfSourcesWithoutPaths -> permutation.map(contents.apply)
+
+    testCases.withLimit(10).dynamicTests {
+      case (
+            numberOfSourcesWithoutPaths,
+            Vector(baseContent, leftContent, rightContent)
+          ) =>
+        val baseSources = new FakeSources(baseContent, "base")
+          with SourcesContracts[Path, Element]
+
+        val leftSources = new FakeSources(leftContent, "left")
+          with SourcesContracts[Path, Element]
+
+        val rightSources = new FakeSources(rightContent, "right")
+          with SourcesContracts[Path, Element]
+
+        val Right(
+          analysis: CodeMotionAnalysis[Path, Element]
+        ) =
+          CodeMotionAnalysis.of(
+            baseSources,
+            leftSources,
+            rightSources
+          )(configuration): @unchecked
+        end val
+
+        val matches =
+          (analysis.base.values.flatMap(_.sections) ++ analysis.left.values
+            .flatMap(
+              _.sections
+            ) ++ analysis.right.values.flatMap(_.sections))
+            .map(analysis.matchesFor)
+            .reduceOption(_ union _)
+            .getOrElse(Set.empty)
+
+        if 2 == numberOfSourcesWithoutPaths then
+          assert(
+            2 == matches.size && matches
+              .forall(!_.isInstanceOf[Match.AllSides[Int]])
+          )
+        else assert(matches.isEmpty)
+        end if
+    }
+  end sourcesWithoutPaths
+
 end CodeMotionAnalysisTest
 
 object CodeMotionAnalysisTest:
