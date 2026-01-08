@@ -2373,6 +2373,130 @@ object CodeMotionAnalysis extends StrictLogging:
               )
         }
       end withoutTheseMatches
+
+      def dryRunMetaMatching(): Unit =
+        // PLAN:
+
+        // 1. Build up sources composed of matched sections concatenated
+        // together by path preserving their original order.
+
+        val baseMatchedSections =
+          sectionsAndTheirMatches.sets
+            .map((key, values) => key -> values.head)
+            .collect {
+              case (section, Match.AllSides(baseSection, _, _))
+                  if section == baseSection =>
+                section
+              case (section, Match.BaseAndLeft(baseSection, _))
+                  if section == baseSection =>
+                section
+              case (section, Match.BaseAndRight(baseSection, _))
+                  if section == baseSection =>
+                section
+            }
+
+        val leftMatchedSections =
+          sectionsAndTheirMatches.sets
+            .map((key, values) => key -> values.head)
+            .collect {
+              case (section, Match.AllSides(_, leftSection, _))
+                  if section == leftSection =>
+                section
+              case (section, Match.BaseAndLeft(_, leftSection))
+                  if section == leftSection =>
+                section
+              case (section, Match.LeftAndRight(leftSection, _))
+                  if section == leftSection =>
+                section
+            }
+
+        val rightMatchedSections =
+          sectionsAndTheirMatches.sets
+            .map((key, values) => key -> values.head)
+            .collect {
+              case (section, Match.AllSides(_, _, rightSection))
+                  if section == rightSection =>
+                section
+              case (section, Match.BaseAndRight(_, rightSection))
+                  if section == rightSection =>
+                section
+              case (section, Match.LeftAndRight(_, rightSection))
+                  if section == rightSection =>
+                section
+            }
+
+        case class MetaMatchContentSources(
+            override val contentsByPath: Map[Path, IndexedSeq[
+              Section[Element]
+            ]],
+            override val label: String
+        ) extends MappedContentSources[Path, Section[Element]]
+
+        def sourcesForMetaMatching(label: String)(
+            sources: Sources[Path, Element],
+            matchedSections: Iterable[Section[Element]]
+        ) = MetaMatchContentSources(
+          contentsByPath = matchedSections
+            .groupBy(sources.pathFor)
+            .map((path, sections) =>
+              path -> sections.toIndexedSeq.sortBy(_.startOffset)
+            ),
+          label = label
+        )
+
+        val baseSourcesForMetaMatching =
+          sourcesForMetaMatching("meta-base")(
+            baseSources,
+            baseMatchedSections
+          )
+        val leftSourcesForMetaMatching =
+          sourcesForMetaMatching("meta-left")(
+            leftSources,
+            leftMatchedSections
+          )
+        val rightSourcesForMetaMatching =
+          sourcesForMetaMatching("meta-right")(
+            rightSources,
+            rightMatchedSections
+          )
+
+        // 2. Apply `CodeMotionAnalysis.of` to these sections, using the
+        // potential match key of the section to underpin equality and
+        // hashing.
+
+        object metaMatchConfiguration extends AbstractConfiguration:
+          override val minimumMatchSize: Int                    = 1
+          override val thresholdSizeFractionForMatching: Double = 0
+          override val minimumAmbiguousMatchSize: Int           = 1
+          override val ambiguousMatchesThreshold: Int           = Int.MaxValue
+          override val progressRecording: ProgressRecording     =
+            configuration.progressRecording
+          override val metaMatching: Boolean = true
+        end metaMatchConfiguration
+
+        given Eq[Section[Element]] = Eq.by(_.content: Seq[Element])
+
+        given Funnel[Section[Element]] with
+          override def funnel(
+              from: Section[Element],
+              into: PrimitiveSink
+          ): Unit =
+            from.content.foreach(summon[Funnel[Element]].funnel(_, into))
+
+        end given
+
+        val Right(metaMatchAnalysis) = of(
+          baseSourcesForMetaMatching,
+          leftSourcesForMetaMatching,
+          rightSourcesForMetaMatching
+        )(metaMatchConfiguration): @unchecked
+
+        // 3. The resulting meta-matches provide parallel sequences of sections
+        // that are unzipped to yield corresponding all-sides and pairwise
+        // matches.
+
+        val metaMatches = metaMatchAnalysis.matches
+      end dryRunMetaMatching
     end MatchesAndTheirSections
 
     object PotentialMatchKey:
@@ -2441,126 +2565,7 @@ object CodeMotionAnalysis extends StrictLogging:
           else withAllMatchesOfAtLeastTheSureFireWindowSize
 
         if !metaMatching
-        then
-          // PLAN:
-
-          // 1. Build up sources composed of matched sections concatenated
-          // together by path preserving their original order.
-
-          val baseMatchedSections =
-            withAllMatchesOfAtLeastTheMinimumWindowSize.sectionsAndTheirMatches.sets
-              .map((key, values) => key -> values.head)
-              .collect {
-                case (section, Match.AllSides(baseSection, _, _))
-                    if section == baseSection =>
-                  section
-                case (section, Match.BaseAndLeft(baseSection, _))
-                    if section == baseSection =>
-                  section
-                case (section, Match.BaseAndRight(baseSection, _))
-                    if section == baseSection =>
-                  section
-              }
-
-          val leftMatchedSections =
-            withAllMatchesOfAtLeastTheMinimumWindowSize.sectionsAndTheirMatches.sets
-              .map((key, values) => key -> values.head)
-              .collect {
-                case (section, Match.AllSides(_, leftSection, _))
-                    if section == leftSection =>
-                  section
-                case (section, Match.BaseAndLeft(_, leftSection))
-                    if section == leftSection =>
-                  section
-                case (section, Match.LeftAndRight(leftSection, _))
-                    if section == leftSection =>
-                  section
-              }
-
-          val rightMatchedSections =
-            withAllMatchesOfAtLeastTheMinimumWindowSize.sectionsAndTheirMatches.sets
-              .map((key, values) => key -> values.head)
-              .collect {
-                case (section, Match.AllSides(_, _, rightSection))
-                    if section == rightSection =>
-                  section
-                case (section, Match.BaseAndRight(_, rightSection))
-                    if section == rightSection =>
-                  section
-                case (section, Match.LeftAndRight(_, rightSection))
-                    if section == rightSection =>
-                  section
-              }
-
-          case class MetaMatchContentSources(
-              override val contentsByPath: Map[Path, IndexedSeq[
-                Section[Element]
-              ]],
-              override val label: String
-          ) extends MappedContentSources[Path, Section[Element]]
-
-          def sourcesForMetaMatching(label: String)(
-              sources: Sources[Path, Element],
-              matchedSections: Iterable[Section[Element]]
-          ) = MetaMatchContentSources(
-            contentsByPath = matchedSections
-              .groupBy(sources.pathFor)
-              .map((path, sections) =>
-                path -> sections.toIndexedSeq.sortBy(_.startOffset)
-              ),
-            label = label
-          )
-
-          val baseSourcesForMetaMatching =
-            sourcesForMetaMatching("meta-base")(
-              baseSources,
-              baseMatchedSections
-            )
-          val leftSourcesForMetaMatching =
-            sourcesForMetaMatching("meta-left")(
-              leftSources,
-              leftMatchedSections
-            )
-          val rightSourcesForMetaMatching =
-            sourcesForMetaMatching("meta-right")(
-              rightSources,
-              rightMatchedSections
-            )
-
-          // 2. Apply `CodeMotionAnalysis.of` to these sections, using the
-          // potential match key of the section to underpin equality and
-          // hashing.
-
-          object metaMatchConfiguration extends AbstractConfiguration:
-            override val minimumMatchSize: Int                    = 1
-            override val thresholdSizeFractionForMatching: Double = 0
-            override val minimumAmbiguousMatchSize: Int           = 1
-            override val ambiguousMatchesThreshold: Int           = Int.MaxValue
-            override val progressRecording: ProgressRecording     =
-              configuration.progressRecording
-            override val metaMatching: Boolean = true
-          end metaMatchConfiguration
-
-          given Eq[Section[Element]] = Eq.by(_.content: Seq[Element])
-          given Funnel[Section[Element]] with
-            override def funnel(
-                from: Section[Element],
-                into: PrimitiveSink
-            ): Unit =
-              from.content.foreach(summon[Funnel[Element]].funnel(_, into))
-
-          end given
-
-          val Right(metaMatchAnalysis) = of(
-            baseSourcesForMetaMatching,
-            leftSourcesForMetaMatching,
-            rightSourcesForMetaMatching
-          )(metaMatchConfiguration): @unchecked
-
-          // 3. The resulting meta-matches provide parallel sequences of
-          // sections
-          // that are unzipped to yield corresponding all-sides and pairwise
-          // matches.
+        then withAllMatchesOfAtLeastTheMinimumWindowSize.dryRunMetaMatching()
         end if
 
         withAllMatchesOfAtLeastTheMinimumWindowSize.reconcileMatches
