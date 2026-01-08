@@ -5,7 +5,7 @@ import cats.collections.{Diet, Range as CatsInclusiveRange}
 import cats.implicits.catsKernelOrderingForOrder
 import cats.instances.seq.*
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
-import com.google.common.hash.{Funnel, HashFunction}
+import com.google.common.hash.{Funnel, HashFunction, PrimitiveSink}
 import com.sageserpent.kineticmerge
 import com.sageserpent.kineticmerge.{
   NoProgressRecording,
@@ -33,12 +33,17 @@ trait CodeMotionAnalysis[Path, Element]:
       section: Section[Element]
   ): collection.Set[Match[Section[Element]]]
 
+  // TODO: this is only required by the meta-matching, and should find its own
+  // home...
+  def matches: Set[Match[Section[Element]]]
+
   def basePathFor(baseSection: Section[Element]): Path
   def leftPathFor(leftSection: Section[Element]): Path
   def rightPathFor(rightSection: Section[Element]): Path
 end CodeMotionAnalysis
 
 object CodeMotionAnalysis extends StrictLogging:
+  // TODO: fix this Scaladoc - some of it is nonsense...
   /** Analyse code motion from the sources of {@code base} to both {@code left}
     * and {@code right}, breaking them into [[File]] and thence [[Section]]
     * instances.
@@ -71,15 +76,15 @@ object CodeMotionAnalysis extends StrictLogging:
       leftSources: Sources[Path, Element],
       rightSources: Sources[Path, Element]
   )(
-      configuration: Configuration,
+      configuration: AbstractConfiguration,
       suppressMatchesInvolvingOverlappingSections: Boolean = true
   )(using
       hashFunction: HashFunction
   ): Either[Throwable, CodeMotionAnalysis[Path, Element]] =
-    // Yes, this entire method could be moved into `Configuration`, but the
-    // level of indentation of quite a lot of code would be increased. Anyway,
-    // it's only configuration, after all - performing the analysis belongs to
-    // the companion object for `CodeMotionAnalysis`.
+    // Yes, this entire method could be moved into `AbstractConfiguration`, but
+    // the level of indentation of quite a lot of code would be increased.
+    // Anyway, it's only configuration, after all - performing the analysis
+    // belongs to the companion object for `CodeMotionAnalysis`.
     import configuration.*
 
     val newline = "\n"
@@ -2435,6 +2440,129 @@ object CodeMotionAnalysis extends StrictLogging:
               .withAllSmallFryMatches()
           else withAllMatchesOfAtLeastTheSureFireWindowSize
 
+        if !metaMatching
+        then
+          // PLAN:
+
+          // 1. Build up sources composed of matched sections concatenated
+          // together by path preserving their original order.
+
+          val baseMatchedSections =
+            withAllMatchesOfAtLeastTheMinimumWindowSize.sectionsAndTheirMatches.sets
+              .map((key, values) => key -> values.head)
+              .collect {
+                case (section, Match.AllSides(baseSection, _, _))
+                    if section == baseSection =>
+                  section
+                case (section, Match.BaseAndLeft(baseSection, _))
+                    if section == baseSection =>
+                  section
+                case (section, Match.BaseAndRight(baseSection, _))
+                    if section == baseSection =>
+                  section
+              }
+
+          val leftMatchedSections =
+            withAllMatchesOfAtLeastTheMinimumWindowSize.sectionsAndTheirMatches.sets
+              .map((key, values) => key -> values.head)
+              .collect {
+                case (section, Match.AllSides(_, leftSection, _))
+                    if section == leftSection =>
+                  section
+                case (section, Match.BaseAndLeft(_, leftSection))
+                    if section == leftSection =>
+                  section
+                case (section, Match.LeftAndRight(leftSection, _))
+                    if section == leftSection =>
+                  section
+              }
+
+          val rightMatchedSections =
+            withAllMatchesOfAtLeastTheMinimumWindowSize.sectionsAndTheirMatches.sets
+              .map((key, values) => key -> values.head)
+              .collect {
+                case (section, Match.AllSides(_, _, rightSection))
+                    if section == rightSection =>
+                  section
+                case (section, Match.BaseAndRight(_, rightSection))
+                    if section == rightSection =>
+                  section
+                case (section, Match.LeftAndRight(_, rightSection))
+                    if section == rightSection =>
+                  section
+              }
+
+          case class MetaMatchContentSources(
+              override val contentsByPath: Map[Path, IndexedSeq[
+                Section[Element]
+              ]],
+              override val label: String
+          ) extends MappedContentSources[Path, Section[Element]]
+
+          def sourcesForMetaMatching(label: String)(
+              sources: Sources[Path, Element],
+              matchedSections: Iterable[Section[Element]]
+          ) = MetaMatchContentSources(
+            contentsByPath = matchedSections
+              .groupBy(sources.pathFor)
+              .map((path, sections) =>
+                path -> sections.toIndexedSeq.sortBy(_.startOffset)
+              ),
+            label = label
+          )
+
+          val baseSourcesForMetaMatching =
+            sourcesForMetaMatching("meta-base")(
+              baseSources,
+              baseMatchedSections
+            )
+          val leftSourcesForMetaMatching =
+            sourcesForMetaMatching("meta-left")(
+              leftSources,
+              leftMatchedSections
+            )
+          val rightSourcesForMetaMatching =
+            sourcesForMetaMatching("meta-right")(
+              rightSources,
+              rightMatchedSections
+            )
+
+          // 2. Apply `CodeMotionAnalysis.of` to these sections, using the
+          // potential match key of the section to underpin equality and
+          // hashing.
+
+          object metaMatchConfiguration extends AbstractConfiguration:
+            override val minimumMatchSize: Int                    = 1
+            override val thresholdSizeFractionForMatching: Double = 0
+            override val minimumAmbiguousMatchSize: Int           = 1
+            override val ambiguousMatchesThreshold: Int           = Int.MaxValue
+            override val progressRecording: ProgressRecording     =
+              configuration.progressRecording
+            override val metaMatching: Boolean = true
+          end metaMatchConfiguration
+
+          given Eq[Section[Element]] = Eq.by(_.content: Seq[Element])
+          given Funnel[Section[Element]] with
+            override def funnel(
+                from: Section[Element],
+                into: PrimitiveSink
+            ): Unit =
+              from.content.foreach(summon[Funnel[Element]].funnel(_, into))
+
+          end given
+
+          val Right(metaMatchAnalysis) = of(
+            baseSourcesForMetaMatching,
+            leftSourcesForMetaMatching,
+            rightSourcesForMetaMatching
+          )(metaMatchConfiguration): @unchecked
+
+          // 3. The resulting meta-matches provide parallel sequences of
+          // sections
+          // that are unzipped to yield corresponding all-sides and pairwise
+          // matches.
+        end if
+
         withAllMatchesOfAtLeastTheMinimumWindowSize.reconcileMatches
           .purgedOfMatchesWithOverlappingSections(
             suppressMatchesInvolvingOverlappingSections
@@ -2524,6 +2652,9 @@ object CodeMotionAnalysis extends StrictLogging:
 
         override def right: Map[Path, File[Element]] = rightFilesByPath
 
+        override def matches: Set[Match[Section[Element]]] =
+          sectionsAndTheirMatches.values.toSet
+
         override def matchesFor(
             section: Section[Element]
         ): collection.Set[Match[Section[Element]]] =
@@ -2541,6 +2672,15 @@ object CodeMotionAnalysis extends StrictLogging:
   end of
 
   class AdmissibleFailure(message: String) extends RuntimeException(message)
+
+  sealed trait AbstractConfiguration:
+    val minimumMatchSize: Int
+    val thresholdSizeFractionForMatching: Double
+    val minimumAmbiguousMatchSize: Int
+    val ambiguousMatchesThreshold: Int
+    val progressRecording: ProgressRecording
+    val metaMatching: Boolean
+  end AbstractConfiguration
 
   /** @param minimumMatchSize
     * @param thresholdSizeFractionForMatching
@@ -2560,12 +2700,14 @@ object CodeMotionAnalysis extends StrictLogging:
       minimumAmbiguousMatchSize: Int,
       ambiguousMatchesThreshold: Int,
       progressRecording: ProgressRecording = NoProgressRecording
-  ):
+  ) extends AbstractConfiguration:
     // TODO: why would `minimumMatchSize` be zero?
     require(0 <= minimumMatchSize)
     require(0 <= thresholdSizeFractionForMatching)
     require(1 >= thresholdSizeFractionForMatching)
     require(0 <= minimumAmbiguousMatchSize)
     require(1 <= ambiguousMatchesThreshold)
+
+    override val metaMatching: Boolean = false
   end Configuration
 end CodeMotionAnalysis
