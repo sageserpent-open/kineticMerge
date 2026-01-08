@@ -1730,32 +1730,42 @@ class CodeMotionAnalysisTest:
 
     val pathsAndTheirContent = Map(1 -> (1 to 10), 2 -> (11 to 20))
 
-    val numbersOfSourcesWithoutPaths = trialsApi.integers(0, 2)
+    val numbersOfSourcesWithPaths = trialsApi.integers(0, 2)
+
+    case class TestCase(
+        numberOfSourcesWithPaths: Int,
+        baseSources: Sources[Path, Element],
+        leftSources: Sources[Path, Element],
+        rightSources: Sources[Path, Element]
+    )
 
     val testCases = for
-      numberOfSourcesWithoutPaths <- numbersOfSourcesWithoutPaths
-      contents = Vector.fill(numberOfSourcesWithoutPaths)(
+      numberOfSourcesWithPaths <- numbersOfSourcesWithPaths
+      numberOfSourcesWithoutPaths = 3 - numberOfSourcesWithPaths
+      _                           = assume(0 < numberOfSourcesWithoutPaths)
+      contents                    = Vector.fill(numberOfSourcesWithPaths)(
         pathsAndTheirContent
-      ) ++ Vector.fill(3 - numberOfSourcesWithoutPaths)(
+      ) ++ Vector.fill(numberOfSourcesWithoutPaths)(
         Map.empty[Int, IndexedSeq[Int]]
       )
       permutation <- trialsApi.indexPermutations(3)
-    yield numberOfSourcesWithoutPaths -> permutation.map(contents.apply)
+    yield TestCase(
+      numberOfSourcesWithPaths,
+      baseSources = new FakeSources(contents(permutation(0)), "base")
+        with SourcesContracts[Path, Element],
+      leftSources = new FakeSources(contents(permutation(1)), "left")
+        with SourcesContracts[Path, Element],
+      rightSources = new FakeSources(contents(permutation(2)), "right")
+        with SourcesContracts[Path, Element]
+    )
 
     testCases.withLimit(10).dynamicTests {
-      case (
-            numberOfSourcesWithoutPaths,
-            Vector(baseContent, leftContent, rightContent)
+      case TestCase(
+            numberOfSourcesWithPaths,
+            baseSources,
+            leftSources,
+            rightSources
           ) =>
-        val baseSources = new FakeSources(baseContent, "base")
-          with SourcesContracts[Path, Element]
-
-        val leftSources = new FakeSources(leftContent, "left")
-          with SourcesContracts[Path, Element]
-
-        val rightSources = new FakeSources(rightContent, "right")
-          with SourcesContracts[Path, Element]
-
         val Right(
           analysis: CodeMotionAnalysis[Path, Element]
         ) =
@@ -1775,7 +1785,7 @@ class CodeMotionAnalysisTest:
             .reduceOption(_ union _)
             .getOrElse(Set.empty)
 
-        if 2 == numberOfSourcesWithoutPaths then
+        if 2 == numberOfSourcesWithPaths then
           assert(
             2 == matches.size && matches
               .forall(!_.isInstanceOf[Match.AllSides[Int]])
