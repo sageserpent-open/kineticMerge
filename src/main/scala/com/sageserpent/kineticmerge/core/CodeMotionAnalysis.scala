@@ -2374,7 +2374,7 @@ object CodeMotionAnalysis extends StrictLogging:
         }
       end withoutTheseMatches
 
-      def dryRunMetaMatching(): Unit =
+      def parallelMatchesOnly: MatchesAndTheirSections =
         // PLAN:
 
         // 1. Build up sources composed of matched sections concatenated
@@ -2496,7 +2496,33 @@ object CodeMotionAnalysis extends StrictLogging:
         // matches.
 
         val metaMatches = metaMatchAnalysis.matches
-      end dryRunMetaMatching
+
+        val parallelMatchGroups = metaMatches.map {
+          case Match.AllSides(
+                baseMetaSection,
+                leftMetaSection,
+                rightMetaSection
+              ) =>
+            (baseMetaSection.content lazyZip leftMetaSection.content lazyZip rightMetaSection.content)
+              .map(Match.AllSides.apply)
+          case Match.BaseAndLeft(baseMetaSection, leftMetaSection) =>
+            (baseMetaSection.content lazyZip leftMetaSection.content).map(
+              Match.BaseAndLeft.apply
+            )
+          case Match.BaseAndRight(baseMetaSection, rightMetaSection) =>
+            (baseMetaSection.content lazyZip rightMetaSection.content).map(
+              Match.BaseAndRight.apply
+            )
+          case Match.LeftAndRight(leftMetaSection, rightMetaSection) =>
+            (leftMetaSection.content lazyZip rightMetaSection.content).map(
+              Match.LeftAndRight.apply
+            )
+        }
+
+        MatchesAndTheirSections.empty
+          .withMatches(parallelMatchGroups.flatten, haveTrimmedMatches = false)
+          .matchesAndTheirSections
+      end parallelMatchesOnly
     end MatchesAndTheirSections
 
     object PotentialMatchKey:
@@ -2564,14 +2590,15 @@ object CodeMotionAnalysis extends StrictLogging:
               .withAllSmallFryMatches()
           else withAllMatchesOfAtLeastTheSureFireWindowSize
 
-        if !metaMatching
-        then withAllMatchesOfAtLeastTheMinimumWindowSize.dryRunMetaMatching()
-        end if
+        val parallelMatchesOnly =
+          if !metaMatching
+          then withAllMatchesOfAtLeastTheMinimumWindowSize.parallelMatchesOnly
+          else withAllMatchesOfAtLeastTheMinimumWindowSize
 
-        withAllMatchesOfAtLeastTheMinimumWindowSize.reconcileMatches
+        parallelMatchesOnly.reconcileMatches
           .purgedOfMatchesWithOverlappingSections(
             suppressMatchesInvolvingOverlappingSections
-          ) -> withAllMatchesOfAtLeastTheMinimumWindowSize
+          ) -> parallelMatchesOnly
           .tinyMatchesOnly()
           .reconcileMatches
           .purgedOfMatchesWithOverlappingSections(enabled = true)
