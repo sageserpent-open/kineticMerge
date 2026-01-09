@@ -1795,6 +1795,129 @@ class CodeMotionAnalysisTest:
     }
   end sourcesWithoutPaths
 
+  @Test
+  def parallelMatches(): Unit =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = Int.MaxValue
+    )
+
+    // These match in one parallel group, Greek symbols should comprise
+    // all-sides matches and Roman symbols pairwise matches...
+    val alpha = 1
+    val a     = -1
+    val beta  = 2
+    val b     = -2
+    val c     = -3
+    val gamma = 3
+    val d     = -4
+
+    // These match in another parallel group, Greek symbols should comprise
+    // all-sides matches and Roman symbols pairwise matches...
+    val delta   = 4
+    val e       = -5
+    val epsilon = 5
+    val f       = -6
+
+    // These Sanskrit oddballs aren't matched at all.
+    val ritu = Int.MinValue
+    val li   = Int.MaxValue
+
+    val baseSources = new FakeSources(
+      Map(
+        1 -> Vector(
+          alpha,
+          a,
+          beta,
+          b,
+          beta,
+          beta,
+          c,
+          gamma,
+          d,
+          delta,
+          e,
+          delta,
+          f,
+          epsilon,
+          epsilon
+        )
+      ),
+      "base"
+    ) with SourcesContracts[Path, Element]
+
+    val leftSources = new FakeSources(
+      Map(
+        1 -> Vector(
+          alpha,
+          beta,
+          beta,
+          beta,
+          gamma,
+          delta,
+          delta,
+          epsilon,
+          epsilon
+        )
+      ),
+      "left"
+    ) with SourcesContracts[Path, Element]
+
+    val rightSources = new FakeSources(
+      Map(
+        1 -> Vector(
+          delta,
+          e,
+          delta,
+          f,
+          epsilon,
+          ritu,
+          epsilon,
+          alpha,
+          a,
+          beta,
+          b,
+          beta,
+          li,
+          beta,
+          c,
+          gamma,
+          d
+        )
+      ),
+      "right"
+    ) with SourcesContracts[Path, Element]
+
+    val Right(
+      analysis: CodeMotionAnalysis[Path, Element]
+    ) =
+      CodeMotionAnalysis.of(
+        baseSources,
+        leftSources,
+        rightSources
+      )(configuration): @unchecked
+    end val
+
+    val matches =
+      (analysis.base.values.flatMap(_.sections) ++ analysis.left.values.flatMap(
+        _.sections
+      ) ++ analysis.right.values.flatMap(_.sections))
+        .map(analysis.matchesFor)
+        .reduce(_ union _)
+
+    println(s"Resulting matches:\n${pprintCustomised(matches)}")
+
+    val (allSides, pairwise) = matches.partition {
+      case _: Match.AllSides[Element] => true
+      case _                          => false
+    }
+
+    assert(9 == allSides.size)
+    assert(6 == pairwise.size)
+  end parallelMatches
+
 end CodeMotionAnalysisTest
 
 object CodeMotionAnalysisTest:
