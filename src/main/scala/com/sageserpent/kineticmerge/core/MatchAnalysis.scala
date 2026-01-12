@@ -2479,7 +2479,6 @@ object MatchAnalysis extends StrictLogging:
           override val ambiguousMatchesThreshold: Int           = Int.MaxValue
           override val progressRecording: ProgressRecording     =
             configuration.progressRecording
-          override val metaMatching: Boolean = true
         end metaMatchConfiguration
 
         given Eq[Section[Element]] = Eq.by(_.content: Seq[Element])
@@ -2597,7 +2596,6 @@ object MatchAnalysis extends StrictLogging:
     val minimumAmbiguousMatchSize: Int
     val ambiguousMatchesThreshold: Int
     val progressRecording: ProgressRecording
-    val metaMatching: Boolean
   end AbstractConfiguration
 
   /** @param minimumMatchSize
@@ -2625,7 +2623,5 @@ object MatchAnalysis extends StrictLogging:
     require(1 >= thresholdSizeFractionForMatching)
     require(0 <= minimumAmbiguousMatchSize)
     require(1 <= ambiguousMatchesThreshold)
-
-    override val metaMatching: Boolean = false
   end Configuration
 end MatchAnalysis

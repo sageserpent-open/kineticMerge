@@ -58,9 +58,7 @@ object CodeMotionAnalysis extends StrictLogging:
       withAllMatchesOfAtLeastTheSureFireWindowSize.withAllSmallFryMatches()
 
     val parallelMatchesOnly =
-      if !configuration.metaMatching
-      then withAllMatchesOfAtLeastTheMinimumWindowSize.parallelMatchesOnly
-      else withAllMatchesOfAtLeastTheMinimumWindowSize
+      withAllMatchesOfAtLeastTheMinimumWindowSize.parallelMatchesOnly
 
     try
       val (matchesAndTheirSections, tinyMatchesAndTheirSectionsOnly) =
