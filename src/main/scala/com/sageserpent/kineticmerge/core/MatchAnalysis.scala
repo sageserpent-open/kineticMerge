@@ -35,6 +35,8 @@ trait MatchAnalysis[Path, Element]:
 
   def reconcileMatches: MatchAnalysis[Path, Element]
 
+  def withoutRedundantPairwiseMatches: MatchAnalysis[Path, Element]
+
   def purgedOfMatchesWithOverlappingSections(
       enabled: Boolean
   ): MatchAnalysis[Path, Element]
@@ -1874,7 +1876,7 @@ object MatchAnalysis extends StrictLogging:
       // suppressed by a larger pairwise match. This situation results in a
       // pairwise match that shares its sections on both sides with the other
       // all-sides match; remove any such redundant pairwise matches.
-      private def withoutRedundantPairwiseMatches: MatchesAndTheirSections =
+      def withoutRedundantPairwiseMatches: MatchesAndTheirSections =
         val redundantMatches =
           sectionsAndTheirMatches.values.toSet.filter {
             case Match.BaseAndLeft(baseSection, leftSection) =>
@@ -2529,6 +2531,7 @@ object MatchAnalysis extends StrictLogging:
         MatchesAndTheirSections.empty
           .withMatches(parallelMatchGroups.flatten, haveTrimmedMatches = false)
           .matchesAndTheirSections
+          .withoutRedundantPairwiseMatches
       end parallelMatchesOnly
     end MatchesAndTheirSections
 
