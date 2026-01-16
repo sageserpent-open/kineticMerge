@@ -463,10 +463,10 @@ object MatchAnalysis extends StrictLogging:
           side: Sources[Path, Element],
           sectionsByPath: Map[Path, SectionsSeen]
       )(section: Section[Element]): Set[PairwiseMatch] =
-        subsumingMatchesIncludingTriviallySubsuming(sectionsAndTheirMatches)(
+        subsumingMatches(sectionsAndTheirMatches)(
           side,
           sectionsByPath
-        )(section)
+        )(section, includeTrivialSubsumption = true)
           .collect {
             case baseAndLeft: Match.BaseAndLeft[Section[Element]] =>
               baseAndLeft: PairwiseMatch
@@ -476,12 +476,17 @@ object MatchAnalysis extends StrictLogging:
               leftAndRight: PairwiseMatch
           }
 
-      private def subsumingMatchesIncludingTriviallySubsuming(
+      private def subsumingMatches(
           sectionsAndTheirMatches: MatchedSections[Element]
       )(
           side: Sources[Path, Element],
           sectionsByPath: Map[Path, SectionsSeen]
-      )(section: Section[Element]): Set[GenericMatch[Element]] =
+      )(
+          section: Section[Element],
+          includeTrivialSubsumption: Boolean
+      ): Set[GenericMatch[Element]] =
+        val trivialSubsumptionSize = section.size
+
         sectionsByPath
           .get(side.pathFor(section))
           .fold(ifEmpty = Set.empty)(
@@ -489,8 +494,12 @@ object MatchAnalysis extends StrictLogging:
               // NOTE: convert to a set at this point as we expect sections to
               // be duplicated when involved in ambiguous matches.
               .toSet
+              .filter(
+                includeTrivialSubsumption || trivialSubsumptionSize < _.size
+              )
               .flatMap(sectionsAndTheirMatches.get)
           )
+      end subsumingMatches
 
       // NOTE: this is partially applied in the class so that it means: "is
       // there anything on the given side that overlaps or is subsumed by
@@ -1528,39 +1537,11 @@ object MatchAnalysis extends StrictLogging:
                 // soon because of
                 // https://github.com/sageserpent-open/kineticMerge/issues/147,
                 // so leaving it in place for now...
-                notSubsumedByAnAllSidesMatch =
-                  val subsumingOnBase =
-                    subsumingMatchesIncludingTriviallySubsuming(
-                      sectionsAndTheirMatches
-                    )(
-                      baseSources,
-                      baseSectionsByPath
-                    )(
-                      baseSection
-                    )
-
-                  val subsumingOnLeft =
-                    subsumingMatchesIncludingTriviallySubsuming(
-                      sectionsAndTheirMatches
-                    )(
-                      leftSources,
-                      leftSectionsByPath
-                    )(
-                      leftSection
-                    )
-
-                  val subsumingOnRight =
-                    subsumingMatchesIncludingTriviallySubsuming(
-                      sectionsAndTheirMatches
-                    )(
-                      rightSources,
-                      rightSectionsByPath
-                    )(
-                      rightSection
-                    )
-
-                  (subsumingOnBase intersect subsumingOnLeft intersect subsumingOnRight).isEmpty
-                if notSubsumedByAnAllSidesMatch
+                if notSubsumedByAnAllSidesMatch(
+                  baseSection,
+                  leftSection,
+                  rightSection
+                )
               yield (baseSection, leftSection, rightSection)
               end for
             end potentialMatchesForSynchronisedFingerprint
@@ -1602,29 +1583,7 @@ object MatchAnalysis extends StrictLogging:
               for
                 baseSection <- baseSectionsThatDoNotOverlap
                 leftSection <- leftSectionsThatDoNotOverlap
-                notSubsumedByAMatch =
-                  val subsumingOnBase =
-                    subsumingMatchesIncludingTriviallySubsuming(
-                      sectionsAndTheirMatches
-                    )(
-                      baseSources,
-                      baseSectionsByPath
-                    )(
-                      baseSection
-                    )
-
-                  val subsumingOnLeft =
-                    subsumingMatchesIncludingTriviallySubsuming(
-                      sectionsAndTheirMatches
-                    )(
-                      leftSources,
-                      leftSectionsByPath
-                    )(
-                      leftSection
-                    )
-
-                  (subsumingOnBase intersect subsumingOnLeft).isEmpty
-                if notSubsumedByAMatch
+                if notSubsumedByABaseAndLeftMatch(baseSection, leftSection)
               yield (baseSection, leftSection)
               end for
             end potentialMatchesForSynchronisedFingerprint
@@ -1666,29 +1625,7 @@ object MatchAnalysis extends StrictLogging:
               for
                 baseSection  <- baseSectionsThatDoNotOverlap
                 rightSection <- rightSectionsThatDoNotOverlap
-                notSubsumedByAMatch =
-                  val subsumingOnBase =
-                    subsumingMatchesIncludingTriviallySubsuming(
-                      sectionsAndTheirMatches
-                    )(
-                      baseSources,
-                      baseSectionsByPath
-                    )(
-                      baseSection
-                    )
-
-                  val subsumingOnRight =
-                    subsumingMatchesIncludingTriviallySubsuming(
-                      sectionsAndTheirMatches
-                    )(
-                      rightSources,
-                      rightSectionsByPath
-                    )(
-                      rightSection
-                    )
-
-                  (subsumingOnBase intersect subsumingOnRight).isEmpty
-                if notSubsumedByAMatch
+                if notSubsumedByABaseAndRightMatch(baseSection, rightSection)
               yield (baseSection, rightSection)
               end for
             end potentialMatchesForSynchronisedFingerprint
@@ -1730,29 +1667,7 @@ object MatchAnalysis extends StrictLogging:
               for
                 leftSection  <- leftSectionsThatDoNotOverlap
                 rightSection <- rightSectionsThatDoNotOverlap
-                notSubsumedByAMatch =
-                  val subsumingOnLeft =
-                    subsumingMatchesIncludingTriviallySubsuming(
-                      sectionsAndTheirMatches
-                    )(
-                      leftSources,
-                      leftSectionsByPath
-                    )(
-                      leftSection
-                    )
-
-                  val subsumingOnRight =
-                    subsumingMatchesIncludingTriviallySubsuming(
-                      sectionsAndTheirMatches
-                    )(
-                      rightSources,
-                      rightSectionsByPath
-                    )(
-                      rightSection
-                    )
-
-                  (subsumingOnLeft intersect subsumingOnRight).isEmpty
-                if notSubsumedByAMatch
+                if notSubsumedByALeftAndRightMatch(leftSection, rightSection)
               yield (leftSection, rightSection)
               end for
             end potentialMatchesForSynchronisedFingerprint
@@ -1798,6 +1713,134 @@ object MatchAnalysis extends StrictLogging:
           haveTrimmedMatches = false
         )
       end matchesForWindowSize
+
+      private def notSubsumedByAnAllSidesMatch(
+          baseSection: Section[Element],
+          leftSection: Section[Element],
+          rightSection: Section[Element]
+      ) =
+        val subsumingOnBase =
+          subsumingMatches(
+            sectionsAndTheirMatches
+          )(
+            baseSources,
+            baseSectionsByPath
+          )(
+            baseSection,
+            includeTrivialSubsumption = false
+          )
+
+        val subsumingOnLeft =
+          subsumingMatches(
+            sectionsAndTheirMatches
+          )(
+            leftSources,
+            leftSectionsByPath
+          )(
+            leftSection,
+            includeTrivialSubsumption = false
+          )
+
+        val subsumingOnRight =
+          subsumingMatches(
+            sectionsAndTheirMatches
+          )(
+            rightSources,
+            rightSectionsByPath
+          )(
+            rightSection,
+            includeTrivialSubsumption = false
+          )
+
+        (subsumingOnBase intersect subsumingOnLeft intersect subsumingOnRight).isEmpty
+      end notSubsumedByAnAllSidesMatch
+
+      private def notSubsumedByALeftAndRightMatch(
+          leftSection: Section[Element],
+          rightSection: Section[Element]
+      ) =
+        val subsumingOnLeft =
+          subsumingMatches(
+            sectionsAndTheirMatches
+          )(
+            leftSources,
+            leftSectionsByPath
+          )(
+            leftSection,
+            includeTrivialSubsumption = false
+          )
+
+        val subsumingOnRight =
+          subsumingMatches(
+            sectionsAndTheirMatches
+          )(
+            rightSources,
+            rightSectionsByPath
+          )(
+            rightSection,
+            includeTrivialSubsumption = false
+          )
+
+        (subsumingOnLeft intersect subsumingOnRight).isEmpty
+      end notSubsumedByALeftAndRightMatch
+
+      private def notSubsumedByABaseAndRightMatch(
+          baseSection: Section[Element],
+          rightSection: Section[Element]
+      ) =
+        val subsumingOnBase =
+          subsumingMatches(
+            sectionsAndTheirMatches
+          )(
+            baseSources,
+            baseSectionsByPath
+          )(
+            baseSection,
+            includeTrivialSubsumption = false
+          )
+
+        val subsumingOnRight =
+          subsumingMatches(
+            sectionsAndTheirMatches
+          )(
+            rightSources,
+            rightSectionsByPath
+          )(
+            rightSection,
+            includeTrivialSubsumption = false
+          )
+
+        (subsumingOnBase intersect subsumingOnRight).isEmpty
+      end notSubsumedByABaseAndRightMatch
+
+      private def notSubsumedByABaseAndLeftMatch(
+          baseSection: Section[Element],
+          leftSection: Section[Element]
+      ) =
+        val subsumingOnBase =
+          subsumingMatches(
+            sectionsAndTheirMatches
+          )(
+            baseSources,
+            baseSectionsByPath
+          )(
+            baseSection,
+            includeTrivialSubsumption = false
+          )
+
+        val subsumingOnLeft =
+          subsumingMatches(
+            sectionsAndTheirMatches
+          )(
+            leftSources,
+            leftSectionsByPath
+          )(
+            leftSection,
+            includeTrivialSubsumption = false
+          )
+
+        (subsumingOnBase intersect subsumingOnLeft).isEmpty
+      end notSubsumedByABaseAndLeftMatch
 
       def withMatches(
           matches: Set[GenericMatch[Element]],
@@ -2168,44 +2211,38 @@ object MatchAnalysis extends StrictLogging:
           case Match.AllSides(baseSection, leftSection, rightSection) =>
             val trivialSubsumptionSize = baseSection.size
 
-            def isTriviallySubsumed(candidate: GenericMatch[Element]): Boolean =
-              val size = candidate match
-                case Match.AllSides(baseSection, _, _)  => baseSection.size
-                case Match.BaseAndLeft(baseSection, _)  => baseSection.size
-                case Match.BaseAndRight(baseSection, _) => baseSection.size
-                case Match.LeftAndRight(leftSection, _) => leftSection.size
-              trivialSubsumptionSize == size
-            end isTriviallySubsumed
-
             val subsumingOnBase =
-              subsumingMatchesIncludingTriviallySubsuming(
+              subsumingMatches(
                 sectionsAndTheirMatches
               )(
                 baseSources,
                 baseSectionsByPath
               )(
-                baseSection
-              ).filterNot(isTriviallySubsumed)
+                baseSection,
+                includeTrivialSubsumption = false
+              )
 
             val subsumingOnLeft =
-              subsumingMatchesIncludingTriviallySubsuming(
+              subsumingMatches(
                 sectionsAndTheirMatches
               )(
                 leftSources,
                 leftSectionsByPath
               )(
-                leftSection
-              ).filterNot(isTriviallySubsumed)
+                leftSection,
+                includeTrivialSubsumption = false
+              )
 
             val subsumingOnRight =
-              subsumingMatchesIncludingTriviallySubsuming(
+              subsumingMatches(
                 sectionsAndTheirMatches
               )(
                 rightSources,
                 rightSectionsByPath
               )(
-                rightSection
-              ).filterNot(isTriviallySubsumed)
+                rightSection,
+                includeTrivialSubsumption = false
+              )
 
             val allSidesSubsumingOnLeft =
               subsumingOnLeft.filter(_.isAnAllSidesMatch)
@@ -2528,8 +2565,32 @@ object MatchAnalysis extends StrictLogging:
             )
         }
 
+        val legitimateParallelMatches = parallelMatchGroups.flatten.filter {
+          case Match.AllSides(baseSection, leftSection, rightSection) =>
+            notSubsumedByAnAllSidesMatch(
+              baseSection,
+              leftSection,
+              rightSection
+            )
+          case Match.BaseAndLeft(baseSection, leftSection) =>
+            notSubsumedByABaseAndLeftMatch(
+              baseSection,
+              leftSection
+            )
+          case Match.BaseAndRight(baseSection, rightSection) =>
+            notSubsumedByABaseAndRightMatch(
+              baseSection,
+              rightSection
+            )
+          case Match.LeftAndRight(leftSection, rightSection) =>
+            notSubsumedByALeftAndRightMatch(
+              leftSection,
+              rightSection
+            )
+        }
+
         MatchesAndTheirSections.empty
-          .withMatches(parallelMatchGroups.flatten, haveTrimmedMatches = false)
+          .withMatches(legitimateParallelMatches, haveTrimmedMatches = false)
           .matchesAndTheirSections
           .withoutRedundantPairwiseMatches
       end parallelMatchesOnly
