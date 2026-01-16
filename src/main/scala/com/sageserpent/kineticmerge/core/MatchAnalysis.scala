@@ -26,7 +26,7 @@ import scala.annotation.tailrec
 import scala.collection.immutable.{MultiDict, SortedMultiSet}
 import scala.collection.mutable
 import scala.collection.parallel.CollectionConverters.*
-import scala.util.Using
+import scala.util.{Success, Using}
 
 trait MatchAnalysis[Path, Element]:
   def withAllSmallFryMatches(): MatchAnalysis[Path, Element]
@@ -2074,72 +2074,84 @@ object MatchAnalysis extends StrictLogging:
 
         val matches = sectionsAndTheirMatches.values.toSet
 
-        @tailrec
-        def reconcileUsing(
-            allSidesMatches: Set[Match.AllSides[Section[Element]]]
-        ): MatchesAndTheirSections =
+        val Success(result) = Using(
+          progressRecording.newSession(
+            label = "Number of matches to reconcile:",
+            maximumProgress = matches.size
+          )(initialProgress = matches.size)
+        ) { progressRecordingSession =>
+          @tailrec
+          def reconcileUsing(
+              allSidesMatches: Set[Match.AllSides[Section[Element]]]
+          ): MatchesAndTheirSections =
 
-          val pairwiseMatchesToBeEaten: MultiDict[
-            PairwiseMatch,
-            (Match.AllSides[Section[Element]], BiteEdge, BiteEdge)
-          ] =
-            MultiDict.from(
-              allSidesMatches.flatMap(allSides =>
-                pairwiseMatchesSubsumingOnBothSides(allSides).map {
-                  case (pairwiseMatch, biteStart, biteEnd) =>
-                    pairwiseMatch -> (allSides, biteStart, biteEnd)
-                }
+            val pairwiseMatchesToBeEaten: MultiDict[
+              PairwiseMatch,
+              (Match.AllSides[Section[Element]], BiteEdge, BiteEdge)
+            ] =
+              MultiDict.from(
+                allSidesMatches.flatMap(allSides =>
+                  pairwiseMatchesSubsumingOnBothSides(allSides).map {
+                    case (pairwiseMatch, biteStart, biteEnd) =>
+                      pairwiseMatch -> (allSides, biteStart, biteEnd)
+                  }
+                )
               )
+            end pairwiseMatchesToBeEaten
+
+            this.checkInvariant()
+
+            val fragments = fragmentsOf(pairwiseMatchesToBeEaten).diff(
+              matches.asInstanceOf[Set[PairwiseMatch]]
             )
-          end pairwiseMatchesToBeEaten
 
-          this.checkInvariant()
+            val takingFragmentationIntoAccount = fragments.foldLeft(
+              withoutTheseMatches(pairwiseMatchesToBeEaten.keySet)
+            )(_ withMatch _)
 
-          val fragments = fragmentsOf(pairwiseMatchesToBeEaten).diff(
-            matches.asInstanceOf[Set[PairwiseMatch]]
-          )
+            takingFragmentationIntoAccount.checkInvariant()
 
-          val takingFragmentationIntoAccount = fragments.foldLeft(
-            withoutTheseMatches(pairwiseMatchesToBeEaten.keySet)
-          )(_ withMatch _)
+            val paredDownMatches = matches.flatMap(
+              takingFragmentationIntoAccount.pareDownOrSuppressCompletely
+            ) diff pairwiseMatchesToBeEaten.keySet
+              .asInstanceOf[Set[GenericMatch[Element]]]
 
-          takingFragmentationIntoAccount.checkInvariant()
+            val paredDownAllSidesMatches = paredDownMatches.collect {
+              case allSides: Match.AllSides[Section[Element]] => allSides
+            }
 
-          val paredDownMatches = matches.flatMap(
-            takingFragmentationIntoAccount.pareDownOrSuppressCompletely
-          ) diff pairwiseMatchesToBeEaten.keySet
-            .asInstanceOf[Set[GenericMatch[Element]]]
+            if paredDownAllSidesMatches == allSidesMatches then
+              val rebuilt =
+                (paredDownMatches union fragments
+                  .flatMap(
+                    takingFragmentationIntoAccount.pareDownOrSuppressCompletely
+                  ))
+                  .foldLeft(MatchesAndTheirSections.empty)(_ withMatch _)
 
-          val paredDownAllSidesMatches = paredDownMatches.collect {
+              rebuilt.checkInvariant()
+
+              val result = rebuilt.withoutRedundantPairwiseMatches
+
+              result.checkInvariant()
+
+              progressRecordingSession.upTo(0)
+
+              result
+            else
+              progressRecordingSession.upTo(paredDownMatches.size)
+              reconcileUsing(paredDownAllSidesMatches)
+            end if
+          end reconcileUsing
+
+          reconcileUsing(matches.collect {
             case allSides: Match.AllSides[Section[Element]] => allSides
-          }
-
-          if paredDownAllSidesMatches == allSidesMatches then
-            val rebuilt =
-              (paredDownMatches union fragments
-                .flatMap(
-                  takingFragmentationIntoAccount.pareDownOrSuppressCompletely
-                ))
-                .foldLeft(MatchesAndTheirSections.empty)(_ withMatch _)
-
-            rebuilt.checkInvariant()
-
-            val result = rebuilt.withoutRedundantPairwiseMatches
-
-            result.checkInvariant()
-
-            result
-          else reconcileUsing(paredDownAllSidesMatches)
-          end if
-        end reconcileUsing
-
-        val result = reconcileUsing(matches.collect {
-          case allSides: Match.AllSides[Section[Element]] => allSides
-        })
+          })
+        }: @unchecked
 
         result.reconciliationPostcondition()
 
         result
+
       end reconcileMatches
 
       private def withMatch(
