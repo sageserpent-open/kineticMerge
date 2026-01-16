@@ -1537,7 +1537,7 @@ object MatchAnalysis extends StrictLogging:
                 // soon because of
                 // https://github.com/sageserpent-open/kineticMerge/issues/147,
                 // so leaving it in place for now...
-                if notSubsumedByAnAllSidesMatch(
+                if !subsumedNonTriviallyByAnAllSidesMatch(
                   baseSection,
                   leftSection,
                   rightSection
@@ -1583,7 +1583,10 @@ object MatchAnalysis extends StrictLogging:
               for
                 baseSection <- baseSectionsThatDoNotOverlap
                 leftSection <- leftSectionsThatDoNotOverlap
-                if notSubsumedByABaseAndLeftMatch(baseSection, leftSection)
+                if !subsumedNonTriviallyByABaseAndLeftMatch(
+                  baseSection,
+                  leftSection
+                )
               yield (baseSection, leftSection)
               end for
             end potentialMatchesForSynchronisedFingerprint
@@ -1625,7 +1628,10 @@ object MatchAnalysis extends StrictLogging:
               for
                 baseSection  <- baseSectionsThatDoNotOverlap
                 rightSection <- rightSectionsThatDoNotOverlap
-                if notSubsumedByABaseAndRightMatch(baseSection, rightSection)
+                if !subsumedNonTriviallyByABaseAndRightMatch(
+                  baseSection,
+                  rightSection
+                )
               yield (baseSection, rightSection)
               end for
             end potentialMatchesForSynchronisedFingerprint
@@ -1667,7 +1673,10 @@ object MatchAnalysis extends StrictLogging:
               for
                 leftSection  <- leftSectionsThatDoNotOverlap
                 rightSection <- rightSectionsThatDoNotOverlap
-                if notSubsumedByALeftAndRightMatch(leftSection, rightSection)
+                if !subsumedNonTriviallyByALeftAndRightMatch(
+                  leftSection,
+                  rightSection
+                )
               yield (leftSection, rightSection)
               end for
             end potentialMatchesForSynchronisedFingerprint
@@ -1714,7 +1723,7 @@ object MatchAnalysis extends StrictLogging:
         )
       end matchesForWindowSize
 
-      private def notSubsumedByAnAllSidesMatch(
+      private def subsumedNonTriviallyByAnAllSidesMatch(
           baseSection: Section[Element],
           leftSection: Section[Element],
           rightSection: Section[Element]
@@ -1752,10 +1761,10 @@ object MatchAnalysis extends StrictLogging:
             includeTrivialSubsumption = false
           )
 
-        (subsumingOnBase intersect subsumingOnLeft intersect subsumingOnRight).isEmpty
-      end notSubsumedByAnAllSidesMatch
+        (subsumingOnBase intersect subsumingOnLeft intersect subsumingOnRight).nonEmpty
+      end subsumedNonTriviallyByAnAllSidesMatch
 
-      private def notSubsumedByALeftAndRightMatch(
+      private def subsumedNonTriviallyByALeftAndRightMatch(
           leftSection: Section[Element],
           rightSection: Section[Element]
       ) =
@@ -1781,10 +1790,10 @@ object MatchAnalysis extends StrictLogging:
             includeTrivialSubsumption = false
           )
 
-        (subsumingOnLeft intersect subsumingOnRight).isEmpty
-      end notSubsumedByALeftAndRightMatch
+        (subsumingOnLeft intersect subsumingOnRight).nonEmpty
+      end subsumedNonTriviallyByALeftAndRightMatch
 
-      private def notSubsumedByABaseAndRightMatch(
+      private def subsumedNonTriviallyByABaseAndRightMatch(
           baseSection: Section[Element],
           rightSection: Section[Element]
       ) =
@@ -1810,10 +1819,10 @@ object MatchAnalysis extends StrictLogging:
             includeTrivialSubsumption = false
           )
 
-        (subsumingOnBase intersect subsumingOnRight).isEmpty
-      end notSubsumedByABaseAndRightMatch
+        (subsumingOnBase intersect subsumingOnRight).nonEmpty
+      end subsumedNonTriviallyByABaseAndRightMatch
 
-      private def notSubsumedByABaseAndLeftMatch(
+      private def subsumedNonTriviallyByABaseAndLeftMatch(
           baseSection: Section[Element],
           leftSection: Section[Element]
       ) =
@@ -1839,8 +1848,8 @@ object MatchAnalysis extends StrictLogging:
             includeTrivialSubsumption = false
           )
 
-        (subsumingOnBase intersect subsumingOnLeft).isEmpty
-      end notSubsumedByABaseAndLeftMatch
+        (subsumingOnBase intersect subsumingOnLeft).nonEmpty
+      end subsumedNonTriviallyByABaseAndLeftMatch
 
       def withMatches(
           matches: Set[GenericMatch[Element]],
@@ -2579,23 +2588,23 @@ object MatchAnalysis extends StrictLogging:
 
         val legitimateParallelMatches = parallelMatchGroups.flatten.filter {
           case Match.AllSides(baseSection, leftSection, rightSection) =>
-            notSubsumedByAnAllSidesMatch(
+            !subsumedNonTriviallyByAnAllSidesMatch(
               baseSection,
               leftSection,
               rightSection
             )
           case Match.BaseAndLeft(baseSection, leftSection) =>
-            notSubsumedByABaseAndLeftMatch(
+            !subsumedNonTriviallyByABaseAndLeftMatch(
               baseSection,
               leftSection
             )
           case Match.BaseAndRight(baseSection, rightSection) =>
-            notSubsumedByABaseAndRightMatch(
+            !subsumedNonTriviallyByABaseAndRightMatch(
               baseSection,
               rightSection
             )
           case Match.LeftAndRight(leftSection, rightSection) =>
-            notSubsumedByALeftAndRightMatch(
+            !subsumedNonTriviallyByALeftAndRightMatch(
               leftSection,
               rightSection
             )
