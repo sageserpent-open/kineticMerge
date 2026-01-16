@@ -486,10 +486,10 @@ object MatchAnalysis extends StrictLogging:
           .get(side.pathFor(section))
           .fold(ifEmpty = Set.empty)(
             _.filterIncludes(section.closedOpenInterval)
-              .flatMap(sectionsAndTheirMatches.get)
               // NOTE: convert to a set at this point as we expect sections to
               // be duplicated when involved in ambiguous matches.
               .toSet
+              .flatMap(sectionsAndTheirMatches.get)
           )
 
       // NOTE: this is partially applied in the class so that it means: "is
