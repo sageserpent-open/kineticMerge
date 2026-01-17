@@ -19,7 +19,6 @@ import com.sageserpent.kineticmerge.{
 }
 import com.typesafe.scalalogging.StrictLogging
 import de.sciss.fingertree.RangedSeq
-import monocle.syntax.all.*
 
 import java.lang.Byte as JavaByte
 import scala.annotation.tailrec
@@ -199,9 +198,9 @@ object MatchAnalysis extends StrictLogging:
       }
 
       private def knockOutFromFingerprintedInclusions(
-          sources: Sources[Path, Element]
+          sources: Sources[Path, Element],
+          fingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions]
       )(
-          fingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions],
           knockedOut: Section[Element]
       ): Map[Path, FingerprintedInclusions] =
         val path = sources.pathFor(knockedOut)
@@ -217,6 +216,26 @@ object MatchAnalysis extends StrictLogging:
           )
         )
       end knockOutFromFingerprintedInclusions
+
+      private def reinstateInFingerprintedInclusions(
+          sources: Sources[Path, Element],
+          fingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions]
+      )(
+          reinstated: Section[Element]
+      ): Map[Path, FingerprintedInclusions] =
+        val path = sources.pathFor(reinstated)
+
+        fingerprintedInclusionsByPath.updatedWith(path)(
+          _.map(
+            _.addRange(
+              CatsInclusiveRange(
+                start = reinstated.startOffset,
+                end = reinstated.onePastEndOffset - 1
+              )
+            )
+          )
+        )
+      end reinstateInFingerprintedInclusions
 
       lazy val empty: MatchesAndTheirSections = MatchesAndTheirSections(
         baseSectionsByPath = Map.empty,
@@ -475,6 +494,7 @@ object MatchAnalysis extends StrictLogging:
             case leftAndRight: Match.LeftAndRight[Section[Element]] =>
               leftAndRight: PairwiseMatch
           }
+      end subsumingPairwiseMatchesIncludingTriviallySubsuming
 
       private def subsumingMatches(
           sectionsAndTheirMatches: MatchedSections[Element]
@@ -519,6 +539,7 @@ object MatchAnalysis extends StrictLogging:
                 candidateSection.startOffset > section.startOffset || candidateSection.onePastEndOffset < section.onePastEndOffset
               )
           )
+      end overlapsOrIsSubsumedBy
 
       private def including(
           side: Sources[Path, Element],
@@ -542,6 +563,22 @@ object MatchAnalysis extends StrictLogging:
             )
         }
       end including
+
+      private def excluding(
+          side: Sources[Path, Element],
+          sectionsByPath: Map[Path, SectionsSeen]
+      )(
+          section: Section[Element]
+      ): Map[Path, SectionsSeen] =
+        sectionsByPath.updatedWith(
+          side.pathFor(section)
+        ) { case Some(sections) =>
+          // Allow the same section to be removed more than once, on behalf of
+          // ambiguous matches.
+          val withoutSection = sections - section
+          Option.unless(withoutSection.isEmpty)(withoutSection)
+        }
+      end excluding
 
       // When the window size used to calculate matches is lower than the
       // optimal match size, overlapping matches will be made that cover the
@@ -896,6 +933,48 @@ object MatchAnalysis extends StrictLogging:
         including(leftSources, leftSectionsByPath)
       private val rightIncluding: Section[Element] => Map[Path, SectionsSeen] =
         including(rightSources, rightSectionsByPath)
+      private val baseExcluding: Section[Element] => Map[Path, SectionsSeen] =
+        excluding(baseSources, baseSectionsByPath)
+      private val leftExcluding: Section[Element] => Map[Path, SectionsSeen] =
+        excluding(leftSources, leftSectionsByPath)
+      private val rightExcluding: Section[Element] => Map[Path, SectionsSeen] =
+        excluding(rightSources, rightSectionsByPath)
+      private val knockOutFromBaseFingerprintedInclusions
+          : Section[Element] => Map[Path, FingerprintedInclusions] =
+        knockOutFromFingerprintedInclusions(
+          baseSources,
+          baseFingerprintedInclusionsByPath
+        )
+      private val knockOutFromLeftFingerprintedInclusions
+          : Section[Element] => Map[Path, FingerprintedInclusions] =
+        knockOutFromFingerprintedInclusions(
+          leftSources,
+          leftFingerprintedInclusionsByPath
+        )
+      private val knockOutFromRightFingerprintedInclusions
+          : Section[Element] => Map[Path, FingerprintedInclusions] =
+        knockOutFromFingerprintedInclusions(
+          rightSources,
+          rightFingerprintedInclusionsByPath
+        )
+      private val reinstateInBaseFingerprintedInclusions
+          : Section[Element] => Map[Path, FingerprintedInclusions] =
+        reinstateInFingerprintedInclusions(
+          baseSources,
+          baseFingerprintedInclusionsByPath
+        )
+      private val reinstateInLeftFingerprintedInclusions
+          : Section[Element] => Map[Path, FingerprintedInclusions] =
+        reinstateInFingerprintedInclusions(
+          leftSources,
+          leftFingerprintedInclusionsByPath
+        )
+      private val reinstateInRightFingerprintedInclusions
+          : Section[Element] => Map[Path, FingerprintedInclusions] =
+        reinstateInFingerprintedInclusions(
+          rightSources,
+          rightFingerprintedInclusionsByPath
+        )
 
       private def checkInvariant(): Unit =
         // We expect to tally either two lots of a given pairwise match or three
@@ -1162,6 +1241,10 @@ object MatchAnalysis extends StrictLogging:
               minimumWindowSizeAcrossAllFilesOverAllSides <= leftSection.size
           }
 
+          // NASTY HACK: we're knocking out both the all-sides *and* the
+          // pairwise matches here, but keeping the matches in the rest of the
+          // state. The idea isn't to remove them, rather to prevent further
+          // matching from rediscovering them.
           nonTinyMatches.foldLeft(MatchesAndTheirSections.empty) {
             case (
                   partialResult,
@@ -1169,18 +1252,15 @@ object MatchAnalysis extends StrictLogging:
                 ) =>
               partialResult.copy(
                 baseFingerprintedInclusionsByPath =
-                  knockOutFromFingerprintedInclusions(baseSources)(
-                    partialResult.baseFingerprintedInclusionsByPath,
+                  partialResult.knockOutFromBaseFingerprintedInclusions(
                     baseSection
                   ),
                 leftFingerprintedInclusionsByPath =
-                  knockOutFromFingerprintedInclusions(leftSources)(
-                    partialResult.leftFingerprintedInclusionsByPath,
+                  partialResult.knockOutFromLeftFingerprintedInclusions(
                     leftSection
                   ),
                 rightFingerprintedInclusionsByPath =
-                  knockOutFromFingerprintedInclusions(rightSources)(
-                    partialResult.rightFingerprintedInclusionsByPath,
+                  partialResult.knockOutFromRightFingerprintedInclusions(
                     rightSection
                   )
               )
@@ -1190,13 +1270,11 @@ object MatchAnalysis extends StrictLogging:
                 ) =>
               partialResult.copy(
                 baseFingerprintedInclusionsByPath =
-                  knockOutFromFingerprintedInclusions(baseSources)(
-                    partialResult.baseFingerprintedInclusionsByPath,
+                  partialResult.knockOutFromBaseFingerprintedInclusions(
                     baseSection
                   ),
                 leftFingerprintedInclusionsByPath =
-                  knockOutFromFingerprintedInclusions(leftSources)(
-                    partialResult.leftFingerprintedInclusionsByPath,
+                  partialResult.knockOutFromLeftFingerprintedInclusions(
                     leftSection
                   )
               )
@@ -1206,13 +1284,11 @@ object MatchAnalysis extends StrictLogging:
                 ) =>
               partialResult.copy(
                 baseFingerprintedInclusionsByPath =
-                  knockOutFromFingerprintedInclusions(baseSources)(
-                    partialResult.baseFingerprintedInclusionsByPath,
+                  partialResult.knockOutFromBaseFingerprintedInclusions(
                     baseSection
                   ),
                 rightFingerprintedInclusionsByPath =
-                  knockOutFromFingerprintedInclusions(rightSources)(
-                    partialResult.rightFingerprintedInclusionsByPath,
+                  partialResult.knockOutFromRightFingerprintedInclusions(
                     rightSection
                   )
               )
@@ -1222,13 +1298,11 @@ object MatchAnalysis extends StrictLogging:
                 ) =>
               partialResult.copy(
                 leftFingerprintedInclusionsByPath =
-                  knockOutFromFingerprintedInclusions(leftSources)(
-                    partialResult.leftFingerprintedInclusionsByPath,
+                  partialResult.knockOutFromLeftFingerprintedInclusions(
                     leftSection
                   ),
                 rightFingerprintedInclusionsByPath =
-                  knockOutFromFingerprintedInclusions(rightSources)(
-                    partialResult.rightFingerprintedInclusionsByPath,
+                  partialResult.knockOutFromRightFingerprintedInclusions(
                     rightSection
                   )
               )
@@ -2175,20 +2249,11 @@ object MatchAnalysis extends StrictLogging:
               sectionsAndTheirMatches =
                 sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch) + (rightSection -> aMatch),
               baseFingerprintedInclusionsByPath =
-                knockOutFromFingerprintedInclusions(baseSources)(
-                  baseFingerprintedInclusionsByPath,
-                  baseSection
-                ),
+                knockOutFromBaseFingerprintedInclusions(baseSection),
               leftFingerprintedInclusionsByPath =
-                knockOutFromFingerprintedInclusions(leftSources)(
-                  leftFingerprintedInclusionsByPath,
-                  leftSection
-                ),
+                knockOutFromLeftFingerprintedInclusions(leftSection),
               rightFingerprintedInclusionsByPath =
-                knockOutFromFingerprintedInclusions(rightSources)(
-                  rightFingerprintedInclusionsByPath,
-                  rightSection
-                )
+                knockOutFromRightFingerprintedInclusions(rightSection)
             )
           case baseAndLeft @ Match.BaseAndLeft(baseSection, leftSection) =>
             copy(
@@ -2354,91 +2419,76 @@ object MatchAnalysis extends StrictLogging:
                   rightSection
                 )
               ) =>
-            val basePath  = baseSources.pathFor(baseSection)
-            val leftPath  = leftSources.pathFor(leftSection)
-            val rightPath = rightSources.pathFor(rightSection)
-            matchesAndTheirSections
-              .focus(_.baseSectionsByPath)
-              .modify(_.updatedWith(basePath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - baseSection)
-              })
-              .focus(_.leftSectionsByPath)
-              .modify(_.updatedWith(leftPath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - leftSection)
-              })
-              .focus(_.rightSectionsByPath)
-              .modify(_.updatedWith(rightPath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - rightSection)
-              })
-              .focus(_.sectionsAndTheirMatches)
-              .modify(
-                _.remove(baseSection, allSides)
+            matchesAndTheirSections.copy(
+              baseSectionsByPath =
+                matchesAndTheirSections.baseExcluding(baseSection),
+              leftSectionsByPath =
+                matchesAndTheirSections.leftExcluding(leftSection),
+              rightSectionsByPath =
+                matchesAndTheirSections.rightExcluding(rightSection),
+              sectionsAndTheirMatches =
+                matchesAndTheirSections.sectionsAndTheirMatches
+                  .remove(baseSection, allSides)
                   .remove(leftSection, allSides)
-                  .remove(rightSection, allSides)
-              )
+                  .remove(rightSection, allSides),
+              baseFingerprintedInclusionsByPath =
+                matchesAndTheirSections.reinstateInBaseFingerprintedInclusions(
+                  baseSection
+                ),
+              leftFingerprintedInclusionsByPath =
+                matchesAndTheirSections.reinstateInLeftFingerprintedInclusions(
+                  leftSection
+                ),
+              rightFingerprintedInclusionsByPath =
+                matchesAndTheirSections.reinstateInRightFingerprintedInclusions(
+                  rightSection
+                )
+            )
 
           case (
                 matchesAndTheirSections,
                 baseAndLeft @ Match.BaseAndLeft(baseSection, leftSection)
               ) =>
-            val basePath = baseSources.pathFor(baseSection)
-            val leftPath = leftSources.pathFor(leftSection)
-            matchesAndTheirSections
-              .focus(_.baseSectionsByPath)
-              .modify(_.updatedWith(basePath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - baseSection)
-              })
-              .focus(_.leftSectionsByPath)
-              .modify(_.updatedWith(leftPath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - leftSection)
-              })
-              .focus(_.sectionsAndTheirMatches)
-              .modify(
-                _.remove(baseSection, baseAndLeft)
+            matchesAndTheirSections.copy(
+              baseSectionsByPath =
+                matchesAndTheirSections.baseExcluding(baseSection),
+              leftSectionsByPath =
+                matchesAndTheirSections.leftExcluding(leftSection),
+              sectionsAndTheirMatches =
+                matchesAndTheirSections.sectionsAndTheirMatches
+                  .remove(baseSection, baseAndLeft)
                   .remove(leftSection, baseAndLeft)
-              )
+            )
 
           case (
                 matchesAndTheirSections,
                 baseAndRight @ Match.BaseAndRight(baseSection, rightSection)
               ) =>
-            val basePath  = baseSources.pathFor(baseSection)
-            val rightPath = rightSources.pathFor(rightSection)
-            matchesAndTheirSections
-              .focus(_.baseSectionsByPath)
-              .modify(_.updatedWith(basePath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - baseSection)
-              })
-              .focus(_.rightSectionsByPath)
-              .modify(_.updatedWith(rightPath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - rightSection)
-              })
-              .focus(_.sectionsAndTheirMatches)
-              .modify(
-                _.remove(baseSection, baseAndRight)
+            matchesAndTheirSections.copy(
+              baseSectionsByPath =
+                matchesAndTheirSections.baseExcluding(baseSection),
+              rightSectionsByPath =
+                matchesAndTheirSections.rightExcluding(rightSection),
+              sectionsAndTheirMatches =
+                matchesAndTheirSections.sectionsAndTheirMatches
+                  .remove(baseSection, baseAndRight)
                   .remove(rightSection, baseAndRight)
-              )
+            )
 
           case (
                 matchesAndTheirSections,
                 leftAndRight @ Match.LeftAndRight(leftSection, rightSection)
               ) =>
-            val leftPath  = leftSources.pathFor(leftSection)
-            val rightPath = rightSources.pathFor(rightSection)
-            matchesAndTheirSections
-              .focus(_.leftSectionsByPath)
-              .modify(_.updatedWith(leftPath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - leftSection)
-              })
-              .focus(_.rightSectionsByPath)
-              .modify(_.updatedWith(rightPath) { case Some(sectionsSeen) =>
-                Some(sectionsSeen - rightSection)
-              })
-              .focus(_.sectionsAndTheirMatches)
-              .modify(
-                _.remove(leftSection, leftAndRight)
+            matchesAndTheirSections.copy(
+              leftSectionsByPath =
+                matchesAndTheirSections.leftExcluding(leftSection),
+              rightSectionsByPath =
+                matchesAndTheirSections.rightExcluding(rightSection),
+              sectionsAndTheirMatches =
+                matchesAndTheirSections.sectionsAndTheirMatches
+                  .remove(leftSection, leftAndRight)
                   .remove(rightSection, leftAndRight)
-              )
+            )
         }
       end withoutTheseMatches
 
