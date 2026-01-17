@@ -29,17 +29,17 @@ import scala.collection.immutable.MultiDict
 import scala.collection.{IndexedSeqView, Searching}
 import scala.math.Ordering.Implicits.seqOrdering
 
-object CodeMotionAnalysisExtension extends StrictLogging:
+object SectionedCodeExtension extends StrictLogging:
 
-  /** Add merging capability to a [[CodeMotionAnalysis]].
+  /** Add merging capability to a [[SectionedCode]].
     *
     * Not sure exactly where this capability should be implemented - is it
-    * really a core part of the API for [[CodeMotionAnalysis]]? Hence the
-    * extension as a temporary measure.
+    * really a core part of the API for [[SectionedCode]]? Hence the extension
+    * as a temporary measure.
     */
 
   extension [Path, Element: Eq: Order](
-      codeMotionAnalysis: CodeMotionAnalysis[Path, Element]
+      codeMotionAnalysis: SectionedCode[Path, Element]
   )
     def merge(using
         progressRecording: ProgressRecording
@@ -1490,4 +1490,4 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         .map(resolveSections) -> moveDestinationsReport
     end merge
   end extension
-end CodeMotionAnalysisExtension
+end SectionedCodeExtension

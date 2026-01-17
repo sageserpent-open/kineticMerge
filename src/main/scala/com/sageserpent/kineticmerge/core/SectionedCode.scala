@@ -10,7 +10,7 @@ import com.sageserpent.kineticmerge.core.MatchAnalysis.{
 }
 import com.typesafe.scalalogging.StrictLogging
 
-trait CodeMotionAnalysis[Path, Element]:
+trait SectionedCode[Path, Element]:
   def base: Map[Path, File[Element]]
   def left: Map[Path, File[Element]]
   def right: Map[Path, File[Element]]
@@ -22,10 +22,9 @@ trait CodeMotionAnalysis[Path, Element]:
   def basePathFor(baseSection: Section[Element]): Path
   def leftPathFor(leftSection: Section[Element]): Path
   def rightPathFor(rightSection: Section[Element]): Path
-end CodeMotionAnalysis
+end SectionedCode
 
-object CodeMotionAnalysis extends StrictLogging:
-  // TODO: fix this Scaladoc...
+object SectionedCode extends StrictLogging:
   /** @param baseSources
     *   The common base sources from which the left and right sources are
     *   derived.
@@ -37,9 +36,8 @@ object CodeMotionAnalysis extends StrictLogging:
     *   [[Configuration]] parameter object.
     * @tparam Path
     * @return
-    *   A [[CodeMotionAnalysis]] that contains a breakdown into [[File]]
-    *   instances and thence into [[Section]] instances for each of the three
-    *   sources.
+    *   A [[SectionedCode]] that contains a breakdown into [[File]] instances
+    *   and thence into [[Section]] instances for each of the three sources.
     */
   def of[Path, Element: Eq: Funnel](
       baseSources: Sources[Path, Element],
@@ -50,7 +48,7 @@ object CodeMotionAnalysis extends StrictLogging:
       suppressMatchesInvolvingOverlappingSections: Boolean = true
   )(using
       hashFunction: HashFunction
-  ): Either[Throwable, CodeMotionAnalysis[Path, Element]] =
+  ): Either[Throwable, SectionedCode[Path, Element]] =
     val withAllMatchesOfAtLeastTheSureFireWindowSize =
       MatchAnalysis.of(baseSources, leftSources, rightSources)(configuration)
 
@@ -94,7 +92,7 @@ object CodeMotionAnalysis extends StrictLogging:
           matchesAndTheirSections.rightSections ++ tinyMatchesAndTheirSectionsOnly.rightSections
         )
 
-      Right(new CodeMotionAnalysis[Path, Element]:
+      Right(new SectionedCode[Path, Element]:
         {
           // Invariant: the matches are referenced only by their participating
           // sections.
@@ -166,4 +164,4 @@ object CodeMotionAnalysis extends StrictLogging:
       case admissibleException: AdmissibleFailure => Left(admissibleException)
     end try
   end of
-end CodeMotionAnalysis
+end SectionedCode

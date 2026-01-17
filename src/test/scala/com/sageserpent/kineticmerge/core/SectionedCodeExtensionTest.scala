@@ -4,14 +4,14 @@ import cats.{Eq, Order}
 import com.google.common.hash.{Funnel, HashFunction, Hashing}
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.junit5.*
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtension.*
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtensionTest.{
+import com.sageserpent.kineticmerge.core.SectionedCodeExtension.*
+import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
+import com.sageserpent.kineticmerge.core.MatchAnalysis.Configuration
+import com.sageserpent.kineticmerge.core.SectionedCodeExtensionTest.{
   FakePath,
   reconstituteTextFrom,
   given
 }
-import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
-import com.sageserpent.kineticmerge.core.MatchAnalysis.Configuration
 import com.sageserpent.kineticmerge.core.Token.tokens
 import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording}
 import org.junit.jupiter.api.Assertions.{assertDoesNotThrow, fail}
@@ -19,7 +19,7 @@ import org.junit.jupiter.api.{Test, TestFactory}
 
 import scala.util.Right
 
-object CodeMotionAnalysisExtensionTest:
+object SectionedCodeExtensionTest:
   type FakePath = String
 
   def reconstituteTextFrom(tokens: Seq[Token]): String =
@@ -31,9 +31,9 @@ object CodeMotionAnalysisExtensionTest:
   given HashFunction      = Hashing.murmur3_32_fixed()
   given ProgressRecording = NoProgressRecording
 
-end CodeMotionAnalysisExtensionTest
+end SectionedCodeExtensionTest
 
-class CodeMotionAnalysisExtensionTest extends ProseExamples:
+class SectionedCodeExtensionTest extends ProseExamples:
   @TestFactory
   def migrationScenariosFromExcalidrawDocuments(): DynamicTests =
     val configuration = Configuration(
@@ -154,7 +154,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
             label = "right"
           )
 
-          val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+          val Right(codeMotionAnalysis) = SectionedCode.of(
             baseSources = baseSources,
             leftSources = leftSources,
             rightSources = rightSources
@@ -210,7 +210,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       label = "right"
     )
 
-    val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+    val Right(codeMotionAnalysis) = SectionedCode.of(
       baseSources = baseSources,
       leftSources = leftSources,
       rightSources = rightSources
@@ -292,7 +292,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
             label = "right"
           )
 
-          val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+          val Right(codeMotionAnalysis) = SectionedCode.of(
             baseSources = baseSources,
             leftSources = leftSources,
             rightSources = rightSources
@@ -417,7 +417,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
             label = "right"
           )
 
-          val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+          val Right(codeMotionAnalysis) = SectionedCode.of(
             baseSources = baseSources,
             leftSources = leftSources,
             rightSources = rightSources
@@ -460,7 +460,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       label = "right"
     )
 
-    val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+    val Right(codeMotionAnalysis) = SectionedCode.of(
       baseSources = baseSources,
       leftSources = leftSources,
       rightSources = rightSources
@@ -510,7 +510,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           label = "right"
         )
 
-        val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+        val Right(codeMotionAnalysis) = SectionedCode.of(
           baseSources = baseSources,
           leftSources = leftSources,
           rightSources = rightSources
@@ -569,7 +569,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           label = "right"
         )
 
-      val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+      val Right(codeMotionAnalysis) = SectionedCode.of(
         baseSources = baseSources,
         leftSources = leftSources,
         rightSources = rightSources
@@ -633,7 +633,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           label = "right"
         )
 
-        val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+        val Right(codeMotionAnalysis) = SectionedCode.of(
           baseSources = baseSources,
           leftSources = leftSources,
           rightSources = rightSources
@@ -716,7 +716,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
           label = "right"
         )
 
-        val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+        val Right(codeMotionAnalysis) = SectionedCode.of(
           baseSources = baseSources,
           leftSources = leftSources,
           rightSources = rightSources
@@ -842,7 +842,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
             label = "right"
           )
 
-          val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+          val Right(codeMotionAnalysis) = SectionedCode.of(
             baseSources = baseSources,
             leftSources = leftSources,
             rightSources = rightSources
@@ -978,7 +978,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
                 label = "right"
               )
 
-          val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+          val Right(codeMotionAnalysis) = SectionedCode.of(
             baseSources = baseSources,
             leftSources = leftSources,
             rightSources = rightSources
@@ -1037,7 +1037,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       label = "right"
     )
 
-    val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+    val Right(codeMotionAnalysis) = SectionedCode.of(
       baseSources = baseSources,
       leftSources = leftSources,
       rightSources = rightSources
@@ -1132,7 +1132,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       label = "right"
     )
 
-    val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+    val Right(codeMotionAnalysis) = SectionedCode.of(
       baseSources = baseSources,
       leftSources = leftSources,
       rightSources = rightSources
@@ -1176,7 +1176,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       label = "right"
     )
 
-    val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+    val Right(codeMotionAnalysis) = SectionedCode.of(
       baseSources = baseSources,
       leftSources = leftSources,
       rightSources = rightSources
@@ -1424,7 +1424,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
                 )
               )
 
-          val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+          val Right(codeMotionAnalysis) = SectionedCode.of(
             baseSources = baseSources,
             leftSources = leftSources,
             rightSources = rightSources
@@ -1690,7 +1690,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
                 )
               )
 
-          val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+          val Right(codeMotionAnalysis) = SectionedCode.of(
             baseSources = baseSources,
             leftSources = leftSources,
             rightSources = rightSources
@@ -1770,7 +1770,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       label = "right"
     )
 
-    val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+    val Right(codeMotionAnalysis) = SectionedCode.of(
       baseSources = baseSources,
       leftSources = leftSources,
       rightSources = rightSources
@@ -1845,7 +1845,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         label = "right"
       )
 
-      val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+      val Right(codeMotionAnalysis) = SectionedCode.of(
         baseSources = baseSources,
         leftSources = leftSources,
         rightSources = rightSources
@@ -1906,7 +1906,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         label = "right"
       )
 
-      val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+      val Right(codeMotionAnalysis) = SectionedCode.of(
         baseSources = baseSources,
         leftSources = leftSources,
         rightSources = rightSources
@@ -1967,7 +1967,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         label = "right"
       )
 
-      val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+      val Right(codeMotionAnalysis) = SectionedCode.of(
         baseSources = baseSources,
         leftSources = leftSources,
         rightSources = rightSources
@@ -2023,7 +2023,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         label = "right"
       )
 
-      val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+      val Right(codeMotionAnalysis) = SectionedCode.of(
         baseSources = baseSources,
         leftSources = leftSources,
         rightSources = rightSources
@@ -2188,7 +2188,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
       label = "right"
     )
 
-    val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+    val Right(codeMotionAnalysis) = SectionedCode.of(
       baseSources = baseSources,
       leftSources = leftSources,
       rightSources = rightSources
@@ -2297,7 +2297,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         label = "right"
       )
 
-      val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+      val Right(codeMotionAnalysis) = SectionedCode.of(
         baseSources = baseSources,
         leftSources = leftSources,
         rightSources = rightSources
@@ -2404,7 +2404,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         label = "right"
       )
 
-      val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+      val Right(codeMotionAnalysis) = SectionedCode.of(
         baseSources = baseSources,
         leftSources = leftSources,
         rightSources = rightSources
@@ -2478,7 +2478,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         label = "right"
       )
 
-      val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+      val Right(codeMotionAnalysis) = SectionedCode.of(
         baseSources = baseSources,
         leftSources = leftSources,
         rightSources = rightSources
@@ -2548,7 +2548,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
         label = "right"
       )
 
-      val Right(codeMotionAnalysis) = CodeMotionAnalysis.of(
+      val Right(codeMotionAnalysis) = SectionedCode.of(
         baseSources = baseSources,
         leftSources = leftSources,
         rightSources = rightSources
@@ -2558,7 +2558,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     }
   end issue274BugReproduction
 
-end CodeMotionAnalysisExtensionTest
+end SectionedCodeExtensionTest
 
 trait ProseExamples:
   protected val issue23BugReproductionBase: String =

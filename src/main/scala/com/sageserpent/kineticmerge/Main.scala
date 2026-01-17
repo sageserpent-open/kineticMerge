@@ -10,7 +10,7 @@ import cats.syntax.traverse.toTraverseOps
 import com.google.common.hash.{Funnel, HashFunction, Hashing}
 import com.sageserpent.kineticmerge.Main.MergeInput.*
 import com.sageserpent.kineticmerge.core.*
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtension.*
+import com.sageserpent.kineticmerge.core.SectionedCodeExtension.*
 import com.sageserpent.kineticmerge.core.MatchAnalysis.Configuration
 import com.sageserpent.kineticmerge.core.Token.tokens
 import com.softwaremill.tagging.*
@@ -1500,7 +1500,7 @@ object Main extends StrictLogging:
       )
 
       def fileRenamingReportUsing(
-          codeMotionAnalysis: CodeMotionAnalysis[Path, Token],
+          codeMotionAnalysis: SectionedCode[Path, Token],
           moveDestinationsReport: MoveDestinationsReport[Section[Token]]
       )(path: Path): Option[FileRelocationReport] =
         val baseSections = codeMotionAnalysis.base(path).sections
@@ -1744,9 +1744,9 @@ object Main extends StrictLogging:
       end writeConflictedIndexEntriesForAddition
 
       for
-        codeMotionAnalysis: CodeMotionAnalysis[Path, Token] <- EitherT
+        codeMotionAnalysis: SectionedCode[Path, Token] <- EitherT
           .fromEither[WorkflowLogWriter] {
-            CodeMotionAnalysis.of(baseSources, leftSources, rightSources)(
+            SectionedCode.of(baseSources, leftSources, rightSources)(
               configuration
             )
           }

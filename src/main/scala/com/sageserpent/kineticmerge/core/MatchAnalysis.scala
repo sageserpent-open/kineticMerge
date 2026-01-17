@@ -50,11 +50,6 @@ trait MatchAnalysis[Path, Element]:
 
   def sectionsAndTheirMatches: MatchedSections[Element]
 
-  def matchesFor(
-      section: Section[Element]
-  ): collection.Set[GenericMatch[Element]] =
-    sectionsAndTheirMatches.get(section)
-
   def matches: Set[GenericMatch[Element]] =
     sectionsAndTheirMatches.values.toSet
 end MatchAnalysis

@@ -6,19 +6,19 @@ import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.java.CasesLimitStrategy
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.americium.{Trials, TrialsApi}
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.{*, given}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.MatchAnalysis.{
   AdmissibleFailure,
   Configuration
 }
+import com.sageserpent.kineticmerge.core.SectionedCodeTest.{*, given}
 import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.{Order as _, *}
 
 import java.util.concurrent.TimeUnit
 import scala.concurrent.duration.Duration
 
-class CodeMotionAnalysisTest:
+class SectionedCodeTest:
   @TestFactory
   def sourcesCanBeReconstructedFromTheAnalysis: DynamicTests =
     extension (results: Map[Path, File[Element]])
@@ -89,7 +89,7 @@ class CodeMotionAnalysisTest:
             ambiguousMatchesThreshold = 10
           )
 
-          CodeMotionAnalysis.of(base, left, right)(
+          SectionedCode.of(base, left, right)(
             configuration
           ) match
             case Right(analysis) =>
@@ -455,7 +455,7 @@ class CodeMotionAnalysisTest:
             ambiguousMatchesThreshold = 10
           )
 
-          CodeMotionAnalysis.of(
+          SectionedCode.of(
             baseSources,
             leftSources,
             rightSources
@@ -803,9 +803,9 @@ class CodeMotionAnalysisTest:
     ) with SourcesContracts[Path, Element]
 
     val Right(
-      analysis: CodeMotionAnalysis[Path, Element]
+      analysis: SectionedCode[Path, Element]
     ) =
-      CodeMotionAnalysis.of(
+      SectionedCode.of(
         baseSources,
         leftSources,
         rightSources
@@ -883,9 +883,9 @@ class CodeMotionAnalysisTest:
     )
 
     val Right(
-      analysis: CodeMotionAnalysis[Path, Element]
+      analysis: SectionedCode[Path, Element]
     ) =
-      CodeMotionAnalysis.of(
+      SectionedCode.of(
         baseSources,
         leftSources,
         rightSources
@@ -996,9 +996,9 @@ class CodeMotionAnalysisTest:
     )
 
     val Right(
-      analysis: CodeMotionAnalysis[Path, Element]
+      analysis: SectionedCode[Path, Element]
     ) =
-      CodeMotionAnalysis.of(
+      SectionedCode.of(
         baseSources,
         leftSources,
         rightSources
@@ -1086,9 +1086,9 @@ class CodeMotionAnalysisTest:
     ) with SourcesContracts[Path, Element]
 
     val Right(
-      analysis: CodeMotionAnalysis[Path, Element]
+      analysis: SectionedCode[Path, Element]
     ) =
-      CodeMotionAnalysis.of(
+      SectionedCode.of(
         baseSources,
         leftSources,
         rightSources
@@ -1170,9 +1170,9 @@ class CodeMotionAnalysisTest:
     )
 
     val Right(
-      analysis: CodeMotionAnalysis[Path, Element]
+      analysis: SectionedCode[Path, Element]
     ) =
-      CodeMotionAnalysis.of(
+      SectionedCode.of(
         baseSources,
         leftSources,
         rightSources
@@ -1260,9 +1260,9 @@ class CodeMotionAnalysisTest:
     )
 
     val Right(
-      analysis: CodeMotionAnalysis[Path, Element]
+      analysis: SectionedCode[Path, Element]
     ) =
-      CodeMotionAnalysis.of(
+      SectionedCode.of(
         baseSources,
         leftSources,
         rightSources
@@ -1346,10 +1346,10 @@ class CodeMotionAnalysisTest:
     )
 
     val Right(
-      analysis: CodeMotionAnalysis[Path, Element]
+      analysis: SectionedCode[Path, Element]
     ) =
       assertDoesNotThrow(() =>
-        CodeMotionAnalysis.of(
+        SectionedCode.of(
           baseSources,
           leftSources,
           rightSources
@@ -1410,7 +1410,7 @@ class CodeMotionAnalysisTest:
     )
 
     val Left(exception) =
-      CodeMotionAnalysis.of(
+      SectionedCode.of(
         baseSources,
         leftSources,
         rightSources
@@ -1459,9 +1459,9 @@ class CodeMotionAnalysisTest:
     ) with SourcesContracts[Path, Element]
 
     val Right(
-      analysis: CodeMotionAnalysis[Path, Element]
+      analysis: SectionedCode[Path, Element]
     ) =
-      CodeMotionAnalysis.of(
+      SectionedCode.of(
         baseSources,
         leftSources,
         rightSources
@@ -1539,9 +1539,9 @@ class CodeMotionAnalysisTest:
     ) with SourcesContracts[Path, Element]
 
     val Right(
-      analysis: CodeMotionAnalysis[Path, Element]
+      analysis: SectionedCode[Path, Element]
     ) =
-      CodeMotionAnalysis.of(
+      SectionedCode.of(
         baseSources,
         leftSources,
         rightSources
@@ -1603,9 +1603,9 @@ class CodeMotionAnalysisTest:
     ) with SourcesContracts[Path, Element]
 
     val Right(
-      analysis: CodeMotionAnalysis[Path, Element]
+      analysis: SectionedCode[Path, Element]
     ) =
-      CodeMotionAnalysis.of(
+      SectionedCode.of(
         baseSources,
         leftSources,
         rightSources
@@ -1679,9 +1679,9 @@ class CodeMotionAnalysisTest:
     ) with SourcesContracts[Path, Element]
 
     val Right(
-      analysis: CodeMotionAnalysis[Path, Element]
+      analysis: SectionedCode[Path, Element]
     ) =
-      CodeMotionAnalysis.of(
+      SectionedCode.of(
         baseSources,
         leftSources,
         rightSources
@@ -1767,9 +1767,9 @@ class CodeMotionAnalysisTest:
             rightSources
           ) =>
         val Right(
-          analysis: CodeMotionAnalysis[Path, Element]
+          analysis: SectionedCode[Path, Element]
         ) =
-          CodeMotionAnalysis.of(
+          SectionedCode.of(
             baseSources,
             leftSources,
             rightSources
@@ -1891,9 +1891,9 @@ class CodeMotionAnalysisTest:
     ) with SourcesContracts[Path, Element]
 
     val Right(
-      analysis: CodeMotionAnalysis[Path, Element]
+      analysis: SectionedCode[Path, Element]
     ) =
-      CodeMotionAnalysis.of(
+      SectionedCode.of(
         baseSources,
         leftSources,
         rightSources
@@ -1918,9 +1918,9 @@ class CodeMotionAnalysisTest:
     assert(6 == pairwise.size)
   end parallelMatches
 
-end CodeMotionAnalysisTest
+end SectionedCodeTest
 
-object CodeMotionAnalysisTest:
+object SectionedCodeTest:
   type Path    = Int
   type Element = Int
 
@@ -2091,4 +2091,4 @@ object CodeMotionAnalysisTest:
     override def funnel(element: Element, primitiveSink: PrimitiveSink): Unit =
       primitiveSink.putInt(element)
   end given
-end CodeMotionAnalysisTest
+end SectionedCodeTest
