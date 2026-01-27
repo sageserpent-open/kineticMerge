@@ -370,7 +370,7 @@ object LongestCommonSubsequence:
           // sacrificing performance obtained by using `Future` to do the heavy
           // lifting), or learn how to write a catamorphism for `Future` that
           // unfolds through the swathes. The problem is that without a
-          // catamorphism, the only obvious way of doing this is to used
+          // catamorphism, the only obvious way of doing this is to use
           // `Monad.whileM_`, and that really doesn't play well with `Future` as
           // it evaluates its condition eagerly and once.
           val allSolutionsOverAllSwathes = Monad[IO].whileM_(
