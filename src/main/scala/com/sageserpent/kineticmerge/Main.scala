@@ -10,8 +10,8 @@ import cats.syntax.traverse.toTraverseOps
 import com.google.common.hash.{Funnel, HashFunction, Hashing}
 import com.sageserpent.kineticmerge.Main.MergeInput.*
 import com.sageserpent.kineticmerge.core.*
-import com.sageserpent.kineticmerge.core.SectionedCodeExtension.*
 import com.sageserpent.kineticmerge.core.MatchAnalysis.Configuration
+import com.sageserpent.kineticmerge.core.SectionedCodeExtension.*
 import com.sageserpent.kineticmerge.core.Token.tokens
 import com.softwaremill.tagging.*
 import com.typesafe.scalalogging.StrictLogging
@@ -710,24 +710,6 @@ object Main extends StrictLogging:
         s"Unexpected error - can't parse changes reported by Git ${underline(line)}."
       ).flatMap { case (path, changed) => changed.map(path -> _) }
 
-    private def contentFor(
-        commitIdOrBranchName: String @@ Tags.CommitOrBranchName,
-        path: Path
-    )(
-        blobId: String @@ Tags.BlobId
-    ): Workflow[String @@ Tags.Content] =
-      IO {
-        os
-          .proc("git", "cat-file", "blob", blobId)
-          .call(workingDirectory)
-          .out
-          .text()
-          .taggedWith[Tags.Content]
-      }.labelExceptionWith(
-        s"Unexpected error - can't retrieve content for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)} using blob id: ${underline(blobId)}."
-      )
-    end contentFor
-
     def mergeInputsOf(
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
         ourBranchHead: String @@ Tags.CommitOrBranchName,
@@ -1001,6 +983,61 @@ object Main extends StrictLogging:
             yield path -> BothContributeADeletion(bestAncestorCommitIdContent)
         }
     end mergeInputsOf
+
+    private def contentFor(
+        commitIdOrBranchName: String @@ Tags.CommitOrBranchName,
+        path: Path
+    )(
+        blobId: String @@ Tags.BlobId
+    ): Workflow[String @@ Tags.Content] =
+      IO {
+        os
+          .proc("git", "cat-file", "blob", blobId)
+          .call(workingDirectory)
+          .out
+          .text()
+          .taggedWith[Tags.Content]
+      }.labelExceptionWith(
+        s"Unexpected error - can't retrieve content for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)} using blob id: ${underline(blobId)}."
+      )
+    end contentFor
+
+    private def blobFor(
+        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
+    )(
+        path: Path
+    ): Workflow[
+      (String @@ Tags.Mode, String @@ Tags.BlobId)
+    ] =
+      for
+        Array(mode, entryType, entryId, _) <- IO {
+          val line = os
+            .proc("git", "ls-tree", commitIdOrBranchName, path)
+            .call(workingDirectory)
+            .out
+            .text()
+
+          line.split(whitespaceRun)
+        }.labelExceptionWith(errorMessage =
+          s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
+        )
+        _ <-
+          entryType match
+            case "blob" =>
+              right(())
+            case "commit" =>
+              left(
+                s"Submodule changes not supported: encountered a submodule commit when trying to retrieve blob for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}, the commit id is: ${underline(entryId)}."
+              )
+            case _ =>
+              left(
+                s"Unexpected error - Git reports an unsupported type ${underline(entryType)} when trying to retrieve blob for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}, the id is: ${underline(entryId)}."
+              )
+      yield (
+        mode.taggedWith[Tags.Mode],
+        entryId.taggedWith[Tags.BlobId]
+      )
+    end blobFor
 
     def mergeWithRollback(
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
@@ -1500,10 +1537,10 @@ object Main extends StrictLogging:
       )
 
       def fileRenamingReportUsing(
-          codeMotionAnalysis: SectionedCode[Path, Token],
+          sectionedCode: SectionedCode[Path, Token],
           moveDestinationsReport: MoveDestinationsReport[Section[Token]]
       )(path: Path): Option[FileRelocationReport] =
-        val baseSections = codeMotionAnalysis.base(path).sections
+        val baseSections = sectionedCode.base(path).sections
 
         val (leftDestinationPaths, baseSectionsMovingLeftToNewFiles) =
           baseSections
@@ -1744,7 +1781,7 @@ object Main extends StrictLogging:
       end writeConflictedIndexEntriesForAddition
 
       for
-        codeMotionAnalysis: SectionedCode[Path, Token] <- EitherT
+        sectionedCode: SectionedCode[Path, Token] <- EitherT
           .fromEither[WorkflowLogWriter] {
             SectionedCode.of(baseSources, leftSources, rightSources)(
               configuration
@@ -1755,14 +1792,14 @@ object Main extends StrictLogging:
         (mergeResultsByPath, moveDestinationsReport) =
           given ProgressRecording = configuration.progressRecording
 
-          codeMotionAnalysis.merge
+          sectionedCode.merge
 
         _ <- moveDestinationsReport.summarizeInText.foldLeft(right(()))(
           _ logOperation _
         )
 
         fileRenamingReport = fileRenamingReportUsing(
-          codeMotionAnalysis,
+          sectionedCode,
           moveDestinationsReport
         )
 
@@ -2702,43 +2739,6 @@ object Main extends StrictLogging:
       yield withRenameVersusDeletionConflicts.goodForAMergeCommit
       end for
     end indexUpdates
-
-    private def blobFor(
-        commitIdOrBranchName: String @@ Tags.CommitOrBranchName
-    )(
-        path: Path
-    ): Workflow[
-      (String @@ Tags.Mode, String @@ Tags.BlobId)
-    ] =
-      for
-        Array(mode, entryType, entryId, _) <- IO {
-          val line = os
-            .proc("git", "ls-tree", commitIdOrBranchName, path)
-            .call(workingDirectory)
-            .out
-            .text()
-
-          line.split(whitespaceRun)
-        }.labelExceptionWith(errorMessage =
-          s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
-        )
-        _ <-
-          entryType match
-            case "blob" =>
-              right(())
-            case "commit" =>
-              left(
-                s"Submodule changes not supported: encountered a submodule commit when trying to retrieve blob for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}, the commit id is: ${underline(entryId)}."
-              )
-            case _ =>
-              left(
-                s"Unexpected error - Git reports an unsupported type ${underline(entryType)} when trying to retrieve blob for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}, the id is: ${underline(entryId)}."
-              )
-      yield (
-        mode.taggedWith[Tags.Mode],
-        entryId.taggedWith[Tags.BlobId]
-      )
-    end blobFor
 
     private def deleteFile(path: Path): Workflow[Unit] = IO {
       os.remove(path): Unit

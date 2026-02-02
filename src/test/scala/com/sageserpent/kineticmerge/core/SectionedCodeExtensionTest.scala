@@ -4,9 +4,9 @@ import cats.{Eq, Order}
 import com.google.common.hash.{Funnel, HashFunction, Hashing}
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.junit5.*
-import com.sageserpent.kineticmerge.core.SectionedCodeExtension.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.MatchAnalysis.Configuration
+import com.sageserpent.kineticmerge.core.SectionedCodeExtension.*
 import com.sageserpent.kineticmerge.core.SectionedCodeExtensionTest.{
   FakePath,
   reconstituteTextFrom,
@@ -154,14 +154,14 @@ class SectionedCodeExtensionTest extends ProseExamples:
             label = "right"
           )
 
-          val Right(codeMotionAnalysis) = SectionedCode.of(
+          val Right(sectionedCode) = SectionedCode.of(
             baseSources = baseSources,
             leftSources = leftSources,
             rightSources = rightSources
           )(configuration): @unchecked
 
           val (mergeResultsByPath, moveDestinationsReport) =
-            codeMotionAnalysis.merge
+            sectionedCode.merge
 
           println(fansi.Color.Yellow(s"Final move destinations report...\n"))
           println(
@@ -210,14 +210,14 @@ class SectionedCodeExtensionTest extends ProseExamples:
       label = "right"
     )
 
-    val Right(codeMotionAnalysis) = SectionedCode.of(
+    val Right(sectionedCode) = SectionedCode.of(
       baseSources = baseSources,
       leftSources = leftSources,
       rightSources = rightSources
     )(configuration): @unchecked
 
     val (mergeResultsByPath, _) =
-      codeMotionAnalysis.merge
+      sectionedCode.merge
 
     verifyContent(placeholderPath, mergeResultsByPath)(
       stuntDoubleTokens(issue23BugReproductionExpectedMerge)
@@ -292,14 +292,14 @@ class SectionedCodeExtensionTest extends ProseExamples:
             label = "right"
           )
 
-          val Right(codeMotionAnalysis) = SectionedCode.of(
+          val Right(sectionedCode) = SectionedCode.of(
             baseSources = baseSources,
             leftSources = leftSources,
             rightSources = rightSources
           )(configuration): @unchecked
 
           val (mergeResultsByPath, _) =
-            codeMotionAnalysis.merge
+            sectionedCode.merge
 
           verifyContent(placeholderPath, mergeResultsByPath)(
             stuntDoubleTokens(expectedText)
@@ -307,34 +307,6 @@ class SectionedCodeExtensionTest extends ProseExamples:
       }
 
   end codeMotionWithPropagatedInsertion
-
-  private def verifyContent(
-      path: FakePath,
-      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
-  )(
-      expectedTokens: IndexedSeq[Token],
-      equality: (Token, Token) => Boolean = Token.equality
-  ): Unit =
-    println(fansi.Color.Yellow(s"Checking $path...\n"))
-    println(fansi.Color.Yellow("Expected..."))
-    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
-
-    mergeResultsByPath(path) match
-      case FullyMerged(result) =>
-        println(fansi.Color.Yellow("Fully merged result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(result)))
-        assert(result.corresponds(expectedTokens)(equality))
-      case MergedWithConflicts(baseResult, leftResult, rightResult) =>
-        println(fansi.Color.Red(s"Base result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(baseResult)))
-        println(fansi.Color.Red(s"Left result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
-        println(fansi.Color.Red(s"Right result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
-
-        fail("Should have seen a clean merge.")
-    end match
-  end verifyContent
 
   @TestFactory
   def issue42BugReproduction(): DynamicTests =
@@ -417,14 +389,14 @@ class SectionedCodeExtensionTest extends ProseExamples:
             label = "right"
           )
 
-          val Right(codeMotionAnalysis) = SectionedCode.of(
+          val Right(sectionedCode) = SectionedCode.of(
             baseSources = baseSources,
             leftSources = leftSources,
             rightSources = rightSources
           )(configuration): @unchecked
 
           val (mergeResultsByPath, _) =
-            codeMotionAnalysis.merge
+            sectionedCode.merge
 
           verifyContent(placeholderPath, mergeResultsByPath)(
             stuntDoubleTokens(expectedText)
@@ -460,19 +432,47 @@ class SectionedCodeExtensionTest extends ProseExamples:
       label = "right"
     )
 
-    val Right(codeMotionAnalysis) = SectionedCode.of(
+    val Right(sectionedCode) = SectionedCode.of(
       baseSources = baseSources,
       leftSources = leftSources,
       rightSources = rightSources
     )(configuration): @unchecked
 
     val (mergeResultsByPath, _) =
-      codeMotionAnalysis.merge
+      sectionedCode.merge
 
     verifyContent(placeholderPath, mergeResultsByPath)(
       tokens(codeMotionExampleExpectedMerge).get
     )
   end codeMotion
+
+  private def verifyContent(
+      path: FakePath,
+      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
+  )(
+      expectedTokens: IndexedSeq[Token],
+      equality: (Token, Token) => Boolean = Token.equality
+  ): Unit =
+    println(fansi.Color.Yellow(s"Checking $path...\n"))
+    println(fansi.Color.Yellow("Expected..."))
+    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
+
+    mergeResultsByPath(path) match
+      case FullyMerged(result) =>
+        println(fansi.Color.Yellow("Fully merged result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(result)))
+        assert(result.corresponds(expectedTokens)(equality))
+      case MergedWithConflicts(baseResult, leftResult, rightResult) =>
+        println(fansi.Color.Red(s"Base result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(baseResult)))
+        println(fansi.Color.Red(s"Left result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+        println(fansi.Color.Red(s"Right result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+        fail("Should have seen a clean merge.")
+    end match
+  end verifyContent
 
   @TestFactory
   def codeMotionWithSplit(): DynamicTests =
@@ -510,14 +510,14 @@ class SectionedCodeExtensionTest extends ProseExamples:
           label = "right"
         )
 
-        val Right(codeMotionAnalysis) = SectionedCode.of(
+        val Right(sectionedCode) = SectionedCode.of(
           baseSources = baseSources,
           leftSources = leftSources,
           rightSources = rightSources
         )(configuration): @unchecked
 
         val (mergeResultsByPath, _) =
-          codeMotionAnalysis.merge
+          sectionedCode.merge
 
         verifyContent(originalPath, mergeResultsByPath)(
           tokens(codeMotionExampleWithSplitOriginalExpectedMerge).get
@@ -569,13 +569,13 @@ class SectionedCodeExtensionTest extends ProseExamples:
           label = "right"
         )
 
-      val Right(codeMotionAnalysis) = SectionedCode.of(
+      val Right(sectionedCode) = SectionedCode.of(
         baseSources = baseSources,
         leftSources = leftSources,
         rightSources = rightSources
       )(configuration): @unchecked
 
-      val (mergeResultsByPath, _) = codeMotionAnalysis.merge
+      val (mergeResultsByPath, _) = sectionedCode.merge
 
       def merge(path: FakePath): Unit =
         mergeResultsByPath(path) match
@@ -633,7 +633,7 @@ class SectionedCodeExtensionTest extends ProseExamples:
           label = "right"
         )
 
-        val Right(codeMotionAnalysis) = SectionedCode.of(
+        val Right(sectionedCode) = SectionedCode.of(
           baseSources = baseSources,
           leftSources = leftSources,
           rightSources = rightSources
@@ -652,7 +652,7 @@ class SectionedCodeExtensionTest extends ProseExamples:
         ).get
 
         val (mergeResultsByPath, _) =
-          codeMotionAnalysis.merge
+          sectionedCode.merge
 
         verifyContent(placeholderPath, mergeResultsByPath)(
           expected,
@@ -716,7 +716,7 @@ class SectionedCodeExtensionTest extends ProseExamples:
           label = "right"
         )
 
-        val Right(codeMotionAnalysis) = SectionedCode.of(
+        val Right(sectionedCode) = SectionedCode.of(
           baseSources = baseSources,
           leftSources = leftSources,
           rightSources = rightSources
@@ -735,7 +735,7 @@ class SectionedCodeExtensionTest extends ProseExamples:
         ).get
 
         val (mergeResultsByPath, _) =
-          codeMotionAnalysis.merge
+          sectionedCode.merge
 
         renamingSide match
           case RenamingSide.Both =>
@@ -842,14 +842,14 @@ class SectionedCodeExtensionTest extends ProseExamples:
             label = "right"
           )
 
-          val Right(codeMotionAnalysis) = SectionedCode.of(
+          val Right(sectionedCode) = SectionedCode.of(
             baseSources = baseSources,
             leftSources = leftSources,
             rightSources = rightSources
           )(configuration): @unchecked
 
           val (mergeResultsByPath, moveDestinationsReport) =
-            codeMotionAnalysis.merge
+            sectionedCode.merge
 
           println(fansi.Color.Yellow(s"Final move destinations report...\n"))
           println(
@@ -978,14 +978,14 @@ class SectionedCodeExtensionTest extends ProseExamples:
                 label = "right"
               )
 
-          val Right(codeMotionAnalysis) = SectionedCode.of(
+          val Right(sectionedCode) = SectionedCode.of(
             baseSources = baseSources,
             leftSources = leftSources,
             rightSources = rightSources
           )(configuration): @unchecked
 
           val (mergeResultsByPath, moveDestinationsReport) =
-            codeMotionAnalysis.merge
+            sectionedCode.merge
 
           println(fansi.Color.Yellow(s"Final move destinations report...\n"))
           println(
@@ -1037,14 +1037,14 @@ class SectionedCodeExtensionTest extends ProseExamples:
       label = "right"
     )
 
-    val Right(codeMotionAnalysis) = SectionedCode.of(
+    val Right(sectionedCode) = SectionedCode.of(
       baseSources = baseSources,
       leftSources = leftSources,
       rightSources = rightSources
     )(configuration): @unchecked
 
     val (mergeResultsByPath, moveDestinationsReport) =
-      codeMotionAnalysis.merge
+      sectionedCode.merge
 
     println(fansi.Color.Yellow(s"Final move destinations report...\n"))
     println(
@@ -1132,14 +1132,14 @@ class SectionedCodeExtensionTest extends ProseExamples:
       label = "right"
     )
 
-    val Right(codeMotionAnalysis) = SectionedCode.of(
+    val Right(sectionedCode) = SectionedCode.of(
       baseSources = baseSources,
       leftSources = leftSources,
       rightSources = rightSources
     )(configuration): @unchecked
 
     val (mergeResultsByPath, moveDestinationsReport) =
-      codeMotionAnalysis.merge
+      sectionedCode.merge
 
     println(fansi.Color.Yellow(s"Final move destinations report...\n"))
     println(
@@ -1176,14 +1176,14 @@ class SectionedCodeExtensionTest extends ProseExamples:
       label = "right"
     )
 
-    val Right(codeMotionAnalysis) = SectionedCode.of(
+    val Right(sectionedCode) = SectionedCode.of(
       baseSources = baseSources,
       leftSources = leftSources,
       rightSources = rightSources
     )(configuration): @unchecked
 
     val (mergeResultsByPath, _) =
-      codeMotionAnalysis.merge
+      sectionedCode.merge
 
     verifyContent(placeholderPath, mergeResultsByPath)(
       tokens(coincidencesExpectedMerge).get
@@ -1424,14 +1424,14 @@ class SectionedCodeExtensionTest extends ProseExamples:
                 )
               )
 
-          val Right(codeMotionAnalysis) = SectionedCode.of(
+          val Right(sectionedCode) = SectionedCode.of(
             baseSources = baseSources,
             leftSources = leftSources,
             rightSources = rightSources
           )(configuration): @unchecked
 
           val (mergeResultsByPath, moveDestinationsReport) =
-            codeMotionAnalysis.merge
+            sectionedCode.merge
 
           println(fansi.Color.Yellow(s"Final move destinations report...\n"))
           println(
@@ -1446,6 +1446,41 @@ class SectionedCodeExtensionTest extends ProseExamples:
           verifyAbsenceOfContent(originalPath, mergeResultsByPath)
       }
   end simpleCodeMotionAcrossAFileRenameExamples
+
+  private def verifyAbsenceOfContent(
+      path: FakePath,
+      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
+  ): Unit =
+    mergeResultsByPath(path) match
+      case FullyMerged(result) =>
+        assert(
+          result.isEmpty,
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render + fansi.Color
+            .Green(
+              reconstituteTextFrom(result)
+            )
+            .render
+        )
+      case MergedWithConflicts(baseResult, leftResult, rightResult) =>
+        fail(
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render
+            + fansi.Color.Red(s"\nBase result...\n")
+            + fansi.Color.Green(reconstituteTextFrom(baseResult)).render
+            + fansi.Color.Red(s"\nLeft result...\n")
+            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
+            + fansi.Color.Red(s"\nRight result...\n").render
+            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
+        )
+    end match
+  end verifyAbsenceOfContent
 
   @TestFactory
   def forwardingThroughCodeMotionAcrossAFileRenameExamples(): DynamicTests =
@@ -1690,14 +1725,14 @@ class SectionedCodeExtensionTest extends ProseExamples:
                 )
               )
 
-          val Right(codeMotionAnalysis) = SectionedCode.of(
+          val Right(sectionedCode) = SectionedCode.of(
             baseSources = baseSources,
             leftSources = leftSources,
             rightSources = rightSources
           )(configuration): @unchecked
 
           val (mergeResultsByPath, moveDestinationsReport) =
-            codeMotionAnalysis.merge
+            sectionedCode.merge
 
           println(fansi.Color.Yellow(s"Final move destinations report...\n"))
           println(
@@ -1770,14 +1805,14 @@ class SectionedCodeExtensionTest extends ProseExamples:
       label = "right"
     )
 
-    val Right(codeMotionAnalysis) = SectionedCode.of(
+    val Right(sectionedCode) = SectionedCode.of(
       baseSources = baseSources,
       leftSources = leftSources,
       rightSources = rightSources
     )(configuration): @unchecked
 
     val (mergeResultsByPath, moveDestinationsReport) =
-      codeMotionAnalysis.merge
+      sectionedCode.merge
 
     println(fansi.Color.Yellow(s"Final move destinations report...\n"))
     println(
@@ -1845,14 +1880,14 @@ class SectionedCodeExtensionTest extends ProseExamples:
         label = "right"
       )
 
-      val Right(codeMotionAnalysis) = SectionedCode.of(
+      val Right(sectionedCode) = SectionedCode.of(
         baseSources = baseSources,
         leftSources = leftSources,
         rightSources = rightSources
       )(configuration): @unchecked
 
       val (mergeResultsByPath, _) =
-        codeMotionAnalysis.merge
+        sectionedCode.merge
 
       verifyContent(placeholderPath, mergeResultsByPath)(
         stuntDoubleTokens(expectedMergeText)
@@ -1906,14 +1941,14 @@ class SectionedCodeExtensionTest extends ProseExamples:
         label = "right"
       )
 
-      val Right(codeMotionAnalysis) = SectionedCode.of(
+      val Right(sectionedCode) = SectionedCode.of(
         baseSources = baseSources,
         leftSources = leftSources,
         rightSources = rightSources
       )(configuration): @unchecked
 
       val (mergeResultsByPath, _) =
-        codeMotionAnalysis.merge
+        sectionedCode.merge
 
       verifyContent(placeholderPath, mergeResultsByPath)(
         tokens(expectedMergeText).get
@@ -1967,14 +2002,14 @@ class SectionedCodeExtensionTest extends ProseExamples:
         label = "right"
       )
 
-      val Right(codeMotionAnalysis) = SectionedCode.of(
+      val Right(sectionedCode) = SectionedCode.of(
         baseSources = baseSources,
         leftSources = leftSources,
         rightSources = rightSources
       )(configuration): @unchecked
 
       val (mergeResultsByPath, _) =
-        codeMotionAnalysis.merge
+        sectionedCode.merge
 
       verifyContent(placeholderPath, mergeResultsByPath)(
         tokens(expectedMergeText).get
@@ -2023,14 +2058,14 @@ class SectionedCodeExtensionTest extends ProseExamples:
         label = "right"
       )
 
-      val Right(codeMotionAnalysis) = SectionedCode.of(
+      val Right(sectionedCode) = SectionedCode.of(
         baseSources = baseSources,
         leftSources = leftSources,
         rightSources = rightSources
       )(configuration): @unchecked
 
       val (mergeResultsByPath, _) =
-        codeMotionAnalysis.merge
+        sectionedCode.merge
 
       verifyAbsenceOfContent(storyPath, mergeResultsByPath)
 
@@ -2042,41 +2077,6 @@ class SectionedCodeExtensionTest extends ProseExamples:
       )
     }
   end issue144BugReproduction
-
-  private def verifyAbsenceOfContent(
-      path: FakePath,
-      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
-  ): Unit =
-    mergeResultsByPath(path) match
-      case FullyMerged(result) =>
-        assert(
-          result.isEmpty,
-          fansi.Color
-            .Yellow(
-              s"\nShould not have this content at $path...\n"
-            )
-            .render + fansi.Color
-            .Green(
-              reconstituteTextFrom(result)
-            )
-            .render
-        )
-      case MergedWithConflicts(baseResult, leftResult, rightResult) =>
-        fail(
-          fansi.Color
-            .Yellow(
-              s"\nShould not have this content at $path...\n"
-            )
-            .render
-            + fansi.Color.Red(s"\nBase result...\n")
-            + fansi.Color.Green(reconstituteTextFrom(baseResult)).render
-            + fansi.Color.Red(s"\nLeft result...\n")
-            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
-            + fansi.Color.Red(s"\nRight result...\n").render
-            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
-        )
-    end match
-  end verifyAbsenceOfContent
 
   @Test
   def issue236BugReproduction(): Unit =
@@ -2188,14 +2188,14 @@ class SectionedCodeExtensionTest extends ProseExamples:
       label = "right"
     )
 
-    val Right(codeMotionAnalysis) = SectionedCode.of(
+    val Right(sectionedCode) = SectionedCode.of(
       baseSources = baseSources,
       leftSources = leftSources,
       rightSources = rightSources
     )(configuration): @unchecked
 
     val (mergeResultsByPath, _) =
-      codeMotionAnalysis.merge
+      sectionedCode.merge
 
     val expectedContent =
       """
@@ -2297,14 +2297,14 @@ class SectionedCodeExtensionTest extends ProseExamples:
         label = "right"
       )
 
-      val Right(codeMotionAnalysis) = SectionedCode.of(
+      val Right(sectionedCode) = SectionedCode.of(
         baseSources = baseSources,
         leftSources = leftSources,
         rightSources = rightSources
       )(configuration): @unchecked
 
       val (mergeResultsByPath, _) =
-        codeMotionAnalysis.merge
+        sectionedCode.merge
 
       val expectedTokens = tokens("""
           |Fable, able
@@ -2404,13 +2404,13 @@ class SectionedCodeExtensionTest extends ProseExamples:
         label = "right"
       )
 
-      val Right(codeMotionAnalysis) = SectionedCode.of(
+      val Right(sectionedCode) = SectionedCode.of(
         baseSources = baseSources,
         leftSources = leftSources,
         rightSources = rightSources
       )(configuration): @unchecked
 
-      assertDoesNotThrow(() => codeMotionAnalysis.merge)
+      assertDoesNotThrow(() => sectionedCode.merge)
     }
   end issue269BugReproduction
 
@@ -2478,13 +2478,13 @@ class SectionedCodeExtensionTest extends ProseExamples:
         label = "right"
       )
 
-      val Right(codeMotionAnalysis) = SectionedCode.of(
+      val Right(sectionedCode) = SectionedCode.of(
         baseSources = baseSources,
         leftSources = leftSources,
         rightSources = rightSources
       )(configuration): @unchecked
 
-      assertDoesNotThrow(() => codeMotionAnalysis.merge)
+      assertDoesNotThrow(() => sectionedCode.merge)
     }
   end issue272BugReproduction
 
@@ -2548,13 +2548,13 @@ class SectionedCodeExtensionTest extends ProseExamples:
         label = "right"
       )
 
-      val Right(codeMotionAnalysis) = SectionedCode.of(
+      val Right(sectionedCode) = SectionedCode.of(
         baseSources = baseSources,
         leftSources = leftSources,
         rightSources = rightSources
       )(configuration): @unchecked
 
-      assertDoesNotThrow(() => codeMotionAnalysis.merge)
+      assertDoesNotThrow(() => sectionedCode.merge)
     }
   end issue274BugReproduction
 

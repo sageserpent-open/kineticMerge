@@ -1,6 +1,6 @@
 # Genetic Algorithm for Matching #
 
-`CodeMotionAnalysis` used to use a genetic algorithm to drive the discovery of matches. A small framework for
+`SectionedCode` used to use a genetic algorithm to drive the discovery of matches. A small framework for
 implementing genetic algorithms was written and debugged against its unit tests, using a model problem of sorting random
 integers into ascending order.
 
@@ -8,7 +8,7 @@ This code still exists, excised into its own project that shares commit history 
 see [actinium](https://github.com/sageserpent-open/actinium).
 
 It worked after a fashion - although Hamming Walls were a real concern for the model problem and were likely occurring
-in the determination of optimal matches by `CodeMotionAnalysis`.
+in the determination of optimal matches by `SectionedCode`.
 
 Here's
 the [original plan to use a genetic algorithm](https://github.com/sageserpent-open/kineticMerge/issues/19#issuecomment-1806822492),
@@ -33,12 +33,12 @@ history - there were a lot of blind alleys there. Genetic algorithms are *not* a
 
 # Rabin Fingerprinting #
 
-Fingerprinting of content is a key part of finding matches in `CodeMotionAnalysis`. The initial implementation
+Fingerprinting of content is a key part of finding matches in `SectionedCode`. The initial implementation
 used [Rabin Fingerprinting](https://github.com/themadcreator/rabinfingerprint), brought in as direct source dependency
 and compiled as a subproject of the overall SBT project - that repository does not publish Maven builds, and I didn't
 want to get into maintenance of all the third party codebase, just the bits required for Kinetic Merge.
 
-It worked very well - in some respects, too well, because the collision resistance masked a bug in `CodeMotionAnalysis`
+It worked very well - in some respects, too well, because the collision resistance masked a bug in `SectionedCode`
 provoked by fingerprint collisions between unrelated content. What did for it was the substantial overhead of
 precomputing the irreducible polynomial representation that is required to bootstrap a fingerprinting session.
 
@@ -52,7 +52,7 @@ If collision resistance is a primary concern though, Rabin fingerprinting is wor
 
 This was a stop-gap measure when an attempt was made to launch Kinetic Merge in an interim release that would do just
 three-way merging without code motion. The intent was to get something out there and produce a robust application shell
-into the bargain. `CodeMotionAnalysis`, `File`, `Section` and `Sources` were temporarily removed from the codebase. This
+into the bargain. `SectionedCode`, `File`, `Section` and `Sources` were temporarily removed from the codebase. This
 hit
 severe [performance snags](https://github.com/sageserpent-open/kineticMerge/issues/1#issuecomment-1720910504)
 straightaway, leading to abandoning merging over characters in favour of merging over tokens. That helped, but wasn't
@@ -72,10 +72,11 @@ results of the merges were combined with the common content to yield an overall 
 This approach worked well, leading to [the first releases](https://github.com/sageserpent-open/kineticMerge/issues/15).
 
 `PartitionedThreeWayTransform` used Rabin fingerprinting to find common content across the sides. Given that it was
-carried out in the context of getting an interim release out, once `CodeMotionAnalysis` and its friends were reinstated,
+carried out in the context of getting an interim release out, once `SectionedCode` and its friends were reinstated,
 `PartitionedThreeWayTransform` was excised out in Git commit SHA: 17105a839997c1bb65b25c5039ea78d547884dcd - but its
 legacy lives on in terms of the code
-in [`matchesForWindowSize`](https://github.com/sageserpent-open/kineticMerge/blob/63ea2b5cf44d553bf9d49412cc321fc219874d9a/src/main/scala/com/sageserpent/kineticmerge/core/CodeMotionAnalysis.scala#L1095)
+in [
+`matchesForWindowSize`](https://github.com/sageserpent-open/kineticMerge/blob/63ea2b5cf44d553bf9d49412cc321fc219874d9a/src/main/scala/com/sageserpent/kineticmerge/core/CodeMotionAnalysis.scala#L1095)
 initially being a crib from `PartitionedThreeWayTransform`, albeit with a lot more baggage added since then.
 
 # Two Passes to find Matches #
@@ -91,7 +92,7 @@ match, but bring in additional sections due to the all-sides matches.
 Ideally we would go with the larger pairwise match and block all smaller matches, but this would exclude the detection
 of smaller all-sides matches that might yield better coverage.
 
-As described in the detail about `CodeMotionAnalysis`, this is handled by relaxing the blocking rules slightly and then
+As described in the detail about `SectionedCode`, this is handled by relaxing the blocking rules slightly and then
 post-processing to clean up the matches.
 
 An alternative that was considered was to do a two-pass search for matches, the first for all-sides matches only and the
@@ -103,7 +104,7 @@ This wasn't pursued as having a more relaxed invariant about what matches could 
 post-processing turned out to be reasonably easy to implement and reason about. It takes significant time to search
 through the candidate window sizes, so having two passes would have resulted in a significant performance hit.
 
-Given some breakthrough on performance overall in `CodeMotionAnalysis`, this might be worth revisiting in the future...
+Given some breakthrough on performance overall in `SectionedCode`, this might be worth revisiting in the future...
 
 # Tiny Matches #
 

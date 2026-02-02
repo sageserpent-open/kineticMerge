@@ -22,12 +22,12 @@ of `Main.InWorkingDirectory`; that instance is used to drive the merge.
 ### `Main.InWorkingDirectory` ###
 
 This interacts with the Git repository, the working tree and the Git index to build up the inputs to the core merge
-machinery - `CodeMotionAnalysis.of` and `CodeMotionAnalysisExtension.merge`, writing the merge results to the working
+machinery - `SectionedCode.of` and `CodeMotionAnalysisExtension.merge`, writing the merge results to the working
 tree, the Git index and making a merge commit in the Git repository proper if appropriate. It also performs fast-forward
 merges.
 
 It translates between the content available from the Git repository and the inputs required
-by `CodeMotionAnalysis.of` - `Sources`, as well as translating back from the output
+by `SectionedCode.of` - `Sources`, as well as translating back from the output
 of `CodeMotionAnalysisExtension.merge` - `MergeResult` - into content to write to the various places mentioned above.
 
 The working directory is captured as context in the instance to simplify the method signatures.
@@ -130,7 +130,7 @@ then they are dissimilar.
 ### `Match` ###
 
 Represents three or two items, all from different sides that match. These items are sections when built in the context
-of `CodeMotionAnalysis`, but may be simpler constructs in tests.
+of `SectionedCode`, but may be simpler constructs in tests.
 
 Matches over sections are built by examining the *content* covered by a section - the matched sections cannot compare
 equal using `Section.equals`, because they are from different sides.
@@ -144,7 +144,7 @@ matches (although the content will agree).
 Some handy jargon for later - a match across all three sides is an *all-sides match*, and one across just two side - be
 they base plus left, base plus right or left plus right - is a *pairwise match*.
 
-### `CodeMotionAnalysis` ###
+### `SectionedCode` (formerly `CodeMotionAnalysis`) ###
 
 The class is a result of the act of performing the analysis. It has a breakdown of files by path for each of the three
 sides.
@@ -154,12 +154,12 @@ content on all three sides.
 
 There is a lookup facility that yields the set of matches that involve any given section.
 
-The companion object defines `CodeMotionAnalysis.of` - this performs the analysis, being a factory for the instances.
+The companion object defines `SectionedCode.of` - this performs the analysis, being a factory for the instances.
 Its job is find an optimal set of matches, matching as much of the content as possible across all the sides, but using
 no more matches than is necessary. All the content across the sides should be covered by sections that either belong to
 a match or are gap fillers.
 
-This method takes a `Sources` instance for each of the three sides and a `CodeMotionAnalysis.Configuration`
+This method takes a `Sources` instance for each of the three sides and a `SectionedCode.Configuration`
 that `Main.mergeTheirBranch` provides.
 
 There is a lot of logic in this method; this is discussed further elsewhere.
@@ -171,7 +171,7 @@ rolled over an implied sequence of bytes. Each windowed hash is referred to as a
 
 Each session instance is created by an immutable instance of `RollingHash.Factory` that embodies the window size and the
 expected number of fingerprints required; the factory instances themselves are expensive to create and are cached
-within `CodeMotionAnalysis.of`.
+within `SectionedCode.of`.
 
 Interaction with a `RollingHash` session is by repeatedly pushing in single bytes (this implies the byte sequence). Once
 enough bytes have been pushed to fill the window, the session is *primed* and can be consulted for the latest
@@ -183,7 +183,7 @@ from differing byte window content.
 
 ### `CodeMotionAnalysisExtension` ###
 
-To avoid bloating `CodeMotionAnalysis`, an extension is provided that adds a global merge to it. In effect the analysis
+To avoid bloating `SectionedCode`, an extension is provided that adds a global merge to it. In effect the analysis
 is treated as a parameter object to the merge.
 
 This performs file-by-file three-way merges across the sides, building up a picture of code motion and associated

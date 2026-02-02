@@ -31,13 +31,13 @@ described [here](https://github.com/sageserpent-open/kineticMerge/issues/43).
 Briefly, because matches have to clear a certain minimum size to be considered, small runs of content can fail to match,
 resulting in a poor merge.
 
-`CodeMotionAnalysis` breaks down the base sources without any gap chunks and notes the resulting gap filler sections.
+`SectionedCode` breaks down the base sources without any gap chunks and notes the resulting gap filler sections.
 These are used as candidate gap chunks when breaking down the left and right sources; because the gap chunks come from
 the base, any edit that contains the original edited text will end up being split with the original edited text as a gap
 chunk. That in turn allows the downstream three-way merges to align the gap chunk sections, which leads to a good merge.
 
 It's a nasty hack that uses two separate major components to coincidentally work together, but it works
-around `CodeMotionAnalysis` being blind to legitimate match opportunities at low match window sizes. Low match window
+around `SectionedCode` being blind to legitimate match opportunities at low match window sizes. Low match window
 sizes are covered in the discussion elsewhere about blind alleys. In practice, it's quite effective as a stop-gap
 solution.
 

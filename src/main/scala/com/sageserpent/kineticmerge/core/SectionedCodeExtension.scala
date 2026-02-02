@@ -39,7 +39,7 @@ object SectionedCodeExtension extends StrictLogging:
     */
 
   extension [Path, Element: Eq: Order](
-      codeMotionAnalysis: SectionedCode[Path, Element]
+      sectionedCode: SectionedCode[Path, Element]
   )
     def merge(using
         progressRecording: ProgressRecording
@@ -47,7 +47,7 @@ object SectionedCodeExtension extends StrictLogging:
         Map[Path, MergeResult[Element]],
         MoveDestinationsReport[Section[Element]]
     ) =
-      import codeMotionAnalysis.matchesFor
+      import sectionedCode.matchesFor
 
       given Eq[Section[Element]] with
         /** This is most definitely *not* [[Section.equals]] - we want to use
@@ -85,7 +85,7 @@ object SectionedCodeExtension extends StrictLogging:
       end extension
 
       val paths =
-        codeMotionAnalysis.base.keySet ++ codeMotionAnalysis.left.keySet ++ codeMotionAnalysis.right.keySet
+        sectionedCode.base.keySet ++ sectionedCode.left.keySet ++ sectionedCode.right.keySet
 
       def resolution(
           multiSided: MultiSided[Section[Element]]
@@ -232,9 +232,9 @@ object SectionedCodeExtension extends StrictLogging:
                 )(initialProgress)
             end given
 
-            val base  = codeMotionAnalysis.base.get(path).map(_.sections)
-            val left  = codeMotionAnalysis.left.get(path).map(_.sections)
-            val right = codeMotionAnalysis.right.get(path).map(_.sections)
+            val base  = sectionedCode.base.get(path).map(_.sections)
+            val left  = sectionedCode.left.get(path).map(_.sections)
+            val right = sectionedCode.right.get(path).map(_.sections)
 
             (base, left, right) match
               case (None, Some(leftSections), None) =>
@@ -440,7 +440,7 @@ object SectionedCodeExtension extends StrictLogging:
           sourceAnchor: Section[Element]
       ): (IndexedSeq[Section[Element]], IndexedSeq[Section[Element]]) =
         val file =
-          codeMotionAnalysis.base(codeMotionAnalysis.basePathFor(sourceAnchor))
+          sectionedCode.base(sectionedCode.basePathFor(sourceAnchor))
 
         def selection(
             candidates: IndexedSeqView[Section[Element]]
@@ -474,16 +474,16 @@ object SectionedCodeExtension extends StrictLogging:
           moveDestinationSide match
             case Side.Left =>
               (
-                codeMotionAnalysis.right(
-                  codeMotionAnalysis.rightPathFor(oppositeSideAnchor.element)
+                sectionedCode.right(
+                  sectionedCode.rightPathFor(oppositeSideAnchor.element)
                 ),
                 rightPreservations,
                 coincidentInsertionsOrEditsOnRight
               )
             case Side.Right =>
               (
-                codeMotionAnalysis.left(
-                  codeMotionAnalysis.leftPathFor(oppositeSideAnchor.element)
+                sectionedCode.left(
+                  sectionedCode.leftPathFor(oppositeSideAnchor.element)
                 ),
                 leftPreservations,
                 coincidentInsertionsOrEditsOnLeft
@@ -559,16 +559,16 @@ object SectionedCodeExtension extends StrictLogging:
           moveDestinationSide match
             case Side.Left =>
               (
-                codeMotionAnalysis.left(
-                  codeMotionAnalysis.leftPathFor(moveDestinationAnchor)
+                sectionedCode.left(
+                  sectionedCode.leftPathFor(moveDestinationAnchor)
                 ),
                 leftPreservations,
                 coincidentInsertionsOrEditsOnLeft
               )
             case Side.Right =>
               (
-                codeMotionAnalysis.right(
-                  codeMotionAnalysis.rightPathFor(moveDestinationAnchor)
+                sectionedCode.right(
+                  sectionedCode.rightPathFor(moveDestinationAnchor)
                 ),
                 rightPreservations,
                 coincidentInsertionsOrEditsOnRight
@@ -897,8 +897,8 @@ object SectionedCodeExtension extends StrictLogging:
                 ).collect { case MultiSided.Unique(element) =>
                   element
                 }.flatMap { adjacentToRightContext =>
-                  val rightFile = codeMotionAnalysis.right(
-                    codeMotionAnalysis.rightPathFor(adjacentToRightContext)
+                  val rightFile = sectionedCode.right(
+                    sectionedCode.rightPathFor(adjacentToRightContext)
                   )
 
                   val Searching.Found(indexOfSection) =
@@ -943,8 +943,8 @@ object SectionedCodeExtension extends StrictLogging:
                 ).collect { case MultiSided.Unique(element) =>
                   element
                 }.flatMap { adjacentToLeftContext =>
-                  val leftFile = codeMotionAnalysis.left(
-                    codeMotionAnalysis.leftPathFor(adjacentToLeftContext)
+                  val leftFile = sectionedCode.left(
+                    sectionedCode.leftPathFor(adjacentToLeftContext)
                   )
 
                   val Searching.Found(indexOfSection) =

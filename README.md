@@ -254,7 +254,7 @@ so long is a testament to the collision resistance of Rabin fingerprinting!
 - [Problem Space](./documents/designNotes/problemSpace.md)
 - [Code Motion](./documents/designNotes/codeMotion.md)
 - [Component Breakdown](./documents/designNotes/componentBreakdown.md)
-- [`CodeMotionAnalysis.of`](./documents/designNotes/codeMotionAnalysis.md)
+- [`CodeMotionAnalysis.of`](./documents/designNotes/sectionedCode.md)
 - [Blind Alleys](./documents/designNotes/blindAlleys.md)
 - [Skeletons in the Cupboard](./documents/designNotes/skeletonsInTheCupboard.md)
 
