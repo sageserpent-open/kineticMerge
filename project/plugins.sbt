@@ -1,5 +1,5 @@
 addSbtPlugin("com.github.sbt.junit" % "sbt-jupiter-interface" % "0.17.0")
-addSbtPlugin("io.stryker-mutator"   % "sbt-stryker4s"         % "0.19.1")
+addSbtPlugin("io.stryker-mutator"   % "sbt-stryker4s"         % "0.20.2")
 // NOTE: pin the dependency on `sbt-scalafmt` to 2.5.5 due to this project's build
 // invoking Coursier directly - as that plugin also depends on Coursier, this forces
 // resolution to choose a recent version of Coursier that is only built for Scala 2.13
