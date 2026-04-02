@@ -22,6 +22,8 @@ trait SectionedCode[Path, Element]:
   def basePathFor(baseSection: Section[Element]): Path
   def leftPathFor(leftSection: Section[Element]): Path
   def rightPathFor(rightSection: Section[Element]): Path
+
+  def parallelMatchGroups: Set[MatchAnalysis.ParallelMatchGroup[Element]]
 end SectionedCode
 
 object SectionedCode extends StrictLogging:
@@ -57,6 +59,8 @@ object SectionedCode extends StrictLogging:
 
     val parallelMatchesOnly =
       withAllMatchesOfAtLeastTheMinimumWindowSize.parallelMatchesOnly
+
+    val theParallelMatchGroups = parallelMatchesOnly.parallelMatchGroups
 
     try
       val (matchesAndTheirSections, tinyMatchesAndTheirSectionsOnly) =
@@ -153,6 +157,10 @@ object SectionedCode extends StrictLogging:
             section: Section[Element]
         ): collection.Set[Match[Section[Element]]] =
           sectionsAndTheirMatches.get(section)
+
+        override def parallelMatchGroups
+            : Set[MatchAnalysis.ParallelMatchGroup[Element]] =
+          theParallelMatchGroups
 
         export baseSources.pathFor as basePathFor
         export leftSources.pathFor as leftPathFor

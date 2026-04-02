@@ -151,6 +151,48 @@ end LongestCommonSubsequence
 
 object LongestCommonSubsequence:
 
+  def from[Element: Sized](
+      base: IndexedSeq[Contribution[Element]],
+      left: IndexedSeq[Contribution[Element]],
+      right: IndexedSeq[Contribution[Element]]
+  ): LongestCommonSubsequence[Element] =
+    val elementSize = summon[Sized[Element]].sizeOf
+
+    val commonSubsequenceSize = base
+      .collect { case Contribution.Common(element) =>
+        elementSize(element)
+      }
+      .foldLeft(CommonSubsequenceSize.zero)(_.addCostOfASingleContribution(_))
+
+    val commonToLeftAndRightOnlySize = left
+      .collect { case Contribution.CommonToLeftAndRightOnly(element) =>
+        elementSize(element)
+      }
+      .foldLeft(CommonSubsequenceSize.zero)(_.addCostOfASingleContribution(_))
+
+    val commonToBaseAndLeftOnlySize = base
+      .collect { case Contribution.CommonToBaseAndLeftOnly(element) =>
+        elementSize(element)
+      }
+      .foldLeft(CommonSubsequenceSize.zero)(_.addCostOfASingleContribution(_))
+
+    val commonToBaseAndRightOnlySize = base
+      .collect { case Contribution.CommonToBaseAndRightOnly(element) =>
+        elementSize(element)
+      }
+      .foldLeft(CommonSubsequenceSize.zero)(_.addCostOfASingleContribution(_))
+
+    LongestCommonSubsequence(
+      base = base,
+      left = left,
+      right = right,
+      commonSubsequenceSize = commonSubsequenceSize,
+      commonToLeftAndRightOnlySize = commonToLeftAndRightOnlySize,
+      commonToBaseAndLeftOnlySize = commonToBaseAndLeftOnlySize,
+      commonToBaseAndRightOnlySize = commonToBaseAndRightOnlySize
+    )
+  end from
+
   def defaultElementSize[Element](irrelevant: Element): Int = 1
 
   def of[Element: Eq: Sized](

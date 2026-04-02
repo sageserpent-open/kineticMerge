@@ -89,6 +89,17 @@ object merge extends StrictLogging:
       left: IndexedSeq[Element],
       right: IndexedSeq[Element]
   )(using progressRecording: ProgressRecording): Result[Element] =
+    val longestCommonSubsequence =
+      LongestCommonSubsequence.of(base, left, right)
+
+    of(mergeAlgebra)(longestCommonSubsequence)
+  end of
+
+  def of[Result[_], Element: Eq: Sized](
+      mergeAlgebra: MergeAlgebra[Result, Element]
+  )(
+      longestCommonSubsequence: LongestCommonSubsequence[Element]
+  )(using progressRecording: ProgressRecording): Result[Element] =
     def rightEditNotMaroonedByPriorCoincidentInsertion(
         leftTail: Seq[Contribution[Element]]
     ) =
@@ -1480,9 +1491,6 @@ object merge extends StrictLogging:
           partialResult
       end match
     end mergeBetweenRunsOfCommonElements
-
-    val longestCommonSubsequence =
-      LongestCommonSubsequence.of(base, left, right)
 
     mergeBetweenRunsOfCommonElements(
       longestCommonSubsequence.base,
