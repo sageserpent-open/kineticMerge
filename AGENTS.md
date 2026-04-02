@@ -40,7 +40,7 @@ Key goals include:
 - **Performance**: LCS and match discovery are performance-critical. LCS uses a memory-efficient, parallelizable dynamic programming approach.
 
 ## Important Files
-- `Main.scala`: Entry point and Git integration.
+- `Main.scala`: Entry point and Git integration. Note that there's a strategic direction (see issues #266 and #276) to make this more driver-agnostic, possibly supporting other version control systems like Jujutsu (JJ) by moving away from Git-specific porcelain and plumbing.
 - `MatchAnalysis.scala`: The heart of match discovery and reconciliation.
 - `SectionedCode.scala`: Higher-level analysis result and breakdown into files/sections.
 - `CodeMotionAnalysisExtension.scala`: The global merge and migration logic.
