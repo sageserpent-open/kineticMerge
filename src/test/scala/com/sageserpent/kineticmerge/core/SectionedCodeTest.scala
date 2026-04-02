@@ -15,7 +15,7 @@ import com.sageserpent.kineticmerge.core.SectionedCodeTest.{*, given}
 import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.{Order as _, *}
 
-import java.util.concurrent.TimeUnit
+import _root_.java.util.concurrent.TimeUnit
 import scala.concurrent.duration.Duration
 
 class SectionedCodeTest:
