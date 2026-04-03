@@ -1,4 +1,4 @@
-addSbtPlugin("com.github.sbt.junit" % "sbt-jupiter-interface" % "0.17.1")
+addSbtPlugin("com.github.sbt.junit" % "sbt-jupiter-interface" % "0.18.0")
 addSbtPlugin("io.stryker-mutator"   % "sbt-stryker4s"         % "0.20.3")
 // NOTE: pin the dependency on `sbt-scalafmt` to 2.5.5 due to this project's build
 // invoking Coursier directly - as that plugin also depends on Coursier, this forces
