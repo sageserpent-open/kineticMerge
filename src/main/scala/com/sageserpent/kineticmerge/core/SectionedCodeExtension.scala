@@ -307,9 +307,8 @@ object SectionedCodeExtension extends StrictLogging:
                   ) =>
                 // Mix of possibilities - the file may have been added on both
                 // sides, or modified on either or both sides. There is also an
-                // extraneous case where there is no file on any of the sides,
-                // and another extraneous case where the file is on all three
-                // sides but hasn't changed.
+                // extraneous case where the file is on all three sides but
+                // hasn't changed.
 
                 // Whichever is the case, merge...
 
@@ -326,6 +325,11 @@ object SectionedCodeExtension extends StrictLogging:
                   )
 
                 partialMergeResult.aggregate(path, firstPassMergeResult)
+
+              case (None, None, None) =>
+                throw new AssertionError(
+                  s"Logic error: path $path does not exist on the base, left or right side."
+                )
             end match
         }
 
