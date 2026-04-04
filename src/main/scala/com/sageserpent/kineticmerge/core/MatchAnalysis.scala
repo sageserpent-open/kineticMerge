@@ -1,7 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
-import cats.Eq
-import cats.collections.{Diet, Range as CatsInclusiveRange}
+import cats.{Eq, Order}
+import cats.collections.{Diet, DisjointSets, Range as CatsInclusiveRange}
 import cats.implicits.catsKernelOrderingForOrder
 import cats.instances.seq.*
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
@@ -2614,28 +2614,6 @@ object MatchAnalysis extends StrictLogging:
 
         val metaMatches = metaMatchAnalysis.matches
 
-        val parallelMatchGroups = metaMatches.map {
-          case Match.AllSides(
-                baseMetaSection,
-                leftMetaSection,
-                rightMetaSection
-              ) =>
-            (baseMetaSection.content lazyZip leftMetaSection.content lazyZip rightMetaSection.content)
-              .map(Match.AllSides.apply)
-          case Match.BaseAndLeft(baseMetaSection, leftMetaSection) =>
-            (baseMetaSection.content lazyZip leftMetaSection.content).map(
-              Match.BaseAndLeft.apply
-            )
-          case Match.BaseAndRight(baseMetaSection, rightMetaSection) =>
-            (baseMetaSection.content lazyZip rightMetaSection.content).map(
-              Match.BaseAndRight.apply
-            )
-          case Match.LeftAndRight(leftMetaSection, rightMetaSection) =>
-            (leftMetaSection.content lazyZip rightMetaSection.content).map(
-              Match.LeftAndRight.apply
-            )
-        }
-
         val backTranslatedMatchesByMetaMatch = metaMatches.map { metaMatch =>
           val backTranslated = metaMatch match
             case Match.AllSides(
@@ -2657,18 +2635,8 @@ object MatchAnalysis extends StrictLogging:
               (leftMetaSection.content lazyZip rightMetaSection.content).map(
                 Match.LeftAndRight.apply
               )
-          metaMatch -> backTranslated
-        }.toMap
 
-        val matchToMetaMatch = backTranslatedMatchesByMetaMatch.flatMap {
-          (metaMatch, matches) =>
-            matches.map(_ -> metaMatch)
-        }
-
-        val allBackTranslatedMatches = matchToMetaMatch.keySet
-
-        val legitimateBackTranslatedParallelMatches =
-          allBackTranslatedMatches.filter {
+          val legitimateBackTranslated = backTranslated.filter {
             case Match.AllSides(baseSection, leftSection, rightSection) =>
               !subsumedNonTriviallyByAnAllSidesMatch(
                 baseSection,
@@ -2692,110 +2660,153 @@ object MatchAnalysis extends StrictLogging:
               )
           }
 
-        val metaMatchList      = metaMatches.toIndexedSeq
-        val metaMatchToIndex   = metaMatchList.zipWithIndex.toMap
-        val metaMatchGroupParent = Array.tabulate(metaMatchList.size)(identity)
-        def find(i: Int): Int =
-          if metaMatchGroupParent(i) == i then i
-          else
-            metaMatchGroupParent(i) = find(metaMatchGroupParent(i))
-            metaMatchGroupParent(i)
-        def union(i: Int, j: Int): Unit =
-          val rootI = find(i)
-          val rootJ = find(j)
-          if rootI != rootJ then metaMatchGroupParent(rootI) = rootJ
+          metaMatch -> legitimateBackTranslated
+        }.toMap
 
-        val legitimateMatchesBySection = MultiDict.from(
-          legitimateBackTranslatedParallelMatches.flatMap(m =>
-            m.sections.map(_ -> m)
-          )
+        val legitimateBackTranslatedParallelMatches =
+          backTranslatedMatchesByMetaMatch.values.flatten.toSet
+
+        val matchesAndTheirSectionsOnly =
+          legitimateBackTranslatedParallelMatches
+            .foldLeft(MatchesAndTheirSections.empty)(_ withMatch _)
+            .reconcileMatches
+            .withoutRedundantPairwiseMatches
+            .purgedOfMatchesWithOverlappingSections(enabled = true)
+
+        val finalMatches = matchesAndTheirSectionsOnly.matches
+
+        val finalMatchesBySection = MultiDict.from(
+          finalMatches.flatMap(m => m.sections.map(_ -> m))
         )
 
+        given matchOrdering: Order[GenericMatch[Element]] =
+          Order.by(m =>
+            (
+              m.baseElementOption.map(_.startOffset),
+              m.leftElementOption.map(_.startOffset),
+              m.rightElementOption.map(_.startOffset)
+            )
+          )
+
+        var disjointSets = DisjointSets[GenericMatch[Element]](finalMatches.toSeq*)
+
         for
-          section <- legitimateMatchesBySection.keySet
-          matchesForSection = legitimateMatchesBySection.get(section)
-          if matchesForSection.size > 1
+          section <- finalMatchesBySection.keySet
+          associatedMatches = finalMatchesBySection.get(section)
+          if associatedMatches.size > 1
         do
-          val matches = matchesForSection.toSeq
-          for
-            i <- matches.indices
-            j <- (i + 1) until matches.length
-          do
-            val m1 = matches(i)
-            val m2 = matches(j)
-
-            def overlaps(i1: (Int, Int), i2: (Int, Int)): Boolean =
-              i1._1 < i2._2 && i2._1 < i1._2
-
-            val sharedSidesWithOverlaps =
-              (for
-                s1 <- m1.baseElementOption
-                s2 <- m2.baseElementOption
-                if overlaps(s1.closedOpenInterval, s2.closedOpenInterval)
-              yield 1).getOrElse(0) +
-                (for
-                  s1 <- m1.leftElementOption
-                  s2 <- m2.leftElementOption
-                  if overlaps(s1.closedOpenInterval, s2.closedOpenInterval)
-                yield 1).getOrElse(0) +
-                (for
-                  s1 <- m1.rightElementOption
-                  s2 <- m2.rightElementOption
-                  if overlaps(s1.closedOpenInterval, s2.closedOpenInterval)
-                yield 1).getOrElse(0)
-
-            if sharedSidesWithOverlaps >= 2 then
-              union(
-                metaMatchToIndex(matchToMetaMatch(m1)),
-                metaMatchToIndex(matchToMetaMatch(m2))
-              )
-          end for
+          val headMatch = associatedMatches.head
+          associatedMatches.tail.foreach { m =>
+            disjointSets = disjointSets.union(headMatch, m)._1
+          }
         end for
 
-        val metaMatchIndicesByRoot = (0 until metaMatchList.size).groupBy(find)
+        finalMatches.foreach {
+          case allSides: Match.AllSides[Section[Element]] =>
+            val baseSub =
+              MatchesAndTheirSections.subsumingPairwiseMatchesIncludingTriviallySubsuming(
+                matchesAndTheirSectionsOnly.sectionsAndTheirMatches
+              )(
+                baseSources,
+                matchesAndTheirSectionsOnly.baseSectionsByPath
+              )(allSides.baseElement)
+            val leftSub =
+              MatchesAndTheirSections.subsumingPairwiseMatchesIncludingTriviallySubsuming(
+                matchesAndTheirSectionsOnly.sectionsAndTheirMatches
+              )(
+                leftSources,
+                matchesAndTheirSectionsOnly.leftSectionsByPath
+              )(allSides.leftElement)
+            val rightSub =
+              MatchesAndTheirSections.subsumingPairwiseMatchesIncludingTriviallySubsuming(
+                matchesAndTheirSectionsOnly.sectionsAndTheirMatches
+              )(
+                rightSources,
+                matchesAndTheirSectionsOnly.rightSectionsByPath
+              )(allSides.rightElement)
 
-        val parallelMatchGroupsBuilder =
-          Set.newBuilder[ParallelMatchGroup[Element]]
+            (baseSub intersect leftSub).foreach(p =>
+              disjointSets = disjointSets.union(allSides, p)._1
+            )
+            (baseSub intersect rightSub).foreach(p =>
+              disjointSets = disjointSets.union(allSides, p)._1
+            )
+            (leftSub intersect rightSub).foreach(p =>
+              disjointSets = disjointSets.union(allSides, p)._1
+            )
+          case _ =>
+        }
 
-        val finalMatchesAndTheirSections =
-          metaMatchIndicesByRoot.values.foldLeft(MatchesAndTheirSections.empty) {
-            case (partialResult, indices) =>
-              val matchesInGroup = indices
-                .flatMap(i => backTranslatedMatchesByMetaMatch(metaMatchList(i)))
-                .filter(legitimateBackTranslatedParallelMatches.contains)
-                .toSet
+        def fuseFinal(
+            side: Match[Section[Element]] => Option[Section[Element]],
+            pathFor: Section[Element] => Path
+        ) =
+          val matchesByPath = finalMatches.toSeq
+            .flatMap(m => side(m).map(_ -> m))
+            .groupMap(pair => pathFor(pair._1))(identity)
 
-              if matchesInGroup.nonEmpty then
-                val groupMatchesAndTheirSections = MatchesAndTheirSections.empty
-                  .withMatches(matchesInGroup, haveTrimmedMatches = false)
-                  .matchesAndTheirSections
-                  .reconcileMatches
-                  .withoutRedundantPairwiseMatches
-
-                val reconciledMatches = groupMatchesAndTheirSections.matches
-
-                if reconciledMatches.nonEmpty then
-                  val sortedGroup = reconciledMatches.toIndexedSeq.sorted(
-                    Ordering.by(m =>
+          matchesByPath.values.foreach { matchesInPath =>
+            val sortedMatches = matchesInPath.sortBy(_._1.startOffset)
+            if sortedMatches.size > 1 then
+              sortedMatches.zip(sortedMatches.tail).foreach {
+                case ((s1, m1), (s2, m2)) =>
+                  if s1.onePastEndOffset >= s2.startOffset then
+                    // Restrictive fusion: must be strictly parallel and
+                    // adjacent/overlapping on ALL shared sides.
+                    val parallelAndAdjacent = Seq(
+                      (m1.baseElementOption, m2.baseElementOption, baseSources),
+                      (m1.leftElementOption, m2.leftElementOption, leftSources),
                       (
-                        m.baseElementOption.map(_.startOffset),
-                        m.leftElementOption.map(_.startOffset),
-                        m.rightElementOption.map(_.startOffset)
+                        m1.rightElementOption,
+                        m2.rightElementOption,
+                        rightSources
                       )
+                    ).forall {
+                      case (Some(os1), Some(os2), side) =>
+                        side.pathFor(os1) == side.pathFor(os2) &&
+                        os1.startOffset <= os2.startOffset &&
+                        os1.onePastEndOffset >= os2.startOffset
+                      case _ => true
+                    }
+
+                    if parallelAndAdjacent then
+                      disjointSets = disjointSets.union(m1, m2)._1
+              }
+          }
+        end fuseFinal
+
+        fuseFinal(_.baseElementOption, baseSources.pathFor)
+        fuseFinal(_.leftElementOption, leftSources.pathFor)
+        fuseFinal(_.rightElementOption, rightSources.pathFor)
+
+        val (_, setsMap) = disjointSets.toSets
+
+        val theParallelMatchGroups = setsMap.toList.iterator
+          .map(_._2.toList.toSet)
+          .collect {
+            case matches if matches.nonEmpty =>
+              // Reconcile matches within the group to ensure they are disjoint.
+              val groupMatchesAndTheirSections = matches
+                .foldLeft(MatchesAndTheirSections.empty)(_ withMatch _)
+                .reconcileMatches
+                .withoutRedundantPairwiseMatches
+                .purgedOfMatchesWithOverlappingSections(enabled = true)
+
+              groupMatchesAndTheirSections.matches.toIndexedSeq
+                .sorted(
+                  Ordering.by(m =>
+                    (
+                      m.baseElementOption.map(_.startOffset),
+                      m.leftElementOption.map(_.startOffset),
+                      m.rightElementOption.map(_.startOffset)
                     )
                   )
-
-                  parallelMatchGroupsBuilder += sortedGroup
-
-                  reconciledMatches.foldLeft(partialResult)(_ withMatch _)
-                else partialResult
-                end if
-              else partialResult
-              end if
+                )
           }
+          .toSet
 
-        finalMatchesAndTheirSections.copy(parallelMatchGroups =
-          parallelMatchGroupsBuilder.result()
+        matchesAndTheirSectionsOnly.copy(parallelMatchGroups =
+          theParallelMatchGroups
         )
       end parallelMatchesOnly
     end MatchesAndTheirSections

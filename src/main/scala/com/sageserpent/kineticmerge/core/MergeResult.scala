@@ -266,26 +266,30 @@ object MergeResult:
             leftMergeResults,
             rightMergeResults
           ) =>
-        def flattenWithinEnclosingConflict(
-            segment: MergeResult.Segment[Element]
-        ) =
-          segment match
-            case Segment.Resolved(elements)                         => elements
-            case Segment.Conflicted(_, leftElements, rightElements) =>
-              leftElements ++ rightElements
+        def flattenToSide(
+            mergeResults: Seq[MergeResult[Element]],
+            sideSelector: PartialFunction[Segment[Element], Seq[Element]]
+        ): Seq[Element] =
+          mergeResults.flatMap(_.segments.flatMap {
+            case Segment.Resolved(elements) => elements
+            case segment if sideSelector.isDefinedAt(segment) =>
+              sideSelector(segment)
+            case _ => Seq.empty
+          })
 
         MergeResult.segmentFor(
-          // TODO: this is probably nonsense - what should the base contribution
-          // really be?
-          baseMergeResults
-            .flatMap(_.segments)
-            .flatMap(flattenWithinEnclosingConflict),
-          leftMergeResults
-            .flatMap(_.segments)
-            .flatMap(flattenWithinEnclosingConflict),
-          rightMergeResults
-            .flatMap(_.segments)
-            .flatMap(flattenWithinEnclosingConflict)
+          flattenToSide(
+            baseMergeResults,
+            { case Segment.Conflicted(b, _, _) => b }
+          ),
+          flattenToSide(
+            leftMergeResults,
+            { case Segment.Conflicted(_, l, _) => l }
+          ),
+          flattenToSide(
+            rightMergeResults,
+            { case Segment.Conflicted(_, _, r) => r }
+          )
         )
     })
 
@@ -306,7 +310,7 @@ object MergeResult:
     IndexedSeq.empty
   )
 
-  private def segmentFor[Element: Eq](
+  def segmentFor[Element: Eq](
       baseElements: Seq[Element],
       leftElements: Seq[Element],
       rightElements: Seq[Element]

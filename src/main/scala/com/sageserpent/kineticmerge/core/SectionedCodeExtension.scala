@@ -85,6 +85,20 @@ object SectionedCodeExtension extends StrictLogging:
         )
       )
 
+      val allSectionsToPath: Map[Section[Element], Path] =
+        sectionedCode.base.toSeq.flatMap { case (path, file) =>
+          file.sections.map(_ -> path)
+        }.toMap ++
+          sectionedCode.left.toSeq.flatMap { case (path, file) =>
+            file.sections.map(_ -> path)
+          }.toMap ++
+          sectionedCode.right.toSeq.flatMap { case (path, file) =>
+            file.sections.map(_ -> path)
+          }.toMap
+
+      val leftSections  = sectionedCode.left.values.flatMap(_.sections).toSet
+      val rightSections = sectionedCode.right.values.flatMap(_.sections).toSet
+
       def resolution(
           multiSided: MultiSided[Section[Element]]
       ): IndexedSeq[Element] =
@@ -124,64 +138,58 @@ object SectionedCodeExtension extends StrictLogging:
 
       given Sized[Token[Path, Element]] = _ => 1
 
-      val groupSpansByFile = paths.map { path =>
-        path -> sectionedCode.parallelMatchGroups.flatMap { group =>
-          val sectionsInThisFile = group.flatMap { m =>
-            m.baseElementOption.filter(s =>
-              (try basePathFor(s) == path
-              catch case _: Throwable => false)
-            ) ++
-              m.leftElementOption.filter(s =>
-                (try leftPathFor(s) == path
-                catch case _: Throwable => false)
-              ) ++
-              m.rightElementOption.filter(s =>
-                (try rightPathFor(s) == path
-                catch case _: Throwable => false)
-              )
-          }
-          if sectionsInThisFile.nonEmpty then
-            val first = sectionsInThisFile.minBy(_.startOffset)
-            val last  = sectionsInThisFile.maxBy(_.startOffset)
-            Some(group -> (first.startOffset, last.onePastEndOffset))
-          else None
-        }.toMap
-      }.toMap
-
       def tokensFor(
           sections: IndexedSeq[Section[Element]],
           parallelMatchGroupsBySection: MultiDict[Section[
             Element
-          ], MatchAnalysis.ParallelMatchGroup[Element]],
-          path: Path
+          ], MatchAnalysis.ParallelMatchGroup[Element]]
       ): IndexedSeq[Token[Path, Element]] =
         val tokens = mutable.Buffer.empty[Token[Path, Element]]
-        val emittedGroups =
-          mutable.Set[MatchAnalysis.ParallelMatchGroup[Element]]()
-        var index = 0
-        while index < sections.size do
-          val section = sections(index)
-          val groupOption =
-            parallelMatchGroupsBySection.get(section).headOption orElse
-              groupSpansByFile(path).find { case (g, (start, end)) =>
-                section.startOffset >= start && section.onePastEndOffset <= end
-              }.map(_._1)
 
-          groupOption match
-            case Some(group) =>
-              if !emittedGroups.contains(group) then
-                tokens += Token(Right(group))
-                emittedGroups += group
-              end if
+        val groupToSectionsInFile = sections
+          .flatMap(s =>
+            parallelMatchGroupsBySection.get(s).headOption.map(_ -> s)
+          )
+          .groupMap(_._1)(_._2)
 
-              val (_, spanEnd) = groupSpansByFile(path)(group)
-              while index < sections.size && sections(index).startOffset < spanEnd
-              do index += 1
+        val groupSpans = groupToSectionsInFile.view
+          .mapValues { ss =>
+            (ss.map(_.startOffset).min, ss.map(_.onePastEndOffset).max)
+          }
+          .toMap
+
+        val sortedGroupsByStart = groupSpans.toSeq.sortBy(_._2._1)
+
+        var currentOffset  = 0
+        val sectionByStart = sections.map(s => s.startOffset -> s).toMap
+        val fileEndOffset =
+          sections.lastOption.map(_.onePastEndOffset).getOrElse(0)
+
+        sortedGroupsByStart.foreach { case (group, (spanStart, spanEnd)) =>
+          // Emit gaps before the group
+          while currentOffset < spanStart do
+            sectionByStart.get(currentOffset) match
+              case Some(s) =>
+                tokens += Token(Left(s))
+                currentOffset = s.onePastEndOffset
+              case None =>
+                // Should not happen if sections cover the file
+                currentOffset += 1
+
+          // Emit group
+          tokens += Token(Right(group))
+          currentOffset = spanEnd
+        }
+
+        // Emit remaining gaps
+        while currentOffset < fileEndOffset do
+          sectionByStart.get(currentOffset) match
+            case Some(s) =>
+              tokens += Token(Left(s))
+              currentOffset = s.onePastEndOffset
             case None =>
-              tokens += Token(Left(section))
-              index += 1
-          end match
-        end while
+              currentOffset += 1
+
         tokens.toIndexedSeq
       end tokensFor
 
@@ -195,53 +203,67 @@ object SectionedCodeExtension extends StrictLogging:
         val rightContributions =
           mutable.Buffer.empty[Contribution[Section[Element]]]
 
-        def addGaps(
-            previousMatch: Option[Match[Section[Element]]],
-            currentMatch: Match[Section[Element]]
-        ): Unit =
-          def gaps(
-              file: File[Element],
-              previousSection: Option[Section[Element]],
-              currentSection: Option[Section[Element]]
-          ): IndexedSeq[Section[Element]] =
-            (previousSection, currentSection) match
-              case (Some(previous), Some(current)) =>
-                val gapSize = current.startOffset - previous.onePastEndOffset
-                if gapSize > 0 then
-                  file.sections.view
-                    .filter(s =>
-                      s.startOffset >= previous.onePastEndOffset && s.onePastEndOffset <= current.startOffset
-                    )
-                    .toIndexedSeq
-                else IndexedSeq.empty
-              case _ => IndexedSeq.empty
+        val lastBaseSectionByPath  = mutable.Map.empty[Path, Section[Element]]
+        val lastLeftSectionByPath  = mutable.Map.empty[Path, Section[Element]]
+        val lastRightSectionByPath = mutable.Map.empty[Path, Section[Element]]
 
-          currentMatch.baseElementOption.foreach(baseSection =>
-            gaps(
-              sectionedCode.base(basePathFor(baseSection)),
-              previousMatch.flatMap(_.baseElementOption),
-              Some(baseSection)
-            ).foreach(gap => baseContributions += Contribution.Difference(gap))
-          )
-          currentMatch.leftElementOption.foreach(leftSection =>
-            gaps(
-              sectionedCode.left(leftPathFor(leftSection)),
-              previousMatch.flatMap(_.leftElementOption),
-              Some(leftSection)
-            ).foreach(gap => leftContributions += Contribution.Difference(gap))
-          )
-          currentMatch.rightElementOption.foreach(rightSection =>
-            gaps(
-              sectionedCode.right(rightPathFor(rightSection)),
-              previousMatch.flatMap(_.rightElementOption),
-              Some(rightSection)
-            ).foreach(gap => rightContributions += Contribution.Difference(gap))
-          )
-        end addGaps
+        def gaps(
+            file: File[Element],
+            previousSection: Option[Section[Element]],
+            currentSection: Section[Element],
+            pathFor: Section[Element] => Path
+        ): IndexedSeq[Section[Element]] =
+          previousSection match
+            case Some(previous)
+                if pathFor(previous) == pathFor(currentSection) =>
+              val gapSize =
+                currentSection.startOffset - previous.onePastEndOffset
+              if gapSize > 0 then
+                file.sections.view
+                  .filter(s =>
+                    s.startOffset >= previous.onePastEndOffset && s.onePastEndOffset <= currentSection.startOffset
+                  )
+                  .toIndexedSeq
+              else IndexedSeq.empty
+            case _ => IndexedSeq.empty
+        end gaps
 
-        group.zipWithIndex.foreach { (currentMatch, index) =>
-          val previousMatch = if index > 0 then Some(group(index - 1)) else None
-          addGaps(previousMatch, currentMatch)
+        group.foreach { currentMatch =>
+          currentMatch.baseElementOption.foreach { baseSection =>
+            val path = basePathFor(baseSection)
+            gaps(
+              sectionedCode.base(path),
+              lastBaseSectionByPath.get(path),
+              baseSection,
+              basePathFor
+            )
+              .foreach(gap => baseContributions += Contribution.Difference(gap))
+            lastBaseSectionByPath(path) = baseSection
+          }
+          currentMatch.leftElementOption.foreach { leftSection =>
+            val path = leftPathFor(leftSection)
+            gaps(
+              sectionedCode.left(path),
+              lastLeftSectionByPath.get(path),
+              leftSection,
+              leftPathFor
+            )
+              .foreach(gap => leftContributions += Contribution.Difference(gap))
+            lastLeftSectionByPath(path) = leftSection
+          }
+          currentMatch.rightElementOption.foreach { rightSection =>
+            val path = rightPathFor(rightSection)
+            gaps(
+              sectionedCode.right(path),
+              lastRightSectionByPath.get(path),
+              rightSection,
+              rightPathFor
+            )
+              .foreach(gap =>
+                rightContributions += Contribution.Difference(gap)
+              )
+            lastRightSectionByPath(path) = rightSection
+          }
 
           currentMatch match
             case Match.AllSides(base, left, right) =>
@@ -404,13 +426,13 @@ object SectionedCodeExtension extends StrictLogging:
             val right = sectionedCode.right.get(path).map(_.sections)
 
             val baseTokens = base.fold(ifEmpty = IndexedSeq.empty)(
-              tokensFor(_, parallelMatchGroupsByBaseSection, path)
+              tokensFor(_, parallelMatchGroupsByBaseSection)
             )
             val leftTokens = left.fold(ifEmpty = IndexedSeq.empty)(
-              tokensFor(_, parallelMatchGroupsByLeftSection, path)
+              tokensFor(_, parallelMatchGroupsByLeftSection)
             )
             val rightTokens = right.fold(ifEmpty = IndexedSeq.empty)(
-              tokensFor(_, parallelMatchGroupsByRightSection, path)
+              tokensFor(_, parallelMatchGroupsByRightSection)
             )
 
             val topLevelMergeResult = mergeOf(topLevelMergeAlgebra)(
@@ -458,17 +480,15 @@ object SectionedCodeExtension extends StrictLogging:
                   )
 
         unfiltered.filter {
-          case MultiSided.Preserved(_, left, _) =>
-            (try leftPathFor(left) == currentPath
-            catch case _: Throwable => false)
-          case MultiSided.Coincident(left, _) =>
-            (try leftPathFor(left) == currentPath
-            catch case _: Throwable => false)
+          case MultiSided.Preserved(_, left, right) =>
+            allSectionsToPath.get(left).contains(currentPath) ||
+            allSectionsToPath.get(right).contains(currentPath)
+          case MultiSided.Coincident(left, right) =>
+            allSectionsToPath.get(left).contains(currentPath) ||
+            allSectionsToPath.get(right).contains(currentPath)
           case MultiSided.Unique(s) =>
-            (try leftPathFor(s) == currentPath
-            catch case _: Throwable => false) ||
-            (try rightPathFor(s) == currentPath
-            catch case _: Throwable => false)
+            (leftSections.contains(s) || rightSections.contains(s)) &&
+            allSectionsToPath.get(s).contains(currentPath)
         }
       end resolveTokens
 
@@ -511,36 +531,39 @@ object SectionedCodeExtension extends StrictLogging:
             val coincidentPairs = flattened.collect {
               case p @ SpeculativeMoveDestination.Coincident(l, r) => p
             }
-            val coincidentLefts = coincidentPairs.map(_.elementPairAcrossLeftAndRight._1)
-            val coincidentRights = coincidentPairs.map(_.elementPairAcrossLeftAndRight._2)
+            val coincidentLefts =
+              coincidentPairs.map(_.elementPairAcrossLeftAndRight._1)
+            val coincidentRights =
+              coincidentPairs.map(_.elementPairAcrossLeftAndRight._2)
 
-            // To satisfy MoveDestinations require, we must be disjoint.
-            // Priority: Coincident > Left/Right
             val filtered = flattened.filter {
-              case SpeculativeMoveDestination.Left(l) => !coincidentLefts.contains(l)
-              case SpeculativeMoveDestination.Right(r) => !coincidentRights.contains(r)
+              case SpeculativeMoveDestination.Left(l) =>
+                !coincidentLefts.contains(l)
+              case SpeculativeMoveDestination.Right(r) =>
+                !coincidentRights.contains(r)
               case _ => true
             }
 
-            // Also need to handle multiple Coincidents for same L or R if they exist...
-            // MoveDestinations requirement is extremely strict.
-            val finalDestinations = mutable.Set[SpeculativeMoveDestination[Section[Element]]]()
+            val finalDestinations =
+              mutable.Set[SpeculativeMoveDestination[Section[Element]]]()
             val seenAll = mutable.Set[Section[Element]]()
 
-            filtered.toSeq.sortBy {
-              case _: SpeculativeMoveDestination.Coincident[?] => 0
-              case _ => 1
-            }.foreach { d =>
-               val members = d match {
-                 case SpeculativeMoveDestination.Left(l) => Set(l)
-                 case SpeculativeMoveDestination.Right(r) => Set(r)
-                 case SpeculativeMoveDestination.Coincident(l, r) => Set(l, r)
-               }
-               if (members.intersect(seenAll).isEmpty) {
-                 finalDestinations += d
-                 seenAll ++= members
-               }
-            }
+            filtered.toSeq
+              .sortBy {
+                case _: SpeculativeMoveDestination.Coincident[?] => 0
+                case _                                           => 1
+              }
+              .foreach { d =>
+                val members = d match
+                  case SpeculativeMoveDestination.Left(l)          => Set(l)
+                  case SpeculativeMoveDestination.Right(r)         => Set(r)
+                  case SpeculativeMoveDestination.Coincident(l, r) => Set(l, r)
+                end members
+                if members.intersect(seenAll).isEmpty then
+                  finalDestinations += d
+                  seenAll ++= members
+                end if
+              }
 
             new MoveDestinations(finalDestinations.toSet)
           }
