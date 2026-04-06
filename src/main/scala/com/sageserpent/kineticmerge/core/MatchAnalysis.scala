@@ -2609,6 +2609,10 @@ object MatchAnalysis extends StrictLogging:
 
         val metaMatches = metaMatchAnalysis.matches
 
+        // NOTE: because meta-matching starts with matched *sections* and
+        // ignores gaps, we have to guard against sections that would have
+        // formed the sides of a suppressed outer match making a second attempt
+        // at building a match.
         val parallelMatchGroups = metaMatches.map {
           case Match.AllSides(
                 baseMetaSection,
@@ -2616,47 +2620,46 @@ object MatchAnalysis extends StrictLogging:
                 rightMetaSection
               ) =>
             (baseMetaSection.content lazyZip leftMetaSection.content lazyZip rightMetaSection.content)
-              .map(Match.AllSides.apply)
+              .collect {
+                case (baseSection, leftSection, rightSection)
+                    if !subsumedNonTriviallyByAnAllSidesMatch(
+                      baseSection,
+                      leftSection,
+                      rightSection
+                    ) =>
+                  Match.AllSides(baseSection, leftSection, rightSection)
+              }
           case Match.BaseAndLeft(baseMetaSection, leftMetaSection) =>
-            (baseMetaSection.content lazyZip leftMetaSection.content).map(
-              Match.BaseAndLeft.apply
-            )
+            (baseMetaSection.content lazyZip leftMetaSection.content).collect {
+              case (baseSection, leftSection)
+                  if !subsumedNonTriviallyByABaseAndLeftMatch(
+                    baseSection,
+                    leftSection
+                  ) =>
+                Match.BaseAndLeft(baseSection, leftSection)
+            }
           case Match.BaseAndRight(baseMetaSection, rightMetaSection) =>
-            (baseMetaSection.content lazyZip rightMetaSection.content).map(
-              Match.BaseAndRight.apply
-            )
+            (baseMetaSection.content lazyZip rightMetaSection.content).collect {
+              case (baseSection, rightSection)
+                  if !subsumedNonTriviallyByABaseAndRightMatch(
+                    baseSection,
+                    rightSection
+                  ) =>
+                Match.BaseAndRight(baseSection, rightSection)
+            }
           case Match.LeftAndRight(leftMetaSection, rightMetaSection) =>
-            (leftMetaSection.content lazyZip rightMetaSection.content).map(
-              Match.LeftAndRight.apply
-            )
-        }
-
-        val legitimateParallelMatches = parallelMatchGroups.flatten.filter {
-          case Match.AllSides(baseSection, leftSection, rightSection) =>
-            !subsumedNonTriviallyByAnAllSidesMatch(
-              baseSection,
-              leftSection,
-              rightSection
-            )
-          case Match.BaseAndLeft(baseSection, leftSection) =>
-            !subsumedNonTriviallyByABaseAndLeftMatch(
-              baseSection,
-              leftSection
-            )
-          case Match.BaseAndRight(baseSection, rightSection) =>
-            !subsumedNonTriviallyByABaseAndRightMatch(
-              baseSection,
-              rightSection
-            )
-          case Match.LeftAndRight(leftSection, rightSection) =>
-            !subsumedNonTriviallyByALeftAndRightMatch(
-              leftSection,
-              rightSection
-            )
+            (leftMetaSection.content lazyZip rightMetaSection.content).collect {
+              case (leftSection, rightSection)
+                  if !subsumedNonTriviallyByALeftAndRightMatch(
+                    leftSection,
+                    rightSection
+                  ) =>
+                Match.LeftAndRight(leftSection, rightSection)
+            }
         }
 
         MatchesAndTheirSections.empty
-          .withMatches(legitimateParallelMatches, haveTrimmedMatches = false)
+          .withMatches(parallelMatchGroups.flatten, haveTrimmedMatches = false)
           .matchesAndTheirSections
           .withoutRedundantPairwiseMatches
       end parallelMatchesOnly
