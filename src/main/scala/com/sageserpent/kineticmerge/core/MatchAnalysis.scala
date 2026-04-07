@@ -1,9 +1,11 @@
 package com.sageserpent.kineticmerge.core
 
-import cats.Eq
-import cats.collections.{Diet, Range as CatsInclusiveRange}
+import alleycats.std.set.given
+import cats.collections.{Diet, DisjointSets, Range as CatsInclusiveRange}
 import cats.implicits.catsKernelOrderingForOrder
 import cats.instances.seq.*
+import cats.syntax.all.toFoldableOps
+import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction, PrimitiveSink}
 import com.sageserpent.kineticmerge
@@ -2613,53 +2615,145 @@ object MatchAnalysis extends StrictLogging:
         // ignores gaps, we have to guard against sections that would have
         // formed the sides of a suppressed outer match making a second attempt
         // at building a match.
-        val parallelMatchGroups = metaMatches.map {
-          case Match.AllSides(
-                baseMetaSection,
-                leftMetaSection,
-                rightMetaSection
-              ) =>
-            (baseMetaSection.content lazyZip leftMetaSection.content lazyZip rightMetaSection.content)
-              .collect {
-                case (baseSection, leftSection, rightSection)
-                    if !subsumedNonTriviallyByAnAllSidesMatch(
-                      baseSection,
-                      leftSection,
-                      rightSection
-                    ) =>
-                  Match.AllSides(baseSection, leftSection, rightSection)
+        val groupsOfBackTranslatedParallelMatches = metaMatches
+          .map {
+            case Match.AllSides(
+                  baseMetaSection,
+                  leftMetaSection,
+                  rightMetaSection
+                ) =>
+              (baseMetaSection.content lazyZip leftMetaSection.content lazyZip rightMetaSection.content)
+                .collect {
+                  case (baseSection, leftSection, rightSection)
+                      if !subsumedNonTriviallyByAnAllSidesMatch(
+                        baseSection,
+                        leftSection,
+                        rightSection
+                      ) =>
+                    Match.AllSides(baseSection, leftSection, rightSection)
+                }
+            case Match.BaseAndLeft(baseMetaSection, leftMetaSection) =>
+              (baseMetaSection.content lazyZip leftMetaSection.content)
+                .collect {
+                  case (baseSection, leftSection)
+                      if !subsumedNonTriviallyByABaseAndLeftMatch(
+                        baseSection,
+                        leftSection
+                      ) =>
+                    Match.BaseAndLeft(baseSection, leftSection)
+                }
+            case Match.BaseAndRight(baseMetaSection, rightMetaSection) =>
+              (baseMetaSection.content lazyZip rightMetaSection.content)
+                .collect {
+                  case (baseSection, rightSection)
+                      if !subsumedNonTriviallyByABaseAndRightMatch(
+                        baseSection,
+                        rightSection
+                      ) =>
+                    Match.BaseAndRight(baseSection, rightSection)
+                }
+            case Match.LeftAndRight(leftMetaSection, rightMetaSection) =>
+              (leftMetaSection.content lazyZip rightMetaSection.content)
+                .collect {
+                  case (leftSection, rightSection)
+                      if !subsumedNonTriviallyByALeftAndRightMatch(
+                        leftSection,
+                        rightSection
+                      ) =>
+                    Match.LeftAndRight(leftSection, rightSection)
+                }
+          }
+          .filter(_.nonEmpty)
+          .toSeq
+
+        // 4. Put the back-translated matches into their own disjoint sets, then
+        // unify those matches that come from the same group of parallel
+        // matches, then unify all-sides matches with pairwise matches that
+        // subsume them, regardless of the original group.
+
+        val backTranslatedMatches =
+          groupsOfBackTranslatedParallelMatches.flatten
+
+        val disjointSetsOfMatches =
+          given sectionOrdering: Order[Section[Element]] =
+            Order.whenEqual(Order.by(_.startOffset), Order.by(_.size))
+
+          DisjointSets(backTranslatedMatches*)
+        end disjointSetsOfMatches
+
+        def pairwiseMatchesSubsumingOnBothSides(
+            allSides: Match.AllSides[Section[Element]]
+        ): Set[PairwiseMatch] =
+          val subsumingOnBase =
+            subsumingPairwiseMatchesIncludingTriviallySubsuming(
+              sectionsAndTheirMatches
+            )(
+              baseSources,
+              baseSectionsByPath
+            )(
+              allSides.baseElement
+            )
+          val subsumingOnLeft =
+            subsumingPairwiseMatchesIncludingTriviallySubsuming(
+              sectionsAndTheirMatches
+            )(
+              leftSources,
+              leftSectionsByPath
+            )(
+              allSides.leftElement
+            )
+          val subsumingOnRight =
+            subsumingPairwiseMatchesIncludingTriviallySubsuming(
+              sectionsAndTheirMatches
+            )(
+              rightSources,
+              rightSectionsByPath
+            )(
+              allSides.rightElement
+            )
+
+          (subsumingOnBase intersect subsumingOnLeft) union (subsumingOnBase intersect subsumingOnRight) union (subsumingOnLeft intersect subsumingOnRight)
+        end pairwiseMatchesSubsumingOnBothSides
+
+        val coalescenceWorkflow =
+          for
+            _ <- groupsOfBackTranslatedParallelMatches
+              .foldM(true)((_, group) =>
+                // Unify the group members...
+                group
+                  .zip(group.tail)
+                  .toSeq
+                  .foldM(true) {
+                    case (_, (precedingGroupMember, succeedingGroupMember)) =>
+                      DisjointSets
+                        .union(precedingGroupMember, succeedingGroupMember)
+                  }
+              )
+            _ <- backTranslatedMatches
+              .filter(_.isAnAllSidesMatch)
+              .foldM(true) {
+                case (_, allSidesMatch: Match.AllSides[Section[Element]]) =>
+                  pairwiseMatchesSubsumingOnBothSides(allSidesMatch)
+                    .foldM(true)((_, pairwiseMatch) =>
+                      DisjointSets.union(allSidesMatch, pairwiseMatch)
+                    )
               }
-          case Match.BaseAndLeft(baseMetaSection, leftMetaSection) =>
-            (baseMetaSection.content lazyZip leftMetaSection.content).collect {
-              case (baseSection, leftSection)
-                  if !subsumedNonTriviallyByABaseAndLeftMatch(
-                    baseSection,
-                    leftSection
-                  ) =>
-                Match.BaseAndLeft(baseSection, leftSection)
-            }
-          case Match.BaseAndRight(baseMetaSection, rightMetaSection) =>
-            (baseMetaSection.content lazyZip rightMetaSection.content).collect {
-              case (baseSection, rightSection)
-                  if !subsumedNonTriviallyByABaseAndRightMatch(
-                    baseSection,
-                    rightSection
-                  ) =>
-                Match.BaseAndRight(baseSection, rightSection)
-            }
-          case Match.LeftAndRight(leftMetaSection, rightMetaSection) =>
-            (leftMetaSection.content lazyZip rightMetaSection.content).collect {
-              case (leftSection, rightSection)
-                  if !subsumedNonTriviallyByALeftAndRightMatch(
-                    leftSection,
-                    rightSection
-                  ) =>
-                Match.LeftAndRight(leftSection, rightSection)
-            }
-        }
+            sets <- DisjointSets.toSets
+          yield sets
+
+        val coalescedGroupsOfParallelMatches
+            : Iterable[Set[Match[Section[Element]]]] = coalescenceWorkflow
+          .runA(disjointSetsOfMatches)
+          .value
+          .toScalaMap
+          .values
+          .map(_.toScalaSet)
 
         MatchesAndTheirSections.empty
-          .withMatches(parallelMatchGroups.flatten, haveTrimmedMatches = false)
+          .withMatches(
+            coalescedGroupsOfParallelMatches.foldLeft(Set.empty)(_ ++ _),
+            haveTrimmedMatches = false
+          )
           .matchesAndTheirSections
           .withoutRedundantPairwiseMatches
       end parallelMatchesOnly
