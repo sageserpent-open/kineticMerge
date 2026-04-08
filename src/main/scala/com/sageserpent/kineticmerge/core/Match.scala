@@ -19,46 +19,61 @@ enum Match[+Element]:
 end Match
 
 object Match:
+
   given matchOrdering[Element: Order]: Order[Match[Element]] with
+    private val baseLeftOrder = Order.whenEqual(
+      Order.by[Match.BaseAndLeft[Element], Element](_.baseElement),
+      Order.by[Match.BaseAndLeft[Element], Element](_.leftElement)
+    )
+
+    private val baseRightOrder = Order
+      .whenEqual(
+        Order.by[Match.BaseAndRight[Element], Element](_.baseElement),
+        Order.by[Match.BaseAndRight[Element], Element](_.rightElement)
+      )
+
+    private val leftRightOrder = Order
+      .whenEqual(
+        Order.by[Match.LeftAndRight[Element], Element](_.leftElement),
+        Order.by[Match.LeftAndRight[Element], Element](_.rightElement)
+      )
+
+    private val allSidesOrder = Order
+      .whenEqual(
+        Order.by[Match.AllSides[Element], Element](_.baseElement),
+        Order.whenEqual(
+          Order.by[Match.AllSides[Element], Element](_.leftElement),
+          Order.by[Match.AllSides[Element], Element](_.rightElement)
+        )
+      )
+
     override def compare(x: Match[Element], y: Match[Element]): Int =
       // Use progressive fall-through matching where if the two matches aren't
       // of the same kind, there is a hierarchy of kinds.
       (x, y) match
         case (
-              BaseAndLeft(xBaseElement, xLeftElement),
-              BaseAndLeft(yBaseElement, yLeftElement)
+              left: BaseAndLeft[Element],
+              right: BaseAndLeft[Element]
             ) =>
-          Order.compare(
-            (xBaseElement, xLeftElement),
-            (yBaseElement, yLeftElement)
-          )
+          baseLeftOrder.compare(left, right)
 
         case (
-              BaseAndRight(xBaseElement, xRightElement),
-              BaseAndRight(yBaseElement, yRightElement)
+              left: BaseAndRight[Element],
+              right: BaseAndRight[Element]
             ) =>
-          Order.compare(
-            (xBaseElement, xRightElement),
-            (yBaseElement, yRightElement)
-          )
+          baseRightOrder.compare(left, right)
 
         case (
-              LeftAndRight(xLeftElement, xRightElement),
-              LeftAndRight(yLeftElement, yRightElement)
+              left: LeftAndRight[Element],
+              right: LeftAndRight[Element]
             ) =>
-          Order.compare(
-            (xLeftElement, xRightElement),
-            (yLeftElement, yRightElement)
-          )
+          leftRightOrder.compare(left, right)
 
         case (
-              AllSides(xBaseElement, xLeftElement, xRightElement),
-              AllSides(yBaseElement, yLeftElement, yRightElement)
+              left: AllSides[Element],
+              right: AllSides[Element]
             ) =>
-          Order.compare(
-            (xBaseElement, xLeftElement, xRightElement),
-            (yBaseElement, yLeftElement, yRightElement)
-          )
+          allSidesOrder.compare(left, right)
 
         case (_: BaseAndLeft[Element], _)  => -1
         case (_, _: BaseAndLeft[Element])  => 1
