@@ -68,7 +68,11 @@ class SectionedCodeTest:
     ) and sourcesTrials.map(
       _.copy(label = "right")
     ) and minimumSizeFractionTrials)
-      .withLimit(100)
+      .withStrategy(cycle =>
+        CasesLimitStrategy.timed(
+          Duration.apply(if cycle.isInitial then 1 else 3, TimeUnit.MINUTES)
+        )
+      )
       .dynamicTests(
         (
             base: FakeSources,
