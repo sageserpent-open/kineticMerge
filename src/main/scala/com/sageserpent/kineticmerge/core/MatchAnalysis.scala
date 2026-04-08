@@ -2675,8 +2675,108 @@ object MatchAnalysis extends StrictLogging:
           groupsOfBackTranslatedParallelMatches.flatten
 
         val disjointSetsOfMatches =
+          // NASTY HACK: the Cats implementation of a disjoint sets data
+          // structure insists on the set elements having `Order`. The problem
+          // with this is that while it's easy to define an order on `Match`, it
+          // gets fiddly down at the `Section` level, because we need to take
+          // paths into account as well as the obvious start offset and size -
+          // that means we have to distinguish between sections belonging to the
+          // base, left or right sides and lookup the path accordingly.
+          // Using the object identity to order a section works as a
+          // quick-and-dirty stopgap, but it does assume that matches share the
+          // same section instances when their sections are equivalent to those
+          // of other matches.
+          // TODO: need to sort this out properly...
           given sectionOrdering: Order[Section[Element]] =
-            Order.whenEqual(Order.by(_.startOffset), Order.by(_.size))
+            Order.by(System.identityHashCode)
+
+          given matchOrdering: Order[Match[Section[Element]]] with
+            private val baseLeftOrder = Order.whenEqual(
+              Order.by[Match.BaseAndLeft[Section[Element]], Section[Element]](
+                _.baseElement
+              ),
+              Order.by[Match.BaseAndLeft[Section[Element]], Section[Element]](
+                _.leftElement
+              )
+            )
+
+            private val baseRightOrder = Order
+              .whenEqual(
+                Order
+                  .by[Match.BaseAndRight[Section[Element]], Section[Element]](
+                    _.baseElement
+                  ),
+                Order
+                  .by[Match.BaseAndRight[Section[Element]], Section[Element]](
+                    _.rightElement
+                  )
+              )
+
+            private val leftRightOrder = Order
+              .whenEqual(
+                Order
+                  .by[Match.LeftAndRight[Section[Element]], Section[Element]](
+                    _.leftElement
+                  ),
+                Order
+                  .by[Match.LeftAndRight[Section[Element]], Section[Element]](
+                    _.rightElement
+                  )
+              )
+
+            private val allSidesOrder = Order
+              .whenEqual(
+                Order.by[Match.AllSides[Section[Element]], Section[Element]](
+                  _.baseElement
+                ),
+                Order.whenEqual(
+                  Order.by[Match.AllSides[Section[Element]], Section[Element]](
+                    _.leftElement
+                  ),
+                  Order.by[Match.AllSides[Section[Element]], Section[Element]](
+                    _.rightElement
+                  )
+                )
+              )
+
+            override def compare(
+                x: Match[Section[Element]],
+                y: Match[Section[Element]]
+            ): Int =
+              // Use progressive fall-through matching where if the two matches
+              // aren't of the same kind, there is a hierarchy of kinds.
+              (x, y) match
+                case (
+                      left: Match.BaseAndLeft[Section[Element]],
+                      right: Match.BaseAndLeft[Section[Element]]
+                    ) =>
+                  baseLeftOrder.compare(left, right)
+
+                case (
+                      left: Match.BaseAndRight[Section[Element]],
+                      right: Match.BaseAndRight[Section[Element]]
+                    ) =>
+                  baseRightOrder.compare(left, right)
+
+                case (
+                      left: Match.LeftAndRight[Section[Element]],
+                      right: Match.LeftAndRight[Section[Element]]
+                    ) =>
+                  leftRightOrder.compare(left, right)
+
+                case (
+                      left: Match.AllSides[Section[Element]],
+                      right: Match.AllSides[Section[Element]]
+                    ) =>
+                  allSidesOrder.compare(left, right)
+
+                case (_: Match.BaseAndLeft[Section[Element]], _)  => -1
+                case (_, _: Match.BaseAndLeft[Section[Element]])  => 1
+                case (_: Match.BaseAndRight[Section[Element]], _) => -1
+                case (_, _: Match.BaseAndRight[Section[Element]]) => 1
+                case (_: Match.LeftAndRight[Section[Element]], _) => -1
+                case (_, _: Match.LeftAndRight[Section[Element]]) => 1
+          end matchOrdering
 
           DisjointSets(backTranslatedMatches*)
         end disjointSetsOfMatches
