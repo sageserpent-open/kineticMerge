@@ -1994,6 +1994,25 @@ object MatchAnalysis extends StrictLogging:
         )
       end withMatches
 
+      private def isRedundantPairwiseMatch(aMatch: GenericMatch[Element]) =
+        aMatch match
+          case Match.BaseAndLeft(baseSection, leftSection) =>
+            sectionsAndTheirMatches
+              .get(baseSection)
+              .intersect(sectionsAndTheirMatches.get(leftSection))
+              .exists(_.isAnAllSidesMatch)
+          case Match.BaseAndRight(baseSection, rightSection) =>
+            sectionsAndTheirMatches
+              .get(baseSection)
+              .intersect(sectionsAndTheirMatches.get(rightSection))
+              .exists(_.isAnAllSidesMatch)
+          case Match.LeftAndRight(leftSection, rightSection) =>
+            sectionsAndTheirMatches
+              .get(leftSection)
+              .intersect(sectionsAndTheirMatches.get(rightSection))
+              .exists(_.isAnAllSidesMatch)
+          case _: Match.AllSides[Section[Element]] => false
+
       // Cleans up the state when a putative all-sides match that would have
       // been ambiguous on one side with another all-sides match was partially
       // suppressed by a larger pairwise match. This situation results in a
@@ -2001,24 +2020,7 @@ object MatchAnalysis extends StrictLogging:
       // all-sides match; remove any such redundant pairwise matches.
       def withoutRedundantPairwiseMatches: MatchesAndTheirSections =
         val redundantMatches =
-          sectionsAndTheirMatches.values.toSet.filter {
-            case Match.BaseAndLeft(baseSection, leftSection) =>
-              sectionsAndTheirMatches
-                .get(baseSection)
-                .intersect(sectionsAndTheirMatches.get(leftSection))
-                .exists(_.isAnAllSidesMatch)
-            case Match.BaseAndRight(baseSection, rightSection) =>
-              sectionsAndTheirMatches
-                .get(baseSection)
-                .intersect(sectionsAndTheirMatches.get(rightSection))
-                .exists(_.isAnAllSidesMatch)
-            case Match.LeftAndRight(leftSection, rightSection) =>
-              sectionsAndTheirMatches
-                .get(leftSection)
-                .intersect(sectionsAndTheirMatches.get(rightSection))
-                .exists(_.isAnAllSidesMatch)
-            case _: Match.AllSides[Section[Element]] => false
-          }
+          sectionsAndTheirMatches.values.toSet.filter(isRedundantPairwiseMatch)
 
         if redundantMatches.nonEmpty then
           logger.debug(
