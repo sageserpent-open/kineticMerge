@@ -2087,73 +2087,6 @@ object MatchAnalysis extends StrictLogging:
       end purgedOfMatchesWithOverlappingSections
 
       def reconcileMatches: MatchesAndTheirSections =
-        def pairwiseMatchesSubsumingOnBothSides(
-            allSides: Match.AllSides[Section[Element]]
-        ): Set[(PairwiseMatch, BiteEdge, BiteEdge)] =
-          val subsumingOnBase =
-            subsumingPairwiseMatchesIncludingTriviallySubsuming(
-              sectionsAndTheirMatches
-            )(
-              baseSources,
-              baseSectionsByPath
-            )(
-              allSides.baseElement
-            )
-          val subsumingOnLeft =
-            subsumingPairwiseMatchesIncludingTriviallySubsuming(
-              sectionsAndTheirMatches
-            )(
-              leftSources,
-              leftSectionsByPath
-            )(
-              allSides.leftElement
-            )
-          val subsumingOnRight =
-            subsumingPairwiseMatchesIncludingTriviallySubsuming(
-              sectionsAndTheirMatches
-            )(
-              rightSources,
-              rightSectionsByPath
-            )(
-              allSides.rightElement
-            )
-
-          (subsumingOnBase intersect subsumingOnLeft).map {
-            case subsuming: Match.BaseAndLeft[Section[Element]] =>
-              (
-                subsuming,
-                BiteEdge.Start(startOffsetRelativeToMeal =
-                  allSides.baseElement.startOffset - subsuming.baseElement.startOffset
-                ),
-                BiteEdge.End(onePastEndOffsetRelativeToMeal =
-                  allSides.baseElement.onePastEndOffset - subsuming.baseElement.startOffset
-                )
-              )
-          } union (subsumingOnBase intersect subsumingOnRight).map {
-            case subsuming: Match.BaseAndRight[Section[Element]] =>
-              (
-                subsuming,
-                BiteEdge.Start(startOffsetRelativeToMeal =
-                  allSides.baseElement.startOffset - subsuming.baseElement.startOffset
-                ),
-                BiteEdge.End(onePastEndOffsetRelativeToMeal =
-                  allSides.baseElement.onePastEndOffset - subsuming.baseElement.startOffset
-                )
-              )
-          } union (subsumingOnLeft intersect subsumingOnRight).map {
-            case subsuming: Match.LeftAndRight[Section[Element]] =>
-              (
-                subsuming,
-                BiteEdge.Start(startOffsetRelativeToMeal =
-                  allSides.leftElement.startOffset - subsuming.leftElement.startOffset
-                ),
-                BiteEdge.End(onePastEndOffsetRelativeToMeal =
-                  allSides.leftElement.onePastEndOffset - subsuming.leftElement.startOffset
-                )
-              )
-          }
-        end pairwiseMatchesSubsumingOnBothSides
-
         val matches = sectionsAndTheirMatches.values.toSet
 
         val Success(result) = Using(
@@ -2173,10 +2106,10 @@ object MatchAnalysis extends StrictLogging:
             ] =
               MultiDict.from(
                 allSidesMatches.flatMap(allSides =>
-                  pairwiseMatchesSubsumingOnBothSides(allSides).map {
-                    case (pairwiseMatch, biteStart, biteEnd) =>
+                  pairwiseMatchesSubsumingOnBothSidesWithBiteEdges(allSides)
+                    .map { case (pairwiseMatch, biteStart, biteEnd) =>
                       pairwiseMatch -> (allSides, biteStart, biteEnd)
-                  }
+                    }
                 )
               )
             end pairwiseMatchesToBeEaten
@@ -2491,6 +2424,109 @@ object MatchAnalysis extends StrictLogging:
         }
       end withoutTheseMatches
 
+      private def pairwiseMatchesSubsumingOnBothSidesWithBiteEdges(
+          allSides: Match.AllSides[Section[Element]]
+      ): Set[(PairwiseMatch, BiteEdge, BiteEdge)] =
+        val subsumingOnBase =
+          subsumingPairwiseMatchesIncludingTriviallySubsuming(
+            sectionsAndTheirMatches
+          )(
+            baseSources,
+            baseSectionsByPath
+          )(
+            allSides.baseElement
+          )
+        val subsumingOnLeft =
+          subsumingPairwiseMatchesIncludingTriviallySubsuming(
+            sectionsAndTheirMatches
+          )(
+            leftSources,
+            leftSectionsByPath
+          )(
+            allSides.leftElement
+          )
+        val subsumingOnRight =
+          subsumingPairwiseMatchesIncludingTriviallySubsuming(
+            sectionsAndTheirMatches
+          )(
+            rightSources,
+            rightSectionsByPath
+          )(
+            allSides.rightElement
+          )
+
+        (subsumingOnBase intersect subsumingOnLeft).map {
+          case subsuming: Match.BaseAndLeft[Section[Element]] =>
+            (
+              subsuming,
+              BiteEdge.Start(startOffsetRelativeToMeal =
+                allSides.baseElement.startOffset - subsuming.baseElement.startOffset
+              ),
+              BiteEdge.End(onePastEndOffsetRelativeToMeal =
+                allSides.baseElement.onePastEndOffset - subsuming.baseElement.startOffset
+              )
+            )
+        } union (subsumingOnBase intersect subsumingOnRight).map {
+          case subsuming: Match.BaseAndRight[Section[Element]] =>
+            (
+              subsuming,
+              BiteEdge.Start(startOffsetRelativeToMeal =
+                allSides.baseElement.startOffset - subsuming.baseElement.startOffset
+              ),
+              BiteEdge.End(onePastEndOffsetRelativeToMeal =
+                allSides.baseElement.onePastEndOffset - subsuming.baseElement.startOffset
+              )
+            )
+        } union (subsumingOnLeft intersect subsumingOnRight).map {
+          case subsuming: Match.LeftAndRight[Section[Element]] =>
+            (
+              subsuming,
+              BiteEdge.Start(startOffsetRelativeToMeal =
+                allSides.leftElement.startOffset - subsuming.leftElement.startOffset
+              ),
+              BiteEdge.End(onePastEndOffsetRelativeToMeal =
+                allSides.leftElement.onePastEndOffset - subsuming.leftElement.startOffset
+              )
+            )
+        }
+      end pairwiseMatchesSubsumingOnBothSidesWithBiteEdges
+
+      private def pairwiseMatchesSubsumingOnBothSides(
+          allSides: Match.AllSides[Section[Element]]
+      ): Set[PairwiseMatch] =
+        val subsumingOnBase =
+          subsumingPairwiseMatchesIncludingTriviallySubsuming(
+            sectionsAndTheirMatches
+          )(
+            baseSources,
+            baseSectionsByPath
+          )(
+            allSides.baseElement
+          )
+        val subsumingOnLeft =
+          subsumingPairwiseMatchesIncludingTriviallySubsuming(
+            sectionsAndTheirMatches
+          )(
+            leftSources,
+            leftSectionsByPath
+          )(
+            allSides.leftElement
+          )
+        val subsumingOnRight =
+          subsumingPairwiseMatchesIncludingTriviallySubsuming(
+            sectionsAndTheirMatches
+          )(
+            rightSources,
+            rightSectionsByPath
+          )(
+            allSides.rightElement
+          )
+
+        (subsumingOnBase intersect subsumingOnLeft)
+          .union(subsumingOnBase intersect subsumingOnRight)
+          .union(subsumingOnLeft intersect subsumingOnRight)
+      end pairwiseMatchesSubsumingOnBothSides
+
       def parallelMatchesOnly: MatchesAndTheirSections =
         // PLAN:
 
@@ -2673,36 +2709,26 @@ object MatchAnalysis extends StrictLogging:
         // matches, then unify all-sides matches with pairwise matches that
         // subsume them, regardless of the original group.
 
-        val backTranslatedMatchesWithoutRedundantPairwiseMatches =
-          val backTranslatedMatches =
-            groupsOfBackTranslatedParallelMatches.foldLeft(
-              Set.empty[GenericMatch[Element]]
-            )(_ ++ _)
+        // NOTE: need to build a new instance of `MatchesAndTheirSections` for
+        // the back-translated matches, because the thinning out of ambiguous
+        // matches performed by the meta-matching and back translation above
+        // means there are new opportunities for matches to be generated - while
+        // the vast majority of these are redundant pairwise matches, there are
+        // some that are vital to capture things such as moves with migrated
+        // edits / deletions - the test
+        // `SectionedCodeExtensionTest.codeMotionAmbiguousWithAPreservation` has
+        // an example of this.
+        val backTranslatedMatchesAndTheirSections =
+          MatchesAndTheirSections.empty
+            .withMatches(
+              groupsOfBackTranslatedParallelMatches.foldLeft(Set.empty)(_ ++ _),
+              haveTrimmedMatches = false
+            )
+            .matchesAndTheirSections
+            .withoutRedundantPairwiseMatches
 
-          def isRedundantPairwiseMatch(aMatch: GenericMatch[Element]) =
-            aMatch match
-              case Match.BaseAndLeft(baseSection, leftSection) =>
-                sectionsAndTheirMatches
-                  .get(baseSection)
-                  .intersect(sectionsAndTheirMatches.get(leftSection))
-                  .intersect(backTranslatedMatches)
-                  .exists(_.isAnAllSidesMatch)
-              case Match.BaseAndRight(baseSection, rightSection) =>
-                sectionsAndTheirMatches
-                  .get(baseSection)
-                  .intersect(sectionsAndTheirMatches.get(rightSection))
-                  .intersect(backTranslatedMatches)
-                  .exists(_.isAnAllSidesMatch)
-              case Match.LeftAndRight(leftSection, rightSection) =>
-                sectionsAndTheirMatches
-                  .get(leftSection)
-                  .intersect(sectionsAndTheirMatches.get(rightSection))
-                  .intersect(backTranslatedMatches)
-                  .exists(_.isAnAllSidesMatch)
-              case _: Match.AllSides[Section[Element]] => false
-
-          backTranslatedMatches.filterNot(isRedundantPairwiseMatch)
-        end backTranslatedMatchesWithoutRedundantPairwiseMatches
+        val backTranslatedMatches =
+          backTranslatedMatchesAndTheirSections.matches
 
         val disjointSetsOfMatches =
           // NASTY HACK: the Cats implementation of a disjoint sets data
@@ -2711,86 +2737,47 @@ object MatchAnalysis extends StrictLogging:
           // gets fiddly down at the `Section` level, because we need to take
           // paths into account as well as the obvious start offset and size -
           // that means we have to distinguish between sections belonging to the
-          // base, left or right sides and lookup the path accordingly.
+          // base, left or right sides and look up the path accordingly.
           // The workaround is to rely on *equality* of matches being
           // well-formed (it is) and then building a synthetic order based on
-          // ids,
-          val backTranslatedMatchIds =
-            // We can play fast-and-loose with any colliding matches; it just
-            // means that there will be gaps in the indices. So what?
-            backTranslatedMatchesWithoutRedundantPairwiseMatches.zipWithIndex.toMap
+          // ids.
+          val backTranslatedMatchIds = backTranslatedMatches.zipWithIndex.toMap
 
           given matchOrdering: Order[Match[Section[Element]]] =
             Order.by(backTranslatedMatchIds.apply)
 
           DisjointSets(
-            backTranslatedMatchesWithoutRedundantPairwiseMatches.toSeq*
+            backTranslatedMatches.toSeq*
           )
         end disjointSetsOfMatches
 
-        def pairwiseMatchesSubsumingOnBothSides(
-            allSides: Match.AllSides[Section[Element]]
-        ): Set[PairwiseMatch] =
-          val subsumingOnBase =
-            subsumingPairwiseMatchesIncludingTriviallySubsuming(
-              sectionsAndTheirMatches
-            )(
-              baseSources,
-              baseSectionsByPath
-            )(
-              allSides.baseElement
-            )
-          val subsumingOnLeft =
-            subsumingPairwiseMatchesIncludingTriviallySubsuming(
-              sectionsAndTheirMatches
-            )(
-              leftSources,
-              leftSectionsByPath
-            )(
-              allSides.leftElement
-            )
-          val subsumingOnRight =
-            subsumingPairwiseMatchesIncludingTriviallySubsuming(
-              sectionsAndTheirMatches
-            )(
-              rightSources,
-              rightSectionsByPath
-            )(
-              allSides.rightElement
-            )
-
-          ((subsumingOnBase intersect subsumingOnLeft) union (subsumingOnBase intersect subsumingOnRight) union (subsumingOnLeft intersect subsumingOnRight))
-            .filter(
-              backTranslatedMatchesWithoutRedundantPairwiseMatches.contains
-            )
-        end pairwiseMatchesSubsumingOnBothSides
+        val unusedValue = true
 
         val coalescenceWorkflow =
           for
             _ <- groupsOfBackTranslatedParallelMatches
-              .map(
-                _.filter(
-                  backTranslatedMatchesWithoutRedundantPairwiseMatches.contains
-                )
-              )
-              .filter(_.nonEmpty)
-              .foldM(true)((_, group) =>
+              .map(_.filter(backTranslatedMatches.contains))
+              .filter(
+                _.nonEmpty
+              ) // Guard the zipping of group members down below...
+              .foldM(unusedValue)((_, group) =>
                 // Unify the group members...
                 group
                   .zip(group.tail)
                   .toSeq
-                  .foldM(true) {
+                  .foldM(unusedValue) {
                     case (_, (precedingGroupMember, succeedingGroupMember)) =>
                       DisjointSets
                         .union(precedingGroupMember, succeedingGroupMember)
                   }
               )
-            _ <- backTranslatedMatchesWithoutRedundantPairwiseMatches
+            _ <- backTranslatedMatches
               .filter(_.isAnAllSidesMatch)
-              .foldM(true) {
+              .foldM(unusedValue) {
                 case (_, allSidesMatch: Match.AllSides[Section[Element]]) =>
-                  pairwiseMatchesSubsumingOnBothSides(allSidesMatch)
-                    .foldM(true)((_, pairwiseMatch) =>
+                  backTranslatedMatchesAndTheirSections
+                    .pairwiseMatchesSubsumingOnBothSides(allSidesMatch)
+                    .foldM(unusedValue)((_, pairwiseMatch) =>
                       DisjointSets.union(allSidesMatch, pairwiseMatch)
                     )
               }
@@ -2811,7 +2798,6 @@ object MatchAnalysis extends StrictLogging:
             haveTrimmedMatches = false
           )
           .matchesAndTheirSections
-          .withoutRedundantPairwiseMatches
       end parallelMatchesOnly
     end MatchesAndTheirSections
 
