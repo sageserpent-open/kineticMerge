@@ -1935,7 +1935,7 @@ object MatchAnalysis extends StrictLogging:
         (subsumingOnBase intersect subsumingOnLeft).nonEmpty
       end isSubsumedNonTriviallyByAMatchOnTheBaseAndLeft
 
-      def withMatches(
+      private def withMatches(
           matches: Set[GenericMatch[Element]],
           haveTrimmedMatches: Boolean
       ): MatchingResult =
