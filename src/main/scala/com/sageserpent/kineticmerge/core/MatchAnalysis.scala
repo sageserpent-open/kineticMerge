@@ -1608,7 +1608,7 @@ object MatchAnalysis extends StrictLogging:
                 // soon because of
                 // https://github.com/sageserpent-open/kineticMerge/issues/147,
                 // so leaving it in place for now...
-                if !subsumedNonTriviallyByAnAllSidesMatch(
+                if !isSubsumedNonTriviallyByAnAllSidesMatch(
                   baseSection,
                   leftSection,
                   rightSection
@@ -1654,7 +1654,7 @@ object MatchAnalysis extends StrictLogging:
               for
                 baseSection <- baseSectionsThatDoNotOverlap
                 leftSection <- leftSectionsThatDoNotOverlap
-                if !subsumedNonTriviallyByABaseAndLeftMatch(
+                if !isSubsumedNonTriviallyByAMatchOnTheBaseAndLeft(
                   baseSection,
                   leftSection
                 )
@@ -1699,7 +1699,7 @@ object MatchAnalysis extends StrictLogging:
               for
                 baseSection  <- baseSectionsThatDoNotOverlap
                 rightSection <- rightSectionsThatDoNotOverlap
-                if !subsumedNonTriviallyByABaseAndRightMatch(
+                if !isSubsumedNonTriviallyByAMatchOnTheBaseAndRight(
                   baseSection,
                   rightSection
                 )
@@ -1744,7 +1744,7 @@ object MatchAnalysis extends StrictLogging:
               for
                 leftSection  <- leftSectionsThatDoNotOverlap
                 rightSection <- rightSectionsThatDoNotOverlap
-                if !subsumedNonTriviallyByALeftAndRightMatch(
+                if !isSubsumedNonTriviallyByAMatchOnTheLeftAndRight(
                   leftSection,
                   rightSection
                 )
@@ -1794,7 +1794,7 @@ object MatchAnalysis extends StrictLogging:
         )
       end matchesForWindowSize
 
-      private def subsumedNonTriviallyByAnAllSidesMatch(
+      private def isSubsumedNonTriviallyByAnAllSidesMatch(
           baseSection: Section[Element],
           leftSection: Section[Element],
           rightSection: Section[Element]
@@ -1833,9 +1833,9 @@ object MatchAnalysis extends StrictLogging:
           )
 
         (subsumingOnBase intersect subsumingOnLeft intersect subsumingOnRight).nonEmpty
-      end subsumedNonTriviallyByAnAllSidesMatch
+      end isSubsumedNonTriviallyByAnAllSidesMatch
 
-      private def subsumedNonTriviallyByALeftAndRightMatch(
+      private def isSubsumedNonTriviallyByAMatchOnTheLeftAndRight(
           leftSection: Section[Element],
           rightSection: Section[Element]
       ) =
@@ -1862,9 +1862,9 @@ object MatchAnalysis extends StrictLogging:
           )
 
         (subsumingOnLeft intersect subsumingOnRight).nonEmpty
-      end subsumedNonTriviallyByALeftAndRightMatch
+      end isSubsumedNonTriviallyByAMatchOnTheLeftAndRight
 
-      private def subsumedNonTriviallyByABaseAndRightMatch(
+      private def isSubsumedNonTriviallyByAMatchOnTheBaseAndRight(
           baseSection: Section[Element],
           rightSection: Section[Element]
       ) =
@@ -1891,9 +1891,9 @@ object MatchAnalysis extends StrictLogging:
           )
 
         (subsumingOnBase intersect subsumingOnRight).nonEmpty
-      end subsumedNonTriviallyByABaseAndRightMatch
+      end isSubsumedNonTriviallyByAMatchOnTheBaseAndRight
 
-      private def subsumedNonTriviallyByABaseAndLeftMatch(
+      private def isSubsumedNonTriviallyByAMatchOnTheBaseAndLeft(
           baseSection: Section[Element],
           leftSection: Section[Element]
       ) =
@@ -1920,7 +1920,7 @@ object MatchAnalysis extends StrictLogging:
           )
 
         (subsumingOnBase intersect subsumingOnLeft).nonEmpty
-      end subsumedNonTriviallyByABaseAndLeftMatch
+      end isSubsumedNonTriviallyByAMatchOnTheBaseAndLeft
 
       def withMatches(
           matches: Set[GenericMatch[Element]],
@@ -2663,7 +2663,7 @@ object MatchAnalysis extends StrictLogging:
               (baseMetaSection.content lazyZip leftMetaSection.content lazyZip rightMetaSection.content)
                 .collect {
                   case (baseSection, leftSection, rightSection)
-                      if !subsumedNonTriviallyByAnAllSidesMatch(
+                      if !isSubsumedNonTriviallyByAnAllSidesMatch(
                         baseSection,
                         leftSection,
                         rightSection
@@ -2674,7 +2674,7 @@ object MatchAnalysis extends StrictLogging:
               (baseMetaSection.content lazyZip leftMetaSection.content)
                 .collect {
                   case (baseSection, leftSection)
-                      if !subsumedNonTriviallyByABaseAndLeftMatch(
+                      if !isSubsumedNonTriviallyByAMatchOnTheBaseAndLeft(
                         baseSection,
                         leftSection
                       ) =>
@@ -2684,7 +2684,7 @@ object MatchAnalysis extends StrictLogging:
               (baseMetaSection.content lazyZip rightMetaSection.content)
                 .collect {
                   case (baseSection, rightSection)
-                      if !subsumedNonTriviallyByABaseAndRightMatch(
+                      if !isSubsumedNonTriviallyByAMatchOnTheBaseAndRight(
                         baseSection,
                         rightSection
                       ) =>
@@ -2694,7 +2694,7 @@ object MatchAnalysis extends StrictLogging:
               (leftMetaSection.content lazyZip rightMetaSection.content)
                 .collect {
                   case (leftSection, rightSection)
-                      if !subsumedNonTriviallyByALeftAndRightMatch(
+                      if !isSubsumedNonTriviallyByAMatchOnTheLeftAndRight(
                         leftSection,
                         rightSection
                       ) =>
@@ -2784,6 +2784,7 @@ object MatchAnalysis extends StrictLogging:
             sets <- DisjointSets.toSets
           yield sets
 
+        // TODO: this isn't used yet!
         val coalescedGroupsOfParallelMatches
             : Iterable[Set[Match[Section[Element]]]] = coalescenceWorkflow
           .runA(disjointSetsOfMatches)
@@ -2792,12 +2793,7 @@ object MatchAnalysis extends StrictLogging:
           .values
           .map(_.toScalaSet)
 
-        MatchesAndTheirSections.empty
-          .withMatches(
-            coalescedGroupsOfParallelMatches.foldLeft(Set.empty)(_ ++ _),
-            haveTrimmedMatches = false
-          )
-          .matchesAndTheirSections
+        backTranslatedMatchesAndTheirSections
       end parallelMatchesOnly
     end MatchesAndTheirSections
 
