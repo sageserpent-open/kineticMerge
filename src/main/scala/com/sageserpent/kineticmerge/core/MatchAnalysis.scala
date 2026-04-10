@@ -2673,8 +2673,36 @@ object MatchAnalysis extends StrictLogging:
         // matches, then unify all-sides matches with pairwise matches that
         // subsume them, regardless of the original group.
 
-        val backTranslatedMatches =
-          groupsOfBackTranslatedParallelMatches.flatten
+        val backTranslatedMatchesWithoutRedundantPairwiseMatches =
+          val backTranslatedMatches =
+            groupsOfBackTranslatedParallelMatches.foldLeft(
+              Set.empty[GenericMatch[Element]]
+            )(_ ++ _)
+
+          def isRedundantPairwiseMatch(aMatch: GenericMatch[Element]) =
+            aMatch match
+              case Match.BaseAndLeft(baseSection, leftSection) =>
+                sectionsAndTheirMatches
+                  .get(baseSection)
+                  .intersect(sectionsAndTheirMatches.get(leftSection))
+                  .intersect(backTranslatedMatches)
+                  .exists(_.isAnAllSidesMatch)
+              case Match.BaseAndRight(baseSection, rightSection) =>
+                sectionsAndTheirMatches
+                  .get(baseSection)
+                  .intersect(sectionsAndTheirMatches.get(rightSection))
+                  .intersect(backTranslatedMatches)
+                  .exists(_.isAnAllSidesMatch)
+              case Match.LeftAndRight(leftSection, rightSection) =>
+                sectionsAndTheirMatches
+                  .get(leftSection)
+                  .intersect(sectionsAndTheirMatches.get(rightSection))
+                  .intersect(backTranslatedMatches)
+                  .exists(_.isAnAllSidesMatch)
+              case _: Match.AllSides[Section[Element]] => false
+
+          backTranslatedMatches.filterNot(isRedundantPairwiseMatch)
+        end backTranslatedMatchesWithoutRedundantPairwiseMatches
 
         val disjointSetsOfMatches =
           // NASTY HACK: the Cats implementation of a disjoint sets data
@@ -2690,12 +2718,14 @@ object MatchAnalysis extends StrictLogging:
           val backTranslatedMatchIds =
             // We can play fast-and-loose with any colliding matches; it just
             // means that there will be gaps in the indices. So what?
-            backTranslatedMatches.zipWithIndex.toMap
+            backTranslatedMatchesWithoutRedundantPairwiseMatches.zipWithIndex.toMap
 
           given matchOrdering: Order[Match[Section[Element]]] =
             Order.by(backTranslatedMatchIds.apply)
 
-          DisjointSets(backTranslatedMatches*)
+          DisjointSets(
+            backTranslatedMatchesWithoutRedundantPairwiseMatches.toSeq*
+          )
         end disjointSetsOfMatches
 
         def pairwiseMatchesSubsumingOnBothSides(
@@ -2729,12 +2759,21 @@ object MatchAnalysis extends StrictLogging:
               allSides.rightElement
             )
 
-          (subsumingOnBase intersect subsumingOnLeft) union (subsumingOnBase intersect subsumingOnRight) union (subsumingOnLeft intersect subsumingOnRight)
+          ((subsumingOnBase intersect subsumingOnLeft) union (subsumingOnBase intersect subsumingOnRight) union (subsumingOnLeft intersect subsumingOnRight))
+            .filter(
+              backTranslatedMatchesWithoutRedundantPairwiseMatches.contains
+            )
         end pairwiseMatchesSubsumingOnBothSides
 
         val coalescenceWorkflow =
           for
             _ <- groupsOfBackTranslatedParallelMatches
+              .map(
+                _.filter(
+                  backTranslatedMatchesWithoutRedundantPairwiseMatches.contains
+                )
+              )
+              .filter(_.nonEmpty)
               .foldM(true)((_, group) =>
                 // Unify the group members...
                 group
@@ -2746,7 +2785,7 @@ object MatchAnalysis extends StrictLogging:
                         .union(precedingGroupMember, succeedingGroupMember)
                   }
               )
-            _ <- backTranslatedMatches
+            _ <- backTranslatedMatchesWithoutRedundantPairwiseMatches
               .filter(_.isAnAllSidesMatch)
               .foldM(true) {
                 case (_, allSidesMatch: Match.AllSides[Section[Element]]) =>
