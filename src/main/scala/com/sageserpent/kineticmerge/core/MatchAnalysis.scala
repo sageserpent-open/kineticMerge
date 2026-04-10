@@ -180,6 +180,8 @@ object MatchAnalysis extends StrictLogging:
 
     type FingerprintedInclusions = Diet[Int]
 
+    type ParallelMatchesGroupId = Int
+
     val tiebreakContentSamplingLimit = 5
 
     object MatchesAndTheirSections:
@@ -244,7 +246,8 @@ object MatchAnalysis extends StrictLogging:
         leftFingerprintedInclusionsByPath =
           fingerprintedInclusionsByPath(leftSources),
         rightFingerprintedInclusionsByPath =
-          fingerprintedInclusionsByPath(rightSources)
+          fingerprintedInclusionsByPath(rightSources),
+        parallelMatchesGroupIdsByMatch = Map.empty
       )
 
       private val rollingHashFactoryCache: Cache[Int, RollingHash.Factory] =
@@ -908,7 +911,10 @@ object MatchAnalysis extends StrictLogging:
         sectionsAndTheirMatches: MatchedSections[Element],
         baseFingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions],
         leftFingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions],
-        rightFingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions]
+        rightFingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions],
+        parallelMatchesGroupIdsByMatch: Map[GenericMatch[
+          Element
+        ], ParallelMatchesGroupId]
     ) extends MatchAnalysis[Path, Element]:
       import MatchesAndTheirSections.*
 
@@ -1140,7 +1146,7 @@ object MatchAnalysis extends StrictLogging:
 
         // No match should be redundant - i.e. no match should involve sections
         // that all belong to another match. This goes without saying for
-        // all-sides matches, as they any redundancy would imply equivalent
+        // all-sides matches, as any redundancy would imply equivalent
         // all-sides matches being associated with the same sections - this
         // isn't allowed by a `MultiDict` instance. The same applies for
         // pairwise matches of the same kind; pairwise matches of different
@@ -1195,6 +1201,13 @@ object MatchAnalysis extends StrictLogging:
             )
           end if
         }
+
+        if parallelMatchesGroupIdsByMatch.nonEmpty then
+          assert(
+            parallelMatchesGroupIdsByMatch.keySet == matches,
+            s"If groups of parallel matches have been discovered, they should cover the overall population of matches exactly."
+          )
+        end if
       end reconciliationPostcondition
 
       def baseSections: Set[Section[Element]] =
@@ -2374,7 +2387,9 @@ object MatchAnalysis extends StrictLogging:
               rightFingerprintedInclusionsByPath =
                 matchesAndTheirSections.reinstateInRightFingerprintedInclusions(
                   rightSection
-                )
+                ),
+              parallelMatchesGroupIdsByMatch =
+                parallelMatchesGroupIdsByMatch.removed(allSides)
             )
 
           case (
@@ -2389,7 +2404,9 @@ object MatchAnalysis extends StrictLogging:
               sectionsAndTheirMatches =
                 matchesAndTheirSections.sectionsAndTheirMatches
                   .remove(baseSection, baseAndLeft)
-                  .remove(leftSection, baseAndLeft)
+                  .remove(leftSection, baseAndLeft),
+              parallelMatchesGroupIdsByMatch =
+                parallelMatchesGroupIdsByMatch.removed(baseAndLeft)
             )
 
           case (
@@ -2404,7 +2421,9 @@ object MatchAnalysis extends StrictLogging:
               sectionsAndTheirMatches =
                 matchesAndTheirSections.sectionsAndTheirMatches
                   .remove(baseSection, baseAndRight)
-                  .remove(rightSection, baseAndRight)
+                  .remove(rightSection, baseAndRight),
+              parallelMatchesGroupIdsByMatch =
+                parallelMatchesGroupIdsByMatch.removed(baseAndRight)
             )
 
           case (
@@ -2419,7 +2438,9 @@ object MatchAnalysis extends StrictLogging:
               sectionsAndTheirMatches =
                 matchesAndTheirSections.sectionsAndTheirMatches
                   .remove(leftSection, leftAndRight)
-                  .remove(rightSection, leftAndRight)
+                  .remove(rightSection, leftAndRight),
+              parallelMatchesGroupIdsByMatch =
+                parallelMatchesGroupIdsByMatch.removed(leftAndRight)
             )
         }
       end withoutTheseMatches
@@ -2784,16 +2805,17 @@ object MatchAnalysis extends StrictLogging:
             sets <- DisjointSets.toSets
           yield sets
 
-        // TODO: this isn't used yet!
-        val coalescedGroupsOfParallelMatches
-            : Iterable[Set[Match[Section[Element]]]] = coalescenceWorkflow
+        val parallelMatchesGroupIdsByMatch = coalescenceWorkflow
           .runA(disjointSetsOfMatches)
           .value
-          .toScalaMap
-          .values
-          .map(_.toScalaSet)
+          .toList
+          .map(_._2.toIterator)
+          .zipWithIndex
+          .flatMap((group, id) => group.map(_ -> id))
+          .toMap
 
         backTranslatedMatchesAndTheirSections
+          .copy(parallelMatchesGroupIdsByMatch = parallelMatchesGroupIdsByMatch)
       end parallelMatchesOnly
     end MatchesAndTheirSections
 
