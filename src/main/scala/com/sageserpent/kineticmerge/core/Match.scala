@@ -1,5 +1,8 @@
 package com.sageserpent.kineticmerge.core
 
+import cats.Order
+import com.sageserpent.kineticmerge.core.Match.*
+
 enum Match[+Element]:
   def isAnAllSidesMatch: Boolean = this match
     case _: AllSides[Element] => true
