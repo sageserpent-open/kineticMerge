@@ -5,7 +5,7 @@ import cats.collections.{Diet, DisjointSets, Range as CatsInclusiveRange}
 import cats.data.State
 import cats.implicits.catsKernelOrderingForOrder
 import cats.instances.seq.*
-import cats.syntax.all.*
+import cats.syntax.all.{toFoldableOps, toTraverseOps}
 import cats.{Eq, FlatMap, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction, PrimitiveSink}
@@ -90,7 +90,7 @@ object MatchAnalysis extends StrictLogging:
     // the level of indentation of quite a lot of code would be increased.
     // Anyway, it's only configuration, after all - performing the analysis
     // belongs to the companion object for `MatchAnalysis`.
-    import configuration.{minimumMatchSize, thresholdSizeFractionForMatching, minimumAmbiguousMatchSize, ambiguousMatchesThreshold, progressRecording}
+    import configuration.*
 
     val newline = "\n"
 
@@ -186,6 +186,8 @@ object MatchAnalysis extends StrictLogging:
     val tiebreakContentSamplingLimit = 5
 
     object MatchesAndTheirSections:
+      type ParallelMatchesGroupIdTracking[X] =
+        State[Map[GenericMatch[Element], ParallelMatchesGroupId], X]
       lazy val empty: MatchesAndTheirSections = MatchesAndTheirSections(
         baseSectionsByPath = Map.empty,
         leftSectionsByPath = Map.empty,
@@ -199,9 +201,6 @@ object MatchAnalysis extends StrictLogging:
           fingerprintedInclusionsByPath(rightSources),
         parallelMatchesGroupIdsByMatch = Map.empty
       )
-      type ParallelMatchesGroupIdTracking[X] =
-        State[Map[GenericMatch[Element], ParallelMatchesGroupId], X]
-
       private val rollingHashFactoryCache: Cache[Int, RollingHash.Factory] =
         Caffeine.newBuilder().build()
 
@@ -1180,7 +1179,9 @@ object MatchAnalysis extends StrictLogging:
           def reconcileUsing(
               allSidesMatches: Set[Match.AllSides[Section[Element]]]
           ): ParallelMatchesGroupIdTracking[
-            Either[Set[Match.AllSides[Section[Element]]], MatchesAndTheirSections]
+            Either[Set[
+              Match.AllSides[Section[Element]]
+            ], MatchesAndTheirSections]
           ] =
             val pairwiseMatchesToBeEaten: MultiDict[
               PairwiseMatch,
@@ -1241,6 +1242,7 @@ object MatchAnalysis extends StrictLogging:
                   progressRecordingSession.upTo(paredDownMatches.size)
                   State.pure(Left(paredDownAllSidesMatches))
             yield stepResult
+            end for
           end reconcileUsing
 
           FlatMap[ParallelMatchesGroupIdTracking]
@@ -1671,10 +1673,12 @@ object MatchAnalysis extends StrictLogging:
           // larger pairwise matches being eaten into collide with equivalent
           // pairwise matches found by fingerprint matching.
           // This can take the form of the fragments coming first due to larger
-          // all-sides matches, or the pairwise matches from fingerprint matching
+          // all-sides matches, or the pairwise matches from fingerprint
+          // matching
           // can be followed by fragmentation if the all-sides eating into the
           // larger pairwise matches also come from the same fingerprinting that
-          // yielded the pairwise matching. Intercepting this here addresses both
+          // yielded the pairwise matching. Intercepting this here addresses
+          // both
           // cases.
           aMatch match
             case Match.AllSides(baseSection, leftSection, rightSection) =>
@@ -1734,7 +1738,8 @@ object MatchAnalysis extends StrictLogging:
                   (subsumingOnRight diff (subsumingOnBase union subsumingOnLeft)).nonEmpty
 
                 // NOTE: an all-sides match could be subsumed by *some* match on
-                // just one side for two or three sides; they would be *different*
+                // just one side for two or three sides; they would be
+                // *different*
                 // matches, each doing a one-sided subsumption.
                 (
                   subsumedBySomeMatchOnJustTheBase,
