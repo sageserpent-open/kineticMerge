@@ -1211,12 +1211,15 @@ object MatchAnalysis extends StrictLogging:
 
               _ = takingFragmentationIntoAccount.checkInvariant()
 
-              paredDownMatches <- matches.toSeq
+              // NOTE: prefer `traverse` + `flatten` to `flatTraverse` as it
+              // manages flattening `Option` values into an enclosing `Set`
+              // nicely. The same holds a bit later on too.
+              paredDownMatches <- matches
                 .traverse(
                   takingFragmentationIntoAccount.pareDownOrSuppressCompletely
                 )
                 .map(
-                  _.flatten.toSet diff pairwiseMatchesToBeEaten.keySet
+                  _.flatten diff pairwiseMatchesToBeEaten.keySet
                     .asInstanceOf[Set[GenericMatch[Element]]]
                 )
 
@@ -1227,11 +1230,12 @@ object MatchAnalysis extends StrictLogging:
               stepResult <-
                 if paredDownAllSidesMatches == allSidesMatches then
                   for
-                    paredDownFragments <- fragments.toSeq.traverse(
+                    // See note above.
+                    paredDownFragments <- fragments.traverse(
                       takingFragmentationIntoAccount.pareDownOrSuppressCompletely
                     )
                     rebuilt =
-                      (paredDownMatches union paredDownFragments.flatten.toSet)
+                      (paredDownMatches union paredDownFragments.flatten)
                         .foldLeft(MatchesAndTheirSections.empty)(_ withMatch _)
                     _      = rebuilt.checkInvariant()
                     result = rebuilt.withoutRedundantPairwiseMatches
