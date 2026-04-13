@@ -730,7 +730,7 @@ object MatchAnalysis extends StrictLogging:
                   )(
                     leftSection
                   ))
-                    .map { case (base, left) => Match.BaseAndLeft(base, left) }
+                    .map(Match.BaseAndLeft.apply)
 
                 case Match.BaseAndRight(baseSection, rightSection) =>
                   (eatIntoSection(
@@ -743,9 +743,7 @@ object MatchAnalysis extends StrictLogging:
                     sortedBiteEdges
                   )(
                     rightSection
-                  )).map { case (base, right) =>
-                    Match.BaseAndRight(base, right)
-                  }
+                  )).map(Match.BaseAndRight.apply)
 
                 case Match.LeftAndRight(leftSection, rightSection) =>
                   (eatIntoSection(
@@ -758,9 +756,7 @@ object MatchAnalysis extends StrictLogging:
                     sortedBiteEdges
                   )(
                     rightSection
-                  )).map { case (left, right) =>
-                    Match.LeftAndRight(left, right)
-                  }
+                  )).map(Match.LeftAndRight.apply)
 
             logger.debug(
               s"Eating into pairwise match:\n${pprintCustomised(pairwiseMatch)} on behalf of all-sides matches:\n${pprintCustomised(bites)}, resulting in fragments:\n${pprintCustomised(fragmentsFromPairwiseMatch)}"
