@@ -702,7 +702,7 @@ object MatchAnalysis extends StrictLogging:
           original: GenericMatch[Element],
           replacements: Iterable[GenericMatch[Element]]
       ): ParallelMatchesGroupIdTracking[Unit] =
-        replacements.toVector.traverse_(recordReplacement(original, _))
+        replacements.toSeq.traverse_(recordReplacement(original, _))
 
       private def fragmentsOf(
           pairwiseMatchesToBeEaten: MultiDict[
@@ -710,13 +710,13 @@ object MatchAnalysis extends StrictLogging:
             (Match.AllSides[Section[Element]], BiteEdge, BiteEdge)
           ]
       ): ParallelMatchesGroupIdTracking[Set[PairwiseMatch]] =
-        pairwiseMatchesToBeEaten.sets.toVector
-          .traverse { case (pairwiseMatch, bites) =>
+        pairwiseMatchesToBeEaten.sets.toSeq
+          .flatTraverse { case (pairwiseMatch, bites) =>
             val sortedBiteEdges = sortedBiteEdgesFrom(bites.flatMap {
               case (_, biteStart, biteEnd) => Seq(biteStart, biteEnd)
             })
 
-            val fragmentsFromPairwiseMatch: Vector[PairwiseMatch] =
+            val fragmentsFromPairwiseMatch: Seq[PairwiseMatch] =
               pairwiseMatch match
                 case Match.BaseAndLeft(baseSection, leftSection) =>
                   (eatIntoSection(
@@ -730,9 +730,7 @@ object MatchAnalysis extends StrictLogging:
                   )(
                     leftSection
                   ))
-                    .map(Match.BaseAndLeft.apply)
-                    .toVector
-                    .asInstanceOf[Vector[PairwiseMatch]]
+                    .map { case (base, left) => Match.BaseAndLeft(base, left) }
 
                 case Match.BaseAndRight(baseSection, rightSection) =>
                   (eatIntoSection(
@@ -745,10 +743,9 @@ object MatchAnalysis extends StrictLogging:
                     sortedBiteEdges
                   )(
                     rightSection
-                  ))
-                    .map(Match.BaseAndRight.apply)
-                    .toVector
-                    .asInstanceOf[Vector[PairwiseMatch]]
+                  )).map { case (base, right) =>
+                    Match.BaseAndRight(base, right)
+                  }
 
                 case Match.LeftAndRight(leftSection, rightSection) =>
                   (eatIntoSection(
@@ -761,10 +758,9 @@ object MatchAnalysis extends StrictLogging:
                     sortedBiteEdges
                   )(
                     rightSection
-                  ))
-                    .map(Match.LeftAndRight.apply)
-                    .toVector
-                    .asInstanceOf[Vector[PairwiseMatch]]
+                  )).map { case (left, right) =>
+                    Match.LeftAndRight(left, right)
+                  }
 
             logger.debug(
               s"Eating into pairwise match:\n${pprintCustomised(pairwiseMatch)} on behalf of all-sides matches:\n${pprintCustomised(bites)}, resulting in fragments:\n${pprintCustomised(fragmentsFromPairwiseMatch)}"
@@ -775,7 +771,7 @@ object MatchAnalysis extends StrictLogging:
               fragmentsFromPairwiseMatch
             ) as fragmentsFromPairwiseMatch
           }
-          .map(_.flatten.toSet)
+          .map(_.toSet)
 
       def sortedBiteEdgesFrom(bites: collection.Set[BiteEdge]): Seq[BiteEdge] =
         bites.toSeq.sortWith {
