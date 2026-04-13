@@ -3,9 +3,9 @@ package com.sageserpent.kineticmerge.core
 import alleycats.std.set.given
 import cats.collections.{Diet, DisjointSets, Range as CatsInclusiveRange}
 import cats.data.State
-import cats.implicits.{catsKernelOrderingForOrder, catsSyntaxFlatMapOps}
+import cats.implicits.catsKernelOrderingForOrder
 import cats.instances.seq.*
-import cats.syntax.all.{toFoldableOps, toTraverseOps}
+import cats.syntax.all.*
 import cats.{Eq, FlatMap, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction, PrimitiveSink}
@@ -686,6 +686,24 @@ object MatchAnalysis extends StrictLogging:
         )
       end maximumSizeOfCoalescedSections
 
+      private def recordReplacement(
+          original: GenericMatch[Element],
+          replacement: GenericMatch[Element]
+      ): ParallelMatchesGroupIdTracking[Unit] =
+        State.modify { groupIds =>
+          groupIds
+            .get(original)
+            .fold(ifEmpty = groupIds)(groupId =>
+              groupIds + (replacement -> groupId)
+            )
+        }
+
+      private def recordReplacements(
+          original: GenericMatch[Element],
+          replacements: Seq[GenericMatch[Element]]
+      ): ParallelMatchesGroupIdTracking[Unit] =
+        replacements.traverse_(recordReplacement(original, _))
+
       private def fragmentsOf(
           pairwiseMatchesToBeEaten: MultiDict[
             PairwiseMatch,
@@ -744,16 +762,10 @@ object MatchAnalysis extends StrictLogging:
               s"Eating into pairwise match:\n${pprintCustomised(pairwiseMatch)} on behalf of all-sides matches:\n${pprintCustomised(bites)}, resulting in fragments:\n${pprintCustomised(fragmentsFromPairwiseMatch)}"
             )
 
-            fragmentsFromPairwiseMatch.foldM(())((_, fragment) =>
-              State.modify[Map[GenericMatch[Element], ParallelMatchesGroupId]](
-                groupIds =>
-                  groupIds
-                    .get(pairwiseMatch)
-                    .fold(ifEmpty = groupIds)(groupId =>
-                      groupIds + (fragment -> groupId)
-                    )
-              )
-            ) >> State.pure(fragmentsFromPairwiseMatch)
+            recordReplacements(
+              pairwiseMatch,
+              fragmentsFromPairwiseMatch
+            ) as fragmentsFromPairwiseMatch
           }
           .map(_.toSet)
 
@@ -1735,14 +1747,7 @@ object MatchAnalysis extends StrictLogging:
           case _ => None
 
         result.traverse(paredDownMatch =>
-          State.modify[Map[GenericMatch[Element], ParallelMatchesGroupId]](
-            groupIds =>
-              groupIds
-                .get(aMatch)
-                .fold(ifEmpty = groupIds)(groupId =>
-                  groupIds + (paredDownMatch -> groupId)
-                )
-          ) >> State.pure(paredDownMatch)
+          recordReplacement(aMatch, paredDownMatch) as paredDownMatch
         )
       end pareDownOrSuppressCompletely
 
@@ -2037,8 +2042,6 @@ object MatchAnalysis extends StrictLogging:
           )
         end disjointSetsOfMatches
 
-        val unusedValue = true
-
         val coalescenceWorkflow =
           for
             _ <- groupsOfBackTranslatedParallelMatches
@@ -2046,25 +2049,27 @@ object MatchAnalysis extends StrictLogging:
               .filter(
                 _.nonEmpty
               ) // Guard the zipping of group members down below...
-              .foldM(unusedValue)((_, group) =>
+              .traverse_ { group =>
                 // Unify the group members...
                 group
                   .zip(group.tail)
                   .toSeq
-                  .foldM(unusedValue) {
-                    case (_, (precedingGroupMember, succeedingGroupMember)) =>
+                  .traverse_ {
+                    case (precedingGroupMember, succeedingGroupMember) =>
                       DisjointSets
                         .union(precedingGroupMember, succeedingGroupMember)
                   }
-              )
+              }
             _ <- backTranslatedMatches
               .filter(_.isAnAllSidesMatch)
-              .foldM(unusedValue) {
-                case (_, allSidesMatch: Match.AllSides[Section[Element]]) =>
+              .toSeq
+              .traverse_ {
+                case allSidesMatch: Match.AllSides[Section[Element]] =>
                   backTranslatedMatchesAndTheirSections
                     .pairwiseMatchesSubsumingOnBothSides(allSidesMatch)
-                    .foldM(unusedValue)((_, pairwiseMatch) =>
-                      DisjointSets.union(allSidesMatch, pairwiseMatch)
+                    .toSeq
+                    .traverse_(
+                      DisjointSets.union(allSidesMatch, _)
                     )
               }
             sets <- DisjointSets.toSets
