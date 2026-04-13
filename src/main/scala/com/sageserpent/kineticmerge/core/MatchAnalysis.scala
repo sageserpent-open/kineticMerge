@@ -2042,8 +2042,6 @@ object MatchAnalysis extends StrictLogging:
           )
         end disjointSetsOfMatches
 
-        val unusedValue = true
-
         val coalescenceWorkflow =
           for
             _ <- groupsOfBackTranslatedParallelMatches
@@ -2051,25 +2049,28 @@ object MatchAnalysis extends StrictLogging:
               .filter(
                 _.nonEmpty
               ) // Guard the zipping of group members down below...
-              .foldM(unusedValue)((_, group) =>
+              .toSeq
+              .traverse_ { group =>
                 // Unify the group members...
                 group
                   .zip(group.tail)
                   .toSeq
-                  .foldM(unusedValue) {
-                    case (_, (precedingGroupMember, succeedingGroupMember)) =>
+                  .traverse_ {
+                    case (precedingGroupMember, succeedingGroupMember) =>
                       DisjointSets
                         .union(precedingGroupMember, succeedingGroupMember)
                   }
-              )
+              }
             _ <- backTranslatedMatches
               .filter(_.isAnAllSidesMatch)
-              .foldM(unusedValue) {
-                case (_, allSidesMatch: Match.AllSides[Section[Element]]) =>
+              .toSeq
+              .traverse_ {
+                case allSidesMatch: Match.AllSides[Section[Element]] =>
                   backTranslatedMatchesAndTheirSections
                     .pairwiseMatchesSubsumingOnBothSides(allSidesMatch)
-                    .foldM(unusedValue)((_, pairwiseMatch) =>
-                      DisjointSets.union(allSidesMatch, pairwiseMatch)
+                    .toSeq
+                    .traverse_(
+                      DisjointSets.union(allSidesMatch, _)
                     )
               }
             sets <- DisjointSets.toSets
