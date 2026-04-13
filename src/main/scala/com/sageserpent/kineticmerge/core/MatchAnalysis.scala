@@ -700,9 +700,9 @@ object MatchAnalysis extends StrictLogging:
 
       private def recordReplacements(
           original: GenericMatch[Element],
-          replacements: Iterable[GenericMatch[Element]]
+          replacements: Seq[GenericMatch[Element]]
       ): ParallelMatchesGroupIdTracking[Unit] =
-        replacements.toSeq.traverse_(recordReplacement(original, _))
+        replacements.traverse_(recordReplacement(original, _))
 
       private def fragmentsOf(
           pairwiseMatchesToBeEaten: MultiDict[
