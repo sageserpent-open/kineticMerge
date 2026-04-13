@@ -2049,7 +2049,6 @@ object MatchAnalysis extends StrictLogging:
               .filter(
                 _.nonEmpty
               ) // Guard the zipping of group members down below...
-              .toSeq
               .traverse_ { group =>
                 // Unify the group members...
                 group
