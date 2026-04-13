@@ -2053,7 +2053,7 @@ object MatchAnalysis extends StrictLogging:
                 // Unify the group members...
                 group
                   .zip(group.tail)
-                  .toSeq
+                  .toSeq // Keeping this one as .zip on a Seq might return something else
                   .traverse_ {
                     case (precedingGroupMember, succeedingGroupMember) =>
                       DisjointSets
@@ -2062,12 +2062,10 @@ object MatchAnalysis extends StrictLogging:
               }
             _ <- backTranslatedMatches
               .filter(_.isAnAllSidesMatch)
-              .toSeq
               .traverse_ {
                 case allSidesMatch: Match.AllSides[Section[Element]] =>
                   backTranslatedMatchesAndTheirSections
                     .pairwiseMatchesSubsumingOnBothSides(allSidesMatch)
-                    .toSeq
                     .traverse_(
                       DisjointSets.union(allSidesMatch, _)
                     )
