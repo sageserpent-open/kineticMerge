@@ -6,7 +6,7 @@ import cats.data.State
 import cats.implicits.{catsKernelOrderingForOrder, catsSyntaxFlatMapOps}
 import cats.instances.seq.*
 import cats.syntax.all.{toFoldableOps, toTraverseOps}
-import cats.{Eq, Order}
+import cats.{Eq, FlatMap, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction, PrimitiveSink}
 import com.sageserpent.kineticmerge
@@ -1270,107 +1270,108 @@ object MatchAnalysis extends StrictLogging:
       def reconcileMatches: MatchesAndTheirSections =
         val matches = sectionsAndTheirMatches.values.toSet
 
-        val Success(result) = Using(
-          progressRecording.newSession(
-            label = "Number of matches to reconcile:",
-            maximumProgress = matches.size
-          )(initialProgress = matches.size)
-        ) { progressRecordingSession =>
-          @tailrec
-          def reconcileUsing(
-              allSidesMatches: Set[Match.AllSides[Section[Element]]]
-          ): MatchesAndTheirSections =
-            val pairwiseMatchesToBeEaten: MultiDict[
-              PairwiseMatch,
-              (Match.AllSides[Section[Element]], BiteEdge, BiteEdge)
+        val Success((updatedParallelMatchesGroupsIdsByMatch, reconciled)) =
+          Using(
+            progressRecording.newSession(
+              label = "Number of matches to reconcile:",
+              maximumProgress = matches.size
+            )(initialProgress = matches.size)
+          ) { progressRecordingSession =>
+            def reconcileUsing(
+                allSidesMatches: Set[Match.AllSides[Section[Element]]]
+            ): ParallelMatchesGroupIdTracking[
+              Either[Set[
+                Match.AllSides[Section[Element]]
+              ], MatchesAndTheirSections]
             ] =
-              MultiDict.from(
-                allSidesMatches.flatMap(allSides =>
-                  pairwiseMatchesSubsumingOnBothSidesWithBiteEdges(allSides)
-                    .map { case (pairwiseMatch, biteStart, biteEnd) =>
-                      pairwiseMatch -> (allSides, biteStart, biteEnd)
-                    }
-                )
-              )
-            end pairwiseMatchesToBeEaten
-
-            this.checkInvariant()
-
-            val workflow = for
-              fragments <- fragmentsOf(pairwiseMatchesToBeEaten).map(
-                _.diff(matches.asInstanceOf[Set[PairwiseMatch]])
-              )
-
-              takingFragmentationIntoAccount =
-                fragments.foldLeft(
-                  withoutTheseMatches(pairwiseMatchesToBeEaten.keySet)
-                )(_ withMatch _)
-
-              _ = takingFragmentationIntoAccount.checkInvariant()
-
-              // NOTE: prefer `traverse` + `flatten` to `flatTraverse` as it
-              // manages flattening `Option` values into an enclosing `Set`
-              // nicely. The same holds a bit later on too.
-              paredDownMatches <- matches
-                .traverse(
-                  takingFragmentationIntoAccount.pareDownOrSuppressCompletely
-                )
-                .map(
-                  _.flatten diff pairwiseMatchesToBeEaten.keySet
-                    .asInstanceOf[Set[GenericMatch[Element]]]
-                )
-
-              paredDownAllSidesMatches = paredDownMatches.collect {
-                case allSides: Match.AllSides[Section[Element]] => allSides
-              }
-
-              stepResult <-
-                if paredDownAllSidesMatches == allSidesMatches then
-                  for
-                    // See note above.
-                    paredDownFragments <- fragments.traverse(
-                      takingFragmentationIntoAccount.pareDownOrSuppressCompletely
-                    )
-                    rebuilt =
-                      (paredDownMatches union paredDownFragments.flatten)
-                        .foldLeft(MatchesAndTheirSections.empty)(_ withMatch _)
-                    _      = rebuilt.checkInvariant()
-                    result = rebuilt.withoutRedundantPairwiseMatches
-                    _      = result.checkInvariant()
-                  yield Right(result)
-                else
-                  State.pure(
-                    Left(paredDownAllSidesMatches -> paredDownMatches.size)
+              val pairwiseMatchesToBeEaten: MultiDict[
+                PairwiseMatch,
+                (Match.AllSides[Section[Element]], BiteEdge, BiteEdge)
+              ] =
+                MultiDict.from(
+                  allSidesMatches.flatMap(allSides =>
+                    pairwiseMatchesSubsumingOnBothSidesWithBiteEdges(allSides)
+                      .map { case (pairwiseMatch, biteStart, biteEnd) =>
+                        pairwiseMatch -> (allSides, biteStart, biteEnd)
+                      }
                   )
-            yield stepResult
-
-            // NOTE: we want to re-evaluate the state change here and now
-            // *within* the call to `reconcileUsing`, so don't cut over to
-            // using `tailRecM` to drive the tail-recursion, as that would force
-            // evaluation to occur around the initial call-site over all the
-            // recursive steps.
-            val (updatedParallelMatchesGroupsIdsByMatch, outcome) =
-              workflow.run(parallelMatchesGroupIdsByMatch).value
-
-            outcome match
-              case Left(paredDownAllSidesMatches, progress) =>
-                progressRecordingSession.upTo(progress)
-                reconcileUsing(paredDownAllSidesMatches)
-              case Right(result) =>
-                progressRecordingSession.upTo(0)
-                val matches = result.matches
-                result.copy(parallelMatchesGroupIdsByMatch =
-                  updatedParallelMatchesGroupsIdsByMatch.view
-                    .filterKeys(matches.contains)
-                    .toMap
                 )
-            end match
-          end reconcileUsing
+              end pairwiseMatchesToBeEaten
 
-          reconcileUsing(matches.collect {
-            case allSides: Match.AllSides[Section[Element]] => allSides
-          })
-        }: @unchecked
+              this.checkInvariant()
+
+              for
+                // Reset the state for each iteration of `reconcileUsing`.
+                _ <- State.set(parallelMatchesGroupIdsByMatch)
+
+                fragments <- fragmentsOf(pairwiseMatchesToBeEaten).map(
+                  _.diff(matches.asInstanceOf[Set[PairwiseMatch]])
+                )
+
+                takingFragmentationIntoAccount =
+                  fragments.foldLeft(
+                    withoutTheseMatches(pairwiseMatchesToBeEaten.keySet)
+                  )(_ withMatch _)
+
+                _ = takingFragmentationIntoAccount.checkInvariant()
+
+                // NOTE: prefer `traverse` + `flatten` to `flatTraverse` as it
+                // manages flattening `Option` values into an enclosing `Set`
+                // nicely. The same holds a bit later on too.
+                paredDownMatches <- matches
+                  .traverse(
+                    takingFragmentationIntoAccount.pareDownOrSuppressCompletely
+                  )
+                  .map(
+                    _.flatten diff pairwiseMatchesToBeEaten.keySet
+                      .asInstanceOf[Set[GenericMatch[Element]]]
+                  )
+
+                paredDownAllSidesMatches = paredDownMatches.collect {
+                  case allSides: Match.AllSides[Section[Element]] => allSides
+                }
+
+                stepResult <-
+                  if paredDownAllSidesMatches == allSidesMatches then
+                    for
+                      // See note above.
+                      paredDownFragments <- fragments.traverse(
+                        takingFragmentationIntoAccount.pareDownOrSuppressCompletely
+                      )
+                      rebuilt =
+                        (paredDownMatches union paredDownFragments.flatten)
+                          .foldLeft(MatchesAndTheirSections.empty)(
+                            _ withMatch _
+                          )
+                      _      = rebuilt.checkInvariant()
+                      result = rebuilt.withoutRedundantPairwiseMatches
+                      _      = result.checkInvariant()
+                      _      = progressRecordingSession.upTo(0)
+                    yield Right(result)
+                  else
+                    progressRecordingSession.upTo(paredDownMatches.size)
+                    State.pure(Left(paredDownAllSidesMatches))
+              yield stepResult
+              end for
+            end reconcileUsing
+
+            FlatMap[ParallelMatchesGroupIdTracking]
+              .tailRecM(matches.collect {
+                case allSides: Match.AllSides[Section[Element]] => allSides
+              })(reconcileUsing)
+              .run(Map.empty)
+              .value
+          }: @unchecked
+
+        val result =
+          val matches = reconciled.matches
+
+          reconciled.copy(parallelMatchesGroupIdsByMatch =
+            updatedParallelMatchesGroupsIdsByMatch.view
+              .filterKeys(matches.contains)
+              .toMap
+          )
+        end result
 
         result.reconciliationPostcondition()
 
