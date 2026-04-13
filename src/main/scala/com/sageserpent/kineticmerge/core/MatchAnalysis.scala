@@ -3,9 +3,9 @@ package com.sageserpent.kineticmerge.core
 import alleycats.std.set.given
 import cats.collections.{Diet, DisjointSets, Range as CatsInclusiveRange}
 import cats.data.State
-import cats.implicits.{catsKernelOrderingForOrder, catsSyntaxFlatMapOps}
+import cats.implicits.catsKernelOrderingForOrder
 import cats.instances.seq.*
-import cats.syntax.all.{toFoldableOps, toTraverseOps}
+import cats.syntax.all.*
 import cats.{Eq, FlatMap, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction, PrimitiveSink}
@@ -686,19 +686,37 @@ object MatchAnalysis extends StrictLogging:
         )
       end maximumSizeOfCoalescedSections
 
+      private def recordReplacement(
+          original: GenericMatch[Element],
+          replacement: GenericMatch[Element]
+      ): ParallelMatchesGroupIdTracking[Unit] =
+        State.modify { groupIds =>
+          groupIds
+            .get(original)
+            .fold(ifEmpty = groupIds)(groupId =>
+              groupIds + (replacement -> groupId)
+            )
+        }
+
+      private def recordReplacements(
+          original: GenericMatch[Element],
+          replacements: Iterable[GenericMatch[Element]]
+      ): ParallelMatchesGroupIdTracking[Unit] =
+        replacements.toVector.traverse_(recordReplacement(original, _))
+
       private def fragmentsOf(
           pairwiseMatchesToBeEaten: MultiDict[
             PairwiseMatch,
             (Match.AllSides[Section[Element]], BiteEdge, BiteEdge)
           ]
       ): ParallelMatchesGroupIdTracking[Set[PairwiseMatch]] =
-        pairwiseMatchesToBeEaten.sets.toSeq
-          .flatTraverse { case (pairwiseMatch, bites) =>
+        pairwiseMatchesToBeEaten.sets.toVector
+          .traverse { case (pairwiseMatch, bites) =>
             val sortedBiteEdges = sortedBiteEdgesFrom(bites.flatMap {
               case (_, biteStart, biteEnd) => Seq(biteStart, biteEnd)
             })
 
-            val fragmentsFromPairwiseMatch: Seq[PairwiseMatch] =
+            val fragmentsFromPairwiseMatch: Vector[PairwiseMatch] =
               pairwiseMatch match
                 case Match.BaseAndLeft(baseSection, leftSection) =>
                   (eatIntoSection(
@@ -713,6 +731,8 @@ object MatchAnalysis extends StrictLogging:
                     leftSection
                   ))
                     .map(Match.BaseAndLeft.apply)
+                    .toVector
+                    .asInstanceOf[Vector[PairwiseMatch]]
 
                 case Match.BaseAndRight(baseSection, rightSection) =>
                   (eatIntoSection(
@@ -725,7 +745,10 @@ object MatchAnalysis extends StrictLogging:
                     sortedBiteEdges
                   )(
                     rightSection
-                  )).map(Match.BaseAndRight.apply)
+                  ))
+                    .map(Match.BaseAndRight.apply)
+                    .toVector
+                    .asInstanceOf[Vector[PairwiseMatch]]
 
                 case Match.LeftAndRight(leftSection, rightSection) =>
                   (eatIntoSection(
@@ -738,24 +761,21 @@ object MatchAnalysis extends StrictLogging:
                     sortedBiteEdges
                   )(
                     rightSection
-                  )).map(Match.LeftAndRight.apply)
+                  ))
+                    .map(Match.LeftAndRight.apply)
+                    .toVector
+                    .asInstanceOf[Vector[PairwiseMatch]]
 
             logger.debug(
               s"Eating into pairwise match:\n${pprintCustomised(pairwiseMatch)} on behalf of all-sides matches:\n${pprintCustomised(bites)}, resulting in fragments:\n${pprintCustomised(fragmentsFromPairwiseMatch)}"
             )
 
-            fragmentsFromPairwiseMatch.foldM(())((_, fragment) =>
-              State.modify[Map[GenericMatch[Element], ParallelMatchesGroupId]](
-                groupIds =>
-                  groupIds
-                    .get(pairwiseMatch)
-                    .fold(ifEmpty = groupIds)(groupId =>
-                      groupIds + (fragment -> groupId)
-                    )
-              )
-            ) >> State.pure(fragmentsFromPairwiseMatch)
+            recordReplacements(
+              pairwiseMatch,
+              fragmentsFromPairwiseMatch
+            ) as fragmentsFromPairwiseMatch
           }
-          .map(_.toSet)
+          .map(_.flatten.toSet)
 
       def sortedBiteEdgesFrom(bites: collection.Set[BiteEdge]): Seq[BiteEdge] =
         bites.toSeq.sortWith {
@@ -1735,14 +1755,7 @@ object MatchAnalysis extends StrictLogging:
           case _ => None
 
         result.traverse(paredDownMatch =>
-          State.modify[Map[GenericMatch[Element], ParallelMatchesGroupId]](
-            groupIds =>
-              groupIds
-                .get(aMatch)
-                .fold(ifEmpty = groupIds)(groupId =>
-                  groupIds + (paredDownMatch -> groupId)
-                )
-          ) >> State.pure(paredDownMatch)
+          recordReplacement(aMatch, paredDownMatch) as paredDownMatch
         )
       end pareDownOrSuppressCompletely
 
