@@ -686,24 +686,6 @@ object MatchAnalysis extends StrictLogging:
         )
       end maximumSizeOfCoalescedSections
 
-      private def recordReplacement(
-          original: GenericMatch[Element],
-          replacement: GenericMatch[Element]
-      ): ParallelMatchesGroupIdTracking[Unit] =
-        State.modify { groupIds =>
-          groupIds
-            .get(original)
-            .fold(ifEmpty = groupIds)(groupId =>
-              groupIds + (replacement -> groupId)
-            )
-        }
-
-      private def recordReplacements(
-          original: GenericMatch[Element],
-          replacements: Seq[GenericMatch[Element]]
-      ): ParallelMatchesGroupIdTracking[Unit] =
-        replacements.traverse_(recordReplacement(original, _))
-
       private def fragmentsOf(
           pairwiseMatchesToBeEaten: MultiDict[
             PairwiseMatch,
@@ -768,6 +750,24 @@ object MatchAnalysis extends StrictLogging:
             ) as fragmentsFromPairwiseMatch
           }
           .map(_.toSet)
+
+      private def recordReplacements(
+          original: GenericMatch[Element],
+          replacements: Seq[GenericMatch[Element]]
+      ): ParallelMatchesGroupIdTracking[Unit] =
+        replacements.traverse_(recordReplacement(original, _))
+
+      private def recordReplacement(
+          original: GenericMatch[Element],
+          replacement: GenericMatch[Element]
+      ): ParallelMatchesGroupIdTracking[Unit] =
+        State.modify { groupIds =>
+          groupIds
+            .get(original)
+            .fold(ifEmpty = groupIds)(groupId =>
+              groupIds + (replacement -> groupId)
+            )
+        }
 
       def sortedBiteEdgesFrom(bites: collection.Set[BiteEdge]): Seq[BiteEdge] =
         bites.toSeq.sortWith {
@@ -2053,6 +2053,7 @@ object MatchAnalysis extends StrictLogging:
                 // Unify the group members...
                 group
                   .zip(group.tail)
+                  // Zipping views together makes an `Iterable`, so ...
                   .toSeq
                   .traverse_ {
                     case (precedingGroupMember, succeedingGroupMember) =>
@@ -2062,12 +2063,10 @@ object MatchAnalysis extends StrictLogging:
               }
             _ <- backTranslatedMatches
               .filter(_.isAnAllSidesMatch)
-              .toSeq
               .traverse_ {
                 case allSidesMatch: Match.AllSides[Section[Element]] =>
                   backTranslatedMatchesAndTheirSections
                     .pairwiseMatchesSubsumingOnBothSides(allSidesMatch)
-                    .toSeq
                     .traverse_(
                       DisjointSets.union(allSidesMatch, _)
                     )
