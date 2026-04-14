@@ -1380,30 +1380,33 @@ object MatchAnalysis extends StrictLogging:
                             .flatMap { case (_, matchesInGroup) =>
                               val subGroupsByPaths = matchesInGroup.groupBy {
                                 aMatch =>
-                                  val pathOnBase = aMatch match
+                                  val pathOnBase = (aMatch match
                                     case Match.AllSides(baseSection, _, _) =>
-                                      Some(baseSources.pathFor(baseSection))
+                                      Some(baseSection)
                                     case Match.BaseAndLeft(baseSection, _) =>
-                                      Some(baseSources.pathFor(baseSection))
+                                      Some(baseSection)
                                     case Match.BaseAndRight(baseSection, _) =>
-                                      Some(baseSources.pathFor(baseSection))
+                                      Some(baseSection)
                                     case _ => None
-                                  val pathOnLeft = aMatch match
+                                  ).map(baseSources.pathFor)
+                                  val pathOnLeft = (aMatch match
                                     case Match.AllSides(_, leftSection, _) =>
-                                      Some(leftSources.pathFor(leftSection))
+                                      Some(leftSection)
                                     case Match.BaseAndLeft(_, leftSection) =>
-                                      Some(leftSources.pathFor(leftSection))
+                                      Some(leftSection)
                                     case Match.LeftAndRight(leftSection, _) =>
-                                      Some(leftSources.pathFor(leftSection))
+                                      Some(leftSection)
                                     case _ => None
-                                  val pathOnRight = aMatch match
+                                  ).map(leftSources.pathFor)
+                                  val pathOnRight = (aMatch match
                                     case Match.AllSides(_, _, rightSection) =>
-                                      Some(rightSources.pathFor(rightSection))
+                                      Some(rightSection)
                                     case Match.BaseAndRight(_, rightSection) =>
-                                      Some(rightSources.pathFor(rightSection))
+                                      Some(rightSection)
                                     case Match.LeftAndRight(_, rightSection) =>
-                                      Some(rightSources.pathFor(rightSection))
+                                      Some(rightSection)
                                     case _ => None
+                                  ).map(rightSources.pathFor)
                                   (pathOnBase, pathOnLeft, pathOnRight)
                               }
 
@@ -1678,31 +1681,40 @@ object MatchAnalysis extends StrictLogging:
               .mapValues(_.map(_._1))
 
           matchesByGroupId.foreach { case (groupId, matchesInGroup) =>
-            val basePaths = matchesInGroup.collect {
-              case Match.AllSides(baseSection, _, _)  => baseSources.pathFor(baseSection)
-              case Match.BaseAndLeft(baseSection, _)  => baseSources.pathFor(baseSection)
-              case Match.BaseAndRight(baseSection, _) => baseSources.pathFor(baseSection)
-            }.toSet
+            val basePaths = matchesInGroup
+              .collect {
+                case Match.AllSides(baseSection, _, _)  => baseSection
+                case Match.BaseAndLeft(baseSection, _)  => baseSection
+                case Match.BaseAndRight(baseSection, _) => baseSection
+              }
+              .map(baseSources.pathFor)
+              .toSet
             assert(
               basePaths.size <= 1,
               s"Group $groupId has multiple base paths: $basePaths"
             )
 
-            val leftPaths = matchesInGroup.collect {
-              case Match.AllSides(_, leftSection, _)  => leftSources.pathFor(leftSection)
-              case Match.BaseAndLeft(_, leftSection)  => leftSources.pathFor(leftSection)
-              case Match.LeftAndRight(leftSection, _) => leftSources.pathFor(leftSection)
-            }.toSet
+            val leftPaths = matchesInGroup
+              .collect {
+                case Match.AllSides(_, leftSection, _)  => leftSection
+                case Match.BaseAndLeft(_, leftSection)  => leftSection
+                case Match.LeftAndRight(leftSection, _) => leftSection
+              }
+              .map(leftSources.pathFor)
+              .toSet
             assert(
               leftPaths.size <= 1,
               s"Group $groupId has multiple left paths: $leftPaths"
             )
 
-            val rightPaths = matchesInGroup.collect {
-              case Match.AllSides(_, _, rightSection) => rightSources.pathFor(rightSection)
-              case Match.BaseAndRight(_, rightSection) => rightSources.pathFor(rightSection)
-              case Match.LeftAndRight(_, rightSection) => rightSources.pathFor(rightSection)
-            }.toSet
+            val rightPaths = matchesInGroup
+              .collect {
+                case Match.AllSides(_, _, rightSection)  => rightSection
+                case Match.BaseAndRight(_, rightSection) => rightSection
+                case Match.LeftAndRight(_, rightSection) => rightSection
+              }
+              .map(rightSources.pathFor)
+              .toSet
             assert(
               rightPaths.size <= 1,
               s"Group $groupId has multiple right paths: $rightPaths"
