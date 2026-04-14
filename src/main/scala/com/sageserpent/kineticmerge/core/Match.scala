@@ -17,4 +17,3 @@ enum Match[+Element]:
       rightElement: Element
   )
 end Match
-
