@@ -1362,11 +1362,63 @@ object MatchAnalysis extends StrictLogging:
                       updatedParallelMatchesGroupsIdsByMatch <- State.get
                     yield
                       val matches = reconciled.matches
+
+                      val parallelMatchesGroupIdsByMatch =
+                        updatedParallelMatchesGroupsIdsByMatch.view
+                          .filterKeys(matches.contains)
+                          .toMap
+
+                      val pathConsistentParallelMatchesGroupIdsByMatch =
+                        if parallelMatchesGroupIdsByMatch.nonEmpty then
+                          val matchesByGroupId =
+                            parallelMatchesGroupIdsByMatch.toSeq
+                              .groupBy(_._2)
+                              .view
+                              .mapValues(_.map(_._1))
+
+                          matchesByGroupId
+                            .flatMap { case (_, matchesInGroup) =>
+                              val subGroupsByPaths = matchesInGroup.groupBy {
+                                aMatch =>
+                                  val pathOnBase = aMatch match
+                                    case Match.AllSides(baseSection, _, _) =>
+                                      Some(baseSources.pathFor(baseSection))
+                                    case Match.BaseAndLeft(baseSection, _) =>
+                                      Some(baseSources.pathFor(baseSection))
+                                    case Match.BaseAndRight(baseSection, _) =>
+                                      Some(baseSources.pathFor(baseSection))
+                                    case _ => None
+                                  val pathOnLeft = aMatch match
+                                    case Match.AllSides(_, leftSection, _) =>
+                                      Some(leftSources.pathFor(leftSection))
+                                    case Match.BaseAndLeft(_, leftSection) =>
+                                      Some(leftSources.pathFor(leftSection))
+                                    case Match.LeftAndRight(leftSection, _) =>
+                                      Some(leftSources.pathFor(leftSection))
+                                    case _ => None
+                                  val pathOnRight = aMatch match
+                                    case Match.AllSides(_, _, rightSection) =>
+                                      Some(rightSources.pathFor(rightSection))
+                                    case Match.BaseAndRight(_, rightSection) =>
+                                      Some(rightSources.pathFor(rightSection))
+                                    case Match.LeftAndRight(_, rightSection) =>
+                                      Some(rightSources.pathFor(rightSection))
+                                    case _ => None
+                                  (pathOnBase, pathOnLeft, pathOnRight)
+                              }
+
+                              subGroupsByPaths.values
+                            }
+                            .zipWithIndex
+                            .flatMap { case (subGroup, id) =>
+                              subGroup.map(_ -> id)
+                            }
+                            .toMap
+                        else parallelMatchesGroupIdsByMatch
+
                       Right(
                         reconciled.copy(parallelMatchesGroupIdsByMatch =
-                          updatedParallelMatchesGroupsIdsByMatch.view
-                            .filterKeys(matches.contains)
-                            .toMap
+                          pathConsistentParallelMatchesGroupIdsByMatch
                         )
                       )
                   else
@@ -1618,6 +1670,44 @@ object MatchAnalysis extends StrictLogging:
             parallelMatchesGroupIdsByMatch.keySet == matches,
             s"If groups of parallel matches have been discovered, they should cover the overall population of matches exactly."
           )
+
+          val matchesByGroupId =
+            parallelMatchesGroupIdsByMatch.toSeq
+              .groupBy(_._2)
+              .view
+              .mapValues(_.map(_._1))
+
+          matchesByGroupId.foreach { case (groupId, matchesInGroup) =>
+            val basePaths = matchesInGroup.collect {
+              case Match.AllSides(baseSection, _, _)  => baseSources.pathFor(baseSection)
+              case Match.BaseAndLeft(baseSection, _)  => baseSources.pathFor(baseSection)
+              case Match.BaseAndRight(baseSection, _) => baseSources.pathFor(baseSection)
+            }.toSet
+            assert(
+              basePaths.size <= 1,
+              s"Group $groupId has multiple base paths: $basePaths"
+            )
+
+            val leftPaths = matchesInGroup.collect {
+              case Match.AllSides(_, leftSection, _)  => leftSources.pathFor(leftSection)
+              case Match.BaseAndLeft(_, leftSection)  => leftSources.pathFor(leftSection)
+              case Match.LeftAndRight(leftSection, _) => leftSources.pathFor(leftSection)
+            }.toSet
+            assert(
+              leftPaths.size <= 1,
+              s"Group $groupId has multiple left paths: $leftPaths"
+            )
+
+            val rightPaths = matchesInGroup.collect {
+              case Match.AllSides(_, _, rightSection) => rightSources.pathFor(rightSection)
+              case Match.BaseAndRight(_, rightSection) => rightSources.pathFor(rightSection)
+              case Match.LeftAndRight(_, rightSection) => rightSources.pathFor(rightSection)
+            }.toSet
+            assert(
+              rightPaths.size <= 1,
+              s"Group $groupId has multiple right paths: $rightPaths"
+            )
+          }
         end if
       end reconciliationPostcondition
 
