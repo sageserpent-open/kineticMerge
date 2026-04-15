@@ -185,9 +185,14 @@ object MatchAnalysis extends StrictLogging:
 
     val tiebreakContentSamplingLimit = 5
 
+    val matchToId = mutable.Map.empty[GenericMatch[Element], Int]
+    given matchOrder: Order[GenericMatch[Element]] =
+      Order.by(m => matchToId.getOrElseUpdate(m, matchToId.size))
+
     object MatchesAndTheirSections:
+      type ParallelMatchesGrouping = DisjointSets[GenericMatch[Element]]
       type ParallelMatchesGroupIdTracking[X] =
-        State[Map[GenericMatch[Element], ParallelMatchesGroupId], X]
+        State[ParallelMatchesGrouping, X]
       lazy val empty: MatchesAndTheirSections = MatchesAndTheirSections(
         baseSectionsByPath = Map.empty,
         leftSectionsByPath = Map.empty,
@@ -761,13 +766,14 @@ object MatchAnalysis extends StrictLogging:
           original: GenericMatch[Element],
           replacement: GenericMatch[Element]
       ): ParallelMatchesGroupIdTracking[Unit] =
-        State.modify { groupIds =>
-          groupIds
-            .get(original)
-            .fold(ifEmpty = groupIds)(groupId =>
-              groupIds + (replacement -> groupId)
-            )
-        }
+        for
+          _ <- State.modify[ParallelMatchesGrouping](_ + replacement)
+          _ <- State.modify[ParallelMatchesGrouping](sets =>
+            if sets.contains(original) then
+              sets.union(original, replacement)._1
+            else sets
+          )
+        yield ()
 
       def sortedBiteEdgesFrom(bites: collection.Set[BiteEdge]): Seq[BiteEdge] =
         bites.toSeq.sortWith {
@@ -897,6 +903,10 @@ object MatchAnalysis extends StrictLogging:
         val minimumMatchSizeConsidered: Int
         def thresholdSize(fileSize: Int): Int
       end MatchSearchingContext
+
+      enum MatchSide:
+        case Base, Left, Right
+      end MatchSide
 
       enum BiteEdge:
         case Start(startOffsetRelativeToMeal: Int)
@@ -1279,6 +1289,142 @@ object MatchAnalysis extends StrictLogging:
         }
       end withoutTheseMatches
 
+      private def pathOnBase(aMatch: GenericMatch[Element]): Option[Path] =
+        aMatch match
+          case Match.AllSides(baseSection, _, _)  => Some(baseSources.pathFor(baseSection))
+          case Match.BaseAndLeft(baseSection, _)  => Some(baseSources.pathFor(baseSection))
+          case Match.BaseAndRight(baseSection, _) => Some(baseSources.pathFor(baseSection))
+          case _                                  => None
+
+      private def pathOnLeft(aMatch: GenericMatch[Element]): Option[Path] =
+        aMatch match
+          case Match.AllSides(_, leftSection, _)  => Some(leftSources.pathFor(leftSection))
+          case Match.BaseAndLeft(_, leftSection)  => Some(leftSources.pathFor(leftSection))
+          case Match.LeftAndRight(leftSection, _) => Some(leftSources.pathFor(leftSection))
+          case _                                  => None
+
+      private def pathOnRight(aMatch: GenericMatch[Element]): Option[Path] =
+        aMatch match
+          case Match.AllSides(_, _, rightSection) => Some(rightSources.pathFor(rightSection))
+          case Match.BaseAndRight(_, rightSection) => Some(rightSources.pathFor(rightSection))
+          case Match.LeftAndRight(_, rightSection) => Some(rightSources.pathFor(rightSection))
+          case _                                   => None
+
+      private def arePathCompatible(
+          first: GenericMatch[Element],
+          second: GenericMatch[Element]
+      ): Boolean =
+        val baseCompatible = (pathOnBase(first), pathOnBase(second)) match
+          case (Some(p1), Some(p2)) => p1 == p2
+          case _                    => true
+
+        val leftCompatible = (pathOnLeft(first), pathOnLeft(second)) match
+          case (Some(p1), Some(p2)) => p1 == p2
+          case _                    => true
+
+        val rightCompatible = (pathOnRight(first), pathOnRight(second)) match
+          case (Some(p1), Some(p2)) => p1 == p2
+          case _                    => true
+
+        baseCompatible && leftCompatible && rightCompatible
+      end arePathCompatible
+
+      private def sidesOf(
+          aMatch: GenericMatch[Element]
+      ): Set[MatchSide] = aMatch match
+        case _: Match.AllSides[Section[Element]] =>
+          Set(MatchSide.Base, MatchSide.Left, MatchSide.Right)
+        case _: Match.BaseAndLeft[Section[Element]] =>
+          Set(MatchSide.Base, MatchSide.Left)
+        case _: Match.BaseAndRight[Section[Element]] =>
+          Set(MatchSide.Base, MatchSide.Right)
+        case _: Match.LeftAndRight[Section[Element]] =>
+          Set(MatchSide.Left, MatchSide.Right)
+
+      private def offsetOf(aMatch: GenericMatch[Element], side: MatchSide): Int =
+        side match
+          case MatchSide.Base =>
+            aMatch match
+              case m: Match.AllSides[Section[Element]]     => m.baseElement.startOffset
+              case m: Match.BaseAndLeft[Section[Element]]  => m.baseElement.startOffset
+              case m: Match.BaseAndRight[Section[Element]] => m.baseElement.startOffset
+              case _ => throw new RuntimeException("Match doesn't have Base side")
+          case MatchSide.Left =>
+            aMatch match
+              case m: Match.AllSides[Section[Element]]     => m.leftElement.startOffset
+              case m: Match.BaseAndLeft[Section[Element]]  => m.leftElement.startOffset
+              case m: Match.LeftAndRight[Section[Element]] => m.leftElement.startOffset
+              case _ => throw new RuntimeException("Match doesn't have Left side")
+          case MatchSide.Right =>
+            aMatch match
+              case m: Match.AllSides[Section[Element]]      => m.rightElement.startOffset
+              case m: Match.BaseAndRight[Section[Element]] => m.rightElement.startOffset
+              case m: Match.LeftAndRight[Section[Element]] => m.rightElement.startOffset
+              case _ => throw new RuntimeException("Match doesn't have Right side")
+
+      private def isOrderConsistent(group: Iterable[GenericMatch[Element]]): Boolean =
+        val sides = Seq(MatchSide.Base, MatchSide.Left, MatchSide.Right)
+        val orderings = sides.flatMap { s =>
+          val matchesWithSide = group.filter(sidesOf(_).contains(s)).toSeq
+          if (matchesWithSide.size > 1) {
+            val sorted = matchesWithSide.sortBy(offsetOf(_, s))
+            Some(s -> sorted)
+          } else None
+        }.toMap
+
+        orderings.forall { case (s1, o1) =>
+          orderings.forall { case (s2, o2) =>
+            if (s1 == s2) true
+            else {
+              val common = o1.filter(m => sidesOf(m).contains(s2))
+              val commonInO2 = o2.filter(m => sidesOf(m).contains(s1))
+              common == commonInO2
+            }
+          }
+        }
+
+      private def parallelConsistentSubgroups(
+          matches: Iterable[GenericMatch[Element]]
+      ): Iterable[Set[GenericMatch[Element]]] =
+        val subgroups =
+          mutable.Buffer.empty[mutable.Set[GenericMatch[Element]]]
+
+        // Sort matches to ensure stable results and possibly better grouping
+        val sortedMatches = matches.toSeq.sortBy(m =>
+          (
+            pathOnBase(m).map(_.toString).getOrElse(""),
+            pathOnLeft(m).map(_.toString).getOrElse(""),
+            pathOnRight(m).map(_.toString).getOrElse(""),
+            -sidesOf(m).size // Prioritize all-sides matches for greedy grouping
+          )
+        )
+
+        sortedMatches.foreach { m =>
+          subgroups.find { subgroup =>
+            val mIsAllSides = m.isAnAllSidesMatch
+            val subgroupHasAllSides =
+              subgroup.exists(_.isAnAllSidesMatch)
+            val flavourCompatible =
+              mIsAllSides || subgroupHasAllSides || subgroup.forall(sm =>
+                // Same pairwise flavour
+                (sm, m) match
+                  case (_: Match.BaseAndLeft[?], _: Match.BaseAndLeft[?])   => true
+                  case (_: Match.BaseAndRight[?], _: Match.BaseAndRight[?]) => true
+                  case (_: Match.LeftAndRight[?], _: Match.LeftAndRight[?]) => true
+                  case _                                                   => false
+              )
+
+            flavourCompatible &&
+            subgroup.forall(arePathCompatible(m, _)) &&
+            isOrderConsistent(subgroup.toSeq :+ m)
+          } match
+            case Some(subgroup) => subgroup.add(m)
+            case None           => subgroups.addOne(mutable.Set(m))
+        }
+
+        subgroups.map(_.toSet)
+      end parallelConsistentSubgroups
+
       def reconcileMatches: MatchesAndTheirSections =
         val matches = sectionsAndTheirMatches.values.toSet
 
@@ -1314,7 +1460,18 @@ object MatchAnalysis extends StrictLogging:
 
               for
                 // Reset the state for each iteration of `reconcileUsing`.
-                _ <- State.set(parallelMatchesGroupIdsByMatch)
+                _ <- State.set[ParallelMatchesGrouping] {
+                  val initialGrouping =
+                    DisjointSets(matches.toSeq*)
+                  val groups =
+                    parallelMatchesGroupIdsByMatch.toSeq.groupBy(_._2).values
+                  groups.foldLeft(initialGrouping) { (accDs, groupMatches) =>
+                    val ms = groupMatches.map(_._1)
+                    if ms.size > 1 then
+                      ms.tail.foldLeft(accDs)((d, m) => d.union(ms.head, m)._1)
+                    else accDs
+                  }
+                }
 
                 fragments <- fragmentsOf(pairwiseMatchesToBeEaten).map(
                   _.diff(matches.asInstanceOf[Set[PairwiseMatch]])
@@ -1330,6 +1487,24 @@ object MatchAnalysis extends StrictLogging:
                 // NOTE: prefer `traverse` + `flatten` to `flatTraverse` as it
                 // manages flattening `Option` values into an enclosing `Set`
                 // nicely. The same holds a bit later on too.
+                _ <- matches
+                  .filter(_.isAnAllSidesMatch)
+                  .toSeq
+                  .traverse_ {
+                    case allSidesMatch: Match.AllSides[Section[Element]] =>
+                      pairwiseMatchesSubsumingOnBothSides(allSidesMatch)
+                        .filter(arePathCompatible(allSidesMatch, _))
+                        .toSeq
+                        .traverse_(pairwiseMatch =>
+                          State.modify[ParallelMatchesGrouping](sets =>
+                            if sets.contains(allSidesMatch) && sets
+                                .contains(pairwiseMatch)
+                            then sets.union(allSidesMatch, pairwiseMatch)._1
+                            else sets
+                          )
+                        )
+                  }
+
                 paredDownMatches <- matches
                   .traverse(
                     takingFragmentationIntoAccount.pareDownOrSuppressCompletely
@@ -1359,147 +1534,25 @@ object MatchAnalysis extends StrictLogging:
                       reconciled = rebuilt.withoutRedundantPairwiseMatches
                       _          = reconciled.checkInvariant()
                       _          = progressRecordingSession.upTo(0)
-                      updatedParallelMatchesGroupsIdsByMatch <- State.get
+                      updatedParallelMatchesGrouping <-
+                        State.get[ParallelMatchesGrouping]
                     yield
                       val matches = reconciled.matches
-
-                      val initialParallelMatchesGroupIdsByMatch =
-                        updatedParallelMatchesGroupsIdsByMatch.view
-                          .filterKeys(matches.contains)
-                          .toMap
-
-                      val disjointSetsOfMatches =
-                        val initialParallelMatchIds =
-                          matches.zipWithIndex.toMap
-
-                        given matchOrdering: Order[Match[Section[Element]]] =
-                          Order.by(initialParallelMatchIds.apply)
-
-                        DisjointSets(
-                          matches.toSeq*
+                      val groupIdsByMatch = updatedParallelMatchesGrouping
+                        .toSets._2
+                        .toScalaMap
+                        .values
+                        .flatMap(group =>
+                          parallelConsistentSubgroups(
+                            group.toScalaSet.filter(matches.contains)
+                          )
                         )
-                      end disjointSetsOfMatches
-
-                      val coalescenceWorkflow =
-                        for
-                          _ <- initialParallelMatchesGroupIdsByMatch.toSeq
-                            .groupBy(_._2)
-                            .view
-                            .mapValues(_.map(_._1))
-                            .values
-                            .toSeq
-                            .traverse_ { group =>
-                              group
-                                .zip(group.tail)
-                                .traverse_ {
-                                  case (
-                                        precedingGroupMember,
-                                        succeedingGroupMember
-                                      ) =>
-                                    DisjointSets
-                                      .union(
-                                        precedingGroupMember,
-                                        succeedingGroupMember
-                                      )
-                                }
-                            }
-                          _ <- matches
-                            .filter(_.isAnAllSidesMatch)
-                            .traverse_ {
-                              case allSidesMatch: Match.AllSides[
-                                    Section[Element]
-                                  ] =>
-                                reconciled
-                                  .pairwiseMatchesSubsumingOnBothSides(
-                                    allSidesMatch
-                                  )
-                                  .traverse_ { pairwiseMatch =>
-                                    val allSidesPaths = (
-                                      Some(
-                                        baseSources.pathFor(
-                                          allSidesMatch.baseElement
-                                        )
-                                      ),
-                                      Some(
-                                        leftSources.pathFor(
-                                          allSidesMatch.leftElement
-                                        )
-                                      ),
-                                      Some(
-                                        rightSources.pathFor(
-                                          allSidesMatch.rightElement
-                                        )
-                                      )
-                                    )
-                                    val pairwisePaths = pairwiseMatch match
-                                      case Match.BaseAndLeft(
-                                            baseSection,
-                                            leftSection
-                                          ) =>
-                                        (
-                                          Some(baseSources.pathFor(baseSection)),
-                                          Some(leftSources.pathFor(leftSection)),
-                                          None
-                                        )
-                                      case Match.BaseAndRight(
-                                            baseSection,
-                                            rightSection
-                                          ) =>
-                                        (
-                                          Some(baseSources.pathFor(baseSection)),
-                                          None,
-                                          Some(
-                                            rightSources.pathFor(rightSection)
-                                          )
-                                        )
-                                      case Match.LeftAndRight(
-                                            leftSection,
-                                            rightSection
-                                          ) =>
-                                        (
-                                          None,
-                                          Some(leftSources.pathFor(leftSection)),
-                                          Some(
-                                            rightSources.pathFor(rightSection)
-                                          )
-                                        )
-                                    end pairwisePaths
-
-                                    val isPathConsistent =
-                                      (allSidesPaths._1, pairwisePaths._1)
-                                        .mapN(_ == _)
-                                        .getOrElse(true) &&
-                                        (allSidesPaths._2, pairwisePaths._2)
-                                          .mapN(_ == _)
-                                          .getOrElse(true) &&
-                                        (allSidesPaths._3, pairwisePaths._3)
-                                          .mapN(_ == _)
-                                          .getOrElse(true)
-
-                                    if isPathConsistent then
-                                      DisjointSets.union(
-                                        allSidesMatch,
-                                        pairwiseMatch
-                                      )
-                                    else State.pure(false)
-                                    end if
-                                  }
-                            }
-                          sets <- DisjointSets.toSets
-                        yield sets
-
-                      val parallelMatchesGroupIdsByMatch = coalescenceWorkflow
-                        .runA(disjointSetsOfMatches)
-                        .value
-                        .toList
-                        .map(_._2.toIterator)
                         .zipWithIndex
-                        .flatMap((group, id) => group.map(_ -> id))
+                        .flatMap { (subgroup, id) => subgroup.map(_ -> id) }
                         .toMap
-
                       Right(
                         reconciled.copy(parallelMatchesGroupIdsByMatch =
-                          parallelMatchesGroupIdsByMatch
+                          groupIdsByMatch
                         )
                       )
                   else
@@ -1513,7 +1566,9 @@ object MatchAnalysis extends StrictLogging:
               .tailRecM(matches.collect {
                 case allSides: Match.AllSides[Section[Element]] => allSides
               })(reconcileUsing)
-              .runA(Map.empty)
+              .runA(
+                DisjointSets(Seq.empty[GenericMatch[Element]]*)
+              )
               .value
           }: @unchecked
 
@@ -1752,52 +1807,49 @@ object MatchAnalysis extends StrictLogging:
             s"If groups of parallel matches have been discovered, they should cover the overall population of matches exactly."
           )
 
-          val matchesByGroupId =
-            parallelMatchesGroupIdsByMatch.toSeq
-              .groupBy(_._2)
-              .view
-              .mapValues(_.map(_._1))
+          parallelMatchesGroupIdsByMatch.toSeq
+            .groupBy(_._2)
+            .values
+            .foreach { group =>
+              val matchesInGroup = group.map(_._1)
 
-          matchesByGroupId.foreach { case (groupId, matchesInGroup) =>
-            val basePaths = matchesInGroup
-              .collect {
-                case Match.AllSides(baseSection, _, _)  => baseSection
-                case Match.BaseAndLeft(baseSection, _)  => baseSection
-                case Match.BaseAndRight(baseSection, _) => baseSection
-              }
-              .map(baseSources.pathFor)
-              .toSet
-            assert(
-              basePaths.size <= 1,
-              s"Group $groupId has multiple base paths: $basePaths"
-            )
+              val basePaths = matchesInGroup.flatMap(pathOnBase).toSet
+              assert(
+                basePaths.size <= 1,
+                s"Base paths for parallel matches group should be consistent, but are: $basePaths."
+              )
 
-            val leftPaths = matchesInGroup
-              .collect {
-                case Match.AllSides(_, leftSection, _)  => leftSection
-                case Match.BaseAndLeft(_, leftSection)  => leftSection
-                case Match.LeftAndRight(leftSection, _) => leftSection
-              }
-              .map(leftSources.pathFor)
-              .toSet
-            assert(
-              leftPaths.size <= 1,
-              s"Group $groupId has multiple left paths: $leftPaths"
-            )
+              val leftPaths = matchesInGroup.flatMap(pathOnLeft).toSet
+              assert(
+                leftPaths.size <= 1,
+                s"Left paths for parallel matches group should be consistent, but are: $leftPaths."
+              )
 
-            val rightPaths = matchesInGroup
-              .collect {
-                case Match.AllSides(_, _, rightSection)  => rightSection
-                case Match.BaseAndRight(_, rightSection) => rightSection
-                case Match.LeftAndRight(_, rightSection) => rightSection
-              }
-              .map(rightSources.pathFor)
-              .toSet
-            assert(
-              rightPaths.size <= 1,
-              s"Group $groupId has multiple right paths: $rightPaths"
-            )
-          }
+              val rightPaths = matchesInGroup.flatMap(pathOnRight).toSet
+              assert(
+                rightPaths.size <= 1,
+                s"Right paths for parallel matches group should be consistent, but are: $rightPaths."
+              )
+
+              assert(
+                isOrderConsistent(matchesInGroup),
+                s"Ordering for parallel matches group should be consistent, matches are: ${pprintCustomised(matchesInGroup)}"
+              )
+
+              val hasAllSidesMatch = matchesInGroup.exists(_.isAnAllSidesMatch)
+              if !hasAllSidesMatch then
+                val flavours = matchesInGroup.map {
+                  case _: Match.BaseAndLeft[?]  => 1
+                  case _: Match.BaseAndRight[?] => 2
+                  case _: Match.LeftAndRight[?] => 3
+                  case _: Match.AllSides[?]    => 0
+                }.toSet
+                assert(
+                  flavours.size <= 1,
+                  s"A parallel matches group without an all-sides match should be homogeneous in flavour, but has flavours: $flavours"
+                )
+              end if
+            }
         end if
       end reconciliationPostcondition
 
@@ -2235,11 +2287,31 @@ object MatchAnalysis extends StrictLogging:
                   .zip(group.tail)
                   // Zipping views together makes an `Iterable`, so ...
                   .toSeq
+                  .filter((precedingGroupMember, succeedingGroupMember) =>
+                    backTranslatedMatchesAndTheirSections.arePathCompatible(
+                      precedingGroupMember,
+                      succeedingGroupMember
+                    )
+                  )
                   .traverse_ {
                     case (precedingGroupMember, succeedingGroupMember) =>
                       DisjointSets
                         .union(precedingGroupMember, succeedingGroupMember)
                   }
+              }
+            _ <- backTranslatedMatches
+              .filter(_.isAnAllSidesMatch)
+              .traverse_ {
+                case allSidesMatch: Match.AllSides[Section[Element]] =>
+                  backTranslatedMatchesAndTheirSections
+                    .pairwiseMatchesSubsumingOnBothSides(allSidesMatch)
+                    .filter(
+                      backTranslatedMatchesAndTheirSections
+                        .arePathCompatible(allSidesMatch, _)
+                    )
+                    .traverse_(
+                      DisjointSets.union(allSidesMatch, _)
+                    )
               }
             sets <- DisjointSets.toSets
           yield sets
