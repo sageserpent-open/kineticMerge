@@ -1688,19 +1688,19 @@ object MatchAnalysis extends StrictLogging:
               val basePaths = matchesInGroup.flatMap(pathOnBase).toSet
               assert(
                 basePaths.size <= 1,
-                s"Base paths for parallel matches group should be consistent, but are: $basePaths. Matches are: ${pprintCustomised(matchesInGroup)}"
+                s"Base paths for parallel matches group should be consistent, but are: $basePaths. Matches size: ${matchesInGroup.size}. Up to 10 matches are: ${pprintCustomised(matchesInGroup.take(10)).toString.take(1000)}"
               )
 
               val leftPaths = matchesInGroup.flatMap(pathOnLeft).toSet
               assert(
                 leftPaths.size <= 1,
-                s"Left paths for parallel matches group should be consistent, but are: $leftPaths. Matches are: ${pprintCustomised(matchesInGroup)}"
+                s"Left paths for parallel matches group should be consistent, but are: $leftPaths. Matches size: ${matchesInGroup.size}. Up to 10 matches are: ${pprintCustomised(matchesInGroup.take(10)).toString.take(1000)}"
               )
 
               val rightPaths = matchesInGroup.flatMap(pathOnRight).toSet
               assert(
                 rightPaths.size <= 1,
-                s"Right paths for parallel matches group should be consistent, but are: $rightPaths. Matches are: ${pprintCustomised(matchesInGroup)}"
+                s"Right paths for parallel matches group should be consistent, but are: $rightPaths. Matches size: ${matchesInGroup.size}. Up to 10 matches are: ${pprintCustomised(matchesInGroup.take(10)).toString.take(1000)}"
               )
 
               def checkOrder(
@@ -1713,20 +1713,22 @@ object MatchAnalysis extends StrictLogging:
                   .filter(m =>
                     offsetOnSide1(m).isDefined && offsetOnSide2(m).isDefined
                   )
-                  .sortBy(offsetOnSide1(_).get)
 
-                if matchesOnBothSides.size > 1 then
-                  matchesOnBothSides
-                    .zip(matchesOnBothSides.tail)
-                    .foreach { (first, second) =>
-                      val firstOffset2  = offsetOnSide2(first).get
-                      val secondOffset2 = offsetOnSide2(second).get
-                      assert(
-                        firstOffset2 < secondOffset2,
-                        s"Relative order of matches in parallel group should be consistent between $side1Name and $side2Name, but $first and $second are out of order. Matches are: ${pprintCustomised(matchesInGroup)}"
-                      )
-                    }
-                end if
+                for
+                  first  <- matchesOnBothSides
+                  second <- matchesOnBothSides
+                  if first != second
+                  offset1First  = offsetOnSide1(first).get
+                  offset1Second = offsetOnSide1(second).get
+                  if offset1First <= offset1Second
+                  offset2First  = offsetOnSide2(first).get
+                  offset2Second = offsetOnSide2(second).get
+                do
+                  assert(
+                    offset2First <= offset2Second,
+                    s"Relative order of matches in parallel group should be consistent between $side1Name and $side2Name, but $first and $second are out of order. Matches size: ${matchesInGroup.size}. Up to 10 matches are: ${pprintCustomised(matchesInGroup.take(10)).toString.take(1000)}"
+                  )
+                end for
               end checkOrder
 
               checkOrder("base", "left", offsetOnBase, offsetOnLeft)
