@@ -1704,7 +1704,11 @@ object MatchAnalysis extends StrictLogging:
                        |Expected a consistent ordering of matches relevant to the sides $firstSide and $secondSide.
                        |Total of ${matchesWithOffsets.size} common matches, up to 10 follow...
                        |Relative order should be consistent between $firstSide and $secondSide,
-                       |but $matchA and $matchB are out of order.
+                       |but ${pprintCustomised(
+                        MatchSynopsis(matchA)
+                      )} and ${pprintCustomised(
+                        MatchSynopsis(matchB)
+                      )} are out of order.
                        |Matches are:
                        |${pprintCustomised(
                         matchesWithOffsets.take(10).map(_._1).map(MatchSynopsis.apply)
