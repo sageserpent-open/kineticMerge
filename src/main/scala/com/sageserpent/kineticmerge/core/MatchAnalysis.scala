@@ -1684,48 +1684,73 @@ object MatchAnalysis extends StrictLogging:
                   firstSideStartOffset: GenericMatch[Element] => Option[Int],
                   secondSideStartOffset: GenericMatch[Element] => Option[Int]
               ): Unit =
-                val commonMatches = matchesInGroup.filter(aMatch =>
-                  firstSideStartOffset(aMatch).isDefined &&
-                    secondSideStartOffset(aMatch).isDefined
-                )
+                extension (matches: Seq[GenericMatch[Element]])
+                  private def sortBySide(
+                      startOffsetOf: GenericMatch[Element] => Option[Int]
+                  ): Seq[GenericMatch[Element]] =
+                    matches
+                      .flatMap(aMatch =>
+                        startOffsetOf(aMatch)
+                          .map(offset => aMatch -> offset)
+                      )
+                      .sortBy(_._2)
+                      .map(_._1)
+                end extension
 
-                if commonMatches.size > 1 then
-                  // Canonical order to break ties in a way that is consistent
-                  // across all sides.
-                  val commonMatchesInCanonicalOrder =
-                    commonMatches.toSeq.sortBy(MatchSynopsis.apply(_).toString)
+                // NOTE: in the next two bindings, we have to sort first
+                // according to the other side's perspective. This is to avoid
+                // situations where several matches happen to have the same
+                // start off set on one side but different offsets on the other.
+                // As sorting is stable, that could lead to the side with
+                // colliding offsets having the 'wrong' initial order that would
+                // be preserved by the sort. Tip of the hat to Jules for
+                // suggesting the pitfall in the first place.
 
-                  val commonMatchesOrderedFromFirstSidePerspective =
-                    commonMatchesInCanonicalOrder
-                      .sortBy(aMatch => firstSideStartOffset(aMatch).get)
-                  val commonMatchesOrderedFromSecondSidePerspective =
-                    commonMatchesInCanonicalOrder
-                      .sortBy(aMatch => secondSideStartOffset(aMatch).get)
+                val matchesOrderedFromFirstSidePerspective =
+                  matchesInGroup
+                    .sortBySide(secondSideStartOffset)
+                    .sortBySide(firstSideStartOffset)
 
-                  assert(
-                    commonMatchesOrderedFromFirstSidePerspective == commonMatchesOrderedFromSecondSidePerspective,
-                    s"""
-                       |Expected a consistent ordering of matches relevant to the sides $firstSide and $secondSide.
-                       |Total of ${commonMatches.size} common matches, up to 10 follow...
-                       |On the $firstSide they are:
-                       |${pprintCustomised(
-                        commonMatchesOrderedFromFirstSidePerspective
-                          .take(10)
-                          .map(
-                            MatchSynopsis.apply
-                          )
-                      )}
-                       |and on the $secondSide they are:
-                       |${pprintCustomised(
-                        commonMatchesOrderedFromSecondSidePerspective
-                          .take(10)
-                          .map(
-                            MatchSynopsis.apply
-                          )
-                      )}
-                       |""".stripMargin
+                val matchesOrderedFromSecondSidePerspective =
+                  matchesInGroup
+                    .sortBySide(firstSideStartOffset)
+                    .sortBySide(secondSideStartOffset)
+
+                val commonMatches =
+                  matchesOrderedFromFirstSidePerspective.toSet intersect matchesOrderedFromSecondSidePerspective.toSet
+
+                val commonMatchesOrderedFromFirstSidePerspective =
+                  matchesOrderedFromFirstSidePerspective.filter(
+                    commonMatches.contains
                   )
-                end if
+                val commonMatchesOrderedFromSecondSidePerspective =
+                  matchesOrderedFromSecondSidePerspective.filter(
+                    commonMatches.contains
+                  )
+
+                assert(
+                  commonMatchesOrderedFromFirstSidePerspective == commonMatchesOrderedFromSecondSidePerspective,
+                  s"""
+                     |Expected a consistent ordering of matches relevant to the sides $firstSide and $secondSide.
+                     |Total of ${commonMatches.size} common matches, up to 10 follow...
+                     |On the $firstSide they are:
+                     |${pprintCustomised(
+                      commonMatchesOrderedFromFirstSidePerspective
+                        .take(10)
+                        .map(
+                          MatchSynopsis.apply
+                        )
+                    )}
+                     |and on the $secondSide they are:
+                     |${pprintCustomised(
+                      commonMatchesOrderedFromSecondSidePerspective
+                        .take(10)
+                        .map(
+                          MatchSynopsis.apply
+                        )
+                    )}
+                     |""".stripMargin
+                )
               end checkOrderIsConsistentAcrossSides
 
               checkOrderIsConsistentAcrossSides(
