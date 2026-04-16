@@ -1684,37 +1684,48 @@ object MatchAnalysis extends StrictLogging:
                   firstSideStartOffset: GenericMatch[Element] => Option[Int],
                   secondSideStartOffset: GenericMatch[Element] => Option[Int]
               ): Unit =
-                val matchesWithOffsets = matchesInGroup
-                  .flatMap(aMatch =>
-                    for
-                      offset1 <- firstSideStartOffset(aMatch)
-                      offset2 <- secondSideStartOffset(aMatch)
-                    yield (aMatch, offset1, offset2)
-                  )
+                val commonMatches = matchesInGroup.filter(aMatch =>
+                  firstSideStartOffset(aMatch).isDefined &&
+                    secondSideStartOffset(aMatch).isDefined
+                )
 
-                for
-                  (matchA, offset1A, offset2A) <- matchesWithOffsets
-                  (matchB, offset1B, offset2B) <- matchesWithOffsets
-                  if matchA != matchB
-                  if offset1A <= offset1B
-                do
+                if commonMatches.size > 1 then
+                  // Canonical order to break ties in a way that is consistent
+                  // across all sides.
+                  val commonMatchesInCanonicalOrder =
+                    commonMatches.toSeq.sortBy(MatchSynopsis.apply(_).toString)
+
+                  val commonMatchesOrderedFromFirstSidePerspective =
+                    commonMatchesInCanonicalOrder
+                      .sortBy(aMatch => firstSideStartOffset(aMatch).get)
+                  val commonMatchesOrderedFromSecondSidePerspective =
+                    commonMatchesInCanonicalOrder
+                      .sortBy(aMatch => secondSideStartOffset(aMatch).get)
+
                   assert(
-                    offset2A <= offset2B,
+                    commonMatchesOrderedFromFirstSidePerspective == commonMatchesOrderedFromSecondSidePerspective,
                     s"""
                        |Expected a consistent ordering of matches relevant to the sides $firstSide and $secondSide.
-                       |Total of ${matchesWithOffsets.size} common matches, up to 10 follow...
-                       |Relative order should be consistent between $firstSide and $secondSide,
-                       |but ${pprintCustomised(
-                        MatchSynopsis(matchA)
-                      )} and ${pprintCustomised(
-                        MatchSynopsis(matchB)
-                      )} are out of order.
-                       |Matches are:
+                       |Total of ${commonMatches.size} common matches, up to 10 follow...
+                       |On the $firstSide they are:
                        |${pprintCustomised(
-                        matchesWithOffsets.take(10).map(_._1).map(MatchSynopsis.apply)
-                      )}""".stripMargin
+                        commonMatchesOrderedFromFirstSidePerspective
+                          .take(10)
+                          .map(
+                            MatchSynopsis.apply
+                          )
+                      )}
+                       |and on the $secondSide they are:
+                       |${pprintCustomised(
+                        commonMatchesOrderedFromSecondSidePerspective
+                          .take(10)
+                          .map(
+                            MatchSynopsis.apply
+                          )
+                      )}
+                       |""".stripMargin
                   )
-                end for
+                end if
               end checkOrderIsConsistentAcrossSides
 
               checkOrderIsConsistentAcrossSides(
