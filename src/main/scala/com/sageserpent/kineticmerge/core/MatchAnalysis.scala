@@ -1650,8 +1650,9 @@ object MatchAnalysis extends StrictLogging:
                 basePaths.size <= 1,
                 s"""Base paths for a group of parallel matches should be the same,
                    |but vary: $basePaths.
-                   |Matches are: ${pprintCustomised(
-                    matchesInGroup.map(MatchSynopsis.apply)
+                   |Total of ${matchesInGroup.size} matches, up to 10 follow:
+                   |${pprintCustomised(
+                    matchesInGroup.take(10).map(MatchSynopsis.apply)
                   )}""".stripMargin
               )
 
@@ -1660,8 +1661,9 @@ object MatchAnalysis extends StrictLogging:
                 leftPaths.size <= 1,
                 s"""Left paths for a group of parallel matches should be the same,
                    |but vary: $leftPaths.
-                   |Matches are: ${pprintCustomised(
-                    matchesInGroup.map(MatchSynopsis.apply)
+                   |Total of ${matchesInGroup.size} matches, up to 10 follow:
+                   |${pprintCustomised(
+                    matchesInGroup.take(10).map(MatchSynopsis.apply)
                   )}""".stripMargin
               )
 
@@ -1670,8 +1672,9 @@ object MatchAnalysis extends StrictLogging:
                 rightPaths.size <= 1,
                 s"""Right paths for a group of parallel matches should be the same,
                    |but vary: $rightPaths.
-                   |Matches are: ${pprintCustomised(
-                    matchesInGroup.map(MatchSynopsis.apply)
+                   |Total of ${matchesInGroup.size} matches, up to 10 follow:
+                   |${pprintCustomised(
+                    matchesInGroup.take(10).map(MatchSynopsis.apply)
                   )}""".stripMargin
               )
 
@@ -1681,53 +1684,33 @@ object MatchAnalysis extends StrictLogging:
                   firstSideStartOffset: GenericMatch[Element] => Option[Int],
                   secondSideStartOffset: GenericMatch[Element] => Option[Int]
               ): Unit =
-                val matchesOrderedFromFirstSidePerspective =
-                  matchesInGroup
-                    .flatMap(aMatch =>
-                      firstSideStartOffset(aMatch)
-                        .map(offset => aMatch -> offset)
-                    )
-                    .sortBy(_._2)
-                    .map(_._1)
-                val matchesOrderedFromSecondSidePerspective =
-                  matchesInGroup
-                    .flatMap(aMatch =>
-                      secondSideStartOffset(aMatch)
-                        .map(offset => aMatch -> offset)
-                    )
-                    .sortBy(_._2)
-                    .map(_._1)
-
-                val commonMatches =
-                  matchesOrderedFromFirstSidePerspective.toSet intersect matchesOrderedFromSecondSidePerspective.toSet
-
-                val commonMatchesOrderedFromFirstSidePerspective =
-                  matchesOrderedFromFirstSidePerspective.filter(
-                    commonMatches.contains
-                  )
-                val commonMatchesOrderedFromSecondSidePerspective =
-                  matchesOrderedFromSecondSidePerspective.filter(
-                    commonMatches.contains
+                val matchesWithOffsets = matchesInGroup
+                  .flatMap(aMatch =>
+                    for
+                      offset1 <- firstSideStartOffset(aMatch)
+                      offset2 <- secondSideStartOffset(aMatch)
+                    yield (aMatch, offset1, offset2)
                   )
 
-                assert(
-                  commonMatchesOrderedFromFirstSidePerspective == commonMatchesOrderedFromSecondSidePerspective,
-                  s"""
-                     |Expected a consistent ordering of matches relevant to the sides $firstSide and $secondSide,
-                     |on the $firstSide they are:
-                     |${pprintCustomised(
-                      commonMatchesOrderedFromFirstSidePerspective.map(
-                        MatchSynopsis.apply
-                      )
-                    )}
-                     |and on the $secondSide they are:
-                     |${pprintCustomised(
-                      commonMatchesOrderedFromSecondSidePerspective.map(
-                        MatchSynopsis.apply
-                      )
-                    )}
-                     |""".stripMargin
-                )
+                for
+                  (matchA, offset1A, offset2A) <- matchesWithOffsets
+                  (matchB, offset1B, offset2B) <- matchesWithOffsets
+                  if matchA != matchB
+                  if offset1A <= offset1B
+                do
+                  assert(
+                    offset2A <= offset2B,
+                    s"""
+                       |Expected a consistent ordering of matches relevant to the sides $firstSide and $secondSide.
+                       |Total of ${matchesWithOffsets.size} common matches, up to 10 follow...
+                       |Relative order should be consistent between $firstSide and $secondSide,
+                       |but $matchA and $matchB are out of order.
+                       |Matches are:
+                       |${pprintCustomised(
+                        matchesWithOffsets.take(10).map(_._1).map(MatchSynopsis.apply)
+                      )}""".stripMargin
+                  )
+                end for
               end checkOrderIsConsistentAcrossSides
 
               checkOrderIsConsistentAcrossSides(
