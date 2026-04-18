@@ -187,7 +187,7 @@ object MatchAnalysis extends StrictLogging:
 
     object MatchesAndTheirSections:
       type ParallelMatchesGroupIdTracking[X] =
-        State[Map[GenericMatch[Element], ParallelMatchesGroupId], X]
+        State[MultiDict[GenericMatch[Element], ParallelMatchesGroupId], X]
       lazy val empty: MatchesAndTheirSections = MatchesAndTheirSections(
         baseSectionsByPath = Map.empty,
         leftSectionsByPath = Map.empty,
@@ -199,7 +199,7 @@ object MatchAnalysis extends StrictLogging:
           fingerprintedInclusionsByPath(leftSources),
         rightFingerprintedInclusionsByPath =
           fingerprintedInclusionsByPath(rightSources),
-        parallelMatchesGroupIdsByMatch = Map.empty
+        parallelMatchesGroupIdsByMatch = MultiDict.empty
       )
       private val rollingHashFactoryCache: Cache[Int, RollingHash.Factory] =
         Caffeine.newBuilder().build()
@@ -877,12 +877,12 @@ object MatchAnalysis extends StrictLogging:
           original: GenericMatch[Element],
           replacement: GenericMatch[Element]
       ): ParallelMatchesGroupIdTracking[Unit] =
-        State.modify { groupIds =>
-          groupIds
-            .get(original)
-            .fold(ifEmpty = groupIds)(groupId =>
-              groupIds + (replacement -> groupId)
-            )
+        State.modify { groupIdsByMatch =>
+          val groupIds = groupIdsByMatch.get(original)
+
+          groupIds.foldLeft(groupIdsByMatch)((partialResult, groupId) =>
+            partialResult.add(replacement, groupId)
+          )
         }
 
       trait PathInclusions:
@@ -935,7 +935,7 @@ object MatchAnalysis extends StrictLogging:
         baseFingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions],
         leftFingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions],
         rightFingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions],
-        parallelMatchesGroupIdsByMatch: Map[GenericMatch[
+        parallelMatchesGroupIdsByMatch: MultiDict[GenericMatch[
           Element
         ], ParallelMatchesGroupId]
     ) extends MatchAnalysis[Path, Element]:
@@ -1223,7 +1223,7 @@ object MatchAnalysis extends StrictLogging:
                   rightSection
                 ),
               parallelMatchesGroupIdsByMatch =
-                parallelMatchesGroupIdsByMatch.removed(allSides)
+                parallelMatchesGroupIdsByMatch.removeKey(allSides)
             )
 
           case (
@@ -1240,7 +1240,7 @@ object MatchAnalysis extends StrictLogging:
                   .remove(baseSection, baseAndLeft)
                   .remove(leftSection, baseAndLeft),
               parallelMatchesGroupIdsByMatch =
-                parallelMatchesGroupIdsByMatch.removed(baseAndLeft)
+                parallelMatchesGroupIdsByMatch.removeKey(baseAndLeft)
             )
 
           case (
@@ -1257,7 +1257,7 @@ object MatchAnalysis extends StrictLogging:
                   .remove(baseSection, baseAndRight)
                   .remove(rightSection, baseAndRight),
               parallelMatchesGroupIdsByMatch =
-                parallelMatchesGroupIdsByMatch.removed(baseAndRight)
+                parallelMatchesGroupIdsByMatch.removeKey(baseAndRight)
             )
 
           case (
@@ -1274,7 +1274,7 @@ object MatchAnalysis extends StrictLogging:
                   .remove(leftSection, leftAndRight)
                   .remove(rightSection, leftAndRight),
               parallelMatchesGroupIdsByMatch =
-                parallelMatchesGroupIdsByMatch.removed(leftAndRight)
+                parallelMatchesGroupIdsByMatch.removeKey(leftAndRight)
             )
         }
       end withoutTheseMatches
@@ -1364,9 +1364,8 @@ object MatchAnalysis extends StrictLogging:
                       val matches = reconciled.matches
                       Right(
                         reconciled.copy(parallelMatchesGroupIdsByMatch =
-                          updatedParallelMatchesGroupsIdsByMatch.view
-                            .filterKeys(matches.contains)
-                            .toMap
+                          updatedParallelMatchesGroupsIdsByMatch
+                            .filterSets((key, _) => matches.contains(key))
                         )
                       )
                   else
@@ -1380,7 +1379,7 @@ object MatchAnalysis extends StrictLogging:
               .tailRecM(matches.collect {
                 case allSides: Match.AllSides[Section[Element]] => allSides
               })(reconcileUsing)
-              .runA(Map.empty)
+              .runA(MultiDict.empty)
               .value
           }: @unchecked
 
@@ -2235,11 +2234,11 @@ object MatchAnalysis extends StrictLogging:
           backTranslatedMatchesAndTheirSections.matches
 
         val parallelMatchesGroupIdsByMatch =
-          groupsOfBackTranslatedParallelMatches.zipWithIndex
-            .flatMap((parallelMatches, groupId) =>
-              parallelMatches.map(_ -> groupId)
+          MultiDict.from(
+            groupsOfBackTranslatedParallelMatches.zipWithIndex.flatMap(
+              (parallelMatches, groupId) => parallelMatches.map(_ -> groupId)
             )
-            .toMap
+          )
 
         backTranslatedMatchesAndTheirSections
           .copy(parallelMatchesGroupIdsByMatch = parallelMatchesGroupIdsByMatch)
