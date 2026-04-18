@@ -780,7 +780,7 @@ object MatchAnalysis extends StrictLogging:
                     )(
                       rightSection
                     )).map(Match.LeftAndRight.apply)
-                    
+
               _ <- recordReplacements(pairwiseMatch, fragmentsFromPairwiseMatch)
             yield
               logger.debug(
@@ -792,7 +792,9 @@ object MatchAnalysis extends StrictLogging:
           .map(_.toSet)
 
       // Breaks up a section by eating into it with smaller bites, yielding the
-      // fragment sections.
+      // fragment sections. There are preconditions buried in the implementation
+      // that require the bite edges to be sorted in terms of their offsets and
+      // not exceed the section's boundaries.
       private def eatIntoSection(
           side: Sources[Path, Element],
           biteEdges: Seq[BiteEdge]
@@ -829,23 +831,22 @@ object MatchAnalysis extends StrictLogging:
                 val startOffset =
                   section.startOffset + startOffsetRelativeToMeal
 
+                require(startOffset >= mealStartOffset)
                 require(mealOnePastEndOffset > startOffset)
-                val guardedStartOffset = startOffset max mealStartOffset
-
                 this
                   .copy(
-                    mealStartOffset = guardedStartOffset,
+                    mealStartOffset = startOffset,
                     biteDepth = 1 + biteDepth
                   )
                   .apply(
                     remainingBiteEdges,
                     fragments =
-                      if 0 == biteDepth && guardedStartOffset > mealStartOffset
+                      if 0 == biteDepth && startOffset > mealStartOffset
                       then
                         fragments.appended(
                           side.section(path)(
                             startOffset = mealStartOffset,
-                            size = guardedStartOffset - mealStartOffset
+                            size = startOffset - mealStartOffset
                           )
                         )
                       else fragments
@@ -860,12 +861,10 @@ object MatchAnalysis extends StrictLogging:
                   section.startOffset + onePastEndOffsetRelativeToMeal
 
                 require(mealStartOffset <= onePastEndOffset)
-                val guardedOnePastEndOffset =
-                  onePastEndOffset min mealOnePastEndOffset
-
+                require(onePastEndOffset <= mealOnePastEndOffset)
                 this
                   .copy(
-                    mealStartOffset = guardedOnePastEndOffset,
+                    mealStartOffset = onePastEndOffset,
                     biteDepth = biteDepth - 1
                   )
                   .apply(remainingBiteEdges, fragments)
@@ -894,6 +893,12 @@ object MatchAnalysis extends StrictLogging:
             partialResult.add(replacement, groupId)
           )
         }
+
+      private def assignParallelMatchesGroupIdsForFragments(
+          biteEdges: Seq[BiteEdge]
+      )(
+          matchesBySortedBiteEdge: Map[BiteEdge, Set[ParallelMatchesGroupId]]
+      ): Seq[Set[ParallelMatchesGroupId]] = ???
 
       trait PathInclusions:
         def isIncludedOnBase(basePath: Path): Boolean
