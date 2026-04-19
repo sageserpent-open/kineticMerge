@@ -736,13 +736,13 @@ object MatchAnalysis extends StrictLogging:
               parallelMatchesGroupIdsByMatch <- State
                 .get[GroupsOfParallelMatches]
 
-              matchesBySortedBiteEdge = SortedMap.from(bites.flatMap {
+              groupIdsBySortedBiteEdge = SortedMap.from(bites.flatMap {
                 case (allSides, biteStart, biteEnd) =>
                   Seq(biteStart, biteEnd)
                     .map(_ -> parallelMatchesGroupIdsByMatch.get(allSides))
               })
 
-              sortedBiteEdges = matchesBySortedBiteEdge.keySet
+              sortedBiteEdges = groupIdsBySortedBiteEdge.keySet
 
               fragmentsFromPairwiseMatch: Seq[PairwiseMatch] =
                 pairwiseMatch match
