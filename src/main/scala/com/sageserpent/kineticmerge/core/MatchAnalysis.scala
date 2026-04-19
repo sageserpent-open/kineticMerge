@@ -744,8 +744,11 @@ object MatchAnalysis extends StrictLogging:
 
               sortedBiteEdges = groupIdsBySortedBiteEdge.keySet
 
-              fragmentsFromPairwiseMatch: Seq[PairwiseMatch] =
-                pairwiseMatch match
+              (
+                fragmentsFromPairwiseMatch: Vector[PairwiseMatch],
+                groupIdsForFragments: Vector[Set[ParallelMatchesGroupId]]
+              ) =
+                (pairwiseMatch match
                   case Match.BaseAndLeft(baseSection, leftSection) =>
                     (sortedBiteEdges.eatIntoSection(
                       baseSources,
@@ -754,7 +757,11 @@ object MatchAnalysis extends StrictLogging:
                       leftSources,
                       leftSection
                     ))
-                      .map(Match.BaseAndLeft.apply)
+                      .map(Match.BaseAndLeft.apply) -> sortedBiteEdges
+                      .assignParallelMatchesGroupIdsForFragments(
+                        groupIdsBySortedBiteEdge,
+                        sectionSize = baseSection.size
+                      )
 
                   case Match.BaseAndRight(baseSection, rightSection) =>
                     (sortedBiteEdges.eatIntoSection(
@@ -763,7 +770,11 @@ object MatchAnalysis extends StrictLogging:
                     ) zip sortedBiteEdges.eatIntoSection(
                       rightSources,
                       rightSection
-                    )).map(Match.BaseAndRight.apply)
+                    )).map(Match.BaseAndRight.apply) -> sortedBiteEdges
+                      .assignParallelMatchesGroupIdsForFragments(
+                        groupIdsBySortedBiteEdge,
+                        sectionSize = baseSection.size
+                      )
 
                   case Match.LeftAndRight(leftSection, rightSection) =>
                     (sortedBiteEdges.eatIntoSection(
@@ -772,9 +783,16 @@ object MatchAnalysis extends StrictLogging:
                     ) zip sortedBiteEdges.eatIntoSection(
                       rightSources,
                       rightSection
-                    )).map(Match.LeftAndRight.apply)
+                    )).map(Match.LeftAndRight.apply) -> sortedBiteEdges
+                      .assignParallelMatchesGroupIdsForFragments(
+                        groupIdsBySortedBiteEdge,
+                        sectionSize = leftSection.size
+                      )
+                ): @unchecked
 
-              _ <- recordReplacements(pairwiseMatch, fragmentsFromPairwiseMatch)
+              _ <- fragmentsFromPairwiseMatch
+                .zip(groupIdsForFragments)
+                .traverse_(assignGroupIds)
             yield
               logger.debug(
                 s"Eating into pairwise match:\n${pprintCustomised(pairwiseMatch)} on behalf of all-sides matches:\n${pprintCustomised(bites)}, resulting in fragments:\n${pprintCustomised(fragmentsFromPairwiseMatch)}"
@@ -793,7 +811,11 @@ object MatchAnalysis extends StrictLogging:
         private def eatIntoSection(
             side: Sources[Path, Element],
             section: Section[Element]
-        ) =
+        ): Vector[Section[Element]] =
+          // NOTE: here we work in terms of offsets into `section`, hence we
+          // must bias the offsets from the bite edges. Compare with
+          // `assignParallelMatchesGroupIdsForFragments`.
+
           val mealOnePastEndOffset: Int = section.onePastEndOffset
 
           val path = side.pathFor(section)
@@ -870,18 +892,93 @@ object MatchAnalysis extends StrictLogging:
         end eatIntoSection
 
         private def assignParallelMatchesGroupIdsForFragments(
-            matchesBySortedBiteEdge: Map[BiteEdge, Set[ParallelMatchesGroupId]],
+            groupIdsBySortedBiteEdge: Map[BiteEdge, collection.Set[
+              ParallelMatchesGroupId
+            ]],
             sectionSize: Int
-        ): Seq[Set[ParallelMatchesGroupId]] = ???
+        ): Vector[Set[ParallelMatchesGroupId]] =
+          // NOTE: here we work with zero-relative offsets from the start of the
+          // meal, thus we can work directly with the offsets from the bite
+          // edges. Compare with `eatIntoSection`.
+
+          case class State(
+              groupIdsFromPreviousBite: Set[ParallelMatchesGroupId],
+              mealStartOffset: Int,
+              biteDepth: Int
+          ):
+            @tailrec
+            final def apply(
+                biteEdges: Seq[BiteEdge],
+                fragments: Vector[Set[ParallelMatchesGroupId]]
+            ): Vector[Set[ParallelMatchesGroupId]] =
+              biteEdges match
+                case Seq() =>
+                  if sectionSize > mealStartOffset then
+                    fragments.appended(groupIdsFromPreviousBite)
+                  else fragments
+                case Seq(
+                      biteEdge @ BiteEdge.Start(startOffsetRelativeToMeal),
+                      remainingBiteEdges*
+                    ) =>
+                  require(startOffsetRelativeToMeal >= mealStartOffset)
+                  require(sectionSize > startOffsetRelativeToMeal)
+                  this
+                    .copy(
+                      groupIdsFromPreviousBite =
+                        Set.empty, // TODO: review this - what about nested or overlapping bites?
+                      mealStartOffset = startOffsetRelativeToMeal,
+                      biteDepth = 1 + biteDepth
+                    )
+                    .apply(
+                      remainingBiteEdges,
+                      fragments =
+                        if 0 == biteDepth && startOffsetRelativeToMeal > mealStartOffset
+                        then
+                          fragments.appended(
+                            groupIdsFromPreviousBite union groupIdsBySortedBiteEdge(
+                              biteEdge
+                            )
+                          )
+                        else fragments
+                    )
+                case Seq(
+                      biteEdge @ BiteEdge.End(onePastEndOffsetRelativeToMeal),
+                      remainingBiteEdges*
+                    ) =>
+                  assume(0 < biteDepth)
+
+                  require(mealStartOffset <= onePastEndOffsetRelativeToMeal)
+                  require(onePastEndOffsetRelativeToMeal <= sectionSize)
+                  this
+                    .copy(
+                      groupIdsFromPreviousBite =
+                        groupIdsBySortedBiteEdge(biteEdge).toSet,
+                      mealStartOffset = onePastEndOffsetRelativeToMeal,
+                      biteDepth = biteDepth - 1
+                    )
+                    .apply(remainingBiteEdges, fragments)
+          end State
+
+          State(
+            groupIdsFromPreviousBite = Set.empty,
+            mealStartOffset = 0,
+            biteDepth = 0
+          )(biteEdges.toSeq, fragments = Vector.empty)
+        end assignParallelMatchesGroupIdsForFragments
+
       end extension
 
-      private def recordReplacements(
-          original: GenericMatch[Element],
-          replacements: Seq[GenericMatch[Element]]
+      private def assignGroupIds(
+          fragment: PairwiseMatch,
+          groupIds: Set[ParallelMatchesGroupId]
       ): ParallelMatchesGroupIdTracking[Unit] =
-        replacements.traverse_(recordReplacement(original, _))
+        State.modify[GroupsOfParallelMatches] { groupIdsByMatch =>
+          groupIds.foldLeft(groupIdsByMatch)((partialResult, groupId) =>
+            partialResult.add(fragment, groupId)
+          )
+        }
 
-      private def recordReplacement(
+      private def propagateGroupIds(
           original: GenericMatch[Element],
           replacement: GenericMatch[Element]
       ): ParallelMatchesGroupIdTracking[Unit] =
@@ -1367,7 +1464,8 @@ object MatchAnalysis extends StrictLogging:
           contentsByPath = matchedSections
             .groupBy(sources.pathFor)
             .map((path, sections) =>
-              path -> sections.toIndexedSeq.sortBy(_.startOffset)
+              path -> sections.toIndexedSeq
+                .sortBy(section => section.startOffset -> -section.size)
             ),
           label = label
         )
@@ -2458,7 +2556,7 @@ object MatchAnalysis extends StrictLogging:
           case _ => None
 
         result.traverse(paredDownMatch =>
-          recordReplacement(aMatch, paredDownMatch) as paredDownMatch
+          propagateGroupIds(aMatch, paredDownMatch) as paredDownMatch
         )
       end pareDownOrSuppressCompletely
 
