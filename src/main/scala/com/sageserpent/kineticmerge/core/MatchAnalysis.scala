@@ -2606,34 +2606,61 @@ object MatchAnalysis extends StrictLogging:
             allSides.rightElement
           )
 
-        (subsumingOnBase intersect subsumingOnLeft).map {
+        // NOTE: we have to be mindful that a pairwise match may have multiple
+        // sites where the same content can be matched by a smaller all-sides
+        // match that is ambiguous. That can lead to the biting all-sides match
+        // being a 'cross-over', where the two sides aren't correlated - each
+        // side of the all-sides match refers to a different site in the
+        // pairwise match.
+        (subsumingOnBase intersect subsumingOnLeft).flatMap {
           case subsuming: Match.BaseAndLeft[Section[Element]] =>
-            (
+            val offsetRelativeToSubsumingOnBaseSide =
+              allSides.baseElement.startOffset - subsuming.baseElement.startOffset
+            val offsetRelativeToSubsumingOnLeftSide =
+              allSides.leftElement.startOffset - subsuming.leftElement.startOffset
+
+            Option.when(
+              offsetRelativeToSubsumingOnBaseSide == offsetRelativeToSubsumingOnLeftSide
+            )(
               subsuming,
               BiteEdge.Start(startOffsetRelativeToMeal =
-                allSides.baseElement.startOffset - subsuming.baseElement.startOffset
+                offsetRelativeToSubsumingOnBaseSide
               ),
               BiteEdge.End(onePastEndOffsetRelativeToMeal =
                 allSides.baseElement.onePastEndOffset - subsuming.baseElement.startOffset
               )
             )
-        } union (subsumingOnBase intersect subsumingOnRight).map {
+        } union (subsumingOnBase intersect subsumingOnRight).flatMap {
           case subsuming: Match.BaseAndRight[Section[Element]] =>
-            (
+            val offsetRelativeToSubsumingOnBaseSide =
+              allSides.baseElement.startOffset - subsuming.baseElement.startOffset
+            val offsetRelativeToSubsumingOnRightSide =
+              allSides.rightElement.startOffset - subsuming.rightElement.startOffset
+
+            Option.when(
+              offsetRelativeToSubsumingOnBaseSide == offsetRelativeToSubsumingOnRightSide
+            )(
               subsuming,
               BiteEdge.Start(startOffsetRelativeToMeal =
-                allSides.baseElement.startOffset - subsuming.baseElement.startOffset
+                offsetRelativeToSubsumingOnBaseSide
               ),
               BiteEdge.End(onePastEndOffsetRelativeToMeal =
                 allSides.baseElement.onePastEndOffset - subsuming.baseElement.startOffset
               )
             )
-        } union (subsumingOnLeft intersect subsumingOnRight).map {
+        } union (subsumingOnLeft intersect subsumingOnRight).flatMap {
           case subsuming: Match.LeftAndRight[Section[Element]] =>
-            (
+            val offsetRelativeToSubsumingOnLeftSide =
+              allSides.leftElement.startOffset - subsuming.leftElement.startOffset
+            val offsetRelativeToSubsumingOnRightSide =
+              allSides.rightElement.startOffset - subsuming.rightElement.startOffset
+
+            Option.when(
+              offsetRelativeToSubsumingOnLeftSide == offsetRelativeToSubsumingOnRightSide
+            )(
               subsuming,
               BiteEdge.Start(startOffsetRelativeToMeal =
-                allSides.leftElement.startOffset - subsuming.leftElement.startOffset
+                offsetRelativeToSubsumingOnLeftSide
               ),
               BiteEdge.End(onePastEndOffsetRelativeToMeal =
                 allSides.leftElement.onePastEndOffset - subsuming.leftElement.startOffset
