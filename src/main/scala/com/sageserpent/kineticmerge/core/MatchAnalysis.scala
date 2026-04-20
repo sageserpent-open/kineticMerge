@@ -2523,8 +2523,13 @@ object MatchAnalysis extends StrictLogging:
                 subsumedBySomeMatchOnJustTheLeft,
                 subsumedBySomeMatchOnJustTheRight
               ) match
-                case (false, false, false) => Some(aMatch)
-                case (true, false, false)  =>
+                case (false, false, false) =>
+                  Option.unless(
+                    baseSubsumes(baseSection) || leftSubsumes(
+                      leftSection
+                    ) || rightSubsumes(rightSection)
+                  )(aMatch)
+                case (true, false, false) =>
                   Option.unless(
                     leftSubsumes(leftSection) || rightSubsumes(
                       rightSection
