@@ -745,50 +745,53 @@ object MatchAnalysis extends StrictLogging:
               sortedBiteEdges = groupIdsBySortedBiteEdge.keySet
 
               (
-                fragmentsFromPairwiseMatch: Vector[PairwiseMatch],
-                groupIdsForFragments: Vector[Set[ParallelMatchesGroupId]]
+                fragmentsFromPairwiseMatch,
+                groupIdsForFragments
               ) =
-                (pairwiseMatch match
-                  case Match.BaseAndLeft(baseSection, leftSection) =>
-                    (sortedBiteEdges.eatIntoSection(
-                      baseSources,
-                      baseSection
-                    ) zip sortedBiteEdges.eatIntoSection(
-                      leftSources,
-                      leftSection
-                    ))
-                      .map(Match.BaseAndLeft.apply) -> sortedBiteEdges
-                      .assignParallelMatchesGroupIdsForFragments(
-                        groupIdsBySortedBiteEdge,
-                        sectionSize = baseSection.size
+                {
+                  val triples = pairwiseMatch match
+                    case Match.BaseAndLeft(baseSection, leftSection) =>
+                      sortedBiteEdges.eatIntoSection(
+                        baseSources,
+                        baseSection,
+                        leftSources,
+                        leftSection,
+                        groupIdsBySortedBiteEdge
                       )
+                    case Match.BaseAndRight(baseSection, rightSection) =>
+                      sortedBiteEdges.eatIntoSection(
+                        baseSources,
+                        baseSection,
+                        rightSources,
+                        rightSection,
+                        groupIdsBySortedBiteEdge
+                      )
+                    case Match.LeftAndRight(leftSection, rightSection) =>
+                      sortedBiteEdges.eatIntoSection(
+                        leftSources,
+                        leftSection,
+                        rightSources,
+                        rightSection,
+                        groupIdsBySortedBiteEdge
+                      )
+                  end triples
 
-                  case Match.BaseAndRight(baseSection, rightSection) =>
-                    (sortedBiteEdges.eatIntoSection(
-                      baseSources,
-                      baseSection
-                    ) zip sortedBiteEdges.eatIntoSection(
-                      rightSources,
-                      rightSection
-                    )).map(Match.BaseAndRight.apply) -> sortedBiteEdges
-                      .assignParallelMatchesGroupIdsForFragments(
-                        groupIdsBySortedBiteEdge,
-                        sectionSize = baseSection.size
-                      )
+                  val fragments = triples.map {
+                    case (firstSection, secondSection, _) =>
+                      (pairwiseMatch match
+                        case Match.BaseAndLeft(_, _) =>
+                          Match.BaseAndLeft(firstSection, secondSection)
+                        case Match.BaseAndRight(_, _) =>
+                          Match.BaseAndRight(firstSection, secondSection)
+                        case Match.LeftAndRight(_, _) =>
+                          Match.LeftAndRight(firstSection, secondSection)
+                      ).asInstanceOf[PairwiseMatch]
+                  }
 
-                  case Match.LeftAndRight(leftSection, rightSection) =>
-                    (sortedBiteEdges.eatIntoSection(
-                      leftSources,
-                      leftSection
-                    ) zip sortedBiteEdges.eatIntoSection(
-                      rightSources,
-                      rightSection
-                    )).map(Match.LeftAndRight.apply) -> sortedBiteEdges
-                      .assignParallelMatchesGroupIdsForFragments(
-                        groupIdsBySortedBiteEdge,
-                        sectionSize = leftSection.size
-                      )
-                ): @unchecked
+                  val groupIds = triples.map(_._3)
+
+                  fragments -> groupIds
+                }
 
               _ <- fragmentsFromPairwiseMatch
                 .zip(groupIdsForFragments)
@@ -806,150 +809,112 @@ object MatchAnalysis extends StrictLogging:
       // bite edges to be sorted in terms of their offsets and not exceed the
       // section's boundaries.
       extension (biteEdges: SortedSet[BiteEdge])
-        // Breaks up a section by eating into it with smaller bites, yielding
-        // the fragment sections.
         private def eatIntoSection(
-            side: Sources[Path, Element],
-            section: Section[Element]
-        ): Vector[Section[Element]] =
-          // NOTE: here we work in terms of offsets into `section`, hence we
-          // must bias the offsets from the bite edges. Compare with
-          // `assignParallelMatchesGroupIdsForFragments`.
-
-          val mealOnePastEndOffset: Int = section.onePastEndOffset
-
-          val path = side.pathFor(section)
-
-          case class State(
-              mealStartOffset: Int,
-              biteDepth: Int
-          ):
-            @tailrec
-            final def apply(
-                biteEdges: Seq[BiteEdge],
-                fragments: Vector[Section[Element]]
-            ): Vector[Section[Element]] =
-              biteEdges match
-                case Seq() =>
-                  if mealOnePastEndOffset > mealStartOffset then
-                    fragments.appended(
-                      side.section(path)(
-                        startOffset = mealStartOffset,
-                        size = mealOnePastEndOffset - mealStartOffset
-                      )
-                    )
-                  else fragments
-                case Seq(
-                      BiteEdge.Start(startOffsetRelativeToMeal),
-                      remainingBiteEdges*
-                    ) =>
-                  val startOffset =
-                    section.startOffset + startOffsetRelativeToMeal
-
-                  require(startOffset >= mealStartOffset)
-                  require(mealOnePastEndOffset > startOffset)
-                  this
-                    .copy(
-                      mealStartOffset = startOffset,
-                      biteDepth = 1 + biteDepth
-                    )
-                    .apply(
-                      remainingBiteEdges,
-                      fragments =
-                        if 0 == biteDepth && startOffset > mealStartOffset
-                        then
-                          fragments.appended(
-                            side.section(path)(
-                              startOffset = mealStartOffset,
-                              size = startOffset - mealStartOffset
-                            )
-                          )
-                        else fragments
-                    )
-                case Seq(
-                      BiteEdge.End(onePastEndOffsetRelativeToMeal),
-                      remainingBiteEdges*
-                    ) =>
-                  assume(0 < biteDepth)
-
-                  val onePastEndOffset =
-                    section.startOffset + onePastEndOffsetRelativeToMeal
-
-                  require(mealStartOffset <= onePastEndOffset)
-                  require(onePastEndOffset <= mealOnePastEndOffset)
-                  this
-                    .copy(
-                      mealStartOffset = onePastEndOffset,
-                      biteDepth = biteDepth - 1
-                    )
-                    .apply(remainingBiteEdges, fragments)
-          end State
-
-          State(
-            mealStartOffset = section.startOffset,
-            biteDepth = 0
-          )(biteEdges.toSeq, fragments = Vector.empty)
-        end eatIntoSection
-
-        private def assignParallelMatchesGroupIdsForFragments(
+            firstSide: Sources[Path, Element],
+            firstSection: Section[Element],
+            secondSide: Sources[Path, Element],
+            secondSection: Section[Element],
             groupIdsBySortedBiteEdge: Map[BiteEdge, collection.Set[
               ParallelMatchesGroupId
-            ]],
-            sectionSize: Int
-        ): Vector[Set[ParallelMatchesGroupId]] =
+            ]]
+        ): Vector[
+          (Section[Element], Section[Element], Set[ParallelMatchesGroupId])
+        ] =
           // NOTE: here we work with zero-relative offsets from the start of the
           // meal, thus we can work directly with the offsets from the bite
-          // edges. Compare with `eatIntoSection`.
+          // edges.
+
+          val firstPath  = firstSide.pathFor(firstSection)
+          val secondPath = secondSide.pathFor(secondSection)
+
+          val sectionSize = firstSection.size
+          assume(sectionSize == secondSection.size)
 
           case class State(
               groupIdsFromPreviousBite: Set[ParallelMatchesGroupId],
-              mealStartOffset: Int,
+              mealStartOffsetRelativeToMeal: Int,
               biteDepth: Int
           ):
             @tailrec
             final def apply(
-                biteEdges: Seq[BiteEdge],
-                fragments: Vector[Set[ParallelMatchesGroupId]]
-            ): Vector[Set[ParallelMatchesGroupId]] =
-              biteEdges match
+                remainingBiteEdges: Seq[BiteEdge],
+                fragments: Vector[
+                  (
+                      Section[Element],
+                      Section[Element],
+                      Set[ParallelMatchesGroupId]
+                  )
+                ]
+            ): Vector[
+              (Section[Element], Section[Element], Set[ParallelMatchesGroupId])
+            ] =
+              remainingBiteEdges match
                 case Seq() =>
-                  if sectionSize > mealStartOffset then
-                    fragments.appended(groupIdsFromPreviousBite)
+                  if sectionSize > mealStartOffsetRelativeToMeal then
+                    val size = sectionSize - mealStartOffsetRelativeToMeal
+                    fragments.appended(
+                      (
+                        firstSide.section(firstPath)(
+                          firstSection.startOffset + mealStartOffsetRelativeToMeal,
+                          size
+                        ),
+                        secondSide.section(secondPath)(
+                          secondSection.startOffset + mealStartOffsetRelativeToMeal,
+                          size
+                        ),
+                        groupIdsFromPreviousBite
+                      )
+                    )
                   else fragments
+
                 case Seq(
                       biteEdge @ BiteEdge.Start(startOffsetRelativeToMeal),
-                      remainingBiteEdges*
+                      tail*
                     ) =>
-                  require(startOffsetRelativeToMeal >= mealStartOffset)
+                  require(
+                    startOffsetRelativeToMeal >= mealStartOffsetRelativeToMeal
+                  )
                   require(sectionSize > startOffsetRelativeToMeal)
+
+                  val updatedFragments =
+                    if 0 == biteDepth && startOffsetRelativeToMeal > mealStartOffsetRelativeToMeal
+                    then
+                      val size =
+                        startOffsetRelativeToMeal - mealStartOffsetRelativeToMeal
+                      fragments.appended(
+                        (
+                          firstSide.section(firstPath)(
+                            firstSection.startOffset + mealStartOffsetRelativeToMeal,
+                            size
+                          ),
+                          secondSide.section(secondPath)(
+                            secondSection.startOffset + mealStartOffsetRelativeToMeal,
+                            size
+                          ),
+                          groupIdsFromPreviousBite union groupIdsBySortedBiteEdge(
+                            biteEdge
+                          ).toSet
+                        )
+                      )
+                    else fragments
 
                   this
                     .copy(
                       groupIdsFromPreviousBite = Set.empty,
-                      mealStartOffset = startOffsetRelativeToMeal,
+                      mealStartOffsetRelativeToMeal = startOffsetRelativeToMeal,
                       biteDepth = 1 + biteDepth
                     )
-                    .apply(
-                      remainingBiteEdges,
-                      fragments =
-                        // NOTE: nested or overlapping bites to the right don't
-                        // contribute group ids to the *preceding* context.
-                        if 0 == biteDepth && startOffsetRelativeToMeal > mealStartOffset
-                        then
-                          fragments.appended(
-                            groupIdsFromPreviousBite union groupIdsBySortedBiteEdge(
-                              biteEdge
-                            )
-                          )
-                        else fragments
-                    )
+                    .apply(tail, updatedFragments)
+
                 case Seq(
                       biteEdge @ BiteEdge.End(onePastEndOffsetRelativeToMeal),
-                      remainingBiteEdges*
+                      tail*
                     ) =>
                   assume(0 < biteDepth)
 
-                  require(mealStartOffset <= onePastEndOffsetRelativeToMeal)
+                  require(
+                    mealStartOffsetRelativeToMeal <= onePastEndOffsetRelativeToMeal
+                  )
                   require(onePastEndOffsetRelativeToMeal <= sectionSize)
 
                   this
@@ -959,18 +924,21 @@ object MatchAnalysis extends StrictLogging:
                       // *succeeding* context.
                       groupIdsFromPreviousBite =
                         groupIdsBySortedBiteEdge(biteEdge).toSet,
-                      mealStartOffset = onePastEndOffsetRelativeToMeal,
+                      mealStartOffsetRelativeToMeal =
+                        onePastEndOffsetRelativeToMeal,
                       biteDepth = biteDepth - 1
                     )
-                    .apply(remainingBiteEdges, fragments)
+                    .apply(tail, fragments)
+              end match
+            end apply
           end State
 
           State(
             groupIdsFromPreviousBite = Set.empty,
-            mealStartOffset = 0,
+            mealStartOffsetRelativeToMeal = 0,
             biteDepth = 0
           )(biteEdges.toSeq, fragments = Vector.empty)
-        end assignParallelMatchesGroupIdsForFragments
+        end eatIntoSection
 
       end extension
 
