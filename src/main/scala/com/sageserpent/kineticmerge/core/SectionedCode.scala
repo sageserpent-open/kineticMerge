@@ -14,6 +14,8 @@ import com.sageserpent.kineticmerge.core.MatchAnalysis.{
 }
 import com.typesafe.scalalogging.StrictLogging
 
+import scala.collection.mutable
+
 trait SectionedCode[Path, Element]:
   def base: Map[Path, File[Element]]
   def left: Map[Path, File[Element]]
@@ -122,36 +124,9 @@ object SectionedCode extends StrictLogging:
                   .map(_ + tinyIdOffset)
               )
 
-          val allMatches =
-            matchesAndTheirSections.matches ++ tinyMatchesAndTheirSectionsOnly.matches
-
-          val blockSizes: Map[Int, Int] =
-            allMatches.toSeq
-              .flatMap(m =>
-                groupIdFor(m).map(g =>
-                  g -> (m match
-                    case m: Match.AllSides[Section[Element]] =>
-                      m.baseElement.size
-                    case m: Match.BaseAndLeft[Section[Element]] =>
-                      m.baseElement.size
-                    case m: Match.BaseAndRight[Section[Element]] =>
-                      m.baseElement.size
-                    case m: Match.LeftAndRight[Section[Element]] =>
-                      m.leftElement.size
-                  )
-                )
-              )
-              .groupBy(_._1)
-              .map { case (g, pairs) => g -> pairs.map(_._2).sum }
-
-          enum ThreeWaySide {
-            case Base, Left, Right
-          }
-
-          case class Block(groupId: Int)
-          given Sized[Block] with
-            override def sizeOf(block: Block): Int = blockSizes(block.groupId)
-          given Eq[Block] = Eq.fromUniversalEquals
+          case class Block(
+              sections: IndexedSeq[Section[Element]]
+          )
 
           def sectionLcsFor(
               path: Path
@@ -172,216 +147,108 @@ object SectionedCode extends StrictLogging:
                 .map(_.sections)
                 .getOrElse(IndexedSeq.empty)
 
-            def blocksFor(
-                sections: IndexedSeq[Section[Element]]
-            ): IndexedSeq[Block] =
-              sections
-                .flatMap(s =>
-                  matchesAndTheirSections.sectionsAndTheirMatches.get(s) ++
-                    tinyMatchesAndTheirSectionsOnly.sectionsAndTheirMatches
-                      .get(s)
-                )
+            def groupIdsForSection(s: Section[Element]): Set[Int] =
+              (matchesAndTheirSections.sectionsAndTheirMatches.get(s) ++
+                tinyMatchesAndTheirSectionsOnly.sectionsAndTheirMatches.get(s))
                 .flatMap(groupIdFor)
-                .distinct
-                .map(Block.apply)
+                .toSet
 
-            val baseBlocks  = blocksFor(baseSections)
-            val leftBlocks  = blocksFor(leftSections)
-            val rightBlocks = blocksFor(rightSections)
+            def compress(
+                sections: IndexedSeq[Section[Element]]
+            ): IndexedSeq[Block] = {
+              val blocks = mutable.ArrayBuffer.empty[Block]
+              var currentGroupIds = Set.empty[Int]
+              val currentSections = mutable.ArrayBuffer.empty[Section[Element]]
+
+              for (s <- sections) {
+                val gIds = groupIdsForSection(s)
+                if (gIds.nonEmpty && gIds == currentGroupIds) {
+                  currentSections += s
+                } else {
+                  if (currentSections.nonEmpty) {
+                    blocks += Block(currentSections.toIndexedSeq)
+                    currentSections.clear()
+                  }
+                  if (gIds.nonEmpty) {
+                    currentSections += s
+                    currentGroupIds = gIds
+                  } else {
+                    blocks += Block(IndexedSeq(s))
+                    currentGroupIds = Set.empty
+                  }
+                }
+              }
+              if (currentSections.nonEmpty) {
+                blocks += Block(currentSections.toIndexedSeq)
+              }
+              blocks.toIndexedSeq
+            }
+
+            val baseBlocks = compress(baseSections)
+            val leftBlocks = compress(leftSections)
+            val rightBlocks = compress(rightSections)
+
+            given Sized[Block] = _.sections.map(_.size).sum
+
+            given Eq[Block] with
+              override def eqv(x: Block, y: Block): Boolean =
+                x.sections.size == y.sections.size &&
+                  x.sections.zip(y.sections).forall { (s1, s2) =>
+                    val ms1 =
+                      matchesAndTheirSections.sectionsAndTheirMatches.get(s1) ++
+                        tinyMatchesAndTheirSectionsOnly.sectionsAndTheirMatches
+                          .get(s1)
+                    val ms2 =
+                      matchesAndTheirSections.sectionsAndTheirMatches.get(s2) ++
+                        tinyMatchesAndTheirSectionsOnly.sectionsAndTheirMatches
+                          .get(s2)
+                    ms1.intersect(ms2).nonEmpty || (
+                      s1.size == s2.size && Eq[Seq[Element]].eqv(
+                        s1.content,
+                        s2.content
+                      )
+                    )
+                  }
+            end given
 
             val blockLcs = LongestCommonSubsequence.of(
               baseBlocks,
               leftBlocks,
               rightBlocks
-            )(using Eq[Block], summon[Sized[Block]], com.sageserpent.kineticmerge.NoProgressRecording)
+            )(using
+              Eq[Block],
+              summon[Sized[Block]],
+              com.sageserpent.kineticmerge.NoProgressRecording
+            )
 
-            def blockContributionsByGroupId(
-                side: ThreeWaySide,
+            def expand(
                 contributions: IndexedSeq[Contribution[Block]]
-            ): Map[Int, Contribution[Block]] =
-              contributions.collect {
-                case c @ Contribution.Common(Block(g)) => g -> c
-                case c @ Contribution.CommonToBaseAndLeftOnly(Block(g))
-                    if side != ThreeWaySide.Right =>
-                  g -> c
-                case c @ Contribution.CommonToBaseAndRightOnly(Block(g))
-                    if side != ThreeWaySide.Left =>
-                  g -> c
-                case c @ Contribution.CommonToLeftAndRightOnly(Block(g))
-                    if side != ThreeWaySide.Base =>
-                  g -> c
-                case c @ Contribution.Difference(Block(g)) => g -> c
-              }.toMap
-
-            val blockContributionByGroupIdOnBase =
-              blockContributionsByGroupId(ThreeWaySide.Base, blockLcs.base)
-            val blockContributionByGroupIdOnLeft =
-              blockContributionsByGroupId(ThreeWaySide.Left, blockLcs.left)
-            val blockContributionByGroupIdOnRight =
-              blockContributionsByGroupId(ThreeWaySide.Right, blockLcs.right)
-
-            def contributionFor(
-                section: Section[Element],
-                side: ThreeWaySide
-            ): Contribution[Section[Element]] =
-              val matches =
-                matchesAndTheirSections.sectionsAndTheirMatches.get(section) ++
-                  tinyMatchesAndTheirSectionsOnly.sectionsAndTheirMatches
-                    .get(section)
-
-              val currentPath = path
-
-              val alignedContributions = matches.flatMap { m =>
-                groupIdFor(m).flatMap { g =>
-                  val blockContrib = side match
-                    case ThreeWaySide.Base =>
-                      blockContributionByGroupIdOnBase.get(g)
-                    case ThreeWaySide.Left =>
-                      blockContributionByGroupIdOnLeft.get(g)
-                    case ThreeWaySide.Right =>
-                      blockContributionByGroupIdOnRight.get(g)
-                  blockContrib.map(bc => m -> bc)
-                }
+            ): IndexedSeq[Contribution[Section[Element]]] =
+              contributions.flatMap {
+                case Contribution.Common(b) =>
+                  b.sections.map(Contribution.Common.apply)
+                case Contribution.Difference(b) =>
+                  b.sections.map(Contribution.Difference.apply)
+                case Contribution.CommonToBaseAndLeftOnly(b) =>
+                  b.sections.map(Contribution.CommonToBaseAndLeftOnly.apply)
+                case Contribution.CommonToBaseAndRightOnly(b) =>
+                  b.sections.map(Contribution.CommonToBaseAndRightOnly.apply)
+                case Contribution.CommonToLeftAndRightOnly(b) =>
+                  b.sections.map(Contribution.CommonToLeftAndRightOnly.apply)
               }
 
-              def isCompatible(
-                  m: Match[Section[Element]],
-                  bc: Contribution[Block]
-              ): Boolean = bc match
-                case Contribution.Common(_) => true
-                case Contribution.CommonToBaseAndLeftOnly(_) =>
-                  side != ThreeWaySide.Right
-                case Contribution.CommonToBaseAndRightOnly(_) =>
-                  side != ThreeWaySide.Left
-                case Contribution.CommonToLeftAndRightOnly(_) =>
-                  side != ThreeWaySide.Base
-                case Contribution.Difference(_) => true
-
-              val compatibleAligned =
-                alignedContributions.filter { case (m, bc) =>
-                  isCompatible(m, bc)
-                }
-
-              if compatibleAligned.isEmpty then
-                Contribution.Difference(section)
-              else
-                val (m, bc) = compatibleAligned.maxBy { case (m, bc) =>
-                  bc match
-                    case Contribution.Common(_) => 3
-                    case Contribution.CommonToBaseAndLeftOnly(_) |
-                        Contribution.CommonToBaseAndRightOnly(_) |
-                        Contribution.CommonToLeftAndRightOnly(_) =>
-                      2
-                    case _ => 1
-                }
-
-                bc match
-                  case Contribution.Common(_) =>
-                    m match
-                      case Match.AllSides(b, l, r) =>
-                        val baseIsLocal  = basePathFor(b) == currentPath
-                        val leftIsLocal  = leftPathFor(l) == currentPath
-                        val rightIsLocal = rightPathFor(r) == currentPath
-
-                        (baseIsLocal, leftIsLocal, rightIsLocal) match
-                          case (true, true, true) => Contribution.Common(section)
-                          case (true, true, false) if side != ThreeWaySide.Right =>
-                            Contribution.CommonToBaseAndLeftOnly(section)
-                          case (true, false, true) if side != ThreeWaySide.Left =>
-                            Contribution.CommonToBaseAndRightOnly(section)
-                          case (false, true, true) if side != ThreeWaySide.Base =>
-                            Contribution.CommonToLeftAndRightOnly(section)
-                          case _ => Contribution.Difference(section)
-
-                      case Match.BaseAndLeft(b, l) if side != ThreeWaySide.Right =>
-                        if basePathFor(b) == currentPath && leftPathFor(
-                            l
-                          ) == currentPath
-                        then Contribution.CommonToBaseAndLeftOnly(section)
-                        else Contribution.Difference(section)
-                      case Match.BaseAndRight(b, r) if side != ThreeWaySide.Left =>
-                        if basePathFor(b) == currentPath && rightPathFor(
-                            r
-                          ) == currentPath
-                        then Contribution.CommonToBaseAndRightOnly(section)
-                        else Contribution.Difference(section)
-                      case Match.LeftAndRight(l, r) if side != ThreeWaySide.Base =>
-                        if leftPathFor(l) == currentPath && rightPathFor(
-                            r
-                          ) == currentPath
-                        then Contribution.CommonToLeftAndRightOnly(section)
-                        else Contribution.Difference(section)
-                      case _ => Contribution.Difference(section)
-                  case Contribution.CommonToBaseAndLeftOnly(_) =>
-                    m match
-                      case Match.AllSides(b, l, _) if side != ThreeWaySide.Right =>
-                        if basePathFor(b) == currentPath && leftPathFor(
-                            l
-                          ) == currentPath
-                        then Contribution.CommonToBaseAndLeftOnly(section)
-                        else Contribution.Difference(section)
-                      case Match.BaseAndLeft(b, l) if side != ThreeWaySide.Right =>
-                        if basePathFor(b) == currentPath && leftPathFor(
-                            l
-                          ) == currentPath
-                        then Contribution.CommonToBaseAndLeftOnly(section)
-                        else Contribution.Difference(section)
-                      case _ => Contribution.Difference(section)
-                  case Contribution.CommonToBaseAndRightOnly(_) =>
-                    m match
-                      case Match.AllSides(b, _, r) if side != ThreeWaySide.Left =>
-                        if basePathFor(b) == currentPath && rightPathFor(
-                            r
-                          ) == currentPath
-                        then Contribution.CommonToBaseAndRightOnly(section)
-                        else Contribution.Difference(section)
-                      case Match.BaseAndRight(b, r) if side != ThreeWaySide.Left =>
-                        if basePathFor(b) == currentPath && rightPathFor(
-                            r
-                          ) == currentPath
-                        then Contribution.CommonToBaseAndRightOnly(section)
-                        else Contribution.Difference(section)
-                      case _ => Contribution.Difference(section)
-                  case Contribution.CommonToLeftAndRightOnly(_) =>
-                    m match
-                      case Match.AllSides(_, l, r) if side != ThreeWaySide.Base =>
-                        if leftPathFor(l) == currentPath && rightPathFor(
-                            r
-                          ) == currentPath
-                        then Contribution.CommonToLeftAndRightOnly(section)
-                        else Contribution.Difference(section)
-                      case Match.LeftAndRight(l, r) if side != ThreeWaySide.Base =>
-                        if leftPathFor(l) == currentPath && rightPathFor(
-                            r
-                          ) == currentPath
-                        then Contribution.CommonToLeftAndRightOnly(section)
-                        else Contribution.Difference(section)
-                      case _ => Contribution.Difference(section)
-                  case _ => Contribution.Difference(section)
-                end match
-              end if
-            end contributionFor
-
-            def elementSize(section: Section[Element]): Int = section.size
-
-            val baseContributions =
-              baseSections.map(contributionFor(_, ThreeWaySide.Base))
-            val leftContributions =
-              leftSections.map(contributionFor(_, ThreeWaySide.Left))
-            val rightContributions =
-              rightSections.map(contributionFor(_, ThreeWaySide.Right))
+            given Sized[Section[Element]] = _.size
 
             LongestCommonSubsequence(
-              baseContributions,
-              leftContributions,
-              rightContributions
-            )(elementSize)
+              expand(blockLcs.base),
+              expand(blockLcs.left),
+              expand(blockLcs.right)
+            )(summon[Sized[Section[Element]]].sizeOf)
           }
 
           val paths =
             baseFilesByPath.keySet ++ leftFilesByPath.keySet ++ rightFilesByPath.keySet
           paths.map(path => path -> sectionLcsFor(path)).toMap
-
         {
           // Invariant: the matches are referenced only by their participating
           // sections.
