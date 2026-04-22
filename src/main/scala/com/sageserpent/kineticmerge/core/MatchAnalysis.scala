@@ -58,6 +58,8 @@ trait MatchAnalysis[Path, Element]:
 
   def sectionsAndTheirMatches: MatchedSections[Element]
 
+  def parallelMatchesGroupIdsByMatch: MultiDict[GenericMatch[Element], Int]
+
   def matches: Set[GenericMatch[Element]] =
     sectionsAndTheirMatches.values.toSet
 end MatchAnalysis
