@@ -744,54 +744,14 @@ object MatchAnalysis extends StrictLogging:
 
               sortedBiteEdges = groupIdsBySortedBiteEdge.keySet
 
-              (
-                fragmentsFromPairwiseMatch,
-                groupIdsForFragments
-              ) =
-                {
-                  val triples = pairwiseMatch match
-                    case Match.BaseAndLeft(baseSection, leftSection) =>
-                      sortedBiteEdges.eatIntoSection(
-                        baseSources,
-                        baseSection,
-                        leftSources,
-                        leftSection,
-                        groupIdsBySortedBiteEdge
-                      )
-                    case Match.BaseAndRight(baseSection, rightSection) =>
-                      sortedBiteEdges.eatIntoSection(
-                        baseSources,
-                        baseSection,
-                        rightSources,
-                        rightSection,
-                        groupIdsBySortedBiteEdge
-                      )
-                    case Match.LeftAndRight(leftSection, rightSection) =>
-                      sortedBiteEdges.eatIntoSection(
-                        leftSources,
-                        leftSection,
-                        rightSources,
-                        rightSection,
-                        groupIdsBySortedBiteEdge
-                      )
-                  end triples
+              fragmentsAndGroupIds =
+                sortedBiteEdges.eatIntoPairwiseMatch(
+                  pairwiseMatch,
+                  groupIdsBySortedBiteEdge
+                )
 
-                  val fragments = triples.map {
-                    case (firstSection, secondSection, _) =>
-                      (pairwiseMatch match
-                        case Match.BaseAndLeft(_, _) =>
-                          Match.BaseAndLeft(firstSection, secondSection)
-                        case Match.BaseAndRight(_, _) =>
-                          Match.BaseAndRight(firstSection, secondSection)
-                        case Match.LeftAndRight(_, _) =>
-                          Match.LeftAndRight(firstSection, secondSection)
-                      ).asInstanceOf[PairwiseMatch]
-                  }
-
-                  val groupIds = triples.map(_._3)
-
-                  fragments -> groupIds
-                }
+              fragmentsFromPairwiseMatch = fragmentsAndGroupIds.map(_._1)
+              groupIdsForFragments      = fragmentsAndGroupIds.map(_._2)
 
               _ <- fragmentsFromPairwiseMatch
                 .zip(groupIdsForFragments)
@@ -809,20 +769,49 @@ object MatchAnalysis extends StrictLogging:
       // bite edges to be sorted in terms of their offsets and not exceed the
       // section's boundaries.
       extension (biteEdges: SortedSet[BiteEdge])
-        private def eatIntoSection(
-            firstSide: Sources[Path, Element],
-            firstSection: Section[Element],
-            secondSide: Sources[Path, Element],
-            secondSection: Section[Element],
+        private def eatIntoPairwiseMatch(
+            pairwiseMatch: PairwiseMatch,
             groupIdsBySortedBiteEdge: Map[BiteEdge, collection.Set[
               ParallelMatchesGroupId
             ]]
-        ): Vector[
-          (Section[Element], Section[Element], Set[ParallelMatchesGroupId])
-        ] =
+        ): Vector[(PairwiseMatch, Set[ParallelMatchesGroupId])] =
           // NOTE: here we work with zero-relative offsets from the start of the
           // meal, thus we can work directly with the offsets from the bite
           // edges.
+
+          val (firstSide, firstSection, secondSide, secondSection, factory) =
+            (pairwiseMatch match
+              case Match.BaseAndLeft(baseSection, leftSection) =>
+                (
+                  baseSources,
+                  baseSection,
+                  leftSources,
+                  leftSection,
+                  Match.BaseAndLeft.apply[Section[Element]]
+                )
+              case Match.BaseAndRight(baseSection, rightSection) =>
+                (
+                  baseSources,
+                  baseSection,
+                  rightSources,
+                  rightSection,
+                  Match.BaseAndRight.apply[Section[Element]]
+                )
+              case Match.LeftAndRight(leftSection, rightSection) =>
+                (
+                  leftSources,
+                  leftSection,
+                  rightSources,
+                  rightSection,
+                  Match.LeftAndRight.apply[Section[Element]]
+                )
+            ): (
+                Sources[Path, Element],
+                Section[Element],
+                Sources[Path, Element],
+                Section[Element],
+                (Section[Element], Section[Element]) => PairwiseMatch
+            )
 
           val firstPath  = firstSide.pathFor(firstSection)
           val secondPath = secondSide.pathFor(secondSection)
@@ -838,22 +827,14 @@ object MatchAnalysis extends StrictLogging:
             @tailrec
             final def apply(
                 remainingBiteEdges: Seq[BiteEdge],
-                fragments: Vector[
-                  (
-                      Section[Element],
-                      Section[Element],
-                      Set[ParallelMatchesGroupId]
-                  )
-                ]
-            ): Vector[
-              (Section[Element], Section[Element], Set[ParallelMatchesGroupId])
-            ] =
+                fragments: Vector[(PairwiseMatch, Set[ParallelMatchesGroupId])]
+            ): Vector[(PairwiseMatch, Set[ParallelMatchesGroupId])] =
               remainingBiteEdges match
                 case Seq() =>
                   if sectionSize > mealStartOffsetRelativeToMeal then
                     val size = sectionSize - mealStartOffsetRelativeToMeal
                     fragments.appended(
-                      (
+                      factory(
                         firstSide.section(firstPath)(
                           firstSection.startOffset + mealStartOffsetRelativeToMeal,
                           size
@@ -861,9 +842,8 @@ object MatchAnalysis extends StrictLogging:
                         secondSide.section(secondPath)(
                           secondSection.startOffset + mealStartOffsetRelativeToMeal,
                           size
-                        ),
-                        groupIdsFromPreviousBite
-                      )
+                        )
+                      ) -> groupIdsFromPreviousBite
                     )
                   else fragments
 
@@ -882,7 +862,7 @@ object MatchAnalysis extends StrictLogging:
                       val size =
                         startOffsetRelativeToMeal - mealStartOffsetRelativeToMeal
                       fragments.appended(
-                        (
+                        factory(
                           firstSide.section(firstPath)(
                             firstSection.startOffset + mealStartOffsetRelativeToMeal,
                             size
@@ -890,11 +870,10 @@ object MatchAnalysis extends StrictLogging:
                           secondSide.section(secondPath)(
                             secondSection.startOffset + mealStartOffsetRelativeToMeal,
                             size
-                          ),
-                          groupIdsFromPreviousBite union groupIdsBySortedBiteEdge(
-                            biteEdge
-                          ).toSet
-                        )
+                          )
+                        ) -> (groupIdsFromPreviousBite union groupIdsBySortedBiteEdge(
+                          biteEdge
+                        ).toSet)
                       )
                     else fragments
 
@@ -938,7 +917,7 @@ object MatchAnalysis extends StrictLogging:
             mealStartOffsetRelativeToMeal = 0,
             biteDepth = 0
           )(biteEdges.toSeq, fragments = Vector.empty)
-        end eatIntoSection
+        end eatIntoPairwiseMatch
 
       end extension
 
