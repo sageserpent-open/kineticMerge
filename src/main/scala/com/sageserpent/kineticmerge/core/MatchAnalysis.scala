@@ -751,7 +751,7 @@ object MatchAnalysis extends StrictLogging:
                 )
 
               fragmentsFromPairwiseMatch = fragmentsAndGroupIds.map(_._1)
-              groupIdsForFragments      = fragmentsAndGroupIds.map(_._2)
+              groupIdsForFragments       = fragmentsAndGroupIds.map(_._2)
 
               _ <- fragmentsFromPairwiseMatch
                 .zip(groupIdsForFragments)
