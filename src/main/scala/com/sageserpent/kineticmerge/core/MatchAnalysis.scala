@@ -12,7 +12,8 @@ import com.google.common.hash.{Funnel, HashFunction, PrimitiveSink}
 import com.sageserpent.kineticmerge
 import com.sageserpent.kineticmerge.core.MatchAnalysis.{
   GenericMatch,
-  MatchedSections
+  MatchedSections,
+  ParallelMatchesGroupIdsByMatch
 }
 import com.sageserpent.kineticmerge.{
   NoProgressRecording,
@@ -58,7 +59,7 @@ trait MatchAnalysis[Path, Element]:
 
   def sectionsAndTheirMatches: MatchedSections[Element]
 
-  def parallelMatchesGroupIdsByMatch: MultiDict[GenericMatch[Element], Int]
+  def parallelMatchesGroupIdsByMatch: ParallelMatchesGroupIdsByMatch[Element]
 
   def matches: Set[GenericMatch[Element]] =
     sectionsAndTheirMatches.values.toSet
@@ -68,6 +69,11 @@ object MatchAnalysis extends StrictLogging:
   type GenericMatch[Element]    = Match[Section[Element]]
   type MatchedSections[Element] =
     MultiDict[Section[Element], GenericMatch[Element]]
+
+  type ParallelMatchesGroupId = Int
+
+  type ParallelMatchesGroupIdsByMatch[Element] =
+    MultiDict[GenericMatch[Element], ParallelMatchesGroupId]
 
   /** Analyse matches between the sources of {@code base}, {@code left} and
     * {@code right}.
@@ -188,10 +194,8 @@ object MatchAnalysis extends StrictLogging:
 
     type FingerprintedInclusions = Diet[Int]
 
-    type ParallelMatchesGroupId = Int
-
     type ParallelMatchesGroupIdsByMatch =
-      MultiDict[GenericMatch[Element], ParallelMatchesGroupId]
+      MatchAnalysis.ParallelMatchesGroupIdsByMatch[Element]
 
     val tiebreakContentSamplingLimit = 5
 

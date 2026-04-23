@@ -1,8 +1,8 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.{Eq, Order}
-import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.sageserpent.kineticmerge.core.merge.mergeUsing
+import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSidedMergeResult
 import com.sageserpent.kineticmerge.core.FirstPassMergeResult.{
   FileDeletionContext,
@@ -270,13 +270,15 @@ object SectionedCodeExtension extends StrictLogging:
 
                 val firstPassMergeResult
                     : FirstPassMergeResult[Section[Element]] =
-                  sectionedCode
-                    .lcsFor(path)
-                    .mergeUsing(
-                      FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
-                        FileDeletionContext.Left
-                      )
+                  mergeOf(mergeAlgebra =
+                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
+                      FileDeletionContext.Left
                     )
+                  )(
+                    base = baseSections,
+                    left = IndexedSeq.empty,
+                    right = rightSections
+                  )
 
                 partialMergeResult.aggregate(path, firstPassMergeResult)
               case (Some(baseSections), Some(leftSections), None) =>
@@ -288,13 +290,15 @@ object SectionedCodeExtension extends StrictLogging:
 
                 val firstPassMergeResult
                     : FirstPassMergeResult[Section[Element]] =
-                  sectionedCode
-                    .lcsFor(path)
-                    .mergeUsing(
-                      FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
-                        FileDeletionContext.Right
-                      )
+                  mergeOf(mergeAlgebra =
+                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
+                      FileDeletionContext.Right
                     )
+                  )(
+                    base = baseSections,
+                    left = leftSections,
+                    right = IndexedSeq.empty
+                  )
 
                 partialMergeResult.aggregate(path, firstPassMergeResult)
               case (
@@ -311,13 +315,15 @@ object SectionedCodeExtension extends StrictLogging:
 
                 val firstPassMergeResult
                     : FirstPassMergeResult[Section[Element]] =
-                  sectionedCode
-                    .lcsFor(path)
-                    .mergeUsing(
-                      FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
-                        FileDeletionContext.None
-                      )
+                  mergeOf(mergeAlgebra =
+                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
+                      FileDeletionContext.None
                     )
+                  )(
+                    base = optionalBaseSections.getOrElse(IndexedSeq.empty),
+                    left = leftSections,
+                    right = rightSections
+                  )
 
                 partialMergeResult.aggregate(path, firstPassMergeResult)
 

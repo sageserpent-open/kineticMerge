@@ -10,7 +10,8 @@ import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
 }
 import com.sageserpent.kineticmerge.core.MatchAnalysis.{
   AbstractConfiguration,
-  AdmissibleFailure
+  AdmissibleFailure,
+  ParallelMatchesGroupIdsByMatch
 }
 import com.typesafe.scalalogging.StrictLogging
 
@@ -137,44 +138,129 @@ object SectionedCode extends StrictLogging:
                   .map(_.sections)
                   .getOrElse(IndexedSeq.empty)
 
-              given Sized[Section[Element]] = _.size
+              val parallelMatchesGroupIdsByMatch =
+                matchesAndTheirSections.parallelMatchesGroupIdsByMatch
+              val tinyParallelMatchesGroupIdsByMatch =
+                tinyMatchesAndTheirSectionsOnly.parallelMatchesGroupIdsByMatch
 
-              given Eq[Section[Element]] with
-                override def eqv(
-                    lhs: Section[Element],
-                    rhs: Section[Element]
-                ): Boolean =
-                  val matchesForLhs =
-                    matchesAndTheirSections.sectionsAndTheirMatches.get(lhs) ++
-                      tinyMatchesAndTheirSectionsOnly.sectionsAndTheirMatches
-                        .get(lhs)
-                  val matchesForRhs =
-                    matchesAndTheirSections.sectionsAndTheirMatches.get(rhs) ++
-                      tinyMatchesAndTheirSectionsOnly.sectionsAndTheirMatches
-                        .get(rhs)
-                  val bothBelongToTheSameMatches =
-                    matchesForLhs.intersect(matchesForRhs).nonEmpty
+              val tinyIdOffset =
+                1 + parallelMatchesGroupIdsByMatch.values
+                  .foldLeft(0)(_ max _)
 
-                  bothBelongToTheSameMatches || (lhs.size == rhs.size && Eq[
-                    Seq[Element]
-                  ].eqv(lhs.content, rhs.content))
+              def groupIdFor(m: Match[Section[Element]]): Option[Int] =
+                parallelMatchesGroupIdsByMatch
+                  .get(m)
+                  .headOption
+                  .orElse(
+                    tinyParallelMatchesGroupIdsByMatch
+                      .get(m)
+                      .headOption
+                      .map(_ + tinyIdOffset)
+                  )
+
+              def groupIdsForSection(s: Section[Element]): Set[Int] =
+                (matchesAndTheirSections.sectionsAndTheirMatches.get(s) ++
+                  tinyMatchesAndTheirSectionsOnly.sectionsAndTheirMatches.get(s))
+                  .flatMap(groupIdFor)
+                  .toSet
+
+              case class Block(
+                  groupIds: Set[Int],
+                  sections: IndexedSeq[Section[Element]]
+              )
+
+              def compress(
+                  sections: IndexedSeq[Section[Element]]
+              ): IndexedSeq[Block] = {
+                val blocks = mutable.ArrayBuffer.empty[Block]
+                var currentGroupIds = Set.empty[Int]
+                val currentSections = mutable.ArrayBuffer.empty[Section[Element]]
+
+                for (s <- sections) {
+                  val gIds = groupIdsForSection(s)
+                  if (gIds.nonEmpty && gIds == currentGroupIds) {
+                    currentSections += s
+                  } else {
+                    if (currentSections.nonEmpty) {
+                      blocks += Block(currentGroupIds, currentSections.toIndexedSeq)
+                      currentSections.clear()
+                    }
+                    if (gIds.nonEmpty) {
+                      currentSections += s
+                      currentGroupIds = gIds
+                    } else {
+                      blocks += Block(Set.empty, IndexedSeq(s))
+                      currentGroupIds = Set.empty
+                    }
+                  }
+                }
+                if (currentSections.nonEmpty) {
+                  blocks += Block(currentGroupIds, currentSections.toIndexedSeq)
+                }
+                blocks.toIndexedSeq
+              }
+
+              val baseBlocks  = compress(baseSections)
+              val leftBlocks  = compress(leftSections)
+              val rightBlocks = compress(rightSections)
+
+              given blockSized: Sized[Block] = _.sections.map(_.size).sum
+
+              given Eq[Block] with
+                override def eqv(x: Block, y: Block): Boolean =
+                  x.sections.size == y.sections.size && {
+                    val commonGroups = x.groupIds.intersect(y.groupIds)
+                    if (commonGroups.nonEmpty) true
+                    else
+                      x.sections.zip(y.sections).forall { (s1, s2) =>
+                        s1.size == s2.size && Eq[Seq[Element]].eqv(
+                          s1.content,
+                          s2.content
+                        )
+                      }
+                  }
               end given
 
-              LongestCommonSubsequence.of(
-                baseSections,
-                leftSections,
-                rightSections
+              val blockLcs = LongestCommonSubsequence.of(
+                baseBlocks,
+                leftBlocks,
+                rightBlocks
               )(using
-                Eq[Section[Element]],
-                summon[Sized[Section[Element]]],
+                Eq[Block],
+                blockSized,
                 com.sageserpent.kineticmerge.NoProgressRecording
               )
+
+              def expand(
+                  contributions: IndexedSeq[Contribution[Block]]
+              ): IndexedSeq[Contribution[Section[Element]]] =
+                contributions.flatMap {
+                  case Contribution.Common(b) =>
+                    b.sections.map(Contribution.Common.apply)
+                  case Contribution.Difference(b) =>
+                    b.sections.map(Contribution.Difference.apply)
+                  case Contribution.CommonToBaseAndLeftOnly(b) =>
+                    b.sections.map(Contribution.CommonToBaseAndLeftOnly.apply)
+                  case Contribution.CommonToBaseAndRightOnly(b) =>
+                    b.sections.map(Contribution.CommonToBaseAndRightOnly.apply)
+                  case Contribution.CommonToLeftAndRightOnly(b) =>
+                    b.sections.map(Contribution.CommonToLeftAndRightOnly.apply)
+                }
+
+              given sectionSized: Sized[Section[Element]] = _.size
+
+              LongestCommonSubsequence.apply(
+                expand(blockLcs.base),
+                expand(blockLcs.left),
+                expand(blockLcs.right)
+              )(sectionSized.sizeOf)
             }
           )
 
         export baseSources.pathFor as basePathFor
         export leftSources.pathFor as leftPathFor
         export rightSources.pathFor as rightPathFor
+
         {
           // Invariant: the matches are referenced only by their participating
           // sections.
