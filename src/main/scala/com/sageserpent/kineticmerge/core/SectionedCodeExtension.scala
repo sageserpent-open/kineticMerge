@@ -1,7 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.{Eq, Order}
-import com.sageserpent.kineticmerge.core.merge.mergeUsing
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSidedMergeResult
 import com.sageserpent.kineticmerge.core.FirstPassMergeResult.{
@@ -15,7 +14,7 @@ import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{
   MoveEvaluation,
   OppositeSideAnchor
 }
-import com.sageserpent.kineticmerge.core.merge.of as mergeOf
+import com.sageserpent.kineticmerge.core.merge.{mergeUsing, of as mergeOf}
 import com.sageserpent.kineticmerge.{
   NoProgressRecording,
   ProgressRecording,
@@ -32,16 +31,23 @@ import scala.math.Ordering.Implicits.seqOrdering
 
 object SectionedCodeExtension extends StrictLogging:
 
-  /** Add merging capability to a [[SectionedCode]].
-    *
-    * Not sure exactly where this capability should be implemented - is it
-    * really a core part of the API for [[SectionedCode]]? Hence the extension
-    * as a temporary measure.
-    */
-
+  /** Add merging capability to a [[SectionedCode]]. */
   extension [Path, Element: Eq: Order](
       sectionedCode: SectionedCode[Path, Element]
   )
+    // TODO: need to add the phase one computation from
+    // https://github.com/sageserpent-open/kineticMerge/issues/321#issuecomment-4319818815.
+
+    private def longestCommonSubsequenceOf(
+        base: IndexedSeq[Section[Element]],
+        left: IndexedSeq[Section[Element]],
+        right: IndexedSeq[Section[Element]]
+    ): LongestCommonSubsequence[Section[Element]] =
+      // TODO: see
+      // https://github.com/sageserpent-open/kineticMerge/issues/321#issuecomment-4319818815,
+      // phase two.
+      ???
+
     def merge(using
         progressRecording: ProgressRecording
     ): (
@@ -270,14 +276,14 @@ object SectionedCodeExtension extends StrictLogging:
 
                 val firstPassMergeResult
                     : FirstPassMergeResult[Section[Element]] =
-                  mergeOf(mergeAlgebra =
-                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
-                      FileDeletionContext.Left
-                    )
-                  )(
+                  longestCommonSubsequenceOf(
                     base = baseSections,
                     left = IndexedSeq.empty,
                     right = rightSections
+                  ).mergeUsing(mergeAlgebra =
+                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
+                      FileDeletionContext.Left
+                    )
                   )
 
                 partialMergeResult.aggregate(path, firstPassMergeResult)
@@ -290,14 +296,14 @@ object SectionedCodeExtension extends StrictLogging:
 
                 val firstPassMergeResult
                     : FirstPassMergeResult[Section[Element]] =
-                  mergeOf(mergeAlgebra =
-                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
-                      FileDeletionContext.Right
-                    )
-                  )(
+                  longestCommonSubsequenceOf(
                     base = baseSections,
                     left = leftSections,
                     right = IndexedSeq.empty
+                  ).mergeUsing(mergeAlgebra =
+                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
+                      FileDeletionContext.Right
+                    )
                   )
 
                 partialMergeResult.aggregate(path, firstPassMergeResult)
@@ -315,14 +321,14 @@ object SectionedCodeExtension extends StrictLogging:
 
                 val firstPassMergeResult
                     : FirstPassMergeResult[Section[Element]] =
-                  mergeOf(mergeAlgebra =
-                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
-                      FileDeletionContext.None
-                    )
-                  )(
+                  longestCommonSubsequenceOf(
                     base = optionalBaseSections.getOrElse(IndexedSeq.empty),
                     left = leftSections,
                     right = rightSections
+                  ).mergeUsing(mergeAlgebra =
+                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
+                      FileDeletionContext.None
+                    )
                   )
 
                 partialMergeResult.aggregate(path, firstPassMergeResult)
