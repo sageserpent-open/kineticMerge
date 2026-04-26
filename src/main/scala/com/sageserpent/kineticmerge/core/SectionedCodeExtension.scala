@@ -14,7 +14,7 @@ import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{
   MoveEvaluation,
   OppositeSideAnchor
 }
-import com.sageserpent.kineticmerge.core.merge.of as mergeOf
+import com.sageserpent.kineticmerge.core.merge.{mergeUsing, of as mergeOf}
 import com.sageserpent.kineticmerge.{
   NoProgressRecording,
   ProgressRecording,
@@ -31,16 +31,59 @@ import scala.math.Ordering.Implicits.seqOrdering
 
 object SectionedCodeExtension extends StrictLogging:
 
-  /** Add merging capability to a [[SectionedCode]].
-    *
-    * Not sure exactly where this capability should be implemented - is it
-    * really a core part of the API for [[SectionedCode]]? Hence the extension
-    * as a temporary measure.
-    */
-
+  /** Add merging capability to a [[SectionedCode]]. */
   extension [Path, Element: Eq: Order](
       sectionedCode: SectionedCode[Path, Element]
   )
+    private def longestCommonSubsequenceOf(
+        base: IndexedSeq[Section[Element]],
+        left: IndexedSeq[Section[Element]],
+        right: IndexedSeq[Section[Element]]
+    ): LongestCommonSubsequence[Section[Element]] =
+      // PLAN:
+      // 1. Form blocks composed of runs of contiguous sections that form one
+      // side of a group of parallel matches, including any filler sections
+      // between the matched sections. A block is associated with at most one
+      // group is, so if there are several moves that diverge from or converge
+      // from the same run of sections, then this is represented by multiple
+      // blocks that happen to have the same run of sections but differing group
+      // ids. If filler sections are not covered by one side of a group, they
+      // are placed in their own block that has no group id. Blocks on the same
+      // side are sized by the content they cover and can be compared for
+      // equality using the group id, and are ordered by a triple of (start
+      // offset, the negative of the block size, group id).
+      // 2. The dynamic programming LCS algorithm is used to form an LCS at the
+      // block level, starting with sequences of blocks from each side that are
+      // arranged according to their intrinsic ordering.
+      // 3. Because sections can be shared between multiple blocks on the same
+      // side due to diverging / converging moves, overlapping of blocks and
+      // nesting of blocks (these are all feasible and indeed desirable
+      // situations in terms of capturing code motion accurately), it is
+      // necessary to clean up the block-level LCS. Looking at each side of the
+      // block-level LCS, if a run of adjacent blocks is found that a) have some
+      // or all sections in common and b) consider the blocks to be part of a
+      // common or partially common contribution to the LCS, then the group ids
+      // of the blocks are added to an exclusion set. This is intended to stop a
+      // single section from being repeated on one side of the section-level LCS
+      // expansion later on. <<<---- TODO: this is too draconian, as it excludes
+      // *everything* covered by the group: if two blocks have a partial
+      // overlap, it should only be the shared sections and their corresponding
+      // matched sections on the other side(s) that are excluded. Nevertheless
+      // it will do as a start...
+      // 4. The blocks from each side of the block-level LCS are expanded into a
+      // section-level LCS. Each block's group id is examined - if missing, the
+      // block's sections are assigned difference contributions, if present but
+      // the group id is excluded, then again the block's sections are assigned
+      // difference contributions. Otherwise, the block uses its own
+      // contribution
+      // to guide the assignation of the sections, so a common contributed block
+      // assigns its sections participating on all-sides matches common
+      // contributions, but assigns sections participating in pairwise matches
+      // partially common contributions, filler sections being assigned
+      // difference contributions.
+
+      ???
+
     def merge(using
         progressRecording: ProgressRecording
     ): (
@@ -269,14 +312,14 @@ object SectionedCodeExtension extends StrictLogging:
 
                 val firstPassMergeResult
                     : FirstPassMergeResult[Section[Element]] =
-                  mergeOf(mergeAlgebra =
-                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
-                      FileDeletionContext.Left
-                    )
-                  )(
+                  longestCommonSubsequenceOf(
                     base = baseSections,
                     left = IndexedSeq.empty,
                     right = rightSections
+                  ).mergeUsing(mergeAlgebra =
+                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
+                      FileDeletionContext.Left
+                    )
                   )
 
                 partialMergeResult.aggregate(path, firstPassMergeResult)
@@ -289,14 +332,14 @@ object SectionedCodeExtension extends StrictLogging:
 
                 val firstPassMergeResult
                     : FirstPassMergeResult[Section[Element]] =
-                  mergeOf(mergeAlgebra =
-                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
-                      FileDeletionContext.Right
-                    )
-                  )(
+                  longestCommonSubsequenceOf(
                     base = baseSections,
                     left = leftSections,
                     right = IndexedSeq.empty
+                  ).mergeUsing(mergeAlgebra =
+                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
+                      FileDeletionContext.Right
+                    )
                   )
 
                 partialMergeResult.aggregate(path, firstPassMergeResult)
@@ -314,14 +357,14 @@ object SectionedCodeExtension extends StrictLogging:
 
                 val firstPassMergeResult
                     : FirstPassMergeResult[Section[Element]] =
-                  mergeOf(mergeAlgebra =
-                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
-                      FileDeletionContext.None
-                    )
-                  )(
+                  longestCommonSubsequenceOf(
                     base = optionalBaseSections.getOrElse(IndexedSeq.empty),
                     left = leftSections,
                     right = rightSections
+                  ).mergeUsing(mergeAlgebra =
+                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
+                      FileDeletionContext.None
+                    )
                   )
 
                 partialMergeResult.aggregate(path, firstPassMergeResult)

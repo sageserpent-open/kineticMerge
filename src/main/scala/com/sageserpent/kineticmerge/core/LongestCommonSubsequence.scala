@@ -151,6 +151,58 @@ end LongestCommonSubsequence
 
 object LongestCommonSubsequence:
 
+  def apply[Element](
+      base: IndexedSeq[Contribution[Element]],
+      left: IndexedSeq[Contribution[Element]],
+      right: IndexedSeq[Contribution[Element]]
+  )(elementSize: Element => Int): LongestCommonSubsequence[Element] =
+    def commonSubsequenceSize(
+        contributions: IndexedSeq[Contribution[Element]]
+    ): CommonSubsequenceSize =
+      contributions.foldLeft(CommonSubsequenceSize.zero) {
+        case (partialSize, Contribution.Common(element)) =>
+          partialSize.addCostOfASingleContribution(elementSize(element))
+        case (partialSize, _) => partialSize
+      }
+
+    def commonToLeftAndRightOnlySize(
+        contributions: IndexedSeq[Contribution[Element]]
+    ): CommonSubsequenceSize =
+      contributions.foldLeft(CommonSubsequenceSize.zero) {
+        case (partialSize, Contribution.CommonToLeftAndRightOnly(element)) =>
+          partialSize.addCostOfASingleContribution(elementSize(element))
+        case (partialSize, _) => partialSize
+      }
+
+    def commonToBaseAndLeftOnlySize(
+        contributions: IndexedSeq[Contribution[Element]]
+    ): CommonSubsequenceSize =
+      contributions.foldLeft(CommonSubsequenceSize.zero) {
+        case (partialSize, Contribution.CommonToBaseAndLeftOnly(element)) =>
+          partialSize.addCostOfASingleContribution(elementSize(element))
+        case (partialSize, _) => partialSize
+      }
+
+    def commonToBaseAndRightOnlySize(
+        contributions: IndexedSeq[Contribution[Element]]
+    ): CommonSubsequenceSize =
+      contributions.foldLeft(CommonSubsequenceSize.zero) {
+        case (partialSize, Contribution.CommonToBaseAndRightOnly(element)) =>
+          partialSize.addCostOfASingleContribution(elementSize(element))
+        case (partialSize, _) => partialSize
+      }
+
+    new LongestCommonSubsequence(
+      base = base,
+      left = left,
+      right = right,
+      commonSubsequenceSize = commonSubsequenceSize(base),
+      commonToLeftAndRightOnlySize = commonToLeftAndRightOnlySize(left),
+      commonToBaseAndLeftOnlySize = commonToBaseAndLeftOnlySize(base),
+      commonToBaseAndRightOnlySize = commonToBaseAndRightOnlySize(base)
+    )
+  end apply
+
   def defaultElementSize[Element](irrelevant: Element): Int = 1
 
   def of[Element: Eq: Sized](

@@ -10,6 +10,8 @@ import com.sageserpent.kineticmerge.core.MatchAnalysis.{
 }
 import com.typesafe.scalalogging.StrictLogging
 
+import scala.collection.mutable
+
 trait SectionedCode[Path, Element]:
   def base: Map[Path, File[Element]]
   def left: Map[Path, File[Element]]
@@ -93,6 +95,25 @@ object SectionedCode extends StrictLogging:
         )
 
       Right(new SectionedCode[Path, Element]:
+        private val lcsByPath: mutable.Map[Path, LongestCommonSubsequence[
+          Section[Element]
+        ]] = mutable.Map.empty
+
+        override def base: Map[Path, File[Element]] = baseFilesByPath
+
+        override def left: Map[Path, File[Element]] = leftFilesByPath
+
+        override def right: Map[Path, File[Element]] = rightFilesByPath
+
+        override def matchesFor(
+            section: Section[Element]
+        ): collection.Set[Match[Section[Element]]] =
+          sectionsAndTheirMatches.get(section)
+
+        export baseSources.pathFor as basePathFor
+        export leftSources.pathFor as leftPathFor
+        export rightSources.pathFor as rightPathFor
+
         {
           // Invariant: the matches are referenced only by their participating
           // sections.
@@ -141,22 +162,7 @@ object SectionedCode extends StrictLogging:
             rogueMatches.isEmpty,
             s"Found rogue matches whose sections do not belong to the breakdown: ${pprintCustomised(rogueMatches)}."
           )
-        }
-
-        override def base: Map[Path, File[Element]] = baseFilesByPath
-
-        override def left: Map[Path, File[Element]] = leftFilesByPath
-
-        override def right: Map[Path, File[Element]] = rightFilesByPath
-
-        override def matchesFor(
-            section: Section[Element]
-        ): collection.Set[Match[Section[Element]]] =
-          sectionsAndTheirMatches.get(section)
-
-        export baseSources.pathFor as basePathFor
-        export leftSources.pathFor as leftPathFor
-        export rightSources.pathFor as rightPathFor)
+        })
     catch
       // NOTE: don't convert this to use of `Try` with a subsequent `.toEither`
       // conversion. We want most flavours of exception to propagate, as they
