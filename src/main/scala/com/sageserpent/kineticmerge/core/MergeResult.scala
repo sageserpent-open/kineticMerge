@@ -78,18 +78,14 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
       rightElements: Seq[Element]
   ): MergeResult[Element] = segments.lastOption
     .fold(ifEmpty =
-      MergeResult(
-        Seq(Segment.Conflicted(baseElements, leftElements, rightElements))
-      )
+      segmentFor(baseElements, leftElements, rightElements).fold(
+        ifEmpty = this
+      )(segment => MergeResult(Seq(segment)))
     ) {
       case Segment.Resolved(_) =>
-        MergeResult(
-          segments :+ Segment.Conflicted(
-            baseElements,
-            leftElements,
-            rightElements
-          )
-        )
+        segmentFor(baseElements, leftElements, rightElements).fold(
+          ifEmpty = this
+        )(segment => MergeResult(segments :+ segment))
       case Segment.Conflicted(
             segmentBaseElements,
             segmentLeftElements,
