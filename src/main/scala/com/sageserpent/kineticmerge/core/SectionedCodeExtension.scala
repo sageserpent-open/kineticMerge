@@ -89,6 +89,12 @@ object SectionedCodeExtension extends StrictLogging:
       // partially common contributions, filler sections being assigned
       // difference contributions.
 
+      def groupIdsOf(
+          section: Section[Element]
+      ): collection.Set[ParallelMatchesGroupId] = sectionedCode
+        .matchesFor(section)
+        .flatMap(sectionedCode.parallelMatchesGroupIdsByMatch.get)
+
       case class Block(
           parallelMatchesGroupId: Option[ParallelMatchesGroupId],
           sectionsCoveredByGroup: IndexedSeq[Section[Element]]
@@ -107,12 +113,6 @@ object SectionedCodeExtension extends StrictLogging:
       def blocksFrom(
           sections: Seq[Section[Element]]
       ): IndexedSeq[Block] =
-        def groupIdsOf(
-            section: Section[Element]
-        ): collection.Set[ParallelMatchesGroupId] = sectionedCode
-          .matchesFor(section)
-          .flatMap(sectionedCode.parallelMatchesGroupIdsByMatch.get)
-
         import cats.data.State
         import cats.syntax.foldable.toFoldableOps
 
@@ -208,8 +208,8 @@ object SectionedCodeExtension extends StrictLogging:
         rightBlockContributions
       )
 
-      given contributionRanking[X]: Ordering[Contribution[X]] with
-        override def compare(x: Contribution[X], y: Contribution[X]): Int =
+      val contributionRanking: Ordering[Contribution[Any]] =
+        (x: Contribution[Any], y: Contribution[Any]) =>
           (x, y) match
             // A common contribution is the best.
             case (Contribution.Common(_), Contribution.Common(_)) => 0
@@ -230,7 +230,32 @@ object SectionedCodeExtension extends StrictLogging:
           contributionKindsByGroupId: Map[ParallelMatchesGroupId, Contribution[
             ?
           ]]
-      )(section: Section[Element]): Contribution[Section[Element]] = ???
+      )(section: Section[Element]): Contribution[Section[Element]] =
+        val groupIds = groupIdsOf(section)
+
+        val contributions = groupIds.toSeq
+          .map(contributionKindsByGroupId)
+          .sorted(
+            contributionRanking.reversed.asInstanceOf[Ordering[Contribution[?]]]
+          )
+
+        val bestRankedContribution = contributions.head
+
+        val onePastTheBestRankedContributions = contributions.indexWhere(
+          0 < contributionRanking
+            .asInstanceOf[Ordering[Contribution[?]]]
+            .compare(_, bestRankedContribution)
+        )
+
+        val moreThanOneBestRankedContribution =
+          1 < onePastTheBestRankedContributions
+
+        if moreThanOneBestRankedContribution then
+          Contribution.Difference(section)
+        else bestRankedContribution.constructLikeness(section)
+        end if
+
+      end assignContributionUsing
 
       val baseSectionContributions = baseSections.map(
         assignContributionUsing(baseContributionKindsByGroupId)
