@@ -47,48 +47,6 @@ object SectionedCodeExtension extends StrictLogging:
     )(using
         progressRecording: ProgressRecording
     ): LongestCommonSubsequence[Section[Element]] =
-      // PLAN:
-      // 1. Form blocks composed of runs of contiguous sections that form one
-      // side of a group of parallel matches, including any filler sections
-      // between the matched sections. A block is associated with at most one
-      // group is, so if there are several moves that diverge from or converge
-      // from the same run of sections, then this is represented by multiple
-      // blocks that happen to have the same run of sections but differing group
-      // ids. If filler sections are not covered by one side of a group, they
-      // are placed in their own block that has no group id. Blocks on the same
-      // side are sized by the content they cover and can be compared for
-      // equality using the group id, and are ordered by a triple of (start
-      // offset, the negative of the block size, group id).
-      // 2. The dynamic programming LCS algorithm is used to form an LCS at the
-      // block level, starting with sequences of blocks from each side that are
-      // arranged according to their intrinsic ordering.
-      // 3. Because sections can be shared between multiple blocks on the same
-      // side due to diverging / converging moves, overlapping of blocks and
-      // nesting of blocks (these are all feasible and indeed desirable
-      // situations in terms of capturing code motion accurately), it is
-      // necessary to clean up the block-level LCS. Looking at each side of the
-      // block-level LCS, if a run of adjacent blocks is found that a) have some
-      // or all sections in common and b) consider the blocks to be part of a
-      // common or partially common contribution to the LCS, then the group ids
-      // of the blocks are added to an exclusion set. This is intended to stop a
-      // single section from being repeated on one side of the section-level LCS
-      // expansion later on. <<<---- TODO: this is too draconian, as it excludes
-      // *everything* covered by the group: if two blocks have a partial
-      // overlap, it should only be the shared sections and their corresponding
-      // matched sections on the other side(s) that are excluded. Nevertheless
-      // it will do as a start...
-      // 4. The blocks from each side of the block-level LCS are expanded into a
-      // section-level LCS. Each block's group id is examined - if missing, the
-      // block's sections are assigned difference contributions, if present but
-      // the group id is excluded, then again the block's sections are assigned
-      // difference contributions. Otherwise, the block uses its own
-      // contribution
-      // to guide the assignation of the sections, so a common contributed block
-      // assigns its sections participating on all-sides matches common
-      // contributions, but assigns sections participating in pairwise matches
-      // partially common contributions, filler sections being assigned
-      // difference contributions.
-
       def groupIdsOf(
           section: Section[Element]
       ): collection.Set[ParallelMatchesGroupId] = sectionedCode
@@ -186,13 +144,13 @@ object SectionedCodeExtension extends StrictLogging:
 
       def contributionKindsByGroupId(
           blockContributions: IndexedSeq[Contribution[Block]]
-      ): Map[ParallelMatchesGroupId, Contribution[?]] =
+      ): Map[ParallelMatchesGroupId, Contribution[Block]] =
         blockContributions
           .map(contribution =>
             contribution.element.parallelMatchesGroupId -> contribution
           )
           .collect { case (Some(groupId), contribution) =>
-            groupId -> contribution // Lose the precise type here, as we don't care about the payload anyway.
+            groupId -> contribution
           }
           .toMap
 
@@ -208,8 +166,11 @@ object SectionedCodeExtension extends StrictLogging:
         rightBlockContributions
       )
 
-      object contributionRanking extends Ordering[Contribution[Any]]:
-        override def compare(x: Contribution[Any], y: Contribution[Any]): Int =
+      object contributionRanking extends Ordering[Contribution[Block]]:
+        override def compare(
+            x: Contribution[Block],
+            y: Contribution[Block]
+        ): Int =
           (x, y) match
             // A common contribution is the best.
             case (Contribution.Common(_), Contribution.Common(_)) => 0
@@ -228,7 +189,7 @@ object SectionedCodeExtension extends StrictLogging:
 
       def assignContributionUsing(
           contributionKindsByGroupId: Map[ParallelMatchesGroupId, Contribution[
-            ?
+            Block
           ]]
       )(section: Section[Element]): Contribution[Section[Element]] =
         val groupIds = groupIdsOf(section)
@@ -236,7 +197,7 @@ object SectionedCodeExtension extends StrictLogging:
         val contributions = groupIds.toSeq
           .flatMap(contributionKindsByGroupId.get)
           .sorted(
-            contributionRanking.reverse.asInstanceOf[Ordering[Contribution[?]]]
+            contributionRanking.reverse
           )
 
         val bestRankedContribution =
@@ -244,7 +205,6 @@ object SectionedCodeExtension extends StrictLogging:
 
         val onePastTheBestRankedContributions = contributions.indexWhere(
           0 < contributionRanking
-            .asInstanceOf[Ordering[Contribution[?]]]
             .compare(_, bestRankedContribution)
         )
 
