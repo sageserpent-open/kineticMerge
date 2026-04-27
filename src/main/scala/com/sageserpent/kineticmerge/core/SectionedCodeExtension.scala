@@ -189,10 +189,10 @@ object SectionedCodeExtension extends StrictLogging:
       ): Map[ParallelMatchesGroupId, Contribution[?]] =
         blockContributions
           .map(contribution =>
-            contribution.element.parallelMatchesGroupId -> contribution.ordinal
+            contribution.element.parallelMatchesGroupId -> contribution
           )
-          .collect { case (Some(groupId), ordinal) =>
-            groupId -> Contribution.fromOrdinal(ordinal)
+          .collect { case (Some(groupId), contribution) =>
+            groupId -> contribution // Lose the precise type here, as we don't care about the payload anyway.
           }
           .toMap
 
@@ -208,8 +208,8 @@ object SectionedCodeExtension extends StrictLogging:
         rightBlockContributions
       )
 
-      val contributionRanking: Ordering[Contribution[Any]] =
-        (x: Contribution[Any], y: Contribution[Any]) =>
+      object contributionRanking extends Ordering[Contribution[Any]]:
+        override def compare(x: Contribution[Any], y: Contribution[Any]): Int =
           (x, y) match
             // A common contribution is the best.
             case (Contribution.Common(_), Contribution.Common(_)) => 0
@@ -234,12 +234,13 @@ object SectionedCodeExtension extends StrictLogging:
         val groupIds = groupIdsOf(section)
 
         val contributions = groupIds.toSeq
-          .map(contributionKindsByGroupId)
+          .flatMap(contributionKindsByGroupId.get)
           .sorted(
-            contributionRanking.reversed.asInstanceOf[Ordering[Contribution[?]]]
+            contributionRanking.reverse.asInstanceOf[Ordering[Contribution[?]]]
           )
 
-        val bestRankedContribution = contributions.head
+        val bestRankedContribution =
+          contributions.headOption.getOrElse(Contribution.Difference(null))
 
         val onePastTheBestRankedContributions = contributions.indexWhere(
           0 < contributionRanking
