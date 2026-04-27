@@ -151,17 +151,19 @@ end LongestCommonSubsequence
 
 object LongestCommonSubsequence:
 
-  def apply[Element](
+  def apply[Element: Sized](
       base: IndexedSeq[Contribution[Element]],
       left: IndexedSeq[Contribution[Element]],
       right: IndexedSeq[Contribution[Element]]
-  )(elementSize: Element => Int): LongestCommonSubsequence[Element] =
+  ): LongestCommonSubsequence[Element] =
+    val sizeOf = summon[Sized[Element]].sizeOf
+    
     def commonSubsequenceSize(
         contributions: IndexedSeq[Contribution[Element]]
     ): CommonSubsequenceSize =
       contributions.foldLeft(CommonSubsequenceSize.zero) {
         case (partialSize, Contribution.Common(element)) =>
-          partialSize.addCostOfASingleContribution(elementSize(element))
+          partialSize.addCostOfASingleContribution(sizeOf(element))
         case (partialSize, _) => partialSize
       }
 
@@ -170,7 +172,7 @@ object LongestCommonSubsequence:
     ): CommonSubsequenceSize =
       contributions.foldLeft(CommonSubsequenceSize.zero) {
         case (partialSize, Contribution.CommonToLeftAndRightOnly(element)) =>
-          partialSize.addCostOfASingleContribution(elementSize(element))
+          partialSize.addCostOfASingleContribution(sizeOf(element))
         case (partialSize, _) => partialSize
       }
 
@@ -179,7 +181,7 @@ object LongestCommonSubsequence:
     ): CommonSubsequenceSize =
       contributions.foldLeft(CommonSubsequenceSize.zero) {
         case (partialSize, Contribution.CommonToBaseAndLeftOnly(element)) =>
-          partialSize.addCostOfASingleContribution(elementSize(element))
+          partialSize.addCostOfASingleContribution(sizeOf(element))
         case (partialSize, _) => partialSize
       }
 
@@ -188,7 +190,7 @@ object LongestCommonSubsequence:
     ): CommonSubsequenceSize =
       contributions.foldLeft(CommonSubsequenceSize.zero) {
         case (partialSize, Contribution.CommonToBaseAndRightOnly(element)) =>
-          partialSize.addCostOfASingleContribution(elementSize(element))
+          partialSize.addCostOfASingleContribution(sizeOf(element))
         case (partialSize, _) => partialSize
       }
 
@@ -999,6 +1001,7 @@ object LongestCommonSubsequence:
       )
   end CommonSubsequenceSize
 
+  // TODO: this definition seems a bit strange - why not hoist `element` up into the core enum constructor?
   enum Contribution[Element]:
     case Common(
         element: Element
@@ -1017,6 +1020,19 @@ object LongestCommonSubsequence:
     )
 
     def element: Element
+    
+    def constructLikeness[AnotherElement](
+        anotherElement: AnotherElement
+    ): Contribution[AnotherElement] =
+      this match
+        case Common(_)                  => Common(anotherElement)
+        case Difference(_)              => Difference(anotherElement)
+        case CommonToBaseAndLeftOnly(_) =>
+          CommonToBaseAndLeftOnly(anotherElement)
+        case CommonToBaseAndRightOnly(_) =>
+          CommonToBaseAndRightOnly(anotherElement)
+        case CommonToLeftAndRightOnly(_) =>
+          CommonToLeftAndRightOnly(anotherElement)
   end Contribution
 
   object CommonSubsequenceSize:
