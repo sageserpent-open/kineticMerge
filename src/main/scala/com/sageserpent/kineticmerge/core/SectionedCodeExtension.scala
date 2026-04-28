@@ -7,14 +7,18 @@ import com.sageserpent.kineticmerge.core.FirstPassMergeResult.{
   FileDeletionContext,
   Recording
 }
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Sized
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
+  Contribution,
+  Sized
+}
+import com.sageserpent.kineticmerge.core.MatchAnalysis.ParallelMatchesGroupId
 import com.sageserpent.kineticmerge.core.MergeResult.given
 import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{
   AnchoredMove,
   MoveEvaluation,
   OppositeSideAnchor
 }
-import com.sageserpent.kineticmerge.core.merge.of as mergeOf
+import com.sageserpent.kineticmerge.core.merge.{mergeUsing, of as mergeOf}
 import com.sageserpent.kineticmerge.{
   NoProgressRecording,
   ProgressRecording,
@@ -25,22 +29,225 @@ import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
 
 import scala.annotation.tailrec
-import scala.collection.immutable.MultiDict
+import scala.collection.immutable.{MultiDict, SortedMap}
 import scala.collection.{IndexedSeqView, Searching}
 import scala.math.Ordering.Implicits.seqOrdering
 
 object SectionedCodeExtension extends StrictLogging:
+  given elementSized[X]: Sized[Section[X]] = _.size
 
-  /** Add merging capability to a [[SectionedCode]].
-    *
-    * Not sure exactly where this capability should be implemented - is it
-    * really a core part of the API for [[SectionedCode]]? Hence the extension
-    * as a temporary measure.
-    */
-
+  /** Add merging capability to a [[SectionedCode]]. */
   extension [Path, Element: Eq: Order](
       sectionedCode: SectionedCode[Path, Element]
   )
+    private def longestCommonSubsequenceOf(
+        baseSections: IndexedSeq[Section[Element]],
+        leftSections: IndexedSeq[Section[Element]],
+        rightSections: IndexedSeq[Section[Element]]
+    )(using
+        progressRecording: ProgressRecording
+    ): LongestCommonSubsequence[Section[Element]] =
+      def groupIdsOf(
+          section: Section[Element]
+      ): collection.Set[ParallelMatchesGroupId] = sectionedCode
+        .matchesFor(section)
+        .flatMap(sectionedCode.parallelMatchesGroupIdsByMatch.get)
+
+      case class Block(
+          parallelMatchesGroupId: Option[ParallelMatchesGroupId],
+          sectionsCoveredByGroup: IndexedSeq[Section[Element]]
+      ):
+        require(sectionsCoveredByGroup.nonEmpty)
+
+        // TODO: do we actually need the sections at all if we've got these? Why
+        // not just store an offset interval?
+        def startOffset: Int = sectionsCoveredByGroup.head.startOffset
+
+        def onePastEndOffset: Int = sectionsCoveredByGroup.last.onePastEndOffset
+
+        def size: Int = sectionsCoveredByGroup.map(_.size).sum
+      end Block
+
+      def blocksFrom(
+          sections: Seq[Section[Element]]
+      ): IndexedSeq[Block] =
+        import cats.data.State
+        import cats.syntax.foldable.toFoldableOps
+
+        type BlocksUnderConstruction =
+          Map[Option[ParallelMatchesGroupId], IndexedSeq[
+            Section[Element]
+          ]] // TODO: map to offset intervals instead.
+        type BlocksUnderConstructionState[X] = State[BlocksUnderConstruction, X]
+
+        val workflow =
+          sections.foldM[BlocksUnderConstructionState, IndexedSeq[Block]](
+            IndexedSeq.empty
+          )((partialResult, section) =>
+            val groupIds = groupIdsOf(section)
+
+            val liftedGroupIds: collection.Set[Option[ParallelMatchesGroupId]] =
+              if groupIds.nonEmpty then groupIds.map(Some.apply) else Set(None)
+
+            for
+              blocksUnderConstruction <- State.get[BlocksUnderConstruction]
+
+              blockGroupIds = blocksUnderConstruction.keySet
+
+              groupIdsFinishingConstruction = blockGroupIds diff liftedGroupIds
+
+              updatedBlocksUnderConstruction = liftedGroupIds.foldLeft(
+                blocksUnderConstruction -- groupIdsFinishingConstruction
+              )((partialBlocksUnderConstruction, groupId) =>
+                partialBlocksUnderConstruction.updatedWith(groupId) {
+                  case Some(existingBlockUnderConstruction) =>
+                    Some(existingBlockUnderConstruction :+ section)
+                  case None => Some(IndexedSeq(section))
+                }
+              )
+
+              _ <- State.set[BlocksUnderConstruction](
+                updatedBlocksUnderConstruction
+              )
+            yield partialResult ++ groupIdsFinishingConstruction.toSeq
+              .map(groupId => Block(groupId, blocksUnderConstruction(groupId)))
+              .sortBy(block =>
+                (
+                  block.startOffset,
+                  block.onePastEndOffset,
+                  block.parallelMatchesGroupId
+                )
+              )
+            end for
+          )
+
+        workflow.runA(SortedMap.empty).value
+      end blocksFrom
+
+      val baseBlocks  = blocksFrom(baseSections)
+      val leftBlocks  = blocksFrom(leftSections)
+      val rightBlocks = blocksFrom(rightSections)
+
+      given Eq[Block]    = Eq.by(_.parallelMatchesGroupId)
+      given Sized[Block] = _.size
+
+      val LongestCommonSubsequence(
+        baseBlockContributions,
+        leftBlockContributions,
+        rightBlockContributions,
+        _,
+        _,
+        _,
+        _
+      ) =
+        LongestCommonSubsequence.of(baseBlocks, leftBlocks, rightBlocks)
+
+      def contributionKindsByGroupId(
+          blockContributions: IndexedSeq[Contribution[Block]]
+      ): Map[ParallelMatchesGroupId, Contribution[Block]] =
+        blockContributions
+          .map(contribution =>
+            contribution.element.parallelMatchesGroupId -> contribution
+          )
+          .collect { case (Some(groupId), contribution) =>
+            groupId -> contribution
+          }
+          .toMap
+
+      val baseContributionKindsByGroupId = contributionKindsByGroupId(
+        baseBlockContributions
+      )
+
+      val leftContributionKindsByGroupId = contributionKindsByGroupId(
+        leftBlockContributions
+      )
+
+      val rightContributionKindsByGroupId = contributionKindsByGroupId(
+        rightBlockContributions
+      )
+
+      object contributionRanking extends Ordering[Contribution[Block]]:
+        override def compare(
+            x: Contribution[Block],
+            y: Contribution[Block]
+        ): Int =
+          (x, y) match
+            // A common contribution is the best.
+            case (Contribution.Common(_), Contribution.Common(_)) => 0
+            case (Contribution.Common(_), _)                      => 1
+            case (_, Contribution.Common(_))                      => -1
+
+            // A difference contribution is the worst.
+            case (Contribution.Difference(_), Contribution.Difference(_)) => 0
+            case (Contribution.Difference(_), _)                          => -1
+            case (_, Contribution.Difference(_))                          => 1
+
+            // What remains are the partially common contributions in comparison
+            // to each other: they are all just as good.
+            case _ => 0
+      end contributionRanking
+
+      def assignContributionUsing(
+          contributionKindsByGroupId: Map[ParallelMatchesGroupId, Contribution[
+            Block
+          ]]
+      )(section: Section[Element]): Contribution[Section[Element]] =
+        val groupIds = groupIdsOf(section)
+
+        val contributions = groupIds.toSeq
+          .flatMap(contributionKindsByGroupId.get)
+          .sorted(
+            contributionRanking.reverse
+          )
+
+        val bestRankedContribution =
+          contributions.headOption.getOrElse(Contribution.Difference(null))
+
+        val onePastTheBestRankedContributions = contributions.indexWhere(
+          0 < contributionRanking
+            .compare(_, bestRankedContribution)
+        )
+
+        val moreThanOneBestRankedContribution =
+          1 < onePastTheBestRankedContributions
+
+        if moreThanOneBestRankedContribution then
+          Contribution.Difference(section)
+        else
+          bestRankedContribution match
+            case Contribution.Difference(_) if groupIds.nonEmpty =>
+              // Filler section, and the ranking didn't pick up anything better
+              // than a difference.
+              Contribution.Difference(section)
+            case Contribution.Difference(_) =>
+              // Filler section, but there are no group IDs, so this is just
+              // a gap.
+              Contribution.Difference(section)
+            case _ =>
+              bestRankedContribution.constructLikeness(section)
+        end if
+
+      end assignContributionUsing
+
+      val baseSectionContributions = baseSections.map(
+        assignContributionUsing(baseContributionKindsByGroupId)
+      )
+
+      val leftSectionContributions = leftSections.map(
+        assignContributionUsing(leftContributionKindsByGroupId)
+      )
+
+      val rightSectionContributions = rightSections.map(
+        assignContributionUsing(rightContributionKindsByGroupId)
+      )
+
+      LongestCommonSubsequence.apply(
+        baseSectionContributions,
+        leftSectionContributions,
+        rightSectionContributions
+      )
+    end longestCommonSubsequenceOf
+
     def merge(using
         progressRecording: ProgressRecording
     ): (
@@ -69,8 +276,6 @@ object SectionedCodeExtension extends StrictLogging:
             .eqv(lhs.content, rhs.content)
         end eqv
       end given
-
-      given Sized[Section[Element]] = _.size
 
       extension [Item: Sized](multiSided: MultiSided[Item])
         private def size: Int =
@@ -269,14 +474,14 @@ object SectionedCodeExtension extends StrictLogging:
 
                 val firstPassMergeResult
                     : FirstPassMergeResult[Section[Element]] =
-                  mergeOf(mergeAlgebra =
+                  longestCommonSubsequenceOf(
+                    baseSections = baseSections,
+                    leftSections = IndexedSeq.empty,
+                    rightSections = rightSections
+                  ).mergeUsing(mergeAlgebra =
                     FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
                       FileDeletionContext.Left
                     )
-                  )(
-                    base = baseSections,
-                    left = IndexedSeq.empty,
-                    right = rightSections
                   )
 
                 partialMergeResult.aggregate(path, firstPassMergeResult)
@@ -289,14 +494,14 @@ object SectionedCodeExtension extends StrictLogging:
 
                 val firstPassMergeResult
                     : FirstPassMergeResult[Section[Element]] =
-                  mergeOf(mergeAlgebra =
+                  longestCommonSubsequenceOf(
+                    baseSections = baseSections,
+                    leftSections = leftSections,
+                    rightSections = IndexedSeq.empty
+                  ).mergeUsing(mergeAlgebra =
                     FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
                       FileDeletionContext.Right
                     )
-                  )(
-                    base = baseSections,
-                    left = leftSections,
-                    right = IndexedSeq.empty
                   )
 
                 partialMergeResult.aggregate(path, firstPassMergeResult)
@@ -314,14 +519,15 @@ object SectionedCodeExtension extends StrictLogging:
 
                 val firstPassMergeResult
                     : FirstPassMergeResult[Section[Element]] =
-                  mergeOf(mergeAlgebra =
+                  longestCommonSubsequenceOf(
+                    baseSections =
+                      optionalBaseSections.getOrElse(IndexedSeq.empty),
+                    leftSections = leftSections,
+                    rightSections = rightSections
+                  ).mergeUsing(mergeAlgebra =
                     FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
                       FileDeletionContext.None
                     )
-                  )(
-                    base = optionalBaseSections.getOrElse(IndexedSeq.empty),
-                    left = leftSections,
-                    right = rightSections
                   )
 
                 partialMergeResult.aggregate(path, firstPassMergeResult)

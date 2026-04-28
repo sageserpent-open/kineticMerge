@@ -56,16 +56,24 @@ trait MatchAnalysis[Path, Element]:
 
   def rightSections: Set[Section[Element]]
 
-  def sectionsAndTheirMatches: MatchedSections[Element]
+  def sectionsAndTheirMatches: MatchAnalysis.MatchedSections[Element]
 
-  def matches: Set[GenericMatch[Element]] =
+  def parallelMatchesGroupIdsByMatch
+      : MatchAnalysis.ParallelMatchesGroupIdsByMatch[Element]
+
+  def matches: Set[MatchAnalysis.GenericMatch[Element]] =
     sectionsAndTheirMatches.values.toSet
 end MatchAnalysis
 
 object MatchAnalysis extends StrictLogging:
-  type GenericMatch[Element]    = Match[Section[Element]]
+  type GenericMatch[Element] = Match[Section[Element]]
   type MatchedSections[Element] =
     MultiDict[Section[Element], GenericMatch[Element]]
+
+  type ParallelMatchesGroupId = Int
+
+  type ParallelMatchesGroupIdsByMatch[Element] =
+    MultiDict[GenericMatch[Element], ParallelMatchesGroupId]
 
   /** Analyse matches between the sources of {@code base}, {@code left} and
     * {@code right}.
@@ -186,16 +194,11 @@ object MatchAnalysis extends StrictLogging:
 
     type FingerprintedInclusions = Diet[Int]
 
-    type ParallelMatchesGroupId = Int
-
-    type ParallelMatchesGroupIdsByMatch =
-      MultiDict[GenericMatch[Element], ParallelMatchesGroupId]
-
     val tiebreakContentSamplingLimit = 5
 
     object MatchesAndTheirSections:
       type ParallelMatchesGroupIdTracking[X] =
-        State[ParallelMatchesGroupIdsByMatch, X]
+        State[ParallelMatchesGroupIdsByMatch[Element], X]
 
       lazy val empty: MatchesAndTheirSections = MatchesAndTheirSections(
         baseSectionsByPath = Map.empty,
@@ -734,7 +737,7 @@ object MatchAnalysis extends StrictLogging:
           .flatTraverse { case (pairwiseMatch, bites) =>
             for
               parallelMatchesGroupIdsByMatch <- State
-                .get[ParallelMatchesGroupIdsByMatch]
+                .get[ParallelMatchesGroupIdsByMatch[Element]]
 
               groupIdsBySortedBiteEdge = SortedMap.from(bites.flatMap {
                 case (allSides, biteStart, biteEnd) =>
@@ -925,10 +928,11 @@ object MatchAnalysis extends StrictLogging:
           fragment: PairwiseMatch,
           groupIds: Set[ParallelMatchesGroupId]
       ): ParallelMatchesGroupIdTracking[Unit] =
-        State.modify[ParallelMatchesGroupIdsByMatch] { groupIdsByMatch =>
-          groupIds.foldLeft(groupIdsByMatch)((partialResult, groupId) =>
-            partialResult.add(fragment, groupId)
-          )
+        State.modify[ParallelMatchesGroupIdsByMatch[Element]] {
+          groupIdsByMatch =>
+            groupIds.foldLeft(groupIdsByMatch)((partialResult, groupId) =>
+              partialResult.add(fragment, groupId)
+            )
         }
 
       private def propagateGroupIds(
@@ -993,7 +997,7 @@ object MatchAnalysis extends StrictLogging:
         baseFingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions],
         leftFingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions],
         rightFingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions],
-        parallelMatchesGroupIdsByMatch: ParallelMatchesGroupIdsByMatch
+        parallelMatchesGroupIdsByMatch: ParallelMatchesGroupIdsByMatch[Element]
     ) extends MatchAnalysis[Path, Element]:
       import MatchesAndTheirSections.*
 

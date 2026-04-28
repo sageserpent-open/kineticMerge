@@ -19,6 +19,9 @@ trait SectionedCode[Path, Element]:
       section: Section[Element]
   ): collection.Set[Match[Section[Element]]]
 
+  def parallelMatchesGroupIdsByMatch
+      : MatchAnalysis.ParallelMatchesGroupIdsByMatch[Element]
+
   def basePathFor(baseSection: Section[Element]): Path
   def leftPathFor(leftSection: Section[Element]): Path
   def rightPathFor(rightSection: Section[Element]): Path
@@ -71,6 +74,25 @@ object SectionedCode extends StrictLogging:
 
       val sectionsAndTheirMatches =
         matchesAndTheirSections.sectionsAndTheirMatches
+
+      val tinyMatches = tinyMatchesAndTheirSectionsOnly.matches
+
+      val parallelMatchesGroupIds =
+        if tinyMatches.isEmpty then
+          matchesAndTheirSections.parallelMatchesGroupIdsByMatch
+        else
+          val maximumPrimaryGroupId =
+            matchesAndTheirSections.parallelMatchesGroupIdsByMatch.sets.values
+              .flatMap(_.iterator)
+              .maxOption
+              .getOrElse(-1)
+
+          tinyMatches.zipWithIndex.foldLeft(
+            matchesAndTheirSections.parallelMatchesGroupIdsByMatch
+          ) { case (partialResult, (tinyMatch, index)) =>
+            partialResult.add(tinyMatch, 1 + maximumPrimaryGroupId + index)
+          }
+        end if
 
       // Use the sections covered by the tiny matches to break up gap fills on
       // all sides. This gives the downstream merge a chance to make last-minute
@@ -153,6 +175,10 @@ object SectionedCode extends StrictLogging:
             section: Section[Element]
         ): collection.Set[Match[Section[Element]]] =
           sectionsAndTheirMatches.get(section)
+
+        override def parallelMatchesGroupIdsByMatch
+            : MatchAnalysis.ParallelMatchesGroupIdsByMatch[Element] =
+          parallelMatchesGroupIds
 
         export baseSources.pathFor as basePathFor
         export leftSources.pathFor as leftPathFor
