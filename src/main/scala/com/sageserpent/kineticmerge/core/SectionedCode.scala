@@ -176,13 +176,11 @@ object SectionedCode extends StrictLogging:
         ): collection.Set[Match[Section[Element]]] =
           sectionsAndTheirMatches.get(section)
 
-        override def parallelMatchesGroupIdsByMatch
-            : MatchAnalysis.ParallelMatchesGroupIdsByMatch[Element] =
-          parallelMatchesGroupIdsByMatch
-
         export baseSources.pathFor as basePathFor
         export leftSources.pathFor as leftPathFor
-        export rightSources.pathFor as rightPathFor)
+        export rightSources.pathFor as rightPathFor
+        export matchesAndTheirSections.parallelMatchesGroupIdsByMatch)
+
     catch
       // NOTE: don't convert this to use of `Try` with a subsequent `.toEither`
       // conversion. We want most flavours of exception to propagate, as they
