@@ -1725,7 +1725,10 @@ object MatchAnalysis extends StrictLogging:
         val parallelMatchesGroupIdsByMatch =
           MultiDict.from(
             groupsOfBackTranslatedParallelMatches.zipWithIndex.flatMap(
-              (parallelMatches, groupId) => parallelMatches.map(_ -> groupId)
+              (parallelMatches, groupId) =>
+                parallelMatches
+                  .filter(backTranslatedMatches.contains)
+                  .map(_ -> groupId)
             )
           )
 
