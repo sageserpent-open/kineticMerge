@@ -139,7 +139,12 @@ object SectionedCodeExtension extends StrictLogging:
       val leftBlocks  = blocksFrom(leftSections)
       val rightBlocks = blocksFrom(rightSections)
 
-      given Eq[Block]    = Eq.by(_.parallelMatchesGroupId)  // TODO: what about if blocks from either side are filler blocks? Oops...
+      given Eq[Block] with
+        override def eqv(x: Block, y: Block): Boolean =
+          (x.parallelMatchesGroupId, y.parallelMatchesGroupId) match
+            case (Some(xGroupId), Some(yGroupId)) => Eq.eqv(xGroupId, yGroupId)
+            case _ => false // Not only are purely filler blocks unequal to those associated with groups, they are unequal to each other.
+      end given
       given Sized[Block] = _.size
 
       val LongestCommonSubsequence(
