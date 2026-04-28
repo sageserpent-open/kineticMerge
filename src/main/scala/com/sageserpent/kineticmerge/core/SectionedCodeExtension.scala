@@ -80,46 +80,57 @@ object SectionedCodeExtension extends StrictLogging:
           ]] // TODO: map to offset intervals instead.
         type BlocksUnderConstructionState[X] = State[BlocksUnderConstruction, X]
 
+        def buildBlocks(partialResult: IndexedSeq[Block], groupIdsFinishingConstruction: Set[Option[ParallelMatchesGroupId]], blocksUnderConstruction: BlocksUnderConstruction) = {
+          partialResult ++ groupIdsFinishingConstruction.toSeq
+            .map(groupId => Block(groupId, blocksUnderConstruction(groupId)))
+            .sortBy(block =>
+              (
+                block.startOffset,
+                block.onePastEndOffset,
+                block.parallelMatchesGroupId
+              )
+            )
+        }
+
         val workflow =
-          sections.foldM[BlocksUnderConstructionState, IndexedSeq[Block]](
-            IndexedSeq.empty
-          )((partialResult, section) =>
-            val groupIds = groupIdsOf(section)
-
-            val liftedGroupIds: collection.Set[Option[ParallelMatchesGroupId]] =
-              if groupIds.nonEmpty then groupIds.map(Some.apply) else Set(None)
-
-            for
-              blocksUnderConstruction <- State.get[BlocksUnderConstruction]
-
-              blockGroupIds = blocksUnderConstruction.keySet
-
-              groupIdsFinishingConstruction = blockGroupIds diff liftedGroupIds
-
-              updatedBlocksUnderConstruction = liftedGroupIds.foldLeft(
-                blocksUnderConstruction -- groupIdsFinishingConstruction
-              )((partialBlocksUnderConstruction, groupId) =>
-                partialBlocksUnderConstruction.updatedWith(groupId) {
-                  case Some(existingBlockUnderConstruction) =>
-                    Some(existingBlockUnderConstruction :+ section)
-                  case None => Some(IndexedSeq(section))
-                }
-              )
-
-              _ <- State.set[BlocksUnderConstruction](
-                updatedBlocksUnderConstruction
-              )
-            yield partialResult ++ groupIdsFinishingConstruction.toSeq
-              .map(groupId => Block(groupId, blocksUnderConstruction(groupId)))
-              .sortBy(block =>
-                (
-                  block.startOffset,
-                  block.onePastEndOffset,
-                  block.parallelMatchesGroupId
+          for resultForAlButFinalBlocks <-
+            sections.foldM[BlocksUnderConstructionState, IndexedSeq[Block]](
+              IndexedSeq.empty
+            )((partialResult, section) =>
+              val groupIds = groupIdsOf(section)
+  
+              val liftedGroupIds: collection.Set[Option[ParallelMatchesGroupId]] =
+                if groupIds.nonEmpty then groupIds.map(Some.apply) else Set(None)
+  
+              for
+                blocksUnderConstruction <- State.get[BlocksUnderConstruction]
+  
+                blockGroupIds = blocksUnderConstruction.keySet
+  
+                groupIdsFinishingConstruction = blockGroupIds diff liftedGroupIds
+  
+                updatedBlocksUnderConstruction = liftedGroupIds.foldLeft(
+                  blocksUnderConstruction -- groupIdsFinishingConstruction
+                )((partialBlocksUnderConstruction, groupId) =>
+                  partialBlocksUnderConstruction.updatedWith(groupId) {
+                    case Some(existingBlockUnderConstruction) =>
+                      Some(existingBlockUnderConstruction :+ section)
+                    case None => Some(IndexedSeq(section))
+                  }
                 )
-              )
-            end for
-          )
+  
+                _ <- State.set[BlocksUnderConstruction](
+                  updatedBlocksUnderConstruction
+                )
+              yield buildBlocks(partialResult, groupIdsFinishingConstruction, blocksUnderConstruction)
+              end for
+            )
+
+            blocksUnderConstruction <- State.get[BlocksUnderConstruction]
+
+            groupIdsFinishingConstruction = blocksUnderConstruction.keySet
+            
+          yield buildBlocks(resultForAlButFinalBlocks, groupIdsFinishingConstruction, blocksUnderConstruction)
 
         workflow.runA(SortedMap.empty).value
       end blocksFrom
@@ -128,7 +139,7 @@ object SectionedCodeExtension extends StrictLogging:
       val leftBlocks  = blocksFrom(leftSections)
       val rightBlocks = blocksFrom(rightSections)
 
-      given Eq[Block]    = Eq.by(_.parallelMatchesGroupId)
+      given Eq[Block]    = Eq.by(_.parallelMatchesGroupId)  // TODO: what about if blocks from either side are filler blocks? Oops...
       given Sized[Block] = _.size
 
       val LongestCommonSubsequence(
