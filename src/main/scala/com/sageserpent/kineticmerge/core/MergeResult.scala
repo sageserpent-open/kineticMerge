@@ -38,9 +38,10 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
 
   export segments.{isEmpty, nonEmpty, headOption, lastOption}
 
-  def isConflicted: Boolean = segments match
-    case Seq(Segment.Resolved(_)) => false
-    case _                        => true
+  def isConflicted: Boolean = segments.exists {
+    case Segment.Conflicted(_, _, _) => true
+    case _                           => false
+  }
 
   def fuseWith(another: MergeResult[Element])(
       elementFusion: (Element, Element) => Option[Element]
