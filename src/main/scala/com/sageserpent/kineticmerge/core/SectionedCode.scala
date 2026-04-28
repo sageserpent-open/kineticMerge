@@ -77,7 +77,7 @@ object SectionedCode extends StrictLogging:
 
       val tinyMatches = tinyMatchesAndTheirSectionsOnly.matches
 
-      val parallelMatchesGroupIdsByMatch =
+      val parallelMatchesGroupIds =
         if tinyMatches.isEmpty then
           matchesAndTheirSections.parallelMatchesGroupIdsByMatch
         else
@@ -176,11 +176,13 @@ object SectionedCode extends StrictLogging:
         ): collection.Set[Match[Section[Element]]] =
           sectionsAndTheirMatches.get(section)
 
+        override def parallelMatchesGroupIdsByMatch
+            : MatchAnalysis.ParallelMatchesGroupIdsByMatch[Element] =
+          parallelMatchesGroupIds
+
         export baseSources.pathFor as basePathFor
         export leftSources.pathFor as leftPathFor
-        export rightSources.pathFor as rightPathFor
-        export matchesAndTheirSections.parallelMatchesGroupIdsByMatch)
-
+        export rightSources.pathFor as rightPathFor)
     catch
       // NOTE: don't convert this to use of `Try` with a subsequent `.toEither`
       // conversion. We want most flavours of exception to propagate, as they
