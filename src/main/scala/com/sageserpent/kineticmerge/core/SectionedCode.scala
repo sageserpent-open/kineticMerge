@@ -66,6 +66,10 @@ object SectionedCode extends StrictLogging:
             suppressMatchesInvolvingOverlappingSections
           ) -> parallelMatchesOnly
           .tinyMatchesOnly()
+          // TODO: this precariously protects some downstream logic in
+          // `reconcileMatches` that assumes that all matches will have a
+          // parallel matches group id. Need to make this more robust.
+          .parallelMatchesOnly
           .reconcileMatches
           .purgedOfMatchesWithOverlappingSections(enabled = true)
       end val
