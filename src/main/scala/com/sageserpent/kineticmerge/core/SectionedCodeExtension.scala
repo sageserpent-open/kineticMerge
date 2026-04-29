@@ -93,7 +93,7 @@ object SectionedCodeExtension extends StrictLogging:
         }
 
         val workflow =
-          for resultForAlButFinalBlocks <-
+          for resultForAllButFinalBlocks <-
             sections.foldM[BlocksUnderConstructionState, IndexedSeq[Block]](
               IndexedSeq.empty
             )((partialResult, section) =>
@@ -130,7 +130,7 @@ object SectionedCodeExtension extends StrictLogging:
 
             groupIdsFinishingConstruction = blocksUnderConstruction.keySet
             
-          yield buildBlocks(resultForAlButFinalBlocks, groupIdsFinishingConstruction, blocksUnderConstruction)
+          yield buildBlocks(resultForAllButFinalBlocks, groupIdsFinishingConstruction, blocksUnderConstruction)
 
         workflow.runA(SortedMap.empty).value
       end blocksFrom
