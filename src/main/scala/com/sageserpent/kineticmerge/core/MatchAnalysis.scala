@@ -733,8 +733,6 @@ object MatchAnalysis extends StrictLogging:
         pairwiseMatchesToBeEaten.sets.toSeq
           .flatTraverse { case (pairwiseMatch, bites) =>
             for
-              groupIdOfFragmentedPairwiseMatch <- groupIdOf(pairwiseMatch)
-
               parallelMatchesGroupIdsByMatch <- State
                 .get[ParallelMatchesGroupIdsByMatch]
 
@@ -746,19 +744,11 @@ object MatchAnalysis extends StrictLogging:
 
               sortedBiteEdges = groupIdsBySortedBiteEdge.keySet
 
-              fragmentsAndGroupIds =
+              fragmentsFromPairwiseMatch <-
                 sortedBiteEdges.eatIntoPairwiseMatch(
                   pairwiseMatch,
-                  groupIdOfFragmentedPairwiseMatch,
                   groupIdsBySortedBiteEdge
                 )
-
-              fragmentsFromPairwiseMatch = fragmentsAndGroupIds.map(_._1)
-              groupIdsForFragments       = fragmentsAndGroupIds.map(_._2)
-
-              _ <- fragmentsFromPairwiseMatch
-                .zip(groupIdsForFragments)
-                .traverse_(assignGroupIds)
             yield
               logger.debug(
                 s"Eating into pairwise match:\n${pprintCustomised(pairwiseMatch)} on behalf of all-sides matches:\n${pprintCustomised(bites)}, resulting in fragments:\n${pprintCustomised(fragmentsFromPairwiseMatch)}"
@@ -774,9 +764,10 @@ object MatchAnalysis extends StrictLogging:
       extension (biteEdges: SortedSet[BiteEdge])
         private def eatIntoPairwiseMatch(
             pairwiseMatch: PairwiseMatch,
-            groupIdOfPairwiseMatch: ParallelMatchesGroupId,
             groupIdsBySortedBiteEdge: Map[BiteEdge, ParallelMatchesGroupId]
-        ): Vector[(PairwiseMatch, ParallelMatchesGroupId)] =
+        ): ParallelMatchesGroupIdTracking[
+          Vector[PairwiseMatch]
+        ] =
           // NOTE: here we work with zero-relative offsets from the start of the
           // meal, thus we can work directly with the offsets from the bite
           // edges.
@@ -821,24 +812,26 @@ object MatchAnalysis extends StrictLogging:
           val sectionSize = firstSection.size
           assume(sectionSize == secondSection.size)
 
-          case class State(
+          case class RecursionState(
               groupIdFromPreviousBite: Option[ParallelMatchesGroupId],
               mealStartOffsetRelativeToMeal: Int,
-              biteDepth: Int
+              biteDepth: Int,
+              remainingBiteEdges: Seq[BiteEdge],
+              fragments: Vector[PairwiseMatch]
           ):
-            @tailrec
-            final def apply(
-                remainingBiteEdges: Seq[BiteEdge],
-                fragments: Vector[
-                  (PairwiseMatch, ParallelMatchesGroupId)
-                ]
-            ): Vector[(PairwiseMatch, ParallelMatchesGroupId)] =
+            final def biteEdgeStep: ParallelMatchesGroupIdTracking[
+              Either[RecursionState, Vector[PairwiseMatch]]
+            ] =
               remainingBiteEdges match
                 case Seq() =>
                   if sectionSize > mealStartOffsetRelativeToMeal then
                     val size = sectionSize - mealStartOffsetRelativeToMeal
-                    fragments.appended(
-                      factory(
+
+                    for
+                      assignedGroupId <- groupIdFromPreviousBite
+                        .fold(ifEmpty = freshGroupId)(State.pure)
+
+                      fragment = factory(
                         firstSide.section(firstPath)(
                           firstSection.startOffset + mealStartOffsetRelativeToMeal,
                           size
@@ -847,11 +840,12 @@ object MatchAnalysis extends StrictLogging:
                           secondSection.startOffset + mealStartOffsetRelativeToMeal,
                           size
                         )
-                      ) -> groupIdFromPreviousBite.getOrElse(
-                        groupIdOfPairwiseMatch
                       )
-                    )
-                  else fragments
+
+                      _ <- assignGroupId(fragment, assignedGroupId)
+                    yield Right(fragments.appended(fragment))
+                    end for
+                  else State.pure(Right(fragments))
 
                 case Seq(
                       biteEdge @ BiteEdge.Start(startOffsetRelativeToMeal),
@@ -862,40 +856,43 @@ object MatchAnalysis extends StrictLogging:
                   )
                   require(sectionSize > startOffsetRelativeToMeal)
 
-                  val updatedFragments =
-                    if 0 == biteDepth && startOffsetRelativeToMeal > mealStartOffsetRelativeToMeal
-                    then
-                      val size =
-                        startOffsetRelativeToMeal - mealStartOffsetRelativeToMeal
-                      val chosenGroupIdForFragment = (
-                        groupIdFromPreviousBite,
-                        groupIdsBySortedBiteEdge.get(biteEdge)
-                      ) match
-                        case (
-                              Some(groupIdFromPrecedingBite),
-                              Some(groupIdFromSucceedingBite)
-                            ) =>
-                          if groupIdFromPrecedingBite != groupIdFromSucceedingBite
-                          then
-                            // If the preceding and succeeding bite belong to
-                            // different groups, we regard the fragment as
-                            // 'staying put' and assign it the group id of the
-                            // pairwise match being eaten into.
-                            groupIdOfPairwiseMatch
-                          else groupIdFromSucceedingBite
+                  for updatedFragments <-
+                      if 0 == biteDepth && startOffsetRelativeToMeal > mealStartOffsetRelativeToMeal
+                      then
+                        val size =
+                          startOffsetRelativeToMeal - mealStartOffsetRelativeToMeal
+                        val assignedGroupId = (
+                          groupIdFromPreviousBite,
+                          groupIdsBySortedBiteEdge.get(biteEdge)
+                        ) match
+                          case (
+                                Some(groupIdFromPrecedingBite),
+                                Some(groupIdFromSucceedingBite)
+                              ) =>
+                            if groupIdFromPrecedingBite != groupIdFromSucceedingBite
+                            then
+                              // If the preceding and succeeding bite belong to
+                              // different groups, we regard the fragment as
+                              // 'staying put' and assign it a fresh group id.
+                              // We don't reuse the group id of the original
+                              // pairwise match being bitten into because that
+                              // might result in multiple fragments sharing the
+                              // saem group id but with intervening bites
+                              // belonging to other groups.
+                              freshGroupId
+                            else State.pure(groupIdFromSucceedingBite)
 
-                        case (Some(groupIdFromPrecedingBite), None) =>
-                          groupIdFromPrecedingBite
+                          case (Some(groupIdFromPrecedingBite), None) =>
+                            State.pure(groupIdFromPrecedingBite)
 
-                        case (None, Some(groupIdFromSucceedingBite)) =>
-                          groupIdFromSucceedingBite
+                          case (None, Some(groupIdFromSucceedingBite)) =>
+                            State.pure(groupIdFromSucceedingBite)
 
-                        case (None, None) =>
-                          // TODO: can this case ever occur?
-                          groupIdOfPairwiseMatch
+                          case (None, None) =>
+                            // TODO: can this case ever occur?
+                            freshGroupId
 
-                      fragments.appended(
-                        factory(
+                        val fragment = factory(
                           firstSide.section(firstPath)(
                             firstSection.startOffset + mealStartOffsetRelativeToMeal,
                             size
@@ -904,17 +901,23 @@ object MatchAnalysis extends StrictLogging:
                             secondSection.startOffset + mealStartOffsetRelativeToMeal,
                             size
                           )
-                        ) -> chosenGroupIdForFragment
-                      )
-                    else fragments
+                        )
 
-                  this
-                    .copy(
-                      groupIdFromPreviousBite = None,
-                      mealStartOffsetRelativeToMeal = startOffsetRelativeToMeal,
-                      biteDepth = 1 + biteDepth
-                    )
-                    .apply(tail, updatedFragments)
+                        assignedGroupId
+                          .flatMap(assignGroupId(fragment, _))
+                          .as(fragments.appended(fragment))
+                      else State.pure(fragments)
+                  yield Left(
+                    this
+                      .copy(
+                        groupIdFromPreviousBite = None,
+                        mealStartOffsetRelativeToMeal =
+                          startOffsetRelativeToMeal,
+                        biteDepth = 1 + biteDepth,
+                        remainingBiteEdges = tail,
+                        fragments = updatedFragments
+                      )
+                  )
 
                 case Seq(
                       biteEdge @ BiteEdge.End(onePastEndOffsetRelativeToMeal),
@@ -927,43 +930,53 @@ object MatchAnalysis extends StrictLogging:
                   )
                   require(onePastEndOffsetRelativeToMeal <= sectionSize)
 
-                  this
-                    .copy(
-                      // NOTE: nested or overlapping bites to the right
-                      // overwrite any prior contribution of group ids to the
-                      // *succeeding* context.
-                      groupIdFromPreviousBite =
-                        groupIdsBySortedBiteEdge.get(biteEdge),
-                      mealStartOffsetRelativeToMeal =
-                        onePastEndOffsetRelativeToMeal,
-                      biteDepth = biteDepth - 1
+                  State.pure(
+                    Left(
+                      this
+                        .copy(
+                          // NOTE: nested or overlapping bites to the right
+                          // overwrite any prior contribution of a group id to
+                          // the *succeeding* context.
+                          groupIdFromPreviousBite =
+                            groupIdsBySortedBiteEdge.get(biteEdge),
+                          mealStartOffsetRelativeToMeal =
+                            onePastEndOffsetRelativeToMeal,
+                          biteDepth = biteDepth - 1,
+                          remainingBiteEdges = tail,
+                          fragments = fragments
+                        )
                     )
-                    .apply(tail, fragments)
+                  )
               end match
-            end apply
-          end State
+            end biteEdgeStep
+          end RecursionState
 
-          State(
-            groupIdFromPreviousBite = None,
-            mealStartOffsetRelativeToMeal = 0,
-            biteDepth = 0
-          )(biteEdges.toSeq, fragments = Vector.empty)
+          FlatMap[ParallelMatchesGroupIdTracking].tailRecM(
+            RecursionState(
+              groupIdFromPreviousBite = None,
+              mealStartOffsetRelativeToMeal = 0,
+              biteDepth = 0,
+              remainingBiteEdges = biteEdges.toSeq,
+              fragments = Vector.empty
+            )
+          )(_.biteEdgeStep)
         end eatIntoPairwiseMatch
 
       end extension
 
-      private def groupIdOf(
-          pairwiseMatch: PairwiseMatch
-      ): ParallelMatchesGroupIdTracking[ParallelMatchesGroupId] =
-        State.inspect[ParallelMatchesGroupIdsByMatch, ParallelMatchesGroupId](
-          groupIdsByMatch => groupIdsByMatch(pairwiseMatch)
-        )
-
-      private def assignGroupIds(
+      private def assignGroupId(
           fragment: PairwiseMatch,
           groupId: ParallelMatchesGroupId
       ): ParallelMatchesGroupIdTracking[Unit] =
         State.modify[ParallelMatchesGroupIdsByMatch](_ + (fragment -> groupId))
+
+      private def freshGroupId
+          : ParallelMatchesGroupIdTracking[ParallelMatchesGroupId] =
+        // TODO: trawling linearly through the group ids to find the maximum
+        // isn't a great idea. Perhaps there should be a maximum group id too?
+        State.inspect[ParallelMatchesGroupIdsByMatch, ParallelMatchesGroupId](
+          _.values.maxOption.fold(ifEmpty = 0)(1 + _)
+        )
 
       private def propagateGroupIds(
           original: GenericMatch[Element],
