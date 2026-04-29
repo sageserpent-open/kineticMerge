@@ -132,7 +132,14 @@ object SectionedCodeExtension extends StrictLogging:
             
           yield buildBlocks(resultForAllButFinalBlocks, groupIdsFinishingConstruction, blocksUnderConstruction)
 
-        workflow.runA(SortedMap.empty).value
+        val result = workflow.runA(SortedMap.empty).value
+        
+        result.collect{case block @ Block(Some(groupId), _) => groupId -> block}.groupBy(_._1).foreach{
+          case (groupId, potentialDuplicates) =>
+            require(1 == potentialDuplicates.size, s"Group id: $groupId occurs in multiple blocks: ${potentialDuplicates.map(_._2)}")
+        }
+        
+        result
       end blocksFrom
 
       val baseBlocks  = blocksFrom(baseSections)
