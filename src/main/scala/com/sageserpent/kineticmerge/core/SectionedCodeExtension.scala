@@ -74,15 +74,18 @@ object SectionedCodeExtension extends StrictLogging:
         import cats.data.State
         import cats.syntax.foldable.toFoldableOps
 
-        type BlocksUnderConstruction =
-          Map[Option[ParallelMatchesGroupId], IndexedSeq[
-            Section[Element]
-          ]] // TODO: map to offset intervals instead.
+        case class BlocksUnderConstruction(
+            pendingBlocks: Map[Option[ParallelMatchesGroupId], IndexedSeq[Section[Element]]], // TODO: map to offset intervals instead.
+            groupIdsOfCompletedBlocks: Set[ParallelMatchesGroupId]
+        )
+
         type BlocksUnderConstructionState[X] = State[BlocksUnderConstruction, X]
 
-        def buildBlocks(partialResult: IndexedSeq[Block], groupIdsFinishingConstruction: Set[Option[ParallelMatchesGroupId]], blocksUnderConstruction: BlocksUnderConstruction) = {
+        def buildBlocks(partialResult: IndexedSeq[Block],
+                        groupIdsFinishingConstruction: Set[Option[ParallelMatchesGroupId]],
+                        pendingBlocks: Map[Option[ParallelMatchesGroupId], IndexedSeq[Section[Element]]]) = {
           partialResult ++ groupIdsFinishingConstruction.toSeq
-            .map(groupId => Block(groupId, blocksUnderConstruction(groupId)))
+            .map(groupId => Block(groupId, pendingBlocks(groupId)))
             .sortBy(block =>
               (
                 block.startOffset,
@@ -93,7 +96,7 @@ object SectionedCodeExtension extends StrictLogging:
         }
 
         val workflow =
-          for resultForAlButFinalBlocks <-
+          for resultForAllButFinalBlocks <-
             sections.foldM[BlocksUnderConstructionState, IndexedSeq[Block]](
               IndexedSeq.empty
             )((partialResult, section) =>
@@ -103,14 +106,18 @@ object SectionedCodeExtension extends StrictLogging:
                 if groupIds.nonEmpty then groupIds.map(Some.apply) else Set(None)
   
               for
-                blocksUnderConstruction <- State.get[BlocksUnderConstruction]
-  
-                blockGroupIds = blocksUnderConstruction.keySet
-  
+                BlocksUnderConstruction(pendingBlocks, groupIdsOfCompletedBlocks) <- State.get[BlocksUnderConstruction]
+                
+                _ = groupIds.foreach{ groupId =>
+                  require(!groupIdsOfCompletedBlocks.contains(groupId), s"Encountered group id: $groupId of a previously completed block again.")
+                }
+
+                blockGroupIds = pendingBlocks.keySet
+
                 groupIdsFinishingConstruction = blockGroupIds diff liftedGroupIds
-  
-                updatedBlocksUnderConstruction = liftedGroupIds.foldLeft(
-                  blocksUnderConstruction -- groupIdsFinishingConstruction
+
+                updatedPendingBlocks = liftedGroupIds.foldLeft(
+                  pendingBlocks -- groupIdsFinishingConstruction
                 )((partialBlocksUnderConstruction, groupId) =>
                   partialBlocksUnderConstruction.updatedWith(groupId) {
                     case Some(existingBlockUnderConstruction) =>
@@ -118,21 +125,21 @@ object SectionedCodeExtension extends StrictLogging:
                     case None => Some(IndexedSeq(section))
                   }
                 )
-  
+
                 _ <- State.set[BlocksUnderConstruction](
-                  updatedBlocksUnderConstruction
+                  BlocksUnderConstruction(updatedPendingBlocks, groupIdsOfCompletedBlocks union groupIdsFinishingConstruction.collect{case Some(groupId) => groupId})
                 )
-              yield buildBlocks(partialResult, groupIdsFinishingConstruction, blocksUnderConstruction)
+              yield buildBlocks(partialResult, groupIdsFinishingConstruction, pendingBlocks)
               end for
             )
 
-            blocksUnderConstruction <- State.get[BlocksUnderConstruction]
+            BlocksUnderConstruction(pendingBlocks, groupIdsOfCompletedBlocks) <- State.get[BlocksUnderConstruction]
 
-            groupIdsFinishingConstruction = blocksUnderConstruction.keySet
+            groupIdsFinishingConstruction = pendingBlocks.keySet
             
-          yield buildBlocks(resultForAlButFinalBlocks, groupIdsFinishingConstruction, blocksUnderConstruction)
+          yield buildBlocks(resultForAllButFinalBlocks, groupIdsFinishingConstruction, pendingBlocks)
 
-        workflow.runA(SortedMap.empty).value
+        workflow.runA(BlocksUnderConstruction(pendingBlocks = SortedMap.empty, groupIdsOfCompletedBlocks = Set.empty)).value
       end blocksFrom
 
       val baseBlocks  = blocksFrom(baseSections)
