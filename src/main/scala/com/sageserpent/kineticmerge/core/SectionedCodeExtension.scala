@@ -29,7 +29,7 @@ import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
 
 import scala.annotation.tailrec
-import scala.collection.immutable.{MultiDict, SortedMap}
+import scala.collection.immutable.MultiDict
 import scala.collection.{IndexedSeqView, Searching}
 import scala.math.Ordering.Implicits.seqOrdering
 
@@ -54,10 +54,14 @@ object SectionedCodeExtension extends StrictLogging:
         .flatMap(sectionedCode.parallelMatchesGroupIdsByMatch.get)
 
       case class Block(
-          parallelMatchesGroupId: Option[ParallelMatchesGroupId],
+          parallelMatchesGroupId: ParallelMatchesGroupId,
           sectionsCoveredByGroup: IndexedSeq[Section[Element]]
       ):
         require(sectionsCoveredByGroup.nonEmpty)
+        sectionsCoveredByGroup.zip(sectionsCoveredByGroup.tail).foreach {
+          case (predecessor, successor) =>
+            require(predecessor.onePastEndOffset == successor.startOffset)
+        }
 
         // TODO: do we actually need the sections at all if we've got these? Why
         // not just store an offset interval?
@@ -75,15 +79,22 @@ object SectionedCodeExtension extends StrictLogging:
         import cats.syntax.foldable.toFoldableOps
 
         case class BlocksUnderConstruction(
-            pendingBlocks: Map[Option[ParallelMatchesGroupId], IndexedSeq[Section[Element]]], // TODO: map to offset intervals instead.
+            pendingBlocks: Map[ParallelMatchesGroupId, IndexedSeq[
+              Section[Element]
+            ]], // TODO: map to offset intervals instead.
+            deferredFillerSections: IndexedSeq[Section[Element]],
             groupIdsOfCompletedBlocks: Set[ParallelMatchesGroupId]
         )
 
         type BlocksUnderConstructionState[X] = State[BlocksUnderConstruction, X]
 
-        def buildBlocks(partialResult: IndexedSeq[Block],
-                        groupIdsFinishingConstruction: Set[Option[ParallelMatchesGroupId]],
-                        pendingBlocks: Map[Option[ParallelMatchesGroupId], IndexedSeq[Section[Element]]]) = {
+        def buildBlocks(
+            partialResult: IndexedSeq[Block],
+            groupIdsFinishingConstruction: Set[ParallelMatchesGroupId],
+            pendingBlocks: Map[ParallelMatchesGroupId, IndexedSeq[
+              Section[Element]
+            ]]
+        ) =
           partialResult ++ groupIdsFinishingConstruction.toSeq
             .map(groupId => Block(groupId, pendingBlocks(groupId)))
             .sortBy(block =>
@@ -93,57 +104,112 @@ object SectionedCodeExtension extends StrictLogging:
                 block.parallelMatchesGroupId
               )
             )
-        }
 
         val workflow =
-          for resultForAllButFinalBlocks <-
-            sections.foldM[BlocksUnderConstructionState, IndexedSeq[Block]](
-              IndexedSeq.empty
-            )((partialResult, section) =>
-              val groupIds = groupIdsOf(section)
-  
-              val liftedGroupIds: collection.Set[Option[ParallelMatchesGroupId]] =
-                if groupIds.nonEmpty then groupIds.map(Some.apply) else Set(None)
-  
-              for
-                BlocksUnderConstruction(pendingBlocks, groupIdsOfCompletedBlocks) <- State.get[BlocksUnderConstruction]
+          for
+            resultForAllButFinalBlocks <-
+              sections.foldM[BlocksUnderConstructionState, IndexedSeq[Block]](
+                IndexedSeq.empty
+              )((partialResult, section) =>
+                val groupIdsRelevantToSection = groupIdsOf(section)
 
-                _ = groupIds.foreach{ groupId =>
-                  require(!groupIdsOfCompletedBlocks.contains(groupId), s"Encountered group id: $groupId of a previously completed block again.")
-                }
+                for
+                  BlocksUnderConstruction(
+                    pendingBlocks,
+                    deferredFillerSections,
+                    groupIdsOfCompletedBlocks
+                  ) <- State.get[BlocksUnderConstruction]
 
-                blockGroupIds = pendingBlocks.keySet
-
-                groupIdsFinishingConstruction = blockGroupIds diff liftedGroupIds
-
-                updatedPendingBlocks = liftedGroupIds.foldLeft(
-                  pendingBlocks -- groupIdsFinishingConstruction
-                )((partialBlocksUnderConstruction, groupId) =>
-                  partialBlocksUnderConstruction.updatedWith(groupId) {
-                    case Some(existingBlockUnderConstruction) =>
-                      Some(existingBlockUnderConstruction :+ section)
-                    case None => Some(IndexedSeq(section))
+                  _ = groupIdsRelevantToSection.foreach { groupId =>
+                    require(
+                      !groupIdsOfCompletedBlocks.contains(groupId),
+                      s"Encountered group id: $groupId of a previously completed block again."
+                    )
                   }
-                )
 
-                _ <- State.set[BlocksUnderConstruction](
-                  BlocksUnderConstruction(updatedPendingBlocks, groupIdsOfCompletedBlocks union groupIdsFinishingConstruction.collect{case Some(groupId) => groupId})
-                )
-              yield buildBlocks(partialResult, groupIdsFinishingConstruction, pendingBlocks)
-              end for
-            )
+                  blockGroupIds = pendingBlocks.keySet
 
-            BlocksUnderConstruction(pendingBlocks, groupIdsOfCompletedBlocks) <- State.get[BlocksUnderConstruction]
+                  groupIdsFinishingConstruction =
+                    if groupIdsRelevantToSection.nonEmpty
+                    then blockGroupIds diff groupIdsRelevantToSection
+                    else
+                      // If the section is filler, then it may lie inside a
+                      // block that is yet to be finalised: so we can't claim
+                      // that any of the pending blocks are ready for
+                      // construction.
+                      Set.empty
+
+                  updatedPendingBlocks = groupIdsRelevantToSection.foldLeft(
+                    pendingBlocks -- groupIdsFinishingConstruction
+                  )((partialBlocksUnderConstruction, groupId) =>
+                    partialBlocksUnderConstruction.updatedWith(groupId) {
+                      case Some(existingBlockUnderConstruction) =>
+                        // A pending block that is being extended with a section
+                        // that is relevant to the block's group should claim
+                        // the deferred filler sections, because we know that
+                        // there was some other section beforehand that was also
+                        // relevant to the group; so the filler sections will be
+                        // bracketed inside the block.
+                        Some(
+                          existingBlockUnderConstruction ++ deferredFillerSections :+ section
+                        )
+                      case None =>
+                        // Starting a new pending block means that any deferred
+                        // filler sections are irrelevant, because they can't be
+                        // bracketed by sections in the new block.
+                        Some(IndexedSeq(section))
+                    }
+                  )
+
+                  updatedDeferredFillerSections =
+                    if groupIdsRelevantToSection.isEmpty
+                    then deferredFillerSections :+ section
+                    else IndexedSeq.empty
+
+                  _ <- State.set[BlocksUnderConstruction](
+                    BlocksUnderConstruction(
+                      updatedPendingBlocks,
+                      updatedDeferredFillerSections,
+                      groupIdsOfCompletedBlocks union groupIdsFinishingConstruction
+                    )
+                  )
+                yield buildBlocks(
+                  partialResult,
+                  groupIdsFinishingConstruction,
+                  pendingBlocks
+                )
+                end for
+              )
+
+            BlocksUnderConstruction(
+              pendingBlocks,
+              _,
+              groupIdsOfCompletedBlocks
+            ) <- State.get[BlocksUnderConstruction]
 
             groupIdsFinishingConstruction = pendingBlocks.keySet
-            
-          yield buildBlocks(resultForAllButFinalBlocks, groupIdsFinishingConstruction, pendingBlocks)
+          yield buildBlocks(
+            resultForAllButFinalBlocks,
+            groupIdsFinishingConstruction,
+            pendingBlocks
+          )
 
-        val result = workflow.runA(BlocksUnderConstruction(pendingBlocks = SortedMap.empty, groupIdsOfCompletedBlocks = Set.empty)).value
+        val result = workflow
+          .runA(
+            BlocksUnderConstruction(
+              pendingBlocks = Map.empty,
+              deferredFillerSections = IndexedSeq.empty,
+              groupIdsOfCompletedBlocks = Set.empty
+            )
+          )
+          .value
 
-        result.collect{case block @ Block(Some(groupId), _) => groupId -> block}.groupBy(_._1).foreach{
+        result.groupBy(_.parallelMatchesGroupId).foreach {
           case (groupId, potentialDuplicates) =>
-            require(1 == potentialDuplicates.size, s"Group id: $groupId occurs in multiple blocks: ${potentialDuplicates.map(_._2)}")
+            require(
+              1 == potentialDuplicates.size,
+              s"Group id: $groupId occurs in multiple blocks: $potentialDuplicates"
+            )
         }
 
         result
@@ -153,12 +219,7 @@ object SectionedCodeExtension extends StrictLogging:
       val leftBlocks  = blocksFrom(leftSections)
       val rightBlocks = blocksFrom(rightSections)
 
-      given Eq[Block] with
-        override def eqv(x: Block, y: Block): Boolean =
-          (x.parallelMatchesGroupId, y.parallelMatchesGroupId) match
-            case (Some(xGroupId), Some(yGroupId)) => Eq.eqv(xGroupId, yGroupId)
-            case _ => false // Not only are purely filler blocks unequal to those associated with groups, they are unequal to each other.
-      end given
+      given Eq[Block]    = Eq.by(_.parallelMatchesGroupId)
       given Sized[Block] = _.size
 
       val LongestCommonSubsequence(
@@ -179,9 +240,6 @@ object SectionedCodeExtension extends StrictLogging:
           .map(contribution =>
             contribution.element.parallelMatchesGroupId -> contribution
           )
-          .collect { case (Some(groupId), contribution) =>
-            groupId -> contribution
-          }
           .toMap
 
       val baseContributionKindsByGroupId = contributionKindsByGroupId(
