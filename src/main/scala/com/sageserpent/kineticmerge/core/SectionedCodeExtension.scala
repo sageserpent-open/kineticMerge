@@ -292,7 +292,7 @@ object SectionedCodeExtension extends StrictLogging:
           contributions.headOption.getOrElse(Contribution.Difference(null))
 
         val onePastTheBestRankedContributions = contributions.indexWhere(
-          0 < contributionRanking
+          0 > contributionRanking
             .compare(_, bestRankedContribution)
         )
 
