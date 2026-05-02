@@ -1383,15 +1383,17 @@ object MatchAnalysis extends StrictLogging:
                         updatedParallelMatchesGroupIdsByMatch
                           .filter((key, _) => matches.contains(key))
 
-                      val groupIdsWithPossibleGaps: Map[
+                      val compactGroupIdsKeyedByGroupsIdsWithPossibleGaps: Map[
                         ParallelMatchesGroupId,
                         ParallelMatchesGroupId
                       ] =
-                        parallelMatchesGroupIdsByMatch.values.zipWithIndex.toMap
+                        parallelMatchesGroupIdsByMatch.values.toSeq.distinct.zipWithIndex.toMap
 
                       val parallelMatchesWithReorganisedGroupIdsByMatch =
                         parallelMatchesGroupIdsByMatch.map((aMatch, groupId) =>
-                          aMatch -> groupIdsWithPossibleGaps(groupId)
+                          aMatch -> compactGroupIdsKeyedByGroupsIdsWithPossibleGaps(
+                            groupId
+                          )
                         )
 
                       Right(
@@ -1446,7 +1448,7 @@ object MatchAnalysis extends StrictLogging:
 
           SortedMap.from(
             result.parallelMatchesGroupIdsByMatch.groupBy(_._2).map {
-              (groupId, group) => groupId -> SortedSet.from(group.map(_._1))
+              (groupId, group) => groupId -> SortedSet.from(group.keys)
             }
           )
         end groupsOfParallelMatches
