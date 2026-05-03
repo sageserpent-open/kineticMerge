@@ -11,6 +11,7 @@ import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
 }
 import monocle.syntax.all.*
 
+import scala.annotation.tailrec
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.util.Using
@@ -159,52 +160,281 @@ object LongestCommonSubsequence:
     // TODO: add contract checking - we expect the subsequences of fully or
     // partially common contributions to align on each pair of sides.
 
-    val sizeOf = summon[Sized[Element]].sizeOf
+    // PLAN: go through the three sequences, looking for a side or sides that
+    // have either a partially or fully common contribution (if more than one,
+    // they should agree on the contribution kind and elements). Advance through
+    // the other side or sides until the contributions are synchronised across
+    // the relevant sides (this should take place and should not involve
+    // skipping through other contributions). Use the helper methods on
+    // `LongestCommonSubsequence` to build up the sizes.
 
-    def commonSubsequenceSize(
-        contributions: IndexedSeq[Contribution[Element]]
-    ): CommonSubsequenceSize =
-      contributions.foldLeft(CommonSubsequenceSize.zero) {
-        case (partialSize, Contribution.Common(element)) =>
-          partialSize.addCostOfASingleContribution(sizeOf(element))
-        case (partialSize, _) => partialSize
-      }
+    val equality = summon[Eq[Element]]
+    val sized    = summon[Sized[Element]]
 
-    def commonToLeftAndRightOnlySize(
-        contributions: IndexedSeq[Contribution[Element]]
-    ): CommonSubsequenceSize =
-      contributions.foldLeft(CommonSubsequenceSize.zero) {
-        case (partialSize, Contribution.CommonToLeftAndRightOnly(element)) =>
-          partialSize.addCostOfASingleContribution(sizeOf(element))
-        case (partialSize, _) => partialSize
-      }
+    @tailrec
+    def synchronise(
+        base: Seq[Contribution[Element]],
+        left: Seq[Contribution[Element]],
+        right: Seq[Contribution[Element]],
+        partialResult: LongestCommonSubsequence[Element]
+    ): LongestCommonSubsequence[Element] =
+      def failure: Nothing =
+        throw new IllegalArgumentException(
+          s"""Failed to synchronise the three inputs while assembling the longest common subsequence.
+             |Base head:
+             |${pprintCustomised(base.headOption)}
+             |Left head:
+             |${pprintCustomised(left.headOption)}
+             |Right head:
+             |${pprintCustomised(right.headOption)}
+             |""".stripMargin
+        )
 
-    def commonToBaseAndLeftOnlySize(
-        contributions: IndexedSeq[Contribution[Element]]
-    ): CommonSubsequenceSize =
-      contributions.foldLeft(CommonSubsequenceSize.zero) {
-        case (partialSize, Contribution.CommonToBaseAndLeftOnly(element)) =>
-          partialSize.addCostOfASingleContribution(sizeOf(element))
-        case (partialSize, _) => partialSize
-      }
+      (base, left, right) match
+        case (Seq(), Seq(), Seq()) => partialResult
+        case (_, Seq(), Seq())     =>
+          base.foldLeft(partialResult) {
+            case (result, Contribution.Difference(baseElement)) =>
+              result.addBaseDifference(baseElement)
+            case _ => failure
+          }
 
-    def commonToBaseAndRightOnlySize(
-        contributions: IndexedSeq[Contribution[Element]]
-    ): CommonSubsequenceSize =
-      contributions.foldLeft(CommonSubsequenceSize.zero) {
-        case (partialSize, Contribution.CommonToBaseAndRightOnly(element)) =>
-          partialSize.addCostOfASingleContribution(sizeOf(element))
-        case (partialSize, _) => partialSize
-      }
+        case (Seq(), _, Seq()) =>
+          left.foldLeft(partialResult) {
+            case (result, Contribution.Difference(leftElement)) =>
+              result.addLeftDifference(leftElement)
+            case _ => failure
+          }
 
-    new LongestCommonSubsequence(
-      base = base,
-      left = left,
-      right = right,
-      commonSubsequenceSize = commonSubsequenceSize(base),
-      commonToLeftAndRightOnlySize = commonToLeftAndRightOnlySize(left),
-      commonToBaseAndLeftOnlySize = commonToBaseAndLeftOnlySize(base),
-      commonToBaseAndRightOnlySize = commonToBaseAndRightOnlySize(base)
+        case (Seq(), Seq(), _) =>
+          right.foldLeft(partialResult) {
+            case (result, Contribution.Difference(rightElement)) =>
+              result.addRightDifference(rightElement)
+            case _ => failure
+          }
+
+        case (
+              Seq(Contribution.Common(baseElement), baseTail*),
+              Seq(Contribution.Common(leftElement), leftTail*),
+              Seq(Contribution.Common(rightElement), rightTail*)
+            )
+            if equality.eqv(baseElement, leftElement) && equality.eqv(
+              baseElement,
+              rightElement
+            ) =>
+          synchronise(
+            baseTail,
+            leftTail,
+            rightTail,
+            partialResult.addCommon(baseElement, leftElement, rightElement)(
+              sized.sizeOf
+            )
+          )
+
+        case (
+              Seq(Contribution.Difference(baseElement), baseTail*),
+              Seq(Contribution.Common(leftElement), _*),
+              Seq(Contribution.Common(rightElement), _*)
+            )
+            if equality.eqv(
+              leftElement,
+              rightElement
+            ) =>
+          synchronise(
+            baseTail,
+            left,
+            right,
+            partialResult.addBaseDifference(baseElement)
+          )
+
+        case (
+              Seq(Contribution.Common(baseElement), _*),
+              Seq(Contribution.Difference(leftElement), leftTail*),
+              Seq(Contribution.Common(rightElement), _*)
+            )
+            if equality.eqv(
+              baseElement,
+              rightElement
+            ) =>
+          synchronise(
+            base,
+            leftTail,
+            right,
+            partialResult.addLeftDifference(leftElement)
+          )
+
+        case (
+              Seq(Contribution.Common(baseElement), _*),
+              Seq(Contribution.Common(leftElement), _*),
+              Seq(Contribution.Difference(rightElement), rightTail*)
+            )
+            if equality.eqv(
+              baseElement,
+              leftElement
+            ) =>
+          synchronise(
+            base,
+            left,
+            rightTail,
+            partialResult.addRightDifference(rightElement)
+          )
+
+        case (
+              Seq(
+                Contribution.Common(_) |
+                Contribution.CommonToBaseAndLeftOnly(_) |
+                Contribution.CommonToBaseAndRightOnly(_),
+                _*
+              ),
+              Seq(Contribution.Difference(leftElement), leftTail*),
+              Seq(Contribution.Difference(rightElement), rightTail*)
+            ) =>
+          synchronise(
+            base,
+            leftTail,
+            rightTail,
+            partialResult
+              .addLeftDifference(leftElement)
+              .addRightDifference(rightElement)
+          )
+
+        case (
+              Seq(Contribution.Difference(baseElement), baseTail*),
+              Seq(
+                Contribution.Common(_) |
+                Contribution.CommonToBaseAndLeftOnly(_) |
+                Contribution.CommonToLeftAndRightOnly(_),
+                _*
+              ),
+              Seq(Contribution.Difference(rightElement), rightTail*)
+            ) =>
+          synchronise(
+            baseTail,
+            left,
+            rightTail,
+            partialResult
+              .addBaseDifference(baseElement)
+              .addRightDifference(rightElement)
+          )
+
+        case (
+              Seq(Contribution.Difference(baseElement), baseTail*),
+              Seq(Contribution.Difference(leftElement), leftTail*),
+              Seq(
+                Contribution.Common(_) |
+                Contribution.CommonToBaseAndRightOnly(_) |
+                Contribution.CommonToLeftAndRightOnly(_),
+                _*
+              )
+            ) =>
+          synchronise(
+            baseTail,
+            leftTail,
+            right,
+            partialResult
+              .addBaseDifference(baseElement)
+              .addLeftDifference(leftElement)
+          )
+
+        case (
+              _,
+              Seq(
+                Contribution.CommonToLeftAndRightOnly(leftElement),
+                leftTail*
+              ),
+              Seq(
+                Contribution.CommonToLeftAndRightOnly(rightElement),
+                rightTail*
+              )
+            )
+            if equality.eqv(
+              leftElement,
+              rightElement
+            ) =>
+          synchronise(
+            base,
+            leftTail,
+            rightTail,
+            partialResult.addCommonLeftAndRight(leftElement, rightElement)(
+              sized.sizeOf
+            )
+          )
+
+        case (
+              Seq(
+                Contribution.CommonToBaseAndRightOnly(baseElement),
+                baseTail*
+              ),
+              _,
+              Seq(
+                Contribution.CommonToBaseAndRightOnly(rightElement),
+                rightTail*
+              )
+            )
+            if equality.eqv(
+              baseElement,
+              rightElement
+            ) =>
+          synchronise(
+            baseTail,
+            left,
+            rightTail,
+            partialResult.addCommonBaseAndRight(baseElement, rightElement)(
+              sized.sizeOf
+            )
+          )
+
+        case (
+              Seq(Contribution.CommonToBaseAndLeftOnly(baseElement), baseTail*),
+              Seq(Contribution.CommonToBaseAndLeftOnly(leftElement), leftTail*),
+              _
+            )
+            if equality.eqv(
+              baseElement,
+              leftElement
+            ) =>
+          synchronise(
+            baseTail,
+            leftTail,
+            right,
+            partialResult.addCommonBaseAndLeft(baseElement, leftElement)(
+              sized.sizeOf
+            )
+          )
+
+        case (
+              Seq(Contribution.Difference(baseElement), baseTail*),
+              Seq(Contribution.Difference(leftElement), leftTail*),
+              Seq(Contribution.Difference(rightElement), rightTail*)
+            ) =>
+          synchronise(
+            baseTail,
+            leftTail,
+            rightTail,
+            partialResult
+              .addBaseDifference(baseElement)
+              .addLeftDifference(leftElement)
+              .addRightDifference(rightElement)
+          )
+
+        case _ => failure
+
+      end match
+    end synchronise
+
+    synchronise(
+      base,
+      left,
+      right,
+      LongestCommonSubsequence(
+        base = IndexedSeq.empty,
+        left = IndexedSeq.empty,
+        right = IndexedSeq.empty,
+        commonSubsequenceSize = CommonSubsequenceSize.zero,
+        commonToLeftAndRightOnlySize = CommonSubsequenceSize.zero,
+        commonToBaseAndLeftOnlySize = CommonSubsequenceSize.zero,
+        commonToBaseAndRightOnlySize = CommonSubsequenceSize.zero
+      )
     )
   end apply
 
@@ -275,9 +505,6 @@ object LongestCommonSubsequence:
             resultSnapshotPriorToMutation
           end advanceToNextLeadingSwathe
 
-          private def notYetReachedFinalSwathe =
-            maximumSwatheIndex > _indexOfLeadingSwathe
-
           def topLevelSolution: LongestCommonSubsequence[Element] =
             require(!notYetReachedFinalSwathe)
 
@@ -288,6 +515,9 @@ object LongestCommonSubsequence:
               right.size
             )
           end topLevelSolution
+
+          private def notYetReachedFinalSwathe =
+            maximumSwatheIndex > _indexOfLeadingSwathe
 
           def consultRelevantSwatheForSolution(
               onePastBaseIndex: Int,
