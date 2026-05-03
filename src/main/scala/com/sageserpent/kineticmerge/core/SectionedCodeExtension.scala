@@ -34,8 +34,6 @@ import scala.collection.{IndexedSeqView, Searching}
 import scala.math.Ordering.Implicits.seqOrdering
 
 object SectionedCodeExtension extends StrictLogging:
-  given elementSized[X]: Sized[Section[X]] = _.size
-
   /** Add merging capability to a [[SectionedCode]]. */
   extension [Path, Element: Eq: Order](
       sectionedCode: SectionedCode[Path, Element]
@@ -45,7 +43,9 @@ object SectionedCodeExtension extends StrictLogging:
         leftSections: IndexedSeq[Section[Element]],
         rightSections: IndexedSeq[Section[Element]]
     )(using
-        progressRecording: ProgressRecording
+        progressRecording: ProgressRecording,
+        sectionEq: Eq[Section[Element]],
+        sectionSized: Sized[Section[Element]]
     ): LongestCommonSubsequence[Section[Element]] =
       def groupIdsOf(
           section: Section[Element]
@@ -310,6 +310,8 @@ object SectionedCodeExtension extends StrictLogging:
         MoveDestinationsReport[Section[Element]]
     ) =
       import sectionedCode.matchesFor
+
+      given sectionSized[X]: Sized[Section[X]] = _.size
 
       given Eq[Section[Element]] with
         /** This is most definitely *not* [[Section.equals]] - we want to use

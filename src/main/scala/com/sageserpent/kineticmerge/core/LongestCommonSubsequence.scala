@@ -151,13 +151,16 @@ end LongestCommonSubsequence
 
 object LongestCommonSubsequence:
 
-  def apply[Element: Sized](
+  def apply[Element: Eq: Sized](
       base: IndexedSeq[Contribution[Element]],
       left: IndexedSeq[Contribution[Element]],
       right: IndexedSeq[Contribution[Element]]
   ): LongestCommonSubsequence[Element] =
+    // TODO: add contract checking - we expect the subsequences of fully or
+    // partially common contributions to align on each pair of sides.
+
     val sizeOf = summon[Sized[Element]].sizeOf
-    
+
     def commonSubsequenceSize(
         contributions: IndexedSeq[Contribution[Element]]
     ): CommonSubsequenceSize =
@@ -1001,7 +1004,8 @@ object LongestCommonSubsequence:
       )
   end CommonSubsequenceSize
 
-  // TODO: this definition seems a bit strange - why not hoist `element` up into the core enum constructor?
+  // TODO: this definition seems a bit strange - why not hoist `element` up into
+  // the core enum constructor?
   enum Contribution[Element]:
     case Common(
         element: Element
@@ -1020,7 +1024,7 @@ object LongestCommonSubsequence:
     )
 
     def element: Element
-    
+
     def constructLikeness[AnotherElement](
         anotherElement: AnotherElement
     ): Contribution[AnotherElement] =
