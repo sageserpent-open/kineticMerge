@@ -282,6 +282,18 @@ object SectionedCodeExtension extends StrictLogging:
       )(section: Section[Element]): Contribution[Section[Element]] =
         val groupIds = groupIdsOf(section)
 
+        // @jules - this isn't quite right and is probably causing most of the
+        // test failures in `SectionedCodeExtensionTest`. The problem is that it
+        // considers the *group id* contribution to apply to a section that
+        // participates in that group to apply directly to the section. In
+        // reality the match that lead to the group id should also be consulted,
+        // so for example, if the overall group id maps to a
+        // `Contribution.Common`, but the section's match is a mere
+        // `BaseAndLeft`, then the contribution from the group id should be
+        // demoted to `Contribution.CommonToBaseAndLeftOnly`. On the other hand,
+        // if there is no match at all (and thus no group id either), the
+        // `getOrElse` below should assign a `Contribution.Difference` which is
+        // the right thing to do.
         val contributions = groupIds.toSeq
           .flatMap(contributionKindsByGroupId.get)
           .sorted(
