@@ -65,12 +65,17 @@ object SectionedCode extends StrictLogging:
             suppressMatchesInvolvingOverlappingSections
           ) -> parallelMatchesOnly
           .tinyMatchesOnly()
+          // Force the tiny matches to be parallel too.
+          .parallelMatchesOnly
           .reconcileMatches
           .purgedOfMatchesWithOverlappingSections(enabled = true)
       end val
 
       val sectionsAndTheirMatches =
         matchesAndTheirSections.sectionsAndTheirMatches
+
+      val tinySectionsAndTheirMatches =
+        tinyMatchesAndTheirSectionsOnly.sectionsAndTheirMatches
 
       // Use the sections covered by the tiny matches to break up gap fills on
       // all sides. This gives the downstream merge a chance to make last-minute
@@ -96,10 +101,11 @@ object SectionedCode extends StrictLogging:
         {
           // Invariant: the matches are referenced only by their participating
           // sections.
-          val allMatchKeys = sectionsAndTheirMatches.keySet
+          val allMatchKeys =
+            sectionsAndTheirMatches.keySet union tinySectionsAndTheirMatches.keySet
 
           val allParticipatingSections =
-            sectionsAndTheirMatches.values.toSet
+            (sectionsAndTheirMatches.values.toSet union tinySectionsAndTheirMatches.values.toSet)
               .map {
                 case Match.AllSides(baseSection, leftSection, rightSection) =>
                   Set(baseSection, leftSection, rightSection)
@@ -133,7 +139,7 @@ object SectionedCode extends StrictLogging:
           // of sections.
 
           val rogueMatches =
-            (sectionsAndTheirMatches.keySet diff allDistinctSections).flatMap(
+            (allMatchKeys diff allDistinctSections).flatMap(
               sectionsAndTheirMatches.get
             )
 
