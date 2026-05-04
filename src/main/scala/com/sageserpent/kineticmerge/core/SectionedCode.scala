@@ -4,7 +4,11 @@ import cats.Eq
 import com.google.common.hash.{Funnel, HashFunction}
 import com.sageserpent.kineticmerge
 import com.sageserpent.kineticmerge.core
-import com.sageserpent.kineticmerge.core.MatchAnalysis.{AbstractConfiguration, AdmissibleFailure, ParallelMatchesGroupIdsByMatch}
+import com.sageserpent.kineticmerge.core.MatchAnalysis.{
+  AbstractConfiguration,
+  AdmissibleFailure,
+  ParallelMatchesGroupIdsByMatch
+}
 import com.typesafe.scalalogging.StrictLogging
 
 import scala.collection.mutable
@@ -66,7 +70,8 @@ object SectionedCode extends StrictLogging:
             suppressMatchesInvolvingOverlappingSections
           ) -> parallelMatchesOnly
           .tinyMatchesOnly()
-          // TODO: this precariously protects some downstream logic in
+          // Force the tiny matches to be parallel too.
+          // TODO: this also precariously protects some downstream logic in
           // `reconcileMatches` that assumes that all matches will have a
           // parallel matches group id. Need to make this more robust.
           .parallelMatchesOnly
@@ -76,6 +81,9 @@ object SectionedCode extends StrictLogging:
 
       val sectionsAndTheirMatches =
         matchesAndTheirSections.sectionsAndTheirMatches
+
+      val tinySectionsAndTheirMatches =
+        tinyMatchesAndTheirSectionsOnly.sectionsAndTheirMatches
 
       // Use the sections covered by the tiny matches to break up gap fills on
       // all sides. This gives the downstream merge a chance to make last-minute
@@ -97,6 +105,14 @@ object SectionedCode extends StrictLogging:
           matchesAndTheirSections.rightSections ++ tinyMatchesAndTheirSectionsOnly.rightSections
         )
 
+      val combinedParallelMatchesGroupIdsByMatch =
+        matchesAndTheirSections.parallelMatchesGroupIdsByMatch
+          ++ tinyMatchesAndTheirSectionsOnly.parallelMatchesGroupIdsByMatch.map(
+            (aMatch, groupId) =>
+              val negativeGroupIdToSegregateFromPrimaryGroupIds = -1 - groupId
+              aMatch -> negativeGroupIdToSegregateFromPrimaryGroupIds
+          )
+
       Right(new SectionedCode[Path, Element]:
         private val lcsByPath: mutable.Map[Path, LongestCommonSubsequence[
           Section[Element]
@@ -116,16 +132,19 @@ object SectionedCode extends StrictLogging:
         export baseSources.pathFor as basePathFor
         export leftSources.pathFor as leftPathFor
         export rightSources.pathFor as rightPathFor
-        
-        export matchesAndTheirSections.parallelMatchesGroupIdsByMatch
+
+        override def parallelMatchesGroupIdsByMatch
+            : ParallelMatchesGroupIdsByMatch[Element] =
+          combinedParallelMatchesGroupIdsByMatch
 
         {
           // Invariant: the matches are referenced only by their participating
           // sections.
-          val allMatchKeys = sectionsAndTheirMatches.keySet
+          val allMatchKeys =
+            sectionsAndTheirMatches.keySet union tinySectionsAndTheirMatches.keySet
 
           val allParticipatingSections =
-            sectionsAndTheirMatches.values.toSet
+            (sectionsAndTheirMatches.values.toSet union tinySectionsAndTheirMatches.values.toSet)
               .map {
                 case Match.AllSides(baseSection, leftSection, rightSection) =>
                   Set(baseSection, leftSection, rightSection)
@@ -159,7 +178,7 @@ object SectionedCode extends StrictLogging:
           // of sections.
 
           val rogueMatches =
-            (sectionsAndTheirMatches.keySet diff allDistinctSections).flatMap(
+            (allMatchKeys diff allDistinctSections).flatMap(
               sectionsAndTheirMatches.get
             )
 
