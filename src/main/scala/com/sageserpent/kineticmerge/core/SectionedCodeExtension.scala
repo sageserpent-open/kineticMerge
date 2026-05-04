@@ -82,7 +82,8 @@ object SectionedCodeExtension extends StrictLogging:
             pendingBlocks: Map[ParallelMatchesGroupId, IndexedSeq[
               Section[Element]
             ]], // TODO: map to offset intervals instead.
-            deferredFillerSections: IndexedSeq[Section[Element]]
+            deferredFillerSections: IndexedSeq[Section[Element]],
+            groupIdsOfCompletedBlocks: Set[ParallelMatchesGroupId]
         )
 
         type BlocksUnderConstructionState[X] = State[BlocksUnderConstruction, X]
@@ -115,8 +116,16 @@ object SectionedCodeExtension extends StrictLogging:
                 for
                   BlocksUnderConstruction(
                     pendingBlocks,
-                    deferredFillerSections
+                    deferredFillerSections,
+                    groupIdsOfCompletedBlocks
                   ) <- State.get[BlocksUnderConstruction]
+
+                  _ = groupIdsRelevantToSection.foreach { groupId =>
+                    require(
+                      !groupIdsOfCompletedBlocks.contains(groupId),
+                      s"Encountered group id: $groupId of a previously completed block again."
+                    )
+                  }
 
                   blockGroupIds = pendingBlocks.keySet
 
@@ -160,7 +169,8 @@ object SectionedCodeExtension extends StrictLogging:
                   _ <- State.set[BlocksUnderConstruction](
                     BlocksUnderConstruction(
                       updatedPendingBlocks,
-                      updatedDeferredFillerSections
+                      updatedDeferredFillerSections,
+                      groupIdsOfCompletedBlocks union groupIdsFinishingConstruction
                     )
                   )
                 yield buildBlocks(
@@ -171,8 +181,11 @@ object SectionedCodeExtension extends StrictLogging:
                 end for
               )
 
-            BlocksUnderConstruction(pendingBlocks, _) <- State
-              .get[BlocksUnderConstruction]
+            BlocksUnderConstruction(
+              pendingBlocks,
+              _,
+              groupIdsOfCompletedBlocks
+            ) <- State.get[BlocksUnderConstruction]
 
             groupIdsFinishingConstruction = pendingBlocks.keySet
           yield buildBlocks(
@@ -185,10 +198,19 @@ object SectionedCodeExtension extends StrictLogging:
           .runA(
             BlocksUnderConstruction(
               pendingBlocks = Map.empty,
-              deferredFillerSections = IndexedSeq.empty
+              deferredFillerSections = IndexedSeq.empty,
+              groupIdsOfCompletedBlocks = Set.empty
             )
           )
           .value
+
+        result.groupBy(_.parallelMatchesGroupId).foreach {
+          case (groupId, potentialDuplicates) =>
+            require(
+              1 == potentialDuplicates.size,
+              s"Group id: $groupId occurs in multiple blocks: $potentialDuplicates"
+            )
+        }
 
         result
       end blocksFrom
