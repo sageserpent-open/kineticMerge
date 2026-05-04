@@ -1555,37 +1555,13 @@ object MatchAnalysis extends StrictLogging:
         // 1. Build up sources composed of matched sections concatenated
         // together by path preserving their original order.
 
-        val baseAllSidesMatchedSections =
+        val baseMatchedSections =
           sectionsAndTheirMatches.sets
             .map((key, values) => key -> values.head)
             .collect {
               case (section, Match.AllSides(baseSection, _, _))
                   if section == baseSection =>
                 section
-            }
-
-        val leftAllSidesMatchedSections =
-          sectionsAndTheirMatches.sets
-            .map((key, values) => key -> values.head)
-            .collect {
-              case (section, Match.AllSides(_, leftSection, _))
-                  if section == leftSection =>
-                section
-            }
-
-        val rightAllSidesMatchedSections =
-          sectionsAndTheirMatches.sets
-            .map((key, values) => key -> values.head)
-            .collect {
-              case (section, Match.AllSides(_, _, rightSection))
-                  if section == rightSection =>
-                section
-            }
-
-        val basePairwiseMatchedSections =
-          sectionsAndTheirMatches.sets
-            .map((key, values) => key -> values.head)
-            .collect {
               case (section, Match.BaseAndLeft(baseSection, _))
                   if section == baseSection =>
                 section
@@ -1594,10 +1570,13 @@ object MatchAnalysis extends StrictLogging:
                 section
             }
 
-        val leftPairwiseMatchedSections =
+        val leftMatchedSections =
           sectionsAndTheirMatches.sets
             .map((key, values) => key -> values.head)
             .collect {
+              case (section, Match.AllSides(_, leftSection, _))
+                  if section == leftSection =>
+                section
               case (section, Match.BaseAndLeft(_, leftSection))
                   if section == leftSection =>
                 section
@@ -1606,10 +1585,13 @@ object MatchAnalysis extends StrictLogging:
                 section
             }
 
-        val rightPairwiseMatchedSections =
+        val rightMatchedSections =
           sectionsAndTheirMatches.sets
             .map((key, values) => key -> values.head)
             .collect {
+              case (section, Match.AllSides(_, _, rightSection))
+                  if section == rightSection =>
+                section
               case (section, Match.BaseAndRight(_, rightSection))
                   if section == rightSection =>
                 section
@@ -1767,27 +1749,11 @@ object MatchAnalysis extends StrictLogging:
         end groupsOfBackTranslatedParallelMatchesFrom
 
         val groupsOfBackTranslatedParallelMatches =
-          val groupsOfBackTranslatedParallelAllSidesMatches =
-            // NOTE: resist the temptation to filter out any pairwise
-            // meta-matches here. Yes, most of them expand out to redundant
-            // pairwise matches, but some of them are required. See the
-            // following comment that mentions
-            // `SectionedCodeExtensionTest.codeMotionAmbiguousWithAPreservation`.
-            groupsOfBackTranslatedParallelMatchesFrom(
-              baseAllSidesMatchedSections,
-              leftAllSidesMatchedSections,
-              rightAllSidesMatchedSections
-            )
-
-          val groupsOfBackTranslatedParallelPairwiseMatches =
-            groupsOfBackTranslatedParallelMatchesFrom(
-              basePairwiseMatchedSections,
-              leftPairwiseMatchedSections,
-              rightPairwiseMatchedSections
-            )
-
-          groupsOfBackTranslatedParallelAllSidesMatches ++ groupsOfBackTranslatedParallelPairwiseMatches
-        end groupsOfBackTranslatedParallelMatches
+          groupsOfBackTranslatedParallelMatchesFrom(
+            baseMatchedSections,
+            leftMatchedSections,
+            rightMatchedSections
+          )
 
         // 4. Build putative groups from the back-translated matches. These
         // won't be perfectly accurate, but are refined later by
@@ -2527,18 +2493,6 @@ object MatchAnalysis extends StrictLogging:
             Some(baseSection.startOffset)
           case _ => None
 
-      private def startOffsetOnRight(
-          aMatch: GenericMatch[Element]
-      ): Option[Int] =
-        aMatch match
-          case Match.AllSides(_, _, rightSection) =>
-            Some(rightSection.startOffset)
-          case Match.BaseAndRight(_, rightSection) =>
-            Some(rightSection.startOffset)
-          case Match.LeftAndRight(_, rightSection) =>
-            Some(rightSection.startOffset)
-          case _ => None
-
       private def startOffsetOnLeft(
           aMatch: GenericMatch[Element]
       ): Option[Int] =
@@ -2549,6 +2503,18 @@ object MatchAnalysis extends StrictLogging:
             Some(leftSection.startOffset)
           case Match.LeftAndRight(leftSection, _) =>
             Some(leftSection.startOffset)
+          case _ => None
+
+      private def startOffsetOnRight(
+          aMatch: GenericMatch[Element]
+      ): Option[Int] =
+        aMatch match
+          case Match.AllSides(_, _, rightSection) =>
+            Some(rightSection.startOffset)
+          case Match.BaseAndRight(_, rightSection) =>
+            Some(rightSection.startOffset)
+          case Match.LeftAndRight(_, rightSection) =>
+            Some(rightSection.startOffset)
           case _ => None
 
       private def pareDownOrSuppressCompletely[MatchType <: GenericMatch[
