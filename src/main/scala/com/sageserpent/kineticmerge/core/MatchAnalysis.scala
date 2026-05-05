@@ -49,7 +49,7 @@ trait MatchAnalysis[Path, Element]:
       enabled: Boolean
   ): MatchAnalysis[Path, Element]
 
-  def tinyMatchesOnly(): MatchAnalysis[Path, Element]
+  def withTinyMatches: MatchAnalysis[Path, Element]
 
   def baseSections: Set[Section[Element]]
 
@@ -1126,7 +1126,7 @@ object MatchAnalysis extends StrictLogging:
         else this
       end withAllSmallFryMatches
 
-      def tinyMatchesOnly(): MatchesAndTheirSections =
+      def withTinyMatches: MatchesAndTheirSections =
         val withContentCoveredByNonTinyMatchesKnockedOut =
           val nonTinyMatches = sectionsAndTheirMatches.values.filter {
             case Match.AllSides(baseSection, _, _) =>
@@ -1207,7 +1207,7 @@ object MatchAnalysis extends StrictLogging:
           }
         end withContentCoveredByNonTinyMatchesKnockedOut
 
-        Using(
+        val tinyMatches = Using(
           progressRecording.newSession(
             label = "Minimum match size considered:",
             maximumProgress = minimumWindowSizeAcrossAllFilesOverAllSides
@@ -1224,8 +1224,52 @@ object MatchAnalysis extends StrictLogging:
             looseExclusiveUpperBoundOnMaximumMatchSize =
               minimumWindowSizeAcrossAllFilesOverAllSides
           )(using progressRecordingSession)
-        }.get
-      end tinyMatchesOnly
+        }.get.purgedOfMatchesWithOverlappingSections(enabled = true).matches
+
+        tinyMatches.foldLeft(this)(_ withMatch _)
+      end withTinyMatches
+
+      private def withMatch(
+          aMatch: GenericMatch[Element]
+      ): MatchesAndTheirSections =
+        aMatch match
+          case Match.AllSides(baseSection, leftSection, rightSection) =>
+            copy(
+              baseSectionsByPath = baseIncluding(baseSection),
+              leftSectionsByPath = leftIncluding(leftSection),
+              rightSectionsByPath = rightIncluding(rightSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch) + (rightSection -> aMatch),
+              baseFingerprintedInclusionsByPath =
+                knockOutFromBaseFingerprintedInclusions(baseSection),
+              leftFingerprintedInclusionsByPath =
+                knockOutFromLeftFingerprintedInclusions(leftSection),
+              rightFingerprintedInclusionsByPath =
+                knockOutFromRightFingerprintedInclusions(rightSection)
+            )
+          case baseAndLeft @ Match.BaseAndLeft(baseSection, leftSection) =>
+            copy(
+              baseSectionsByPath = baseIncluding(baseSection),
+              leftSectionsByPath = leftIncluding(leftSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch)
+            )
+          case baseAndRight @ Match.BaseAndRight(baseSection, rightSection) =>
+            copy(
+              baseSectionsByPath = baseIncluding(baseSection),
+              rightSectionsByPath = rightIncluding(rightSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch)
+            )
+          case leftAndRight @ Match.LeftAndRight(leftSection, rightSection) =>
+            copy(
+              leftSectionsByPath = leftIncluding(leftSection),
+              rightSectionsByPath = rightIncluding(rightSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch)
+            )
+        end match
+      end withMatch
 
       def purgedOfMatchesWithOverlappingSections(
           enabled: Boolean
@@ -2029,48 +2073,6 @@ object MatchAnalysis extends StrictLogging:
           pathInclusions = pathInclusions
         )
       end withMatches
-
-      private def withMatch(
-          aMatch: GenericMatch[Element]
-      ): MatchesAndTheirSections =
-        aMatch match
-          case Match.AllSides(baseSection, leftSection, rightSection) =>
-            copy(
-              baseSectionsByPath = baseIncluding(baseSection),
-              leftSectionsByPath = leftIncluding(leftSection),
-              rightSectionsByPath = rightIncluding(rightSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch) + (rightSection -> aMatch),
-              baseFingerprintedInclusionsByPath =
-                knockOutFromBaseFingerprintedInclusions(baseSection),
-              leftFingerprintedInclusionsByPath =
-                knockOutFromLeftFingerprintedInclusions(leftSection),
-              rightFingerprintedInclusionsByPath =
-                knockOutFromRightFingerprintedInclusions(rightSection)
-            )
-          case baseAndLeft @ Match.BaseAndLeft(baseSection, leftSection) =>
-            copy(
-              baseSectionsByPath = baseIncluding(baseSection),
-              leftSectionsByPath = leftIncluding(leftSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch)
-            )
-          case baseAndRight @ Match.BaseAndRight(baseSection, rightSection) =>
-            copy(
-              baseSectionsByPath = baseIncluding(baseSection),
-              rightSectionsByPath = rightIncluding(rightSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch)
-            )
-          case leftAndRight @ Match.LeftAndRight(leftSection, rightSection) =>
-            copy(
-              leftSectionsByPath = leftIncluding(leftSection),
-              rightSectionsByPath = rightIncluding(rightSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch)
-            )
-        end match
-      end withMatch
 
       private def checkInvariant(): Unit =
         // We expect to tally either two lots of a given pairwise match or three

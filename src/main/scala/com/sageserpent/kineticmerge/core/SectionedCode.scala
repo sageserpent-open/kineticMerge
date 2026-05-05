@@ -60,24 +60,22 @@ object SectionedCode extends StrictLogging:
     val withAllMatchesOfAtLeastTheMinimumWindowSize =
       withAllMatchesOfAtLeastTheSureFireWindowSize.withAllSmallFryMatches()
 
-    val parallelMatchesOnly =
-      withAllMatchesOfAtLeastTheMinimumWindowSize.parallelMatchesOnly
+    val withTinyMatchesIncluded =
+      withAllMatchesOfAtLeastTheMinimumWindowSize.withTinyMatches
+
+    // TODO: this also precariously protects some downstream logic in
+    // `reconcileMatches` that assumes that all matches will have a
+    // parallel matches group id. Need to make this more robust.
+    val parallelMatchesOnly = withTinyMatchesIncluded.parallelMatchesOnly
+
+    val reconciled = parallelMatchesOnly.reconcileMatches
 
     try
-      val (matchesAndTheirSections, tinyMatchesAndTheirSectionsOnly) =
-        parallelMatchesOnly.reconcileMatches
+      val matchesAndTheirSections =
+        reconciled
           .purgedOfMatchesWithOverlappingSections(
             suppressMatchesInvolvingOverlappingSections
-          ) -> parallelMatchesOnly
-          .tinyMatchesOnly()
-          // Force the tiny matches to be parallel too.
-          // TODO: this also precariously protects some downstream logic in
-          // `reconcileMatches` that assumes that all matches will have a
-          // parallel matches group id. Need to make this more robust.
-          .parallelMatchesOnly
-          .reconcileMatches
-          .purgedOfMatchesWithOverlappingSections(enabled = true)
-      end val
+          )
 
       val sectionsAndTheirMatches =
         matchesAndTheirSections.sectionsAndTheirMatches
@@ -91,15 +89,15 @@ object SectionedCode extends StrictLogging:
 
       val baseFilesByPath =
         baseSources.filesByPathUtilising(mandatorySections =
-          matchesAndTheirSections.baseSections ++ tinyMatchesAndTheirSectionsOnly.baseSections
+          matchesAndTheirSections.baseSections
         )
       val leftFilesByPath =
         leftSources.filesByPathUtilising(mandatorySections =
-          matchesAndTheirSections.leftSections ++ tinyMatchesAndTheirSectionsOnly.leftSections
+          matchesAndTheirSections.leftSections
         )
       val rightFilesByPath =
         rightSources.filesByPathUtilising(mandatorySections =
-          matchesAndTheirSections.rightSections ++ tinyMatchesAndTheirSectionsOnly.rightSections
+          matchesAndTheirSections.rightSections
         )
 
       Right(new SectionedCode[Path, Element]:
@@ -129,20 +127,19 @@ object SectionedCode extends StrictLogging:
           // sections.
           val allMatchKeys = sectionsAndTheirMatches.keySet
 
-          val allParticipatingSections =
-            sectionsAndTheirMatches.values.toSet
-              .map {
-                case Match.AllSides(baseSection, leftSection, rightSection) =>
-                  Set(baseSection, leftSection, rightSection)
-                case Match.BaseAndLeft(baseSection, leftSection) =>
-                  Set(baseSection, leftSection)
-                case Match.BaseAndRight(baseSection, rightSection) =>
-                  Set(baseSection, rightSection)
-                case Match.LeftAndRight(leftSection, rightSection) =>
-                  Set(leftSection, rightSection)
-              }
-              .reduceOption(_ union _)
-              .getOrElse(Set.empty)
+          val allParticipatingSections = sectionsAndTheirMatches.values.toSet
+            .map {
+              case Match.AllSides(baseSection, leftSection, rightSection) =>
+                Set(baseSection, leftSection, rightSection)
+              case Match.BaseAndLeft(baseSection, leftSection) =>
+                Set(baseSection, leftSection)
+              case Match.BaseAndRight(baseSection, rightSection) =>
+                Set(baseSection, rightSection)
+              case Match.LeftAndRight(leftSection, rightSection) =>
+                Set(leftSection, rightSection)
+            }
+            .reduceOption(_ union _)
+            .getOrElse(Set.empty)
 
           require(allMatchKeys == allParticipatingSections)
 
