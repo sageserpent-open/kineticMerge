@@ -55,27 +55,22 @@ object SectionedCode extends StrictLogging:
     val withAllMatchesOfAtLeastTheMinimumWindowSize =
       withAllMatchesOfAtLeastTheSureFireWindowSize.withAllSmallFryMatches()
 
-    val parallelMatchesOnly =
-      withAllMatchesOfAtLeastTheMinimumWindowSize.parallelMatchesOnly
+    val withTinyMatchesIncluded =
+      withAllMatchesOfAtLeastTheMinimumWindowSize.withTinyMatches
+
+    val parallelMatchesOnly = withTinyMatchesIncluded.parallelMatchesOnly
+
+    val reconciled = parallelMatchesOnly.reconcileMatches
 
     try
-      val (matchesAndTheirSections, tinyMatchesAndTheirSectionsOnly) =
-        parallelMatchesOnly.reconcileMatches
+      val matchesAndTheirSections =
+        reconciled
           .purgedOfMatchesWithOverlappingSections(
             suppressMatchesInvolvingOverlappingSections
-          ) -> parallelMatchesOnly
-          .tinyMatchesOnly()
-          // Force the tiny matches to be parallel too.
-          .parallelMatchesOnly
-          .reconcileMatches
-          .purgedOfMatchesWithOverlappingSections(enabled = true)
-      end val
+          )
 
       val sectionsAndTheirMatches =
         matchesAndTheirSections.sectionsAndTheirMatches
-
-      val tinySectionsAndTheirMatches =
-        tinyMatchesAndTheirSectionsOnly.sectionsAndTheirMatches
 
       // Use the sections covered by the tiny matches to break up gap fills on
       // all sides. This gives the downstream merge a chance to make last-minute
@@ -86,38 +81,36 @@ object SectionedCode extends StrictLogging:
 
       val baseFilesByPath =
         baseSources.filesByPathUtilising(mandatorySections =
-          matchesAndTheirSections.baseSections ++ tinyMatchesAndTheirSectionsOnly.baseSections
+          matchesAndTheirSections.baseSections
         )
       val leftFilesByPath =
         leftSources.filesByPathUtilising(mandatorySections =
-          matchesAndTheirSections.leftSections ++ tinyMatchesAndTheirSectionsOnly.leftSections
+          matchesAndTheirSections.leftSections
         )
       val rightFilesByPath =
         rightSources.filesByPathUtilising(mandatorySections =
-          matchesAndTheirSections.rightSections ++ tinyMatchesAndTheirSectionsOnly.rightSections
+          matchesAndTheirSections.rightSections
         )
 
       Right(new SectionedCode[Path, Element]:
         {
           // Invariant: the matches are referenced only by their participating
           // sections.
-          val allMatchKeys =
-            sectionsAndTheirMatches.keySet union tinySectionsAndTheirMatches.keySet
+          val allMatchKeys = sectionsAndTheirMatches.keySet
 
-          val allParticipatingSections =
-            (sectionsAndTheirMatches.values.toSet union tinySectionsAndTheirMatches.values.toSet)
-              .map {
-                case Match.AllSides(baseSection, leftSection, rightSection) =>
-                  Set(baseSection, leftSection, rightSection)
-                case Match.BaseAndLeft(baseSection, leftSection) =>
-                  Set(baseSection, leftSection)
-                case Match.BaseAndRight(baseSection, rightSection) =>
-                  Set(baseSection, rightSection)
-                case Match.LeftAndRight(leftSection, rightSection) =>
-                  Set(leftSection, rightSection)
-              }
-              .reduceOption(_ union _)
-              .getOrElse(Set.empty)
+          val allParticipatingSections = sectionsAndTheirMatches.values.toSet
+            .map {
+              case Match.AllSides(baseSection, leftSection, rightSection) =>
+                Set(baseSection, leftSection, rightSection)
+              case Match.BaseAndLeft(baseSection, leftSection) =>
+                Set(baseSection, leftSection)
+              case Match.BaseAndRight(baseSection, rightSection) =>
+                Set(baseSection, rightSection)
+              case Match.LeftAndRight(leftSection, rightSection) =>
+                Set(leftSection, rightSection)
+            }
+            .reduceOption(_ union _)
+            .getOrElse(Set.empty)
 
           require(allMatchKeys == allParticipatingSections)
 

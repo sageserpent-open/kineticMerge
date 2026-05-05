@@ -780,23 +780,31 @@ class SectionedCodeTest:
 
     val baseSources = new FakeSources(
       Map(
-        1 -> (bigAllSidesContent ++ Vector(8, 4, 6, 7, 8,
-          2) ++ smallAmbiguousAllSidesContent)
+        1 -> (bigAllSidesContent ++ Vector(
+          8,
+          1,
+          7,
+          8
+        ) ++ smallAmbiguousAllSidesContent)
       ),
       "base"
     ) with SourcesContracts[Path, Element]
 
     val leftSources = new FakeSources(
       Map(
-        1 -> (bigAllSidesContent ++ Vector(2, 5, 9, 6,
-          3) ++ smallAmbiguousAllSidesContent)
+        1 -> (bigAllSidesContent ++ Vector(
+          2,
+          5,
+          9,
+          6
+        ) ++ smallAmbiguousAllSidesContent)
       ),
       "left"
     ) with SourcesContracts[Path, Element]
 
     val rightSources = new FakeSources(
       Map(
-        1 -> (bigAllSidesContent ++ Vector(0, 3, 4, 5, 6, 6,
+        1 -> (bigAllSidesContent ++ Vector(0, 3, 4, 3,
           4) ++ smallAmbiguousAllSidesContent)
       ),
       "right"
@@ -1071,8 +1079,8 @@ class SectionedCodeTest:
 
     val leftSources = new FakeSources(
       Map(
-        1 -> (equallyBigPairwiseContent ++ Vector(8, 7, 3, 4, 7, 8, 4, 5, 3, 8,
-          7, 3, 4) ++ bigAllSidesContent)
+        1 -> (equallyBigPairwiseContent ++ Vector(8, 7, 3, 4, 7, 8, 4, 3, 8, 7,
+          3, 4) ++ bigAllSidesContent)
       ),
       "left"
     ) with SourcesContracts[Path, Element]
