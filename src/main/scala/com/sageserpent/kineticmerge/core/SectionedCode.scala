@@ -82,9 +82,6 @@ object SectionedCode extends StrictLogging:
       val sectionsAndTheirMatches =
         matchesAndTheirSections.sectionsAndTheirMatches
 
-      val tinySectionsAndTheirMatches =
-        tinyMatchesAndTheirSectionsOnly.sectionsAndTheirMatches
-
       // Use the sections covered by the tiny matches to break up gap fills on
       // all sides. This gives the downstream merge a chance to make last-minute
       // matches of its own between small unmatched sections that are deleted
@@ -104,14 +101,6 @@ object SectionedCode extends StrictLogging:
         rightSources.filesByPathUtilising(mandatorySections =
           matchesAndTheirSections.rightSections ++ tinyMatchesAndTheirSectionsOnly.rightSections
         )
-
-      val combinedParallelMatchesGroupIdsByMatch =
-        matchesAndTheirSections.parallelMatchesGroupIdsByMatch
-          ++ tinyMatchesAndTheirSectionsOnly.parallelMatchesGroupIdsByMatch.map(
-            (aMatch, groupId) =>
-              val negativeGroupIdToSegregateFromPrimaryGroupIds = -1 - groupId
-              aMatch -> negativeGroupIdToSegregateFromPrimaryGroupIds
-          )
 
       Right(new SectionedCode[Path, Element]:
         private val lcsByPath: mutable.Map[Path, LongestCommonSubsequence[
@@ -133,18 +122,15 @@ object SectionedCode extends StrictLogging:
         export leftSources.pathFor as leftPathFor
         export rightSources.pathFor as rightPathFor
 
-        override def parallelMatchesGroupIdsByMatch
-            : ParallelMatchesGroupIdsByMatch[Element] =
-          combinedParallelMatchesGroupIdsByMatch
+        export matchesAndTheirSections.parallelMatchesGroupIdsByMatch
 
         {
           // Invariant: the matches are referenced only by their participating
           // sections.
-          val allMatchKeys =
-            sectionsAndTheirMatches.keySet union tinySectionsAndTheirMatches.keySet
+          val allMatchKeys = sectionsAndTheirMatches.keySet
 
           val allParticipatingSections =
-            (sectionsAndTheirMatches.values.toSet union tinySectionsAndTheirMatches.values.toSet)
+            sectionsAndTheirMatches.values.toSet
               .map {
                 case Match.AllSides(baseSection, leftSection, rightSection) =>
                   Set(baseSection, leftSection, rightSection)
