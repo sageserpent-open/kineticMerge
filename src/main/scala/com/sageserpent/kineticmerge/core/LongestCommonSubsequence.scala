@@ -285,7 +285,7 @@ object LongestCommonSubsequence:
                 Contribution.CommonToBaseAndLeftOnly(_) |
                 Contribution.CommonToBaseAndRightOnly(_),
                 _*
-              ),
+              ) | Seq(),
               Seq(Contribution.Difference(leftElement), leftTail*),
               Seq(Contribution.Difference(rightElement), rightTail*)
             ) =>
@@ -305,7 +305,7 @@ object LongestCommonSubsequence:
                 Contribution.CommonToBaseAndLeftOnly(_) |
                 Contribution.CommonToLeftAndRightOnly(_),
                 _*
-              ),
+              ) | Seq(),
               Seq(Contribution.Difference(rightElement), rightTail*)
             ) =>
           synchronise(
@@ -325,7 +325,7 @@ object LongestCommonSubsequence:
                 Contribution.CommonToBaseAndRightOnly(_) |
                 Contribution.CommonToLeftAndRightOnly(_),
                 _*
-              )
+              ) | Seq()
             ) =>
           synchronise(
             baseTail,
@@ -415,6 +415,44 @@ object LongestCommonSubsequence:
               .addBaseDifference(baseElement)
               .addLeftDifference(leftElement)
               .addRightDifference(rightElement)
+          )
+
+          // NOTE: these are fall-through cases, with some overlap with the
+          // previous cases, so leave them down here...
+        case (
+              Seq(Contribution.Difference(baseElement), baseTail*),
+              _,
+              _
+            ) =>
+          synchronise(
+            baseTail,
+            left,
+            right,
+            partialResult.addBaseDifference(baseElement)
+          )
+
+        case (
+              _,
+              Seq(Contribution.Difference(leftElement), leftTail*),
+              _
+            ) =>
+          synchronise(
+            base,
+            leftTail,
+            right,
+            partialResult.addLeftDifference(leftElement)
+          )
+
+        case (
+              _,
+              _,
+              Seq(Contribution.Difference(rightElement), rightTail*)
+            ) =>
+          synchronise(
+            base,
+            left,
+            rightTail,
+            partialResult.addRightDifference(rightElement)
           )
 
         case _ => failure
@@ -519,6 +557,10 @@ object LongestCommonSubsequence:
           private def notYetReachedFinalSwathe =
             maximumSwatheIndex > _indexOfLeadingSwathe
 
+          inline private def storageLotForLeadingSwathe =
+            _indexOfLeadingSwathe % 2
+          end storageLotForLeadingSwathe
+
           def consultRelevantSwatheForSolution(
               onePastBaseIndex: Int,
               onePastLeftIndex: Int,
@@ -567,10 +609,6 @@ object LongestCommonSubsequence:
               onePastRightIndex
             ) = longestCommonSubsequence
           end storeSolutionInLeadingSwathe
-
-          inline private def storageLotForLeadingSwathe =
-            _indexOfLeadingSwathe % 2
-          end storageLotForLeadingSwathe
 
           inline private def newStorage = Storage(
             baseEqualToSwatheIndex =
