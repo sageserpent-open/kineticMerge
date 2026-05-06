@@ -18,7 +18,11 @@ import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{
   MoveEvaluation,
   OppositeSideAnchor
 }
-import com.sageserpent.kineticmerge.core.merge.{mergeUsing, of as mergeOf}
+import com.sageserpent.kineticmerge.core.merge.{
+  MergeAlgebra,
+  mergeUsing,
+  of as mergeOf
+}
 import com.sageserpent.kineticmerge.{
   NoProgressRecording,
   ProgressRecording,
@@ -222,42 +226,10 @@ object SectionedCodeExtension extends StrictLogging:
       given Eq[Block]    = Eq.by(_.parallelMatchesGroupId)
       given Sized[Block] = _.size
 
-      val LongestCommonSubsequence(
-        baseBlockContributions,
-        leftBlockContributions,
-        rightBlockContributions,
-        _,
-        _,
-        _,
-        _
-      ) =
-        LongestCommonSubsequence.of(baseBlocks, leftBlocks, rightBlocks)
-
-      def contributionKindsByGroupId(
-          blockContributions: IndexedSeq[Contribution[Block]]
-      ): Map[ParallelMatchesGroupId, Contribution[Block]] =
-        blockContributions
-          .map(contribution =>
-            contribution.element.parallelMatchesGroupId -> contribution
-          )
-          .toMap
-
-      val baseContributionKindsByGroupId = contributionKindsByGroupId(
-        baseBlockContributions
-      )
-
-      val leftContributionKindsByGroupId = contributionKindsByGroupId(
-        leftBlockContributions
-      )
-
-      val rightContributionKindsByGroupId = contributionKindsByGroupId(
-        rightBlockContributions
-      )
-
-      object contributionRanking extends Ordering[Contribution[Block]]:
+      object contributionRanking extends Ordering[Contribution[?]]:
         override def compare(
-            x: Contribution[Block],
-            y: Contribution[Block]
+            x: Contribution[?],
+            y: Contribution[?]
         ): Int =
           (x, y) match
             // A common contribution is the best.
@@ -275,65 +247,214 @@ object SectionedCodeExtension extends StrictLogging:
             case _ => 0
       end contributionRanking
 
-      def assignContributionUsing(
-          contributionKindsByGroupId: Map[ParallelMatchesGroupId, Contribution[
-            Block
-          ]]
-      )(section: Section[Element]): Contribution[Section[Element]] =
-        val groupIds = groupIdsOf(section)
+      case class ThreeSidedClump[X](
+          base: IndexedSeq[X],
+          left: IndexedSeq[X],
+          right: IndexedSeq[X]
+      )
 
-        // @jules - this isn't quite right and is probably causing most of the
-        // test failures in `SectionedCodeExtensionTest`. The problem is that it
-        // considers the *group id* contribution to apply to a section that
-        // participates in that group to apply directly to the section. In
-        // reality the match that lead to the group id should also be consulted,
-        // so for example, if the overall group id maps to a
-        // `Contribution.Common`, but the section's match is a mere
-        // `BaseAndLeft`, then the contribution from the group id should be
-        // demoted to `Contribution.CommonToBaseAndLeftOnly`. On the other hand,
-        // if there is no match at all (and thus no group id either), the
-        // `getOrElse` below should assign a `Contribution.Difference` which is
-        // the right thing to do.
-        val contributions = groupIds.toSeq
-          .flatMap(contributionKindsByGroupId.get)
-          .sorted(
-            contributionRanking.reverse
+      type ThreeSidedClumps[X] = Vector[ThreeSidedClump[X]]
+
+      val blockLevelMergeAlgebra = new MergeAlgebra[ThreeSidedClumps, Block]:
+        override def empty: ThreeSidedClumps[Block] = Vector.empty
+
+        override def preservation(
+            result: ThreeSidedClumps[Block],
+            preservedBaseElement: Block,
+            preservedElementOnLeft: Block,
+            preservedElementOnRight: Block
+        ): ThreeSidedClumps[Block] = result.prepended(
+          ThreeSidedClump(
+            Vector(preservedBaseElement),
+            Vector(preservedElementOnLeft),
+            Vector(preservedElementOnRight)
           )
-
-        val bestRankedContribution =
-          contributions.headOption.getOrElse(Contribution.Difference(null))
-
-        val onePastTheBestRankedContributions = contributions.indexWhere(
-          0 > contributionRanking
-            .compare(_, bestRankedContribution)
         )
 
-        val moreThanOneBestRankedContribution =
-          1 < onePastTheBestRankedContributions
+        override def leftInsertion(
+            result: ThreeSidedClumps[Block],
+            insertedElement: Block
+        ): ThreeSidedClumps[Block] =
+          result.prepended(
+            ThreeSidedClump(Vector.empty, Vector(insertedElement), Vector.empty)
+          )
 
-        if moreThanOneBestRankedContribution then
-          Contribution.Difference(section)
-        else bestRankedContribution.constructLikeness(section)
-        end if
+        override def rightInsertion(
+            result: ThreeSidedClumps[Block],
+            insertedElement: Block
+        ): ThreeSidedClumps[Block] =
+          result.prepended(
+            ThreeSidedClump(Vector.empty, Vector.empty, Vector(insertedElement))
+          )
 
-      end assignContributionUsing
+        override def coincidentInsertion(
+            result: ThreeSidedClumps[Block],
+            insertedElementOnLeft: Block,
+            insertedElementOnRight: Block
+        ): ThreeSidedClumps[Block] = result.prepended(
+          ThreeSidedClump(
+            Vector.empty,
+            Vector(insertedElementOnLeft),
+            Vector(insertedElementOnRight)
+          )
+        )
 
-      val baseSectionContributions = baseSections.map(
-        assignContributionUsing(baseContributionKindsByGroupId)
-      )
+        override def leftDeletion(
+            result: ThreeSidedClumps[Block],
+            deletedBaseElement: Block,
+            deletedRightElement: Block
+        ): ThreeSidedClumps[Block] = result.prepended(
+          ThreeSidedClump(
+            Vector(deletedBaseElement),
+            Vector.empty,
+            Vector(deletedRightElement)
+          )
+        )
 
-      val leftSectionContributions = leftSections.map(
-        assignContributionUsing(leftContributionKindsByGroupId)
-      )
+        override def rightDeletion(
+            result: ThreeSidedClumps[Block],
+            deletedBaseElement: Block,
+            deletedLeftElement: Block
+        ): ThreeSidedClumps[Block] = result.prepended(
+          ThreeSidedClump(
+            Vector(deletedBaseElement),
+            Vector(deletedLeftElement),
+            Vector.empty
+          )
+        )
 
-      val rightSectionContributions = rightSections.map(
-        assignContributionUsing(rightContributionKindsByGroupId)
-      )
+        override def coincidentDeletion(
+            result: ThreeSidedClumps[Block],
+            deletedElement: Block
+        ): ThreeSidedClumps[Block] =
+          result.prepended(
+            ThreeSidedClump(Vector(deletedElement), Vector.empty, Vector.empty)
+          )
 
-      LongestCommonSubsequence.apply(
-        baseSectionContributions,
-        leftSectionContributions,
-        rightSectionContributions
+        override def leftEdit(
+            result: ThreeSidedClumps[Block],
+            editedBaseElement: Block,
+            editedRightElement: Block,
+            editElements: IndexedSeq[Block]
+        ): ThreeSidedClumps[Block] = result.prepended(
+          ThreeSidedClump(
+            Vector(editedBaseElement),
+            editElements,
+            Vector(editedRightElement)
+          )
+        )
+
+        override def rightEdit(
+            result: ThreeSidedClumps[Block],
+            editedBaseElement: Block,
+            editedLeftElement: Block,
+            editElements: IndexedSeq[Block]
+        ): ThreeSidedClumps[Block] = result.prepended(
+          ThreeSidedClump(
+            Vector(editedBaseElement),
+            Vector(editedLeftElement),
+            editElements
+          )
+        )
+
+        override def coincidentEdit(
+            result: ThreeSidedClumps[Block],
+            editedElement: Block,
+            editElements: IndexedSeq[(Block, Block)]
+        ): ThreeSidedClumps[Block] =
+          val (leftEditElements, rightEditElements) = editElements.unzip
+          result.prepended(
+            ThreeSidedClump(
+              Vector(editedElement),
+              leftEditElements,
+              rightEditElements
+            )
+          )
+        end coincidentEdit
+
+        override def conflict(
+            result: ThreeSidedClumps[Block],
+            editedElements: IndexedSeq[Block],
+            leftEditElements: IndexedSeq[Block],
+            rightEditElements: IndexedSeq[Block]
+        ): ThreeSidedClumps[Block] =
+          result.prepended(
+            ThreeSidedClump(editedElements, leftEditElements, rightEditElements)
+          )
+
+      val threeSidedClumps =
+        mergeOf(blockLevelMergeAlgebra)(baseBlocks, leftBlocks, rightBlocks)
+
+      def contributionsFromClump(
+          partialResult: Map[Section[Element], Contribution[Section[Element]]],
+          threeSidedClump: ThreeSidedClump[Block]
+      ): Map[Section[Element], Contribution[Section[Element]]] =
+        val sectionLevelLongestCommonSubsequenceInClump =
+          LongestCommonSubsequence.of(
+            threeSidedClump.base.flatMap(_.sectionsCoveredByGroup),
+            threeSidedClump.left.flatMap(_.sectionsCoveredByGroup),
+            threeSidedClump.right.flatMap(_.sectionsCoveredByGroup)
+          )
+
+        def foldInContributions(
+            partialResult: Map[Section[Element], Contribution[
+              Section[Element]
+            ]],
+            contributions: IndexedSeq[Contribution[Section[Element]]]
+        ): Map[Section[Element], Contribution[Section[Element]]] =
+          contributions.foldLeft(
+            partialResult
+          )((partial, contribution) =>
+            partial.updatedWith(contribution.element) {
+              case None =>
+                Some(contribution)
+              case Some(previousContribution) =>
+                Some(
+                  if contributionRanking.gt(contribution, previousContribution)
+                  then contribution
+                  else previousContribution
+                )
+            }
+          )
+
+        val incorporatingSectionsFromTheBase =
+          foldInContributions(
+            partialResult,
+            sectionLevelLongestCommonSubsequenceInClump.base
+          )
+
+        val incorporatingSectionsFromTheLeft =
+          foldInContributions(
+            incorporatingSectionsFromTheBase,
+            sectionLevelLongestCommonSubsequenceInClump.left
+          )
+
+        val incorporatingSectionsFromTheRight =
+          foldInContributions(
+            incorporatingSectionsFromTheLeft,
+            sectionLevelLongestCommonSubsequenceInClump.right
+          )
+
+        incorporatingSectionsFromTheRight
+      end contributionsFromClump
+
+      val contributionsFromSectionsInBlocksAcrossAllThreeSides
+          : Map[Section[Element], Contribution[Section[Element]]] =
+        threeSidedClumps.foldLeft(Map.empty)(contributionsFromClump)
+
+      def assignContributionsOnOneSide(
+          sections: IndexedSeq[Section[Element]]
+      ): IndexedSeq[Contribution[Section[Element]]] =
+        sections.map(section =>
+          contributionsFromSectionsInBlocksAcrossAllThreeSides
+            .get(section)
+            .getOrElse(Contribution.Difference(section))
+        )
+
+      LongestCommonSubsequence(
+        base = assignContributionsOnOneSide(baseSections),
+        left = assignContributionsOnOneSide(leftSections),
+        right = assignContributionsOnOneSide(rightSections)
       )
     end longestCommonSubsequenceOf
 
