@@ -389,6 +389,20 @@ object SectionedCodeExtension extends StrictLogging:
           partialResult: Map[Section[Element], Contribution[Section[Element]]],
           threeSidedClump: ThreeSidedClump[Block]
       ): Map[Section[Element], Contribution[Section[Element]]] =
+        given Eq[Section[Element]] with
+          override def eqv(x: Section[Element], y: Section[Element]): Boolean =
+            // Check to see if either section has a previous common contribution
+            // that forbids equality. We still have to go ahead and make the
+            // comparison, but that's OK as the logic in `foldInContributions`
+            // will choose the best contribution in the end taking this into
+            // account.
+
+            (partialResult.get(x), partialResult.get(y)) match
+              case (Some(Contribution.Common(_)), _) => false
+              case (_, Some(Contribution.Common(_))) => false
+              case _                                 => sectionEq.eqv(x, y)
+        end given
+
         val sectionLevelLongestCommonSubsequenceInClump =
           LongestCommonSubsequence.of(
             threeSidedClump.base.flatMap(_.sectionsCoveredByGroup),
