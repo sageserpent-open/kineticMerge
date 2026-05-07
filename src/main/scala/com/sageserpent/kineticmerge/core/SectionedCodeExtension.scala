@@ -263,7 +263,7 @@ object SectionedCodeExtension extends StrictLogging:
             preservedBaseElement: Block,
             preservedElementOnLeft: Block,
             preservedElementOnRight: Block
-        ): ThreeSidedClumps[Block] = result.prepended(
+        ): ThreeSidedClumps[Block] = result.appended(
           ThreeSidedClump(
             Vector(preservedBaseElement),
             Vector(preservedElementOnLeft),
@@ -275,7 +275,7 @@ object SectionedCodeExtension extends StrictLogging:
             result: ThreeSidedClumps[Block],
             insertedElement: Block
         ): ThreeSidedClumps[Block] =
-          result.prepended(
+          result.appended(
             ThreeSidedClump(Vector.empty, Vector(insertedElement), Vector.empty)
           )
 
@@ -283,7 +283,7 @@ object SectionedCodeExtension extends StrictLogging:
             result: ThreeSidedClumps[Block],
             insertedElement: Block
         ): ThreeSidedClumps[Block] =
-          result.prepended(
+          result.appended(
             ThreeSidedClump(Vector.empty, Vector.empty, Vector(insertedElement))
           )
 
@@ -291,7 +291,7 @@ object SectionedCodeExtension extends StrictLogging:
             result: ThreeSidedClumps[Block],
             insertedElementOnLeft: Block,
             insertedElementOnRight: Block
-        ): ThreeSidedClumps[Block] = result.prepended(
+        ): ThreeSidedClumps[Block] = result.appended(
           ThreeSidedClump(
             Vector.empty,
             Vector(insertedElementOnLeft),
@@ -303,7 +303,7 @@ object SectionedCodeExtension extends StrictLogging:
             result: ThreeSidedClumps[Block],
             deletedBaseElement: Block,
             deletedRightElement: Block
-        ): ThreeSidedClumps[Block] = result.prepended(
+        ): ThreeSidedClumps[Block] = result.appended(
           ThreeSidedClump(
             Vector(deletedBaseElement),
             Vector.empty,
@@ -315,7 +315,7 @@ object SectionedCodeExtension extends StrictLogging:
             result: ThreeSidedClumps[Block],
             deletedBaseElement: Block,
             deletedLeftElement: Block
-        ): ThreeSidedClumps[Block] = result.prepended(
+        ): ThreeSidedClumps[Block] = result.appended(
           ThreeSidedClump(
             Vector(deletedBaseElement),
             Vector(deletedLeftElement),
@@ -327,7 +327,7 @@ object SectionedCodeExtension extends StrictLogging:
             result: ThreeSidedClumps[Block],
             deletedElement: Block
         ): ThreeSidedClumps[Block] =
-          result.prepended(
+          result.appended(
             ThreeSidedClump(Vector(deletedElement), Vector.empty, Vector.empty)
           )
 
@@ -336,7 +336,7 @@ object SectionedCodeExtension extends StrictLogging:
             editedBaseElement: Block,
             editedRightElement: Block,
             editElements: IndexedSeq[Block]
-        ): ThreeSidedClumps[Block] = result.prepended(
+        ): ThreeSidedClumps[Block] = result.appended(
           ThreeSidedClump(
             Vector(editedBaseElement),
             editElements,
@@ -349,7 +349,7 @@ object SectionedCodeExtension extends StrictLogging:
             editedBaseElement: Block,
             editedLeftElement: Block,
             editElements: IndexedSeq[Block]
-        ): ThreeSidedClumps[Block] = result.prepended(
+        ): ThreeSidedClumps[Block] = result.appended(
           ThreeSidedClump(
             Vector(editedBaseElement),
             Vector(editedLeftElement),
@@ -363,7 +363,7 @@ object SectionedCodeExtension extends StrictLogging:
             editElements: IndexedSeq[(Block, Block)]
         ): ThreeSidedClumps[Block] =
           val (leftEditElements, rightEditElements) = editElements.unzip
-          result.prepended(
+          result.appended(
             ThreeSidedClump(
               Vector(editedElement),
               leftEditElements,
@@ -378,7 +378,7 @@ object SectionedCodeExtension extends StrictLogging:
             leftEditElements: IndexedSeq[Block],
             rightEditElements: IndexedSeq[Block]
         ): ThreeSidedClumps[Block] =
-          result.prepended(
+          result.appended(
             ThreeSidedClump(editedElements, leftEditElements, rightEditElements)
           )
 
