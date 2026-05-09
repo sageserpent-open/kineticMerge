@@ -101,10 +101,6 @@ object SectionedCode extends StrictLogging:
         )
 
       Right(new SectionedCode[Path, Element]:
-        private val lcsByPath: mutable.Map[Path, LongestCommonSubsequence[
-          Section[Element]
-        ]] = mutable.Map.empty
-
         override def base: Map[Path, File[Element]] = baseFilesByPath
 
         override def left: Map[Path, File[Element]] = leftFilesByPath
