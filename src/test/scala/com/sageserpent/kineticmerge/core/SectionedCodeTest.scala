@@ -12,6 +12,7 @@ import com.sageserpent.kineticmerge.core.MatchAnalysis.{
   AdmissibleFailure,
   Configuration
 }
+import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording}
 import com.sageserpent.kineticmerge.core.SectionedCodeExtension.merge
 import com.sageserpent.kineticmerge.core.SectionedCodeTest.{*, given}
 import org.junit.jupiter.api.Assertions.assertDoesNotThrow
@@ -21,6 +22,32 @@ import _root_.java.util.concurrent.TimeUnit
 import scala.concurrent.duration.Duration
 
 class SectionedCodeTest:
+  val minimumSizeFractionTrials: Trials[Double] =
+    trialsApi.doubles(0, 0.2)
+
+  val contentTrials: Trials[Vector[Element]] = trialsApi
+    .integers(0, 100)
+    .flatMap(textSize =>
+      trialsApi
+        .integers(lowerBound = 1, upperBound = 10)
+        .lotsOfSize[Vector[Path]](textSize)
+    )
+
+  val pathTrials: Trials[Path] = trialsApi
+    .integers(1, 100)
+
+  val sourcesTrials: Trials[FakeSources] =
+    pathTrials
+      .maps(contentTrials)
+      .filter(_.nonEmpty)
+      .map(
+        new FakeSources(_, "unlabelled")
+          with SourcesContracts[
+            Path,
+            Element
+          ]
+      )
+
   @TestFactory
   def sourcesCanBeReconstructedFromTheAnalysis: DynamicTests =
     extension (results: Map[Path, File[Element]])
@@ -36,32 +63,6 @@ class SectionedCodeTest:
         }
       end matches
     end extension
-
-    val minimumSizeFractionTrials: Trials[Double] =
-      trialsApi.doubles(0, 0.2)
-
-    val contentTrials: Trials[Vector[Element]] = trialsApi
-      .integers(0, 100)
-      .flatMap(textSize =>
-        trialsApi
-          .integers(lowerBound = 1, upperBound = 10)
-          .lotsOfSize[Vector[Path]](textSize)
-      )
-
-    val pathTrials: Trials[Path] = trialsApi
-      .integers(1, 100)
-
-    val sourcesTrials: Trials[FakeSources] =
-      pathTrials
-        .maps(contentTrials)
-        .filter(_.nonEmpty)
-        .map(
-          new FakeSources(_, "unlabelled")
-            with SourcesContracts[
-              Path,
-              Element
-            ]
-        )
 
     (sourcesTrials.map(
       _.copy(label = "base")
@@ -1611,7 +1612,7 @@ class SectionedCodeTest:
   end parallelMatches
 
   @TestFactory
-  def smokeTestMerging(): DynamicTests =
+  def mergeSmokeTest(): DynamicTests =
     testPlansFavouringMatches
       .withStrategy(caseSupplyCycle =>
         if caseSupplyCycle.isInitial then
@@ -1670,7 +1671,7 @@ class SectionedCodeTest:
           end match
         }
       }
-  end smokeTestMerging
+  end mergeSmokeTest
 
 end SectionedCodeTest
 

@@ -269,20 +269,35 @@ object SectionedCodeExtension extends StrictLogging:
       end blocksFrom
 
       val baseBlocks =
-        blocksFrom(baseSections)(
-          file = sectionedCode.base(path),
-          sectionExtractor = _.baseContribution
-        )
+        sectionedCode.base
+          .get(path)
+          .map(file =>
+            blocksFrom(baseSections)(
+              file = file,
+              sectionExtractor = _.baseContribution
+            )
+          )
+          .getOrElse(IndexedSeq.empty)
       val leftBlocks =
-        blocksFrom(leftSections)(
-          file = sectionedCode.left(path),
-          sectionExtractor = _.leftContribution
-        )
+        sectionedCode.left
+          .get(path)
+          .map(file =>
+            blocksFrom(leftSections)(
+              file = file,
+              sectionExtractor = _.leftContribution
+            )
+          )
+          .getOrElse(IndexedSeq.empty)
       val rightBlocks =
-        blocksFrom(rightSections)(
-          file = sectionedCode.right(path),
-          sectionExtractor = _.rightContribution
-        )
+        sectionedCode.right
+          .get(path)
+          .map(file =>
+            blocksFrom(rightSections)(
+              file = file,
+              sectionExtractor = _.rightContribution
+            )
+          )
+          .getOrElse(IndexedSeq.empty)
 
       given Eq[Block]    = Eq.by(_.parallelMatchesGroupId)
       given Sized[Block] = _.size
