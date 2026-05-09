@@ -46,7 +46,7 @@ object SectionedCodeExtension extends StrictLogging:
         baseSections: IndexedSeq[Section[Element]],
         leftSections: IndexedSeq[Section[Element]],
         rightSections: IndexedSeq[Section[Element]]
-    )(using
+    )(path: Path)(using
         progressRecording: ProgressRecording,
         sectionEq: Eq[Section[Element]],
         sectionSized: Sized[Section[Element]]
@@ -78,6 +78,9 @@ object SectionedCodeExtension extends StrictLogging:
 
       def blocksFrom(
           sections: Seq[Section[Element]]
+      )(
+          file: File[Element],
+          sectionExtractor: Match[Section[Element]] => Option[Section[Element]]
       ): IndexedSeq[Block] =
         import cats.data.State
         import cats.syntax.foldable.toFoldableOps
@@ -109,6 +112,48 @@ object SectionedCodeExtension extends StrictLogging:
               )
             )
 
+        def diagnosticForGroupId(prelude: String)(
+            groupId: ParallelMatchesGroupId,
+            finalSection: Option[Section[Element]]
+        ): String =
+          val group = sectionedCode.groupsOfParallelMatches(groupId)
+
+          val sectionsFromGroupOnRelevantSide =
+            group.toSeq.flatMap(sectionExtractor)
+
+          val collectiveGroupDiagnostic = pprintCustomised(
+            sectionsFromGroupOnRelevantSide
+          )
+
+          val Searching.Found(startingSectionIndex) = file.searchByStartOffset(
+            sectionsFromGroupOnRelevantSide.head.startOffset
+          ): @unchecked
+
+          val Searching.Found(endingSectionIndex) = file.searchByStartOffset(
+            finalSection
+              .getOrElse(sectionsFromGroupOnRelevantSide.last)
+              .startOffset
+          ): @unchecked
+
+          val allSectionsBetweenBracketsDiagnostic = pprintCustomised(
+            file.sections
+              .slice(startingSectionIndex, 1 + endingSectionIndex)
+              .map(section => section -> groupIdsOf(section))
+          )
+
+          s"""
+             |$prelude
+             |
+             |Group id: $groupId
+             |
+             |Sections in group:
+             |$collectiveGroupDiagnostic
+             |
+             |Sections between earliest section in group and last relevant one:
+             |$allSectionsBetweenBracketsDiagnostic
+             |""".stripMargin
+        end diagnosticForGroupId
+
         val workflow =
           for
             resultForAllButFinalBlocks <-
@@ -127,7 +172,9 @@ object SectionedCodeExtension extends StrictLogging:
                   _ = groupIdsRelevantToSection.foreach { groupId =>
                     require(
                       !groupIdsOfCompletedBlocks.contains(groupId),
-                      s"Encountered group id: $groupId of a previously completed block again."
+                      diagnosticForGroupId(prelude =
+                        "Encountered group id from a previously completed block again."
+                      )(groupId, finalSection = Some(section))
                     )
                   }
 
@@ -212,16 +259,30 @@ object SectionedCodeExtension extends StrictLogging:
           case (groupId, potentialDuplicates) =>
             require(
               1 == potentialDuplicates.size,
-              s"Group id: $groupId occurs in multiple blocks: $potentialDuplicates"
+              diagnosticForGroupId(prelude =
+                s"Group id occurs in multiple blocks: $potentialDuplicates"
+              )(groupId, finalSection = None)
             )
         }
 
         result
       end blocksFrom
 
-      val baseBlocks  = blocksFrom(baseSections)
-      val leftBlocks  = blocksFrom(leftSections)
-      val rightBlocks = blocksFrom(rightSections)
+      val baseBlocks =
+        blocksFrom(baseSections)(
+          file = sectionedCode.base(path),
+          sectionExtractor = _.baseContribution
+        )
+      val leftBlocks =
+        blocksFrom(leftSections)(
+          file = sectionedCode.left(path),
+          sectionExtractor = _.leftContribution
+        )
+      val rightBlocks =
+        blocksFrom(rightSections)(
+          file = sectionedCode.right(path),
+          sectionExtractor = _.rightContribution
+        )
 
       given Eq[Block]    = Eq.by(_.parallelMatchesGroupId)
       given Sized[Block] = _.size
@@ -704,7 +765,7 @@ object SectionedCodeExtension extends StrictLogging:
                     baseSections = baseSections,
                     leftSections = IndexedSeq.empty,
                     rightSections = rightSections
-                  ).mergeUsing(mergeAlgebra =
+                  )(path).mergeUsing(mergeAlgebra =
                     FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
                       FileDeletionContext.Left
                     )
@@ -724,7 +785,7 @@ object SectionedCodeExtension extends StrictLogging:
                     baseSections = baseSections,
                     leftSections = leftSections,
                     rightSections = IndexedSeq.empty
-                  ).mergeUsing(mergeAlgebra =
+                  )(path).mergeUsing(mergeAlgebra =
                     FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
                       FileDeletionContext.Right
                     )
@@ -750,7 +811,7 @@ object SectionedCodeExtension extends StrictLogging:
                       optionalBaseSections.getOrElse(IndexedSeq.empty),
                     leftSections = leftSections,
                     rightSections = rightSections
-                  ).mergeUsing(mergeAlgebra =
+                  )(path).mergeUsing(mergeAlgebra =
                     FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
                       FileDeletionContext.None
                     )

@@ -4,14 +4,10 @@ import cats.Eq
 import com.google.common.hash.{Funnel, HashFunction}
 import com.sageserpent.kineticmerge
 import com.sageserpent.kineticmerge.core
-import com.sageserpent.kineticmerge.core.MatchAnalysis.{
-  AbstractConfiguration,
-  AdmissibleFailure,
-  ParallelMatchesGroupIdsByMatch
-}
+import com.sageserpent.kineticmerge.core.MatchAnalysis.*
 import com.typesafe.scalalogging.StrictLogging
 
-import scala.collection.mutable
+import scala.collection.immutable.{SortedMap, SortedSet}
 
 trait SectionedCode[Path, Element]:
   def base: Map[Path, File[Element]]
@@ -27,6 +23,9 @@ trait SectionedCode[Path, Element]:
   def rightPathFor(rightSection: Section[Element]): Path
 
   def parallelMatchesGroupIdsByMatch: ParallelMatchesGroupIdsByMatch[Element]
+
+  def groupsOfParallelMatches
+      : SortedMap[ParallelMatchesGroupId, SortedSet[GenericMatch[Element]]]
 end SectionedCode
 
 object SectionedCode extends StrictLogging:
@@ -117,6 +116,8 @@ object SectionedCode extends StrictLogging:
         export rightSources.pathFor as rightPathFor
 
         export matchesAndTheirSections.parallelMatchesGroupIdsByMatch
+
+        export matchesAndTheirSections.groupsOfParallelMatches
 
         {
           // Invariant: the matches are referenced only by their participating

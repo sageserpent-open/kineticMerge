@@ -13,6 +13,7 @@ import com.sageserpent.kineticmerge
 import com.sageserpent.kineticmerge.core.MatchAnalysis.{
   GenericMatch,
   MatchedSections,
+  ParallelMatchesGroupId,
   ParallelMatchesGroupIdsByMatch
 }
 import com.sageserpent.kineticmerge.{
@@ -42,6 +43,9 @@ trait MatchAnalysis[Path, Element]:
   def parallelMatchesOnly: MatchAnalysis[Path, Element]
 
   def reconcileMatches: MatchAnalysis[Path, Element]
+
+  def groupsOfParallelMatches
+      : SortedMap[ParallelMatchesGroupId, SortedSet[GenericMatch[Element]]]
 
   def withoutRedundantPairwiseMatches: MatchAnalysis[Path, Element]
 
@@ -1551,47 +1555,47 @@ object MatchAnalysis extends StrictLogging:
 
         result.reconciliationPostcondition()
 
-        val groupsOfParallelMatches =
-          given Ordering[GenericMatch[Element]] with
-            override def compare(
-                x: GenericMatch[Element],
-                y: GenericMatch[Element]
-            ): Int =
-              (startOffsetOnLeft(x), startOffsetOnLeft(y)) match
-                case (Some(xLeftStartOffset), Some(yLeftStartOffset)) =>
-                  Ordering[Int].compare(xLeftStartOffset, yLeftStartOffset)
-                case _ =>
-                  (startOffsetOnRight(x), startOffsetOnRight(y)) match
-                    case (Some(xRightStartOffset), Some(yRightStartOffset)) =>
-                      Ordering[Int].compare(
-                        xRightStartOffset,
-                        yRightStartOffset
-                      )
-                    case _ =>
-                      ((
-                        startOffsetOnBase(x),
-                        startOffsetOnBase(y)
-                      ): @unchecked) match
-                        case (Some(xBaseStartOffset), Some(yBaseStartOffset)) =>
-                          Ordering[Int].compare(
-                            xBaseStartOffset,
-                            yBaseStartOffset
-                          )
-          end given
-
-          SortedMap.from(
-            result.parallelMatchesGroupIdsByMatch.groupBy(_._2).map {
-              (groupId, group) => groupId -> SortedSet.from(group.keys)
-            }
-          )
-        end groupsOfParallelMatches
         logger.debug(
-          s"Groups of parallel matches after reconciliation:\n${pprintCustomised(groupsOfParallelMatches)}"
+          s"Groups of parallel matches after reconciliation:\n${pprintCustomised(result.groupsOfParallelMatches)}"
         )
 
         result
-
       end reconcileMatches
+
+      def groupsOfParallelMatches: SortedMap[ParallelMatchesGroupId, SortedSet[
+        GenericMatch[Element]
+      ]] =
+        given Ordering[GenericMatch[Element]] with
+          override def compare(
+              x: GenericMatch[Element],
+              y: GenericMatch[Element]
+          ): Int =
+            (startOffsetOnLeft(x), startOffsetOnLeft(y)) match
+              case (Some(xLeftStartOffset), Some(yLeftStartOffset)) =>
+                Ordering[Int].compare(xLeftStartOffset, yLeftStartOffset)
+              case _ =>
+                (startOffsetOnRight(x), startOffsetOnRight(y)) match
+                  case (Some(xRightStartOffset), Some(yRightStartOffset)) =>
+                    Ordering[Int].compare(
+                      xRightStartOffset,
+                      yRightStartOffset
+                    )
+                  case _ =>
+                    ((
+                      startOffsetOnBase(x),
+                      startOffsetOnBase(y)
+                    ): @unchecked) match
+                      case (Some(xBaseStartOffset), Some(yBaseStartOffset)) =>
+                        Ordering[Int].compare(
+                          xBaseStartOffset,
+                          yBaseStartOffset
+                        )
+        end given
+
+        SortedMap.from(parallelMatchesGroupIdsByMatch.groupBy(_._2).map {
+          (groupId, group) => groupId -> SortedSet.from(group.keys)
+        })
+      end groupsOfParallelMatches
 
       def parallelMatchesOnly: MatchesAndTheirSections =
         // PLAN:
