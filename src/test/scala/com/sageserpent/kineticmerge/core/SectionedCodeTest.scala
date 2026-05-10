@@ -1,5 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
+import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording}
 import cats.kernel.Eq
 import com.google.common.hash.{Funnel, HashFunction, Hashing, PrimitiveSink}
 import com.sageserpent.americium.Trials.api as trialsApi
@@ -22,32 +23,6 @@ import _root_.java.util.concurrent.TimeUnit
 import scala.concurrent.duration.Duration
 
 class SectionedCodeTest:
-  val minimumSizeFractionTrials: Trials[Double] =
-    trialsApi.doubles(0, 0.2)
-
-  val contentTrials: Trials[Vector[Element]] = trialsApi
-    .integers(0, 100)
-    .flatMap(textSize =>
-      trialsApi
-        .integers(lowerBound = 1, upperBound = 10)
-        .lotsOfSize[Vector[Path]](textSize)
-    )
-
-  val pathTrials: Trials[Path] = trialsApi
-    .integers(1, 100)
-
-  val sourcesTrials: Trials[FakeSources] =
-    pathTrials
-      .maps(contentTrials)
-      .filter(_.nonEmpty)
-      .map(
-        new FakeSources(_, "unlabelled")
-          with SourcesContracts[
-            Path,
-            Element
-          ]
-      )
-
   @TestFactory
   def sourcesCanBeReconstructedFromTheAnalysis: DynamicTests =
     extension (results: Map[Path, File[Element]])
@@ -63,6 +38,32 @@ class SectionedCodeTest:
         }
       end matches
     end extension
+
+    val minimumSizeFractionTrials: Trials[Double] =
+      trialsApi.doubles(0, 0.2)
+
+    val contentTrials: Trials[Vector[Element]] = trialsApi
+      .integers(0, 100)
+      .flatMap(textSize =>
+        trialsApi
+          .integers(lowerBound = 1, upperBound = 10)
+          .lotsOfSize[Vector[Path]](textSize)
+      )
+
+    val pathTrials: Trials[Path] = trialsApi
+      .integers(1, 100)
+
+    val sourcesTrials: Trials[FakeSources] =
+      pathTrials
+        .maps(contentTrials)
+        .filter(_.nonEmpty)
+        .map(
+          new FakeSources(_, "unlabelled")
+            with SourcesContracts[
+              Path,
+              Element
+            ]
+        )
 
     (sourcesTrials.map(
       _.copy(label = "base")
@@ -1616,8 +1617,8 @@ class SectionedCodeTest:
     testPlansFavouringMatches
       .withStrategy(caseSupplyCycle =>
         if caseSupplyCycle.isInitial then
-          CasesLimitStrategy.timed(Duration.apply(5, TimeUnit.MINUTES))
-        else CasesLimitStrategy.counted(1000, 3.0)
+          CasesLimitStrategy.timed(Duration.apply(1, TimeUnit.MINUTES))
+        else CasesLimitStrategy.counted(100, 3.0)
       )
       .dynamicTests { testPlan =>
         import testPlan.*

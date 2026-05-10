@@ -122,8 +122,8 @@ object SectionedCodeExtension extends StrictLogging:
             group.toSeq.flatMap(sectionExtractor)
 
           val collectiveGroupDiagnostic = pprintCustomised(
-            sectionsFromGroupOnRelevantSide
-          )
+            sectionsFromGroupOnRelevantSide.take(10)
+          ).render.take(1000)
 
           val Searching.Found(startingSectionIndex) = file.searchByStartOffset(
             sectionsFromGroupOnRelevantSide.head.startOffset
@@ -138,8 +138,9 @@ object SectionedCodeExtension extends StrictLogging:
           val allSectionsBetweenBracketsDiagnostic = pprintCustomised(
             file.sections
               .slice(startingSectionIndex, 1 + endingSectionIndex)
+              .take(10)
               .map(section => section -> groupIdsOf(section))
-          )
+          ).render.take(1000)
 
           s"""
              |$prelude
@@ -461,24 +462,35 @@ object SectionedCodeExtension extends StrictLogging:
       val threeSidedClumps =
         mergeOf(blockLevelMergeAlgebra)(baseBlocks, leftBlocks, rightBlocks)
 
-      def contributionsFromClump(
-          partialResult: Map[Section[Element], Contribution[Section[Element]]],
+      case class CollectedPairings(
+          baseToLeft: MultiDict[Section[Element], Section[Element]] =
+            MultiDict.empty,
+          baseToRight: MultiDict[Section[Element], Section[Element]] =
+            MultiDict.empty,
+          leftToRight: MultiDict[Section[Element], Section[Element]] =
+            MultiDict.empty,
+          tripleSections: Set[Section[Element]] = Set.empty,
+          baseLeftSections: Set[Section[Element]] = Set.empty,
+          baseRightSections: Set[Section[Element]] = Set.empty,
+          leftRightSections: Set[Section[Element]] = Set.empty
+      ):
+        def union(another: CollectedPairings): CollectedPairings =
+          CollectedPairings(
+            baseToLeft = baseToLeft.concat(another.baseToLeft.toSeq),
+            baseToRight = baseToRight.concat(another.baseToRight.toSeq),
+            leftToRight = leftToRight.concat(another.leftToRight.toSeq),
+            tripleSections = tripleSections union another.tripleSections,
+            baseLeftSections = baseLeftSections union another.baseLeftSections,
+            baseRightSections =
+              baseRightSections union another.baseRightSections,
+            leftRightSections =
+              leftRightSections union another.leftRightSections
+          )
+      end CollectedPairings
+
+      def pairingsFromClump(
           threeSidedClump: ThreeSidedClump[Block]
-      ): Map[Section[Element], Contribution[Section[Element]]] =
-        given Eq[Section[Element]] with
-          override def eqv(x: Section[Element], y: Section[Element]): Boolean =
-            // Check to see if either section has a previous common contribution
-            // that forbids equality. We still have to go ahead and make the
-            // comparison, but that's OK as the logic in `foldInContributions`
-            // will choose the best contribution in the end taking this into
-            // account.
-
-            (partialResult.get(x), partialResult.get(y)) match
-              case (Some(Contribution.Common(_)), _) => false
-              case (_, Some(Contribution.Common(_))) => false
-              case _                                 => sectionEq.eqv(x, y)
-        end given
-
+      ): CollectedPairings =
         val sectionLevelLongestCommonSubsequenceInClump =
           LongestCommonSubsequence.of(
             threeSidedClump.base.flatMap(_.sectionsCoveredByGroup),
@@ -486,65 +498,172 @@ object SectionedCodeExtension extends StrictLogging:
             threeSidedClump.right.flatMap(_.sectionsCoveredByGroup)
           )
 
-        def foldInContributions(
-            partialResult: Map[Section[Element], Contribution[
-              Section[Element]
-            ]],
-            contributions: IndexedSeq[Contribution[Section[Element]]]
-        ): Map[Section[Element], Contribution[Section[Element]]] =
-          contributions.foldLeft(
-            partialResult
-          )((partial, contribution) =>
-            partial.updatedWith(contribution.element) {
-              case None =>
-                Some(contribution)
-              case Some(previousContribution) =>
-                Some(
-                  if contributionRanking.gt(contribution, previousContribution)
-                  then contribution
-                  else previousContribution
-                )
-            }
-          )
+        val baseCommon =
+          sectionLevelLongestCommonSubsequenceInClump.base.collect {
+            case Contribution.Common(e) => e
+          }
+        val leftCommon =
+          sectionLevelLongestCommonSubsequenceInClump.left.collect {
+            case Contribution.Common(e) => e
+          }
+        val rightCommon =
+          sectionLevelLongestCommonSubsequenceInClump.right.collect {
+            case Contribution.Common(e) => e
+          }
 
-        val incorporatingSectionsFromTheBase =
-          foldInContributions(
-            partialResult,
-            sectionLevelLongestCommonSubsequenceInClump.base
-          )
+        val baseToLeftOnlyCommon =
+          sectionLevelLongestCommonSubsequenceInClump.base.collect {
+            case Contribution.CommonToBaseAndLeftOnly(e) => e
+          }
+        val leftToBaseOnlyCommon =
+          sectionLevelLongestCommonSubsequenceInClump.left.collect {
+            case Contribution.CommonToBaseAndLeftOnly(e) => e
+          }
 
-        val incorporatingSectionsFromTheLeft =
-          foldInContributions(
-            incorporatingSectionsFromTheBase,
-            sectionLevelLongestCommonSubsequenceInClump.left
-          )
+        val baseToRightOnlyCommon =
+          sectionLevelLongestCommonSubsequenceInClump.base.collect {
+            case Contribution.CommonToBaseAndRightOnly(e) => e
+          }
+        val rightToBaseOnlyCommon =
+          sectionLevelLongestCommonSubsequenceInClump.right.collect {
+            case Contribution.CommonToBaseAndRightOnly(e) => e
+          }
 
-        val incorporatingSectionsFromTheRight =
-          foldInContributions(
-            incorporatingSectionsFromTheLeft,
-            sectionLevelLongestCommonSubsequenceInClump.right
-          )
+        val leftToRightOnlyCommon =
+          sectionLevelLongestCommonSubsequenceInClump.left.collect {
+            case Contribution.CommonToLeftAndRightOnly(e) => e
+          }
+        val rightToLeftOnlyCommon =
+          sectionLevelLongestCommonSubsequenceInClump.right.collect {
+            case Contribution.CommonToLeftAndRightOnly(e) => e
+          }
 
-        incorporatingSectionsFromTheRight
-      end contributionsFromClump
+        val triples =
+          baseCommon zip leftCommon zip rightCommon map { case ((b, l), r) =>
+            (b, l, r)
+          }
 
-      val contributionsFromSectionsInBlocksAcrossAllThreeSides
-          : Map[Section[Element], Contribution[Section[Element]]] =
-        threeSidedClumps.foldLeft(Map.empty)(contributionsFromClump)
+        val baseLeftPairs = baseToLeftOnlyCommon zip leftToBaseOnlyCommon
+        val baseRightPairs = baseToRightOnlyCommon zip rightToBaseOnlyCommon
+        val leftRightPairs = leftToRightOnlyCommon zip rightToLeftOnlyCommon
+
+        CollectedPairings(
+          baseToLeft = MultiDict.from(
+            triples.map((b, l, r) => b -> l) ++ baseLeftPairs
+          ),
+          baseToRight = MultiDict.from(
+            triples.map((b, l, r) => b -> r) ++ baseRightPairs
+          ),
+          leftToRight = MultiDict.from(
+            triples.map((b, l, r) => l -> r) ++ leftRightPairs
+          ),
+          tripleSections = triples.flatMap((b, l, r) => Set(b, l, r)).toSet,
+          baseLeftSections =
+            baseLeftPairs.flatMap((b, l) => Set(b, l)).toSet,
+          baseRightSections =
+            baseRightPairs.flatMap((b, r) => Set(b, r)).toSet,
+          leftRightSections =
+            leftRightPairs.flatMap((l, r) => Set(l, r)).toSet
+        )
+      end pairingsFromClump
+
+      val aggregatedPairings = threeSidedClumps
+        .map(pairingsFromClump)
+        .foldLeft(CollectedPairings())(_ union _)
+
+      def uniquePartners(
+          matches: MultiDict[Section[Element], Section[Element]]
+      ): Map[Section[Element], Section[Element]] =
+        matches.toSeq
+          .groupBy(_._1)
+          .view
+          .mapValues(_.map(_._2).toSet)
+          .filter(_._2.size == 1)
+          .mapValues(_.head)
+          .toMap
+
+      val baseToLeft  = uniquePartners(aggregatedPairings.baseToLeft)
+      val leftToBase  = uniquePartners(aggregatedPairings.baseToLeft.map((b, l) => l -> b))
+      val baseToRight = uniquePartners(aggregatedPairings.baseToRight)
+      val rightToBase = uniquePartners(aggregatedPairings.baseToRight.map((b, r) => r -> b))
+      val leftToRight = uniquePartners(aggregatedPairings.leftToRight)
+      val rightToLeft = uniquePartners(aggregatedPairings.leftToRight.map((l, r) => r -> l))
 
       def assignContributionsOnOneSide(
-          sections: IndexedSeq[Section[Element]]
+          sections: IndexedSeq[Section[Element]],
+          side: Side
       ): IndexedSeq[Contribution[Section[Element]]] =
-        sections.map(section =>
-          contributionsFromSectionsInBlocksAcrossAllThreeSides
-            .get(section)
-            .getOrElse(Contribution.Difference(section))
-        )
+        sections.map { section =>
+          side match
+            case Side.Base =>
+              val maybeLeft  = baseToLeft.get(section)
+              val maybeRight = baseToRight.get(section)
+
+              (maybeLeft, maybeRight) match
+                case (Some(left), Some(right))
+                    if leftToBase.get(left).contains(section) &&
+                      rightToBase.get(right).contains(section) &&
+                      leftToRight.get(left).contains(right) &&
+                      rightToLeft.get(right).contains(left) &&
+                      aggregatedPairings.tripleSections.contains(section) =>
+                  Contribution.Common(section)
+                case (Some(left), _)
+                    if leftToBase.get(left).contains(section) &&
+                      aggregatedPairings.baseLeftSections.contains(section) =>
+                  Contribution.CommonToBaseAndLeftOnly(section)
+                case (_, Some(right))
+                    if rightToBase.get(right).contains(section) &&
+                      aggregatedPairings.baseRightSections.contains(section) =>
+                  Contribution.CommonToBaseAndRightOnly(section)
+                case _ => Contribution.Difference(section)
+            case Side.Left =>
+              val maybeBase  = leftToBase.get(section)
+              val maybeRight = leftToRight.get(section)
+
+              (maybeBase, maybeRight) match
+                case (Some(base), Some(right))
+                    if baseToLeft.get(base).contains(section) &&
+                      rightToLeft.get(right).contains(section) &&
+                      baseToRight.get(base).contains(right) &&
+                      rightToBase.get(right).contains(base) &&
+                      aggregatedPairings.tripleSections.contains(section) =>
+                  Contribution.Common(section)
+                case (Some(base), _)
+                    if baseToLeft.get(base).contains(section) &&
+                      aggregatedPairings.baseLeftSections.contains(section) =>
+                  Contribution.CommonToBaseAndLeftOnly(section)
+                case (_, Some(right))
+                    if rightToLeft.get(right).contains(section) &&
+                      aggregatedPairings.leftRightSections.contains(section) =>
+                  Contribution.CommonToLeftAndRightOnly(section)
+                case _ => Contribution.Difference(section)
+            case Side.Right =>
+              val maybeBase = rightToBase.get(section)
+              val maybeLeft = rightToLeft.get(section)
+
+              (maybeBase, maybeLeft) match
+                case (Some(base), Some(left))
+                    if baseToRight.get(base).contains(section) &&
+                      leftToRight.get(left).contains(section) &&
+                      baseToLeft.get(base).contains(left) &&
+                      leftToBase.get(left).contains(base) &&
+                      aggregatedPairings.tripleSections.contains(section) =>
+                  Contribution.Common(section)
+                case (Some(base), _)
+                    if baseToRight.get(base).contains(section) &&
+                      aggregatedPairings.baseRightSections.contains(section) =>
+                  Contribution.CommonToBaseAndRightOnly(section)
+                case (_, Some(left))
+                    if leftToRight.get(left).contains(section) &&
+                      aggregatedPairings.leftRightSections.contains(section) =>
+                  Contribution.CommonToLeftAndRightOnly(section)
+                case _ => Contribution.Difference(section)
+        }
 
       LongestCommonSubsequence(
-        base = assignContributionsOnOneSide(baseSections),
-        left = assignContributionsOnOneSide(leftSections),
-        right = assignContributionsOnOneSide(rightSections)
+        base = assignContributionsOnOneSide(baseSections, Side.Base),
+        left = assignContributionsOnOneSide(leftSections, Side.Left),
+        right = assignContributionsOnOneSide(rightSections, Side.Right)
       )
     end longestCommonSubsequenceOf
 

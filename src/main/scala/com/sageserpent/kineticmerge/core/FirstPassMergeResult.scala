@@ -42,6 +42,7 @@ case class FirstPassMergeResult[Element](
 
 enum Side:
   case Left
+  case Base
   case Right
 end Side
 

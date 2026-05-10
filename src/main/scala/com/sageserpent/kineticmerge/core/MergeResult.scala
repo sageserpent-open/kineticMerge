@@ -76,45 +76,25 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
       baseElements: Seq[Element],
       leftElements: Seq[Element],
       rightElements: Seq[Element]
-  ): MergeResult[Element] = segments.lastOption
-    .fold(ifEmpty =
-      MergeResult(
-        Seq(Segment.Conflicted(baseElements, leftElements, rightElements))
-      )
-    ) {
-      case Segment.Resolved(_) =>
-        MergeResult(
-          segments :+ Segment.Conflicted(
-            baseElements,
-            leftElements,
-            rightElements
-          )
-        )
-      case Segment.Conflicted(
-            segmentBaseElements,
-            segmentLeftElements,
-            segmentRightElements
-          ) =>
-        val baseElementsConcatenated  = segmentBaseElements ++ baseElements
-        val leftElementsConcatenated  = segmentLeftElements ++ leftElements
-        val rightElementsConcatenated = segmentRightElements ++ rightElements
-
-        // NOTE: because the enclosing method is called by
-        // `MergeResult.coalescing`, whose callers have already called
-        // `MergeResult.segmentFor`; this is a bit inefficient, but we rely on
-        // this being a rare occurrence.
-        // NOTE: in this case, we know we have elements on at least two sides
-        // from the existing segment that the new elements are being coalesced
-        // with, so we don't expect the `None` case to arise,
-        val Some(coalescedSegment) = segmentFor(
-          baseElementsConcatenated,
-          leftElementsConcatenated,
-          rightElementsConcatenated
-        ): @unchecked
-
-        MergeResult(segments.init :+ coalescedSegment)
-
-    }
+  ): MergeResult[Element] = segmentFor(
+    baseElements,
+    leftElements,
+    rightElements
+  ).fold(ifEmpty = this) {
+    case segment @ Segment.Conflicted(base, left, right) =>
+      segments.lastOption match
+        case Some(Segment.Conflicted(sb, sl, sr)) =>
+          val Some(coalesced) = segmentFor(
+            sb ++ base,
+            sl ++ left,
+            sr ++ right
+          ): @unchecked
+          MergeResult(segments.init :+ coalesced)
+        case _ =>
+          MergeResult(segments :+ segment)
+    case Segment.Resolved(elements) =>
+      addResolved(elements)
+  }
 
   def map[Transformed: Eq](
       transform: Element => Transformed
