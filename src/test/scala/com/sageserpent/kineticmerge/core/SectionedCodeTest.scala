@@ -6,11 +6,13 @@ import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.java.CasesLimitStrategy
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.americium.{Trials, TrialsApi}
+import com.sageserpent.kineticmerge.ProgressRecording
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.MatchAnalysis.{
   AdmissibleFailure,
   Configuration
 }
+import com.sageserpent.kineticmerge.core.SectionedCodeExtension.merge
 import com.sageserpent.kineticmerge.core.SectionedCodeTest.{*, given}
 import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.{Order as _, *}
@@ -108,322 +110,7 @@ class SectionedCodeTest:
 
   @TestFactory
   def matchingSectionsAreFound(): DynamicTests =
-    case class TestPlan(
-        minimumPossibleExpectedMatchSize: Int,
-        commonToAllThreeSides: IndexedSeq[Vector[Element]],
-        commonToBaseAndLeft: IndexedSeq[Vector[Element]],
-        commonToBaseAndRight: IndexedSeq[Vector[Element]],
-        commonToLeftAndRight: IndexedSeq[Vector[Element]],
-        uniqueToBase: IndexedSeq[Vector[Element]],
-        uniqueToLeft: IndexedSeq[Vector[Element]],
-        uniqueToRight: IndexedSeq[Vector[Element]],
-        baseSources: FakeSources,
-        leftSources: FakeSources,
-        rightSources: FakeSources,
-        adjacentCommonSequencesArePossibleOnBase: Boolean,
-        adjacentCommonSequencesArePossibleOnLeft: Boolean,
-        adjacentCommonSequencesArePossibleOnRight: Boolean
-    ):
-      commonToAllThreeSides.foreach { sectionContent =>
-        require(baseSources.contains(sectionContent))
-        require(leftSources.contains(sectionContent))
-        require(rightSources.contains(sectionContent))
-      }
-
-      commonToBaseAndLeft.foreach { sectionContent =>
-        require(baseSources.contains(sectionContent))
-        require(leftSources.contains(sectionContent))
-      }
-
-      commonToBaseAndRight.foreach { sectionContent =>
-        require(baseSources.contains(sectionContent))
-        require(rightSources.contains(sectionContent))
-      }
-
-      commonToLeftAndRight.foreach { sectionContent =>
-        require(leftSources.contains(sectionContent))
-        require(rightSources.contains(sectionContent))
-      }
-
-      uniqueToBase.foreach { sectionContent =>
-        require(baseSources.contains(sectionContent))
-      }
-      uniqueToLeft.foreach { sectionContent =>
-        require(leftSources.contains(sectionContent))
-      }
-      uniqueToRight.foreach { sectionContent =>
-        require(rightSources.contains(sectionContent))
-      }
-
-      def minimumSizeFractionForMotionDetection: Double =
-        def minimumNumberOfElementsCoveredBy(
-            commonSequenceGroups: IndexedSeq[Vector[Element]]*
-        ): Int =
-          commonSequenceGroups
-            .collect(Function.unlift(_.map(_.size).minOption))
-            .minOption
-            .getOrElse(0)
-
-        val minimumMatchableSize = minimumNumberOfElementsCoveredBy(
-          commonToAllThreeSides,
-          commonToBaseAndLeft,
-          commonToBaseAndRight,
-          commonToLeftAndRight
-        )
-
-        minimumMatchableSize.toDouble / (baseSources.maximumContentsSize max leftSources.maximumContentsSize max rightSources.maximumContentsSize)
-      end minimumSizeFractionForMotionDetection
-
-    end TestPlan
-
-    val maximumGlyphThatMightBeShared = 8
-
-    val alphabet = 1 to maximumGlyphThatMightBeShared
-
-    val testPlans =
-      trialsApi.integers(4, 6).flatMap { minimumPossibleExpectedMatchSize =>
-        // Test plan synthesis: start with a set of sequences, so these cannot
-        // match each other ...
-        val sequences =
-          trialsApi
-            .integers(minimumPossibleExpectedMatchSize, 200)
-            .flatMap(sequenceLength =>
-              trialsApi
-                .choose(alphabet)
-                .lotsOfSize[Vector[Element]](sequenceLength)
-            )
-
-        val setsOfSequences = trialsApi
-          .integers(4, 30)
-          .flatMap(numberOfSequences =>
-            sequences
-              .lotsOfSize[Array[Vector[Element]]](numberOfSequences)
-              .map(
-                _.zipWithIndex
-                  .map { case (core, index) =>
-                    // Each sequence has a unique first and last element amongst
-                    // the set of sequences; this prevents accidental overrun of
-                    // the expected matches.
-                    core
-                      .prepended(
-                        1 + (2 * index) + maximumGlyphThatMightBeShared
-                      )
-                      .appended(
-                        (2 * (1 + index)) + maximumGlyphThatMightBeShared
-                      )
-                  }
-                  .toSet
-              )
-          )
-
-        setsOfSequences.flatMap(sequences =>
-          trialsApi
-            // ... split into seven sets ...
-            .partitioning(sequences.toIndexedSeq, numberOfPartitions = 7)
-            .flatMap {
-              case Seq(
-                    // ... the first four sets are of sequences that are
-                    // expected to be matched across three or just two sides ...
-                    commonToAllThreeSides,
-                    commonToBaseAndLeft,
-                    commonToBaseAndRight,
-                    commonToLeftAndRight,
-                    // ... and the last three are specific to the three sides,
-                    // so they are unmatchable.
-                    uniqueToBase,
-                    uniqueToLeft,
-                    uniqueToRight
-                  ) =>
-                val common =
-                  commonToAllThreeSides ++ commonToBaseAndLeft ++ commonToBaseAndRight ++ commonToLeftAndRight
-
-                // Sanity check: it is possible to have accidental matches where
-                // a common sequence is *embedded* within a unique sequence...
-                if uniqueToBase.exists(unique =>
-                    (commonToAllThreeSides ++ commonToLeftAndRight)
-                      .exists(unique.containsSlice)
-                  )
-                then trialsApi.impossible
-                else if uniqueToLeft.exists(unique =>
-                    (commonToAllThreeSides ++ commonToBaseAndRight)
-                      .exists(unique.containsSlice)
-                  )
-                then trialsApi.impossible
-                else if uniqueToRight.exists(unique =>
-                    (commonToAllThreeSides ++ commonToBaseAndLeft)
-                      .exists(unique.containsSlice)
-                  )
-                then trialsApi.impossible
-                // ... it is also possible to have accidental matches where a
-                // common sequence for one match is *embedded* within a common
-                // sequence for another match.
-                else if common.exists(commonSequence =>
-                    common.exists(anotherCommonSequence =>
-                      anotherCommonSequence != commonSequence && commonSequence
-                        .containsSlice(anotherCommonSequence)
-                    )
-                  )
-                then trialsApi.impossible
-                else
-                  def sourcesForASide(label: String)(
-                      commonToAllThreeSides: IndexedSeq[
-                        Vector[Element]
-                      ],
-                      commonToOnePairOfSides: IndexedSeq[
-                        Vector[Element]
-                      ],
-                      commonToTheOtherPairOfSides: IndexedSeq[
-                        Vector[Element]
-                      ],
-                      sideUniqueSequences: IndexedSeq[Vector[Element]]
-                  ): Trials[(FakeSources, Boolean)] =
-                    val sequenceMixtures: Trials[
-                      (IndexedSeq[Vector[Element]], Boolean)
-                    ] =
-                      if commonToAllThreeSides.nonEmpty || commonToOnePairOfSides.nonEmpty || commonToTheOtherPairOfSides.nonEmpty
-                      then
-                        // Mix up the all-sides and pairwise matches....
-                        val sideCommonSequencesRearrangements =
-                          trialsApi.pickAlternatelyFrom(
-                            shrinkToRoundRobin = false,
-                            commonToAllThreeSides,
-                            commonToOnePairOfSides,
-                            commonToTheOtherPairOfSides
-                          )
-
-                        if sideUniqueSequences.nonEmpty then
-                          // ...intersperse unique sequences between chunks of
-                          // common sequences; a unique sequence never abuts
-                          // another unique sequence...
-                          sideCommonSequencesRearrangements
-                            .flatMap(sideCommonSequencesRearrangement =>
-                              if sideCommonSequencesRearrangement.size >= sideUniqueSequences.size
-                              then
-                                val adjacentCommonSequencesArePossible =
-                                  // Pigeonhole principle: we have too many
-                                  // common sequences, so some must share the
-                                  // same slot that will be paired with a unique
-                                  // sequence.
-                                  sideCommonSequencesRearrangement.size > sideUniqueSequences.size
-                                trialsApi
-                                  .nonEmptyPartitioning(
-                                    sideCommonSequencesRearrangement,
-                                    numberOfPartitions =
-                                      sideUniqueSequences.size
-                                  )
-                                  .map(commonSequencesInChunks =>
-                                    commonSequencesInChunks
-                                      .zip(sideUniqueSequences)
-                                      .flatMap {
-                                        case (
-                                              chunkOfCommonSequences,
-                                              uniqueSequence
-                                            ) =>
-                                          chunkOfCommonSequences :+ uniqueSequence
-                                      }
-                                      .toIndexedSeq -> adjacentCommonSequencesArePossible
-                                  )
-                              else trialsApi.impossible
-                              end if
-                            )
-                        else
-                          // We don't have any unique sequences to put between
-                          // the common sequences, so the latter may be adjacent
-                          // if there's more than one of them.
-                          sideCommonSequencesRearrangements.map(
-                            commonSequences =>
-                              commonSequences -> (1 < commonSequences.size)
-                          )
-                        end if
-                      else
-                        // We don't have any common sequences at all, so none
-                        // are adjacent.
-                        trialsApi.only(sideUniqueSequences -> false)
-
-                    // ... finally, allocate the sequences in groups to paths.
-
-                    sequenceMixtures
-                      .flatMap {
-                        case (
-                              sequenceMixture,
-                              adjacentCommonSequencesArePossible
-                            ) =>
-                          val pathContentAllocations =
-                            if sequenceMixture.nonEmpty then
-                              trialsApi
-                                .integers(1, sequenceMixture.size)
-                                .flatMap(numberOfPaths =>
-                                  trialsApi.nonEmptyPartitioning(
-                                    sequenceMixture,
-                                    numberOfPartitions = numberOfPaths
-                                  )
-                                )
-                            else
-                              // Sometimes we generate an empty side with no
-                              // files.
-                              trialsApi.only(Seq.empty)
-
-                          pathContentAllocations
-                            .map(_.zipWithIndex)
-                            .map(_.map { case (pathContentAllocation, path) =>
-                              val fileContents = pathContentAllocation.flatten
-                              path -> fileContents
-                            }.toMap)
-                            .map(contentsByPath =>
-                              new FakeSources(contentsByPath, label)
-                                with SourcesContracts[
-                                  Path,
-                                  Element
-                                ] -> adjacentCommonSequencesArePossible
-                            )
-                      }
-                  end sourcesForASide
-
-                  for
-                    (baseSources, adjacentCommonSequencesArePossibleOnBase) <-
-                      sourcesForASide(label = "base")(
-                        commonToAllThreeSides,
-                        commonToBaseAndLeft,
-                        commonToBaseAndRight,
-                        uniqueToBase
-                      )
-                    (leftSources, adjacentCommonSequencesArePossibleOnLeft) <-
-                      sourcesForASide(label = "left")(
-                        commonToAllThreeSides,
-                        commonToBaseAndLeft,
-                        commonToLeftAndRight,
-                        uniqueToLeft
-                      )
-                    (rightSources, adjacentCommonSequencesArePossibleOnRight) <-
-                      sourcesForASide(label = "right")(
-                        commonToAllThreeSides,
-                        commonToBaseAndRight,
-                        commonToLeftAndRight,
-                        uniqueToRight
-                      )
-                  yield TestPlan(
-                    minimumPossibleExpectedMatchSize,
-                    commonToAllThreeSides,
-                    commonToBaseAndLeft,
-                    commonToBaseAndRight,
-                    commonToLeftAndRight,
-                    uniqueToBase,
-                    uniqueToLeft,
-                    uniqueToRight,
-                    baseSources,
-                    leftSources,
-                    rightSources,
-                    adjacentCommonSequencesArePossibleOnBase,
-                    adjacentCommonSequencesArePossibleOnLeft,
-                    adjacentCommonSequencesArePossibleOnRight
-                  )
-                  end for
-                end if
-            }
-        )
-      }
-
-    testPlans
+    testPlansFavouringMatches
       .withStrategy(caseSupplyCycle =>
         if caseSupplyCycle.isInitial then
           CasesLimitStrategy.timed(Duration.apply(5, TimeUnit.MINUTES))
@@ -593,23 +280,20 @@ class SectionedCodeTest:
 
               // NOTE: the reason that matched sections are concatenated in the
               // three following blocks is to allow looseness in the
-              // expectations
-              // for the generated matches. This test starts off by making
-              // content
-              // matches across two or all sides, but it also encourages the
-              // possibility of having subsumption of one content match within
-              // another larger one, either on just one side or two. This means
-              // that the original content matches from the test can't be taken
-              // literally as what we expect to see from the SUT; instead we
-              // expect to encounter the occasional situation where the original
-              // content match is broken down by the SUT into several smaller
-              // matches that abut on each side. However, the sections are
-              // ordered
-              // so as to reproduce the source file's content, thus we know that
-              // concatenation will place any such smaller matches together in
-              // the
-              // correct order for a correctly functioning SUT, so each of the
-              // original matches should show up in the concatenation.
+              // expectations for the generated matches. This test starts off by
+              // making content matches across two or all sides, but it also
+              // encourages the possibility of having subsumption of one content
+              // match within another larger one, either on just one side or
+              // two. This means that the original content matches from the test
+              // can't be taken literally as what we expect to see from the SUT;
+              // instead we expect to encounter the occasional situation where
+              // the original content match is broken down by the SUT into
+              // several smaller matches that abut on each side. However, the
+              // sections are ordered so as to reproduce the source file's
+              // content, thus we know that concatenation will place any such
+              // smaller matches together in the correct order for a correctly
+              // functioning SUT, so each of the original matches should show up
+              // in the concatenation.
 
               // Over all paths on the base side, the concatenations of all
               // matched sections should contain all the relevant common
@@ -1926,53 +1610,315 @@ class SectionedCodeTest:
     assert(6 == pairwise.size)
   end parallelMatches
 
+  @TestFactory
+  def smokeTestMerging(): DynamicTests =
+    testPlansFavouringMatches
+      .withStrategy(caseSupplyCycle =>
+        if caseSupplyCycle.isInitial then
+          CasesLimitStrategy.timed(Duration.apply(5, TimeUnit.MINUTES))
+        else CasesLimitStrategy.counted(1000, 3.0)
+      )
+      .dynamicTests { testPlan =>
+        import testPlan.*
+        // Scalafmt 3.8.5 will wreck this block of code if it isn't protected by
+        // braces; it seems it doesn't play well with the preceding import
+        // statement.
+        {
+          println(
+            s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
+          )
+          println("Sizes of common to all three sides...")
+          pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
+          println("Sizes of common to base and left...")
+          pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
+          println("Sizes of common to base and right...")
+          pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
+          println("Sizes of common to left and right...")
+          pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
+
+          val configuration = Configuration(
+            minimumMatchSize = minimumPossibleExpectedMatchSize,
+            thresholdSizeFractionForMatching =
+              minimumSizeFractionForMotionDetection,
+            minimumAmbiguousMatchSize = 0,
+            ambiguousMatchesThreshold = 10
+          )
+
+          SectionedCode.of(
+            baseSources,
+            leftSources,
+            rightSources
+          )(
+            configuration,
+            // NOTE: the test cases can exhibit matches with overlapping
+            // sections
+            // that intrude on the content the test is checking, so rather than
+            // quietly suppressing the matches, we let admissible failures for
+            // overlapping sections occur and reject the test case.
+            suppressMatchesInvolvingOverlappingSections = false
+          ) match
+            case Right(analysis) =>
+              given ProgressRecording = configuration.progressRecording
+
+              assertDoesNotThrow(() => analysis.merge)
+
+            case Left(overlappingSections: AdmissibleFailure) =>
+              pprintCustomised.pprintln(overlappingSections)
+              Trials.reject()
+
+            case Left(unexpectedException) => throw unexpectedException
+          end match
+        }
+      }
+  end smokeTestMerging
+
 end SectionedCodeTest
 
 object SectionedCodeTest:
   type Path    = Int
   type Element = Int
 
-  given HashFunction = Hashing.murmur3_32_fixed()
+  val testPlansFavouringMatches: Trials[TestPlan] =
+    trialsApi.integers(4, 6).flatMap { minimumPossibleExpectedMatchSize =>
+      // Test plan synthesis: start with a set of sequences, so these cannot
+      // match each other ...
+      val sequences =
+        trialsApi
+          .integers(minimumPossibleExpectedMatchSize, 200)
+          .flatMap(sequenceLength =>
+            trialsApi
+              .choose(alphabet)
+              .lotsOfSize[Vector[Element]](sequenceLength)
+          )
 
-  trait SourcesContracts[Path, Element] extends Sources[Path, Element]:
-    abstract override def section(
-        path: SourcesContracts.this.Path
-    )(startOffset: Int, size: Int): Section[SourcesContracts.this.Element] =
-      require(0 <= startOffset)
-      require(0 < size)
-
-      val result = super.section(path)(startOffset, size)
-
-      assert(pathFor(result) == path)
-
-      assert(result.size == size)
-
-      result
-    end section
-
-    abstract override def filesByPathUtilising(
-        mandatorySections: Set[Section[SourcesContracts.this.Element]]
-    ): Map[SourcesContracts.this.Path, File[Element]] =
-      val result =
-        super.filesByPathUtilising(mandatorySections)
-
-      assert(result.keys == paths)
-
-      mandatorySections.foreach(mandatorySection =>
-        assert(
-          result(pathFor(mandatorySection)).sections.contains(mandatorySection)
+      val setsOfSequences = trialsApi
+        .integers(4, 30)
+        .flatMap(numberOfSequences =>
+          sequences
+            .lotsOfSize[Array[Vector[Element]]](numberOfSequences)
+            .map(
+              _.zipWithIndex
+                .map { case (core, index) =>
+                  // Each sequence has a unique first and last element amongst
+                  // the set of sequences; this prevents accidental overrun of
+                  // the expected matches.
+                  core
+                    .prepended(
+                      1 + (2 * index) + maximumGlyphThatMightBeShared
+                    )
+                    .appended(
+                      (2 * (1 + index)) + maximumGlyphThatMightBeShared
+                    )
+                }
+                .toSet
+            )
         )
+
+      setsOfSequences.flatMap(sequences =>
+        trialsApi
+          // ... split into seven sets ...
+          .partitioning(sequences.toIndexedSeq, numberOfPartitions = 7)
+          .flatMap {
+            case Seq(
+                  // ... the first four sets are of sequences that are
+                  // expected to be matched across three or just two sides ...
+                  commonToAllThreeSides,
+                  commonToBaseAndLeft,
+                  commonToBaseAndRight,
+                  commonToLeftAndRight,
+                  // ... and the last three are specific to the three sides,
+                  // so they are unmatchable.
+                  uniqueToBase,
+                  uniqueToLeft,
+                  uniqueToRight
+                ) =>
+              val common =
+                commonToAllThreeSides ++ commonToBaseAndLeft ++ commonToBaseAndRight ++ commonToLeftAndRight
+
+              // Sanity check: it is possible to have accidental matches where
+              // a common sequence is *embedded* within a unique sequence...
+              if uniqueToBase.exists(unique =>
+                  (commonToAllThreeSides ++ commonToLeftAndRight)
+                    .exists(unique.containsSlice)
+                )
+              then trialsApi.impossible
+              else if uniqueToLeft.exists(unique =>
+                  (commonToAllThreeSides ++ commonToBaseAndRight)
+                    .exists(unique.containsSlice)
+                )
+              then trialsApi.impossible
+              else if uniqueToRight.exists(unique =>
+                  (commonToAllThreeSides ++ commonToBaseAndLeft)
+                    .exists(unique.containsSlice)
+                )
+              then trialsApi.impossible
+              // ... it is also possible to have accidental matches where a
+              // common sequence for one match is *embedded* within a common
+              // sequence for another match.
+              else if common.exists(commonSequence =>
+                  common.exists(anotherCommonSequence =>
+                    anotherCommonSequence != commonSequence && commonSequence
+                      .containsSlice(anotherCommonSequence)
+                  )
+                )
+              then trialsApi.impossible
+              else
+                def sourcesForASide(label: String)(
+                    commonToAllThreeSides: IndexedSeq[
+                      Vector[Element]
+                    ],
+                    commonToOnePairOfSides: IndexedSeq[
+                      Vector[Element]
+                    ],
+                    commonToTheOtherPairOfSides: IndexedSeq[
+                      Vector[Element]
+                    ],
+                    sideUniqueSequences: IndexedSeq[Vector[Element]]
+                ): Trials[(FakeSources, Boolean)] =
+                  val sequenceMixtures: Trials[
+                    (IndexedSeq[Vector[Element]], Boolean)
+                  ] =
+                    if commonToAllThreeSides.nonEmpty || commonToOnePairOfSides.nonEmpty || commonToTheOtherPairOfSides.nonEmpty
+                    then
+                      // Mix up the all-sides and pairwise matches....
+                      val sideCommonSequencesRearrangements =
+                        trialsApi.pickAlternatelyFrom(
+                          shrinkToRoundRobin = false,
+                          commonToAllThreeSides,
+                          commonToOnePairOfSides,
+                          commonToTheOtherPairOfSides
+                        )
+
+                      if sideUniqueSequences.nonEmpty then
+                        // ...intersperse unique sequences between chunks of
+                        // common sequences; a unique sequence never abuts
+                        // another unique sequence...
+                        sideCommonSequencesRearrangements
+                          .flatMap(sideCommonSequencesRearrangement =>
+                            if sideCommonSequencesRearrangement.size >= sideUniqueSequences.size
+                            then
+                              val adjacentCommonSequencesArePossible =
+                                // Pigeonhole principle: we have too many
+                                // common sequences, so some must share the
+                                // same slot that will be paired with a unique
+                                // sequence.
+                                sideCommonSequencesRearrangement.size > sideUniqueSequences.size
+                              trialsApi
+                                .nonEmptyPartitioning(
+                                  sideCommonSequencesRearrangement,
+                                  numberOfPartitions = sideUniqueSequences.size
+                                )
+                                .map(commonSequencesInChunks =>
+                                  commonSequencesInChunks
+                                    .zip(sideUniqueSequences)
+                                    .flatMap {
+                                      case (
+                                            chunkOfCommonSequences,
+                                            uniqueSequence
+                                          ) =>
+                                        chunkOfCommonSequences :+ uniqueSequence
+                                    }
+                                    .toIndexedSeq -> adjacentCommonSequencesArePossible
+                                )
+                            else trialsApi.impossible
+                            end if
+                          )
+                      else
+                        // We don't have any unique sequences to put between
+                        // the common sequences, so the latter may be adjacent
+                        // if there's more than one of them.
+                        sideCommonSequencesRearrangements.map(commonSequences =>
+                          commonSequences -> (1 < commonSequences.size)
+                        )
+                      end if
+                    else
+                      // We don't have any common sequences at all, so none
+                      // are adjacent.
+                      trialsApi.only(sideUniqueSequences -> false)
+
+                  // ... finally, allocate the sequences in groups to paths.
+
+                  sequenceMixtures
+                    .flatMap {
+                      case (
+                            sequenceMixture,
+                            adjacentCommonSequencesArePossible
+                          ) =>
+                        val pathContentAllocations =
+                          if sequenceMixture.nonEmpty then
+                            trialsApi
+                              .integers(1, sequenceMixture.size)
+                              .flatMap(numberOfPaths =>
+                                trialsApi.nonEmptyPartitioning(
+                                  sequenceMixture,
+                                  numberOfPartitions = numberOfPaths
+                                )
+                              )
+                          else
+                            // Sometimes we generate an empty side with no
+                            // files.
+                            trialsApi.only(Seq.empty)
+
+                        pathContentAllocations
+                          .map(_.zipWithIndex)
+                          .map(_.map { case (pathContentAllocation, path) =>
+                            val fileContents = pathContentAllocation.flatten
+                            path -> fileContents
+                          }.toMap)
+                          .map(contentsByPath =>
+                            new FakeSources(contentsByPath, label)
+                              with SourcesContracts[
+                                Path,
+                                Element
+                              ] -> adjacentCommonSequencesArePossible
+                          )
+                    }
+                end sourcesForASide
+
+                for
+                  (baseSources, adjacentCommonSequencesArePossibleOnBase) <-
+                    sourcesForASide(label = "base")(
+                      commonToAllThreeSides,
+                      commonToBaseAndLeft,
+                      commonToBaseAndRight,
+                      uniqueToBase
+                    )
+                  (leftSources, adjacentCommonSequencesArePossibleOnLeft) <-
+                    sourcesForASide(label = "left")(
+                      commonToAllThreeSides,
+                      commonToBaseAndLeft,
+                      commonToLeftAndRight,
+                      uniqueToLeft
+                    )
+                  (rightSources, adjacentCommonSequencesArePossibleOnRight) <-
+                    sourcesForASide(label = "right")(
+                      commonToAllThreeSides,
+                      commonToBaseAndRight,
+                      commonToLeftAndRight,
+                      uniqueToRight
+                    )
+                yield TestPlan(
+                  minimumPossibleExpectedMatchSize,
+                  commonToAllThreeSides,
+                  commonToBaseAndLeft,
+                  commonToBaseAndRight,
+                  commonToLeftAndRight,
+                  uniqueToBase,
+                  uniqueToLeft,
+                  uniqueToRight,
+                  baseSources,
+                  leftSources,
+                  rightSources,
+                  adjacentCommonSequencesArePossibleOnBase,
+                  adjacentCommonSequencesArePossibleOnLeft,
+                  adjacentCommonSequencesArePossibleOnRight
+                )
+                end for
+              end if
+          }
       )
-
-      // If we have mandatory sections, we are definitely not initialising
-      // `filesByPath`, so it is safe to check consistency against it.
-      if mandatorySections.nonEmpty then
-        assert(filesByPath.values.map(_.size) == result.values.map(_.size))
-      end if
-
-      result
-    end filesByPathUtilising
-  end SourcesContracts
+    }
+  private val maximumGlyphThatMightBeShared = 8
 
   extension (fakeSources: FakeSources)
     /** Specific to testing, not part of the [[Sources]] API implementation.
@@ -2089,11 +2035,122 @@ object SectionedCodeTest:
         )
         result
   end extension
+  private val alphabet = 1 to maximumGlyphThatMightBeShared
+
+  given HashFunction = Hashing.murmur3_32_fixed()
+
+  trait SourcesContracts[Path, Element] extends Sources[Path, Element]:
+    abstract override def section(
+        path: SourcesContracts.this.Path
+    )(startOffset: Int, size: Int): Section[SourcesContracts.this.Element] =
+      require(0 <= startOffset)
+      require(0 < size)
+
+      val result = super.section(path)(startOffset, size)
+
+      assert(pathFor(result) == path)
+
+      assert(result.size == size)
+
+      result
+    end section
+
+    abstract override def filesByPathUtilising(
+        mandatorySections: Set[Section[SourcesContracts.this.Element]]
+    ): Map[SourcesContracts.this.Path, File[Element]] =
+      val result =
+        super.filesByPathUtilising(mandatorySections)
+
+      assert(result.keys == paths)
+
+      mandatorySections.foreach(mandatorySection =>
+        assert(
+          result(pathFor(mandatorySection)).sections.contains(mandatorySection)
+        )
+      )
+
+      // If we have mandatory sections, we are definitely not initialising
+      // `filesByPath`, so it is safe to check consistency against it.
+      if mandatorySections.nonEmpty then
+        assert(filesByPath.values.map(_.size) == result.values.map(_.size))
+      end if
+
+      result
+    end filesByPathUtilising
+  end SourcesContracts
 
   case class FakeSources(
       override val contentsByPath: Map[Path, IndexedSeq[Element]],
       override val label: String
   ) extends MappedContentSources[Path, Element]
+
+  case class TestPlan(
+      minimumPossibleExpectedMatchSize: Int,
+      commonToAllThreeSides: IndexedSeq[Vector[Element]],
+      commonToBaseAndLeft: IndexedSeq[Vector[Element]],
+      commonToBaseAndRight: IndexedSeq[Vector[Element]],
+      commonToLeftAndRight: IndexedSeq[Vector[Element]],
+      uniqueToBase: IndexedSeq[Vector[Element]],
+      uniqueToLeft: IndexedSeq[Vector[Element]],
+      uniqueToRight: IndexedSeq[Vector[Element]],
+      baseSources: FakeSources,
+      leftSources: FakeSources,
+      rightSources: FakeSources,
+      adjacentCommonSequencesArePossibleOnBase: Boolean,
+      adjacentCommonSequencesArePossibleOnLeft: Boolean,
+      adjacentCommonSequencesArePossibleOnRight: Boolean
+  ):
+    commonToAllThreeSides.foreach { sectionContent =>
+      require(baseSources.contains(sectionContent))
+      require(leftSources.contains(sectionContent))
+      require(rightSources.contains(sectionContent))
+    }
+
+    commonToBaseAndLeft.foreach { sectionContent =>
+      require(baseSources.contains(sectionContent))
+      require(leftSources.contains(sectionContent))
+    }
+
+    commonToBaseAndRight.foreach { sectionContent =>
+      require(baseSources.contains(sectionContent))
+      require(rightSources.contains(sectionContent))
+    }
+
+    commonToLeftAndRight.foreach { sectionContent =>
+      require(leftSources.contains(sectionContent))
+      require(rightSources.contains(sectionContent))
+    }
+
+    uniqueToBase.foreach { sectionContent =>
+      require(baseSources.contains(sectionContent))
+    }
+    uniqueToLeft.foreach { sectionContent =>
+      require(leftSources.contains(sectionContent))
+    }
+    uniqueToRight.foreach { sectionContent =>
+      require(rightSources.contains(sectionContent))
+    }
+
+    def minimumSizeFractionForMotionDetection: Double =
+      def minimumNumberOfElementsCoveredBy(
+          commonSequenceGroups: IndexedSeq[Vector[Element]]*
+      ): Int =
+        commonSequenceGroups
+          .collect(Function.unlift(_.map(_.size).minOption))
+          .minOption
+          .getOrElse(0)
+
+      val minimumMatchableSize = minimumNumberOfElementsCoveredBy(
+        commonToAllThreeSides,
+        commonToBaseAndLeft,
+        commonToBaseAndRight,
+        commonToLeftAndRight
+      )
+
+      minimumMatchableSize.toDouble / (baseSources.maximumContentsSize max leftSources.maximumContentsSize max rightSources.maximumContentsSize)
+    end minimumSizeFractionForMotionDetection
+
+  end TestPlan
 
   given Funnel[Element] with
     override def funnel(element: Element, primitiveSink: PrimitiveSink): Unit =
