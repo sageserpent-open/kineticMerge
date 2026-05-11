@@ -268,6 +268,14 @@ object SectionedCodeExtension extends StrictLogging:
         result
       end blocksFrom
 
+      // TODO: this is a bit messy, because there is an implicit assumption that
+      // if there is no file, then there are no sections to make a block from.
+      // This true, but only because the call-sites of
+      // `longestCommonSubsequenceOf` have already checked the presence or
+      // absence of the file in question. Probably the best thing to do would be
+      // to pass in the optional file explicitly for each side to
+      // `longestCommonSubsequenceOf` and dig the sections out of it, but that
+      // doesn't quite site properly with the existing call-site logic.
       val baseBlocks =
         sectionedCode.base
           .get(path)
@@ -542,7 +550,7 @@ object SectionedCodeExtension extends StrictLogging:
             (b, l, r)
           }
 
-        val baseLeftPairs = baseToLeftOnlyCommon zip leftToBaseOnlyCommon
+        val baseLeftPairs  = baseToLeftOnlyCommon zip leftToBaseOnlyCommon
         val baseRightPairs = baseToRightOnlyCommon zip rightToBaseOnlyCommon
         val leftRightPairs = leftToRightOnlyCommon zip rightToLeftOnlyCommon
 
@@ -557,12 +565,9 @@ object SectionedCodeExtension extends StrictLogging:
             triples.map((b, l, r) => l -> r) ++ leftRightPairs
           ),
           tripleSections = triples.flatMap((b, l, r) => Set(b, l, r)).toSet,
-          baseLeftSections =
-            baseLeftPairs.flatMap((b, l) => Set(b, l)).toSet,
-          baseRightSections =
-            baseRightPairs.flatMap((b, r) => Set(b, r)).toSet,
-          leftRightSections =
-            leftRightPairs.flatMap((l, r) => Set(l, r)).toSet
+          baseLeftSections = baseLeftPairs.flatMap((b, l) => Set(b, l)).toSet,
+          baseRightSections = baseRightPairs.flatMap((b, r) => Set(b, r)).toSet,
+          leftRightSections = leftRightPairs.flatMap((l, r) => Set(l, r)).toSet
         )
       end pairingsFromClump
 
@@ -581,12 +586,18 @@ object SectionedCodeExtension extends StrictLogging:
           .mapValues(_.head)
           .toMap
 
-      val baseToLeft  = uniquePartners(aggregatedPairings.baseToLeft)
-      val leftToBase  = uniquePartners(aggregatedPairings.baseToLeft.map((b, l) => l -> b))
+      val baseToLeft = uniquePartners(aggregatedPairings.baseToLeft)
+      val leftToBase = uniquePartners(
+        aggregatedPairings.baseToLeft.map((b, l) => l -> b)
+      )
       val baseToRight = uniquePartners(aggregatedPairings.baseToRight)
-      val rightToBase = uniquePartners(aggregatedPairings.baseToRight.map((b, r) => r -> b))
+      val rightToBase = uniquePartners(
+        aggregatedPairings.baseToRight.map((b, r) => r -> b)
+      )
       val leftToRight = uniquePartners(aggregatedPairings.leftToRight)
-      val rightToLeft = uniquePartners(aggregatedPairings.leftToRight.map((l, r) => r -> l))
+      val rightToLeft = uniquePartners(
+        aggregatedPairings.leftToRight.map((l, r) => r -> l)
+      )
 
       def assignContributionsOnOneSide(
           sections: IndexedSeq[Section[Element]],
@@ -615,6 +626,7 @@ object SectionedCodeExtension extends StrictLogging:
                       aggregatedPairings.baseRightSections.contains(section) =>
                   Contribution.CommonToBaseAndRightOnly(section)
                 case _ => Contribution.Difference(section)
+              end match
             case Side.Left =>
               val maybeBase  = leftToBase.get(section)
               val maybeRight = leftToRight.get(section)
@@ -636,6 +648,7 @@ object SectionedCodeExtension extends StrictLogging:
                       aggregatedPairings.leftRightSections.contains(section) =>
                   Contribution.CommonToLeftAndRightOnly(section)
                 case _ => Contribution.Difference(section)
+              end match
             case Side.Right =>
               val maybeBase = rightToBase.get(section)
               val maybeLeft = rightToLeft.get(section)
@@ -657,6 +670,7 @@ object SectionedCodeExtension extends StrictLogging:
                       aggregatedPairings.leftRightSections.contains(section) =>
                   Contribution.CommonToLeftAndRightOnly(section)
                 case _ => Contribution.Difference(section)
+              end match
         }
 
       LongestCommonSubsequence(
