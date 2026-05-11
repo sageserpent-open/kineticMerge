@@ -122,8 +122,8 @@ object SectionedCodeExtension extends StrictLogging:
             group.toSeq.flatMap(sectionExtractor)
 
           val collectiveGroupDiagnostic = pprintCustomised(
-            sectionsFromGroupOnRelevantSide.take(10)
-          ).render.take(1000)
+            sectionsFromGroupOnRelevantSide
+          )
 
           val Searching.Found(startingSectionIndex) = file.searchByStartOffset(
             sectionsFromGroupOnRelevantSide.head.startOffset
@@ -138,9 +138,8 @@ object SectionedCodeExtension extends StrictLogging:
           val allSectionsBetweenBracketsDiagnostic = pprintCustomised(
             file.sections
               .slice(startingSectionIndex, 1 + endingSectionIndex)
-              .take(10)
               .map(section => section -> groupIdsOf(section))
-          ).render.take(1000)
+          )
 
           s"""
              |$prelude
