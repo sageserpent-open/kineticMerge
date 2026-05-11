@@ -9,8 +9,6 @@ import com.typesafe.scalalogging.StrictLogging
 
 import scala.collection.immutable.{SortedMap, SortedSet}
 
-import scala.collection.mutable
-
 trait SectionedCode[Path, Element]:
   def base: Map[Path, File[Element]]
   def left: Map[Path, File[Element]]

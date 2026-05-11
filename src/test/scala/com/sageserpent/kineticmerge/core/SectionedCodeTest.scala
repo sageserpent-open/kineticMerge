@@ -6,6 +6,7 @@ import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.java.CasesLimitStrategy
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.americium.{Trials, TrialsApi}
+import com.sageserpent.kineticmerge.ProgressRecording
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.MatchAnalysis.{
   AdmissibleFailure,
@@ -13,7 +14,6 @@ import com.sageserpent.kineticmerge.core.MatchAnalysis.{
 }
 import com.sageserpent.kineticmerge.core.SectionedCodeExtension.merge
 import com.sageserpent.kineticmerge.core.SectionedCodeTest.{*, given}
-import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording}
 import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.{Order as _, *}
 
