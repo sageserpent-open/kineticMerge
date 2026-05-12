@@ -146,7 +146,7 @@ object SectionedCodeExtension extends StrictLogging:
              |
              |Group id: $groupId
              |
-             |Sections in group:
+             |Matched sections in group:
              |$collectiveGroupDiagnostic
              |
              |Sections between earliest section in group and last relevant one:
