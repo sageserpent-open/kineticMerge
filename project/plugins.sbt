@@ -1,6 +1,6 @@
 addSbtPlugin("com.github.sbt.junit" % "sbt-jupiter-interface" % "0.18.0")
 addSbtPlugin("io.stryker-mutator"   % "sbt-stryker4s"         % "0.20.3")
-addSbtPlugin("org.scalameta"        % "sbt-scalafmt"          % "2.6.0")
+addSbtPlugin("org.scalameta"        % "sbt-scalafmt"          % "2.6.1")
 addSbtPlugin("ch.epfl.scala"        % "sbt-version-policy"    % "3.2.1")
 addSbtPlugin("com.github.sbt"       % "sbt-release"           % "1.4.0")
 addSbtPlugin("org.xerial.sbt"       % "sbt-sonatype"          % "3.12.2")
