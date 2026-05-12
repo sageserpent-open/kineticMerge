@@ -123,7 +123,9 @@ object SectionedCode extends StrictLogging:
             parallelMatches: SortedSet[GenericMatch[Element]]
         ): Option[(Path, Block[Element])] =
           val relevantSections =
-            parallelMatches.toIndexedSeq.flatMap(sectionExtractor)
+            parallelMatches.toIndexedSeq
+              .flatMap(sectionExtractor)
+              .filter(sectionsAndTheirMatches.containsKey)
 
           Option
             .when(relevantSections.nonEmpty) {
