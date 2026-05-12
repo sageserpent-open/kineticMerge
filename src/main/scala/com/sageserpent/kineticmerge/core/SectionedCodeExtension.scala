@@ -599,6 +599,12 @@ object SectionedCodeExtension extends StrictLogging:
         aggregatedPairings.leftToRight.map((l, r) => r -> l)
       )
 
+      enum Side:
+        case Left
+        case Base
+        case Right
+      end Side
+
       def assignContributionsOnOneSide(
           sections: IndexedSeq[Section[Element]],
           side: Side
@@ -1108,7 +1114,7 @@ object SectionedCodeExtension extends StrictLogging:
       end anchoredContentFromSource
 
       def anchoredContentFromOppositeSide(
-          moveDestinationSide: Side,
+          moveDestinationSide: MoveDestinationSide,
           oppositeSideAnchor: OppositeSideAnchor[Section[Element]]
       ): (
           Option[IndexedSeq[Section[Element]]],
@@ -1116,7 +1122,7 @@ object SectionedCodeExtension extends StrictLogging:
       ) =
         val (file, preservations, coincidentInsertionsOrEdits) =
           moveDestinationSide match
-            case Side.Left =>
+            case MoveDestinationSide.Left =>
               (
                 sectionedCode.right(
                   sectionedCode.rightPathFor(oppositeSideAnchor.element)
@@ -1124,7 +1130,7 @@ object SectionedCodeExtension extends StrictLogging:
                 rightPreservations,
                 coincidentInsertionsOrEditsOnRight
               )
-            case Side.Right =>
+            case MoveDestinationSide.Right =>
               (
                 sectionedCode.left(
                   sectionedCode.leftPathFor(oppositeSideAnchor.element)
@@ -1196,12 +1202,12 @@ object SectionedCodeExtension extends StrictLogging:
       end anchoredContentFromOppositeSide
 
       def anchoredContentFromModeDestinationSide(
-          moveDestinationSide: Side,
+          moveDestinationSide: MoveDestinationSide,
           moveDestinationAnchor: Section[Element]
       ): (IndexedSeq[Section[Element]], IndexedSeq[Section[Element]]) =
         val (file, preservations, coincidentInsertionsOrEdits) =
           moveDestinationSide match
-            case Side.Left =>
+            case MoveDestinationSide.Left =>
               (
                 sectionedCode.left(
                   sectionedCode.leftPathFor(moveDestinationAnchor)
@@ -1209,7 +1215,7 @@ object SectionedCodeExtension extends StrictLogging:
                 leftPreservations,
                 coincidentInsertionsOrEditsOnLeft
               )
-            case Side.Right =>
+            case MoveDestinationSide.Right =>
               (
                 sectionedCode.right(
                   sectionedCode.rightPathFor(moveDestinationAnchor)
@@ -1253,7 +1259,7 @@ object SectionedCodeExtension extends StrictLogging:
 
       object CachedAnchoredContentMerges:
         private case class MergeInput(
-            moveDestinationSide: Side,
+            moveDestinationSide: MoveDestinationSide,
             anchoredContentFromSource: IndexedSeq[Section[Element]],
             anchoredContentFromOppositeSide: IndexedSeq[
               Section[Element]
@@ -1266,13 +1272,13 @@ object SectionedCodeExtension extends StrictLogging:
         ]] = Caffeine.newBuilder().build()
 
         def of(
-            moveDestinationSide: Side,
+            moveDestinationSide: MoveDestinationSide,
             anchoredContentFromSource: IndexedSeq[Section[Element]],
             anchoredContentFromOppositeSide: IndexedSeq[Section[Element]],
             anchoredContentFromMoveDestinationSide: IndexedSeq[Section[Element]]
         ): MultiSidedMergeResult[Section[Element]] =
           moveDestinationSide match
-            case Side.Left =>
+            case MoveDestinationSide.Left =>
               logger.debug(
                 s"""Requesting merge of anchored content,\nsource:\n${pprintCustomised(
                     anchoredContentFromSource
@@ -1284,7 +1290,7 @@ object SectionedCodeExtension extends StrictLogging:
                     anchoredContentFromOppositeSide
                   )}""".stripMargin
               )
-            case Side.Right =>
+            case MoveDestinationSide.Right =>
               logger.debug(
                 s"""Requesting merge of anchored content,\nsource:\n${pprintCustomised(
                     anchoredContentFromSource
@@ -1314,13 +1320,13 @@ object SectionedCodeExtension extends StrictLogging:
               given ProgressRecording = NoProgressRecording
 
               moveDestinationSide match
-                case Side.Left =>
+                case MoveDestinationSide.Left =>
                   mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
                     base = anchoredContentFromSource,
                     left = anchoredContentFromMoveDestinationSide,
                     right = anchoredContentFromOppositeSide
                   )
-                case Side.Right =>
+                case MoveDestinationSide.Right =>
                   mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
                     base = anchoredContentFromSource,
                     left = anchoredContentFromOppositeSide,
