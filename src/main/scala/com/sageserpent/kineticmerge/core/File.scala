@@ -10,8 +10,8 @@ case class File[Element](
 ):
   // Invariant - sections are contiguous.
   if sections.nonEmpty then
-    sections.zip(sections.tail).foreach { case (first, second) =>
-      require(first.onePastEndOffset == second.startOffset)
+    sections.zip(sections.tail).foreach { case (predecessor, successor) =>
+      require(predecessor.onePastEndOffset == successor.startOffset)
     }
   end if
 

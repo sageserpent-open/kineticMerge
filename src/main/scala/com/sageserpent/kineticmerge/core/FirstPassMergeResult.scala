@@ -40,10 +40,10 @@ case class FirstPassMergeResult[Element](
     rightPreservations: Set[Element]
 )
 
-enum Side:
+enum MoveDestinationSide:
   case Left
   case Right
-end Side
+end MoveDestinationSide
 
 object FirstPassMergeResult:
   opaque type Recording[Element] =
