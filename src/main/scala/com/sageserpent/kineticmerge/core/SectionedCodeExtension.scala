@@ -11,7 +11,10 @@ import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
   Contribution,
   Sized
 }
-import com.sageserpent.kineticmerge.core.MatchAnalysis.ParallelMatchesGroupId
+import com.sageserpent.kineticmerge.core.MatchAnalysis.{
+  Block,
+  ParallelMatchesGroupId
+}
 import com.sageserpent.kineticmerge.core.MergeResult.given
 import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{
   AnchoredMove,
@@ -57,31 +60,12 @@ object SectionedCodeExtension extends StrictLogging:
         .matchesFor(section)
         .flatMap(sectionedCode.parallelMatchesGroupIdsByMatch.get)
 
-      case class Block(
-          parallelMatchesGroupId: ParallelMatchesGroupId,
-          sectionsCoveredByGroup: IndexedSeq[Section[Element]]
-      ):
-        require(sectionsCoveredByGroup.nonEmpty)
-        sectionsCoveredByGroup.zip(sectionsCoveredByGroup.tail).foreach {
-          case (predecessor, successor) =>
-            require(predecessor.onePastEndOffset == successor.startOffset)
-        }
-
-        // TODO: do we actually need the sections at all if we've got these? Why
-        // not just store an offset interval?
-        def startOffset: Int = sectionsCoveredByGroup.head.startOffset
-
-        def onePastEndOffset: Int = sectionsCoveredByGroup.last.onePastEndOffset
-
-        def size: Int = sectionsCoveredByGroup.map(_.size).sum
-      end Block
-
       def blocksFrom(
           sections: Seq[Section[Element]]
       )(
           file: File[Element],
           sectionExtractor: Match[Section[Element]] => Option[Section[Element]]
-      ): IndexedSeq[Block] =
+      ): IndexedSeq[Block[Element]] =
         import cats.data.State
         import cats.syntax.foldable.toFoldableOps
 
@@ -96,7 +80,7 @@ object SectionedCodeExtension extends StrictLogging:
         type BlocksUnderConstructionState[X] = State[BlocksUnderConstruction, X]
 
         def buildBlocks(
-            partialResult: IndexedSeq[Block],
+            partialResult: IndexedSeq[Block[Element]],
             groupIdsFinishingConstruction: Set[ParallelMatchesGroupId],
             pendingBlocks: Map[ParallelMatchesGroupId, IndexedSeq[
               Section[Element]
@@ -157,7 +141,9 @@ object SectionedCodeExtension extends StrictLogging:
         val workflow =
           for
             resultForAllButFinalBlocks <-
-              sections.foldM[BlocksUnderConstructionState, IndexedSeq[Block]](
+              sections.foldM[BlocksUnderConstructionState, IndexedSeq[
+                Block[Element]
+              ]](
                 IndexedSeq.empty
               )((partialResult, section) =>
                 val groupIdsRelevantToSection = groupIdsOf(section)
@@ -307,8 +293,8 @@ object SectionedCodeExtension extends StrictLogging:
           )
           .getOrElse(IndexedSeq.empty)
 
-      given Eq[Block]    = Eq.by(_.parallelMatchesGroupId)
-      given Sized[Block] = _.size
+      given Eq[Block[Element]]    = Eq.by(_.parallelMatchesGroupId)
+      given Sized[Block[Element]] = _.size
 
       object contributionRanking extends Ordering[Contribution[?]]:
         override def compare(
@@ -339,132 +325,149 @@ object SectionedCodeExtension extends StrictLogging:
 
       type ThreeSidedClumps[X] = Vector[ThreeSidedClump[X]]
 
-      val blockLevelMergeAlgebra = new MergeAlgebra[ThreeSidedClumps, Block]:
-        override def empty: ThreeSidedClumps[Block] = Vector.empty
+      val blockLevelMergeAlgebra =
+        new MergeAlgebra[ThreeSidedClumps, Block[Element]]:
+          override def empty: ThreeSidedClumps[Block[Element]] = Vector.empty
 
-        override def preservation(
-            result: ThreeSidedClumps[Block],
-            preservedBaseElement: Block,
-            preservedElementOnLeft: Block,
-            preservedElementOnRight: Block
-        ): ThreeSidedClumps[Block] = result.appended(
-          ThreeSidedClump(
-            Vector(preservedBaseElement),
-            Vector(preservedElementOnLeft),
-            Vector(preservedElementOnRight)
-          )
-        )
-
-        override def leftInsertion(
-            result: ThreeSidedClumps[Block],
-            insertedElement: Block
-        ): ThreeSidedClumps[Block] =
-          result.appended(
-            ThreeSidedClump(Vector.empty, Vector(insertedElement), Vector.empty)
-          )
-
-        override def rightInsertion(
-            result: ThreeSidedClumps[Block],
-            insertedElement: Block
-        ): ThreeSidedClumps[Block] =
-          result.appended(
-            ThreeSidedClump(Vector.empty, Vector.empty, Vector(insertedElement))
-          )
-
-        override def coincidentInsertion(
-            result: ThreeSidedClumps[Block],
-            insertedElementOnLeft: Block,
-            insertedElementOnRight: Block
-        ): ThreeSidedClumps[Block] = result.appended(
-          ThreeSidedClump(
-            Vector.empty,
-            Vector(insertedElementOnLeft),
-            Vector(insertedElementOnRight)
-          )
-        )
-
-        override def leftDeletion(
-            result: ThreeSidedClumps[Block],
-            deletedBaseElement: Block,
-            deletedRightElement: Block
-        ): ThreeSidedClumps[Block] = result.appended(
-          ThreeSidedClump(
-            Vector(deletedBaseElement),
-            Vector.empty,
-            Vector(deletedRightElement)
-          )
-        )
-
-        override def rightDeletion(
-            result: ThreeSidedClumps[Block],
-            deletedBaseElement: Block,
-            deletedLeftElement: Block
-        ): ThreeSidedClumps[Block] = result.appended(
-          ThreeSidedClump(
-            Vector(deletedBaseElement),
-            Vector(deletedLeftElement),
-            Vector.empty
-          )
-        )
-
-        override def coincidentDeletion(
-            result: ThreeSidedClumps[Block],
-            deletedElement: Block
-        ): ThreeSidedClumps[Block] =
-          result.appended(
-            ThreeSidedClump(Vector(deletedElement), Vector.empty, Vector.empty)
-          )
-
-        override def leftEdit(
-            result: ThreeSidedClumps[Block],
-            editedBaseElement: Block,
-            editedRightElement: Block,
-            editElements: IndexedSeq[Block]
-        ): ThreeSidedClumps[Block] = result.appended(
-          ThreeSidedClump(
-            Vector(editedBaseElement),
-            editElements,
-            Vector(editedRightElement)
-          )
-        )
-
-        override def rightEdit(
-            result: ThreeSidedClumps[Block],
-            editedBaseElement: Block,
-            editedLeftElement: Block,
-            editElements: IndexedSeq[Block]
-        ): ThreeSidedClumps[Block] = result.appended(
-          ThreeSidedClump(
-            Vector(editedBaseElement),
-            Vector(editedLeftElement),
-            editElements
-          )
-        )
-
-        override def coincidentEdit(
-            result: ThreeSidedClumps[Block],
-            editedElement: Block,
-            editElements: IndexedSeq[(Block, Block)]
-        ): ThreeSidedClumps[Block] =
-          val (leftEditElements, rightEditElements) = editElements.unzip
-          result.appended(
+          override def preservation(
+              result: ThreeSidedClumps[Block[Element]],
+              preservedBaseElement: Block[Element],
+              preservedElementOnLeft: Block[Element],
+              preservedElementOnRight: Block[Element]
+          ): ThreeSidedClumps[Block[Element]] = result.appended(
             ThreeSidedClump(
-              Vector(editedElement),
-              leftEditElements,
-              rightEditElements
+              Vector(preservedBaseElement),
+              Vector(preservedElementOnLeft),
+              Vector(preservedElementOnRight)
             )
           )
-        end coincidentEdit
 
-        override def conflict(
-            result: ThreeSidedClumps[Block],
-            editedElements: IndexedSeq[Block],
-            leftEditElements: IndexedSeq[Block],
-            rightEditElements: IndexedSeq[Block]
-        ): ThreeSidedClumps[Block] =
-          result.appended(
-            ThreeSidedClump(editedElements, leftEditElements, rightEditElements)
+          override def leftInsertion(
+              result: ThreeSidedClumps[Block[Element]],
+              insertedElement: Block[Element]
+          ): ThreeSidedClumps[Block[Element]] =
+            result.appended(
+              ThreeSidedClump(
+                Vector.empty,
+                Vector(insertedElement),
+                Vector.empty
+              )
+            )
+
+          override def rightInsertion(
+              result: ThreeSidedClumps[Block[Element]],
+              insertedElement: Block[Element]
+          ): ThreeSidedClumps[Block[Element]] =
+            result.appended(
+              ThreeSidedClump(
+                Vector.empty,
+                Vector.empty,
+                Vector(insertedElement)
+              )
+            )
+
+          override def coincidentInsertion(
+              result: ThreeSidedClumps[Block[Element]],
+              insertedElementOnLeft: Block[Element],
+              insertedElementOnRight: Block[Element]
+          ): ThreeSidedClumps[Block[Element]] = result.appended(
+            ThreeSidedClump(
+              Vector.empty,
+              Vector(insertedElementOnLeft),
+              Vector(insertedElementOnRight)
+            )
           )
+
+          override def leftDeletion(
+              result: ThreeSidedClumps[Block[Element]],
+              deletedBaseElement: Block[Element],
+              deletedRightElement: Block[Element]
+          ): ThreeSidedClumps[Block[Element]] = result.appended(
+            ThreeSidedClump(
+              Vector(deletedBaseElement),
+              Vector.empty,
+              Vector(deletedRightElement)
+            )
+          )
+
+          override def rightDeletion(
+              result: ThreeSidedClumps[Block[Element]],
+              deletedBaseElement: Block[Element],
+              deletedLeftElement: Block[Element]
+          ): ThreeSidedClumps[Block[Element]] = result.appended(
+            ThreeSidedClump(
+              Vector(deletedBaseElement),
+              Vector(deletedLeftElement),
+              Vector.empty
+            )
+          )
+
+          override def coincidentDeletion(
+              result: ThreeSidedClumps[Block[Element]],
+              deletedElement: Block[Element]
+          ): ThreeSidedClumps[Block[Element]] =
+            result.appended(
+              ThreeSidedClump(
+                Vector(deletedElement),
+                Vector.empty,
+                Vector.empty
+              )
+            )
+
+          override def leftEdit(
+              result: ThreeSidedClumps[Block[Element]],
+              editedBaseElement: Block[Element],
+              editedRightElement: Block[Element],
+              editElements: IndexedSeq[Block[Element]]
+          ): ThreeSidedClumps[Block[Element]] = result.appended(
+            ThreeSidedClump(
+              Vector(editedBaseElement),
+              editElements,
+              Vector(editedRightElement)
+            )
+          )
+
+          override def rightEdit(
+              result: ThreeSidedClumps[Block[Element]],
+              editedBaseElement: Block[Element],
+              editedLeftElement: Block[Element],
+              editElements: IndexedSeq[Block[Element]]
+          ): ThreeSidedClumps[Block[Element]] = result.appended(
+            ThreeSidedClump(
+              Vector(editedBaseElement),
+              Vector(editedLeftElement),
+              editElements
+            )
+          )
+
+          override def coincidentEdit(
+              result: ThreeSidedClumps[Block[Element]],
+              editedElement: Block[Element],
+              editElements: IndexedSeq[(Block[Element], Block[Element])]
+          ): ThreeSidedClumps[Block[Element]] =
+            val (leftEditElements, rightEditElements) = editElements.unzip
+            result.appended(
+              ThreeSidedClump(
+                Vector(editedElement),
+                leftEditElements,
+                rightEditElements
+              )
+            )
+          end coincidentEdit
+
+          override def conflict(
+              result: ThreeSidedClumps[Block[Element]],
+              editedElements: IndexedSeq[Block[Element]],
+              leftEditElements: IndexedSeq[Block[Element]],
+              rightEditElements: IndexedSeq[Block[Element]]
+          ): ThreeSidedClumps[Block[Element]] =
+            result.appended(
+              ThreeSidedClump(
+                editedElements,
+                leftEditElements,
+                rightEditElements
+              )
+            )
 
       val threeSidedClumps =
         mergeOf(blockLevelMergeAlgebra)(baseBlocks, leftBlocks, rightBlocks)
@@ -496,7 +499,7 @@ object SectionedCodeExtension extends StrictLogging:
       end CollectedPairings
 
       def pairingsFromClump(
-          threeSidedClump: ThreeSidedClump[Block]
+          threeSidedClump: ThreeSidedClump[Block[Element]]
       ): CollectedPairings =
         val sectionLevelLongestCommonSubsequenceInClump =
           LongestCommonSubsequence.of(
