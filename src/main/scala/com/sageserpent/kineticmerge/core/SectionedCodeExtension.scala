@@ -11,16 +11,14 @@ import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
   Contribution,
   Sized
 }
-import com.sageserpent.kineticmerge.core.MatchAnalysis.{
-  Block,
-  ParallelMatchesGroupId
-}
+import com.sageserpent.kineticmerge.core.MatchAnalysis.ParallelMatchesGroupId
 import com.sageserpent.kineticmerge.core.MergeResult.given
 import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{
   AnchoredMove,
   MoveEvaluation,
   OppositeSideAnchor
 }
+import com.sageserpent.kineticmerge.core.SectionedCode.Block
 import com.sageserpent.kineticmerge.core.merge.{
   MergeAlgebra,
   mergeUsing,
@@ -54,206 +52,6 @@ object SectionedCodeExtension extends StrictLogging:
         sectionEq: Eq[Section[Element]],
         sectionSized: Sized[Section[Element]]
     ): LongestCommonSubsequence[Section[Element]] =
-      def groupIdsOf(
-          section: Section[Element]
-      ): collection.Set[ParallelMatchesGroupId] = sectionedCode
-        .matchesFor(section)
-        .flatMap(sectionedCode.parallelMatchesGroupIdsByMatch.get)
-
-      def blocksFrom(
-          sections: Seq[Section[Element]]
-      )(
-          file: File[Element],
-          sectionExtractor: Match[Section[Element]] => Option[Section[Element]]
-      ): IndexedSeq[Block[Element]] =
-        import cats.data.State
-        import cats.syntax.foldable.toFoldableOps
-
-        case class BlocksUnderConstruction(
-            pendingBlocks: Map[ParallelMatchesGroupId, IndexedSeq[
-              Section[Element]
-            ]], // TODO: map to offset intervals instead.
-            deferredFillerSections: IndexedSeq[Section[Element]],
-            groupIdsOfCompletedBlocks: Set[ParallelMatchesGroupId]
-        )
-
-        type BlocksUnderConstructionState[X] = State[BlocksUnderConstruction, X]
-
-        def buildBlocks(
-            partialResult: IndexedSeq[Block[Element]],
-            groupIdsFinishingConstruction: Set[ParallelMatchesGroupId],
-            pendingBlocks: Map[ParallelMatchesGroupId, IndexedSeq[
-              Section[Element]
-            ]]
-        ) =
-          partialResult ++ groupIdsFinishingConstruction.toSeq
-            .map(groupId => Block(groupId, pendingBlocks(groupId)))
-            .sortBy(block =>
-              (
-                block.startOffset,
-                block.onePastEndOffset,
-                block.parallelMatchesGroupId
-              )
-            )
-
-        def diagnosticForGroupId(prelude: String)(
-            groupId: ParallelMatchesGroupId,
-            finalSection: Option[Section[Element]]
-        ): String =
-          val group = sectionedCode.groupsOfParallelMatches(groupId)
-
-          val sectionsFromGroupOnRelevantSide =
-            group.toSeq.flatMap(sectionExtractor)
-
-          val collectiveGroupDiagnostic = pprintCustomised(
-            sectionsFromGroupOnRelevantSide
-          )
-
-          val Searching.Found(startingSectionIndex) = file.searchByStartOffset(
-            sectionsFromGroupOnRelevantSide.head.startOffset
-          ): @unchecked
-
-          val Searching.Found(endingSectionIndex) = file.searchByStartOffset(
-            finalSection
-              .getOrElse(sectionsFromGroupOnRelevantSide.last)
-              .startOffset
-          ): @unchecked
-
-          val allSectionsBetweenBracketsDiagnostic = pprintCustomised(
-            file.sections
-              .slice(startingSectionIndex, 1 + endingSectionIndex)
-              .map(section => section -> groupIdsOf(section))
-          )
-
-          s"""
-             |$prelude
-             |
-             |Group id: $groupId
-             |
-             |Matched sections in group:
-             |$collectiveGroupDiagnostic
-             |
-             |Sections between earliest section in group and last relevant one:
-             |$allSectionsBetweenBracketsDiagnostic
-             |""".stripMargin
-        end diagnosticForGroupId
-
-        val workflow =
-          for
-            resultForAllButFinalBlocks <-
-              sections.foldM[BlocksUnderConstructionState, IndexedSeq[
-                Block[Element]
-              ]](
-                IndexedSeq.empty
-              )((partialResult, section) =>
-                val groupIdsRelevantToSection = groupIdsOf(section)
-
-                for
-                  BlocksUnderConstruction(
-                    pendingBlocks,
-                    deferredFillerSections,
-                    groupIdsOfCompletedBlocks
-                  ) <- State.get[BlocksUnderConstruction]
-
-                  _ = groupIdsRelevantToSection.foreach { groupId =>
-                    require(
-                      !groupIdsOfCompletedBlocks.contains(groupId),
-                      diagnosticForGroupId(prelude =
-                        "Encountered group id from a previously completed block again."
-                      )(groupId, finalSection = Some(section))
-                    )
-                  }
-
-                  blockGroupIds = pendingBlocks.keySet
-
-                  groupIdsFinishingConstruction =
-                    if groupIdsRelevantToSection.nonEmpty
-                    then blockGroupIds diff groupIdsRelevantToSection
-                    else
-                      // If the section is filler, then it may lie inside a
-                      // block that is yet to be finalised: so we can't claim
-                      // that any of the pending blocks are ready for
-                      // construction.
-                      Set.empty
-
-                  updatedPendingBlocks = groupIdsRelevantToSection.foldLeft(
-                    pendingBlocks -- groupIdsFinishingConstruction
-                  )((partialBlocksUnderConstruction, groupId) =>
-                    partialBlocksUnderConstruction.updatedWith(groupId) {
-                      case Some(existingBlockUnderConstruction) =>
-                        // A pending block that is being extended with a section
-                        // that is relevant to the block's group should claim
-                        // the deferred filler sections, because we know that
-                        // there was some other section beforehand that was also
-                        // relevant to the group; so the filler sections will be
-                        // bracketed inside the block.
-                        Some(
-                          existingBlockUnderConstruction ++ deferredFillerSections :+ section
-                        )
-                      case None =>
-                        // Starting a new pending block means that any deferred
-                        // filler sections are irrelevant, because they can't be
-                        // bracketed by sections in the new block.
-                        Some(IndexedSeq(section))
-                    }
-                  )
-
-                  updatedDeferredFillerSections =
-                    if groupIdsRelevantToSection.isEmpty
-                    then deferredFillerSections :+ section
-                    else IndexedSeq.empty
-
-                  _ <- State.set[BlocksUnderConstruction](
-                    BlocksUnderConstruction(
-                      updatedPendingBlocks,
-                      updatedDeferredFillerSections,
-                      groupIdsOfCompletedBlocks union groupIdsFinishingConstruction
-                    )
-                  )
-                yield buildBlocks(
-                  partialResult,
-                  groupIdsFinishingConstruction,
-                  pendingBlocks
-                )
-                end for
-              )
-
-            BlocksUnderConstruction(
-              pendingBlocks,
-              _,
-              groupIdsOfCompletedBlocks
-            ) <- State.get[BlocksUnderConstruction]
-
-            groupIdsFinishingConstruction = pendingBlocks.keySet
-          yield buildBlocks(
-            resultForAllButFinalBlocks,
-            groupIdsFinishingConstruction,
-            pendingBlocks
-          )
-
-        val result = workflow
-          .runA(
-            BlocksUnderConstruction(
-              pendingBlocks = Map.empty,
-              deferredFillerSections = IndexedSeq.empty,
-              groupIdsOfCompletedBlocks = Set.empty
-            )
-          )
-          .value
-
-        result.groupBy(_.parallelMatchesGroupId).foreach {
-          case (groupId, potentialDuplicates) =>
-            require(
-              1 == potentialDuplicates.size,
-              diagnosticForGroupId(prelude =
-                s"Group id occurs in multiple blocks: $potentialDuplicates"
-              )(groupId, finalSection = None)
-            )
-        }
-
-        result
-      end blocksFrom
-
       // TODO: this is a bit messy, because there is an implicit assumption that
       // if there is no file, then there are no sections to make a block from.
       // This true, but only because the call-sites of
@@ -262,36 +60,6 @@ object SectionedCodeExtension extends StrictLogging:
       // to pass in the optional file explicitly for each side to
       // `longestCommonSubsequenceOf` and dig the sections out of it, but that
       // doesn't quite site properly with the existing call-site logic.
-      val baseBlocks =
-        sectionedCode.base
-          .get(path)
-          .map(file =>
-            blocksFrom(baseSections)(
-              file = file,
-              sectionExtractor = _.baseContribution
-            )
-          )
-          .getOrElse(IndexedSeq.empty)
-      val leftBlocks =
-        sectionedCode.left
-          .get(path)
-          .map(file =>
-            blocksFrom(leftSections)(
-              file = file,
-              sectionExtractor = _.leftContribution
-            )
-          )
-          .getOrElse(IndexedSeq.empty)
-      val rightBlocks =
-        sectionedCode.right
-          .get(path)
-          .map(file =>
-            blocksFrom(rightSections)(
-              file = file,
-              sectionExtractor = _.rightContribution
-            )
-          )
-          .getOrElse(IndexedSeq.empty)
 
       given Eq[Block[Element]]    = Eq.by(_.parallelMatchesGroupId)
       given Sized[Block[Element]] = _.size
@@ -470,7 +238,11 @@ object SectionedCodeExtension extends StrictLogging:
             )
 
       val threeSidedClumps =
-        mergeOf(blockLevelMergeAlgebra)(baseBlocks, leftBlocks, rightBlocks)
+        mergeOf(blockLevelMergeAlgebra)(
+          sectionedCode.baseBlocksFor(path),
+          sectionedCode.leftBlocksFor(path),
+          sectionedCode.rightBlocksFor(path)
+        )
 
       case class CollectedPairings(
           baseToLeft: MultiDict[Section[Element], Section[Element]] =

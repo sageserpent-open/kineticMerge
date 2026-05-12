@@ -5,9 +5,11 @@ import com.google.common.hash.{Funnel, HashFunction}
 import com.sageserpent.kineticmerge
 import com.sageserpent.kineticmerge.core
 import com.sageserpent.kineticmerge.core.MatchAnalysis.*
+import com.sageserpent.kineticmerge.core.SectionedCode.Block
 import com.typesafe.scalalogging.StrictLogging
 
-import scala.collection.immutable.{SortedMap, SortedSet}
+import scala.collection.Searching
+import scala.collection.immutable.SortedSet
 
 trait SectionedCode[Path, Element]:
   def base: Map[Path, File[Element]]
@@ -22,10 +24,19 @@ trait SectionedCode[Path, Element]:
   def leftPathFor(leftSection: Section[Element]): Path
   def rightPathFor(rightSection: Section[Element]): Path
 
+  // TODO: trim out some if not all of the methods for getting at groups once
+  // blocks have fully landed.
+
   def parallelMatchesGroupIdsByMatch: ParallelMatchesGroupIdsByMatch[Element]
 
   def groupsOfParallelMatches
-      : SortedMap[ParallelMatchesGroupId, SortedSet[GenericMatch[Element]]]
+      : Map[ParallelMatchesGroupId, SortedSet[GenericMatch[Element]]]
+
+  def baseBlocksFor(path: Path): IndexedSeq[Block[Element]]
+
+  def leftBlocksFor(path: Path): IndexedSeq[Block[Element]]
+
+  def rightBlocksFor(path: Path): IndexedSeq[Block[Element]]
 end SectionedCode
 
 object SectionedCode extends StrictLogging:
@@ -99,6 +110,80 @@ object SectionedCode extends StrictLogging:
           matchesAndTheirSections.rightSections
         )
 
+      val groupsOfParallelMatches =
+        matchesAndTheirSections.groupsOfParallelMatches
+
+      def blocksForASide(
+          sectionExtractor: Match[Section[Element]] => Option[Section[Element]],
+          pathExtractor: Section[Element] => Path,
+          filesByPath: Map[Path, File[Element]]
+      ): Map[Path, IndexedSeq[Block[Element]]] =
+        def blockFrom(
+            parallelMatchesGroupId: ParallelMatchesGroupId,
+            parallelMatches: SortedSet[GenericMatch[Element]]
+        ): Option[(Path, Block[Element])] =
+          val relevantSections =
+            parallelMatches.toIndexedSeq.flatMap(sectionExtractor)
+
+          Option
+            .when(relevantSections.nonEmpty) {
+              val path = pathExtractor(relevantSections.head)
+
+              val file = filesByPath(path)
+
+              val Searching.Found(startingSectionIndex) =
+                file.searchByStartOffset(
+                  relevantSections.head.startOffset
+                ): @unchecked
+
+              val Searching.Found(endingSectionIndex) =
+                file.searchByStartOffset(
+                  relevantSections.last.startOffset
+                ): @unchecked
+
+              val sectionsCoveredByBlock = file.sections.slice(
+                startingSectionIndex,
+                1 + endingSectionIndex
+              )
+
+              path -> Block(
+                parallelMatchesGroupId,
+                sectionsCoveredByBlock
+              )
+            }
+        end blockFrom
+
+        groupsOfParallelMatches.toSeq
+          .map(blockFrom)
+          .collect { case Some((path, block)) => path -> block }
+          .groupMap(_._1)(_._2)
+          .map((path, blocks) =>
+            path -> blocks.toIndexedSeq.sortBy(block =>
+              (
+                block.startOffset,
+                block.onePastEndOffset,
+                block.parallelMatchesGroupId
+              )
+            )
+          )
+      end blocksForASide
+
+      val baseBlocks = blocksForASide(
+        sectionExtractor = _.baseContribution,
+        pathExtractor = baseSources.pathFor,
+        filesByPath = baseFilesByPath
+      )
+      val leftBlocks = blocksForASide(
+        sectionExtractor = _.leftContribution,
+        pathExtractor = leftSources.pathFor,
+        filesByPath = leftFilesByPath
+      )
+      val rightBlocks = blocksForASide(
+        sectionExtractor = _.rightContribution,
+        pathExtractor = rightSources.pathFor,
+        filesByPath = rightFilesByPath
+      )
+
       Right(new SectionedCode[Path, Element]:
         override def base: Map[Path, File[Element]] = baseFilesByPath
 
@@ -118,6 +203,15 @@ object SectionedCode extends StrictLogging:
         export matchesAndTheirSections.parallelMatchesGroupIdsByMatch
 
         export matchesAndTheirSections.groupsOfParallelMatches
+
+        override def baseBlocksFor(path: Path): IndexedSeq[Block[Element]] =
+          baseBlocks.getOrElse(path, IndexedSeq.empty)
+
+        override def leftBlocksFor(path: Path): IndexedSeq[Block[Element]] =
+          leftBlocks.getOrElse(path, IndexedSeq.empty)
+
+        override def rightBlocksFor(path: Path): IndexedSeq[Block[Element]] =
+          rightBlocks.getOrElse(path, IndexedSeq.empty)
 
         {
           // Invariant: the matches are referenced only by their participating
@@ -174,4 +268,23 @@ object SectionedCode extends StrictLogging:
       case admissibleException: AdmissibleFailure => Left(admissibleException)
     end try
   end of
+
+  case class Block[Element](
+      parallelMatchesGroupId: ParallelMatchesGroupId,
+      sectionsCoveredByGroup: IndexedSeq[Section[Element]]
+  ):
+    require(sectionsCoveredByGroup.nonEmpty)
+    sectionsCoveredByGroup.zip(sectionsCoveredByGroup.tail).foreach {
+      case (predecessor, successor) =>
+        require(predecessor.onePastEndOffset == successor.startOffset)
+    }
+
+    // TODO: do we actually need the sections at all if we've got these? Why
+    // not just store an offset interval?
+    def startOffset: Int = sectionsCoveredByGroup.head.startOffset
+
+    def onePastEndOffset: Int = sectionsCoveredByGroup.last.onePastEndOffset
+
+    def size: Int = sectionsCoveredByGroup.map(_.size).sum
+  end Block
 end SectionedCode
