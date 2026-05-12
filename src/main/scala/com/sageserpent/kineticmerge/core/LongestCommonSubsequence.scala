@@ -148,25 +148,6 @@ case class LongestCommonSubsequence[Element] private (
       commonToBaseAndRightOnlySize = commonToBaseAndLeftOnlySize
     )
   end mirror
-
-  // TODO: do we need this after all?
-  def append(
-      another: LongestCommonSubsequence[Element]
-  ): LongestCommonSubsequence[Element] =
-    LongestCommonSubsequence(
-      base = base concat another.base,
-      left = left concat another.left,
-      right = right concat another.right,
-      commonSubsequenceSize =
-        commonSubsequenceSize plus another.commonSubsequenceSize,
-      commonToLeftAndRightOnlySize =
-        commonToLeftAndRightOnlySize plus another.commonToLeftAndRightOnlySize,
-      commonToBaseAndLeftOnlySize =
-        commonToBaseAndLeftOnlySize plus another.commonToBaseAndLeftOnlySize,
-      commonToBaseAndRightOnlySize =
-        commonToBaseAndRightOnlySize plus another.commonToBaseAndRightOnlySize
-    )
-
 end LongestCommonSubsequence
 
 object LongestCommonSubsequence:
@@ -440,9 +421,6 @@ object LongestCommonSubsequence:
             resultSnapshotPriorToMutation
           end advanceToNextLeadingSwathe
 
-          private def notYetReachedFinalSwathe =
-            maximumSwatheIndex > _indexOfLeadingSwathe
-
           def topLevelSolution: LongestCommonSubsequence[Element] =
             require(!notYetReachedFinalSwathe)
 
@@ -453,6 +431,9 @@ object LongestCommonSubsequence:
               right.size
             )
           end topLevelSolution
+
+          private def notYetReachedFinalSwathe =
+            maximumSwatheIndex > _indexOfLeadingSwathe
 
           inline private def storageLotForLeadingSwathe =
             _indexOfLeadingSwathe % 2

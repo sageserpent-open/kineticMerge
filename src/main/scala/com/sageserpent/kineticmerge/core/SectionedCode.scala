@@ -281,8 +281,6 @@ object SectionedCode extends StrictLogging:
         require(predecessor.onePastEndOffset == successor.startOffset)
     }
 
-    // TODO: do we actually need the sections at all if we've got these? Why
-    // not just store an offset interval?
     def startOffset: Int = sectionsCoveredByGroup.head.startOffset
 
     def onePastEndOffset: Int = sectionsCoveredByGroup.last.onePastEndOffset
