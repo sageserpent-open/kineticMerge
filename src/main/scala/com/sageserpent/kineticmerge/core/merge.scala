@@ -101,6 +101,11 @@ object merge extends StrictLogging:
     def mergeUsing[Result[_]](
         mergeAlgebra: MergeAlgebra[Result, Element]
     )(using progressRecording: ProgressRecording): Result[Element] =
+      val session = progressRecording.newSession(
+        label = "Three-way merge",
+        maximumProgress = 1
+      )(initialProgress = 0)
+
       def rightEditNotMaroonedByPriorCoincidentInsertion(
           leftTail: Seq[Contribution[Element]]
       ) =
@@ -1499,7 +1504,7 @@ object merge extends StrictLogging:
         end match
       end mergeBetweenRunsOfCommonElements
 
-      mergeBetweenRunsOfCommonElements(
+      val result = mergeBetweenRunsOfCommonElements(
         longestCommonSubsequence.base,
         longestCommonSubsequence.left,
         longestCommonSubsequence.right
@@ -1507,6 +1512,11 @@ object merge extends StrictLogging:
         partialResult = mergeAlgebra.empty,
         coalescence = NoCoalescence
       )
+
+      session.upTo(1)
+      session.close()
+
+      result
     end mergeUsing
   end extension
 

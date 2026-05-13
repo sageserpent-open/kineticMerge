@@ -217,10 +217,15 @@ object MatchAnalysis extends StrictLogging:
 
       def withAllMatchesOfAtLeastTheSureFireWindowSize()
           : MatchesAndTheirSections =
+        val sessionLabel =
+          if configuration.label.nonEmpty then
+            s"${configuration.label} - minimum match size considered:"
+          else "Minimum match size considered:"
+
         if 0 < maximumPossibleMatchSize then
           Using(
             progressRecording.newSession(
-              label = "Minimum match size considered:",
+              label = sessionLabel,
               maximumProgress = maximumPossibleMatchSize
             )(initialProgress = maximumPossibleMatchSize)
           ) { progressRecordingSession =>
@@ -1112,9 +1117,14 @@ object MatchAnalysis extends StrictLogging:
           val maximumSmallFryWindowSize =
             minimumSureFireWindowSizeAcrossAllFilesOverAllSides - 1
 
+          val sessionLabel =
+            if configuration.label.nonEmpty then
+              s"${configuration.label} - minimum match size considered:"
+            else "Minimum match size considered:"
+
           Using(
             progressRecording.newSession(
-              label = "Minimum match size considered:",
+              label = sessionLabel,
               maximumProgress = maximumSmallFryWindowSize
             )(initialProgress = maximumSmallFryWindowSize)
           ) { progressRecordingSession =>
@@ -1206,9 +1216,14 @@ object MatchAnalysis extends StrictLogging:
           }
         end withContentCoveredByNonTinyMatchesKnockedOut
 
+        val sessionLabel =
+          if configuration.label.nonEmpty then
+            s"${configuration.label} - minimum match size considered:"
+          else "Minimum match size considered:"
+
         val tinyMatches = Using(
           progressRecording.newSession(
-            label = "Minimum match size considered:",
+            label = sessionLabel,
             maximumProgress = minimumWindowSizeAcrossAllFilesOverAllSides
           )(initialProgress = minimumWindowSizeAcrossAllFilesOverAllSides)
         ) { progressRecordingSession =>
@@ -1286,10 +1301,15 @@ object MatchAnalysis extends StrictLogging:
       def reconcileMatches: MatchesAndTheirSections =
         val matches = sectionsAndTheirMatches.values.toSet
 
+        val sessionLabel =
+          if configuration.label.nonEmpty then
+            s"${configuration.label} - number of matches to reconcile:"
+          else "Number of matches to reconcile:"
+
         val Success(result) =
           Using(
             progressRecording.newSession(
-              label = "Number of matches to reconcile:",
+              label = sessionLabel,
               maximumProgress = matches.size
             )(initialProgress = matches.size)
           ) { progressRecordingSession =>
@@ -1570,6 +1590,7 @@ object MatchAnalysis extends StrictLogging:
           override val ambiguousMatchesThreshold: Int           = Int.MaxValue
           override val progressRecording: ProgressRecording     =
             configuration.progressRecording
+          override val label: String = "Meta-matching"
         end metaMatchConfiguration
 
         given Eq[Section[Element]] = Eq.by(_.content: Seq[Element])
@@ -3318,6 +3339,7 @@ object MatchAnalysis extends StrictLogging:
     val minimumAmbiguousMatchSize: Int
     val ambiguousMatchesThreshold: Int
     val progressRecording: ProgressRecording
+    val label: String = ""
   end AbstractConfiguration
 
   class AdmissibleFailure(message: String) extends RuntimeException(message)
@@ -3339,7 +3361,8 @@ object MatchAnalysis extends StrictLogging:
       thresholdSizeFractionForMatching: Double,
       minimumAmbiguousMatchSize: Int,
       ambiguousMatchesThreshold: Int,
-      progressRecording: ProgressRecording = NoProgressRecording
+      progressRecording: ProgressRecording = NoProgressRecording,
+      override val label: String = ""
   ) extends AbstractConfiguration:
     // TODO: why would `minimumMatchSize` be zero?
     require(0 <= minimumMatchSize)

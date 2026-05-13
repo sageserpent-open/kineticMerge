@@ -37,6 +37,7 @@ import scala.annotation.tailrec
 import scala.collection.immutable.MultiDict
 import scala.collection.{IndexedSeqView, Searching}
 import scala.math.Ordering.Implicits.seqOrdering
+import scala.util.Using
 
 object SectionedCodeExtension extends StrictLogging:
   /** Add merging capability to a [[SectionedCode]]. */
@@ -238,11 +239,20 @@ object SectionedCodeExtension extends StrictLogging:
             )
 
       val threeSidedClumps =
-        mergeOf(blockLevelMergeAlgebra)(
-          sectionedCode.baseBlocksFor(path),
-          sectionedCode.leftBlocksFor(path),
-          sectionedCode.rightBlocksFor(path)
-        )
+        Using(
+          progressRecording.newSession(
+            label = s"Block-level merge: $path",
+            maximumProgress = 1
+          )(initialProgress = 0)
+        ) { progressRecordingSession =>
+          val result = mergeOf(blockLevelMergeAlgebra)(
+            sectionedCode.baseBlocksFor(path),
+            sectionedCode.leftBlocksFor(path),
+            sectionedCode.rightBlocksFor(path)
+          )
+          progressRecordingSession.upTo(1)
+          result
+        }.get
 
       case class CollectedPairings(
           baseToLeft: MultiDict[Section[Element], Section[Element]] =
@@ -346,9 +356,21 @@ object SectionedCodeExtension extends StrictLogging:
         )
       end pairingsFromClump
 
-      val aggregatedPairings = threeSidedClumps
-        .map(pairingsFromClump)
-        .foldLeft(CollectedPairings())(_ union _)
+      val aggregatedPairings =
+        Using(
+          progressRecording.newSession(
+            label = s"Section-level LCS refinements: $path",
+            maximumProgress = threeSidedClumps.size
+          )(initialProgress = 0)
+        ) { progressRecordingSession =>
+          threeSidedClumps.zipWithIndex
+            .map((clump, index) =>
+              val result = pairingsFromClump(clump)
+              progressRecordingSession.upTo(1 + index)
+              result
+            )
+            .foldLeft(CollectedPairings())(_ union _)
+        }.get
 
       def uniquePartners(
           matches: MultiDict[Section[Element], Section[Element]]
@@ -1909,10 +1931,22 @@ object SectionedCodeExtension extends StrictLogging:
             )
         }
 
-      secondPassMergeResultsByPath
-        .map(applySplices)
-        .map(applySubstitutions)
-        .map(resolveSections) -> moveDestinationsReport
+      val result =
+        Using(
+          progressRecording.newSession(
+            label = "Post-alignment merge processing",
+            maximumProgress = 1
+          )(initialProgress = 0)
+        ) { progressRecordingSession =>
+          val result = secondPassMergeResultsByPath
+            .map(applySplices)
+            .map(applySubstitutions)
+            .map(resolveSections) -> moveDestinationsReport
+          progressRecordingSession.upTo(1)
+          result
+        }.get
+
+      result
     end merge
   end extension
 end SectionedCodeExtension

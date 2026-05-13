@@ -46,3 +46,36 @@ Key goals include:
 - `CodeMotionAnalysisExtension.scala`: The global merge and migration logic.
 - `merge.scala`: The core three-way merge implementation.
 - `LongestCommonSubsequence.scala`: The alignment algorithm.
+
+## Performance Benchmarking
+
+It is strongly recommended to run the following benchmark when making changes to the core matching, LCS, merge, or block construction code.
+
+### Manual Benchmark Procedure
+
+1. **Build the CLI application** in the main project directory:
+   ```bash
+   sbt packageExecutable
+   ```
+   This produces `target/kinetic-merge`.
+
+2. **Setup a reproduction repository**: Create a separate clone of the Kinetic Merge repository in a temporary location (e.g., `/tmp/kinetic-merge-repro`):
+   ```bash
+   git clone https://github.com/sageserpent-open/kineticMerge.git /tmp/kinetic-merge-repro
+   cd /tmp/kinetic-merge-repro
+   git checkout 6e0b6821fa8fe53465c3355793b61ac425a10c1a
+   ```
+
+3. **Run the benchmark**: From within the repro repository, run the packaged executable from your development workspace:
+   ```bash
+   <PATH_TO_YOUR_WORKSPACE>/target/kinetic-merge \
+     --no-commit \
+     55fef2f785334b7bf99fc592dd101a462cbb2c6d
+   ```
+
+4. **Cleanup**:
+   ```bash
+   git merge --abort
+   ```
+
+The execution should be timed, aiming for "shortness" (ideally under one minute). At least one file is expected to have conflicts.

@@ -1784,7 +1784,7 @@ object Main extends StrictLogging:
         sectionedCode: SectionedCode[Path, Token] <- EitherT
           .fromEither[WorkflowLogWriter] {
             SectionedCode.of(baseSources, leftSources, rightSources)(
-              configuration
+              configuration.copy(label = "Primary match analysis")
             )
           }
           .leftMap(_.toString.taggedWith[Tags.ErrorMessage])

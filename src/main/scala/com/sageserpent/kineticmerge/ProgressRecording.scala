@@ -5,7 +5,7 @@ import org.jline.utils.WriterOutputStream
 
 import java.io.PrintStream
 import java.nio.charset.Charset
-import java.time.Duration as JavaDuration
+import java.time.{Duration as JavaDuration, Instant}
 
 /** Records progress from zero up to some implied maximum set up by
   * [[ProgressRecording.newSession]]. Progress may be moved up or down; so it is
@@ -42,13 +42,15 @@ object NoProgressRecording extends ProgressRecording:
   override def newSession(label: String, maximumProgress: Int)(
       initialProgress: Int
   ): ProgressRecordingSession =
-    Session
+    new ProgressRecordingSession:
+      private val startTime = Instant.now()
 
-  private object Session extends ProgressRecordingSession:
-    override def upTo(amount: Int): Unit = {}
+      override def upTo(amount: Int): Unit = {}
 
-    override def close(): Unit = {}
-  end Session
+      override def close(): Unit =
+        val duration = JavaDuration.between(startTime, Instant.now())
+        println(s"$label - took: $duration")
+    end new
 end NoProgressRecording
 
 /** An instance of [[ProgressRecordingSession]] created by
@@ -61,6 +63,8 @@ object ConsoleProgressRecording extends ProgressRecording:
       initialProgress: Int
   ): ProgressRecordingSession =
     new ProgressRecordingSession:
+      private val startTime = Instant.now()
+
       private val progressBar = Option(System.console()).map(console =>
         val progressBarConsumer = new ConsoleProgressBarConsumer(
           new PrintStream(
@@ -79,5 +83,8 @@ object ConsoleProgressRecording extends ProgressRecording:
 
       override def upTo(amount: Int): Unit =
         progressBar.foreach(_.stepTo(amount))
-      override def close(): Unit = progressBar.foreach(_.close())
+      override def close(): Unit =
+        progressBar.foreach(_.close())
+        val duration = JavaDuration.between(startTime, Instant.now())
+        println(s"$label - took: $duration")
 end ConsoleProgressRecording
