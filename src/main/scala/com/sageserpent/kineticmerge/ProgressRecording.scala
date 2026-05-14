@@ -1,24 +1,33 @@
 package com.sageserpent.kineticmerge
 
 import me.tongfei.progressbar.{ConsoleProgressBarConsumer, ProgressBarBuilder}
+import org.apache.commons.lang3.time.DurationFormatUtils
 import org.jline.utils.WriterOutputStream
 
 import java.io.PrintStream
 import java.nio.charset.Charset
-import java.time.{Duration as JavaDuration, Instant}
-
-import org.apache.commons.lang3.time.DurationFormatUtils
+import java.time.{Instant, Duration as JavaDuration}
 
 /** Records progress from zero up to some implied maximum set up by
   * [[ProgressRecording.newSession]]. Progress may be moved up or down; so it is
   * possible to use this to count progress up from zero to the maximum, or to
   * count progress down from the maximum to zero.
   */
-trait ProgressRecordingSession extends AutoCloseable:
+trait ProgressRecordingSession(val label: String, val maximumProgress: Int)
+    extends AutoCloseable:
+  private val startTime = Instant.now()
+
   /** @param amount
     *   Zero or positive amount of absolute progress.
     */
   def upTo(amount: Int): Unit
+
+  override def close(): Unit =
+    val duration = JavaDuration.between(startTime, Instant.now())
+    println(
+      s"$label $maximumProgress (Completed in: ${DurationFormatUtils.formatDurationHMS(duration.toMillis)})"
+    )
+  end close
 end ProgressRecordingSession
 
 trait ProgressRecording:
@@ -44,17 +53,8 @@ object NoProgressRecording extends ProgressRecording:
   override def newSession(label: String, maximumProgress: Int)(
       initialProgress: Int
   ): ProgressRecordingSession =
-    new ProgressRecordingSession:
-      private val startTime = Instant.now()
-
+    new ProgressRecordingSession(label, maximumProgress):
       override def upTo(amount: Int): Unit = {}
-
-      override def close(): Unit =
-        val duration = JavaDuration.between(startTime, Instant.now())
-        println(
-          s"$label $maximumProgress (Completed in: ${DurationFormatUtils.formatDurationHMS(duration.toMillis)})"
-        )
-      end close
     end new
   end newSession
 end NoProgressRecording
@@ -68,9 +68,7 @@ object ConsoleProgressRecording extends ProgressRecording:
   override def newSession(label: String, maximumProgress: Int)(
       initialProgress: Int
   ): ProgressRecordingSession =
-    new ProgressRecordingSession:
-      private val startTime = Instant.now()
-
+    new ProgressRecordingSession(label, maximumProgress):
       private val progressBar = Option(System.console()).map(console =>
         val progressBarConsumer = new ConsoleProgressBarConsumer(
           new PrintStream(
@@ -78,10 +76,10 @@ object ConsoleProgressRecording extends ProgressRecording:
           )
         )
         val builder = new ProgressBarBuilder
-        builder.setTaskName(label)
+        builder.setTaskName(this.label)
         builder.hideEta()
         builder.startsFrom(initialProgress, JavaDuration.ZERO)
-        builder.setInitialMax(maximumProgress)
+        builder.setInitialMax(this.maximumProgress)
         builder.clearDisplayOnFinish()
         builder.setConsumer(progressBarConsumer)
         builder.build()
@@ -91,9 +89,6 @@ object ConsoleProgressRecording extends ProgressRecording:
         progressBar.foreach(_.stepTo(amount))
       override def close(): Unit =
         progressBar.foreach(_.close())
-        val duration = JavaDuration.between(startTime, Instant.now())
-        println(
-          s"$label $maximumProgress (Completed in: ${DurationFormatUtils.formatDurationHMS(duration.toMillis)})"
-        )
+        super.close()
       end close
 end ConsoleProgressRecording
