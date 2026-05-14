@@ -7,6 +7,8 @@ import java.io.PrintStream
 import java.nio.charset.Charset
 import java.time.{Duration as JavaDuration, Instant}
 
+import org.apache.commons.lang3.time.DurationFormatUtils
+
 /** Records progress from zero up to some implied maximum set up by
   * [[ProgressRecording.newSession]]. Progress may be moved up or down; so it is
   * possible to use this to count progress up from zero to the maximum, or to
@@ -49,8 +51,12 @@ object NoProgressRecording extends ProgressRecording:
 
       override def close(): Unit =
         val duration = JavaDuration.between(startTime, Instant.now())
-        println(s"$label - took: $duration")
+        println(
+          s"$label $maximumProgress (Completed in: ${DurationFormatUtils.formatDurationHMS(duration.toMillis)})"
+        )
+      end close
     end new
+  end newSession
 end NoProgressRecording
 
 /** An instance of [[ProgressRecordingSession]] created by
@@ -86,5 +92,8 @@ object ConsoleProgressRecording extends ProgressRecording:
       override def close(): Unit =
         progressBar.foreach(_.close())
         val duration = JavaDuration.between(startTime, Instant.now())
-        println(s"$label - took: $duration")
+        println(
+          s"$label $maximumProgress (Completed in: ${DurationFormatUtils.formatDurationHMS(duration.toMillis)})"
+        )
+      end close
 end ConsoleProgressRecording
