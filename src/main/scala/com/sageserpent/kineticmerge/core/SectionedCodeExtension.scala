@@ -239,20 +239,12 @@ object SectionedCodeExtension extends StrictLogging:
             )
 
       val threeSidedClumps =
-        Using(
-          progressRecording.newSession(
-            label = s"Block-level merge: $path",
-            maximumProgress = 1
-          )(initialProgress = 0)
-        ) { progressRecordingSession =>
-          val result = mergeOf(blockLevelMergeAlgebra)(
-            sectionedCode.baseBlocksFor(path),
-            sectionedCode.leftBlocksFor(path),
-            sectionedCode.rightBlocksFor(path)
-          )
-          progressRecordingSession.upTo(1)
-          result
-        }.get
+        mergeOf(blockLevelMergeAlgebra)(
+          sectionedCode.baseBlocksFor(path),
+          sectionedCode.leftBlocksFor(path),
+          sectionedCode.rightBlocksFor(path),
+          s"Block-level merge: $path"
+        )
 
       case class CollectedPairings(
           baseToLeft: MultiDict[Section[Element], Section[Element]] =
@@ -715,10 +707,12 @@ object SectionedCodeExtension extends StrictLogging:
                     baseSections = baseSections,
                     leftSections = IndexedSeq.empty,
                     rightSections = rightSections
-                  )(path).mergeUsing(mergeAlgebra =
-                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
-                      FileDeletionContext.Left
-                    )
+                  )(path).mergeUsing(
+                    mergeAlgebra =
+                      FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
+                        FileDeletionContext.Left
+                      ),
+                    label = s"Merge: $path"
                   )
 
                 partialMergeResult.aggregate(path, firstPassMergeResult)
@@ -735,10 +729,12 @@ object SectionedCodeExtension extends StrictLogging:
                     baseSections = baseSections,
                     leftSections = leftSections,
                     rightSections = IndexedSeq.empty
-                  )(path).mergeUsing(mergeAlgebra =
-                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
-                      FileDeletionContext.Right
-                    )
+                  )(path).mergeUsing(
+                    mergeAlgebra =
+                      FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
+                        FileDeletionContext.Right
+                      ),
+                    label = s"Merge: $path"
                   )
 
                 partialMergeResult.aggregate(path, firstPassMergeResult)
@@ -761,10 +757,12 @@ object SectionedCodeExtension extends StrictLogging:
                       optionalBaseSections.getOrElse(IndexedSeq.empty),
                     leftSections = leftSections,
                     rightSections = rightSections
-                  )(path).mergeUsing(mergeAlgebra =
-                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
-                      FileDeletionContext.None
-                    )
+                  )(path).mergeUsing(
+                    mergeAlgebra =
+                      FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
+                        FileDeletionContext.None
+                      ),
+                    label = s"Merge: $path"
                   )
 
                 partialMergeResult.aggregate(path, firstPassMergeResult)
