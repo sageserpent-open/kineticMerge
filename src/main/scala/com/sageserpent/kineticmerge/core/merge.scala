@@ -89,7 +89,7 @@ object merge extends StrictLogging:
       base: IndexedSeq[Element],
       left: IndexedSeq[Element],
       right: IndexedSeq[Element],
-      label: String = "Three-way merge"
+      label: String = "Three-way merge:"
   )(using
       progressRecording: ProgressRecording
   ): Result[Element] =
@@ -104,7 +104,7 @@ object merge extends StrictLogging:
   )
     def mergeUsing[Result[_]](
         mergeAlgebra: MergeAlgebra[Result, Element],
-        label: String = "Three-way merge"
+        label: String
     )(using
         progressRecording: ProgressRecording
     ): Result[Element] =
@@ -147,6 +147,7 @@ object merge extends StrictLogging:
             ): Result[Element] =
               progress(1)
               mergeAlgebra.leftInsertion(result, insertedElement)
+            end leftInsertion
 
             override def rightInsertion(
                 result: Result[Element],
@@ -154,6 +155,7 @@ object merge extends StrictLogging:
             ): Result[Element] =
               progress(1)
               mergeAlgebra.rightInsertion(result, insertedElement)
+            end rightInsertion
 
             override def coincidentInsertion(
                 result: Result[Element],
@@ -166,6 +168,7 @@ object merge extends StrictLogging:
                 insertedElementOnLeft,
                 insertedElementOnRight
               )
+            end coincidentInsertion
 
             override def leftDeletion(
                 result: Result[Element],
@@ -178,6 +181,7 @@ object merge extends StrictLogging:
                 deletedBaseElement,
                 deletedRightElement
               )
+            end leftDeletion
 
             override def rightDeletion(
                 result: Result[Element],
@@ -190,6 +194,7 @@ object merge extends StrictLogging:
                 deletedBaseElement,
                 deletedLeftElement
               )
+            end rightDeletion
 
             override def coincidentDeletion(
                 result: Result[Element],
@@ -197,6 +202,7 @@ object merge extends StrictLogging:
             ): Result[Element] =
               progress(1)
               mergeAlgebra.coincidentDeletion(result, deletedElement)
+            end coincidentDeletion
 
             override def leftEdit(
                 result: Result[Element],
@@ -211,6 +217,7 @@ object merge extends StrictLogging:
                 editedRightElement,
                 editElements
               )
+            end leftEdit
 
             override def rightEdit(
                 result: Result[Element],
@@ -225,6 +232,7 @@ object merge extends StrictLogging:
                 editedLeftElement,
                 editElements
               )
+            end rightEdit
 
             override def coincidentEdit(
                 result: Result[Element],
@@ -233,6 +241,7 @@ object merge extends StrictLogging:
             ): Result[Element] =
               progress(1 + 2 * editElements.size)
               mergeAlgebra.coincidentEdit(result, editedElement, editElements)
+            end coincidentEdit
 
             override def conflict(
                 result: Result[Element],
@@ -249,6 +258,7 @@ object merge extends StrictLogging:
                 leftEditElements,
                 rightEditElements
               )
+            end conflict
         end reportingMergeAlgebra
 
         def rightEditNotMaroonedByPriorCoincidentInsertion(
@@ -384,7 +394,10 @@ object merge extends StrictLogging:
           // Export the union of the various APIs...
           export leftEdit.{coalesceLeftInsertion, finalLeftEdit}
           export rightEdit.{coalesceRightInsertion, finalRightEdit}
-          export coincidentEdit.{coalesceCoincidentInsertion, finalCoincidentEdit}
+          export coincidentEdit.{
+            coalesceCoincidentInsertion,
+            finalCoincidentEdit
+          }
           export conflict.{coalesceConflict, finalConflict}
         end NoCoalescence
 
@@ -392,7 +405,9 @@ object merge extends StrictLogging:
             deferredLeftEdits: IndexedSeq[Element]
         ) extends Coalescence
             with LeftEditOperations:
-          override def coalesceLeftInsertion(insertedElement: Element): LeftEdit =
+          override def coalesceLeftInsertion(
+              insertedElement: Element
+          ): LeftEdit =
             this.focus(_.deferredLeftEdits).modify(_ :+ insertedElement)
           override def finalLeftEdit(
               result: Result[Element],
@@ -1177,7 +1192,9 @@ object merge extends StrictLogging:
                     _*
                   ),
                   Seq(
-                    Contribution.CommonToLeftAndRightOnly(followingRightElement),
+                    Contribution.CommonToLeftAndRightOnly(
+                      followingRightElement
+                    ),
                     _*
                   )
                 ) =>
@@ -1609,7 +1626,9 @@ object merge extends StrictLogging:
                   Seq(Contribution.Difference(leftElement), leftTail*),
                   _
                 ) => // Left insertion.
-              logger.debug(s"Left insertion of ${pprintCustomised(leftElement)}.")
+              logger.debug(
+                s"Left insertion of ${pprintCustomised(leftElement)}."
+              )
               mergeBetweenRunsOfCommonElements(base, leftTail, right)(
                 mergeAlgebra.leftInsertion(
                   partialResult,
@@ -1644,19 +1663,21 @@ object merge extends StrictLogging:
 
             // SYMMETRIC...
             case (NoCoalescence, Seq(), Seq(), Seq()) => // Terminating case!
-              logger.debug(s"Merge yielded:\n${pprintCustomised(partialResult)}")
+              logger.debug(
+                s"Merge yielded:\n${pprintCustomised(partialResult)}"
+              )
               partialResult
           end match
         end mergeBetweenRunsOfCommonElements
 
-          mergeBetweenRunsOfCommonElements(
-            longestCommonSubsequence.base,
-            longestCommonSubsequence.left,
-            longestCommonSubsequence.right
-          )(
-            partialResult = reportingMergeAlgebra.empty,
-            coalescence = NoCoalescence
-          )
+        mergeBetweenRunsOfCommonElements(
+          longestCommonSubsequence.base,
+          longestCommonSubsequence.left,
+          longestCommonSubsequence.right
+        )(
+          partialResult = reportingMergeAlgebra.empty,
+          coalescence = NoCoalescence
+        )
       }.get
     end mergeUsing
   end extension

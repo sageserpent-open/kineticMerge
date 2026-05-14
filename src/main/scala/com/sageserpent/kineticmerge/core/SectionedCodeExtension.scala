@@ -11,7 +11,6 @@ import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
   Contribution,
   Sized
 }
-import com.sageserpent.kineticmerge.core.MatchAnalysis.ParallelMatchesGroupId
 import com.sageserpent.kineticmerge.core.MergeResult.given
 import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{
   AnchoredMove,
@@ -25,9 +24,9 @@ import com.sageserpent.kineticmerge.core.merge.{
   of as mergeOf
 }
 import com.sageserpent.kineticmerge.{
-  NoProgressRecording,
   ProgressRecording,
   ProgressRecordingSession,
+  SilentProgressRecording,
   core
 }
 import com.typesafe.scalalogging.StrictLogging
@@ -243,7 +242,7 @@ object SectionedCodeExtension extends StrictLogging:
           sectionedCode.baseBlocksFor(path),
           sectionedCode.leftBlocksFor(path),
           sectionedCode.rightBlocksFor(path),
-          s"Block-level merge: $path"
+          s"Blocks merged:"
         )
 
       case class CollectedPairings(
@@ -276,11 +275,14 @@ object SectionedCodeExtension extends StrictLogging:
           threeSidedClump: ThreeSidedClump[Block[Element]]
       ): CollectedPairings =
         val sectionLevelLongestCommonSubsequenceInClump =
+          given ProgressRecording = SilentProgressRecording
+
           LongestCommonSubsequence.of(
             threeSidedClump.base.flatMap(_.sectionsCoveredByGroup),
             threeSidedClump.left.flatMap(_.sectionsCoveredByGroup),
             threeSidedClump.right.flatMap(_.sectionsCoveredByGroup)
           )
+        end sectionLevelLongestCommonSubsequenceInClump
 
         val baseCommon =
           sectionLevelLongestCommonSubsequenceInClump.base.collect {
@@ -351,7 +353,7 @@ object SectionedCodeExtension extends StrictLogging:
       val aggregatedPairings =
         Using(
           progressRecording.newSession(
-            label = s"Section-level LCS refinements: $path",
+            label = s"Section-level LCS refinements:",
             maximumProgress = threeSidedClumps.size
           )(initialProgress = 0)
         ) { progressRecordingSession =>
@@ -712,7 +714,7 @@ object SectionedCodeExtension extends StrictLogging:
                       FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
                         FileDeletionContext.Left
                       ),
-                    label = s"Merge: $path"
+                    label = s"Sections merged:"
                   )
 
                 partialMergeResult.aggregate(path, firstPassMergeResult)
@@ -734,7 +736,7 @@ object SectionedCodeExtension extends StrictLogging:
                       FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
                         FileDeletionContext.Right
                       ),
-                    label = s"Merge: $path"
+                    label = s"Sections merged:"
                   )
 
                 partialMergeResult.aggregate(path, firstPassMergeResult)
@@ -762,7 +764,7 @@ object SectionedCodeExtension extends StrictLogging:
                       FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
                         FileDeletionContext.None
                       ),
-                    label = s"Merge: $path"
+                    label = s"Sections merged:"
                   )
 
                 partialMergeResult.aggregate(path, firstPassMergeResult)
@@ -1112,20 +1114,22 @@ object SectionedCodeExtension extends StrictLogging:
             _ =>
               updatedCache = true
 
-              given ProgressRecording = NoProgressRecording
+              given ProgressRecording = SilentProgressRecording
 
               moveDestinationSide match
                 case MoveDestinationSide.Left =>
                   mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
                     base = anchoredContentFromSource,
                     left = anchoredContentFromMoveDestinationSide,
-                    right = anchoredContentFromOppositeSide
+                    right = anchoredContentFromOppositeSide,
+                    label = "Splice merge to left destination:"
                   )
                 case MoveDestinationSide.Right =>
                   mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
                     base = anchoredContentFromSource,
                     left = anchoredContentFromOppositeSide,
-                    right = anchoredContentFromMoveDestinationSide
+                    right = anchoredContentFromMoveDestinationSide,
+                    label = "Splice merge to right destination:"
                   )
               end match
           )

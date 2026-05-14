@@ -551,8 +551,7 @@ object LongestCommonSubsequence:
 
         Using(
           progressRecording.newSession(
-            label =
-              s"Longest common subsequence (part of block-level merging) swathes completed:",
+            label = s"Longest common subsequence swathes completed:",
             maximumProgress =
               /* NOTE: although the maximum swathe index is defined in terms of
                * the input *sizes*, we still need to add one as the LCS

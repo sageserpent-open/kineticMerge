@@ -13,14 +13,18 @@ import java.time.{Instant, Duration as JavaDuration}
   * possible to use this to count progress up from zero to the maximum, or to
   * count progress down from the maximum to zero.
   */
-trait ProgressRecordingSession(val label: String, val maximumProgress: Int)
-    extends AutoCloseable:
-  private val startTime = Instant.now()
-
+trait ProgressRecordingSession extends AutoCloseable:
   /** @param amount
     *   Zero or positive amount of absolute progress.
     */
   def upTo(amount: Int): Unit
+end ProgressRecordingSession
+
+trait ProgressRecordingSessionWithSummary(
+    val label: String,
+    val maximumProgress: Int
+) extends ProgressRecordingSession:
+  private val startTime = Instant.now()
 
   override def close(): Unit =
     val duration = JavaDuration.between(startTime, Instant.now())
@@ -28,7 +32,7 @@ trait ProgressRecordingSession(val label: String, val maximumProgress: Int)
       s"$label $maximumProgress (Completed in: ${DurationFormatUtils.formatDurationHMS(duration.toMillis)})"
     )
   end close
-end ProgressRecordingSession
+end ProgressRecordingSessionWithSummary
 
 trait ProgressRecording:
   /** Creates a new progress recording session with some initial progress
@@ -53,11 +57,23 @@ object NoProgressRecording extends ProgressRecording:
   override def newSession(label: String, maximumProgress: Int)(
       initialProgress: Int
   ): ProgressRecordingSession =
-    new ProgressRecordingSession(label, maximumProgress):
+    new ProgressRecordingSessionWithSummary(label, maximumProgress):
       override def upTo(amount: Int): Unit = {}
     end new
   end newSession
 end NoProgressRecording
+
+object SilentProgressRecording extends ProgressRecording:
+  override def newSession(label: String, maximumProgress: Int)(
+      initialProgress: Int
+  ): ProgressRecordingSession =
+    new ProgressRecordingSession:
+      override def upTo(amount: Int): Unit = {}
+
+      override def close(): Unit = {}
+    end new
+  end newSession
+end SilentProgressRecording
 
 /** An instance of [[ProgressRecordingSession]] created by
   * [[ConsoleProgressRecording.newSession]] displays a progress bar on the
@@ -68,7 +84,7 @@ object ConsoleProgressRecording extends ProgressRecording:
   override def newSession(label: String, maximumProgress: Int)(
       initialProgress: Int
   ): ProgressRecordingSession =
-    new ProgressRecordingSession(label, maximumProgress):
+    new ProgressRecordingSessionWithSummary(label, maximumProgress):
       private val progressBar = Option(System.console()).map(console =>
         val progressBarConsumer = new ConsoleProgressBarConsumer(
           new PrintStream(
