@@ -1936,7 +1936,7 @@ object SectionedCodeExtension extends StrictLogging:
       val result =
         Using(
           progressRecording.newSession(
-            label = "Post-alignment merge processing",
+            label = "Post-alignment merge processing:",
             maximumProgress = 1
           )(initialProgress = 0)
         ) { progressRecordingSession =>
