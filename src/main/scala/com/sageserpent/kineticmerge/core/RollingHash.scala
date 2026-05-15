@@ -18,6 +18,9 @@ object RollingHash:
   private def biasByteAsPositiveBigInt(byte: Byte): BigInt =
     BigInt(byte) - Byte.MinValue
 
+  private def biasByteAsPositiveLong(byte: Byte): Long =
+    byte.toLong - Byte.MinValue.toLong
+
   trait RollingHashContracts extends RollingHash:
     abstract override def fingerprint: BigInt =
       require(isPrimed)
@@ -54,51 +57,121 @@ object RollingHash:
 
     private val highestScalePower = scale.pow(windowSize - 1) mod primeModulus
 
+    // We must ensure that:
+    // 1. `primeModulus` fits into a `Long`.
+    // 2. The maximum possible value for `polynomialValue` (which is `primeModulus - 1`)
+    //    multiplied by `scale` fits into a `Long` to avoid overflow in the next `polynomialValue` update.
+    // 3. The maximum possible value for `biasByteAsPositiveLong(...)` (which is 255)
+    //    multiplied by `highestScalePowerLong` (which is at most `primeModulus - 1`) fits into a `Long`.
+    private val useLongOptimization =
+      primeModulus.isValidLong &&
+        (primeModulus * scale).isValidLong &&
+        (highestScalePower * 255).isValidLong
+
+    private val primeModulusLong      = if useLongOptimization then primeModulus.toLong else 0L
+    private val highestScalePowerLong = if useLongOptimization then highestScalePower.toLong else 0L
+    private val scaleLong             = if useLongOptimization then scale.toLong else 0L
+
     def apply(): RollingHash =
-      trait RollingHashImplementation extends RollingHash:
-        private val bytesInRollingWindowAsRingBuffer =
-          Array.ofDim[Byte](windowSize)
-        private var polynomialLength: Int           = 0
-        private var polynomialValue: BigInt         = BigInt(0)
-        private var ringBufferIndexForNextPush: Int = 0
+      if useLongOptimization then
+        class OptimizedRollingHashImplementation extends RollingHash:
+          private val bytesInRollingWindowAsRingBuffer =
+            Array.ofDim[Byte](windowSize)
+          private var polynomialLength: Int           = 0
+          private var polynomialValue: Long           = 0L
+          private var ringBufferIndexForNextPush: Int = 0
 
-        override def pushByte(byte: Byte): Unit =
-          val prefixPolynomialValue =
-            if windowSize == polynomialLength then
-              // The ring buffer is full, so the outgoing byte will lie at the
-              // index of the next push.
-              val byteLeftBehindByWindow = bytesInRollingWindowAsRingBuffer(
-                ringBufferIndexForNextPush
+          override def pushByte(byte: Byte): Unit =
+            val prefixPolynomialValue =
+              if windowSize == polynomialLength then
+                // The ring buffer is full, so the outgoing byte will lie at the
+                // index of the next push.
+                val byteLeftBehindByWindow = bytesInRollingWindowAsRingBuffer(
+                  ringBufferIndexForNextPush
+                )
+                val contributionToHashFromOutgoingByte =
+                  biasByteAsPositiveLong(
+                    byteLeftBehindByWindow
+                  ) * highestScalePowerLong
+
+                // NOTE: use `Math.floorMod` and *not* `%` to keep values positive.
+                Math.floorMod(
+                  polynomialValue - contributionToHashFromOutgoingByte,
+                  primeModulusLong
+                )
+              else
+                polynomialLength += 1
+                polynomialValue
+              end if
+            end prefixPolynomialValue
+
+            polynomialValue =
+              Math.floorMod(
+                scaleLong * prefixPolynomialValue + biasByteAsPositiveLong(
+                  byte
+                ),
+                primeModulusLong
               )
-              val contributionToHashFromOutgoingByte = biasByteAsPositiveBigInt(
-                byteLeftBehindByWindow
-              ) * highestScalePower
 
-              // NOTE: use `mod` and *not* `%` to keep values positive.
-              (polynomialValue - contributionToHashFromOutgoingByte) mod primeModulus
-            else
-              polynomialLength += 1
-              polynomialValue
-            end if
-          end prefixPolynomialValue
+            bytesInRollingWindowAsRingBuffer(ringBufferIndexForNextPush) = byte
 
-          polynomialValue =
-            (scale * prefixPolynomialValue + biasByteAsPositiveBigInt(
-              byte
-            )) mod primeModulus
+            ringBufferIndexForNextPush =
+              (1 + ringBufferIndexForNextPush) % windowSize
+          end pushByte
 
-          bytesInRollingWindowAsRingBuffer(ringBufferIndexForNextPush) = byte
+          def isPrimed: Boolean = windowSize == polynomialLength
 
-          ringBufferIndexForNextPush =
-            (1 + ringBufferIndexForNextPush) % windowSize
-        end pushByte
+          override def fingerprint: BigInt = BigInt(polynomialValue)
+        end OptimizedRollingHashImplementation
 
-        def isPrimed: Boolean = windowSize == polynomialLength
+        new OptimizedRollingHashImplementation with RollingHashContracts
+      else
+        class GenericRollingHashImplementation extends RollingHash:
+          private val bytesInRollingWindowAsRingBuffer =
+            Array.ofDim[Byte](windowSize)
+          private var polynomialLength: Int           = 0
+          private var polynomialValue: BigInt         = BigInt(0)
+          private var ringBufferIndexForNextPush: Int = 0
 
-        override def fingerprint: BigInt = polynomialValue
-      end RollingHashImplementation
+          override def pushByte(byte: Byte): Unit =
+            val prefixPolynomialValue =
+              if windowSize == polynomialLength then
+                // The ring buffer is full, so the outgoing byte will lie at the
+                // index of the next push.
+                val byteLeftBehindByWindow = bytesInRollingWindowAsRingBuffer(
+                  ringBufferIndexForNextPush
+                )
+                val contributionToHashFromOutgoingByte =
+                  biasByteAsPositiveBigInt(
+                    byteLeftBehindByWindow
+                  ) * highestScalePower
 
-      new RollingHashImplementation with RollingHashContracts
+                // NOTE: use `mod` and *not* `%` to keep values positive.
+                (polynomialValue - contributionToHashFromOutgoingByte) mod primeModulus
+              else
+                polynomialLength += 1
+                polynomialValue
+              end if
+            end prefixPolynomialValue
+
+            polynomialValue =
+              (scale * prefixPolynomialValue + biasByteAsPositiveBigInt(
+                byte
+              )) mod primeModulus
+
+            bytesInRollingWindowAsRingBuffer(ringBufferIndexForNextPush) = byte
+
+            ringBufferIndexForNextPush =
+              (1 + ringBufferIndexForNextPush) % windowSize
+          end pushByte
+
+          def isPrimed: Boolean = windowSize == polynomialLength
+
+          override def fingerprint: BigInt = polynomialValue
+        end GenericRollingHashImplementation
+
+        new GenericRollingHashImplementation with RollingHashContracts
+      end if
     end apply
   end Factory
 end RollingHash
