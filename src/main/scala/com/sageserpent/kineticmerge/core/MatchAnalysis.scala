@@ -18,6 +18,7 @@ import com.sageserpent.kineticmerge.{
   core
 }
 import com.typesafe.scalalogging.StrictLogging
+import de.sciss.fingertree.RangedSeq
 
 import java.lang.Byte as JavaByte
 import scala.annotation.tailrec
@@ -188,68 +189,7 @@ object MatchAnalysis extends StrictLogging:
       case GenericMatch[Element] => GenericMatch[Element]
       case PairwiseMatch         => PairwiseMatch
 
-    trait SectionsSeen extends Iterable[Section[Element]]:
-      def filterIncludes(
-          interval: (Int, Int)
-      ): Iterable[Section[Element]]
-      def filterOverlaps(
-          interval: (Int, Int)
-      ): Iterable[Section[Element]]
-      def +(section: Section[Element]): SectionsSeen
-      def -(section: Section[Element]): SectionsSeen
-    end SectionsSeen
-
-    object SectionsSeen:
-      def apply(section: Section[Element]): SectionsSeen =
-        SortedSectionsSeen(Vector(section))
-
-      private case class SortedSectionsSeen(
-          sections: Vector[Section[Element]]
-      ) extends SectionsSeen:
-        override def filterIncludes(
-            interval: (Int, Int)
-        ): Iterable[Section[Element]] =
-          val (start, onePastEnd) = interval
-          // For inclusion, candidate.startOffset >= start AND candidate.onePastEndOffset <= onePastEnd
-          // We can narrow the search by startOffset.
-          val firstCandidateIndex =
-            sections.indexWhere(_.startOffset >= start)
-          if firstCandidateIndex == -1 then Iterable.empty
-          else
-            sections
-              .view(firstCandidateIndex, sections.size)
-              .filter(_.onePastEndOffset <= onePastEnd)
-
-        override def filterOverlaps(
-            interval: (Int, Int)
-        ): Iterable[Section[Element]] =
-          val (start, onePastEnd) = interval
-          // For overlap, candidate.startOffset < onePastEnd AND candidate.onePastEndOffset > start
-          val firstPossibleIndex =
-            sections.indexWhere(_.onePastEndOffset > start)
-          if firstPossibleIndex == -1 then Iterable.empty
-          else
-            sections
-              .view(firstPossibleIndex, sections.size)
-              .takeWhile(_.startOffset < onePastEnd)
-
-        override def +(section: Section[Element]): SectionsSeen =
-          val insertionIndex =
-            sections.indexWhere(_.startOffset >= section.startOffset)
-          copy(sections =
-            if insertionIndex == -1 then sections :+ section
-            else sections.patch(insertionIndex, Vector(section), 0)
-          )
-
-        override def -(section: Section[Element]): SectionsSeen =
-          val index = sections.indexOf(section)
-          if index == -1 then this
-          else copy(sections = sections.patch(index, Nil, 1))
-
-        override def iterator: Iterator[Section[Element]] = sections.iterator
-        override def isEmpty: Boolean                     = sections.isEmpty
-      end SortedSectionsSeen
-    end SectionsSeen
+    type SectionsSeen = RangedSeq[Section[Element], Int]
 
     type FingerprintedInclusions = Diet[Int]
 
@@ -636,7 +576,10 @@ object MatchAnalysis extends StrictLogging:
             Some(sections + section)
           case None =>
             Some(
-              SectionsSeen(section)
+              // NOTE: don't use `Ordering[Int]` as while that is valid, it will
+              // pull in a Cats `Order[Int]` which round-trips back to an
+              // `Ordering`. That makes profiling difficult.
+              RangedSeq(section)(_.closedOpenInterval, Ordering.Int)
             )
         }
       end including
@@ -3371,9 +3314,10 @@ object MatchAnalysis extends StrictLogging:
 
         val content = impliedContent.content
         val limit   = tiebreakContentSamplingLimit min content.size
+        val funnel  = summon[Funnel[Element]]
         var i       = 0
         while i < limit do
-          hasher.putObject(content(i), summon[Funnel[Element]])
+          funnel.funnel(content(i), hasher)
           i += 1
         end while
 
@@ -3383,20 +3327,13 @@ object MatchAnalysis extends StrictLogging:
       override def equals(another: Any): Boolean =
         another match
           case anotherKey: PotentialMatchKey @unchecked =>
+            this.eq(anotherKey) ||
             fingerprint == anotherKey.fingerprint && {
               val content        = impliedContent.content
               val anotherContent = anotherKey.impliedContent.content
-              val size           = content.size
-              size == anotherContent.size && {
-                var i      = 0
-                var result = true
-                while i < size do
-                  if !summon[Eq[Element]].eqv(content(i), anotherContent(i)) then
-                    result = false
-                    i = size // Break
-                  else i += 1
-                end while
-                result
+              content.size == anotherContent.size && {
+                impliedContent == anotherKey.impliedContent ||
+                content.corresponds(anotherContent)(summon[Eq[Element]].eqv)
               }
             }
           case _ => false

@@ -1,5 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
+import de.sciss.fingertree.RangedSeq
 import pprint.{PPrinter, Tree}
 
 extension (prettyPrinter: PPrinter)
@@ -11,10 +12,10 @@ extension (prettyPrinter: PPrinter)
 end extension
 
 val pprintCustomised: PPrinter = pprint.copy(additionalHandlers = {
-  case section: Section[?] => section.render
-  case iterable: Iterable[?] =>
+  case section: Section[?]        => section.render
+  case rangedSeq: RangedSeq[?, ?] =>
     Tree.Apply(
-      "Iterable",
-      iterable.iterator.map(pprintCustomised.treeFrom)
+      "RangedSeq",
+      rangedSeq.iterator.map(pprintCustomised.treeFrom)
     )
 })

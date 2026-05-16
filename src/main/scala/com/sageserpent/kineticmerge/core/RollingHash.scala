@@ -12,7 +12,7 @@ end RollingHash
 
 object RollingHash:
   private val magicConstantForBirthdayParadoxAvoidanceAtOnePercentProbabilityOfCollision =
-    // Approximation for `Math.log(Math.pow(1 / (1 - 0.01)), 2)`.
+    // Approximation for Math.log(Math.pow(1 / (1 - 0.01)), 2).
     Math.log(1 + 2 * 0.01)
 
   private def biasByteAsPositiveBigInt(byte: Byte): BigInt =
@@ -46,7 +46,7 @@ object RollingHash:
     private val primeModulusMustBeLargerThanThis =
       numberOfDistinctFingerprintsToAvoidBirthdayParadoxCollision max scale
 
-    // Clearing `scale` should guarantee this.
+    // Clearing scale should guarantee this.
     assume(1 <= primeModulusMustBeLargerThanThis.bitLength)
 
     private val primeModulus =
@@ -58,11 +58,11 @@ object RollingHash:
     private val highestScalePower = scale.pow(windowSize - 1) mod primeModulus
 
     // We must ensure that:
-    // 1. `primeModulus` fits into a `Long`.
-    // 2. The maximum possible value for `polynomialValue` (which is `primeModulus - 1`)
-    //    multiplied by `scale` fits into a `Long` to avoid overflow in the next `polynomialValue` update.
-    // 3. The maximum possible value for `biasByteAsPositiveLong(...)` (which is 255)
-    //    multiplied by `highestScalePowerLong` (which is at most `primeModulus - 1`) fits into a `Long`.
+    // 1. primeModulus fits into a Long.
+    // 2. The maximum possible value for polynomialValue (which is primeModulus - 1)
+    //    multiplied by scale fits into a Long to avoid overflow in the next polynomialValue update.
+    // 3. The maximum possible value for biasByteAsPositiveLong(...) (which is 255)
+    //    multiplied by highestScalePowerLong (which is at most primeModulus - 1) fits into a Long.
     private val useLongOptimization =
       primeModulus.isValidLong &&
         (primeModulus * scale).isValidLong &&
@@ -94,7 +94,7 @@ object RollingHash:
                     byteLeftBehindByWindow
                   ) * highestScalePowerLong
 
-                // NOTE: use `Math.floorMod` and *not* `%` to keep values positive.
+                // NOTE: use Math.floorMod and not % to keep values positive.
                 Math.floorMod(
                   polynomialValue - contributionToHashFromOutgoingByte,
                   primeModulusLong
@@ -146,7 +146,7 @@ object RollingHash:
                     byteLeftBehindByWindow
                   ) * highestScalePower
 
-                // NOTE: use `mod` and *not* `%` to keep values positive.
+                // NOTE: use mod and not % to keep values positive.
                 (polynomialValue - contributionToHashFromOutgoingByte) mod primeModulus
               else
                 polynomialLength += 1
