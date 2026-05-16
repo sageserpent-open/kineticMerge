@@ -761,21 +761,21 @@ object Main extends StrictLogging:
                 )
 
               case JustOurDeletion(baseContent) =>
-                val unchangedContent = tokens(baseContent).get
+                val deletedContent = tokens(baseContent).get
 
                 (
-                  baseContentsByPath + (path -> unchangedContent),
+                  baseContentsByPath + (path -> deletedContent),
                   leftContentsByPath,
-                  rightContentsByPath + (path -> unchangedContent),
+                  rightContentsByPath + (path -> deletedContent),
                   newPathsOnLeftOrRight
                 )
 
               case JustTheirDeletion(baseContent) =>
-                val unchangedContent = tokens(baseContent).get
+                val deletedContent = tokens(baseContent).get
 
                 (
-                  baseContentsByPath + (path -> unchangedContent),
-                  leftContentsByPath + (path -> unchangedContent),
+                  baseContentsByPath + (path -> deletedContent),
+                  leftContentsByPath + (path -> deletedContent),
                   rightContentsByPath,
                   newPathsOnLeftOrRight
                 )
@@ -1147,6 +1147,17 @@ object Main extends StrictLogging:
                   ).logOperation(description)
               }
 
+          def justOurSidesViewOfTheMergedContentAt(path: RelPath) =
+            mergeResultsByPath(path) match
+              case FullyMerged(mergedTokens)                  => mergedTokens
+              case MergedWithConflicts(_, ourMergedTokens, _) => ourMergedTokens
+
+          def justTheirSidesViewOfTheMergedContentAt(path: RelPath) =
+            mergeResultsByPath(path) match
+              case FullyMerged(mergedTokens)                    => mergedTokens
+              case MergedWithConflicts(_, _, theirMergedTokens) =>
+                theirMergedTokens
+
           mergeInput match
             case JustOurModification(
                   ourModification,
@@ -1378,17 +1389,7 @@ object Main extends StrictLogging:
                   ourModification,
                   baseContent
                 ) =>
-              val tokens = mergeResultsByPath(path) match
-                case FullyMerged(mergedTokens)                  => mergedTokens
-                case MergedWithConflicts(_, ourMergedTokens, _) =>
-                  // We don't care about their view of the merge - their
-                  // side simply deleted the whole file, so it contributes
-                  // nothing interesting to the merge; the only point of the
-                  // merge here was to pick up propagated edits / deletions
-                  // and to note move destinations.
-                  // TODO: is this even necessary? How would there be merge
-                  // conflicts?
-                  ourMergedTokens
+              val tokens = justOurSidesViewOfTheMergedContentAt(path)
 
               val mergedFileContent = reconstituteTextFrom(tokens)
               val ourModificationWasTweakedByTheMerge =
@@ -1421,17 +1422,7 @@ object Main extends StrictLogging:
               end if
 
             case TheirModificationAndOurDeletion(theirModification, _) =>
-              val tokens = mergeResultsByPath(path) match
-                case FullyMerged(mergedTokens) => mergedTokens
-                case MergedWithConflicts(_, _, theirMergedTokens) =>
-                  // We don't care about our view of the merge - our side
-                  // simply deleted the whole file, so it contributes
-                  // nothing interesting to the merge; the only point of the
-                  // merge here was to pick up propagated edits / deletions
-                  // and to note move destinations.
-                  // TODO: is this even necessary? How would there be merge
-                  // conflicts?
-                  theirMergedTokens
+              val tokens = justTheirSidesViewOfTheMergedContentAt(path)
 
               val mergedFileContent = reconstituteTextFrom(tokens)
               val theirModificationWasTweakedByTheMerge =
@@ -1445,9 +1436,10 @@ object Main extends StrictLogging:
                       )
                   yield partialResult.copy(cleanlyMerged = false)
                 else
-                  // If their content is modified to being empty, this is taken
-                  // to mean that all of our original content has been migrated
-                  // to one or more other files.
+                  // If their content is modified to being empty, this is
+                  // taken to mean that all of our original content has been
+                  // migrated to one or more other files. We can therefore
+                  // resolve this as a deletion.
                   for
                     _                      <- deleteFile(baseDirectory)(path)
                     _                      <- deleteFile(theirDirectory)(path)
@@ -1560,9 +1552,10 @@ object Main extends StrictLogging:
                     assume(
                       leftRenamePaths.nonEmpty || rightRenamePaths.nonEmpty
                     )
-                    // If all the moved content from `path` going into new files
-                    // ends up on just one side, then this is a conflict because
-                    // it implies an isolated deletion on the other side.
+                    // If all the moved content from `path` going into new
+                    // files ends up on just one side, then this is a conflict
+                    // because it implies an isolated deletion on the other
+                    // side.
                     leftRenamePaths.isEmpty || rightRenamePaths.isEmpty
                   end isARenameVersusDeletionConflict
 
@@ -1577,9 +1570,10 @@ object Main extends StrictLogging:
                             .map(_ -> path)
                       )
                     else
-                      // The content has moved out into new files on both sides.
-                      // This might involve divergent or coincident moves,
-                      // however no special action needs to be taken here.
+                      // The content has moved out into new files on both
+                      // sides. This might involve divergent or coincident
+                      // moves, however no special action needs to be taken
+                      // here.
                       partialResult
                   ).logOperation(description)
               }
