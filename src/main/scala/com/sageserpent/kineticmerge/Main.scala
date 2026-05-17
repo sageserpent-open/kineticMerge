@@ -75,18 +75,6 @@ object Main extends StrictLogging:
     )
   end main
 
-  /** @param commandLineArguments
-    *   Command line arguments as varargs.
-    * @return
-    *   The exit code as a plain integer, suitable for consumption by both Scala
-    *   and Java client code.
-    */
-  @varargs
-  def apply(commandLineArguments: String*): Int = apply(
-    progressRecording = NoProgressRecording,
-    commandLineArguments = commandLineArguments*
-  )
-
   /** @param progressRecording
     * @param commandLineArguments
     *   Command line arguments as varargs.
@@ -400,6 +388,9 @@ object Main extends StrictLogging:
   private def right[Payload](payload: Payload): Workflow[Payload] =
     EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
 
+  private def underline(anything: Any): Str =
+    fansi.Underlined.On(anything.toString)
+
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
       EitherT
@@ -423,8 +414,17 @@ object Main extends StrictLogging:
     private def asTokens: Vector[Token] = tokens(content).get
   end extension
 
-  private def underline(anything: Any): Str =
-    fansi.Underlined.On(anything.toString)
+  /** @param commandLineArguments
+    *   Command line arguments as varargs.
+    * @return
+    *   The exit code as a plain integer, suitable for consumption by both Scala
+    *   and Java client code.
+    */
+  @varargs
+  def apply(commandLineArguments: String*): Int = apply(
+    progressRecording = NoProgressRecording,
+    commandLineArguments = commandLineArguments*
+  )
 
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](
@@ -2292,7 +2292,8 @@ object Main extends StrictLogging:
                     // If our content was modified to being empty, this is
                     // taken to mean that all of our original content has been
                     // migrated to one or more other files. We can therefore
-                    // resolve this as a deletion.
+                    // resolve this as a deletion. We can therefore resolve this
+                    // as a deletion.
                     for
                       _               <- recordDeletionInIndex(path)
                       _               <- deleteFile(path)
@@ -2380,7 +2381,7 @@ object Main extends StrictLogging:
                     ).isDefined
                   then
                     // ... however, if their content was modified to being
-                    // empty, this is taken to mean that all of our original
+                    // empty, this is taken to mean that all of their original
                     // content has been migrated to one or more other files. We
                     // can therefore resolve this as a deletion.
                     for
