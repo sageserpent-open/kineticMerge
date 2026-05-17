@@ -2303,8 +2303,7 @@ object Main extends StrictLogging:
                     // If our content was modified to being empty, this is
                     // taken to mean that all of our original content has been
                     // migrated to one or more other files. We can therefore
-                    // resolve this as a deletion. We can therefore resolve this
-                    // as a deletion.
+                    // resolve this as a deletion.
                     for
                       _               <- recordDeletionInIndex(path)
                       _               <- deleteFile(path)
@@ -2669,10 +2668,10 @@ object Main extends StrictLogging:
                       yield decoratedResult
                     else
                       // If their content is modified to being empty, this is
-                      // taken to mean that all of our original content has been
-                      // migrated to one or more other files. We can therefore
-                      // resolve this as a modification into binary content on
-                      // our side only.
+                      // taken to mean that all of their original content has
+                      // been migrated to one or more other files. We can
+                      // therefore resolve this as a modification into binary
+                      // content on our side only.
                       right(partialResult).flatMap(
                         captureRenamesOfPathDeletedOnJustOneSide
                       )
