@@ -399,8 +399,8 @@ object Main extends StrictLogging:
     )
     case JustOurAddition(ourAddition: Change.Addition)
     case JustTheirAddition(theirAddition: Change.Addition)
-    case JustOurDeletion(bestAncestorCommitIdContent: String @@ Tags.Content)
-    case JustTheirDeletion(bestAncestorCommitIdContent: String @@ Tags.Content)
+    case JustOurDeletion(baseContent: String @@ Tags.Content)
+    case JustTheirDeletion(baseContent: String @@ Tags.Content)
     case OurModificationAndTheirDeletion(
         ourModification: Change.Modification,
         baseContent: String @@ Tags.Content
