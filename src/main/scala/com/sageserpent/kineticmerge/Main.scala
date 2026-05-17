@@ -1597,27 +1597,38 @@ object Main extends StrictLogging:
           val (rightRenamePaths, rightTransplantPaths) =
             rightDestinationPaths.partition(destinationPathIsForARename)
 
-          def destinationDetailsFor(possessive: String)(
+          def destinationDetailsFor(
+              possessive: String,
+              branchHead: String @@ Tags.CommitOrBranchName
+          )(
               destinationPaths: Set[Path]
           ): Option[String] = Option.unless(destinationPaths.isEmpty)(
-            s"on $possessive branch ${underline(ourBranchHead)} " ++ (if 1 < destinationPaths.size
-                                                                      then
-                                                                        s"into files ${destinationPaths.map(underline).mkString(", ")}"
-                                                                      else
-                                                                        s"to file ${underline(destinationPaths.head)}")
+            s"on $possessive branch ${underline(branchHead)} " ++ (if 1 < destinationPaths.size
+                                                                   then
+                                                                     s"into files ${destinationPaths.map(underline).mkString(", ")}"
+                                                                   else
+                                                                     s"to file ${underline(destinationPaths.head)}")
           )
 
           val leftRenamingDetails =
-            destinationDetailsFor(possessive = "our")(leftRenamePaths)
+            destinationDetailsFor(possessive = "our", ourBranchHead)(
+              leftRenamePaths
+            )
 
           val leftTransplantationDetails =
-            destinationDetailsFor(possessive = "our")(leftTransplantPaths)
+            destinationDetailsFor(possessive = "our", ourBranchHead)(
+              leftTransplantPaths
+            )
 
           val rightRenamingDetails =
-            destinationDetailsFor(possessive = "their")(rightRenamePaths)
+            destinationDetailsFor(possessive = "their", theirBranchHead)(
+              rightRenamePaths
+            )
 
           val rightTransplantationDetails =
-            destinationDetailsFor(possessive = "their")(rightTransplantPaths)
+            destinationDetailsFor(possessive = "their", theirBranchHead)(
+              rightTransplantPaths
+            )
 
           val description =
             def assembleDetails(action: String)(
