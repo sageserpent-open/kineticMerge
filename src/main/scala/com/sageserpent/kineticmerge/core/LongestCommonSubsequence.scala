@@ -126,6 +126,27 @@ case class LongestCommonSubsequence[Element] private (
 
   def size: (CommonSubsequenceSize, CommonSubsequenceSize) =
     commonSubsequenceSize -> (commonToLeftAndRightOnlySize plus commonToBaseAndLeftOnlySize plus commonToBaseAndRightOnlySize)
+
+  // TODO: this is for testing only, but attempting to define it in test code as
+  // an extension runs afoul of the private constructor.
+  def mirror: LongestCommonSubsequence[Element] =
+    def reflect(contributions: IndexedSeq[Contribution[Element]]) =
+      contributions.map {
+        case Contribution.CommonToBaseAndLeftOnly(element) =>
+          Contribution.CommonToBaseAndRightOnly(element)
+        case Contribution.CommonToBaseAndRightOnly(element) =>
+          Contribution.CommonToBaseAndLeftOnly(element)
+        case otherwise => otherwise
+      }
+
+    copy(
+      base = reflect(base),
+      left = reflect(right),
+      right = reflect(left),
+      commonToBaseAndLeftOnlySize = commonToBaseAndRightOnlySize,
+      commonToBaseAndRightOnlySize = commonToBaseAndLeftOnlySize
+    )
+  end mirror
 end LongestCommonSubsequence
 
 object LongestCommonSubsequence:
@@ -197,6 +218,9 @@ object LongestCommonSubsequence:
             resultSnapshotPriorToMutation
           end advanceToNextLeadingSwathe
 
+          private def notYetReachedFinalSwathe =
+            maximumSwatheIndex > _indexOfLeadingSwathe
+
           def topLevelSolution: LongestCommonSubsequence[Element] =
             require(!notYetReachedFinalSwathe)
 
@@ -207,9 +231,6 @@ object LongestCommonSubsequence:
               right.size
             )
           end topLevelSolution
-
-          private def notYetReachedFinalSwathe =
-            maximumSwatheIndex > _indexOfLeadingSwathe
 
           def consultRelevantSwatheForSolution(
               onePastBaseIndex: Int,

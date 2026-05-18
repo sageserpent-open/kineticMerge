@@ -24,6 +24,46 @@ import org.junit.jupiter.api.TestFactory
 
 class LongestCommonSubsequenceTest:
   @TestFactory
+  def theResultsAreMirroredCorrespondingWithTheInputs(): DynamicTests =
+    testCases
+      .withLimit(100)
+      .dynamicTests(
+        (
+          testCase: TestCase
+        ) =>
+          given Sized[Element] = defaultElementSize
+
+          val image @ LongestCommonSubsequence(base, left, right, _, _, _, _) =
+            LongestCommonSubsequence
+              .of(testCase.base, testCase.left, testCase.right)
+
+          val mirrorImage @ LongestCommonSubsequence(
+            mirroredBase,
+            mirroredLeft,
+            mirroredRight,
+            _,
+            _,
+            _,
+            _
+          ) =
+            LongestCommonSubsequence
+              .of(testCase.base, testCase.right, testCase.left)
+
+          try assert(mirrorImage == image.mirror)
+          catch
+            case exception: AssertionError =>
+              // TODO: the LCS algorithm can switch between alternative
+              // solutions that are equally optimal when the input are mirrored.
+              // Ideally it impose some canonical choice, but for now this is a
+              // workaround...
+              if mirrorImage.size == image.size then Trials.reject()
+              else throw exception
+          end try
+      )
+
+  end theResultsAreMirroredCorrespondingWithTheInputs
+
+  @TestFactory
   def theResultsCorrespondToTheOriginalSequences(): DynamicTests =
     testCases
       .withLimit(100)
@@ -154,22 +194,15 @@ class LongestCommonSubsequenceTest:
                     index -> common.element
 
               // Partial agreements in their own right are no problem - they mop
-              // up corner
-              // cases where a straight assertion on differences would fail.
-              // What we have
-              // to worry about is when an element that is different in
-              // `sequence` wrt to
-              // other two sides matches further up or down on one of those
-              // sides because
-              // it is duplicated in more than one position on that side - when
-              // this
-              // happens, at least one of the duplicates will have been
-              // partially matched
+              // up corner cases where a straight assertion on differences would
+              // fail. What we have to worry about is when an element that is
+              // different in `sequence` wrt to other two sides matches further
+              // up or down on one of those sides because it is duplicated in
+              // more than one position on that side - when this happens, at
+              // least one of the duplicates will have been partially matched
               // (think about it). Including the partial matches in with the
-              // common backbone
-              // refines the position of the differing element so we don't get
-              // spurious
-              // subsequence matches.
+              // common backbone refines the position of the differing element
+              // so we don't get spurious subsequence matches.
               val havePartialAgreementsThatNeedToBeTreatedAsCommon =
                 sequence.exists {
                   case _: Contribution.CommonToLeftAndRightOnly[Element] => true
@@ -364,7 +397,7 @@ class LongestCommonSubsequenceTest:
         // We expect the longest common subsequence to contain at least the
         // upper case sequence because it can beat both the lower case sequence
         // and any mixture of contributions from the two, barring when the
-        // mixture includes all of the upper case sequence anyway.
+        // mixture includes all the upper case sequence anyway.
 
         if missingSide != MissingSide.Base
         then upperCaseSequence isSubsequenceOf baseCommonParts

@@ -2,7 +2,6 @@ package com.sageserpent.kineticmerge.core
 
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
 import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSidedMergeResult
 import com.sageserpent.kineticmerge.core.FirstPassMergeResult.{
   FileDeletionContext,
@@ -30,17 +29,17 @@ import scala.collection.immutable.MultiDict
 import scala.collection.{IndexedSeqView, Searching}
 import scala.math.Ordering.Implicits.seqOrdering
 
-object CodeMotionAnalysisExtension extends StrictLogging:
+object SectionedCodeExtension extends StrictLogging:
 
-  /** Add merging capability to a [[CodeMotionAnalysis]].
+  /** Add merging capability to a [[SectionedCode]].
     *
     * Not sure exactly where this capability should be implemented - is it
-    * really a core part of the API for [[CodeMotionAnalysis]]? Hence the
-    * extension as a temporary measure.
+    * really a core part of the API for [[SectionedCode]]? Hence the extension
+    * as a temporary measure.
     */
 
   extension [Path, Element: Eq: Order](
-      codeMotionAnalysis: CodeMotionAnalysis[Path, Element]
+      codeMotionAnalysis: SectionedCode[Path, Element]
   )
     def merge(using
         progressRecording: ProgressRecording
@@ -1053,19 +1052,21 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       candidateAnchorDestination -> AnchoringSense.Successor
                     )
 
-                Option.when(precedingSpliceAlternatives.nonEmpty) {
+                if precedingSpliceAlternatives.nonEmpty then
                   val uniqueSplices =
                     uniqueSortedItemsFrom(precedingSpliceAlternatives)
 
+                  assume(uniqueSplices.nonEmpty)
+
                   uniqueSplices match
-                    case head :: Nil =>
+                    case Seq(splice) =>
                       logger.debug(
-                        s"Encountered succeeding anchor destination: ${pprintCustomised(candidateAnchorDestination)} with associated preceding migration splice: ${pprintCustomised(head)}."
+                        s"Encountered succeeding anchor destination: ${pprintCustomised(candidateAnchorDestination)} with associated preceding migration splice: ${pprintCustomised(splice)}."
                       )
 
-                      head
+                      Some(splice)
                     case _ =>
-                      throw new AdmissibleFailure(
+                      logger.info(
                         s"""
                                |Multiple potential splices before destination: $candidateAnchorDestination,
                                |these are:
@@ -1078,8 +1079,11 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                                |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${candidateAnchorDestination.size}.
                                 """.stripMargin
                       )
+
+                      None
                   end match
-                }
+                else None
+                end if
               end precedingSplice
 
               val anchorIsAmbiguous =
@@ -1094,19 +1098,21 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                       candidateAnchorDestination -> AnchoringSense.Predecessor
                     )
 
-                Option.when(succeedingSpliceAlternatives.nonEmpty) {
+                if succeedingSpliceAlternatives.nonEmpty then
                   val uniqueSplices =
                     uniqueSortedItemsFrom(succeedingSpliceAlternatives)
 
+                  assume(uniqueSplices.nonEmpty)
+
                   uniqueSplices match
-                    case head :: Nil =>
+                    case Seq(splice) =>
                       logger.debug(
-                        s"Encountered preceding anchor destination: ${pprintCustomised(candidateAnchorDestination)} with associated following migration splice: ${pprintCustomised(head)}."
+                        s"Encountered preceding anchor destination: ${pprintCustomised(candidateAnchorDestination)} with associated following migration splice: ${pprintCustomised(splice)}."
                       )
 
-                      head
+                      Some(splice)
                     case _ =>
-                      throw new AdmissibleFailure(
+                      logger.info(
                         s"""
                                |Multiple potential splices after destination: $candidateAnchorDestination,
                                |these are:
@@ -1119,8 +1125,11 @@ object CodeMotionAnalysisExtension extends StrictLogging:
                                |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${candidateAnchorDestination.size}.
                                 """.stripMargin
                       )
+
+                      None
                   end match
-                }
+                else None
+                end if
               end succeedingSplice
 
               precedingSplice match
@@ -1347,40 +1356,44 @@ object CodeMotionAnalysisExtension extends StrictLogging:
           if substitutions.nonEmpty then
             val uniqueSubstitutions = uniqueSortedItemsFrom(substitutions)
 
-            val substitution: Seq[MultiSided[Section[Element]]] =
-              uniqueSubstitutions match
-                case head :: Nil => head
-                case _           =>
-                  throw new AdmissibleFailure(
-                    s"""
-                       |Multiple potential changes migrated to destination: $section,
-                       |these are:
-                       |${uniqueSubstitutions
-                        .map(change =>
-                          if change.isEmpty then "DELETION"
-                          else s"EDIT: $change"
-                        )
-                        .zipWithIndex
-                        .map((change, index) => s"${1 + index}. $change")
-                        .mkString("\n")}
-                       |These are from ambiguous matches of text with the destination.
-                       |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${section.size}.
-                            """.stripMargin
+            assume(uniqueSubstitutions.nonEmpty)
+
+            uniqueSubstitutions match
+              case Seq(substitution) =>
+                if substitution.isEmpty then
+                  logger.debug(
+                    s"Applying migrated deletion to move destination: ${pprintCustomised(section)}."
                   )
+                else if !Ordering[Seq[MultiSided[Section[Element]]]]
+                    .equiv(substitution, IndexedSeq(section))
+                then
+                  logger.debug(
+                    s"Applying migrated edit into ${pprintCustomised(substitution)} to move destination: ${pprintCustomised(section)}."
+                  )
+                end if
 
-            if substitution.isEmpty then
-              logger.debug(
-                s"Applying migrated deletion to move destination: ${pprintCustomised(section)}."
-              )
-            else if !Ordering[Seq[MultiSided[Section[Element]]]]
-                .equiv(substitution, IndexedSeq(section))
-            then
-              logger.debug(
-                s"Applying migrated edit into ${pprintCustomised(substitution)} to move destination: ${pprintCustomised(section)}."
-              )
-            end if
+                substitution
 
-            substitution
+              case _ =>
+                logger.info(
+                  s"""
+                     |Multiple potential changes migrated to destination: $section,
+                     |these are:
+                     |${uniqueSubstitutions
+                      .map(change =>
+                        if change.isEmpty then "DELETION"
+                        else s"EDIT: $change"
+                      )
+                      .zipWithIndex
+                      .map((change, index) => s"${1 + index}. $change")
+                      .mkString("\n")}
+                     |These are from ambiguous matches of text with the destination.
+                     |Consider setting the command line parameter `--minimum-ambiguous-match-size` to something larger than ${section.size}.
+                            """.stripMargin
+                )
+
+                IndexedSeq(section)
+            end match
           else IndexedSeq(section)
           end if
         end substituteFor
@@ -1477,4 +1490,4 @@ object CodeMotionAnalysisExtension extends StrictLogging:
         .map(resolveSections) -> moveDestinationsReport
     end merge
   end extension
-end CodeMotionAnalysisExtension
+end SectionedCodeExtension

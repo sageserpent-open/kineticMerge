@@ -6,19 +6,19 @@ import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.java.CasesLimitStrategy
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.americium.{Trials, TrialsApi}
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.{
+import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
+import com.sageserpent.kineticmerge.core.MatchAnalysis.{
   AdmissibleFailure,
   Configuration
 }
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysisTest.{*, given}
-import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
+import com.sageserpent.kineticmerge.core.SectionedCodeTest.{*, given}
 import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.{Order as _, *}
 
 import java.util.concurrent.TimeUnit
 import scala.concurrent.duration.Duration
 
-class CodeMotionAnalysisTest:
+class SectionedCodeTest:
   @TestFactory
   def sourcesCanBeReconstructedFromTheAnalysis: DynamicTests =
     extension (results: Map[Path, File[Element]])
@@ -89,7 +89,7 @@ class CodeMotionAnalysisTest:
             ambiguousMatchesThreshold = 10
           )
 
-          CodeMotionAnalysis.of(base, left, right)(
+          SectionedCode.of(base, left, right)(
             configuration
           ) match
             case Right(analysis) =>
@@ -455,7 +455,7 @@ class CodeMotionAnalysisTest:
             ambiguousMatchesThreshold = 10
           )
 
-          CodeMotionAnalysis.of(
+          SectionedCode.of(
             baseSources,
             leftSources,
             rightSources
@@ -803,9 +803,9 @@ class CodeMotionAnalysisTest:
     ) with SourcesContracts[Path, Element]
 
     val Right(
-      analysis: CodeMotionAnalysis[Path, Element]
+      analysis: SectionedCode[Path, Element]
     ) =
-      CodeMotionAnalysis.of(
+      SectionedCode.of(
         baseSources,
         leftSources,
         rightSources
@@ -883,9 +883,9 @@ class CodeMotionAnalysisTest:
     )
 
     val Right(
-      analysis: CodeMotionAnalysis[Path, Element]
+      analysis: SectionedCode[Path, Element]
     ) =
-      CodeMotionAnalysis.of(
+      SectionedCode.of(
         baseSources,
         leftSources,
         rightSources
@@ -996,9 +996,9 @@ class CodeMotionAnalysisTest:
     )
 
     val Right(
-      analysis: CodeMotionAnalysis[Path, Element]
+      analysis: SectionedCode[Path, Element]
     ) =
-      CodeMotionAnalysis.of(
+      SectionedCode.of(
         baseSources,
         leftSources,
         rightSources
@@ -1086,9 +1086,9 @@ class CodeMotionAnalysisTest:
     ) with SourcesContracts[Path, Element]
 
     val Right(
-      analysis: CodeMotionAnalysis[Path, Element]
+      analysis: SectionedCode[Path, Element]
     ) =
-      CodeMotionAnalysis.of(
+      SectionedCode.of(
         baseSources,
         leftSources,
         rightSources
@@ -1170,9 +1170,9 @@ class CodeMotionAnalysisTest:
     )
 
     val Right(
-      analysis: CodeMotionAnalysis[Path, Element]
+      analysis: SectionedCode[Path, Element]
     ) =
-      CodeMotionAnalysis.of(
+      SectionedCode.of(
         baseSources,
         leftSources,
         rightSources
@@ -1260,9 +1260,9 @@ class CodeMotionAnalysisTest:
     )
 
     val Right(
-      analysis: CodeMotionAnalysis[Path, Element]
+      analysis: SectionedCode[Path, Element]
     ) =
-      CodeMotionAnalysis.of(
+      SectionedCode.of(
         baseSources,
         leftSources,
         rightSources
@@ -1346,10 +1346,10 @@ class CodeMotionAnalysisTest:
     )
 
     val Right(
-      analysis: CodeMotionAnalysis[Path, Element]
+      analysis: SectionedCode[Path, Element]
     ) =
       assertDoesNotThrow(() =>
-        CodeMotionAnalysis.of(
+        SectionedCode.of(
           baseSources,
           leftSources,
           rightSources
@@ -1410,7 +1410,7 @@ class CodeMotionAnalysisTest:
     )
 
     val Left(exception) =
-      CodeMotionAnalysis.of(
+      SectionedCode.of(
         baseSources,
         leftSources,
         rightSources
@@ -1459,9 +1459,9 @@ class CodeMotionAnalysisTest:
     ) with SourcesContracts[Path, Element]
 
     val Right(
-      analysis: CodeMotionAnalysis[Path, Element]
+      analysis: SectionedCode[Path, Element]
     ) =
-      CodeMotionAnalysis.of(
+      SectionedCode.of(
         baseSources,
         leftSources,
         rightSources
@@ -1539,9 +1539,9 @@ class CodeMotionAnalysisTest:
     ) with SourcesContracts[Path, Element]
 
     val Right(
-      analysis: CodeMotionAnalysis[Path, Element]
+      analysis: SectionedCode[Path, Element]
     ) =
-      CodeMotionAnalysis.of(
+      SectionedCode.of(
         baseSources,
         leftSources,
         rightSources
@@ -1603,9 +1603,9 @@ class CodeMotionAnalysisTest:
     ) with SourcesContracts[Path, Element]
 
     val Right(
-      analysis: CodeMotionAnalysis[Path, Element]
+      analysis: SectionedCode[Path, Element]
     ) =
-      CodeMotionAnalysis.of(
+      SectionedCode.of(
         baseSources,
         leftSources,
         rightSources
@@ -1679,9 +1679,9 @@ class CodeMotionAnalysisTest:
     ) with SourcesContracts[Path, Element]
 
     val Right(
-      analysis: CodeMotionAnalysis[Path, Element]
+      analysis: SectionedCode[Path, Element]
     ) =
-      CodeMotionAnalysis.of(
+      SectionedCode.of(
         baseSources,
         leftSources,
         rightSources
@@ -1719,9 +1719,208 @@ class CodeMotionAnalysisTest:
     )
   end complexFragmentationOfASinglePairwiseMatch
 
-end CodeMotionAnalysisTest
+  @TestFactory
+  def sourcesWithoutPaths(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = Int.MaxValue
+    )
 
-object CodeMotionAnalysisTest:
+    val pathsAndTheirContent = Map(1 -> (1 to 10), 2 -> (11 to 20))
+
+    val numbersOfSourcesWithPaths = trialsApi.integers(0, 2)
+
+    case class TestCase(
+        numberOfSourcesWithPaths: Int,
+        baseSources: Sources[Path, Element],
+        leftSources: Sources[Path, Element],
+        rightSources: Sources[Path, Element]
+    )
+
+    val testCases = for
+      numberOfSourcesWithPaths <- numbersOfSourcesWithPaths
+      numberOfSourcesWithoutPaths = 3 - numberOfSourcesWithPaths
+      _                           = assume(0 < numberOfSourcesWithoutPaths)
+      contents                    = Vector.fill(numberOfSourcesWithPaths)(
+        pathsAndTheirContent
+      ) ++ Vector.fill(numberOfSourcesWithoutPaths)(
+        Map.empty[Int, IndexedSeq[Int]]
+      )
+      permutation <- trialsApi.indexPermutations(3)
+    yield TestCase(
+      numberOfSourcesWithPaths,
+      baseSources = new FakeSources(contents(permutation(0)), "base")
+        with SourcesContracts[Path, Element],
+      leftSources = new FakeSources(contents(permutation(1)), "left")
+        with SourcesContracts[Path, Element],
+      rightSources = new FakeSources(contents(permutation(2)), "right")
+        with SourcesContracts[Path, Element]
+    )
+
+    testCases.withLimit(10).dynamicTests {
+      case TestCase(
+            numberOfSourcesWithPaths,
+            baseSources,
+            leftSources,
+            rightSources
+          ) =>
+        val Right(
+          analysis: SectionedCode[Path, Element]
+        ) =
+          SectionedCode.of(
+            baseSources,
+            leftSources,
+            rightSources
+          )(configuration): @unchecked
+        end val
+
+        val matches =
+          (analysis.base.values.flatMap(_.sections) ++ analysis.left.values
+            .flatMap(
+              _.sections
+            ) ++ analysis.right.values.flatMap(_.sections))
+            .map(analysis.matchesFor)
+            .reduceOption(_ union _)
+            .getOrElse(Set.empty)
+
+        if 2 == numberOfSourcesWithPaths then
+          assert(
+            2 == matches.size && matches
+              .forall(!_.isInstanceOf[Match.AllSides[Int]])
+          )
+        else assert(matches.isEmpty)
+        end if
+    }
+  end sourcesWithoutPaths
+
+  @Test
+  def parallelMatches(): Unit =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = Int.MaxValue
+    )
+
+    // These match in one parallel group, Greek symbols should comprise
+    // all-sides matches and Roman symbols pairwise matches...
+    val alpha = 1
+    val a     = -1
+    val beta  = 2
+    val b     = -2
+    val c     = -3
+    val gamma = 3
+    val d     = -4
+
+    // These match in another parallel group, Greek symbols should comprise
+    // all-sides matches and Roman symbols pairwise matches...
+    val delta   = 4
+    val e       = -5
+    val epsilon = 5
+    val f       = -6
+
+    // These Sanskrit oddballs aren't matched at all.
+    val ritu = Int.MinValue
+    val li   = Int.MaxValue
+
+    val baseSources = new FakeSources(
+      Map(
+        1 -> Vector(
+          alpha,
+          a,
+          beta,
+          b,
+          beta,
+          beta,
+          c,
+          gamma,
+          d,
+          delta,
+          e,
+          delta,
+          f,
+          epsilon,
+          epsilon
+        )
+      ),
+      "base"
+    ) with SourcesContracts[Path, Element]
+
+    val leftSources = new FakeSources(
+      Map(
+        1 -> Vector(
+          alpha,
+          beta,
+          beta,
+          beta,
+          gamma,
+          delta,
+          delta,
+          epsilon,
+          epsilon
+        )
+      ),
+      "left"
+    ) with SourcesContracts[Path, Element]
+
+    val rightSources = new FakeSources(
+      Map(
+        1 -> Vector(
+          delta,
+          e,
+          delta,
+          f,
+          epsilon,
+          ritu,
+          epsilon,
+          alpha,
+          a,
+          beta,
+          b,
+          beta,
+          li,
+          beta,
+          c,
+          gamma,
+          d
+        )
+      ),
+      "right"
+    ) with SourcesContracts[Path, Element]
+
+    val Right(
+      analysis: SectionedCode[Path, Element]
+    ) =
+      SectionedCode.of(
+        baseSources,
+        leftSources,
+        rightSources
+      )(configuration): @unchecked
+    end val
+
+    val matches =
+      (analysis.base.values.flatMap(_.sections) ++ analysis.left.values.flatMap(
+        _.sections
+      ) ++ analysis.right.values.flatMap(_.sections))
+        .map(analysis.matchesFor)
+        .reduce(_ union _)
+
+    println(s"Resulting matches:\n${pprintCustomised(matches)}")
+
+    val (allSides, pairwise) = matches.partition {
+      case _: Match.AllSides[Element] => true
+      case _                          => false
+    }
+
+    assert(9 == allSides.size)
+    assert(6 == pairwise.size)
+  end parallelMatches
+
+end SectionedCodeTest
+
+object SectionedCodeTest:
   type Path    = Int
   type Element = Int
 
@@ -1892,4 +2091,4 @@ object CodeMotionAnalysisTest:
     override def funnel(element: Element, primitiveSink: PrimitiveSink): Unit =
       primitiveSink.putInt(element)
   end given
-end CodeMotionAnalysisTest
+end SectionedCodeTest

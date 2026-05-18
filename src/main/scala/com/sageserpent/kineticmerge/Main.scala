@@ -9,8 +9,8 @@ import cats.syntax.traverse.toTraverseOps
 import com.google.common.hash.{Funnel, HashFunction, Hashing}
 import com.sageserpent.kineticmerge.Main.MergeInput.*
 import com.sageserpent.kineticmerge.core.*
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.Configuration
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtension.*
+import com.sageserpent.kineticmerge.core.MatchAnalysis.Configuration
+import com.sageserpent.kineticmerge.core.SectionedCodeExtension.*
 import com.sageserpent.kineticmerge.core.Token.tokens
 import com.softwaremill.tagging.*
 import com.typesafe.scalalogging.StrictLogging
@@ -323,9 +323,6 @@ object Main extends StrictLogging:
     exitCode
   end mergeSides
 
-  private def underline(anything: Any): Str =
-    fansi.Underlined.On(anything.toString)
-
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
       EitherT
@@ -345,12 +342,15 @@ object Main extends StrictLogging:
       workflow.semiflatTap(_ => WriterT.tell(List(Right(message))))
   end extension
 
-  private def right[Payload](payload: Payload): Workflow[Payload] =
-    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
+  private def underline(anything: Any): Str =
+    fansi.Underlined.On(anything.toString)
 
   extension (content: String @@ Tags.Content)
     private def asTokens: Vector[Token] = tokens(content).get
   end extension
+
+  private def right[Payload](payload: Payload): Workflow[Payload] =
+    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
 
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](
@@ -934,7 +934,7 @@ object Main extends StrictLogging:
       )
 
       def fileRenamingReportUsing(
-          codeMotionAnalysis: CodeMotionAnalysis[RelPath, Token],
+          codeMotionAnalysis: SectionedCode[RelPath, Token],
           moveDestinationsReport: MoveDestinationsReport[Section[Token]]
       )(path: RelPath): Option[FileRelocationReport] =
         val baseSections = codeMotionAnalysis.base(path).sections
@@ -1079,9 +1079,9 @@ object Main extends StrictLogging:
       end fileRenamingReportUsing
 
       for
-        codeMotionAnalysis: CodeMotionAnalysis[RelPath, Token] <- EitherT
+        codeMotionAnalysis: SectionedCode[RelPath, Token] <- EitherT
           .fromEither[WorkflowLogWriter] {
-            CodeMotionAnalysis.of(baseSources, leftSources, rightSources)(
+            SectionedCode.of(baseSources, leftSources, rightSources)(
               configuration
             )
           }
