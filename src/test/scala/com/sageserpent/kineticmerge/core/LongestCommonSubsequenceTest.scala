@@ -19,6 +19,7 @@ import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.{
   testCases,
   given
 }
+import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording}
 import org.junit.jupiter.api.TestFactory
 
 class LongestCommonSubsequenceTest:
@@ -379,6 +380,8 @@ class LongestCommonSubsequenceTest:
 end LongestCommonSubsequenceTest
 
 object LongestCommonSubsequenceTest:
+  given ProgressRecording = NoProgressRecording
+
   type Element = Char
   val coreElements: Trials[Element]       = trialsApi.choose('a' to 'z')
   val additionalElements: Trials[Element] = trialsApi.choose('A' to 'Z')

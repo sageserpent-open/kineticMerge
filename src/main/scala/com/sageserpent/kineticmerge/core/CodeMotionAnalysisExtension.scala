@@ -2,7 +2,6 @@ package com.sageserpent.kineticmerge.core
 
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
-import com.sageserpent.kineticmerge.core
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.AdmissibleFailure
 import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSidedMergeResult
 import com.sageserpent.kineticmerge.core.FirstPassMergeResult.{
@@ -17,6 +16,12 @@ import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{
   OppositeSideAnchor
 }
 import com.sageserpent.kineticmerge.core.merge.of as mergeOf
+import com.sageserpent.kineticmerge.{
+  NoProgressRecording,
+  ProgressRecording,
+  ProgressRecordingSession,
+  core
+}
 import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
 
@@ -37,7 +42,9 @@ object CodeMotionAnalysisExtension extends StrictLogging:
   extension [Path, Element: Eq: Order](
       codeMotionAnalysis: CodeMotionAnalysis[Path, Element]
   )
-    def merge: (
+    def merge(using
+        progressRecording: ProgressRecording
+    ): (
         Map[Path, MergeResult[Element]],
         MoveDestinationsReport[Section[Element]]
     ) =
@@ -216,6 +223,16 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       ) =
         paths.foldLeft(AggregatedInitialMergeResult.empty) {
           case (partialMergeResult, path) =>
+            given ProgressRecording with
+              override def newSession(label: String, maximumProgress: Int)(
+                  initialProgress: Int
+              ): ProgressRecordingSession =
+                progressRecording.newSession(
+                  s"(Merging: $path) $label",
+                  maximumProgress
+                )(initialProgress)
+            end given
+
             val base  = codeMotionAnalysis.base.get(path).map(_.sections)
             val left  = codeMotionAnalysis.left.get(path).map(_.sections)
             val right = codeMotionAnalysis.right.get(path).map(_.sections)
@@ -450,7 +467,10 @@ object CodeMotionAnalysisExtension extends StrictLogging:
       def anchoredContentFromOppositeSide(
           moveDestinationSide: Side,
           oppositeSideAnchor: OppositeSideAnchor[Section[Element]]
-      ): (IndexedSeq[Section[Element]], IndexedSeq[Section[Element]]) =
+      ): (
+          Option[IndexedSeq[Section[Element]]],
+          Option[IndexedSeq[Section[Element]]]
+      ) =
         val (file, preservations, coincidentInsertionsOrEdits) =
           moveDestinationSide match
             case Side.Left =>
@@ -486,37 +506,49 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
         oppositeSideAnchor match
           case OppositeSideAnchor.Plain(element) =>
-            precedingAnchoredContentUsingSelection(
-              file,
-              element
-            )(
-              selection
-            ) -> succeedingAnchoredContentUsingSelection(
-              file,
-              element
-            )(selection)
+            Some(
+              precedingAnchoredContentUsingSelection(
+                file,
+                element
+              )(
+                selection
+              )
+            ) -> Some(
+              succeedingAnchoredContentUsingSelection(
+                file,
+                element
+              )(selection)
+            )
           case OppositeSideAnchor.OnlyOneInMigratedEdit(element) =>
-            precedingAnchoredContentUsingSelection(
-              file,
-              element
-            )(
-              selection
-            ) -> succeedingAnchoredContentUsingSelection(
-              file,
-              element
-            )(selection)
+            Some(
+              precedingAnchoredContentUsingSelection(
+                file,
+                element
+              )(
+                selection
+              )
+            ) -> Some(
+              succeedingAnchoredContentUsingSelection(
+                file,
+                element
+              )(selection)
+            )
           case OppositeSideAnchor.FirstInMigratedEdit(element) =>
-            precedingAnchoredContentUsingSelection(
-              file,
-              element
-            )(
-              selection
-            ) -> IndexedSeq.empty
+            Some(
+              precedingAnchoredContentUsingSelection(
+                file,
+                element
+              )(
+                selection
+              )
+            ) -> None
           case OppositeSideAnchor.LastInMigratedEdit(element) =>
-            IndexedSeq.empty -> succeedingAnchoredContentUsingSelection(
-              file,
-              element
-            )(selection)
+            None -> Some(
+              succeedingAnchoredContentUsingSelection(
+                file,
+                element
+              )(selection)
+            )
         end match
       end anchoredContentFromOppositeSide
 
@@ -636,6 +668,8 @@ object CodeMotionAnalysisExtension extends StrictLogging:
             _ =>
               updatedCache = true
 
+              given ProgressRecording = NoProgressRecording
+
               moveDestinationSide match
                 case Side.Left =>
                   mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
@@ -691,29 +725,45 @@ object CodeMotionAnalysisExtension extends StrictLogging:
 
         val spliceMigrationSuppressions =
           (precedingAnchoredContentFromOppositeSide
-            ++ precedingAnchoredContentFromMoveDestinationSide
+            .map(
+              _ ++ precedingAnchoredContentFromMoveDestinationSide
+            )
+            .getOrElse(IndexedSeq.empty)
             ++ succeedingAnchoredContentFromOppositeSide
-            ++ succeedingAnchoredContentFromMoveDestinationSide).toSet
+              .map(
+                _ ++ succeedingAnchoredContentFromMoveDestinationSide
+              )
+              .getOrElse(IndexedSeq.empty)).toSet
 
-        val precedingMerge = CachedAnchoredContentMerges
-          .of(
-            anchoredMove.moveDestinationSide,
-            precedingAnchoredContentFromSource,
-            precedingAnchoredContentFromOppositeSide,
-            precedingAnchoredContentFromMoveDestinationSide
-          )
-
-        val succeedingMerge = CachedAnchoredContentMerges
-          .of(
-            anchoredMove.moveDestinationSide,
-            succeedingAnchoredContentFromSource,
-            succeedingAnchoredContentFromOppositeSide,
-            succeedingAnchoredContentFromMoveDestinationSide
-          )
+        def spliceFrom(
+            anchoredContentFromOppositeSide: Option[
+              IndexedSeq[Section[Element]]
+            ],
+            anchoredContentFromSource: IndexedSeq[Section[Element]],
+            anchoredContentFromMoveDestinationSide: IndexedSeq[Section[Element]]
+        ) =
+          anchoredContentFromOppositeSide
+            .fold(ifEmpty = MergeResult.empty[MultiSided[Section[Element]]])(
+              CachedAnchoredContentMerges
+                .of(
+                  anchoredMove.moveDestinationSide,
+                  anchoredContentFromSource,
+                  _,
+                  anchoredContentFromMoveDestinationSide
+                )
+            )
 
         MigrationSplices(
-          precedingMerge,
-          succeedingMerge,
+          precedingSplice = spliceFrom(
+            precedingAnchoredContentFromOppositeSide,
+            precedingAnchoredContentFromSource,
+            precedingAnchoredContentFromMoveDestinationSide
+          ),
+          succeedingSplice = spliceFrom(
+            succeedingAnchoredContentFromOppositeSide,
+            succeedingAnchoredContentFromSource,
+            succeedingAnchoredContentFromMoveDestinationSide
+          ),
           spliceMigrationSuppressions
         )
       end mergesFrom

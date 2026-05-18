@@ -10,12 +10,13 @@ import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
   Sized,
   defaultElementSize
 }
-import com.sageserpent.kineticmerge.core.MergeTest.*
 import com.sageserpent.kineticmerge.core.MergeTest.DelegatingMergeAlgebraWithContracts.{
   AugmentedMergeResult,
   State
 }
 import com.sageserpent.kineticmerge.core.MergeTest.Move.*
+import com.sageserpent.kineticmerge.core.MergeTest.{*, given}
+import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording}
 import monocle.syntax.all.*
 import org.junit.jupiter.api.{Assertions, Test, TestFactory}
 import pprintCustomised.*
@@ -1870,6 +1871,8 @@ class MergeTest:
 end MergeTest
 
 object MergeTest:
+  given ProgressRecording = NoProgressRecording
+  
   type Element = Int
 
   extension (matchesByElement: Map[Element, Match[Element]])

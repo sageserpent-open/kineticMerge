@@ -988,10 +988,10 @@ object Main extends StrictLogging:
           def destinationPathIsForARename(path: RelPath) =
             PresentInMergeOutcome.Added == newOrModifiedPathsOnLeftOrRight(path)
 
-          val (leftRenamePaths, leftRelocationPaths) =
+          val (leftRenamePaths, leftTransplantPaths) =
             leftDestinationPaths.partition(destinationPathIsForARename)
 
-          val (rightRenamePaths, rightRelocationPaths) =
+          val (rightRenamePaths, rightTransplantPaths) =
             rightDestinationPaths.partition(destinationPathIsForARename)
 
           def destinationDetailsFor(possessive: String, directory: Path)(
@@ -1010,9 +1010,9 @@ object Main extends StrictLogging:
               leftRenamePaths
             )
 
-          val leftRelocationDetails =
+          val leftTransplantationDetails =
             destinationDetailsFor(possessive = "our", ourDirectory)(
-              leftRelocationPaths
+              leftTransplantPaths
             )
 
           val rightRenamingDetails =
@@ -1020,9 +1020,9 @@ object Main extends StrictLogging:
               rightRenamePaths
             )
 
-          val rightRelocationDetails =
+          val rightTransplantationDetails =
             destinationDetailsFor(possessive = "their", theirDirectory)(
-              rightRelocationPaths
+              rightTransplantPaths
             )
 
           val description =
@@ -1045,26 +1045,28 @@ object Main extends StrictLogging:
                   )
                 case (None, None) => None
 
-            val renameDescription = assembleDetails(action = "renamed")(
+            val renamingDescription = assembleDetails(action = "renamed")(
               leftRenamingDetails,
               rightRenamingDetails
             )
 
-            val relocationDescription =
+            val transplantationDescription =
               assembleDetails(action = "transplanted")(
-                leftRelocationDetails,
-                rightRelocationDetails
+                leftTransplantationDetails,
+                rightTransplantationDetails
               )
 
-            assume(renameDescription.nonEmpty || relocationDescription.nonEmpty)
+            assume(
+              renamingDescription.nonEmpty || transplantationDescription.nonEmpty
+            )
 
-            (renameDescription, relocationDescription) match
-              case (Some(rename), Some(relocation)) =>
-                s"File ${underline(path)} was $rename; it was also $relocation."
-              case (Some(rename), None) =>
-                s"File ${underline(path)} was $rename."
-              case (None, Some(relocation)) =>
-                s"File ${underline(path)} was $relocation."
+            (renamingDescription, transplantationDescription) match
+              case (Some(renaming), Some(transplantation)) =>
+                s"File ${underline(path)} was $renaming; it was also $transplantation."
+              case (Some(renaming), None) =>
+                s"File ${underline(path)} was $renaming."
+              case (None, Some(transplantation)) =>
+                s"File ${underline(path)} was $transplantation."
             end match
           end description
 
@@ -1085,7 +1087,10 @@ object Main extends StrictLogging:
           }
           .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
 
-        (mergeResultsByPath, moveDestinationsReport) = codeMotionAnalysis.merge
+        (mergeResultsByPath, moveDestinationsReport) =
+          given ProgressRecording = configuration.progressRecording
+
+          codeMotionAnalysis.merge
 
         _ <- moveDestinationsReport.summarizeInText.foldLeft(right(()))(
           _ logOperation _
