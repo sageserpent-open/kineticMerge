@@ -303,6 +303,38 @@ class LongestCommonSubsequenceTest:
   end theLongestCommonSubsequenceUnderpinsAllThreeResults
 
   @TestFactory
+  def theApplyMethodIsConsistentWithTheOfMethod(): DynamicTests =
+    testCases
+      .withLimit(100)
+      .dynamicTests(
+        (
+          testCase: TestCase
+        ) =>
+          given Sized[Element] = defaultElementSize
+
+          val originalLongestCommonSubsequence @ LongestCommonSubsequence(
+            base,
+            left,
+            right,
+            _,
+            _,
+            _,
+            _
+          ) =
+            LongestCommonSubsequence
+              .of(testCase.base, testCase.left, testCase.right)
+
+          val reconstructedLongestCommonSubsequence =
+            LongestCommonSubsequence(base, left, right)
+
+          assert(
+            reconstructedLongestCommonSubsequence == originalLongestCommonSubsequence
+          )
+      )
+
+  end theApplyMethodIsConsistentWithTheOfMethod
+
+  @TestFactory
   def theLargestElementSizeSumIsTheTiebreakForLongestCommonSubsequencesOfTheSameLength()
       : DynamicTests =
     enum MissingSide:
@@ -413,8 +445,6 @@ class LongestCommonSubsequenceTest:
 end LongestCommonSubsequenceTest
 
 object LongestCommonSubsequenceTest:
-  given ProgressRecording = NoProgressRecording
-
   type Element = Char
   val coreElements: Trials[Element]       = trialsApi.choose('a' to 'z')
   val additionalElements: Trials[Element] = trialsApi.choose('A' to 'Z')
@@ -450,6 +480,8 @@ object LongestCommonSubsequenceTest:
     )
     if core != base || core != left || core != right
   yield TestCase(core, base, left, right)
+
+  given ProgressRecording = NoProgressRecording
 
   given Eq[Element] = _ == _
 

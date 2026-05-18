@@ -7,18 +7,26 @@ import com.sageserpent.kineticmerge.core.FirstPassMergeResult.{
   FileDeletionContext,
   Recording
 }
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.Sized
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
+  Contribution,
+  Sized
+}
 import com.sageserpent.kineticmerge.core.MergeResult.given
 import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{
   AnchoredMove,
   MoveEvaluation,
   OppositeSideAnchor
 }
-import com.sageserpent.kineticmerge.core.merge.of as mergeOf
+import com.sageserpent.kineticmerge.core.SectionedCode.Block
+import com.sageserpent.kineticmerge.core.merge.{
+  MergeAlgebra,
+  mergeUsing,
+  of as mergeOf
+}
 import com.sageserpent.kineticmerge.{
-  NoProgressRecording,
   ProgressRecording,
   ProgressRecordingSession,
+  SilentProgressRecording,
   core
 }
 import com.typesafe.scalalogging.StrictLogging
@@ -28,26 +36,456 @@ import scala.annotation.tailrec
 import scala.collection.immutable.MultiDict
 import scala.collection.{IndexedSeqView, Searching}
 import scala.math.Ordering.Implicits.seqOrdering
+import scala.util.Using
 
 object SectionedCodeExtension extends StrictLogging:
-
-  /** Add merging capability to a [[SectionedCode]].
-    *
-    * Not sure exactly where this capability should be implemented - is it
-    * really a core part of the API for [[SectionedCode]]? Hence the extension
-    * as a temporary measure.
-    */
-
+  /** Add merging capability to a [[SectionedCode]]. */
   extension [Path, Element: Eq: Order](
-      codeMotionAnalysis: SectionedCode[Path, Element]
+      sectionedCode: SectionedCode[Path, Element]
   )
+    private def longestCommonSubsequenceOf(
+        baseSections: IndexedSeq[Section[Element]],
+        leftSections: IndexedSeq[Section[Element]],
+        rightSections: IndexedSeq[Section[Element]]
+    )(path: Path)(using
+        progressRecording: ProgressRecording,
+        sectionEq: Eq[Section[Element]],
+        sectionSized: Sized[Section[Element]]
+    ): LongestCommonSubsequence[Section[Element]] =
+      // TODO: this is a bit messy, because there is an implicit assumption that
+      // if there is no file, then there are no sections to make a block from.
+      // This true, but only because the call-sites of
+      // `longestCommonSubsequenceOf` have already checked the presence or
+      // absence of the file in question. Probably the best thing to do would be
+      // to pass in the optional file explicitly for each side to
+      // `longestCommonSubsequenceOf` and dig the sections out of it, but that
+      // doesn't quite site properly with the existing call-site logic.
+
+      given Eq[Block[Element]]    = Eq.by(_.parallelMatchesGroupId)
+      given Sized[Block[Element]] = _.size
+
+      object contributionRanking extends Ordering[Contribution[?]]:
+        override def compare(
+            x: Contribution[?],
+            y: Contribution[?]
+        ): Int =
+          (x, y) match
+            // A common contribution is the best.
+            case (Contribution.Common(_), Contribution.Common(_)) => 0
+            case (Contribution.Common(_), _)                      => 1
+            case (_, Contribution.Common(_))                      => -1
+
+            // A difference contribution is the worst.
+            case (Contribution.Difference(_), Contribution.Difference(_)) => 0
+            case (Contribution.Difference(_), _)                          => -1
+            case (_, Contribution.Difference(_))                          => 1
+
+            // What remains are the partially common contributions in comparison
+            // to each other: they are all just as good.
+            case _ => 0
+      end contributionRanking
+
+      case class ThreeSidedClump[X](
+          base: IndexedSeq[X],
+          left: IndexedSeq[X],
+          right: IndexedSeq[X]
+      )
+
+      type ThreeSidedClumps[X] = Vector[ThreeSidedClump[X]]
+
+      val blockLevelMergeAlgebra =
+        new MergeAlgebra[ThreeSidedClumps, Block[Element]]:
+          override def empty: ThreeSidedClumps[Block[Element]] = Vector.empty
+
+          override def preservation(
+              result: ThreeSidedClumps[Block[Element]],
+              preservedBaseElement: Block[Element],
+              preservedElementOnLeft: Block[Element],
+              preservedElementOnRight: Block[Element]
+          ): ThreeSidedClumps[Block[Element]] = result.appended(
+            ThreeSidedClump(
+              Vector(preservedBaseElement),
+              Vector(preservedElementOnLeft),
+              Vector(preservedElementOnRight)
+            )
+          )
+
+          override def leftInsertion(
+              result: ThreeSidedClumps[Block[Element]],
+              insertedElement: Block[Element]
+          ): ThreeSidedClumps[Block[Element]] =
+            result.appended(
+              ThreeSidedClump(
+                Vector.empty,
+                Vector(insertedElement),
+                Vector.empty
+              )
+            )
+
+          override def rightInsertion(
+              result: ThreeSidedClumps[Block[Element]],
+              insertedElement: Block[Element]
+          ): ThreeSidedClumps[Block[Element]] =
+            result.appended(
+              ThreeSidedClump(
+                Vector.empty,
+                Vector.empty,
+                Vector(insertedElement)
+              )
+            )
+
+          override def coincidentInsertion(
+              result: ThreeSidedClumps[Block[Element]],
+              insertedElementOnLeft: Block[Element],
+              insertedElementOnRight: Block[Element]
+          ): ThreeSidedClumps[Block[Element]] = result.appended(
+            ThreeSidedClump(
+              Vector.empty,
+              Vector(insertedElementOnLeft),
+              Vector(insertedElementOnRight)
+            )
+          )
+
+          override def leftDeletion(
+              result: ThreeSidedClumps[Block[Element]],
+              deletedBaseElement: Block[Element],
+              deletedRightElement: Block[Element]
+          ): ThreeSidedClumps[Block[Element]] = result.appended(
+            ThreeSidedClump(
+              Vector(deletedBaseElement),
+              Vector.empty,
+              Vector(deletedRightElement)
+            )
+          )
+
+          override def rightDeletion(
+              result: ThreeSidedClumps[Block[Element]],
+              deletedBaseElement: Block[Element],
+              deletedLeftElement: Block[Element]
+          ): ThreeSidedClumps[Block[Element]] = result.appended(
+            ThreeSidedClump(
+              Vector(deletedBaseElement),
+              Vector(deletedLeftElement),
+              Vector.empty
+            )
+          )
+
+          override def coincidentDeletion(
+              result: ThreeSidedClumps[Block[Element]],
+              deletedElement: Block[Element]
+          ): ThreeSidedClumps[Block[Element]] =
+            result.appended(
+              ThreeSidedClump(
+                Vector(deletedElement),
+                Vector.empty,
+                Vector.empty
+              )
+            )
+
+          override def leftEdit(
+              result: ThreeSidedClumps[Block[Element]],
+              editedBaseElement: Block[Element],
+              editedRightElement: Block[Element],
+              editElements: IndexedSeq[Block[Element]]
+          ): ThreeSidedClumps[Block[Element]] = result.appended(
+            ThreeSidedClump(
+              Vector(editedBaseElement),
+              editElements,
+              Vector(editedRightElement)
+            )
+          )
+
+          override def rightEdit(
+              result: ThreeSidedClumps[Block[Element]],
+              editedBaseElement: Block[Element],
+              editedLeftElement: Block[Element],
+              editElements: IndexedSeq[Block[Element]]
+          ): ThreeSidedClumps[Block[Element]] = result.appended(
+            ThreeSidedClump(
+              Vector(editedBaseElement),
+              Vector(editedLeftElement),
+              editElements
+            )
+          )
+
+          override def coincidentEdit(
+              result: ThreeSidedClumps[Block[Element]],
+              editedElement: Block[Element],
+              editElements: IndexedSeq[(Block[Element], Block[Element])]
+          ): ThreeSidedClumps[Block[Element]] =
+            val (leftEditElements, rightEditElements) = editElements.unzip
+            result.appended(
+              ThreeSidedClump(
+                Vector(editedElement),
+                leftEditElements,
+                rightEditElements
+              )
+            )
+          end coincidentEdit
+
+          override def conflict(
+              result: ThreeSidedClumps[Block[Element]],
+              editedElements: IndexedSeq[Block[Element]],
+              leftEditElements: IndexedSeq[Block[Element]],
+              rightEditElements: IndexedSeq[Block[Element]]
+          ): ThreeSidedClumps[Block[Element]] =
+            result.appended(
+              ThreeSidedClump(
+                editedElements,
+                leftEditElements,
+                rightEditElements
+              )
+            )
+
+      val threeSidedClumps =
+        mergeOf(blockLevelMergeAlgebra)(
+          sectionedCode.baseBlocksFor(path),
+          sectionedCode.leftBlocksFor(path),
+          sectionedCode.rightBlocksFor(path),
+          s"Blocks merged:"
+        )
+
+      case class CollectedPairings(
+          baseToLeft: MultiDict[Section[Element], Section[Element]] =
+            MultiDict.empty,
+          baseToRight: MultiDict[Section[Element], Section[Element]] =
+            MultiDict.empty,
+          leftToRight: MultiDict[Section[Element], Section[Element]] =
+            MultiDict.empty,
+          tripleSections: Set[Section[Element]] = Set.empty,
+          baseLeftSections: Set[Section[Element]] = Set.empty,
+          baseRightSections: Set[Section[Element]] = Set.empty,
+          leftRightSections: Set[Section[Element]] = Set.empty
+      ):
+        def union(another: CollectedPairings): CollectedPairings =
+          CollectedPairings(
+            baseToLeft = baseToLeft.concat(another.baseToLeft.toSeq),
+            baseToRight = baseToRight.concat(another.baseToRight.toSeq),
+            leftToRight = leftToRight.concat(another.leftToRight.toSeq),
+            tripleSections = tripleSections union another.tripleSections,
+            baseLeftSections = baseLeftSections union another.baseLeftSections,
+            baseRightSections =
+              baseRightSections union another.baseRightSections,
+            leftRightSections =
+              leftRightSections union another.leftRightSections
+          )
+      end CollectedPairings
+
+      def pairingsFromClump(
+          threeSidedClump: ThreeSidedClump[Block[Element]]
+      ): CollectedPairings =
+        val sectionLevelLongestCommonSubsequenceInClump =
+          given ProgressRecording = SilentProgressRecording
+
+          LongestCommonSubsequence.of(
+            threeSidedClump.base.flatMap(_.sectionsCoveredByGroup),
+            threeSidedClump.left.flatMap(_.sectionsCoveredByGroup),
+            threeSidedClump.right.flatMap(_.sectionsCoveredByGroup)
+          )
+        end sectionLevelLongestCommonSubsequenceInClump
+
+        val baseCommon =
+          sectionLevelLongestCommonSubsequenceInClump.base.collect {
+            case Contribution.Common(e) => e
+          }
+        val leftCommon =
+          sectionLevelLongestCommonSubsequenceInClump.left.collect {
+            case Contribution.Common(e) => e
+          }
+        val rightCommon =
+          sectionLevelLongestCommonSubsequenceInClump.right.collect {
+            case Contribution.Common(e) => e
+          }
+
+        val baseToLeftOnlyCommon =
+          sectionLevelLongestCommonSubsequenceInClump.base.collect {
+            case Contribution.CommonToBaseAndLeftOnly(e) => e
+          }
+        val leftToBaseOnlyCommon =
+          sectionLevelLongestCommonSubsequenceInClump.left.collect {
+            case Contribution.CommonToBaseAndLeftOnly(e) => e
+          }
+
+        val baseToRightOnlyCommon =
+          sectionLevelLongestCommonSubsequenceInClump.base.collect {
+            case Contribution.CommonToBaseAndRightOnly(e) => e
+          }
+        val rightToBaseOnlyCommon =
+          sectionLevelLongestCommonSubsequenceInClump.right.collect {
+            case Contribution.CommonToBaseAndRightOnly(e) => e
+          }
+
+        val leftToRightOnlyCommon =
+          sectionLevelLongestCommonSubsequenceInClump.left.collect {
+            case Contribution.CommonToLeftAndRightOnly(e) => e
+          }
+        val rightToLeftOnlyCommon =
+          sectionLevelLongestCommonSubsequenceInClump.right.collect {
+            case Contribution.CommonToLeftAndRightOnly(e) => e
+          }
+
+        val triples =
+          baseCommon zip leftCommon zip rightCommon map { case ((b, l), r) =>
+            (b, l, r)
+          }
+
+        val baseLeftPairs  = baseToLeftOnlyCommon zip leftToBaseOnlyCommon
+        val baseRightPairs = baseToRightOnlyCommon zip rightToBaseOnlyCommon
+        val leftRightPairs = leftToRightOnlyCommon zip rightToLeftOnlyCommon
+
+        CollectedPairings(
+          baseToLeft = MultiDict.from(
+            triples.map((b, l, r) => b -> l) ++ baseLeftPairs
+          ),
+          baseToRight = MultiDict.from(
+            triples.map((b, l, r) => b -> r) ++ baseRightPairs
+          ),
+          leftToRight = MultiDict.from(
+            triples.map((b, l, r) => l -> r) ++ leftRightPairs
+          ),
+          tripleSections = triples.flatMap((b, l, r) => Set(b, l, r)).toSet,
+          baseLeftSections = baseLeftPairs.flatMap((b, l) => Set(b, l)).toSet,
+          baseRightSections = baseRightPairs.flatMap((b, r) => Set(b, r)).toSet,
+          leftRightSections = leftRightPairs.flatMap((l, r) => Set(l, r)).toSet
+        )
+      end pairingsFromClump
+
+      val aggregatedPairings =
+        Using(
+          progressRecording.newSession(
+            label = s"Section-level LCS refinements:",
+            maximumProgress = threeSidedClumps.size
+          )(initialProgress = 0)
+        ) { progressRecordingSession =>
+          threeSidedClumps.zipWithIndex
+            .map((clump, index) =>
+              val result = pairingsFromClump(clump)
+              progressRecordingSession.upTo(1 + index)
+              result
+            )
+            .foldLeft(CollectedPairings())(_ union _)
+        }.get
+
+      def uniquePartners(
+          matches: MultiDict[Section[Element], Section[Element]]
+      ): Map[Section[Element], Section[Element]] =
+        matches.toSeq
+          .groupBy(_._1)
+          .view
+          .mapValues(_.map(_._2).toSet)
+          .filter(_._2.size == 1)
+          .mapValues(_.head)
+          .toMap
+
+      val baseToLeft = uniquePartners(aggregatedPairings.baseToLeft)
+      val leftToBase = uniquePartners(
+        aggregatedPairings.baseToLeft.map((b, l) => l -> b)
+      )
+      val baseToRight = uniquePartners(aggregatedPairings.baseToRight)
+      val rightToBase = uniquePartners(
+        aggregatedPairings.baseToRight.map((b, r) => r -> b)
+      )
+      val leftToRight = uniquePartners(aggregatedPairings.leftToRight)
+      val rightToLeft = uniquePartners(
+        aggregatedPairings.leftToRight.map((l, r) => r -> l)
+      )
+
+      enum Side:
+        case Left
+        case Base
+        case Right
+      end Side
+
+      def assignContributionsOnOneSide(
+          sections: IndexedSeq[Section[Element]],
+          side: Side
+      ): IndexedSeq[Contribution[Section[Element]]] =
+        sections.map { section =>
+          side match
+            case Side.Base =>
+              val maybeLeft  = baseToLeft.get(section)
+              val maybeRight = baseToRight.get(section)
+
+              (maybeLeft, maybeRight) match
+                case (Some(left), Some(right))
+                    if leftToBase.get(left).contains(section) &&
+                      rightToBase.get(right).contains(section) &&
+                      leftToRight.get(left).contains(right) &&
+                      rightToLeft.get(right).contains(left) &&
+                      aggregatedPairings.tripleSections.contains(section) =>
+                  Contribution.Common(section)
+                case (Some(left), _)
+                    if leftToBase.get(left).contains(section) &&
+                      aggregatedPairings.baseLeftSections.contains(section) =>
+                  Contribution.CommonToBaseAndLeftOnly(section)
+                case (_, Some(right))
+                    if rightToBase.get(right).contains(section) &&
+                      aggregatedPairings.baseRightSections.contains(section) =>
+                  Contribution.CommonToBaseAndRightOnly(section)
+                case _ => Contribution.Difference(section)
+              end match
+            case Side.Left =>
+              val maybeBase  = leftToBase.get(section)
+              val maybeRight = leftToRight.get(section)
+
+              (maybeBase, maybeRight) match
+                case (Some(base), Some(right))
+                    if baseToLeft.get(base).contains(section) &&
+                      rightToLeft.get(right).contains(section) &&
+                      baseToRight.get(base).contains(right) &&
+                      rightToBase.get(right).contains(base) &&
+                      aggregatedPairings.tripleSections.contains(section) =>
+                  Contribution.Common(section)
+                case (Some(base), _)
+                    if baseToLeft.get(base).contains(section) &&
+                      aggregatedPairings.baseLeftSections.contains(section) =>
+                  Contribution.CommonToBaseAndLeftOnly(section)
+                case (_, Some(right))
+                    if rightToLeft.get(right).contains(section) &&
+                      aggregatedPairings.leftRightSections.contains(section) =>
+                  Contribution.CommonToLeftAndRightOnly(section)
+                case _ => Contribution.Difference(section)
+              end match
+            case Side.Right =>
+              val maybeBase = rightToBase.get(section)
+              val maybeLeft = rightToLeft.get(section)
+
+              (maybeBase, maybeLeft) match
+                case (Some(base), Some(left))
+                    if baseToRight.get(base).contains(section) &&
+                      leftToRight.get(left).contains(section) &&
+                      baseToLeft.get(base).contains(left) &&
+                      leftToBase.get(left).contains(base) &&
+                      aggregatedPairings.tripleSections.contains(section) =>
+                  Contribution.Common(section)
+                case (Some(base), _)
+                    if baseToRight.get(base).contains(section) &&
+                      aggregatedPairings.baseRightSections.contains(section) =>
+                  Contribution.CommonToBaseAndRightOnly(section)
+                case (_, Some(left))
+                    if leftToRight.get(left).contains(section) &&
+                      aggregatedPairings.leftRightSections.contains(section) =>
+                  Contribution.CommonToLeftAndRightOnly(section)
+                case _ => Contribution.Difference(section)
+              end match
+        }
+
+      LongestCommonSubsequence(
+        base = assignContributionsOnOneSide(baseSections, Side.Base),
+        left = assignContributionsOnOneSide(leftSections, Side.Left),
+        right = assignContributionsOnOneSide(rightSections, Side.Right)
+      )
+    end longestCommonSubsequenceOf
+
     def merge(using
         progressRecording: ProgressRecording
     ): (
         Map[Path, MergeResult[Element]],
         MoveDestinationsReport[Section[Element]]
     ) =
-      import codeMotionAnalysis.matchesFor
+      import sectionedCode.matchesFor
+
+      given sectionSized[X]: Sized[Section[X]] = _.size
 
       given Eq[Section[Element]] with
         /** This is most definitely *not* [[Section.equals]] - we want to use
@@ -70,8 +508,6 @@ object SectionedCodeExtension extends StrictLogging:
         end eqv
       end given
 
-      given Sized[Section[Element]] = _.size
-
       extension [Item: Sized](multiSided: MultiSided[Item])
         private def size: Int =
           val sized = summon[Sized[Item]]
@@ -85,7 +521,7 @@ object SectionedCodeExtension extends StrictLogging:
       end extension
 
       val paths =
-        codeMotionAnalysis.base.keySet ++ codeMotionAnalysis.left.keySet ++ codeMotionAnalysis.right.keySet
+        sectionedCode.base.keySet ++ sectionedCode.left.keySet ++ sectionedCode.right.keySet
 
       def resolution(
           multiSided: MultiSided[Section[Element]]
@@ -232,9 +668,9 @@ object SectionedCodeExtension extends StrictLogging:
                 )(initialProgress)
             end given
 
-            val base  = codeMotionAnalysis.base.get(path).map(_.sections)
-            val left  = codeMotionAnalysis.left.get(path).map(_.sections)
-            val right = codeMotionAnalysis.right.get(path).map(_.sections)
+            val base  = sectionedCode.base.get(path).map(_.sections)
+            val left  = sectionedCode.left.get(path).map(_.sections)
+            val right = sectionedCode.right.get(path).map(_.sections)
 
             (base, left, right) match
               case (None, Some(leftSections), None) =>
@@ -269,14 +705,16 @@ object SectionedCodeExtension extends StrictLogging:
 
                 val firstPassMergeResult
                     : FirstPassMergeResult[Section[Element]] =
-                  mergeOf(mergeAlgebra =
-                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
-                      FileDeletionContext.Left
-                    )
-                  )(
-                    base = baseSections,
-                    left = IndexedSeq.empty,
-                    right = rightSections
+                  longestCommonSubsequenceOf(
+                    baseSections = baseSections,
+                    leftSections = IndexedSeq.empty,
+                    rightSections = rightSections
+                  )(path).mergeUsing(
+                    mergeAlgebra =
+                      FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
+                        FileDeletionContext.Left
+                      ),
+                    label = s"Sections merged:"
                   )
 
                 partialMergeResult.aggregate(path, firstPassMergeResult)
@@ -289,14 +727,16 @@ object SectionedCodeExtension extends StrictLogging:
 
                 val firstPassMergeResult
                     : FirstPassMergeResult[Section[Element]] =
-                  mergeOf(mergeAlgebra =
-                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
-                      FileDeletionContext.Right
-                    )
-                  )(
-                    base = baseSections,
-                    left = leftSections,
-                    right = IndexedSeq.empty
+                  longestCommonSubsequenceOf(
+                    baseSections = baseSections,
+                    leftSections = leftSections,
+                    rightSections = IndexedSeq.empty
+                  )(path).mergeUsing(
+                    mergeAlgebra =
+                      FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
+                        FileDeletionContext.Right
+                      ),
+                    label = s"Sections merged:"
                   )
 
                 partialMergeResult.aggregate(path, firstPassMergeResult)
@@ -307,25 +747,32 @@ object SectionedCodeExtension extends StrictLogging:
                   ) =>
                 // Mix of possibilities - the file may have been added on both
                 // sides, or modified on either or both sides. There is also an
-                // extraneous case where there is no file on any of the sides,
-                // and another extraneous case where the file is on all three
-                // sides but hasn't changed.
+                // extraneous case where the file is on all three sides but
+                // hasn't changed.
 
                 // Whichever is the case, merge...
 
                 val firstPassMergeResult
                     : FirstPassMergeResult[Section[Element]] =
-                  mergeOf(mergeAlgebra =
-                    FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
-                      FileDeletionContext.None
-                    )
-                  )(
-                    base = optionalBaseSections.getOrElse(IndexedSeq.empty),
-                    left = leftSections,
-                    right = rightSections
+                  longestCommonSubsequenceOf(
+                    baseSections =
+                      optionalBaseSections.getOrElse(IndexedSeq.empty),
+                    leftSections = leftSections,
+                    rightSections = rightSections
+                  )(path).mergeUsing(
+                    mergeAlgebra =
+                      FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
+                        FileDeletionContext.None
+                      ),
+                    label = s"Sections merged:"
                   )
 
                 partialMergeResult.aggregate(path, firstPassMergeResult)
+
+              case (None, None, None) =>
+                throw new AssertionError(
+                  s"Logic error: path $path does not exist on the base, left or right side."
+                )
             end match
         }
 
@@ -440,7 +887,7 @@ object SectionedCodeExtension extends StrictLogging:
           sourceAnchor: Section[Element]
       ): (IndexedSeq[Section[Element]], IndexedSeq[Section[Element]]) =
         val file =
-          codeMotionAnalysis.base(codeMotionAnalysis.basePathFor(sourceAnchor))
+          sectionedCode.base(sectionedCode.basePathFor(sourceAnchor))
 
         def selection(
             candidates: IndexedSeqView[Section[Element]]
@@ -464,7 +911,7 @@ object SectionedCodeExtension extends StrictLogging:
       end anchoredContentFromSource
 
       def anchoredContentFromOppositeSide(
-          moveDestinationSide: Side,
+          moveDestinationSide: MoveDestinationSide,
           oppositeSideAnchor: OppositeSideAnchor[Section[Element]]
       ): (
           Option[IndexedSeq[Section[Element]]],
@@ -472,18 +919,18 @@ object SectionedCodeExtension extends StrictLogging:
       ) =
         val (file, preservations, coincidentInsertionsOrEdits) =
           moveDestinationSide match
-            case Side.Left =>
+            case MoveDestinationSide.Left =>
               (
-                codeMotionAnalysis.right(
-                  codeMotionAnalysis.rightPathFor(oppositeSideAnchor.element)
+                sectionedCode.right(
+                  sectionedCode.rightPathFor(oppositeSideAnchor.element)
                 ),
                 rightPreservations,
                 coincidentInsertionsOrEditsOnRight
               )
-            case Side.Right =>
+            case MoveDestinationSide.Right =>
               (
-                codeMotionAnalysis.left(
-                  codeMotionAnalysis.leftPathFor(oppositeSideAnchor.element)
+                sectionedCode.left(
+                  sectionedCode.leftPathFor(oppositeSideAnchor.element)
                 ),
                 leftPreservations,
                 coincidentInsertionsOrEditsOnLeft
@@ -552,23 +999,23 @@ object SectionedCodeExtension extends StrictLogging:
       end anchoredContentFromOppositeSide
 
       def anchoredContentFromModeDestinationSide(
-          moveDestinationSide: Side,
+          moveDestinationSide: MoveDestinationSide,
           moveDestinationAnchor: Section[Element]
       ): (IndexedSeq[Section[Element]], IndexedSeq[Section[Element]]) =
         val (file, preservations, coincidentInsertionsOrEdits) =
           moveDestinationSide match
-            case Side.Left =>
+            case MoveDestinationSide.Left =>
               (
-                codeMotionAnalysis.left(
-                  codeMotionAnalysis.leftPathFor(moveDestinationAnchor)
+                sectionedCode.left(
+                  sectionedCode.leftPathFor(moveDestinationAnchor)
                 ),
                 leftPreservations,
                 coincidentInsertionsOrEditsOnLeft
               )
-            case Side.Right =>
+            case MoveDestinationSide.Right =>
               (
-                codeMotionAnalysis.right(
-                  codeMotionAnalysis.rightPathFor(moveDestinationAnchor)
+                sectionedCode.right(
+                  sectionedCode.rightPathFor(moveDestinationAnchor)
                 ),
                 rightPreservations,
                 coincidentInsertionsOrEditsOnRight
@@ -609,7 +1056,7 @@ object SectionedCodeExtension extends StrictLogging:
 
       object CachedAnchoredContentMerges:
         private case class MergeInput(
-            moveDestinationSide: Side,
+            moveDestinationSide: MoveDestinationSide,
             anchoredContentFromSource: IndexedSeq[Section[Element]],
             anchoredContentFromOppositeSide: IndexedSeq[
               Section[Element]
@@ -622,13 +1069,13 @@ object SectionedCodeExtension extends StrictLogging:
         ]] = Caffeine.newBuilder().build()
 
         def of(
-            moveDestinationSide: Side,
+            moveDestinationSide: MoveDestinationSide,
             anchoredContentFromSource: IndexedSeq[Section[Element]],
             anchoredContentFromOppositeSide: IndexedSeq[Section[Element]],
             anchoredContentFromMoveDestinationSide: IndexedSeq[Section[Element]]
         ): MultiSidedMergeResult[Section[Element]] =
           moveDestinationSide match
-            case Side.Left =>
+            case MoveDestinationSide.Left =>
               logger.debug(
                 s"""Requesting merge of anchored content,\nsource:\n${pprintCustomised(
                     anchoredContentFromSource
@@ -640,7 +1087,7 @@ object SectionedCodeExtension extends StrictLogging:
                     anchoredContentFromOppositeSide
                   )}""".stripMargin
               )
-            case Side.Right =>
+            case MoveDestinationSide.Right =>
               logger.debug(
                 s"""Requesting merge of anchored content,\nsource:\n${pprintCustomised(
                     anchoredContentFromSource
@@ -667,20 +1114,22 @@ object SectionedCodeExtension extends StrictLogging:
             _ =>
               updatedCache = true
 
-              given ProgressRecording = NoProgressRecording
+              given ProgressRecording = SilentProgressRecording
 
               moveDestinationSide match
-                case Side.Left =>
+                case MoveDestinationSide.Left =>
                   mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
                     base = anchoredContentFromSource,
                     left = anchoredContentFromMoveDestinationSide,
-                    right = anchoredContentFromOppositeSide
+                    right = anchoredContentFromOppositeSide,
+                    label = "Splice merge to left destination:"
                   )
-                case Side.Right =>
+                case MoveDestinationSide.Right =>
                   mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
                     base = anchoredContentFromSource,
                     left = anchoredContentFromOppositeSide,
-                    right = anchoredContentFromMoveDestinationSide
+                    right = anchoredContentFromMoveDestinationSide,
+                    label = "Splice merge to right destination:"
                   )
               end match
           )
@@ -897,8 +1346,8 @@ object SectionedCodeExtension extends StrictLogging:
                 ).collect { case MultiSided.Unique(element) =>
                   element
                 }.flatMap { adjacentToRightContext =>
-                  val rightFile = codeMotionAnalysis.right(
-                    codeMotionAnalysis.rightPathFor(adjacentToRightContext)
+                  val rightFile = sectionedCode.right(
+                    sectionedCode.rightPathFor(adjacentToRightContext)
                   )
 
                   val Searching.Found(indexOfSection) =
@@ -943,8 +1392,8 @@ object SectionedCodeExtension extends StrictLogging:
                 ).collect { case MultiSided.Unique(element) =>
                   element
                 }.flatMap { adjacentToLeftContext =>
-                  val leftFile = codeMotionAnalysis.left(
-                    codeMotionAnalysis.leftPathFor(adjacentToLeftContext)
+                  val leftFile = sectionedCode.left(
+                    sectionedCode.leftPathFor(adjacentToLeftContext)
                   )
 
                   val Searching.Found(indexOfSection) =
@@ -1484,10 +1933,22 @@ object SectionedCodeExtension extends StrictLogging:
             )
         }
 
-      secondPassMergeResultsByPath
-        .map(applySplices)
-        .map(applySubstitutions)
-        .map(resolveSections) -> moveDestinationsReport
+      val result =
+        Using(
+          progressRecording.newSession(
+            label = "Post-alignment merge processing:",
+            maximumProgress = 1
+          )(initialProgress = 0)
+        ) { progressRecordingSession =>
+          val result = secondPassMergeResultsByPath
+            .map(applySplices)
+            .map(applySubstitutions)
+            .map(resolveSections) -> moveDestinationsReport
+          progressRecordingSession.upTo(1)
+          result
+        }.get
+
+      result
     end merge
   end extension
 end SectionedCodeExtension

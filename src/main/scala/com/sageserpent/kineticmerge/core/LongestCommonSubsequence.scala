@@ -11,6 +11,7 @@ import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
 }
 import monocle.syntax.all.*
 
+import scala.annotation.tailrec
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.util.Using
@@ -151,6 +152,208 @@ end LongestCommonSubsequence
 
 object LongestCommonSubsequence:
 
+  def apply[Element: Eq: Sized](
+      base: IndexedSeq[Contribution[Element]],
+      left: IndexedSeq[Contribution[Element]],
+      right: IndexedSeq[Contribution[Element]]
+  ): LongestCommonSubsequence[Element] =
+    // TODO: add contract checking - we expect the subsequences of fully or
+    // partially common contributions to align on each pair of sides.
+
+    // PLAN: go through the three sequences, looking for a side or sides that
+    // have either a partially or fully common contribution (if more than one,
+    // they should agree on the contribution kind and elements). Advance through
+    // the other side or sides until the contributions are synchronised across
+    // the relevant sides (this should take place and should not involve
+    // skipping through other contributions). Use the helper methods on
+    // `LongestCommonSubsequence` to build up the sizes.
+
+    val equality = summon[Eq[Element]]
+    val sized    = summon[Sized[Element]]
+
+    @tailrec
+    def synchronise(
+        base: Seq[Contribution[Element]],
+        left: Seq[Contribution[Element]],
+        right: Seq[Contribution[Element]],
+        partialResult: LongestCommonSubsequence[Element]
+    ): LongestCommonSubsequence[Element] =
+      def failure: Nothing =
+        throw new IllegalArgumentException(
+          s"""Failed to synchronise the three inputs while assembling the longest common subsequence.
+             |Base head:
+             |${pprintCustomised(base.headOption)}
+             |Left head:
+             |${pprintCustomised(left.headOption)}
+             |Right head:
+             |${pprintCustomised(right.headOption)}
+             |""".stripMargin
+        )
+
+      (base, left, right) match
+        case (Seq(), Seq(), Seq()) => partialResult
+        case (_, Seq(), Seq())     =>
+          base.foldLeft(partialResult) {
+            case (result, Contribution.Difference(baseElement)) =>
+              result.addBaseDifference(baseElement)
+            case _ => failure
+          }
+
+        case (Seq(), _, Seq()) =>
+          left.foldLeft(partialResult) {
+            case (result, Contribution.Difference(leftElement)) =>
+              result.addLeftDifference(leftElement)
+            case _ => failure
+          }
+
+        case (Seq(), Seq(), _) =>
+          right.foldLeft(partialResult) {
+            case (result, Contribution.Difference(rightElement)) =>
+              result.addRightDifference(rightElement)
+            case _ => failure
+          }
+
+        case (
+              Seq(Contribution.Difference(baseElement), baseTail*),
+              _,
+              _
+            ) =>
+          synchronise(
+            baseTail,
+            left,
+            right,
+            partialResult.addBaseDifference(baseElement)
+          )
+
+        case (
+              _,
+              Seq(Contribution.Difference(leftElement), leftTail*),
+              _
+            ) =>
+          synchronise(
+            base,
+            leftTail,
+            right,
+            partialResult.addLeftDifference(leftElement)
+          )
+
+        case (
+              _,
+              _,
+              Seq(Contribution.Difference(rightElement), rightTail*)
+            ) =>
+          synchronise(
+            base,
+            left,
+            rightTail,
+            partialResult.addRightDifference(rightElement)
+          )
+
+        case (
+              Seq(Contribution.Common(baseElement), baseTail*),
+              Seq(Contribution.Common(leftElement), leftTail*),
+              Seq(Contribution.Common(rightElement), rightTail*)
+            )
+            if equality.eqv(baseElement, leftElement) && equality.eqv(
+              baseElement,
+              rightElement
+            ) =>
+          synchronise(
+            baseTail,
+            leftTail,
+            rightTail,
+            partialResult.addCommon(baseElement, leftElement, rightElement)(
+              sized.sizeOf
+            )
+          )
+
+        case (
+              _,
+              Seq(
+                Contribution.CommonToLeftAndRightOnly(leftElement),
+                leftTail*
+              ),
+              Seq(
+                Contribution.CommonToLeftAndRightOnly(rightElement),
+                rightTail*
+              )
+            )
+            if equality.eqv(
+              leftElement,
+              rightElement
+            ) =>
+          synchronise(
+            base,
+            leftTail,
+            rightTail,
+            partialResult.addCommonLeftAndRight(leftElement, rightElement)(
+              sized.sizeOf
+            )
+          )
+
+        case (
+              Seq(
+                Contribution.CommonToBaseAndRightOnly(baseElement),
+                baseTail*
+              ),
+              _,
+              Seq(
+                Contribution.CommonToBaseAndRightOnly(rightElement),
+                rightTail*
+              )
+            )
+            if equality.eqv(
+              baseElement,
+              rightElement
+            ) =>
+          synchronise(
+            baseTail,
+            left,
+            rightTail,
+            partialResult.addCommonBaseAndRight(baseElement, rightElement)(
+              sized.sizeOf
+            )
+          )
+
+        case (
+              Seq(Contribution.CommonToBaseAndLeftOnly(baseElement), baseTail*),
+              Seq(Contribution.CommonToBaseAndLeftOnly(leftElement), leftTail*),
+              _
+            )
+            if equality.eqv(
+              baseElement,
+              leftElement
+            ) =>
+          synchronise(
+            baseTail,
+            leftTail,
+            right,
+            partialResult.addCommonBaseAndLeft(baseElement, leftElement)(
+              sized.sizeOf
+            )
+          )
+
+        case _ => failure
+
+      end match
+    end synchronise
+
+    synchronise(
+      base,
+      left,
+      right,
+      LongestCommonSubsequence(
+        base = IndexedSeq.empty,
+        left = IndexedSeq.empty,
+        right = IndexedSeq.empty,
+        commonSubsequenceSize = CommonSubsequenceSize.zero,
+        commonToLeftAndRightOnlySize = CommonSubsequenceSize.zero,
+        commonToBaseAndLeftOnlySize = CommonSubsequenceSize.zero,
+        commonToBaseAndRightOnlySize = CommonSubsequenceSize.zero
+      )
+    )
+  end apply
+
   def defaultElementSize[Element](irrelevant: Element): Int = 1
 
   def of[Element: Eq: Sized](
@@ -218,9 +421,6 @@ object LongestCommonSubsequence:
             resultSnapshotPriorToMutation
           end advanceToNextLeadingSwathe
 
-          private def notYetReachedFinalSwathe =
-            maximumSwatheIndex > _indexOfLeadingSwathe
-
           def topLevelSolution: LongestCommonSubsequence[Element] =
             require(!notYetReachedFinalSwathe)
 
@@ -231,6 +431,13 @@ object LongestCommonSubsequence:
               right.size
             )
           end topLevelSolution
+
+          private def notYetReachedFinalSwathe =
+            maximumSwatheIndex > _indexOfLeadingSwathe
+
+          inline private def storageLotForLeadingSwathe =
+            _indexOfLeadingSwathe % 2
+          end storageLotForLeadingSwathe
 
           def consultRelevantSwatheForSolution(
               onePastBaseIndex: Int,
@@ -280,10 +487,6 @@ object LongestCommonSubsequence:
               onePastRightIndex
             ) = longestCommonSubsequence
           end storeSolutionInLeadingSwathe
-
-          inline private def storageLotForLeadingSwathe =
-            _indexOfLeadingSwathe % 2
-          end storageLotForLeadingSwathe
 
           inline private def newStorage = Storage(
             baseEqualToSwatheIndex =
@@ -370,7 +573,7 @@ object LongestCommonSubsequence:
           // sacrificing performance obtained by using `Future` to do the heavy
           // lifting), or learn how to write a catamorphism for `Future` that
           // unfolds through the swathes. The problem is that without a
-          // catamorphism, the only obvious way of doing this is to used
+          // catamorphism, the only obvious way of doing this is to use
           // `Monad.whileM_`, and that really doesn't play well with `Future` as
           // it evaluates its condition eagerly and once.
           val allSolutionsOverAllSwathes = Monad[IO].whileM_(
@@ -947,6 +1150,8 @@ object LongestCommonSubsequence:
       )
   end CommonSubsequenceSize
 
+  // TODO: this definition seems a bit strange - why not hoist `element` up into
+  // the core enum constructor?
   enum Contribution[Element]:
     case Common(
         element: Element
@@ -965,6 +1170,19 @@ object LongestCommonSubsequence:
     )
 
     def element: Element
+
+    def constructLikeness[AnotherElement](
+        anotherElement: AnotherElement
+    ): Contribution[AnotherElement] =
+      this match
+        case Common(_)                  => Common(anotherElement)
+        case Difference(_)              => Difference(anotherElement)
+        case CommonToBaseAndLeftOnly(_) =>
+          CommonToBaseAndLeftOnly(anotherElement)
+        case CommonToBaseAndRightOnly(_) =>
+          CommonToBaseAndRightOnly(anotherElement)
+        case CommonToLeftAndRightOnly(_) =>
+          CommonToLeftAndRightOnly(anotherElement)
   end Contribution
 
   object CommonSubsequenceSize:

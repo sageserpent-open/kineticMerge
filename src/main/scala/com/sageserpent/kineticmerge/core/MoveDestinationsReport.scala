@@ -270,7 +270,7 @@ object MoveDestinationsReport:
                     ) =>
                   moveDestinations.left.map(moveDestination =>
                     AnchoredMove(
-                      moveDestinationSide = Side.Left,
+                      moveDestinationSide = MoveDestinationSide.Left,
                       moveDestinationAnchor = moveDestination,
                       oppositeSideAnchor = OppositeSideAnchor.Plain(
                         elementOnTheOppositeSideToTheMoveDestination
@@ -282,7 +282,7 @@ object MoveDestinationsReport:
                       .Conflict(_, IndexedSeq(loneRightElement), _) =>
                   moveDestinations.left.map(moveDestination =>
                     AnchoredMove(
-                      moveDestinationSide = Side.Left,
+                      moveDestinationSide = MoveDestinationSide.Left,
                       moveDestinationAnchor = moveDestination,
                       oppositeSideAnchor =
                         OppositeSideAnchor.OnlyOneInMigratedEdit(
@@ -302,7 +302,7 @@ object MoveDestinationsReport:
                   moveDestinations.left.flatMap(moveDestination =>
                     Seq(
                       AnchoredMove(
-                        moveDestinationSide = Side.Left,
+                        moveDestinationSide = MoveDestinationSide.Left,
                         moveDestinationAnchor = moveDestination,
                         oppositeSideAnchor =
                           OppositeSideAnchor.FirstInMigratedEdit(
@@ -311,7 +311,7 @@ object MoveDestinationsReport:
                         sourceAnchor = source
                       ),
                       AnchoredMove(
-                        moveDestinationSide = Side.Left,
+                        moveDestinationSide = MoveDestinationSide.Left,
                         moveDestinationAnchor = moveDestination,
                         oppositeSideAnchor =
                           OppositeSideAnchor.LastInMigratedEdit(
@@ -331,7 +331,7 @@ object MoveDestinationsReport:
                     ) =>
                   moveDestinations.right.map(moveDestination =>
                     AnchoredMove(
-                      moveDestinationSide = Side.Right,
+                      moveDestinationSide = MoveDestinationSide.Right,
                       moveDestinationAnchor = moveDestination,
                       oppositeSideAnchor = OppositeSideAnchor.Plain(
                         elementOnTheOppositeSideToTheMoveDestination
@@ -343,7 +343,7 @@ object MoveDestinationsReport:
                       .Conflict(IndexedSeq(loneLeftElement), _, _) =>
                   moveDestinations.right.map(moveDestination =>
                     AnchoredMove(
-                      moveDestinationSide = Side.Right,
+                      moveDestinationSide = MoveDestinationSide.Right,
                       moveDestinationAnchor = moveDestination,
                       oppositeSideAnchor =
                         OppositeSideAnchor.OnlyOneInMigratedEdit(
@@ -363,7 +363,7 @@ object MoveDestinationsReport:
                   moveDestinations.right.flatMap(moveDestination =>
                     Seq(
                       AnchoredMove(
-                        moveDestinationSide = Side.Right,
+                        moveDestinationSide = MoveDestinationSide.Right,
                         moveDestinationAnchor = moveDestination,
                         oppositeSideAnchor =
                           OppositeSideAnchor.FirstInMigratedEdit(
@@ -372,7 +372,7 @@ object MoveDestinationsReport:
                         sourceAnchor = source
                       ),
                       AnchoredMove(
-                        moveDestinationSide = Side.Right,
+                        moveDestinationSide = MoveDestinationSide.Right,
                         moveDestinationAnchor = moveDestination,
                         oppositeSideAnchor =
                           OppositeSideAnchor.LastInMigratedEdit(
@@ -428,10 +428,10 @@ object MoveDestinationsReport:
     * @tparam Element
     */
   case class AnchoredMove[Element](
-      moveDestinationSide: Side,
-      moveDestinationAnchor: Element,
-      oppositeSideAnchor: OppositeSideAnchor[Element],
-      sourceAnchor: Element
+                                    moveDestinationSide: MoveDestinationSide,
+                                    moveDestinationAnchor: Element,
+                                    oppositeSideAnchor: OppositeSideAnchor[Element],
+                                    sourceAnchor: Element
   )
 
   case class MoveEvaluation[Element](

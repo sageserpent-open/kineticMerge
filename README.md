@@ -8,7 +8,7 @@ Merge a heavily refactored codebase and stay sane.
 
 **Requires JRE 17 LTS or later since release 1.3.0.**
 
-(**Release - 1.12.0**).
+(**Release - 1.14.0**).
 
 YouTube:
 
@@ -254,7 +254,7 @@ so long is a testament to the collision resistance of Rabin fingerprinting!
 - [Problem Space](./documents/designNotes/problemSpace.md)
 - [Code Motion](./documents/designNotes/codeMotion.md)
 - [Component Breakdown](./documents/designNotes/componentBreakdown.md)
-- [`CodeMotionAnalysis.of`](./documents/designNotes/codeMotionAnalysis.md)
+- [`CodeMotionAnalysis.of`](./documents/designNotes/sectionedCode.md)
 - [Blind Alleys](./documents/designNotes/blindAlleys.md)
 - [Skeletons in the Cupboard](./documents/designNotes/skeletonsInTheCupboard.md)
 

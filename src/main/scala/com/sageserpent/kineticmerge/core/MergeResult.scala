@@ -22,9 +22,9 @@ import scala.math.Ordering.Implicits.seqOrdering
   * appropriate.<p>Segments are never completely empty of elements, although it
   * is possible to have a conflict where just one side is empty. So if a segment
   * becomes completely empty after an operation, it will be removed.<p>It is
-  * also possible to view a [[MergeResult]] from either [[Side]], applying a
-  * restructuring operation to the sides (this may be optimised to just once if
-  * there is just one resolved segment).
+  * also possible to view a [[MergeResult]] from any of the three sides,
+  * applying a restructuring operation to the sides (this may be optimised to
+  * just once if there is just one resolved segment).
   * @param segments
   * @tparam Element
   */
@@ -61,6 +61,30 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
         MergeResult(segments :+ Segment.Resolved(Seq(element)))
     }
 
+  def addConflicted(
+      baseElements: Seq[Element],
+      leftElements: Seq[Element],
+      rightElements: Seq[Element]
+  ): MergeResult[Element] = segmentFor(
+    baseElements,
+    leftElements,
+    rightElements
+  ).fold(ifEmpty = this) {
+    case segment @ Segment.Conflicted(base, left, right) =>
+      segments.lastOption match
+        case Some(Segment.Conflicted(sb, sl, sr)) =>
+          val Some(coalesced) = segmentFor(
+            sb ++ base,
+            sl ++ left,
+            sr ++ right
+          ): @unchecked
+          MergeResult(segments.init :+ coalesced)
+        case _ =>
+          MergeResult(segments :+ segment)
+    case Segment.Resolved(elements) =>
+      addResolved(elements)
+  }
+
   def addResolved(elements: Seq[Element]): MergeResult[Element] =
     segments.lastOption
       .fold(ifEmpty = MergeResult(Seq(Segment.Resolved(elements)))) {
@@ -71,50 +95,6 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
         case Segment.Conflicted(_, _, _) =>
           MergeResult(segments :+ Segment.Resolved(elements))
       }
-
-  def addConflicted(
-      baseElements: Seq[Element],
-      leftElements: Seq[Element],
-      rightElements: Seq[Element]
-  ): MergeResult[Element] = segments.lastOption
-    .fold(ifEmpty =
-      MergeResult(
-        Seq(Segment.Conflicted(baseElements, leftElements, rightElements))
-      )
-    ) {
-      case Segment.Resolved(_) =>
-        MergeResult(
-          segments :+ Segment.Conflicted(
-            baseElements,
-            leftElements,
-            rightElements
-          )
-        )
-      case Segment.Conflicted(
-            segmentBaseElements,
-            segmentLeftElements,
-            segmentRightElements
-          ) =>
-        val baseElementsConcatenated  = segmentBaseElements ++ baseElements
-        val leftElementsConcatenated  = segmentLeftElements ++ leftElements
-        val rightElementsConcatenated = segmentRightElements ++ rightElements
-
-        // NOTE: because the enclosing method is called by
-        // `MergeResult.coalescing`, whose callers have already called
-        // `MergeResult.segmentFor`; this is a bit inefficient, but we rely on
-        // this being a rare occurrence.
-        // NOTE: in this case, we know we have elements on at least two sides
-        // from the existing segment that the new elements are being coalesced
-        // with, so we don't expect the `None` case to arise,
-        val Some(coalescedSegment) = segmentFor(
-          baseElementsConcatenated,
-          leftElementsConcatenated,
-          rightElementsConcatenated
-        ): @unchecked
-
-        MergeResult(segments.init :+ coalescedSegment)
-
-    }
 
   def map[Transformed: Eq](
       transform: Element => Transformed

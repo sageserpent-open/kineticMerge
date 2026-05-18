@@ -934,10 +934,10 @@ object Main extends StrictLogging:
       )
 
       def fileRenamingReportUsing(
-          codeMotionAnalysis: SectionedCode[RelPath, Token],
+          sectionedCode: SectionedCode[RelPath, Token],
           moveDestinationsReport: MoveDestinationsReport[Section[Token]]
       )(path: RelPath): Option[FileRelocationReport] =
-        val baseSections = codeMotionAnalysis.base(path).sections
+        val baseSections = sectionedCode.base(path).sections
 
         val (leftDestinationPaths, baseSectionsMovingLeftToNewFiles) =
           baseSections
@@ -1079,10 +1079,10 @@ object Main extends StrictLogging:
       end fileRenamingReportUsing
 
       for
-        codeMotionAnalysis: SectionedCode[RelPath, Token] <- EitherT
+        sectionedCode: SectionedCode[RelPath, Token] <- EitherT
           .fromEither[WorkflowLogWriter] {
             SectionedCode.of(baseSources, leftSources, rightSources)(
-              configuration
+              configuration.copy(label = "Primary match analysis")
             )
           }
           .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
@@ -1090,14 +1090,14 @@ object Main extends StrictLogging:
         (mergeResultsByPath, moveDestinationsReport) =
           given ProgressRecording = configuration.progressRecording
 
-          codeMotionAnalysis.merge
+          sectionedCode.merge
 
         _ <- moveDestinationsReport.summarizeInText.foldLeft(right(()))(
           _ logOperation _
         )
 
         fileRenamingReport = fileRenamingReportUsing(
-          codeMotionAnalysis,
+          sectionedCode,
           moveDestinationsReport
         )
 
@@ -1412,7 +1412,7 @@ object Main extends StrictLogging:
               // NOTE: we don't consult `mergeResultsByPath` because we know the
               // outcome already. This is important, because deletion of an
               // entire file on just one side is treated as a special case by
-              // `CodeMotionAnalysisExtension.mergeResultsByPath` and does not
+              // `SectionedCode.mergeResultsByPath` and does not
               // necessarily remove the content.
               for
                 _                      <- deleteFile(baseDirectory)(path)
@@ -1425,7 +1425,7 @@ object Main extends StrictLogging:
               // NOTE: we don't consult `mergeResultsByPath` because we know the
               // outcome already. This is important, because deletion of an
               // entire file on just one side is treated as a special case by
-              // `CodeMotionAnalysisExtension.mergeResultsByPath` and does not
+              // `SectionedCode.mergeResultsByPath` and does not
               // necessarily remove the content.
               for
                 _                      <- deleteFile(baseDirectory)(path)
