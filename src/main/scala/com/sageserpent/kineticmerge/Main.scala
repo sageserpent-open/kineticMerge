@@ -348,6 +348,10 @@ object Main extends StrictLogging:
   private def right[Payload](payload: Payload): Workflow[Payload] =
     EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
 
+  extension (content: String @@ Tags.Content)
+    private def asTokens: Vector[Token] = tokens(content).get
+  end extension
+
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](
       errorMessage.taggedWith[Tags.ErrorMessage]
@@ -418,9 +422,7 @@ object Main extends StrictLogging:
         theirModification: Change.Modification,
         baseContent: String @@ Tags.Content
     )
-    case BothContributeADeletion(
-        baseContent: String @@ Tags.Content
-    )
+    case BothContributeADeletion(baseContent: String @@ Tags.Content)
   end MergeInput
 
   private case class EarlyTermination(exitCode: Int @@ Tags.ExitCode)
@@ -682,6 +684,11 @@ object Main extends StrictLogging:
       given Funnel[Token] = Token.funnel
       given HashFunction  = Hashing.murmur3_32_fixed()
 
+      enum PresentInMergeOutcome:
+        case Added
+        case Modified
+      end PresentInMergeOutcome
+
       // TODO: why bother to *reconstruct* the content maps when the calling
       // context already has them, albeit in terms of raw content and not
       // tokens?
@@ -690,14 +697,14 @@ object Main extends StrictLogging:
         baseContentsByPath,
         leftContentsByPath,
         rightContentsByPath,
-        newPathsOnLeftOrRight
+        newOrModifiedPathsOnLeftOrRight
       ) =
         mergeInputs.foldLeft(
           (
             Map.empty[RelPath, IndexedSeq[Token]],
             Map.empty[RelPath, IndexedSeq[Token]],
             Map.empty[RelPath, IndexedSeq[Token]],
-            Set.empty[RelPath]
+            Map.empty[RelPath, PresentInMergeOutcome]
           )
         ) {
           case (
@@ -705,7 +712,7 @@ object Main extends StrictLogging:
                   baseContentsByPath,
                   leftContentsByPath,
                   rightContentsByPath,
-                  newPathsOnLeftOrRight
+                  newOrModifiedPathsOnLeftOrRight
                 ),
                 (path, mergeInput)
               ) =>
@@ -714,70 +721,62 @@ object Main extends StrictLogging:
                     ourModification,
                     baseContent
                   ) =>
-                val unchangedContent = tokens(baseContent).get
+                val baseContentTokens = baseContent.asTokens
 
                 (
-                  baseContentsByPath + (path -> unchangedContent),
-                  leftContentsByPath + (path -> tokens(
-                    ourModification.content
-                  ).get),
-                  rightContentsByPath + (path -> unchangedContent),
-                  newPathsOnLeftOrRight
+                  baseContentsByPath + (path -> baseContentTokens),
+                  leftContentsByPath + (path -> ourModification.content.asTokens),
+                  rightContentsByPath + (path -> baseContentTokens),
+                  newOrModifiedPathsOnLeftOrRight + (path -> PresentInMergeOutcome.Modified)
                 )
 
               case JustTheirModification(
                     theirModification,
                     baseContent
                   ) =>
-                val unchangedContent = tokens(baseContent).get
+                val baseContentTokens = baseContent.asTokens
 
                 (
-                  baseContentsByPath + (path  -> unchangedContent),
-                  leftContentsByPath + (path  -> unchangedContent),
-                  rightContentsByPath + (path -> tokens(
-                    theirModification.content
-                  ).get),
-                  newPathsOnLeftOrRight
+                  baseContentsByPath + (path -> baseContentTokens),
+                  leftContentsByPath + (path -> baseContentTokens),
+                  rightContentsByPath + (path -> theirModification.content.asTokens),
+                  newOrModifiedPathsOnLeftOrRight + (path -> PresentInMergeOutcome.Modified)
                 )
 
               case JustOurAddition(ourAddition) =>
                 (
                   baseContentsByPath,
-                  leftContentsByPath + (path -> tokens(
-                    ourAddition.content
-                  ).get),
+                  leftContentsByPath + (path -> ourAddition.content.asTokens),
                   rightContentsByPath,
-                  newPathsOnLeftOrRight + path
+                  newOrModifiedPathsOnLeftOrRight + (path -> PresentInMergeOutcome.Added)
                 )
 
               case JustTheirAddition(theirAddition) =>
                 (
                   baseContentsByPath,
                   leftContentsByPath,
-                  rightContentsByPath + (path -> tokens(
-                    theirAddition.content
-                  ).get),
-                  newPathsOnLeftOrRight + path
+                  rightContentsByPath + (path -> theirAddition.content.asTokens),
+                  newOrModifiedPathsOnLeftOrRight + (path -> PresentInMergeOutcome.Added)
                 )
 
               case JustOurDeletion(baseContent) =>
-                val deletedContent = tokens(baseContent).get
+                val baseContentTokens = baseContent.asTokens
 
                 (
-                  baseContentsByPath + (path -> deletedContent),
+                  baseContentsByPath + (path -> baseContentTokens),
                   leftContentsByPath,
-                  rightContentsByPath + (path -> deletedContent),
-                  newPathsOnLeftOrRight
+                  rightContentsByPath + (path -> baseContentTokens),
+                  newOrModifiedPathsOnLeftOrRight
                 )
 
               case JustTheirDeletion(baseContent) =>
-                val deletedContent = tokens(baseContent).get
+                val baseContentTokens = baseContent.asTokens
 
                 (
-                  baseContentsByPath + (path -> deletedContent),
-                  leftContentsByPath + (path -> deletedContent),
+                  baseContentsByPath + (path -> baseContentTokens),
+                  leftContentsByPath + (path -> baseContentTokens),
                   rightContentsByPath,
-                  newPathsOnLeftOrRight
+                  newOrModifiedPathsOnLeftOrRight
                 )
 
               case OurModificationAndTheirDeletion(
@@ -785,14 +784,10 @@ object Main extends StrictLogging:
                     baseContent
                   ) =>
                 (
-                  baseContentsByPath + (path -> tokens(
-                    baseContent
-                  ).get),
-                  leftContentsByPath + (path -> tokens(
-                    ourModification.content
-                  ).get),
+                  baseContentsByPath + (path -> baseContent.asTokens),
+                  leftContentsByPath + (path -> ourModification.content.asTokens),
                   rightContentsByPath,
-                  newPathsOnLeftOrRight
+                  newOrModifiedPathsOnLeftOrRight + (path -> PresentInMergeOutcome.Modified)
                 )
 
               case TheirModificationAndOurDeletion(
@@ -800,14 +795,10 @@ object Main extends StrictLogging:
                     baseContent
                   ) =>
                 (
-                  baseContentsByPath + (path -> tokens(
-                    baseContent
-                  ).get),
+                  baseContentsByPath + (path -> baseContent.asTokens),
                   leftContentsByPath,
-                  rightContentsByPath + (path -> tokens(
-                    theirModification.content
-                  ).get),
-                  newPathsOnLeftOrRight
+                  rightContentsByPath + (path -> theirModification.content.asTokens),
+                  newOrModifiedPathsOnLeftOrRight + (path -> PresentInMergeOutcome.Modified)
                 )
 
               case BothContributeAnAddition(
@@ -816,13 +807,9 @@ object Main extends StrictLogging:
                   ) =>
                 (
                   baseContentsByPath,
-                  leftContentsByPath + (path -> tokens(
-                    ourAddition.content
-                  ).get),
-                  rightContentsByPath + (path -> tokens(
-                    theirAddition.content
-                  ).get),
-                  newPathsOnLeftOrRight + path
+                  leftContentsByPath + (path -> ourAddition.content.asTokens),
+                  rightContentsByPath + (path -> theirAddition.content.asTokens),
+                  newOrModifiedPathsOnLeftOrRight + (path -> PresentInMergeOutcome.Added)
                 )
 
               case BothContributeAModification(
@@ -831,26 +818,18 @@ object Main extends StrictLogging:
                     baseContent
                   ) =>
                 (
-                  baseContentsByPath + (path -> tokens(
-                    baseContent
-                  ).get),
-                  leftContentsByPath + (path -> tokens(
-                    ourModification.content
-                  ).get),
-                  rightContentsByPath + (path -> tokens(
-                    theirModification.content
-                  ).get),
-                  newPathsOnLeftOrRight
+                  baseContentsByPath + (path -> baseContent.asTokens),
+                  leftContentsByPath + (path -> ourModification.content.asTokens),
+                  rightContentsByPath + (path -> theirModification.content.asTokens),
+                  newOrModifiedPathsOnLeftOrRight + (path -> PresentInMergeOutcome.Modified)
                 )
 
               case BothContributeADeletion(baseContent) =>
                 (
-                  baseContentsByPath + (path -> tokens(
-                    baseContent
-                  ).get),
+                  baseContentsByPath + (path -> baseContent.asTokens),
                   leftContentsByPath,
                   rightContentsByPath,
-                  newPathsOnLeftOrRight
+                  newOrModifiedPathsOnLeftOrRight
                 )
         }
 
@@ -948,7 +927,7 @@ object Main extends StrictLogging:
         )
       end AccumulatedMergeState
 
-      case class FileRenamingReport(
+      case class FileRelocationReport(
           description: String,
           leftRenamePaths: Set[RelPath],
           rightRenamePaths: Set[RelPath]
@@ -957,10 +936,10 @@ object Main extends StrictLogging:
       def fileRenamingReportUsing(
           codeMotionAnalysis: CodeMotionAnalysis[RelPath, Token],
           moveDestinationsReport: MoveDestinationsReport[Section[Token]]
-      )(path: RelPath): Option[FileRenamingReport] =
+      )(path: RelPath): Option[FileRelocationReport] =
         val baseSections = codeMotionAnalysis.base(path).sections
 
-        val (leftRenamePaths, baseSectionsMovingLeftToNewFiles) =
+        val (leftDestinationPaths, baseSectionsMovingLeftToNewFiles) =
           baseSections
             .flatMap(baseSection =>
               moveDestinationsReport.moveDestinationsBySources
@@ -968,7 +947,8 @@ object Main extends StrictLogging:
                 .map(
                   _.allOnTheLeft
                     .map(leftSources.pathFor)
-                    .intersect(newPathsOnLeftOrRight)
+                    .filter(path != _)
+                    .filter(newOrModifiedPathsOnLeftOrRight.contains)
                     .map(_ -> baseSection)
                 )
             )
@@ -976,7 +956,7 @@ object Main extends StrictLogging:
             .unzip match
             case (paths, sections) => paths.toSet -> sections.toSet
 
-        val (rightRenamePaths, baseSectionsMovingRightToNewFiles) =
+        val (rightDestinationPaths, baseSectionsMovingRightToNewFiles) =
           baseSections
             .flatMap(baseSection =>
               moveDestinationsReport.moveDestinationsBySources
@@ -984,7 +964,8 @@ object Main extends StrictLogging:
                 .map(
                   _.allOnTheRight
                     .map(rightSources.pathFor)
-                    .intersect(newPathsOnLeftOrRight)
+                    .filter(path != _)
+                    .filter(newOrModifiedPathsOnLeftOrRight.contains)
                     .map(_ -> baseSection)
                 )
             )
@@ -1004,41 +985,90 @@ object Main extends StrictLogging:
           baseSectionsThatHaveMovedToNewFiles.nonEmpty && 2 * movedContentSize >= totalContentSize
 
         Option.when(enoughContentHasMovedToConsiderAsRenaming) {
-          val leftRenamingDetail = Option.unless(
-            leftRenamePaths.isEmpty
-          )(
-            s"in our directory ${underline(ourDirectory)} " ++ (if 1 < leftRenamePaths.size
-                                                                then
-                                                                  s"into files ${leftRenamePaths.map(underline).mkString(", ")}"
-                                                                else
-                                                                  s"to file ${underline(leftRenamePaths.head)}")
-          )
+          def destinationPathIsForARename(path: RelPath) =
+            PresentInMergeOutcome.Added == newOrModifiedPathsOnLeftOrRight(path)
 
-          val rightRenamingDetail = Option.unless(
-            rightRenamePaths.isEmpty
-          )(
-            s"in their directory ${underline(theirDirectory)} " ++ (if 1 < rightRenamePaths.size
-                                                                    then
-                                                                      s"into files ${rightRenamePaths.map(underline).mkString(", ")}"
-                                                                    else
-                                                                      s"to file ${underline(rightRenamePaths.head)}")
-          )
+          val (leftRenamePaths, leftRelocationPaths) =
+            leftDestinationPaths.partition(destinationPathIsForARename)
+
+          val (rightRenamePaths, rightRelocationPaths) =
+            rightDestinationPaths.partition(destinationPathIsForARename)
+
+          def destinationDetailsFor(possessive: String, directory: Path)(
+              destinationPaths: Set[RelPath]
+          ): Option[String] =
+            Option.unless(destinationPaths.isEmpty)(
+              s"in $possessive directory ${underline(directory)} " ++ (if 1 < destinationPaths.size
+                                                                       then
+                                                                         s"into files ${destinationPaths.map(underline).mkString(", ")}"
+                                                                       else
+                                                                         s"to file ${underline(destinationPaths.head)}")
+            )
+
+          val leftRenamingDetails =
+            destinationDetailsFor(possessive = "our", ourDirectory)(
+              leftRenamePaths
+            )
+
+          val leftRelocationDetails =
+            destinationDetailsFor(possessive = "our", ourDirectory)(
+              leftRelocationPaths
+            )
+
+          val rightRenamingDetails =
+            destinationDetailsFor(possessive = "their", theirDirectory)(
+              rightRenamePaths
+            )
+
+          val rightRelocationDetails =
+            destinationDetailsFor(possessive = "their", theirDirectory)(
+              rightRelocationPaths
+            )
 
           val description =
-            (leftRenamingDetail, rightRenamingDetail) match
-              case (Some(leftDetailPayload), None) =>
-                s"File ${underline(path)} was renamed $leftDetailPayload."
-              case (None, Some(rightDetailPayload)) =>
-                s"File ${underline(path)} was renamed $rightDetailPayload."
-              case (
-                    Some(leftDetailPayload),
-                    Some(rightDetailPayload)
-                  ) =>
-                s"File ${underline(path)} was renamed $leftDetailPayload and $rightDetailPayload."
+            def assembleDetails(action: String)(
+                leftDetails: Option[String],
+                rightDetails: Option[String]
+            ): Option[String] =
+              (leftDetails, rightDetails) match
+                case (Some(leftDetailPayload), None) =>
+                  Some(
+                    s"$action $leftDetailPayload"
+                  )
+                case (None, Some(rightDetailPayload)) =>
+                  Some(
+                    s"$action $rightDetailPayload"
+                  )
+                case (Some(leftDetailPayload), Some(rightDetailPayload)) =>
+                  Some(
+                    s"$action $leftDetailPayload and $rightDetailPayload"
+                  )
+                case (None, None) => None
+
+            val renameDescription = assembleDetails(action = "renamed")(
+              leftRenamingDetails,
+              rightRenamingDetails
+            )
+
+            val relocationDescription =
+              assembleDetails(action = "transplanted")(
+                leftRelocationDetails,
+                rightRelocationDetails
+              )
+
+            assume(renameDescription.nonEmpty || relocationDescription.nonEmpty)
+
+            (renameDescription, relocationDescription) match
+              case (Some(rename), Some(relocation)) =>
+                s"File ${underline(path)} was $rename; it was also $relocation."
+              case (Some(rename), None) =>
+                s"File ${underline(path)} was $rename."
+              case (None, Some(relocation)) =>
+                s"File ${underline(path)} was $relocation."
             end match
           end description
 
-          FileRenamingReport(
+          FileRelocationReport(
             description,
             leftRenamePaths,
             rightRenamePaths
@@ -1117,31 +1147,45 @@ object Main extends StrictLogging:
               ourDirectory: Path,
               theirDirectory: Path
           )(
-              partialResult: AccumulatedMergeState,
+              accumulatedMergeState: AccumulatedMergeState,
               path: RelPath,
               mergedFileContent: String @@ Tags.Content
           ) =
             for
               _ <- writeFileFor(baseDirectory)(path, mergedFileContent)
               _ <- writeFileFor(ourDirectory)(path, mergedFileContent)
-              _ <- writeFileFor(theirDirectory)(path, mergedFileContent)
-            yield partialResult
+              _ <- writeFileFor(theirDirectory)(
+                path,
+                mergedFileContent
+              )
+            yield accumulatedMergeState
 
-          def captureRenamesOfPathDeletedOnJustOneSide =
+          def captureRenamesOfPathModified(
+              accumulatedMergeState: AccumulatedMergeState
+          ) =
             fileRenamingReport(path)
-              .fold(ifEmpty = right(partialResult)) {
-                case FileRenamingReport(
+              .map(_.description)
+              .fold(ifEmpty = right(accumulatedMergeState))(
+                right(accumulatedMergeState).logOperation
+              )
+
+          def captureRenamesOfPathDeletedOnJustOneSide(
+              accumulatedMergeState: AccumulatedMergeState
+          ) =
+            fileRenamingReport(path)
+              .fold(ifEmpty = right(accumulatedMergeState)) {
+                case FileRelocationReport(
                       description,
                       leftRenamePaths,
                       rightRenamePaths
                     ) =>
                   right(
-                    partialResult.copy(
+                    accumulatedMergeState.copy(
                       deletedPathsByLeftRenamePath =
-                        partialResult.deletedPathsByLeftRenamePath ++ leftRenamePaths
+                        accumulatedMergeState.deletedPathsByLeftRenamePath ++ leftRenamePaths
                           .map(_ -> path),
                       deletedPathsByRightRenamePath =
-                        partialResult.deletedPathsByRightRenamePath ++ rightRenamePaths
+                        accumulatedMergeState.deletedPathsByRightRenamePath ++ rightRenamePaths
                           .map(_ -> path)
                     )
                   ).logOperation(description)
@@ -1165,7 +1209,7 @@ object Main extends StrictLogging:
                 ) =>
               mergeResultsByPath(path) match
                 case FullyMerged(tokens) =>
-                  val mergedFileContent = reconstituteTextFrom(tokens)
+                  val mergedFileContent = reconstituteContentFrom(tokens)
 
                   val ourModificationWasTweakedByTheMerge =
                     mergedFileContent != ourModification.content
@@ -1188,9 +1232,9 @@ object Main extends StrictLogging:
                   end if
 
                 case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
-                  val baseContent  = reconstituteTextFrom(baseTokens)
-                  val leftContent  = reconstituteTextFrom(leftTokens)
-                  val rightContent = reconstituteTextFrom(rightTokens)
+                  val baseContent  = reconstituteContentFrom(baseTokens)
+                  val leftContent  = reconstituteContentFrom(leftTokens)
+                  val rightContent = reconstituteContentFrom(rightTokens)
 
                   recordConflictedMergeOfModifiedFile(
                     baseDirectory,
@@ -1202,7 +1246,7 @@ object Main extends StrictLogging:
                     baseContent,
                     leftContent,
                     rightContent
-                  )
+                  ).flatMap(captureRenamesOfPathModified)
 
             case JustTheirModification(
                   theirModification,
@@ -1210,7 +1254,7 @@ object Main extends StrictLogging:
                 ) =>
               mergeResultsByPath(path) match
                 case FullyMerged(tokens) =>
-                  val mergedFileContent = reconstituteTextFrom(tokens)
+                  val mergedFileContent = reconstituteContentFrom(tokens)
 
                   val theirModificationWasTweakedByTheMerge =
                     mergedFileContent != theirModification.content
@@ -1233,9 +1277,9 @@ object Main extends StrictLogging:
                   end if
 
                 case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
-                  val baseContent  = reconstituteTextFrom(baseTokens)
-                  val leftContent  = reconstituteTextFrom(leftTokens)
-                  val rightContent = reconstituteTextFrom(rightTokens)
+                  val baseContent  = reconstituteContentFrom(baseTokens)
+                  val leftContent  = reconstituteContentFrom(leftTokens)
+                  val rightContent = reconstituteContentFrom(rightTokens)
 
                   recordConflictedMergeOfModifiedFile(
                     baseDirectory,
@@ -1247,12 +1291,12 @@ object Main extends StrictLogging:
                     baseContent,
                     leftContent,
                     rightContent
-                  )
+                  ).flatMap(captureRenamesOfPathModified)
 
             case JustOurAddition(ourAddition) =>
               mergeResultsByPath(path) match
                 case FullyMerged(tokens) =>
-                  val mergedFileContent = reconstituteTextFrom(tokens)
+                  val mergedFileContent = reconstituteContentFrom(tokens)
 
                   val ourAdditionWasTweakedByTheMerge =
                     mergedFileContent != ourAddition.content
@@ -1275,11 +1319,11 @@ object Main extends StrictLogging:
                   end if
 
                 case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
-                  val leftContent  = reconstituteTextFrom(leftTokens)
-                  val rightContent = reconstituteTextFrom(rightTokens)
+                  val leftContent  = reconstituteContentFrom(leftTokens)
+                  val rightContent = reconstituteContentFrom(rightTokens)
 
                   if baseTokens.nonEmpty then
-                    val baseContent = reconstituteTextFrom(baseTokens)
+                    val baseContent = reconstituteContentFrom(baseTokens)
 
                     recordConflictedMergeOfModifiedFile(
                       baseDirectory,
@@ -1307,7 +1351,7 @@ object Main extends StrictLogging:
             case JustTheirAddition(theirAddition) =>
               mergeResultsByPath(path) match
                 case FullyMerged(tokens) =>
-                  val mergedFileContent = reconstituteTextFrom(tokens)
+                  val mergedFileContent = reconstituteContentFrom(tokens)
 
                   val theirAdditionWasTweakedByTheMerge =
                     mergedFileContent != theirAddition.content
@@ -1330,11 +1374,11 @@ object Main extends StrictLogging:
                   end if
 
                 case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
-                  val leftContent  = reconstituteTextFrom(leftTokens)
-                  val rightContent = reconstituteTextFrom(rightTokens)
+                  val leftContent  = reconstituteContentFrom(leftTokens)
+                  val rightContent = reconstituteContentFrom(rightTokens)
 
                   if baseTokens.nonEmpty then
-                    val baseContent = reconstituteTextFrom(baseTokens)
+                    val baseContent = reconstituteContentFrom(baseTokens)
 
                     recordConflictedMergeOfModifiedFile(
                       baseDirectory,
@@ -1369,7 +1413,7 @@ object Main extends StrictLogging:
                 _                      <- deleteFile(baseDirectory)(path)
                 _                      <- deleteFile(theirDirectory)(path)
                 decoratedPartialResult <-
-                  captureRenamesOfPathDeletedOnJustOneSide
+                  captureRenamesOfPathDeletedOnJustOneSide(partialResult)
               yield decoratedPartialResult
 
             case JustTheirDeletion(_) =>
@@ -1382,7 +1426,7 @@ object Main extends StrictLogging:
                 _                      <- deleteFile(baseDirectory)(path)
                 _                      <- deleteFile(ourDirectory)(path)
                 decoratedPartialResult <-
-                  captureRenamesOfPathDeletedOnJustOneSide
+                  captureRenamesOfPathDeletedOnJustOneSide(partialResult)
               yield decoratedPartialResult
 
             case OurModificationAndTheirDeletion(
@@ -1391,75 +1435,86 @@ object Main extends StrictLogging:
                 ) =>
               val tokens = justOurSidesViewOfTheMergedContentAt(path)
 
-              val mergedFileContent = reconstituteTextFrom(tokens)
+              val mergedFileContent = reconstituteContentFrom(tokens)
               val ourModificationWasTweakedByTheMerge =
                 mergedFileContent != ourModification.content
 
-              if ourModificationWasTweakedByTheMerge then
-                if mergedFileContent.nonEmpty then
-                  for _ <- writeFileFor(ourDirectory)(path, mergedFileContent)
+              if mergedFileContent.isEmpty && fileRenamingReport(path).isDefined
+              then
+                // If our content was modified to being empty, this is
+                // taken to mean that all of our original content has been
+                // migrated to one or more other files. We can therefore
+                // resolve this as a deletion.
+                for
+                  _               <- deleteFile(baseDirectory)(path)
+                  _               <- deleteFile(ourDirectory)(path)
+                  decoratedResult <-
+                    captureRenamesOfPathDeletedOnJustOneSide(partialResult)
+                yield decoratedResult
+              else
+                {
+                  if ourModificationWasTweakedByTheMerge then
+                    for _ <- writeFileFor(ourDirectory)(path, mergedFileContent)
+                        .logOperation(
+                          s"Conflict - file ${underline(path)} was modified in our directory ${underline(ourDirectory)} and deleted from their directory ${underline(theirDirectory)}."
+                        )
+                    yield partialResult.copy(cleanlyMerged = false)
+                  else
+                    // The modified file is already present in our directory; we
+                    // just leave it there.
+                    right(partialResult.copy(cleanlyMerged = false))
                       .logOperation(
                         s"Conflict - file ${underline(path)} was modified in our directory ${underline(ourDirectory)} and deleted from their directory ${underline(theirDirectory)}."
                       )
-                  yield partialResult.copy(cleanlyMerged = false)
-                else
-                  // If our content is modified to being empty, this is taken to
-                  // mean that all of our original content has been migrated to
-                  // one or more other files. We can therefore resolve this as a
-                  // deletion.
-                  for
-                    _                      <- deleteFile(baseDirectory)(path)
-                    _                      <- deleteFile(ourDirectory)(path)
-                    decoratedPartialResult <-
-                      captureRenamesOfPathDeletedOnJustOneSide
-                  yield decoratedPartialResult
-              else
-                // The modified file is already present in our directory; we
-                // just leave it there.
-                right(partialResult.copy(cleanlyMerged = false))
-                  .logOperation(
-                    s"Conflict - file ${underline(path)} was modified in our directory ${underline(ourDirectory)} and deleted from their directory ${underline(theirDirectory)}."
-                  )
+                  end if
+                }.flatMap(captureRenamesOfPathModified)
               end if
 
             case TheirModificationAndOurDeletion(theirModification, _) =>
               val tokens = justTheirSidesViewOfTheMergedContentAt(path)
 
-              val mergedFileContent = reconstituteTextFrom(tokens)
+              val mergedFileContent = reconstituteContentFrom(tokens)
               val theirModificationWasTweakedByTheMerge =
                 mergedFileContent != theirModification.content
 
-              if theirModificationWasTweakedByTheMerge then
-                if mergedFileContent.nonEmpty then
-                  for _ <- writeFileFor(theirDirectory)(path, mergedFileContent)
+              if mergedFileContent.isEmpty && fileRenamingReport(path).isDefined
+              then
+                // If their content was modified to being empty, this is taken
+                // to mean that all of their original content has been migrated
+                // to one or more other files. We can therefore resolve this as
+                // a deletion.
+                for
+                  _               <- deleteFile(baseDirectory)(path)
+                  _               <- deleteFile(theirDirectory)(path)
+                  decoratedResult <-
+                    captureRenamesOfPathDeletedOnJustOneSide(partialResult)
+                yield decoratedResult
+              else
+                {
+                  if theirModificationWasTweakedByTheMerge then
+                    for _ <- writeFileFor(theirDirectory)(
+                        path,
+                        mergedFileContent
+                      )
+                        .logOperation(
+                          s"Conflict - file ${underline(path)} was deleted from our directory ${underline(ourDirectory)} and modified in their directory ${underline(theirDirectory)}."
+                        )
+                    yield partialResult.copy(cleanlyMerged = false)
+                  else
+                    // The modified file is already present in their directory;
+                    // we
+                    // just leave it there.
+                    right(partialResult.copy(cleanlyMerged = false))
                       .logOperation(
                         s"Conflict - file ${underline(path)} was deleted from our directory ${underline(ourDirectory)} and modified in their directory ${underline(theirDirectory)}."
                       )
-                  yield partialResult.copy(cleanlyMerged = false)
-                else
-                  // If their content is modified to being empty, this is
-                  // taken to mean that all of their original content has been
-                  // migrated to one or more other files. We can therefore
-                  // resolve this as a deletion.
-                  for
-                    _                      <- deleteFile(baseDirectory)(path)
-                    _                      <- deleteFile(theirDirectory)(path)
-                    decoratedPartialResult <-
-                      captureRenamesOfPathDeletedOnJustOneSide
-                  yield decoratedPartialResult
-              else
-                // The modified file is already present in their directory; we
-                // just leave it there.
-                right(partialResult.copy(cleanlyMerged = false))
-                  .logOperation(
-                    s"Conflict - file ${underline(path)} was deleted from our directory ${underline(ourDirectory)} and modified in their directory ${underline(theirDirectory)}."
-                  )
+                }.flatMap(captureRenamesOfPathModified)
               end if
 
             case BothContributeAnAddition(_, _) =>
               mergeResultsByPath(path) match
                 case FullyMerged(tokens) =>
-                  val mergedFileContent = reconstituteTextFrom(tokens)
+                  val mergedFileContent = reconstituteContentFrom(tokens)
 
                   recordCleanMergeOfFile(
                     baseDirectory,
@@ -1472,11 +1527,11 @@ object Main extends StrictLogging:
                   )
 
                 case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
-                  val leftContent  = reconstituteTextFrom(leftTokens)
-                  val rightContent = reconstituteTextFrom(rightTokens)
+                  val leftContent  = reconstituteContentFrom(leftTokens)
+                  val rightContent = reconstituteContentFrom(rightTokens)
 
                   if baseTokens.nonEmpty then
-                    val baseContent = reconstituteTextFrom(baseTokens)
+                    val baseContent = reconstituteContentFrom(baseTokens)
 
                     recordConflictedMergeOfModifiedFile(
                       baseDirectory,
@@ -1508,7 +1563,7 @@ object Main extends StrictLogging:
                 ) =>
               mergeResultsByPath(path) match
                 case FullyMerged(tokens) =>
-                  val mergedFileContent = reconstituteTextFrom(tokens)
+                  val mergedFileContent = reconstituteContentFrom(tokens)
 
                   recordCleanMergeOfFile(
                     baseDirectory,
@@ -1521,9 +1576,9 @@ object Main extends StrictLogging:
                   )
 
                 case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
-                  val baseContent  = reconstituteTextFrom(baseTokens)
-                  val leftContent  = reconstituteTextFrom(leftTokens)
-                  val rightContent = reconstituteTextFrom(rightTokens)
+                  val baseContent  = reconstituteContentFrom(baseTokens)
+                  val leftContent  = reconstituteContentFrom(leftTokens)
+                  val rightContent = reconstituteContentFrom(rightTokens)
 
                   recordConflictedMergeOfModifiedFile(
                     baseDirectory,
@@ -1544,39 +1599,35 @@ object Main extends StrictLogging:
                   )
                 yield partialResult
               ) {
-                case FileRenamingReport(
+                case FileRelocationReport(
                       description,
                       leftRenamePaths,
                       rightRenamePaths
                     ) =>
-                  val isARenameVersusDeletionConflict =
-                    assume(
-                      leftRenamePaths.nonEmpty || rightRenamePaths.nonEmpty
-                    )
-                    // If all the moved content from `path` going into new
-                    // files ends up on just one side, then this is a conflict
-                    // because it implies an isolated deletion on the other
-                    // side.
-                    leftRenamePaths.isEmpty || rightRenamePaths.isEmpty
-                  end isARenameVersusDeletionConflict
-
-                  right(
-                    if isARenameVersusDeletionConflict then
-                      partialResult.copy(
-                        conflictingDeletedPathsByLeftRenamePath =
-                          partialResult.conflictingDeletedPathsByLeftRenamePath ++ leftRenamePaths
-                            .map(_ -> path),
-                        conflictingDeletedPathsByRightRenamePath =
-                          partialResult.conflictingDeletedPathsByRightRenamePath ++ rightRenamePaths
-                            .map(_ -> path)
-                      )
-                    else
-                      // The content has moved out into new files on both
-                      // sides. This might involve divergent or coincident
-                      // moves, however no special action needs to be taken
-                      // here.
-                      partialResult
-                  ).logOperation(description)
+                  (
+                    leftRenamePaths.nonEmpty,
+                    rightRenamePaths.nonEmpty
+                  ) match
+                    case (true, false) | (false, true) =>
+                      // If all the moved content from `path` going into new
+                      // files ends up on just one side, then this is a
+                      // conflict because it implies an isolated deletion on
+                      // the other side.
+                      right(
+                        partialResult.copy(
+                          conflictingDeletedPathsByLeftRenamePath =
+                            partialResult.conflictingDeletedPathsByLeftRenamePath ++ leftRenamePaths
+                              .map(_ -> path),
+                          conflictingDeletedPathsByRightRenamePath =
+                            partialResult.conflictingDeletedPathsByRightRenamePath ++ rightRenamePaths
+                              .map(_ -> path)
+                        )
+                      ).logOperation(description)
+                    case (true, true) | (false, false) =>
+                      for _ <- deleteFile(baseDirectory)(path).logOperation(
+                          description
+                        )
+                      yield partialResult
               }
           end match
         }
@@ -1611,7 +1662,7 @@ object Main extends StrictLogging:
         s"Unexpected error: could not copy file ${underline(path)} from ${underline(sourceDirectory)} into target directory ${underline(targetDirectory)}."
       )
 
-    private def reconstituteTextFrom(
+    private def reconstituteContentFrom(
         tokens: Seq[Token]
     ): String @@ Main.Tags.Content =
       tokens.map(_.text).mkString.taggedWith[Tags.Content]

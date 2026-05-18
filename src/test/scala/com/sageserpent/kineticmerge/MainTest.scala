@@ -390,6 +390,16 @@ object MainTest extends ProseExamples:
     )
   end removingCasesLimitStrategy
 
+  private def emptyingCasesLimitStrategy(path: Path): Unit =
+    os.write.over(path / casesLimitStrategy, "")
+    println(
+      os.proc("git", "commit", "-am", "'Emptying `CasesLimitStrategy`.")
+        .call(path)
+        .out
+        .text()
+    )
+  end emptyingCasesLimitStrategy
+
   private def splittingCasesLimitStrategy(path: Path): Unit =
     os.write.over(
       path / casesLimitStrategy,
@@ -1830,6 +1840,68 @@ class MainTest:
 //      }
 //  end issue48BugReproduction
 //
+  @TestFactory
+  def contentClearancePropagatingThroughAFileMove(): DynamicTests =
+    (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans)
+      .withLimit(10)
+      .dynamicTests { case (optionalSubdirectory, flipBranches, noCommit) =>
+        gitRepository()
+          .use(path =>
+            IO {
+              optionalSubdirectory
+                .foreach(subdirectory => os.makeDir(path / subdirectory))
+
+              introducingCasesLimitStrategy(path)
+
+              val movedFileBranch = "movedFileBranch"
+
+              makeNewBranch(path)(movedFileBranch)
+
+              moveCasesLimitStrategy(path)
+
+              val commitOfMovedFileBranch = currentCommit(path)
+
+              checkoutBranch(path)(masterBranch)
+
+              emptyingCasesLimitStrategy(path)
+
+              val commitOfMasterBranch = currentCommit(path)
+
+              if flipBranches then checkoutBranch(path)(movedFileBranch)
+              end if
+
+              val (ourBranch, theirBranch) =
+                if flipBranches then movedFileBranch -> masterBranch
+                else masterBranch                    -> movedFileBranch
+
+              val (baseDirectory, ourDirectory, theirDirectory) = mergeWrapper(
+                optionalSubdirectory,
+                path,
+                ourBranch,
+                theirBranch,
+                minimumAmbiguousMatchSize = 5
+              )
+
+              verifyCleanMerge(baseDirectory, ourDirectory, theirDirectory)
+
+              assert(
+                0 == os.size(
+                  (if flipBranches then ourDirectory
+                   else theirDirectory) / movedCasesLimitStrategy
+                )
+              )
+              assert(
+                !os.exists(
+                  (if flipBranches then ourDirectory
+                   else theirDirectory) / casesLimitStrategy
+                )
+              )
+            }
+          )
+          .unsafeRunSync()
+      }
+  end contentClearancePropagatingThroughAFileMove
+
   @TestFactory
   def conflictingDeletionAndFileMoveOfTheSameFile(): DynamicTests =
     (optionalSubdirectories and trialsApi.booleans)
