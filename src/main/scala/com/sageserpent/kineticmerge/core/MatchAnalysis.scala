@@ -3309,33 +3309,23 @@ object MatchAnalysis extends StrictLogging:
       private val cachedHashCode: Int =
         val hasher = hashFunction.newHasher()
 
-        if fingerprint.bitLength < 64 then hasher.putLong(fingerprint.longValue)
-        else hasher.putBytes(fingerprint.toByteArray)
+        hasher.putBytes(fingerprint.toByteArray)
 
-        val content = impliedContent.content
-        val limit   = tiebreakContentSamplingLimit min content.size
-        val funnel  = summon[Funnel[Element]]
-        var i       = 0
-        while i < limit do
-          funnel.funnel(content(i), hasher)
-          i += 1
-        end while
+        impliedContent.content
+          .take(tiebreakContentSamplingLimit)
+          .foreach(hasher.putObject(_, summon[Funnel[Element]]))
 
         hasher.hash().asInt()
       end cachedHashCode
 
       override def equals(another: Any): Boolean =
-        another match
-          case anotherKey: PotentialMatchKey @unchecked =>
-            this.eq(anotherKey) ||
-            fingerprint == anotherKey.fingerprint && {
-              val content        = impliedContent.content
-              val anotherContent = anotherKey.impliedContent.content
-              content.size == anotherContent.size && {
-                impliedContent == anotherKey.impliedContent ||
-                content.corresponds(anotherContent)(summon[Eq[Element]].eqv)
-              }
-            }
+        another.asInstanceOf[Matchable] match
+          case PotentialMatchKey(anotherFingerprint, anotherImpliedContent) =>
+            fingerprint == anotherFingerprint && PotentialMatchKey.impliedContentEquality
+              .eqv(
+                impliedContent,
+                anotherImpliedContent
+              )
           case _ => false
 
       override def hashCode(): Int = cachedHashCode
