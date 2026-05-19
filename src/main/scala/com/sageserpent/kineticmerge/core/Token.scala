@@ -143,8 +143,7 @@ object Token extends JavaTokenParsers:
     token match
       case LeadingIndentation(_) =>
       case Whitespace(_)         =>
-      case Significant(content) =>
-        primitiveSink.putUnencodedChars(content)
+      case Significant(content)  => primitiveSink.putUnencodedChars(content)
       case WithTrailingWhitespace(coreToken, _) =>
         funnel(coreToken, primitiveSink)
       case WithLeadingIndentation(_, coreToken) =>
