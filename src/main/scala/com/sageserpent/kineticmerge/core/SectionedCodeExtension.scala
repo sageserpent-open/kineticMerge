@@ -259,9 +259,9 @@ object SectionedCodeExtension extends StrictLogging:
       ):
         def union(another: CollectedPairings): CollectedPairings =
           CollectedPairings(
-            baseToLeft = baseToLeft.concat(another.baseToLeft.toSeq),
-            baseToRight = baseToRight.concat(another.baseToRight.toSeq),
-            leftToRight = leftToRight.concat(another.leftToRight.toSeq),
+            baseToLeft = baseToLeft concat another.baseToLeft,
+            baseToRight = baseToRight concat another.baseToRight,
+            leftToRight = leftToRight concat another.leftToRight,
             tripleSections = tripleSections union another.tripleSections,
             baseLeftSections = baseLeftSections union another.baseLeftSections,
             baseRightSections =
@@ -1936,7 +1936,7 @@ object SectionedCodeExtension extends StrictLogging:
       val result =
         Using(
           progressRecording.newSession(
-            label = "Post-alignment merge processing",
+            label = "Post-alignment merge processing:",
             maximumProgress = 1
           )(initialProgress = 0)
         ) { progressRecordingSession =>

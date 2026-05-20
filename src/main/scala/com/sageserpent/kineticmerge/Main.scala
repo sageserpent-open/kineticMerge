@@ -75,18 +75,6 @@ object Main extends StrictLogging:
     )
   end main
 
-  /** @param commandLineArguments
-    *   Command line arguments as varargs.
-    * @return
-    *   The exit code as a plain integer, suitable for consumption by both Scala
-    *   and Java client code.
-    */
-  @varargs
-  def apply(commandLineArguments: String*): Int = apply(
-    progressRecording = NoProgressRecording,
-    commandLineArguments = commandLineArguments*
-  )
-
   /** @param progressRecording
     * @param commandLineArguments
     *   Command line arguments as varargs.
@@ -400,6 +388,9 @@ object Main extends StrictLogging:
   private def right[Payload](payload: Payload): Workflow[Payload] =
     EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
 
+  private def underline(anything: Any): Str =
+    fansi.Underlined.On(anything.toString)
+
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
       EitherT
@@ -423,8 +414,17 @@ object Main extends StrictLogging:
     private def asTokens: Vector[Token] = tokens(content).get
   end extension
 
-  private def underline(anything: Any): Str =
-    fansi.Underlined.On(anything.toString)
+  /** @param commandLineArguments
+    *   Command line arguments as varargs.
+    * @return
+    *   The exit code as a plain integer, suitable for consumption by both Scala
+    *   and Java client code.
+    */
+  @varargs
+  def apply(commandLineArguments: String*): Int = apply(
+    progressRecording = NoProgressRecording,
+    commandLineArguments = commandLineArguments*
+  )
 
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](
@@ -1597,27 +1597,38 @@ object Main extends StrictLogging:
           val (rightRenamePaths, rightTransplantPaths) =
             rightDestinationPaths.partition(destinationPathIsForARename)
 
-          def destinationDetailsFor(possessive: String)(
+          def destinationDetailsFor(
+              possessive: String,
+              branchHead: String @@ Tags.CommitOrBranchName
+          )(
               destinationPaths: Set[Path]
           ): Option[String] = Option.unless(destinationPaths.isEmpty)(
-            s"on $possessive branch ${underline(ourBranchHead)} " ++ (if 1 < destinationPaths.size
-                                                                      then
-                                                                        s"into files ${destinationPaths.map(underline).mkString(", ")}"
-                                                                      else
-                                                                        s"to file ${underline(destinationPaths.head)}")
+            s"on $possessive branch ${underline(branchHead)} " ++ (if 1 < destinationPaths.size
+                                                                   then
+                                                                     s"into files ${destinationPaths.map(underline).mkString(", ")}"
+                                                                   else
+                                                                     s"to file ${underline(destinationPaths.head)}")
           )
 
           val leftRenamingDetails =
-            destinationDetailsFor(possessive = "our")(leftRenamePaths)
+            destinationDetailsFor(possessive = "our", ourBranchHead)(
+              leftRenamePaths
+            )
 
           val leftTransplantationDetails =
-            destinationDetailsFor(possessive = "our")(leftTransplantPaths)
+            destinationDetailsFor(possessive = "our", ourBranchHead)(
+              leftTransplantPaths
+            )
 
           val rightRenamingDetails =
-            destinationDetailsFor(possessive = "their")(rightRenamePaths)
+            destinationDetailsFor(possessive = "their", theirBranchHead)(
+              rightRenamePaths
+            )
 
           val rightTransplantationDetails =
-            destinationDetailsFor(possessive = "their")(rightTransplantPaths)
+            destinationDetailsFor(possessive = "their", theirBranchHead)(
+              rightTransplantPaths
+            )
 
           val description =
             def assembleDetails(action: String)(
@@ -2380,7 +2391,7 @@ object Main extends StrictLogging:
                     ).isDefined
                   then
                     // ... however, if their content was modified to being
-                    // empty, this is taken to mean that all of our original
+                    // empty, this is taken to mean that all of their original
                     // content has been migrated to one or more other files. We
                     // can therefore resolve this as a deletion.
                     for
@@ -2657,10 +2668,10 @@ object Main extends StrictLogging:
                       yield decoratedResult
                     else
                       // If their content is modified to being empty, this is
-                      // taken to mean that all of our original content has been
-                      // migrated to one or more other files. We can therefore
-                      // resolve this as a modification into binary content on
-                      // our side only.
+                      // taken to mean that all of their original content has
+                      // been migrated to one or more other files. We can
+                      // therefore resolve this as a modification into binary
+                      // content on our side only.
                       right(partialResult).flatMap(
                         captureRenamesOfPathDeletedOnJustOneSide
                       )
