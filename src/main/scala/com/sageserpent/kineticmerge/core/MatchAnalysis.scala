@@ -18,7 +18,6 @@ import com.sageserpent.kineticmerge.{
   core
 }
 import com.typesafe.scalalogging.StrictLogging
-import de.sciss.fingertree.RangedSeq
 
 import java.lang.Byte as JavaByte
 import scala.annotation.tailrec
@@ -189,7 +188,7 @@ object MatchAnalysis extends StrictLogging:
       case GenericMatch[Element] => GenericMatch[Element]
       case PairwiseMatch         => PairwiseMatch
 
-    type SectionsSeen = RangedSeq[Section[Element], Int]
+    type SectionsSeen = com.sageserpent.kineticmerge.core.SectionsSeen[Element]
 
     type FingerprintedInclusions = Diet[Int]
 
@@ -579,7 +578,7 @@ object MatchAnalysis extends StrictLogging:
               // NOTE: don't use `Ordering[Int]` as while that is valid, it will
               // pull in a Cats `Order[Int]` which round-trips back to an
               // `Ordering`. That makes profiling difficult.
-              RangedSeq(section)(_.closedOpenInterval, Ordering.Int)
+              SectionsSeen.empty[Element] + section
             )
         }
       end including
