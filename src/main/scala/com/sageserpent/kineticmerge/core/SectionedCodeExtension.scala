@@ -84,59 +84,6 @@ object SectionedCodeExtension extends StrictLogging:
             // to each other: they are all just as good.
             case _ => 0
       end contributionRanking
-      def interleaveGaps(
-          sections: IndexedSeq[Section[Element]],
-          blocks: IndexedSeq[Block[Element]]
-      ): IndexedSeq[Block[Element]] =
-        val result = Vector.newBuilder[Block[Element]]
-        var currentSectionIndex = 0
-        var blockIndex          = 0
-
-        while blockIndex < blocks.size do
-          val block            = blocks(blockIndex)
-          val blockStartOffset = block.startOffset
-
-          val gapSections = Vector.newBuilder[Section[Element]]
-          while currentSectionIndex < sections.size && sections(
-              currentSectionIndex
-            ).startOffset < blockStartOffset
-          do
-            gapSections += sections(currentSectionIndex)
-            currentSectionIndex += 1
-          end while
-
-          val gap = gapSections.result()
-          if gap.nonEmpty then
-            result += Block(
-              parallelMatchesGroupId = -1 - result.result().size,
-              sectionsCoveredByGroup = gap
-            )
-          end if
-
-          result += block
-          // Skip sections covered by the block
-          val blockOnePastEndOffset = block.onePastEndOffset
-          while currentSectionIndex < sections.size && sections(
-              currentSectionIndex
-            ).startOffset < blockOnePastEndOffset
-          do
-            currentSectionIndex += 1
-          end while
-
-          blockIndex += 1
-        end while
-
-        val remainingGapSections = sections.drop(currentSectionIndex)
-        if remainingGapSections.nonEmpty then
-          result += Block(
-            parallelMatchesGroupId = -1 - result.result().size,
-            sectionsCoveredByGroup = remainingGapSections
-          )
-        end if
-
-        result.result()
-      end interleaveGaps
-
 
       case class ThreeSidedClump[X](
           base: IndexedSeq[X],
@@ -292,9 +239,9 @@ object SectionedCodeExtension extends StrictLogging:
 
       val threeSidedClumps =
         mergeOf(blockLevelMergeAlgebra)(
-          interleaveGaps(baseSections, sectionedCode.baseBlocksFor(path)),
-          interleaveGaps(leftSections, sectionedCode.leftBlocksFor(path)),
-          interleaveGaps(rightSections, sectionedCode.rightBlocksFor(path)),
+          sectionedCode.baseBlocksFor(path),
+          sectionedCode.leftBlocksFor(path),
+          sectionedCode.rightBlocksFor(path),
           s"Blocks merged:"
         )
 
@@ -403,74 +350,6 @@ object SectionedCodeExtension extends StrictLogging:
         )
       end pairingsFromClump
 
-
-
-      def pairingsFromSuppressedMatches(): CollectedPairings =
-        val allMatches = (baseSections.flatMap(sectionedCode.matchesFor) ++
-                          leftSections.flatMap(sectionedCode.matchesFor) ++
-                          rightSections.flatMap(sectionedCode.matchesFor)).toSet
-        val suppressedMatches = allMatches.filterNot(
-          sectionedCode.parallelMatchesGroupIdsByMatch.contains
-        )
-
-        val baseToLeft = MultiDict.empty[Section[Element], Section[Element]]
-        val baseToRight = MultiDict.empty[Section[Element], Section[Element]]
-        val leftToRight = MultiDict.empty[Section[Element], Section[Element]]
-
-        val tripleSections = Set.newBuilder[Section[Element]]
-        val baseLeftSections = Set.newBuilder[Section[Element]]
-        val baseRightSections = Set.newBuilder[Section[Element]]
-        val leftRightSections = Set.newBuilder[Section[Element]]
-
-        suppressedMatches.foreach {
-          case Match.AllSides(baseSection, leftSection, rightSection) =>
-            if baseSections.contains(baseSection) &&
-               leftSections.contains(leftSection) &&
-               rightSections.contains(rightSection)
-            then
-              baseToLeft.add(baseSection, leftSection)
-              baseToRight.add(baseSection, rightSection)
-              leftToRight.add(leftSection, rightSection)
-              tripleSections += baseSection
-              tripleSections += leftSection
-              tripleSections += rightSection
-
-          case Match.BaseAndLeft(baseSection, leftSection) =>
-            if baseSections.contains(baseSection) &&
-               leftSections.contains(leftSection)
-            then
-              baseToLeft.add(baseSection, leftSection)
-              baseLeftSections += baseSection
-              baseLeftSections += leftSection
-
-          case Match.BaseAndRight(baseSection, rightSection) =>
-            if baseSections.contains(baseSection) &&
-               rightSections.contains(rightSection)
-            then
-              baseToRight.add(baseSection, rightSection)
-              baseRightSections += baseSection
-              baseRightSections += rightSection
-
-          case Match.LeftAndRight(leftSection, rightSection) =>
-            if leftSections.contains(leftSection) &&
-               rightSections.contains(rightSection)
-            then
-              leftToRight.add(leftSection, rightSection)
-              leftRightSections += leftSection
-              leftRightSections += rightSection
-        }
-
-        CollectedPairings(
-          baseToLeft = baseToLeft,
-          baseToRight = baseToRight,
-          leftToRight = leftToRight,
-          tripleSections = tripleSections.result(),
-          baseLeftSections = baseLeftSections.result(),
-          baseRightSections = baseRightSections.result(),
-          leftRightSections = leftRightSections.result()
-        )
-      end pairingsFromSuppressedMatches
-
       val aggregatedPairings =
         Using(
           progressRecording.newSession(
@@ -484,7 +363,7 @@ object SectionedCodeExtension extends StrictLogging:
               progressRecordingSession.upTo(1 + index)
               result
             )
-            .foldLeft(pairingsFromSuppressedMatches())(_ union _)
+            .foldLeft(CollectedPairings())(_ union _)
         }.get
 
       def uniquePartners(

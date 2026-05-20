@@ -59,6 +59,7 @@ trait MatchAnalysis[Path, Element]:
   def sectionsAndTheirMatches: MatchedSections[Element]
 
   def parallelMatchesGroupIdsByMatch: ParallelMatchesGroupIdsByMatch[Element]
+
   def primaryMatches: Set[GenericMatch[Element]]
 
   def matches: Set[GenericMatch[Element]] =
@@ -1011,16 +1012,22 @@ object MatchAnalysis extends StrictLogging:
       ): ParallelMatchesGroupIdTracking[Unit] =
         State.modify { reconciliationState =>
           val groupIdsByMatch = reconciliationState.parallelMatchesGroupIdsByMatch
-          val groupIds = groupIdsByMatch.get(original)
+          val groupIds        = groupIdsByMatch.get(original)
 
-          val updatedGroupIdsByMatch = groupIds.fold(ifEmpty = groupIdsByMatch)(groupId =>
-            groupIdsByMatch + (replacement -> groupId)
+          val updatedGroupIdsByMatch = groupIds.fold(ifEmpty = groupIdsByMatch)(
+            groupId => groupIdsByMatch + (replacement -> groupId)
           )
 
           val primaryMatches = reconciliationState.primaryMatches
-          val updatedPrimaryMatches = if primaryMatches.contains(original) then primaryMatches + replacement else primaryMatches
+          val updatedPrimaryMatches =
+            if primaryMatches.contains(original) then
+              primaryMatches + replacement
+            else primaryMatches
 
-          reconciliationState.copy(parallelMatchesGroupIdsByMatch = updatedGroupIdsByMatch, primaryMatches = updatedPrimaryMatches)
+          reconciliationState.copy(
+            parallelMatchesGroupIdsByMatch = updatedGroupIdsByMatch,
+            primaryMatches = updatedPrimaryMatches
+          )
         }
 
       trait PathInclusions:
@@ -1435,6 +1442,73 @@ object MatchAnalysis extends StrictLogging:
         }
       end withoutTheseMatches
 
+      private def withoutTheseMatchesAsMatches(
+          matches: Iterable[GenericMatch[Element]]
+      ): MatchesAndTheirSections =
+        matches.foldLeft(this) {
+          case (
+                matchesAndTheirSections,
+                allSides @ Match.AllSides(
+                  baseSection,
+                  leftSection,
+                  rightSection
+                )
+              ) =>
+            matchesAndTheirSections.copy(
+              sectionsAndTheirMatches =
+                matchesAndTheirSections.sectionsAndTheirMatches
+                  .remove(baseSection, allSides)
+                  .remove(leftSection, allSides)
+                  .remove(rightSection, allSides),
+              parallelMatchesGroupIdsByMatch =
+                parallelMatchesGroupIdsByMatch.removed(allSides),
+              primaryMatches = primaryMatches - allSides
+            )
+
+          case (
+                matchesAndTheirSections,
+                baseAndLeft @ Match.BaseAndLeft(baseSection, leftSection)
+              ) =>
+            matchesAndTheirSections.copy(
+              sectionsAndTheirMatches =
+                matchesAndTheirSections.sectionsAndTheirMatches
+                  .remove(baseSection, baseAndLeft)
+                  .remove(leftSection, baseAndLeft),
+              parallelMatchesGroupIdsByMatch =
+                parallelMatchesGroupIdsByMatch.removed(baseAndLeft),
+              primaryMatches = primaryMatches - baseAndLeft
+            )
+
+          case (
+                matchesAndTheirSections,
+                baseAndRight @ Match.BaseAndRight(baseSection, rightSection)
+              ) =>
+            matchesAndTheirSections.copy(
+              sectionsAndTheirMatches =
+                matchesAndTheirSections.sectionsAndTheirMatches
+                  .remove(baseSection, baseAndRight)
+                  .remove(rightSection, baseAndRight),
+              parallelMatchesGroupIdsByMatch =
+                parallelMatchesGroupIdsByMatch.removed(baseAndRight),
+              primaryMatches = primaryMatches - baseAndRight
+            )
+
+          case (
+                matchesAndTheirSections,
+                leftAndRight @ Match.LeftAndRight(leftSection, rightSection)
+              ) =>
+            matchesAndTheirSections.copy(
+              sectionsAndTheirMatches =
+                matchesAndTheirSections.sectionsAndTheirMatches
+                  .remove(leftSection, leftAndRight)
+                  .remove(rightSection, leftAndRight),
+              parallelMatchesGroupIdsByMatch =
+                parallelMatchesGroupIdsByMatch.removed(leftAndRight),
+              primaryMatches = primaryMatches - leftAndRight
+            )
+        }
+      end withoutTheseMatchesAsMatches
+
       private def withMatch(
           aMatch: GenericMatch[Element],
           isPrimary: Boolean
@@ -1580,7 +1654,9 @@ object MatchAnalysis extends StrictLogging:
                       updatedReconciliationState <-
                         State.get[ReconciliationState[Element]]
                       rebuilt: MatchesAndTheirSections =
-                        (paredDownMatches union paredDownFragments.flatten.map(_._1).toSet)
+                        (paredDownMatches union paredDownFragments.flatten
+                          .map(_._1)
+                          .toSet)
                           .foldLeft(MatchesAndTheirSections.empty) {
                             (partialResult, aMatch) =>
                               partialResult.withMatch(
@@ -1945,7 +2021,7 @@ object MatchAnalysis extends StrictLogging:
 
         if parallelMatchesGroupIdsByMatch.nonEmpty then
           assert(
-            parallelMatchesGroupIdsByMatch.keySet.subsetOf(matches),
+            parallelMatchesGroupIdsByMatch.keySet == matches,
             s"If groups of parallel matches have been discovered, they should cover the overall population of matches exactly."
           )
 
@@ -2594,6 +2670,23 @@ object MatchAnalysis extends StrictLogging:
         val backTranslatedMatches =
           backTranslatedMatchesAndTheirSections.matches
 
+        val suppressedMatches =
+          groupsOfBackTranslatedParallelMatches.zipWithIndex.flatMap(
+            (parallelMatches, groupId) =>
+              val backTranslatedParallelMatches = parallelMatches
+                .filter(backTranslatedMatches.contains)
+
+              val suppressionApplies =
+                1 == backTranslatedParallelMatches.size && backTranslatedParallelMatches
+                  .forall(
+                    !backTranslatedMatchesAndTheirSections
+                      .primaryMatches(_)
+                  )
+
+              if suppressionApplies then backTranslatedParallelMatches
+              else Seq.empty
+          )
+
         val parallelMatchesGroupIdsByMatch =
           Map.from(
             groupsOfBackTranslatedParallelMatches.zipWithIndex.flatMap(
@@ -2616,6 +2709,7 @@ object MatchAnalysis extends StrictLogging:
           )
 
         backTranslatedMatchesAndTheirSections
+          .withoutTheseMatchesAsMatches(suppressedMatches)
           .copy(parallelMatchesGroupIdsByMatch = parallelMatchesGroupIdsByMatch)
       end parallelMatchesOnly
 
