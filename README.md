@@ -248,6 +248,13 @@ The price paid by Kinetic Merge for dropping this was the appearance of a bug du
 collisions using rolling polynomial hashing; that has been since fixed. The fact that the bug was latent in the code for
 so long is a testament to the collision resistance of Rabin fingerprinting!
 
+For an even longer time, this project used the [fingertree implementation](https://codeberg.org/sciss/FingerTree) as a
+vital part of `MatchesAndTheirSections`. It was a performant and robust way of dealing with interval testing, as well as
+a nice example of a pure-functional core fingertree implementation with various front-end APIs. At time of writing, the
+APIs are a bit rough-and-ready, but it did the job well. It was eventually swapped put for an LLM-rolled treap
+implementation, but it still pulled in as a test dependency so that the treap implementation can be validated against it
+as a reference.
+
 ## Design Documents
 
 - [Job Description](./documents/designNotes/jobDescription.md)
@@ -276,9 +283,6 @@ Direct dependencies in `build.sbt` and why they are used...
 - `pprint`. *Readable* debugging output.
 - `tagging`. Stop your code from being both *stringly-typed* and looking like 1970s C with all those integers.
 - `guava`. Hashing, hashing and yet more hashing.
-- `fingertree`. A performant and robust way of dealing with interval testing, as well as nice example of a
-  pure-functional core fingertree implementation with various front-end APIs. At time of writing, the APIs are a bit
-  rough-and-ready, but it does the job well.
 - `caffeine`. If you want a well-documented, one-stop-shop Java caching API that plugs into everything and is endlessly
   configurable, here it is.
 - `progressbar`. A straightforward way of displaying a progress bar for a console application.
