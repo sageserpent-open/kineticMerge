@@ -1,7 +1,13 @@
 package com.sageserpent.kineticmerge.core
 
-import scala.util.Random
-
+/** A persistent interval tree implemented as an augmented treap.
+  *
+  * The treap is based on the randomized binary search tree by Cecilia R. Aragon
+  * and Raimund Seidel (https://faculty.washington.edu/aragon/pubs/rst89.pdf).
+  *
+  * The interval tree augmentation is based on the approach described in
+  * "Introduction to Algorithms" by Cormen, Leiserson, Rivest, and Stein (CLRS).
+  */
 trait SectionsSeen[Element] extends Iterable[Section[Element]]:
   def filterIncludes(interval: (Int, Int)): Iterable[Section[Element]]
   def filterOverlaps(interval: (Int, Int)): Iterable[Section[Element]]
@@ -77,7 +83,9 @@ object SectionsSeen:
     end filterOverlaps
 
     override def +(section: Section[Element]): SectionsSeen[Element] =
-      val priority = Random.nextInt()
+      // Use the section's hash code as a deterministic priority to ensure
+      // reproducibility.
+      val priority = section.hashCode()
       def add(node: Treap[Element] | Empty.type): Treap[Element] = node match
         case Empty =>
           Treap(section, priority, section.onePastEndOffset, Empty, Empty, 1)
@@ -158,7 +166,7 @@ object SectionsSeen:
       Iterable.empty
     override def +(section: Section[Any]): SectionsSeen[Any] = Treap(
       section,
-      Random.nextInt(),
+      section.hashCode(),
       section.onePastEndOffset,
       Empty,
       Empty,
