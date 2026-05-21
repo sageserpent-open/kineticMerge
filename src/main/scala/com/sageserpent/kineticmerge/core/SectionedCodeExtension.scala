@@ -52,15 +52,6 @@ object SectionedCodeExtension extends StrictLogging:
         sectionEq: Eq[Section[Element]],
         sectionSized: Sized[Section[Element]]
     ): LongestCommonSubsequence[Section[Element]] =
-      // TODO: this is a bit messy, because there is an implicit assumption that
-      // if there is no file, then there are no sections to make a block from.
-      // This true, but only because the call-sites of
-      // `longestCommonSubsequenceOf` have already checked the presence or
-      // absence of the file in question. Probably the best thing to do would be
-      // to pass in the optional file explicitly for each side to
-      // `longestCommonSubsequenceOf` and dig the sections out of it, but that
-      // doesn't quite site properly with the existing call-site logic.
-
       given Eq[Block[Element]]    = Eq.by(_.parallelMatchesGroupId)
       given Sized[Block[Element]] = _.size
 
