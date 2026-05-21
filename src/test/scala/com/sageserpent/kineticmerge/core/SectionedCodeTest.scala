@@ -150,10 +150,9 @@ class SectionedCodeTest:
           )(
             configuration,
             // NOTE: the test cases can exhibit matches with overlapping
-            // sections
-            // that intrude on the content the test is checking, so rather than
-            // quietly suppressing the matches, we let admissible failures for
-            // overlapping sections occur and reject the test case.
+            // sections that intrude on the content the test is checking, so
+            // rather than quietly suppressing the matches, we let admissible
+            // failures for overlapping sections occur and reject the test case.
             suppressMatchesInvolvingOverlappingSections = false
           ) match
             case Right(analysis) =>
@@ -1652,10 +1651,9 @@ class SectionedCodeTest:
           )(
             configuration,
             // NOTE: the test cases can exhibit matches with overlapping
-            // sections
-            // that intrude on the content the test is checking, so rather than
-            // quietly suppressing the matches, we let admissible failures for
-            // overlapping sections occur and reject the test case.
+            // sections that intrude on the content the test is checking, so
+            // rather than quietly suppressing the matches, we let admissible
+            // failures for overlapping sections occur and reject the test case.
             suppressMatchesInvolvingOverlappingSections = false
           ) match
             case Right(analysis) =>
