@@ -275,54 +275,34 @@ object SectionedCodeExtension extends StrictLogging:
           )
         end sectionLevelLongestCommonSubsequenceInClump
 
-        val baseCommon =
-          sectionLevelLongestCommonSubsequenceInClump.base.collect {
-            case Contribution.Common(e) => e
-          }
-        val leftCommon =
-          sectionLevelLongestCommonSubsequenceInClump.left.collect {
-            case Contribution.Common(e) => e
-          }
-        val rightCommon =
-          sectionLevelLongestCommonSubsequenceInClump.right.collect {
-            case Contribution.Common(e) => e
-          }
+        val triples = sectionLevelLongestCommonSubsequenceInClump.base.collect {
+          case Contribution.Common(e) => e
+        } lazyZip sectionLevelLongestCommonSubsequenceInClump.left.collect {
+          case Contribution.Common(e) => e
+        } lazyZip sectionLevelLongestCommonSubsequenceInClump.right.collect {
+          case Contribution.Common(e) => e
+        }
 
-        val baseToLeftOnlyCommon =
+        val baseLeftPairs =
           sectionLevelLongestCommonSubsequenceInClump.base.collect {
             case Contribution.CommonToBaseAndLeftOnly(e) => e
-          }
-        val leftToBaseOnlyCommon =
-          sectionLevelLongestCommonSubsequenceInClump.left.collect {
+          } zip sectionLevelLongestCommonSubsequenceInClump.left.collect {
             case Contribution.CommonToBaseAndLeftOnly(e) => e
           }
 
-        val baseToRightOnlyCommon =
+        val baseRightPairs =
           sectionLevelLongestCommonSubsequenceInClump.base.collect {
             case Contribution.CommonToBaseAndRightOnly(e) => e
-          }
-        val rightToBaseOnlyCommon =
-          sectionLevelLongestCommonSubsequenceInClump.right.collect {
+          } zip sectionLevelLongestCommonSubsequenceInClump.right.collect {
             case Contribution.CommonToBaseAndRightOnly(e) => e
           }
 
-        val leftToRightOnlyCommon =
+        val leftRightPairs =
           sectionLevelLongestCommonSubsequenceInClump.left.collect {
             case Contribution.CommonToLeftAndRightOnly(e) => e
-          }
-        val rightToLeftOnlyCommon =
-          sectionLevelLongestCommonSubsequenceInClump.right.collect {
+          } zip sectionLevelLongestCommonSubsequenceInClump.right.collect {
             case Contribution.CommonToLeftAndRightOnly(e) => e
           }
-
-        val triples =
-          baseCommon zip leftCommon zip rightCommon map { case ((b, l), r) =>
-            (b, l, r)
-          }
-
-        val baseLeftPairs  = baseToLeftOnlyCommon zip leftToBaseOnlyCommon
-        val baseRightPairs = baseToRightOnlyCommon zip rightToBaseOnlyCommon
-        val leftRightPairs = leftToRightOnlyCommon zip rightToLeftOnlyCommon
 
         CollectedPairings(
           baseToLeft = MultiDict.from(
@@ -334,10 +314,14 @@ object SectionedCodeExtension extends StrictLogging:
           leftToRight = MultiDict.from(
             triples.map((b, l, r) => l -> r) ++ leftRightPairs
           ),
-          tripleSections = triples.flatMap((b, l, r) => Set(b, l, r)).toSet,
-          baseLeftSections = baseLeftPairs.flatMap((b, l) => Set(b, l)).toSet,
-          baseRightSections = baseRightPairs.flatMap((b, r) => Set(b, r)).toSet,
-          leftRightSections = leftRightPairs.flatMap((l, r) => Set(l, r)).toSet
+          tripleSections =
+            triples.flatMap((b, l, r) => Iterable(b, l, r)).toSet,
+          baseLeftSections =
+            baseLeftPairs.flatMap((b, l) => Iterable(b, l)).toSet,
+          baseRightSections =
+            baseRightPairs.flatMap((b, r) => Iterable(b, r)).toSet,
+          leftRightSections =
+            leftRightPairs.flatMap((l, r) => Iterable(l, r)).toSet
         )
       end pairingsFromClump
 
@@ -358,27 +342,25 @@ object SectionedCodeExtension extends StrictLogging:
         }.get
 
       def uniquePartners(
-          matches: MultiDict[Section[Element], Section[Element]]
+          pairedSections: MultiDict[Section[Element], Section[Element]]
       ): Map[Section[Element], Section[Element]] =
-        matches.toSeq
-          .groupBy(_._1)
-          .view
-          .mapValues(_.map(_._2).toSet)
-          .filter(_._2.size == 1)
-          .mapValues(_.head)
-          .toMap
+        pairedSections.sets.collect {
+          case (sectionOnOneSide, partnerSectionsOnTheOtherSide)
+              if 1 == partnerSectionsOnTheOtherSide.size =>
+            sectionOnOneSide -> partnerSectionsOnTheOtherSide.head
+        }
 
       val baseToLeft = uniquePartners(aggregatedPairings.baseToLeft)
       val leftToBase = uniquePartners(
-        aggregatedPairings.baseToLeft.map((b, l) => l -> b)
+        aggregatedPairings.baseToLeft.map(_.swap)
       )
       val baseToRight = uniquePartners(aggregatedPairings.baseToRight)
       val rightToBase = uniquePartners(
-        aggregatedPairings.baseToRight.map((b, r) => r -> b)
+        aggregatedPairings.baseToRight.map(_.swap)
       )
       val leftToRight = uniquePartners(aggregatedPairings.leftToRight)
       val rightToLeft = uniquePartners(
-        aggregatedPairings.leftToRight.map((l, r) => r -> l)
+        aggregatedPairings.leftToRight.map(_.swap)
       )
 
       enum Side:
