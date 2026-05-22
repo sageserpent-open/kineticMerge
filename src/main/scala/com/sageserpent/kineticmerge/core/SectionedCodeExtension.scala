@@ -55,6 +55,9 @@ object SectionedCodeExtension extends StrictLogging:
       given Eq[Block[Element]]    = Eq.by(_.parallelMatchesGroupId)
       given Sized[Block[Element]] = _.size
 
+      // TODO: this isn't being used right now. Either reinstate it as part of a
+      // revised approach to resolving ambiguous contributions, or remove it
+      // altogether.
       object contributionRanking extends Ordering[Contribution[?]]:
         override def compare(
             x: Contribution[?],
