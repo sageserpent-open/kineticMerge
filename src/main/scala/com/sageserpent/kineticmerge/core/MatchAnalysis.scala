@@ -1737,7 +1737,7 @@ object MatchAnalysis extends StrictLogging:
           override val ambiguousMatchesThreshold: Int           = Int.MaxValue
           override val progressRecording: ProgressRecording     =
             configuration.progressRecording
-          override val label: String = "Meta-matching"
+          override val label: String = "Meta-match analysis"
         end metaMatchConfiguration
 
         given Eq[Section[Element]] = Eq.by(_.content: Seq[Element])
