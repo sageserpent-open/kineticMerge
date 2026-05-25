@@ -262,13 +262,17 @@ object SectionedCodeExtension extends StrictLogging:
                 result: MatchSequence[Section[Element]],
                 deletedBaseElement: Section[Element],
                 deletedRightElement: Section[Element]
-            ): MatchSequence[Section[Element]] = result
+            ): MatchSequence[Section[Element]] = result.appended(
+              Match.BaseAndRight(deletedBaseElement, deletedRightElement)
+            )
 
             override def rightDeletion(
                 result: MatchSequence[Section[Element]],
                 deletedBaseElement: Section[Element],
                 deletedLeftElement: Section[Element]
-            ): MatchSequence[Section[Element]] = result
+            ): MatchSequence[Section[Element]] = result.appended(
+              Match.BaseAndLeft(deletedBaseElement, deletedLeftElement)
+            )
 
             override def coincidentDeletion(
                 result: MatchSequence[Section[Element]],
