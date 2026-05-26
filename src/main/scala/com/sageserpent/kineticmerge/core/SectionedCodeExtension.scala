@@ -365,14 +365,18 @@ object SectionedCodeExtension extends StrictLogging:
             .fold(ifEmpty = resultStep)(
               DisjointSets.union(matchJustEncountered, _) >> resultStep
             )
-        }
+        } >> DisjointSets.toSets
+
+        given Order[Match[Section[Element]]] = Order.by(aMatch =>
+          (
+            aMatch.baseContribution.map(_.startOffset),
+            aMatch.leftContribution.map(_.startOffset),
+            aMatch.rightContribution.map(_.startOffset)
+          )
+        )
 
         workflow
-          .runS(
-            DisjointSets(matchSequence*)(using
-              Order.fromOrdering(MatchAnalysis.matchOrdering)
-            )
-          )
+          .runA(DisjointSets(matchSequence*))
           .value
       end setsOfMatchesThatShareSectionsOnAtLeastOneSide
 
@@ -387,7 +391,7 @@ object SectionedCodeExtension extends StrictLogging:
       end bestMatchFrom
 
       val bestMatches =
-        setsOfMatchesThatShareSectionsOnAtLeastOneSide.toSets._2.toList
+        setsOfMatchesThatShareSectionsOnAtLeastOneSide.toList
           .map((_, matchesSharingASectionOnAtLeastOneSide) =>
             bestMatchFrom(matchesSharingASectionOnAtLeastOneSide)
           )
