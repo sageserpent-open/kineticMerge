@@ -1591,9 +1591,39 @@ object MatchAnalysis extends StrictLogging:
 
       def groupsOfParallelMatches: Map[ParallelMatchesGroupId, SortedSet[
         GenericMatch[Element]
-      ]] = SortedMap.from(parallelMatchesGroupIdsByMatch.groupBy(_._2).map {
-        (groupId, group) => groupId -> SortedSet.from(group.keys)
-      })
+      ]] =
+        given unsafeOrderingValidOnlyForParallelMatches: Ordering[GenericMatch[Element]] with
+          override def compare(
+              x: GenericMatch[Element],
+              y: GenericMatch[Element]
+          ): Int =
+            (startOffsetOnLeft(x), startOffsetOnLeft(y)) match
+              case (Some(xLeftStartOffset), Some(yLeftStartOffset)) =>
+                Ordering[Int].compare(xLeftStartOffset, yLeftStartOffset)
+              case _ =>
+                (startOffsetOnRight(x), startOffsetOnRight(y)) match
+                  case (Some(xRightStartOffset), Some(yRightStartOffset)) =>
+                    Ordering[Int].compare(
+                      xRightStartOffset,
+                      yRightStartOffset
+                    )
+                  case _ =>
+                    ((
+                      startOffsetOnBase(x),
+                      startOffsetOnBase(y)
+                    ): @unchecked) match
+                      case (Some(xBaseStartOffset), Some(yBaseStartOffset)) =>
+                        Ordering[Int].compare(
+                          xBaseStartOffset,
+                          yBaseStartOffset
+                        )
+        end unsafeOrderingValidOnlyForParallelMatches
+
+
+        SortedMap.from(parallelMatchesGroupIdsByMatch.groupBy(_._2).map {
+          (groupId, group) => groupId -> SortedSet.from(group.keys)
+        })
+      end groupsOfParallelMatches
 
       def parallelMatchesOnly: MatchesAndTheirSections =
         // PLAN:
@@ -2299,6 +2329,42 @@ object MatchAnalysis extends StrictLogging:
             }
         end if
       end reconciliationPostcondition
+
+      private def startOffsetOnBase(
+          aMatch: GenericMatch[Element]
+      ): Option[Int] =
+        aMatch match
+          case Match.AllSides(baseSection, _, _) =>
+            Some(baseSection.startOffset)
+          case Match.BaseAndLeft(baseSection, _) =>
+            Some(baseSection.startOffset)
+          case Match.BaseAndRight(baseSection, _) =>
+            Some(baseSection.startOffset)
+          case _ => None
+
+      private def startOffsetOnLeft(
+          aMatch: GenericMatch[Element]
+      ): Option[Int] =
+        aMatch match
+          case Match.AllSides(_, leftSection, _) =>
+            Some(leftSection.startOffset)
+          case Match.BaseAndLeft(_, leftSection) =>
+            Some(leftSection.startOffset)
+          case Match.LeftAndRight(leftSection, _) =>
+            Some(leftSection.startOffset)
+          case _ => None
+
+      private def startOffsetOnRight(
+          aMatch: GenericMatch[Element]
+      ): Option[Int] =
+        aMatch match
+          case Match.AllSides(_, _, rightSection) =>
+            Some(rightSection.startOffset)
+          case Match.BaseAndRight(_, rightSection) =>
+            Some(rightSection.startOffset)
+          case Match.LeftAndRight(_, rightSection) =>
+            Some(rightSection.startOffset)
+          case _ => None
 
       private def pathOnBase(aMatch: GenericMatch[Element]): Option[Path] =
         aMatch match
@@ -3280,42 +3346,6 @@ object MatchAnalysis extends StrictLogging:
     MatchesAndTheirSections.withAllMatchesOfAtLeastTheSureFireWindowSize()
   end of
 
-  private def startOffsetOnBase[Element](
-      aMatch: GenericMatch[Element]
-  ): Option[Int] =
-    aMatch match
-      case Match.AllSides(baseSection, _, _) =>
-        Some(baseSection.startOffset)
-      case Match.BaseAndLeft(baseSection, _) =>
-        Some(baseSection.startOffset)
-      case Match.BaseAndRight(baseSection, _) =>
-        Some(baseSection.startOffset)
-      case _ => None
-
-  private def startOffsetOnLeft[Element](
-      aMatch: GenericMatch[Element]
-  ): Option[Int] =
-    aMatch match
-      case Match.AllSides(_, leftSection, _) =>
-        Some(leftSection.startOffset)
-      case Match.BaseAndLeft(_, leftSection) =>
-        Some(leftSection.startOffset)
-      case Match.LeftAndRight(leftSection, _) =>
-        Some(leftSection.startOffset)
-      case _ => None
-
-  private def startOffsetOnRight[Element](
-      aMatch: GenericMatch[Element]
-  ): Option[Int] =
-    aMatch match
-      case Match.AllSides(_, _, rightSection) =>
-        Some(rightSection.startOffset)
-      case Match.BaseAndRight(_, rightSection) =>
-        Some(rightSection.startOffset)
-      case Match.LeftAndRight(_, rightSection) =>
-        Some(rightSection.startOffset)
-      case _ => None
-
   sealed trait AbstractConfiguration:
     val minimumMatchSize: Int
     val thresholdSizeFractionForMatching: Double
@@ -3354,31 +3384,4 @@ object MatchAnalysis extends StrictLogging:
     require(0 <= minimumAmbiguousMatchSize)
     require(1 <= ambiguousMatchesThreshold)
   end Configuration
-
-  given matchOrdering[Element]: Ordering[GenericMatch[Element]] with
-    override def compare(
-        x: GenericMatch[Element],
-        y: GenericMatch[Element]
-    ): Int =
-      (startOffsetOnLeft(x), startOffsetOnLeft(y)) match
-        case (Some(xLeftStartOffset), Some(yLeftStartOffset)) =>
-          Ordering[Int].compare(xLeftStartOffset, yLeftStartOffset)
-        case _ =>
-          (startOffsetOnRight(x), startOffsetOnRight(y)) match
-            case (Some(xRightStartOffset), Some(yRightStartOffset)) =>
-              Ordering[Int].compare(
-                xRightStartOffset,
-                yRightStartOffset
-              )
-            case _ =>
-              ((
-                startOffsetOnBase(x),
-                startOffsetOnBase(y)
-              ): @unchecked) match
-                case (Some(xBaseStartOffset), Some(yBaseStartOffset)) =>
-                  Ordering[Int].compare(
-                    xBaseStartOffset,
-                    yBaseStartOffset
-                  )
-  end matchOrdering
 end MatchAnalysis

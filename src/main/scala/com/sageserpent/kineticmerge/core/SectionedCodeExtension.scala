@@ -367,6 +367,14 @@ object SectionedCodeExtension extends StrictLogging:
             )
         } >> DisjointSets.toSets
 
+        // NOTE: this is a tiebreaking order that works across from base to left
+        // to right. It is required by `DisjointSets`, but also turns up later
+        // in `bestMatchFrom`, because that order is carried over to each
+        // `AvlSet` that is passed in. The matches in that set all share at
+        // least one section in common with another, and the unshared sections
+        // should be correlated by the section-level merging that produced them,
+        // so it is safe to assume that this order aligns with order of
+        // appearance of the sections on each side.
         given Order[Match[Section[Element]]] = Order.by(aMatch =>
           (
             aMatch.baseContribution.map(_.startOffset),
@@ -380,14 +388,16 @@ object SectionedCodeExtension extends StrictLogging:
           .value
       end setsOfMatchesThatShareSectionsOnAtLeastOneSide
 
-      def bestMatchFrom[X](matches: AvlSet[Match[X]]): Match[X] =
-        require(!matches.isEmpty)
+      def bestMatchFrom[X](
+          matchesSharingAtLeastOneSection: AvlSet[Match[X]]
+      ): Match[X] =
+        require(!matchesSharingAtLeastOneSection.isEmpty)
         // NOTE: we assume the matches are ordered by their appearance in the
         // file, so take the first all-sides match or failing that, the first
         // pairwise match.
-        matches.toIterator
+        matchesSharingAtLeastOneSection.toIterator
           .find(_.isAnAllSidesMatch)
-          .getOrElse(matches.toIterator.next())
+          .getOrElse(matchesSharingAtLeastOneSection.toIterator.next())
       end bestMatchFrom
 
       val bestMatches =
