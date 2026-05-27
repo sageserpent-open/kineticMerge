@@ -112,6 +112,14 @@ class BlockDuplicationAndCondensationTests:
         )(path = placeholderPath)
         .adaptedForMirroring(mirrorImage)
 
+      println(s"Base contributions: ${pprintCustomised(baseContributions)}")
+      println(
+        s"Side without changes contributions: ${pprintCustomised(contributionsOnSideWithoutChanges)}"
+      )
+      println(
+        s"Side with duplication contributions: ${pprintCustomised(contributionsOnSideWithDuplication)}"
+      )
+
       assert(
         Vector(Contribution.Common(blockContent)) == baseContributions
           .map(_.map(_.content))
