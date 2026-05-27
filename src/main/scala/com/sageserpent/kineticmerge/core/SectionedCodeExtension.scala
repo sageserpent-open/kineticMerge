@@ -43,7 +43,7 @@ object SectionedCodeExtension extends StrictLogging:
   extension [Path, Element: Eq: Order](
       sectionedCode: SectionedCode[Path, Element]
   )
-    private def longestCommonSubsequenceOf(
+    def longestCommonSubsequenceOf(
         baseSections: IndexedSeq[Section[Element]],
         leftSections: IndexedSeq[Section[Element]],
         rightSections: IndexedSeq[Section[Element]]

@@ -5,10 +5,15 @@ import com.google.common.hash.{Funnel, HashFunction, Hashing}
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
+  Sized,
+  defaultElementSize
+}
 import com.sageserpent.kineticmerge.core.MatchAnalysis.Configuration
 import com.sageserpent.kineticmerge.core.SectionedCodeExtension.*
 import com.sageserpent.kineticmerge.core.SectionedCodeExtensionTest.{
   FakePath,
+  adaptedForMirroring,
   reconstituteTextFrom,
   given
 }
@@ -30,6 +35,12 @@ object SectionedCodeExtensionTest:
   given Funnel[Token]     = Token.funnel
   given HashFunction      = Hashing.murmur3_32_fixed()
   given ProgressRecording = NoProgressRecording
+
+  extension [X](longestCommonSubsequence: LongestCommonSubsequence[X])
+    def adaptedForMirroring(mirrored: Boolean): LongestCommonSubsequence[X] =
+      if mirrored then longestCommonSubsequence.mirror
+      else longestCommonSubsequence
+  end extension
 
 end SectionedCodeExtensionTest
 
@@ -445,34 +456,6 @@ class SectionedCodeExtensionTest extends ProseExamples:
       tokens(codeMotionExampleExpectedMerge).get
     )
   end codeMotion
-
-  private def verifyContent(
-      path: FakePath,
-      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
-  )(
-      expectedTokens: IndexedSeq[Token],
-      equality: (Token, Token) => Boolean = Token.equality
-  ): Unit =
-    println(fansi.Color.Yellow(s"Checking $path...\n"))
-    println(fansi.Color.Yellow("Expected..."))
-    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
-
-    mergeResultsByPath(path) match
-      case FullyMerged(result) =>
-        println(fansi.Color.Yellow("Fully merged result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(result)))
-        assert(result.corresponds(expectedTokens)(equality))
-      case MergedWithConflicts(baseResult, leftResult, rightResult) =>
-        println(fansi.Color.Red(s"Base result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(baseResult)))
-        println(fansi.Color.Red(s"Left result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
-        println(fansi.Color.Red(s"Right result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
-
-        fail("Should have seen a clean merge.")
-    end match
-  end verifyContent
 
   @TestFactory
   def codeMotionWithSplit(): DynamicTests =
@@ -1003,6 +986,41 @@ class SectionedCodeExtensionTest extends ProseExamples:
       }
   end codeMotionAcrossTwoFilesWhoseContentIsCombinedTogetherToMakeANewReplacementFile
 
+  private def verifyAbsenceOfContent(
+      path: FakePath,
+      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
+  ): Unit =
+    mergeResultsByPath(path) match
+      case FullyMerged(result) =>
+        assert(
+          result.isEmpty,
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render + fansi.Color
+            .Green(
+              reconstituteTextFrom(result)
+            )
+            .render
+        )
+      case MergedWithConflicts(baseResult, leftResult, rightResult) =>
+        fail(
+          fansi.Color
+            .Yellow(
+              s"\nShould not have this content at $path...\n"
+            )
+            .render
+            + fansi.Color.Red(s"\nBase result...\n")
+            + fansi.Color.Green(reconstituteTextFrom(baseResult)).render
+            + fansi.Color.Red(s"\nLeft result...\n")
+            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
+            + fansi.Color.Red(s"\nRight result...\n").render
+            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
+        )
+    end match
+  end verifyAbsenceOfContent
+
   @Test
   def furtherMigrationOfAMigratedEditAsAnInsertion(): Unit =
     val configuration = Configuration(
@@ -1446,41 +1464,6 @@ class SectionedCodeExtensionTest extends ProseExamples:
           verifyAbsenceOfContent(originalPath, mergeResultsByPath)
       }
   end simpleCodeMotionAcrossAFileRenameExamples
-
-  private def verifyAbsenceOfContent(
-      path: FakePath,
-      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
-  ): Unit =
-    mergeResultsByPath(path) match
-      case FullyMerged(result) =>
-        assert(
-          result.isEmpty,
-          fansi.Color
-            .Yellow(
-              s"\nShould not have this content at $path...\n"
-            )
-            .render + fansi.Color
-            .Green(
-              reconstituteTextFrom(result)
-            )
-            .render
-        )
-      case MergedWithConflicts(baseResult, leftResult, rightResult) =>
-        fail(
-          fansi.Color
-            .Yellow(
-              s"\nShould not have this content at $path...\n"
-            )
-            .render
-            + fansi.Color.Red(s"\nBase result...\n")
-            + fansi.Color.Green(reconstituteTextFrom(baseResult)).render
-            + fansi.Color.Red(s"\nLeft result...\n")
-            + fansi.Color.Green(reconstituteTextFrom(leftResult)).render
-            + fansi.Color.Red(s"\nRight result...\n").render
-            + fansi.Color.Green(reconstituteTextFrom(rightResult)).render
-        )
-    end match
-  end verifyAbsenceOfContent
 
   @TestFactory
   def forwardingThroughCodeMotionAcrossAFileRenameExamples(): DynamicTests =
@@ -2235,6 +2218,34 @@ class SectionedCodeExtensionTest extends ProseExamples:
     )
   end issue236BugReproduction
 
+  private def verifyContent(
+      path: FakePath,
+      mergeResultsByPath: Map[FakePath, MergeResult[Token]]
+  )(
+      expectedTokens: IndexedSeq[Token],
+      equality: (Token, Token) => Boolean = Token.equality
+  ): Unit =
+    println(fansi.Color.Yellow(s"Checking $path...\n"))
+    println(fansi.Color.Yellow("Expected..."))
+    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
+
+    mergeResultsByPath(path) match
+      case FullyMerged(result) =>
+        println(fansi.Color.Yellow("Fully merged result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(result)))
+        assert(result.corresponds(expectedTokens)(equality))
+      case MergedWithConflicts(baseResult, leftResult, rightResult) =>
+        println(fansi.Color.Red(s"Base result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(baseResult)))
+        println(fansi.Color.Red(s"Left result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+        println(fansi.Color.Red(s"Right result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+        fail("Should have seen a clean merge.")
+    end match
+  end verifyContent
+
   @TestFactory
   def lastMinuteConflictResolution(): DynamicTests =
     val configuration = Configuration(
@@ -2557,6 +2568,91 @@ class SectionedCodeExtensionTest extends ProseExamples:
       assertDoesNotThrow(() => sectionedCode.merge)
     }
   end issue274BugReproduction
+
+  @TestFactory
+  def aBlockIsDuplicatedOnOneSide(): DynamicTests =
+    import com.sageserpent.kineticmerge.core.SectionedCodeTest.{Element, FakeSources, Path, given_Funnel_Element}
+
+    given Eq[Section[Element]] =
+      given Eq[IndexedSeq[Element]] = Eq.fromUniversalEquals
+      Eq.by(_.content)
+    end given
+
+    given Sized[Section[Element]] = defaultElementSize
+
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 4
+    )
+
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val placeholderPath: Path = 1
+
+      val block = Vector(1, 2, 3)
+
+      val baseElements: IndexedSeq[Element] = block
+
+      val baseSources = FakeSources(
+        contentsByPath = Map(placeholderPath -> baseElements),
+        label = "base"
+      )
+
+      val elementsOnSideWithoutChanges: IndexedSeq[Element]  = block
+      val elementsOnSideWithDuplication: IndexedSeq[Element] =
+        block ++ block
+
+      val leftSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> (if mirrorImage then elementsOnSideWithDuplication
+                              else elementsOnSideWithoutChanges)
+        ),
+        label = "left"
+      )
+
+      val rightSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> (if mirrorImage then elementsOnSideWithoutChanges
+                              else elementsOnSideWithDuplication)
+        ),
+        label = "right"
+      )
+
+      val Right(sectionedCode) = SectionedCode.of(
+        baseSources = baseSources,
+        leftSources = leftSources,
+        rightSources = rightSources
+      )(configuration): @unchecked
+
+      // TODO: calling `SectionedCodeExtension.longestCommonSubsequenceOf` is
+      // made awkward because the path and sections have to be consistent. Fix
+      // this.
+      val LongestCommonSubsequence(
+        baseContributions,
+        contributionsOnSideWithoutChanges,
+        contributionsOnSideWithDuplication,
+        _,
+        _,
+        _,
+        _
+      ) = sectionedCode
+        .longestCommonSubsequenceOf(
+          baseSections = sectionedCode.base(placeholderPath).sections,
+          leftSections = sectionedCode.left(placeholderPath).sections,
+          rightSections = sectionedCode.right(placeholderPath).sections
+        )(path = placeholderPath)
+        .adaptedForMirroring(mirrorImage)
+
+      println(s"Base contributions: ${pprintCustomised(baseContributions)}")
+      println(
+        s"Side without changes contributions: ${pprintCustomised(contributionsOnSideWithoutChanges)}"
+      )
+      println(
+        s"Side with duplication contributions: ${pprintCustomised(contributionsOnSideWithDuplication)}"
+      )
+    }
+  end aBlockIsDuplicatedOnOneSide
 
 end SectionedCodeExtensionTest
 
