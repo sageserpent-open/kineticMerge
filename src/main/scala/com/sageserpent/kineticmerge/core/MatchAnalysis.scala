@@ -1592,7 +1592,7 @@ object MatchAnalysis extends StrictLogging:
       def groupsOfParallelMatches: Map[ParallelMatchesGroupId, SortedSet[
         GenericMatch[Element]
       ]] =
-        given Ordering[GenericMatch[Element]] with
+        given unsafeOrderingValidOnlyForParallelMatches: Ordering[GenericMatch[Element]] with
           override def compare(
               x: GenericMatch[Element],
               y: GenericMatch[Element]
@@ -1617,7 +1617,8 @@ object MatchAnalysis extends StrictLogging:
                           xBaseStartOffset,
                           yBaseStartOffset
                         )
-        end given
+        end unsafeOrderingValidOnlyForParallelMatches
+
 
         SortedMap.from(parallelMatchesGroupIdsByMatch.groupBy(_._2).map {
           (groupId, group) => groupId -> SortedSet.from(group.keys)
