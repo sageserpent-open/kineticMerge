@@ -53,9 +53,9 @@ class LongestCommonSubsequenceTest:
           catch
             case exception: AssertionError =>
               // TODO: the LCS algorithm can switch between alternative
-              // solutions that are equally optimal when the input are mirrored.
-              // Ideally it impose some canonical choice, but for now this is a
-              // workaround...
+              // solutions that are equally optimal when the inputs are
+              // mirrored. Ideally it would impose some canonical choice, but
+              // for now this is a workaround...
               if mirrorImage.size == image.size then Trials.reject()
               else throw exception
           end try
