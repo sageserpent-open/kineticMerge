@@ -52,7 +52,30 @@ object SectionedCodeExtension extends StrictLogging:
         sectionEq: Eq[Section[Element]],
         sectionSized: Sized[Section[Element]]
     ): LongestCommonSubsequence[Section[Element]] =
-      given Eq[Block[Element]]    = Eq.by(_.parallelMatchesGroupId)
+      val groupsOfParallelMatches = sectionedCode.groupsOfParallelMatches
+
+      given Eq[Block[Element]] =
+        // NOTE: this is subtle - comparing by just
+        // `Block.parallelMatchesGroupId` is OK, but consider situations where
+        // two distinct blocks cover the same content on the same side: this can
+        // fool the following block-level merge into a less than optimal
+        // alignment of blocks whenever the group ids of the relevant blocks
+        // swap around from one side to another. Peering inside the two block's
+        // matched content allows the merge to ignore the scrambled group ids.
+        given Order[Match[Section[Element]]] = Order.by(aMatch =>
+          (
+            aMatch.baseContribution.map(_.content: Seq[Element]),
+            aMatch.leftContribution.map(_.content: Seq[Element]),
+            aMatch.rightContribution.map(_.content: Seq[Element])
+          )
+        )
+
+        Eq.or(
+          Eq.by(_.parallelMatchesGroupId),
+          Eq.by(block => groupsOfParallelMatches(block.parallelMatchesGroupId))
+        )
+      end given
+
       given Sized[Block[Element]] = _.size
 
       // TODO: this isn't being used right now. Either reinstate it as part of a
