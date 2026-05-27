@@ -1,6 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.Eq
+import cats.syntax.functor.*
 import com.google.common.hash.{HashFunction, Hashing}
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.junit5.{DynamicTests, Syntax}
@@ -8,7 +9,9 @@ import com.sageserpent.kineticmerge.core.BlockDuplicationAndCondensationTests.{
   *,
   given
 }
+import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
+  Contribution,
   Sized,
   defaultElementSize
 }
@@ -55,18 +58,18 @@ class BlockDuplicationAndCondensationTests:
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
       val placeholderPath: Path = 1
 
-      val block = Vector(1, 2, 3)
+      val blockContent = Vector(1, 2, 3)
 
-      val baseElements: IndexedSeq[Element] = block
+      val baseElements: IndexedSeq[Element] = blockContent
 
       val baseSources = FakeSources(
         contentsByPath = Map(placeholderPath -> baseElements),
         label = "base"
       )
 
-      val elementsOnSideWithoutChanges: IndexedSeq[Element]  = block
+      val elementsOnSideWithoutChanges: IndexedSeq[Element]  = blockContent
       val elementsOnSideWithDuplication: IndexedSeq[Element] =
-        block ++ block
+        blockContent ++ blockContent
 
       val leftSources = FakeSources(
         contentsByPath = Map(
@@ -109,12 +112,20 @@ class BlockDuplicationAndCondensationTests:
         )(path = placeholderPath)
         .adaptedForMirroring(mirrorImage)
 
-      println(s"Base contributions: ${pprintCustomised(baseContributions)}")
-      println(
-        s"Side without changes contributions: ${pprintCustomised(contributionsOnSideWithoutChanges)}"
+      assert(
+        Vector(Contribution.Common(blockContent)) == baseContributions
+          .map(_.map(_.content))
       )
-      println(
-        s"Side with duplication contributions: ${pprintCustomised(contributionsOnSideWithDuplication)}"
+      assert(
+        Vector(
+          Contribution.Common(blockContent)
+        ) == contributionsOnSideWithoutChanges.map(_.map(_.content))
+      )
+      assert(
+        Vector(
+          Contribution.Common(blockContent),
+          Contribution.Difference(blockContent)
+        ) == contributionsOnSideWithDuplication.map(_.map(_.content))
       )
     }
   end aBlockIsDuplicatedOnOneSide

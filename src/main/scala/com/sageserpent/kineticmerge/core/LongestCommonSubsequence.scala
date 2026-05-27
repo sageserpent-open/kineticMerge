@@ -1,9 +1,10 @@
 package com.sageserpent.kineticmerge.core
 
+import cats.derived.*
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.syntax.all.{catsSyntaxApplyOps, catsSyntaxFlatMapOps}
-import cats.{Eq, Monad}
+import cats.{Eq, Functor, Monad}
 import com.sageserpent.kineticmerge.ProgressRecording
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
   CommonSubsequenceSize,
@@ -421,6 +422,9 @@ object LongestCommonSubsequence:
             resultSnapshotPriorToMutation
           end advanceToNextLeadingSwathe
 
+          private def notYetReachedFinalSwathe =
+            maximumSwatheIndex > _indexOfLeadingSwathe
+
           def topLevelSolution: LongestCommonSubsequence[Element] =
             require(!notYetReachedFinalSwathe)
 
@@ -431,9 +435,6 @@ object LongestCommonSubsequence:
               right.size
             )
           end topLevelSolution
-
-          private def notYetReachedFinalSwathe =
-            maximumSwatheIndex > _indexOfLeadingSwathe
 
           inline private def storageLotForLeadingSwathe =
             _indexOfLeadingSwathe % 2
@@ -1152,7 +1153,7 @@ object LongestCommonSubsequence:
 
   // TODO: this definition seems a bit strange - why not hoist `element` up into
   // the core enum constructor?
-  enum Contribution[Element]:
+  enum Contribution[Element] derives Functor:
     case Common(
         element: Element
     )
@@ -1171,18 +1172,6 @@ object LongestCommonSubsequence:
 
     def element: Element
 
-    def constructLikeness[AnotherElement](
-        anotherElement: AnotherElement
-    ): Contribution[AnotherElement] =
-      this match
-        case Common(_)                  => Common(anotherElement)
-        case Difference(_)              => Difference(anotherElement)
-        case CommonToBaseAndLeftOnly(_) =>
-          CommonToBaseAndLeftOnly(anotherElement)
-        case CommonToBaseAndRightOnly(_) =>
-          CommonToBaseAndRightOnly(anotherElement)
-        case CommonToLeftAndRightOnly(_) =>
-          CommonToLeftAndRightOnly(anotherElement)
   end Contribution
 
   object CommonSubsequenceSize:
