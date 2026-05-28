@@ -228,4 +228,104 @@ class BlockDuplicationAndCondensationTests:
     }
   end aBlockIsDuplicatedOnTwoSides
 
+  @TestFactory
+  def aBlockIsCondensedOnOneSide(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 4
+    )
+
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val placeholderPath: Path = 1
+
+      val blockContent = Vector(1, 2, 3)
+
+      val elementsOnBaseWithDuplication: IndexedSeq[Element] =
+        blockContent ++ blockContent
+
+      val baseElements: IndexedSeq[Element] = elementsOnBaseWithDuplication
+
+      val baseSources = FakeSources(
+        contentsByPath = Map(placeholderPath -> baseElements),
+        label = "base"
+      )
+
+      val elementsOnSideWithoutChanges: IndexedSeq[Element] =
+        elementsOnBaseWithDuplication
+      val elementsOnSideWithoutDuplication: IndexedSeq[Element] = blockContent
+
+      val leftSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> (if mirrorImage then
+                                elementsOnSideWithoutDuplication
+                              else elementsOnSideWithoutChanges)
+        ),
+        label = "left"
+      )
+
+      val rightSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> (if mirrorImage then elementsOnSideWithoutChanges
+                              else elementsOnSideWithoutDuplication)
+        ),
+        label = "right"
+      )
+
+      val Right(sectionedCode) = SectionedCode.of(
+        baseSources = baseSources,
+        leftSources = leftSources,
+        rightSources = rightSources
+      )(configuration): @unchecked
+
+      // TODO: calling `SectionedCodeExtension.longestCommonSubsequenceOf` is
+      // made awkward because the path and sections have to be consistent. Fix
+      // this.
+      val LongestCommonSubsequence(
+        baseContributionsWithDuplication,
+        contributionsOnSideWithoutChanges,
+        contributionsOnTheOtherSideWithoutDuplication,
+        _,
+        _,
+        _,
+        _
+      ) = sectionedCode
+        .longestCommonSubsequenceOf(
+          baseSections = sectionedCode.base(placeholderPath).sections,
+          leftSections = sectionedCode.left(placeholderPath).sections,
+          rightSections = sectionedCode.right(placeholderPath).sections
+        )(path = placeholderPath)
+        .adaptedForMirroring(mirrorImage)
+
+      println(
+        s"Base contributions: ${pprintCustomised(baseContributionsWithDuplication)}"
+      )
+      println(
+        s"Side without changes contributions: ${pprintCustomised(contributionsOnSideWithoutChanges)}"
+      )
+      println(
+        s"The other side with duplication contributions: ${pprintCustomised(contributionsOnTheOtherSideWithoutDuplication)}"
+      )
+
+      assert(
+        Vector(
+          Contribution.Common(blockContent),
+          Contribution.Difference(blockContent)
+        ) == baseContributionsWithDuplication.map(_.map(_.content))
+      )
+      assert(
+        Vector(
+          Contribution.Common(blockContent),
+          Contribution.Difference(blockContent)
+        ) == contributionsOnSideWithoutChanges.map(_.map(_.content))
+      )
+      assert(
+        Vector(
+          Contribution.Common(blockContent)
+        ) == contributionsOnTheOtherSideWithoutDuplication.map(_.map(_.content))
+      )
+    }
+  end aBlockIsCondensedOnOneSide
+
 end BlockDuplicationAndCondensationTests
