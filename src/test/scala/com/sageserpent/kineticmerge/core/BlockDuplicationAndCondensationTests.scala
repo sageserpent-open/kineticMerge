@@ -52,7 +52,7 @@ class BlockDuplicationAndCondensationTests:
       minimumMatchSize = 1,
       thresholdSizeFractionForMatching = 0,
       minimumAmbiguousMatchSize = 0,
-      ambiguousMatchesThreshold = 4
+      ambiguousMatchesThreshold = 10
     )
 
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
@@ -144,7 +144,7 @@ class BlockDuplicationAndCondensationTests:
       minimumMatchSize = 1,
       thresholdSizeFractionForMatching = 0,
       minimumAmbiguousMatchSize = 0,
-      ambiguousMatchesThreshold = 4
+      ambiguousMatchesThreshold = 10
     )
 
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
@@ -228,13 +228,14 @@ class BlockDuplicationAndCondensationTests:
     }
   end aBlockIsDuplicatedOnTwoSides
 
+
   @TestFactory
   def duplicateBlocksAreMergedOnOneSide(): DynamicTests =
     val configuration = Configuration(
       minimumMatchSize = 1,
       thresholdSizeFractionForMatching = 0,
       minimumAmbiguousMatchSize = 0,
-      ambiguousMatchesThreshold = 4
+      ambiguousMatchesThreshold = 10
     )
 
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
@@ -434,5 +435,99 @@ class BlockDuplicationAndCondensationTests:
       )
     }
   end overlappingBlocksAreSeparatedOnOneSide
+
+  @TestFactory
+  def aBlockIsTriplicatedOnTwoSides(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val placeholderPath: Path = 1
+
+      val blockContent = Vector(1, 2, 3)
+
+      val baseElements: IndexedSeq[Element] = blockContent
+
+      val baseSources = FakeSources(
+        contentsByPath = Map(placeholderPath -> baseElements),
+        label = "base"
+      )
+
+      val elementsWithTriplication: IndexedSeq[Element] =
+        blockContent ++ blockContent ++ blockContent
+
+      val leftSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> elementsWithTriplication
+        ),
+        label = "left"
+      )
+
+      val rightSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> elementsWithTriplication
+        ),
+        label = "right"
+      )
+
+      val Right(sectionedCode) = SectionedCode.of(
+        baseSources = baseSources,
+        leftSources = leftSources,
+        rightSources = rightSources
+      )(configuration): @unchecked
+
+      // TODO: calling `SectionedCodeExtension.longestCommonSubsequenceOf` is
+      // made awkward because the path and sections have to be consistent. Fix
+      // this.
+      val LongestCommonSubsequence(
+        baseContributions,
+        contributionsOnOneSideWithTriplication,
+        contributionsOnTheOtherSideWithTriplication,
+        _,
+        _,
+        _,
+        _
+      ) = sectionedCode
+        .longestCommonSubsequenceOf(
+          baseSections = sectionedCode.base(placeholderPath).sections,
+          leftSections = sectionedCode.left(placeholderPath).sections,
+          rightSections = sectionedCode.right(placeholderPath).sections
+        )(path = placeholderPath)
+        .adaptedForMirroring(mirrorImage)
+
+      println(s"Base contributions: ${pprintCustomised(baseContributions)}")
+      println(
+        s"One side with triplication contributions: ${pprintCustomised(contributionsOnOneSideWithTriplication)}"
+      )
+      println(
+        s"The other side with triplication contributions: ${pprintCustomised(contributionsOnTheOtherSideWithTriplication)}"
+      )
+
+      assert(
+        Vector(Contribution.Common(blockContent)) == baseContributions
+          .map(_.map(_.content))
+      )
+
+      val expectedTriplicatedSide = Vector(
+        Contribution.Common(blockContent),
+        Contribution.CommonToLeftAndRightOnly(blockContent),
+        Contribution.CommonToLeftAndRightOnly(blockContent)
+      )
+
+      assert(
+        expectedTriplicatedSide == contributionsOnOneSideWithTriplication.map(
+          _.map(_.content)
+        )
+      )
+      assert(
+        expectedTriplicatedSide == contributionsOnTheOtherSideWithTriplication
+          .map(_.map(_.content))
+      )
+    }
+  end aBlockIsTriplicatedOnTwoSides
 
 end BlockDuplicationAndCondensationTests
