@@ -216,13 +216,13 @@ class BlockDuplicationAndCondensationTests:
       assert(
         Vector(
           Contribution.Common(blockContent),
-          Contribution.Difference(blockContent)
+          Contribution.CommonToLeftAndRightOnly(blockContent)
         ) == contributionsOnOneSideWithDuplication.map(_.map(_.content))
       )
       assert(
         Vector(
           Contribution.Common(blockContent),
-          Contribution.Difference(blockContent)
+          Contribution.CommonToLeftAndRightOnly(blockContent)
         ) == contributionsOnTheOtherSideWithDuplication.map(_.map(_.content))
       )
     }
@@ -311,13 +311,13 @@ class BlockDuplicationAndCondensationTests:
       assert(
         Vector(
           Contribution.Common(blockContent),
-          Contribution.Difference(blockContent)
+          Contribution.CommonToBaseAndLeftOnly(blockContent)
         ) == baseContributionsWithDuplication.map(_.map(_.content))
       )
       assert(
         Vector(
           Contribution.Common(blockContent),
-          Contribution.Difference(blockContent)
+          Contribution.CommonToBaseAndLeftOnly(blockContent)
         ) == contributionsOnSideWithoutChanges.map(_.map(_.content))
       )
       assert(
