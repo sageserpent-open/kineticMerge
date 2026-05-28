@@ -137,4 +137,95 @@ class BlockDuplicationAndCondensationTests:
       )
     }
   end aBlockIsDuplicatedOnOneSide
+
+  @TestFactory
+  def aBlockIsDuplicatedOnTwoSides(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 4
+    )
+
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val placeholderPath: Path = 1
+
+      val blockContent = Vector(1, 2, 3)
+
+      val baseElements: IndexedSeq[Element] = blockContent
+
+      val baseSources = FakeSources(
+        contentsByPath = Map(placeholderPath -> baseElements),
+        label = "base"
+      )
+
+      val elementsOnSidesWithDuplication: IndexedSeq[Element] =
+        blockContent ++ blockContent
+
+      val leftSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> elementsOnSidesWithDuplication
+        ),
+        label = "left"
+      )
+
+      val rightSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> elementsOnSidesWithDuplication
+        ),
+        label = "right"
+      )
+
+      val Right(sectionedCode) = SectionedCode.of(
+        baseSources = baseSources,
+        leftSources = leftSources,
+        rightSources = rightSources
+      )(configuration): @unchecked
+
+      // TODO: calling `SectionedCodeExtension.longestCommonSubsequenceOf` is
+      // made awkward because the path and sections have to be consistent. Fix
+      // this.
+      val LongestCommonSubsequence(
+        baseContributions,
+        contributionsOnOneSideWithDuplication,
+        contributionsOnTheOtherSideWithDuplication,
+        _,
+        _,
+        _,
+        _
+      ) = sectionedCode
+        .longestCommonSubsequenceOf(
+          baseSections = sectionedCode.base(placeholderPath).sections,
+          leftSections = sectionedCode.left(placeholderPath).sections,
+          rightSections = sectionedCode.right(placeholderPath).sections
+        )(path = placeholderPath)
+        .adaptedForMirroring(mirrorImage)
+
+      println(s"Base contributions: ${pprintCustomised(baseContributions)}")
+      println(
+        s"One side with duplication contributions: ${pprintCustomised(contributionsOnOneSideWithDuplication)}"
+      )
+      println(
+        s"The other side with duplication contributions: ${pprintCustomised(contributionsOnTheOtherSideWithDuplication)}"
+      )
+
+      assert(
+        Vector(Contribution.Common(blockContent)) == baseContributions
+          .map(_.map(_.content))
+      )
+      assert(
+        Vector(
+          Contribution.Common(blockContent),
+          Contribution.Difference(blockContent)
+        ) == contributionsOnOneSideWithDuplication.map(_.map(_.content))
+      )
+      assert(
+        Vector(
+          Contribution.Common(blockContent),
+          Contribution.Difference(blockContent)
+        ) == contributionsOnTheOtherSideWithDuplication.map(_.map(_.content))
+      )
+    }
+  end aBlockIsDuplicatedOnTwoSides
+
 end BlockDuplicationAndCondensationTests
