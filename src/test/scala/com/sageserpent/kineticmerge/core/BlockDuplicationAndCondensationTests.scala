@@ -52,7 +52,7 @@ class BlockDuplicationAndCondensationTests:
       minimumMatchSize = 1,
       thresholdSizeFractionForMatching = 0,
       minimumAmbiguousMatchSize = 0,
-      ambiguousMatchesThreshold = 4
+      ambiguousMatchesThreshold = 10
     )
 
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
@@ -144,7 +144,7 @@ class BlockDuplicationAndCondensationTests:
       minimumMatchSize = 1,
       thresholdSizeFractionForMatching = 0,
       minimumAmbiguousMatchSize = 0,
-      ambiguousMatchesThreshold = 4
+      ambiguousMatchesThreshold = 10
     )
 
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
@@ -235,7 +235,7 @@ class BlockDuplicationAndCondensationTests:
       minimumMatchSize = 1,
       thresholdSizeFractionForMatching = 0,
       minimumAmbiguousMatchSize = 0,
-      ambiguousMatchesThreshold = 4
+      ambiguousMatchesThreshold = 10
     )
 
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>

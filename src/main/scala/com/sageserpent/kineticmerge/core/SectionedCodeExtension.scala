@@ -385,16 +385,10 @@ object SectionedCodeExtension extends StrictLogging:
             )
           )
 
-          val unionStep = previouslySeenMatchesSharingAtLeastOneSection.foldLeft(
-            State.pure[DisjointSets[Match[Section[Element]]], Unit](())
-          )((step, previouslySeenMatch) =>
-            step >> DisjointSets.union(
-              matchJustEncountered,
-              previouslySeenMatch
-            ).void
-          )
-
-          unionStep >> resultStep
+          previouslySeenMatchesSharingAtLeastOneSection.headOption
+            .fold(ifEmpty = resultStep)(
+              DisjointSets.union(matchJustEncountered, _) >> resultStep
+            )
         } >> DisjointSets.toSets
 
         // NOTE: this is a tiebreaking order that works across from base to left
@@ -409,10 +403,7 @@ object SectionedCodeExtension extends StrictLogging:
           (
             aMatch.baseContribution.map(_.startOffset),
             aMatch.leftContribution.map(_.startOffset),
-            aMatch.rightContribution.map(_.startOffset),
-            aMatch match
-              case _: Match.AllSides[Section[Element]] => 0
-              case _                                   => 1
+            aMatch.rightContribution.map(_.startOffset)
           )
         )
 
