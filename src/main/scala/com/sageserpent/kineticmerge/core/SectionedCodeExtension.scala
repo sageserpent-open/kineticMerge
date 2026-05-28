@@ -65,6 +65,9 @@ object SectionedCodeExtension extends StrictLogging:
         // ids of the relevant blocks swap around from one to another. Peering
         // inside the two blocks matched content allows the merge to ignore the
         // scrambled group ids.
+        // NOTE: tip of the hat to Jules for suggesting the content-based
+        // comparison approach; I cheerfully ignored it at the time but have
+        // come to realise its virtue!
         given Order[Match[Section[Element]]] = Order.by(aMatch =>
           (
             aMatch.baseContribution.map(_.content: Seq[Element]),
