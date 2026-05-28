@@ -3,6 +3,7 @@ package com.sageserpent.kineticmerge.core
 import cats.collections.{AvlSet, DisjointSets}
 import cats.data.State
 import cats.syntax.flatMap.catsSyntaxFlatMapOps
+import cats.syntax.functor.*
 import cats.{Eq, Foldable, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSidedMergeResult
@@ -384,16 +385,22 @@ object SectionedCodeExtension extends StrictLogging:
             )
           )
 
-          previouslySeenMatchesSharingAtLeastOneSection.headOption
-            .fold(ifEmpty = resultStep)(
-              DisjointSets.union(matchJustEncountered, _) >> resultStep
-            )
+          val unionStep = previouslySeenMatchesSharingAtLeastOneSection.foldLeft(
+            State.pure[DisjointSets[Match[Section[Element]]], Unit](())
+          )((step, previouslySeenMatch) =>
+            step >> DisjointSets.union(
+              matchJustEncountered,
+              previouslySeenMatch
+            ).void
+          )
+
+          unionStep >> resultStep
         } >> DisjointSets.toSets
 
         // NOTE: this is a tiebreaking order that works across from base to left
         // to right. It is required by `DisjointSets`, but also turns up later
-        // in `bestMatchFrom`, because that order is carried over to each
-        // `AvlSet` that is passed in. The matches in that set all share at
+        // in `representativeMatchesFrom`, because that order is carried over to
+        // each `AvlSet` that is passed in. The matches in that set all share at
         // least one section in common with another, and the unshared sections
         // should be correlated by the section-level merging that produced them,
         // so it is safe to assume that this order aligns with order of
@@ -402,7 +409,10 @@ object SectionedCodeExtension extends StrictLogging:
           (
             aMatch.baseContribution.map(_.startOffset),
             aMatch.leftContribution.map(_.startOffset),
-            aMatch.rightContribution.map(_.startOffset)
+            aMatch.rightContribution.map(_.startOffset),
+            aMatch match
+              case _: Match.AllSides[Section[Element]] => 0
+              case _                                   => 1
           )
         )
 
@@ -411,22 +421,54 @@ object SectionedCodeExtension extends StrictLogging:
           .value
       end setsOfMatchesThatShareSectionsOnAtLeastOneSide
 
-      def bestMatchFrom[X](
+      def representativeMatchesFrom[X](
           matchesSharingAtLeastOneSection: AvlSet[Match[X]]
-      ): Match[X] =
+      ): Seq[Match[X]] =
         require(!matchesSharingAtLeastOneSection.isEmpty)
-        // NOTE: we assume the matches are ordered by their appearance in the
-        // file, so take the first all-sides match or failing that, the first
-        // pairwise match.
-        matchesSharingAtLeastOneSection.toIterator
-          .find(_.isAnAllSidesMatch)
-          .getOrElse(matchesSharingAtLeastOneSection.toIterator.next())
-      end bestMatchFrom
+
+        val (allSidesMatches, pairwiseMatches) =
+          matchesSharingAtLeastOneSection.toIterator.partition(
+            _.isAnAllSidesMatch
+          )
+
+        if allSidesMatches.hasNext then
+          var seenBase  = Set.empty[X]
+          var seenLeft  = Set.empty[X]
+          var seenRight = Set.empty[X]
+
+          def markSeen(aMatch: Match[X]): Unit =
+            aMatch.baseContribution.foreach(seenBase += _)
+            aMatch.leftContribution.foreach(seenLeft += _)
+            aMatch.rightContribution.foreach(seenRight += _)
+          end markSeen
+
+          allSidesMatches.flatMap { aMatch =>
+            val base =
+              aMatch.baseContribution.filterNot(seenBase.contains)
+            val left =
+              aMatch.leftContribution.filterNot(seenLeft.contains)
+            val right =
+              aMatch.rightContribution.filterNot(seenRight.contains)
+
+            val demotedMatch = (base, left, right) match
+              case (Some(b), Some(l), Some(r)) => Some(Match.AllSides(b, l, r))
+              case (Some(b), Some(l), _)       => Some(Match.BaseAndLeft(b, l))
+              case (Some(b), None, Some(r))    => Some(Match.BaseAndRight(b, r))
+              case (None, Some(l), Some(r))    => Some(Match.LeftAndRight(l, r))
+              case _                           => None
+
+            demotedMatch.foreach(markSeen)
+
+            demotedMatch
+          }.toSeq
+        else Seq(pairwiseMatches.next())
+        end if
+      end representativeMatchesFrom
 
       val bestMatches =
         setsOfMatchesThatShareSectionsOnAtLeastOneSide.toList
-          .map((_, matchesSharingASectionOnAtLeastOneSide) =>
-            bestMatchFrom(matchesSharingASectionOnAtLeastOneSide)
+          .flatMap((_, matchesSharingASectionOnAtLeastOneSide) =>
+            representativeMatchesFrom(matchesSharingASectionOnAtLeastOneSide)
           )
 
       type Contributions = Map[Section[Element], Contribution[Section[Element]]]
