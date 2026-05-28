@@ -67,7 +67,7 @@ class BlockDuplicationAndCondensationTests:
         label = "base"
       )
 
-      val elementsOnSideWithoutChanges: IndexedSeq[Element]  = blockContent
+      val elementsOnSideWithoutChanges: IndexedSeq[Element]  = baseElements
       val elementsOnSideWithDuplication: IndexedSeq[Element] =
         blockContent ++ blockContent
 
@@ -229,7 +229,7 @@ class BlockDuplicationAndCondensationTests:
   end aBlockIsDuplicatedOnTwoSides
 
   @TestFactory
-  def aBlockIsCondensedOnOneSide(): DynamicTests =
+  def duplicateBlocksAreMergedOnOneSide(): DynamicTests =
     val configuration = Configuration(
       minimumMatchSize = 1,
       thresholdSizeFractionForMatching = 0,
@@ -305,7 +305,7 @@ class BlockDuplicationAndCondensationTests:
         s"Side without changes contributions: ${pprintCustomised(contributionsOnSideWithoutChanges)}"
       )
       println(
-        s"The other side with duplication contributions: ${pprintCustomised(contributionsOnTheOtherSideWithoutDuplication)}"
+        s"The other side with merged contributions: ${pprintCustomised(contributionsOnTheOtherSideWithoutDuplication)}"
       )
 
       assert(
@@ -326,6 +326,112 @@ class BlockDuplicationAndCondensationTests:
         ) == contributionsOnTheOtherSideWithoutDuplication.map(_.map(_.content))
       )
     }
-  end aBlockIsCondensedOnOneSide
+  end duplicateBlocksAreMergedOnOneSide
+
+  @TestFactory
+  def overlappingBlocksAreSeparatedOnOneSide(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 4
+    )
+
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val placeholderPath: Path = 1
+
+      val leadingContent  = Vector(1, 2)
+      val overlapContent  = Vector(3, 4)
+      val trailingContent = Vector(5, 6)
+
+      val baseElements: IndexedSeq[Element] =
+        leadingContent ++ overlapContent ++ trailingContent
+
+      val baseSources = FakeSources(
+        contentsByPath = Map(placeholderPath -> baseElements),
+        label = "base"
+      )
+
+      val elementsOnSideWithoutChanges: IndexedSeq[Element] = baseElements
+      val elementsOnSideWithSeparation: IndexedSeq[Element] =
+        leadingContent ++ overlapContent ++ overlapContent ++ trailingContent
+
+      val leftSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> (if mirrorImage then elementsOnSideWithSeparation
+                              else elementsOnSideWithoutChanges)
+        ),
+        label = "left"
+      )
+
+      val rightSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> (if mirrorImage then elementsOnSideWithoutChanges
+                              else elementsOnSideWithSeparation)
+        ),
+        label = "right"
+      )
+
+      val Right(sectionedCode) = SectionedCode.of(
+        baseSources = baseSources,
+        leftSources = leftSources,
+        rightSources = rightSources
+      )(configuration): @unchecked
+
+      // TODO: calling `SectionedCodeExtension.longestCommonSubsequenceOf` is
+      // made awkward because the path and sections have to be consistent. Fix
+      // this.
+      val LongestCommonSubsequence(
+        baseContributions,
+        contributionsOnSideWithoutChanges,
+        contributionsOnSideWithSeparation,
+        _,
+        _,
+        _,
+        _
+      ) = sectionedCode
+        .longestCommonSubsequenceOf(
+          baseSections = sectionedCode.base(placeholderPath).sections,
+          leftSections = sectionedCode.left(placeholderPath).sections,
+          rightSections = sectionedCode.right(placeholderPath).sections
+        )(path = placeholderPath)
+        .adaptedForMirroring(mirrorImage)
+
+      println(
+        s"Base overlapped contributions: ${pprintCustomised(baseContributions)}"
+      )
+      println(
+        s"Side without changes contributions: ${pprintCustomised(contributionsOnSideWithoutChanges)}"
+      )
+      println(
+        s"Side with separated contributions: ${pprintCustomised(contributionsOnSideWithSeparation)}"
+      )
+
+      assert(
+        Vector(
+          Contribution.Common(leadingContent),
+          Contribution.Common(overlapContent),
+          Contribution.Common(trailingContent)
+        ) == baseContributions
+          .map(_.map(_.content))
+      )
+      assert(
+        Vector(
+          Contribution.Common(leadingContent),
+          Contribution.Common(overlapContent),
+          Contribution.Common(trailingContent)
+        ) == contributionsOnSideWithoutChanges.map(_.map(_.content))
+      )
+      assert(
+        Vector(
+          Contribution.Common(leadingContent),
+          Contribution.Common(overlapContent),
+          Contribution.Common(trailingContent),
+          Contribution.Difference(overlapContent),
+          Contribution.Difference(trailingContent)
+        ) == contributionsOnSideWithSeparation.map(_.map(_.content))
+      )
+    }
+  end overlappingBlocksAreSeparatedOnOneSide
 
 end BlockDuplicationAndCondensationTests
