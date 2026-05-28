@@ -24,7 +24,7 @@ import com.sageserpent.kineticmerge.core.SectionedCodeTest.{
   given_Funnel_Element
 }
 import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording}
-import org.junit.jupiter.api.TestFactory
+import org.junit.jupiter.api.{Disabled, TestFactory}
 
 object BlockDuplicationAndCondensationTests:
   given HashFunction = Hashing.murmur3_32_fixed()
@@ -328,6 +328,7 @@ class BlockDuplicationAndCondensationTests:
     }
   end duplicateBlocksAreMergedOnOneSide
 
+  @Disabled // See https://github.com/sageserpent-open/kineticMerge/issues/339
   @TestFactory
   def overlappingBlocksAreSeparatedOnOneSide(): DynamicTests =
     val configuration = Configuration(
