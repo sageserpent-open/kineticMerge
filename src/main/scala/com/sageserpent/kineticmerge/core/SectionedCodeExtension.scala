@@ -58,13 +58,13 @@ object SectionedCodeExtension extends StrictLogging:
       val groupsOfParallelMatches = sectionedCode.groupsOfParallelMatches
 
       given Eq[Block[Element]] =
-        // NOTE: this is subtle - comparing by
-        // `Block.parallelMatchesGroupId` is OK, but consider situations where
-        // two distinct blocks cover the same content on the same can
-        // fool the following block-level merge into a less than optimal
-        // alignment of blocks whenever the group ids of the relevant blocks
-        // swap around from one to another. Peering inside the two blocks
-        // matched content allows the merge to ignore the scrambled group ids.
+        // NOTE: this is subtle - comparing by `Block.parallelMatchesGroupId` is
+        // OK, but consider situations where two distinct blocks covering the
+        // same content on the same side can fool the following block-level
+        // merge into a less than optimal alignment of blocks whenever the group
+        // ids of the relevant blocks swap around from one to another. Peering
+        // inside the two blocks matched content allows the merge to ignore the
+        // scrambled group ids.
         given Order[Match[Section[Element]]] = Order.by(aMatch =>
           (
             aMatch.baseContribution.map(_.content: Seq[Element]),
