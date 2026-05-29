@@ -80,8 +80,8 @@ lazy val root = (project in file("."))
     },
     packageExecutable := (packageExecutable dependsOn publishLocal).value,
     libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.9.6",
-    libraryDependencies += "ch.qos.logback"    % "logback-core"    % "1.5.32",
-    libraryDependencies += "ch.qos.logback"    % "logback-classic" % "1.5.32",
+    libraryDependencies += "ch.qos.logback"    % "logback-core"    % "1.5.33",
+    libraryDependencies += "ch.qos.logback"    % "logback-classic" % "1.5.33",
     libraryDependencies += "org.typelevel"    %% "cats-core"       % "2.13.0",
     libraryDependencies += "com.github.scopt" %% "scopt"           % "4.1.0",
     libraryDependencies += "org.typelevel" %% "cats-collections-core" % "0.9.10",
@@ -101,7 +101,7 @@ lazy val root = (project in file("."))
     libraryDependencies += "com.google.guava" % "guava"      % "33.6.0-jre",
     libraryDependencies += "de.sciss"        %% "fingertree" % "1.5.5" % Test,
     libraryDependencies += "com.github.ben-manes.caffeine" % "caffeine" % "3.2.4",
-    libraryDependencies += "me.tongfei" % "progressbar" % "0.10.2",
+    libraryDependencies += "me.tongfei"         % "progressbar"   % "0.10.2",
     libraryDependencies += "org.apache.commons" % "commons-lang3" % "3.20.0",
     libraryDependencies +=
       "org.scala-lang.modules" %% "scala-parallel-collections" % "1.2.0",
@@ -111,7 +111,7 @@ lazy val root = (project in file("."))
     libraryDependencies += "org.apache.commons" % "commons-text" % "1.15.0" % Test,
     libraryDependencies += "com.github.sbt.junit" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
     libraryDependencies += "org.typelevel" %% "kittens" % "3.5.0",
-    Test / test / logLevel    := Level.Error,
-    Test / fork               := true,
-    Test / testForkedParallel := true
+    Test / test / logLevel                 := Level.Error,
+    Test / fork                            := true,
+    Test / testForkedParallel              := true
   )
