@@ -24,7 +24,7 @@ import com.sageserpent.kineticmerge.core.SectionedCodeTest.{
   given_Funnel_Element
 }
 import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording}
-import org.junit.jupiter.api.{Disabled, TestFactory}
+import org.junit.jupiter.api.TestFactory
 
 object BlockDuplicationAndCondensationTests:
   given HashFunction = Hashing.murmur3_32_fixed()
@@ -93,9 +93,6 @@ class BlockDuplicationAndCondensationTests:
         rightSources = rightSources
       )(configuration): @unchecked
 
-      // TODO: calling `SectionedCodeExtension.longestCommonSubsequenceOf` is
-      // made awkward because the path and sections have to be consistent. Fix
-      // this.
       val LongestCommonSubsequence(
         baseContributions,
         contributionsOnSideWithoutChanges,
@@ -105,11 +102,7 @@ class BlockDuplicationAndCondensationTests:
         _,
         _
       ) = sectionedCode
-        .longestCommonSubsequenceOf(
-          baseSections = sectionedCode.base(placeholderPath).sections,
-          leftSections = sectionedCode.left(placeholderPath).sections,
-          rightSections = sectionedCode.right(placeholderPath).sections
-        )(path = placeholderPath)
+        .longestCommonSubsequenceOf(path = placeholderPath)
         .adaptedForMirroring(mirrorImage)
 
       println(s"Base contributions: ${pprintCustomised(baseContributions)}")
@@ -182,9 +175,6 @@ class BlockDuplicationAndCondensationTests:
         rightSources = rightSources
       )(configuration): @unchecked
 
-      // TODO: calling `SectionedCodeExtension.longestCommonSubsequenceOf` is
-      // made awkward because the path and sections have to be consistent. Fix
-      // this.
       val LongestCommonSubsequence(
         baseContributions,
         contributionsOnOneSideWithDuplication,
@@ -194,11 +184,7 @@ class BlockDuplicationAndCondensationTests:
         _,
         _
       ) = sectionedCode
-        .longestCommonSubsequenceOf(
-          baseSections = sectionedCode.base(placeholderPath).sections,
-          leftSections = sectionedCode.left(placeholderPath).sections,
-          rightSections = sectionedCode.right(placeholderPath).sections
-        )(path = placeholderPath)
+        .longestCommonSubsequenceOf(path = placeholderPath)
         .adaptedForMirroring(mirrorImage)
 
       println(s"Base contributions: ${pprintCustomised(baseContributions)}")
@@ -227,7 +213,6 @@ class BlockDuplicationAndCondensationTests:
       )
     }
   end aBlockIsDuplicatedOnTwoSides
-
 
   @TestFactory
   def duplicateBlocksAreMergedOnOneSide(): DynamicTests =
@@ -280,9 +265,6 @@ class BlockDuplicationAndCondensationTests:
         rightSources = rightSources
       )(configuration): @unchecked
 
-      // TODO: calling `SectionedCodeExtension.longestCommonSubsequenceOf` is
-      // made awkward because the path and sections have to be consistent. Fix
-      // this.
       val LongestCommonSubsequence(
         baseContributionsWithDuplication,
         contributionsOnSideWithoutChanges,
@@ -292,11 +274,7 @@ class BlockDuplicationAndCondensationTests:
         _,
         _
       ) = sectionedCode
-        .longestCommonSubsequenceOf(
-          baseSections = sectionedCode.base(placeholderPath).sections,
-          leftSections = sectionedCode.left(placeholderPath).sections,
-          rightSections = sectionedCode.right(placeholderPath).sections
-        )(path = placeholderPath)
+        .longestCommonSubsequenceOf(path = placeholderPath)
         .adaptedForMirroring(mirrorImage)
 
       println(
@@ -329,14 +307,13 @@ class BlockDuplicationAndCondensationTests:
     }
   end duplicateBlocksAreMergedOnOneSide
 
-  @Disabled // See https://github.com/sageserpent-open/kineticMerge/issues/339
   @TestFactory
-  def overlappingBlocksAreSeparatedOnOneSide(): DynamicTests =
+  def bugReproduction339(): DynamicTests =
     val configuration = Configuration(
       minimumMatchSize = 1,
       thresholdSizeFractionForMatching = 0,
       minimumAmbiguousMatchSize = 0,
-      ambiguousMatchesThreshold = 4
+      ambiguousMatchesThreshold = 10
     )
 
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
@@ -380,9 +357,6 @@ class BlockDuplicationAndCondensationTests:
         rightSources = rightSources
       )(configuration): @unchecked
 
-      // TODO: calling `SectionedCodeExtension.longestCommonSubsequenceOf` is
-      // made awkward because the path and sections have to be consistent. Fix
-      // this.
       val LongestCommonSubsequence(
         baseContributions,
         contributionsOnSideWithoutChanges,
@@ -392,11 +366,7 @@ class BlockDuplicationAndCondensationTests:
         _,
         _
       ) = sectionedCode
-        .longestCommonSubsequenceOf(
-          baseSections = sectionedCode.base(placeholderPath).sections,
-          leftSections = sectionedCode.left(placeholderPath).sections,
-          rightSections = sectionedCode.right(placeholderPath).sections
-        )(path = placeholderPath)
+        .longestCommonSubsequenceOf(path = placeholderPath)
         .adaptedForMirroring(mirrorImage)
 
       println(
@@ -434,7 +404,7 @@ class BlockDuplicationAndCondensationTests:
         ) == contributionsOnSideWithSeparation.map(_.map(_.content))
       )
     }
-  end overlappingBlocksAreSeparatedOnOneSide
+  end bugReproduction339
 
   @TestFactory
   def aBlockIsTriplicatedOnTwoSides(): DynamicTests =
@@ -480,9 +450,6 @@ class BlockDuplicationAndCondensationTests:
         rightSources = rightSources
       )(configuration): @unchecked
 
-      // TODO: calling `SectionedCodeExtension.longestCommonSubsequenceOf` is
-      // made awkward because the path and sections have to be consistent. Fix
-      // this.
       val LongestCommonSubsequence(
         baseContributions,
         contributionsOnOneSideWithTriplication,
@@ -492,11 +459,7 @@ class BlockDuplicationAndCondensationTests:
         _,
         _
       ) = sectionedCode
-        .longestCommonSubsequenceOf(
-          baseSections = sectionedCode.base(placeholderPath).sections,
-          leftSections = sectionedCode.left(placeholderPath).sections,
-          rightSections = sectionedCode.right(placeholderPath).sections
-        )(path = placeholderPath)
+        .longestCommonSubsequenceOf(path = placeholderPath)
         .adaptedForMirroring(mirrorImage)
 
       println(s"Base contributions: ${pprintCustomised(baseContributions)}")

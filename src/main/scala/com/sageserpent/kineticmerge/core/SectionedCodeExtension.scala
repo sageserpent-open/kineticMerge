@@ -3,7 +3,6 @@ package com.sageserpent.kineticmerge.core
 import cats.collections.{AvlSet, DisjointSets}
 import cats.data.State
 import cats.syntax.flatMap.catsSyntaxFlatMapOps
-import cats.syntax.functor.*
 import cats.{Eq, Foldable, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSidedMergeResult
@@ -48,15 +47,17 @@ object SectionedCodeExtension extends StrictLogging:
       sectionedCode: SectionedCode[Path, Element]
   )
     def longestCommonSubsequenceOf(
-        baseSections: IndexedSeq[Section[Element]],
-        leftSections: IndexedSeq[Section[Element]],
-        rightSections: IndexedSeq[Section[Element]]
-    )(path: Path)(using
+        path: Path
+    )(using
         progressRecording: ProgressRecording,
         sectionEq: Eq[Section[Element]],
         sectionSized: Sized[Section[Element]]
     ): LongestCommonSubsequence[Section[Element]] =
       val groupsOfParallelMatches = sectionedCode.groupsOfParallelMatches
+
+      val baseBlocks  = sectionedCode.baseBlocksFor(path)
+      val leftBlocks  = sectionedCode.leftBlocksFor(path)
+      val rightBlocks = sectionedCode.rightBlocksFor(path)
 
       given Eq[Block[Element]] =
         // NOTE: this is subtle - comparing by `Block.parallelMatchesGroupId` is
@@ -78,8 +79,21 @@ object SectionedCodeExtension extends StrictLogging:
         )
 
         Eq.or(
-          Eq.by(_.parallelMatchesGroupId),
-          Eq.by(block => groupsOfParallelMatches(block.parallelMatchesGroupId))
+          (lhs, rhs) =>
+            (
+              lhs.parallelMatchesGroupId,
+              rhs.parallelMatchesGroupId
+            ) match
+              case (Some(lhsGroupId), Some(rhsGroupId)) =>
+                lhsGroupId == rhsGroupId || groupsOfParallelMatches(
+                  lhsGroupId
+                ) == groupsOfParallelMatches(rhsGroupId)
+              case _ => false,
+          (lhs, rhs) =>
+            val lhsContent = lhs.sectionsCoveredByGroup.flatMap(_.content)
+            val rhsContent = rhs.sectionsCoveredByGroup.flatMap(_.content)
+            lhsContent.size == rhsContent.size && lhsContent
+              .corresponds(rhsContent)(Eq[Element].eqv)
         )
       end given
 
@@ -239,9 +253,9 @@ object SectionedCodeExtension extends StrictLogging:
 
       val threeSidedClumps: ThreeSidedClumps[Block[Element]] =
         mergeOf(blockLevelMergeAlgebra)(
-          sectionedCode.baseBlocksFor(path),
-          sectionedCode.leftBlocksFor(path),
-          sectionedCode.rightBlocksFor(path),
+          baseBlocks,
+          leftBlocks,
+          rightBlocks,
           label = "Blocks merged:"
         )
 
@@ -520,9 +534,9 @@ object SectionedCodeExtension extends StrictLogging:
         sections.map(bestContributionsWithFallback)
 
       LongestCommonSubsequence(
-        base = assignContributions(baseSections),
-        left = assignContributions(leftSections),
-        right = assignContributions(rightSections)
+        base = assignContributions(sectionedCode.base(path).sections),
+        left = assignContributions(sectionedCode.left(path).sections),
+        right = assignContributions(sectionedCode.right(path).sections)
       )
     end longestCommonSubsequenceOf
 
@@ -745,7 +759,7 @@ object SectionedCodeExtension extends StrictLogging:
                 partialMergeResult.recordContentOfFileDeletedOnLeftAndRight(
                   baseSections
                 )
-              case (Some(baseSections), None, Some(rightSections)) =>
+              case (Some(_), None, Some(_)) =>
                 // The file has disappeared on the left side. That may indicate
                 // a simple deletion of the file, or may be a renaming on the
                 // left.
@@ -754,11 +768,7 @@ object SectionedCodeExtension extends StrictLogging:
 
                 val firstPassMergeResult
                     : FirstPassMergeResult[Section[Element]] =
-                  longestCommonSubsequenceOf(
-                    baseSections = baseSections,
-                    leftSections = IndexedSeq.empty,
-                    rightSections = rightSections
-                  )(path).mergeUsing(
+                  longestCommonSubsequenceOf(path).mergeUsing(
                     mergeAlgebra =
                       FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
                         FileDeletionContext.Left
@@ -767,7 +777,7 @@ object SectionedCodeExtension extends StrictLogging:
                   )
 
                 partialMergeResult.aggregate(path, firstPassMergeResult)
-              case (Some(baseSections), Some(leftSections), None) =>
+              case (Some(_), Some(_), None) =>
                 // The file has disappeared on the right side. That may indicate
                 // a simple deletion of the file, or may be a renaming on the
                 // right.
@@ -776,11 +786,7 @@ object SectionedCodeExtension extends StrictLogging:
 
                 val firstPassMergeResult
                     : FirstPassMergeResult[Section[Element]] =
-                  longestCommonSubsequenceOf(
-                    baseSections = baseSections,
-                    leftSections = leftSections,
-                    rightSections = IndexedSeq.empty
-                  )(path).mergeUsing(
+                  longestCommonSubsequenceOf(path).mergeUsing(
                     mergeAlgebra =
                       FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
                         FileDeletionContext.Right
@@ -790,9 +796,9 @@ object SectionedCodeExtension extends StrictLogging:
 
                 partialMergeResult.aggregate(path, firstPassMergeResult)
               case (
-                    optionalBaseSections,
-                    Some(leftSections),
-                    Some(rightSections)
+                    _,
+                    Some(_),
+                    Some(_)
                   ) =>
                 // Mix of possibilities - the file may have been added on both
                 // sides, or modified on either or both sides. There is also an
@@ -803,12 +809,7 @@ object SectionedCodeExtension extends StrictLogging:
 
                 val firstPassMergeResult
                     : FirstPassMergeResult[Section[Element]] =
-                  longestCommonSubsequenceOf(
-                    baseSections =
-                      optionalBaseSections.getOrElse(IndexedSeq.empty),
-                    leftSections = leftSections,
-                    rightSections = rightSections
-                  )(path).mergeUsing(
+                  longestCommonSubsequenceOf(path).mergeUsing(
                     mergeAlgebra =
                       FirstPassMergeResult.mergeAlgebra(fileDeletionContext =
                         FileDeletionContext.None
