@@ -533,10 +533,15 @@ object SectionedCodeExtension extends StrictLogging:
       ): IndexedSeq[Contribution[Section[Element]]] =
         sections.map(bestContributionsWithFallback)
 
+      extension (filesByPath: Map[Path, File[Element]])
+        private def sectionsAt(path: Path): IndexedSeq[Section[Element]] =
+          filesByPath.get(path).fold(ifEmpty = IndexedSeq.empty)(_.sections)
+      end extension
+
       LongestCommonSubsequence(
-        base = assignContributions(sectionedCode.base(path).sections),
-        left = assignContributions(sectionedCode.left(path).sections),
-        right = assignContributions(sectionedCode.right(path).sections)
+        base = assignContributions(sectionedCode.base.sectionsAt(path)),
+        left = assignContributions(sectionedCode.left.sectionsAt(path)),
+        right = assignContributions(sectionedCode.right.sectionsAt(path))
       )
     end longestCommonSubsequenceOf
 
