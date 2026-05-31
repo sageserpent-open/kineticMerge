@@ -8,8 +8,8 @@ import com.sageserpent.kineticmerge.core.MatchAnalysis.*
 import com.sageserpent.kineticmerge.core.SectionedCode.Block
 import com.typesafe.scalalogging.StrictLogging
 
-import scala.collection.Searching
 import scala.collection.immutable.SortedSet
+import scala.collection.{Searching, mutable}
 
 trait SectionedCode[Path, Element]:
   def base: Map[Path, File[Element]]
@@ -144,25 +144,60 @@ object SectionedCode extends StrictLogging:
               )
 
               path -> Block(
-                parallelMatchesGroupId,
+                Some(parallelMatchesGroupId),
                 sectionsCoveredByBlock
               )
             }
         end blockFrom
 
-        groupsOfParallelMatches.toSeq
+        val matchedBlocksByPath = groupsOfParallelMatches.toSeq
           .map(blockFrom)
           .collect { case Some((path, block)) => path -> block }
           .groupMap(_._1)(_._2)
-          .map((path, blocks) =>
-            path -> blocks.toIndexedSeq.sortBy(block =>
-              (
-                block.startOffset,
-                block.onePastEndOffset,
-                block.parallelMatchesGroupId
+
+        filesByPath.map { (path, file) =>
+          val matchedBlocks =
+            matchedBlocksByPath.getOrElse(path, IndexedSeq.empty)
+
+          val sortedMatchedBlocks = matchedBlocks.sortBy(_.startOffset)
+
+          val (onePastLastEndOffset, fillerBlocks) =
+            sortedMatchedBlocks.foldLeft(0 -> Vector.empty[Block[Element]]) {
+              case ((currentEnd, fillers), block) =>
+                val nextFillers =
+                  if block.startOffset > currentEnd then
+                    val Searching.Found(startingSectionIndex) =
+                      file.searchByStartOffset(currentEnd): @unchecked
+                    val Searching.Found(endingSectionIndex) =
+                      file.searchByStartOffset(block.startOffset): @unchecked
+                    fillers :+ Block(
+                      parallelMatchesGroupId = None,
+                      sectionsCoveredByGroup = file.sections
+                        .slice(startingSectionIndex, endingSectionIndex)
+                    )
+                  else fillers
+                (currentEnd max block.onePastEndOffset) -> nextFillers
+            }
+
+          val allFillerBlocks =
+            if onePastLastEndOffset < file.size then
+              val Searching.Found(startingSectionIndex) =
+                file.searchByStartOffset(onePastLastEndOffset): @unchecked
+              fillerBlocks :+ Block(
+                parallelMatchesGroupId = None,
+                sectionsCoveredByGroup =
+                  file.sections.drop(startingSectionIndex)
               )
+            else fillerBlocks
+
+          path -> (matchedBlocks ++ allFillerBlocks).toIndexedSeq.sortBy(block =>
+            (
+              block.startOffset,
+              block.onePastEndOffset,
+              block.parallelMatchesGroupId
             )
           )
+        }
       end blocksForASide
 
       val baseBlocks = blocksForASide(
@@ -267,7 +302,7 @@ object SectionedCode extends StrictLogging:
   end of
 
   case class Block[Element](
-      parallelMatchesGroupId: ParallelMatchesGroupId,
+      parallelMatchesGroupId: Option[ParallelMatchesGroupId],
       sectionsCoveredByGroup: IndexedSeq[Section[Element]]
   ):
     require(sectionsCoveredByGroup.nonEmpty)
