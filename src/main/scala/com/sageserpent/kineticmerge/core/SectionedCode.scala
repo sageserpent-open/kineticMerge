@@ -161,33 +161,36 @@ object SectionedCode extends StrictLogging:
 
           val sortedMatchedBlocks = matchedBlocks.sortBy(_.startOffset)
 
-          val fillerBlocks = mutable.Buffer.empty[Block[Element]]
-          var currentEnd   = 0
-          for block <- sortedMatchedBlocks do
-            if block.startOffset > currentEnd then
+          val (onePastLastEndOffset, fillerBlocks) =
+            sortedMatchedBlocks.foldLeft(0 -> Vector.empty[Block[Element]]) {
+              case ((currentEnd, fillers), block) =>
+                val nextFillers =
+                  if block.startOffset > currentEnd then
+                    val Searching.Found(startingSectionIndex) =
+                      file.searchByStartOffset(currentEnd): @unchecked
+                    val Searching.Found(endingSectionIndex) =
+                      file.searchByStartOffset(block.startOffset): @unchecked
+                    fillers :+ Block(
+                      parallelMatchesGroupId = None,
+                      sectionsCoveredByGroup = file.sections
+                        .slice(startingSectionIndex, endingSectionIndex)
+                    )
+                  else fillers
+                (currentEnd max block.onePastEndOffset) -> nextFillers
+            }
+
+          val allFillerBlocks =
+            if onePastLastEndOffset < file.size then
               val Searching.Found(startingSectionIndex) =
-                file.searchByStartOffset(currentEnd): @unchecked
-              val Searching.Found(endingSectionIndex) =
-                file.searchByStartOffset(block.startOffset): @unchecked
-              fillerBlocks += Block(
+                file.searchByStartOffset(onePastLastEndOffset): @unchecked
+              fillerBlocks :+ Block(
                 parallelMatchesGroupId = None,
                 sectionsCoveredByGroup =
-                  file.sections.slice(startingSectionIndex, endingSectionIndex)
+                  file.sections.drop(startingSectionIndex)
               )
-            end if
-            currentEnd = currentEnd max block.onePastEndOffset
-          end for
+            else fillerBlocks
 
-          if currentEnd < file.size then
-            val Searching.Found(startingSectionIndex) =
-              file.searchByStartOffset(currentEnd): @unchecked
-            fillerBlocks += Block(
-              parallelMatchesGroupId = None,
-              sectionsCoveredByGroup = file.sections.drop(startingSectionIndex)
-            )
-          end if
-
-          path -> (matchedBlocks ++ fillerBlocks).toIndexedSeq.sortBy(block =>
+          path -> (matchedBlocks ++ allFillerBlocks).toIndexedSeq.sortBy(block =>
             (
               block.startOffset,
               block.onePastEndOffset,
