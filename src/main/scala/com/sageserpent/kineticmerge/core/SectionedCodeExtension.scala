@@ -85,15 +85,13 @@ object SectionedCodeExtension extends StrictLogging:
               rhs.parallelMatchesGroupId
             ) match
               case (Some(lhsGroupId), Some(rhsGroupId)) =>
-                lhsGroupId == rhsGroupId || groupsOfParallelMatches(
-                  lhsGroupId
-                ) == groupsOfParallelMatches(rhsGroupId)
+                lhsGroupId == rhsGroupId
               case _ => false,
           (lhs, rhs) =>
-            val lhsContent = lhs.sectionsCoveredByGroup.flatMap(_.content)
-            val rhsContent = rhs.sectionsCoveredByGroup.flatMap(_.content)
-            lhsContent.size == rhsContent.size && lhsContent
-              .corresponds(rhsContent)(Eq[Element].eqv)
+            Eq.eqv(
+              lhs.sectionsCoveredByGroup: Seq[Section[Element]],
+              rhs.sectionsCoveredByGroup: Seq[Section[Element]]
+            )
         )
       end given
 
