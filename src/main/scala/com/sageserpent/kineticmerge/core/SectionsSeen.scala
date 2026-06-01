@@ -35,8 +35,7 @@ object SectionsSeen:
         case Empty             => Iterator.empty
       ) ++ Iterator(section) ++ (right match
         case r: Treap[Element] => r.iterator
-        case Empty             => Iterator.empty
-      )
+        case Empty             => Iterator.empty)
 
     override def filterIncludes(
         interval: (Int, Int)
@@ -45,16 +44,17 @@ object SectionsSeen:
       val results = scala.collection.mutable.ListBuffer.empty[Section[Element]]
 
       def search(node: Treap[Element] | Empty.type): Unit = node match
-        case Empty =>
+        case Empty             =>
         case t: Treap[Element] =>
-          if t.maxOnePastEndOffset < onePastEnd then return
+          if t.maxOnePastEndOffset >= onePastEnd then
+            search(t.left)
 
-          search(t.left)
-
-          if t.section.startOffset <= start then
-            if t.section.onePastEndOffset >= onePastEnd
-            then results += t.section
-            search(t.right)
+            if t.section.startOffset <= start then
+              if t.section.onePastEndOffset >= onePastEnd
+              then results += t.section
+              end if
+              search(t.right)
+            end if
 
       search(this)
       results
@@ -67,16 +67,17 @@ object SectionsSeen:
       val results = scala.collection.mutable.ListBuffer.empty[Section[Element]]
 
       def search(node: Treap[Element] | Empty.type): Unit = node match
-        case Empty =>
+        case Empty             =>
         case t: Treap[Element] =>
-          if t.maxOnePastEndOffset <= start then return
+          if t.maxOnePastEndOffset > start then
+            search(t.left)
 
-          search(t.left)
-
-          if t.section.startOffset < onePastEnd then
-            if t.section.onePastEndOffset > start
-            then results += t.section
-            search(t.right)
+            if t.section.startOffset < onePastEnd then
+              if t.section.onePastEndOffset > start
+              then results += t.section
+              end if
+              search(t.right)
+            end if
 
       search(this)
       results
@@ -92,18 +93,26 @@ object SectionsSeen:
         case t: Treap[Element] =>
           if priority > t.priority then
             val (l, r) = split(t, section.startOffset)
-            Treap(section, priority, section.onePastEndOffset, l, r, 1).recompute
+            Treap(
+              section,
+              priority,
+              section.onePastEndOffset,
+              l,
+              r,
+              1
+            ).recompute
           else if section.startOffset < t.section.startOffset then
             t.copy(left = add(t.left)).recompute
           else t.copy(right = add(t.right)).recompute
 
       add(this)
+    end +
 
     override def -(section: Section[Element]): SectionsSeen[Element] =
       def remove(
           node: Treap[Element] | Empty.type
       ): Treap[Element] | Empty.type = node match
-        case Empty => Empty
+        case Empty             => Empty
         case t: Treap[Element] =>
           if t.section == section then merge(t.left, t.right)
           else if section.startOffset < t.section.startOffset then
@@ -111,7 +120,9 @@ object SectionsSeen:
             if newLeft eq t.left then t else t.copy(left = newLeft).recompute
           else
             val newRight = remove(t.right)
-            if newRight eq t.right then t else t.copy(right = newRight).recompute
+            if newRight eq t.right then t
+            else t.copy(right = newRight).recompute
+            end if
 
       remove(this).asInstanceOf[SectionsSeen[Element]]
     end -
@@ -120,7 +131,7 @@ object SectionsSeen:
         node: Treap[Element] | Empty.type,
         pivotStartOffset: Int
     ): (Treap[Element] | Empty.type, Treap[Element] | Empty.type) = node match
-      case Empty => (Empty, Empty)
+      case Empty             => (Empty, Empty)
       case t: Treap[Element] =>
         if t.section.startOffset < pivotStartOffset then
           val (l, r) = split(t.right, pivotStartOffset)
@@ -133,8 +144,8 @@ object SectionsSeen:
         l: Treap[Element] | Empty.type,
         r: Treap[Element] | Empty.type
     ): Treap[Element] | Empty.type = (l, r) match
-      case (Empty, _) => r
-      case (_, Empty) => l
+      case (Empty, _)                               => r
+      case (_, Empty)                               => l
       case (lt: Treap[Element], rt: Treap[Element]) =>
         if lt.priority > rt.priority then
           lt.copy(right = merge(lt.right, rt)).recompute
@@ -157,6 +168,7 @@ object SectionsSeen:
         maxOnePastEndOffset = section.onePastEndOffset max leftMax max rightMax,
         size = 1 + leftSize + rightSize
       )
+    end recompute
   end Treap
 
   private object Empty extends SectionsSeen[Any]:
@@ -173,9 +185,9 @@ object SectionsSeen:
       1
     )
     override def -(section: Section[Any]): SectionsSeen[Any] = this
-    override def iterator: Iterator[Section[Any]]           = Iterator.empty
-    override def isEmpty: Boolean                           = true
-    override def size: Int                                  = 0
+    override def iterator: Iterator[Section[Any]]            = Iterator.empty
+    override def isEmpty: Boolean                            = true
+    override def size: Int                                   = 0
   end Empty
 
 end SectionsSeen
