@@ -8,8 +8,8 @@ import com.sageserpent.kineticmerge.core.MatchAnalysis.*
 import com.sageserpent.kineticmerge.core.SectionedCode.Block
 import com.typesafe.scalalogging.StrictLogging
 
+import scala.collection.Searching
 import scala.collection.immutable.SortedSet
-import scala.collection.{Searching, mutable}
 
 trait SectionedCode[Path, Element]:
   def base: Map[Path, File[Element]]
@@ -190,12 +190,13 @@ object SectionedCode extends StrictLogging:
               )
             else fillerBlocks
 
-          path -> (matchedBlocks ++ allFillerBlocks).toIndexedSeq.sortBy(block =>
-            (
-              block.startOffset,
-              block.onePastEndOffset,
-              block.parallelMatchesGroupId
-            )
+          path -> (matchedBlocks ++ allFillerBlocks).toIndexedSeq.sortBy(
+            block =>
+              (
+                block.startOffset,
+                block.onePastEndOffset,
+                block.parallelMatchesGroupId
+              )
           )
         }
       end blocksForASide
