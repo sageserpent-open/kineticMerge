@@ -737,27 +737,27 @@ object MatchAnalysis extends StrictLogging:
           ]
       ): ParallelMatchesGroupIdTracking[Set[DependentMatchType[MatchType]]] =
         matchesToBeEaten.sets.toSeq
-          .flatTraverse { case (pairwiseMatch, bites) =>
+          .flatTraverse { case (matchBeingBittenInto, bites) =>
             for
               parallelMatchesGroupIdsByMatch <- State
                 .get[ParallelMatchesGroupIdsByMatch[Element]]
 
               groupIdsBySortedBiteEdge = SortedMap.from(bites.flatMap {
-                case (allSides, biteStart, biteEnd) =>
+                case (bitingMatch, biteStart, biteEnd) =>
                   Seq(biteStart, biteEnd)
-                    .map(_ -> parallelMatchesGroupIdsByMatch(allSides))
+                    .map(_ -> parallelMatchesGroupIdsByMatch(bitingMatch))
               })
 
               sortedBiteEdges = groupIdsBySortedBiteEdge.keySet
 
               fragmentsFromMatch <-
                 sortedBiteEdges.eatIntoMatch(
-                  pairwiseMatch,
+                  matchBeingBittenInto,
                   groupIdsBySortedBiteEdge
                 )
             yield
               logger.debug(
-                s"Eating into match:\n${pprintCustomised(pairwiseMatch)} on behalf of matches:\n${pprintCustomised(bites)}, resulting in fragments:\n${pprintCustomised(fragmentsFromMatch)}"
+                s"Eating into match:\n${pprintCustomised(matchBeingBittenInto)} on behalf of matches:\n${pprintCustomised(bites)}, resulting in fragments:\n${pprintCustomised(fragmentsFromMatch)}"
               )
 
               fragmentsFromMatch
@@ -778,48 +778,67 @@ object MatchAnalysis extends StrictLogging:
           // meal, thus we can work directly with the offsets from the bite
           // edges.
 
-          val (firstSide, firstSection, secondSide, secondSection, factory) =
+          def sectionSlice(
+              sources: Sources[Path, Element],
+              section: Section[Element]
+          )(
+              mealStartOffsetRelativeToMeal: Int,
+              size: Int
+          ) =
+            sources.section(sources.pathFor(section))(
+              section.startOffset + mealStartOffsetRelativeToMeal,
+              size
+            )
+
+          val (sectionSize, fragmentFactory) =
             (aMatch match
               // TODO: the all-sides case!
               case Match.BaseAndLeft(baseSection, leftSection) =>
                 (
-                  baseSources,
-                  baseSection,
-                  leftSources,
-                  leftSection,
-                  Match.BaseAndLeft.apply[Section[Element]]
+                  baseSection.size,
+                  (mealStartOffsetRelativeToMeal: Int, size: Int) =>
+                    Match.BaseAndLeft(
+                      sectionSlice(baseSources, baseSection)(
+                        mealStartOffsetRelativeToMeal,
+                        size
+                      ),
+                      sectionSlice(leftSources, leftSection)(
+                        mealStartOffsetRelativeToMeal,
+                        size
+                      )
+                    )
                 )
               case Match.BaseAndRight(baseSection, rightSection) =>
                 (
-                  baseSources,
-                  baseSection,
-                  rightSources,
-                  rightSection,
-                  Match.BaseAndRight.apply[Section[Element]]
+                  baseSection.size,
+                  (mealStartOffsetRelativeToMeal: Int, size: Int) =>
+                    Match.BaseAndRight(
+                      sectionSlice(baseSources, baseSection)(
+                        mealStartOffsetRelativeToMeal,
+                        size
+                      ),
+                      sectionSlice(rightSources, rightSection)(
+                        mealStartOffsetRelativeToMeal,
+                        size
+                      )
+                    )
                 )
               case Match.LeftAndRight(leftSection, rightSection) =>
                 (
-                  leftSources,
-                  leftSection,
-                  rightSources,
-                  rightSection,
-                  Match.LeftAndRight.apply[Section[Element]]
+                  leftSection.size,
+                  (mealStartOffsetRelativeToMeal: Int, size: Int) =>
+                    Match.LeftAndRight(
+                      sectionSlice(leftSources, leftSection)(
+                        mealStartOffsetRelativeToMeal,
+                        size
+                      ),
+                      sectionSlice(rightSources, rightSection)(
+                        mealStartOffsetRelativeToMeal,
+                        size
+                      )
+                    )
                 )
-            ): (
-                Sources[Path, Element],
-                Section[Element],
-                Sources[Path, Element],
-                Section[Element],
-                (Section[Element], Section[Element]) => DependentMatchType[
-                  MatchType
-                ]
-            )
-
-          val firstPath  = firstSide.pathFor(firstSection)
-          val secondPath = secondSide.pathFor(secondSection)
-
-          val sectionSize = firstSection.size
-          assume(sectionSize == secondSection.size)
+            ): (Int, (Int, Int) => DependentMatchType[MatchType])
 
           case class RecursionState(
               deferredGroupIdFromPrecedingBite: Option[ParallelMatchesGroupId],
@@ -836,16 +855,8 @@ object MatchAnalysis extends StrictLogging:
                   if sectionSize > mealStartOffsetRelativeToMeal then
                     val size = sectionSize - mealStartOffsetRelativeToMeal
 
-                    val fragment = factory(
-                      firstSide.section(firstPath)(
-                        firstSection.startOffset + mealStartOffsetRelativeToMeal,
-                        size
-                      ),
-                      secondSide.section(secondPath)(
-                        secondSection.startOffset + mealStartOffsetRelativeToMeal,
-                        size
-                      )
-                    )
+                    val fragment =
+                      fragmentFactory(mealStartOffsetRelativeToMeal, size)
 
                     assignGroupId(
                       fragment,
@@ -889,16 +900,8 @@ object MatchAnalysis extends StrictLogging:
                             else Some(groupIdFromSucceedingBite)
                           )
 
-                        val fragment = factory(
-                          firstSide.section(firstPath)(
-                            firstSection.startOffset + mealStartOffsetRelativeToMeal,
-                            size
-                          ),
-                          secondSide.section(secondPath)(
-                            secondSection.startOffset + mealStartOffsetRelativeToMeal,
-                            size
-                          )
-                        )
+                        val fragment =
+                          fragmentFactory(mealStartOffsetRelativeToMeal, size)
 
                         assignGroupId(fragment, groupId).as(
                           fragments.appended(fragment)
