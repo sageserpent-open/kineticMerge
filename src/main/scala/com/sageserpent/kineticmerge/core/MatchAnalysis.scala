@@ -182,9 +182,10 @@ object MatchAnalysis extends StrictLogging:
       Match.BaseAndRight[Section[Element]] |
       Match.LeftAndRight[Section[Element]]
 
-    type ParedDownMatch[MatchType <: GenericMatch[Element]] = MatchType match
-      case GenericMatch[Element] => GenericMatch[Element]
-      case PairwiseMatch         => PairwiseMatch
+    type DependentMatchType[MatchType <: GenericMatch[Element]] =
+      MatchType match
+        case GenericMatch[Element] => GenericMatch[Element]
+        case PairwiseMatch         => PairwiseMatch
 
     type SectionsSeen = com.sageserpent.kineticmerge.core.SectionsSeen[Element]
 
@@ -729,13 +730,13 @@ object MatchAnalysis extends StrictLogging:
         )
       end maximumSizeOfCoalescedSections
 
-      private def fragmentsOf(
-          pairwiseMatchesToBeEaten: MultiDict[
-            PairwiseMatch,
-            (Match.AllSides[Section[Element]], BiteEdge, BiteEdge)
+      private def fragmentsOf[MatchType <: GenericMatch[Element]](
+          matchesToBeEaten: MultiDict[
+            MatchType,
+            (Match[Section[Element]], BiteEdge, BiteEdge)
           ]
-      ): ParallelMatchesGroupIdTracking[Set[PairwiseMatch]] =
-        pairwiseMatchesToBeEaten.sets.toSeq
+      ): ParallelMatchesGroupIdTracking[Set[DependentMatchType[MatchType]]] =
+        matchesToBeEaten.sets.toSeq
           .flatTraverse { case (pairwiseMatch, bites) =>
             for
               parallelMatchesGroupIdsByMatch <- State
@@ -749,17 +750,17 @@ object MatchAnalysis extends StrictLogging:
 
               sortedBiteEdges = groupIdsBySortedBiteEdge.keySet
 
-              fragmentsFromPairwiseMatch <-
-                sortedBiteEdges.eatIntoPairwiseMatch(
+              fragmentsFromMatch <-
+                sortedBiteEdges.eatIntoMatch(
                   pairwiseMatch,
                   groupIdsBySortedBiteEdge
                 )
             yield
               logger.debug(
-                s"Eating into pairwise match:\n${pprintCustomised(pairwiseMatch)} on behalf of all-sides matches:\n${pprintCustomised(bites)}, resulting in fragments:\n${pprintCustomised(fragmentsFromPairwiseMatch)}"
+                s"Eating into match:\n${pprintCustomised(pairwiseMatch)} on behalf of matches:\n${pprintCustomised(bites)}, resulting in fragments:\n${pprintCustomised(fragmentsFromMatch)}"
               )
 
-              fragmentsFromPairwiseMatch
+              fragmentsFromMatch
           }
           .map(_.toSet)
 
@@ -767,18 +768,19 @@ object MatchAnalysis extends StrictLogging:
       // edges to be sorted in terms of their offsets and not exceed the
       // section's boundaries.
       extension (biteEdges: SortedSet[BiteEdge])
-        private def eatIntoPairwiseMatch(
-            pairwiseMatch: PairwiseMatch,
+        private def eatIntoMatch[MatchType <: GenericMatch[Element]](
+            aMatch: MatchType,
             groupIdsBySortedBiteEdge: Map[BiteEdge, ParallelMatchesGroupId]
         ): ParallelMatchesGroupIdTracking[
-          Vector[PairwiseMatch]
+          Vector[DependentMatchType[MatchType]]
         ] =
           // NOTE: here we work with zero-relative offsets from the start of the
           // meal, thus we can work directly with the offsets from the bite
           // edges.
 
           val (firstSide, firstSection, secondSide, secondSection, factory) =
-            (pairwiseMatch match
+            (aMatch match
+              // TODO: the all-sides case!
               case Match.BaseAndLeft(baseSection, leftSection) =>
                 (
                   baseSources,
@@ -808,7 +810,9 @@ object MatchAnalysis extends StrictLogging:
                 Section[Element],
                 Sources[Path, Element],
                 Section[Element],
-                (Section[Element], Section[Element]) => PairwiseMatch
+                (Section[Element], Section[Element]) => DependentMatchType[
+                  MatchType
+                ]
             )
 
           val firstPath  = firstSide.pathFor(firstSection)
@@ -822,10 +826,10 @@ object MatchAnalysis extends StrictLogging:
               mealStartOffsetRelativeToMeal: Int,
               biteDepth: Int,
               remainingBiteEdges: Seq[BiteEdge],
-              fragments: Vector[PairwiseMatch]
+              fragments: Vector[DependentMatchType[MatchType]]
           ):
             final def biteEdgeStep: ParallelMatchesGroupIdTracking[
-              Either[RecursionState, Vector[PairwiseMatch]]
+              Either[RecursionState, Vector[DependentMatchType[MatchType]]]
             ] =
               remainingBiteEdges match
                 case Seq() =>
@@ -953,12 +957,12 @@ object MatchAnalysis extends StrictLogging:
               fragments = Vector.empty
             )
           )(_.biteEdgeStep)
-        end eatIntoPairwiseMatch
+        end eatIntoMatch
 
       end extension
 
-      private def assignGroupId(
-          fragment: PairwiseMatch,
+      private def assignGroupId[MatchType <: GenericMatch[Element]](
+          fragment: MatchType,
           groupId: Option[ParallelMatchesGroupId]
       ): ParallelMatchesGroupIdTracking[Unit] =
         State.modify[ParallelMatchesGroupIdsByMatch[Element]] {
@@ -1296,6 +1300,149 @@ object MatchAnalysis extends StrictLogging:
         end if
       end purgedOfMatchesWithOverlappingSections
 
+      private def withoutTheseMatches(
+          matches: Iterable[GenericMatch[Element]]
+      ): MatchesAndTheirSections =
+        matches.foldLeft(this) {
+          case (
+                matchesAndTheirSections,
+                allSides @ Match.AllSides(
+                  baseSection,
+                  leftSection,
+                  rightSection
+                )
+              ) =>
+            matchesAndTheirSections.copy(
+              baseSectionsByPath =
+                matchesAndTheirSections.baseExcluding(baseSection),
+              leftSectionsByPath =
+                matchesAndTheirSections.leftExcluding(leftSection),
+              rightSectionsByPath =
+                matchesAndTheirSections.rightExcluding(rightSection),
+              sectionsAndTheirMatches =
+                matchesAndTheirSections.sectionsAndTheirMatches
+                  .remove(baseSection, allSides)
+                  .remove(leftSection, allSides)
+                  .remove(rightSection, allSides),
+              baseFingerprintedInclusionsByPath =
+                matchesAndTheirSections.reinstateInBaseFingerprintedInclusions(
+                  baseSection
+                ),
+              leftFingerprintedInclusionsByPath =
+                matchesAndTheirSections.reinstateInLeftFingerprintedInclusions(
+                  leftSection
+                ),
+              rightFingerprintedInclusionsByPath =
+                matchesAndTheirSections.reinstateInRightFingerprintedInclusions(
+                  rightSection
+                ),
+              parallelMatchesGroupIdsByMatch =
+                matchesAndTheirSections.parallelMatchesGroupIdsByMatch.removed(
+                  allSides
+                )
+            )
+
+          case (
+                matchesAndTheirSections,
+                baseAndLeft @ Match.BaseAndLeft(baseSection, leftSection)
+              ) =>
+            matchesAndTheirSections.copy(
+              baseSectionsByPath =
+                matchesAndTheirSections.baseExcluding(baseSection),
+              leftSectionsByPath =
+                matchesAndTheirSections.leftExcluding(leftSection),
+              sectionsAndTheirMatches =
+                matchesAndTheirSections.sectionsAndTheirMatches
+                  .remove(baseSection, baseAndLeft)
+                  .remove(leftSection, baseAndLeft),
+              parallelMatchesGroupIdsByMatch =
+                matchesAndTheirSections.parallelMatchesGroupIdsByMatch.removed(
+                  baseAndLeft
+                )
+            )
+
+          case (
+                matchesAndTheirSections,
+                baseAndRight @ Match.BaseAndRight(baseSection, rightSection)
+              ) =>
+            matchesAndTheirSections.copy(
+              baseSectionsByPath =
+                matchesAndTheirSections.baseExcluding(baseSection),
+              rightSectionsByPath =
+                matchesAndTheirSections.rightExcluding(rightSection),
+              sectionsAndTheirMatches =
+                matchesAndTheirSections.sectionsAndTheirMatches
+                  .remove(baseSection, baseAndRight)
+                  .remove(rightSection, baseAndRight),
+              parallelMatchesGroupIdsByMatch =
+                matchesAndTheirSections.parallelMatchesGroupIdsByMatch.removed(
+                  baseAndRight
+                )
+            )
+
+          case (
+                matchesAndTheirSections,
+                leftAndRight @ Match.LeftAndRight(leftSection, rightSection)
+              ) =>
+            matchesAndTheirSections.copy(
+              leftSectionsByPath =
+                matchesAndTheirSections.leftExcluding(leftSection),
+              rightSectionsByPath =
+                matchesAndTheirSections.rightExcluding(rightSection),
+              sectionsAndTheirMatches =
+                matchesAndTheirSections.sectionsAndTheirMatches
+                  .remove(leftSection, leftAndRight)
+                  .remove(rightSection, leftAndRight),
+              parallelMatchesGroupIdsByMatch =
+                matchesAndTheirSections.parallelMatchesGroupIdsByMatch.removed(
+                  leftAndRight
+                )
+            )
+        }
+      end withoutTheseMatches
+
+      private def withMatch(
+          aMatch: GenericMatch[Element]
+      ): MatchesAndTheirSections =
+        aMatch match
+          case Match.AllSides(baseSection, leftSection, rightSection) =>
+            copy(
+              baseSectionsByPath = baseIncluding(baseSection),
+              leftSectionsByPath = leftIncluding(leftSection),
+              rightSectionsByPath = rightIncluding(rightSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch) + (rightSection -> aMatch),
+              baseFingerprintedInclusionsByPath =
+                knockOutFromBaseFingerprintedInclusions(baseSection),
+              leftFingerprintedInclusionsByPath =
+                knockOutFromLeftFingerprintedInclusions(leftSection),
+              rightFingerprintedInclusionsByPath =
+                knockOutFromRightFingerprintedInclusions(rightSection)
+            )
+          case baseAndLeft @ Match.BaseAndLeft(baseSection, leftSection) =>
+            copy(
+              baseSectionsByPath = baseIncluding(baseSection),
+              leftSectionsByPath = leftIncluding(leftSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch)
+            )
+          case baseAndRight @ Match.BaseAndRight(baseSection, rightSection) =>
+            copy(
+              baseSectionsByPath = baseIncluding(baseSection),
+              rightSectionsByPath = rightIncluding(rightSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch)
+            )
+          case leftAndRight @ Match.LeftAndRight(leftSection, rightSection) =>
+            copy(
+              leftSectionsByPath = leftIncluding(leftSection),
+              rightSectionsByPath = rightIncluding(rightSection),
+              sectionsAndTheirMatches =
+                sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch)
+            )
+        end match
+      end withMatch
+
       def reconcileMatches(
           suppressMatchesInvolvingOverlappingSections: Boolean
       ): MatchesAndTheirSections =
@@ -1322,7 +1469,7 @@ object MatchAnalysis extends StrictLogging:
             ] =
               val pairwiseMatchesToBeEaten: MultiDict[
                 PairwiseMatch,
-                (Match.AllSides[Section[Element]], BiteEdge, BiteEdge)
+                (Match[Section[Element]], BiteEdge, BiteEdge)
               ] =
                 MultiDict.from(
                   allSidesMatches.flatMap(allSides =>
@@ -1342,7 +1489,7 @@ object MatchAnalysis extends StrictLogging:
                 _ <- State.set(parallelMatchesGroupIdsByMatch)
 
                 fragments <- fragmentsOf(pairwiseMatchesToBeEaten).map(
-                  _.diff(matches.asInstanceOf[Set[PairwiseMatch]])
+                  _.diff(matches)
                 )
 
                 takingFragmentationIntoAccount =
@@ -1744,107 +1891,6 @@ object MatchAnalysis extends StrictLogging:
         withoutTheseMatches(redundantMatches)
       end withoutRedundantPairwiseMatches
 
-      private def withoutTheseMatches(
-          matches: Iterable[GenericMatch[Element]]
-      ): MatchesAndTheirSections =
-        matches.foldLeft(this) {
-          case (
-                matchesAndTheirSections,
-                allSides @ Match.AllSides(
-                  baseSection,
-                  leftSection,
-                  rightSection
-                )
-              ) =>
-            matchesAndTheirSections.copy(
-              baseSectionsByPath =
-                matchesAndTheirSections.baseExcluding(baseSection),
-              leftSectionsByPath =
-                matchesAndTheirSections.leftExcluding(leftSection),
-              rightSectionsByPath =
-                matchesAndTheirSections.rightExcluding(rightSection),
-              sectionsAndTheirMatches =
-                matchesAndTheirSections.sectionsAndTheirMatches
-                  .remove(baseSection, allSides)
-                  .remove(leftSection, allSides)
-                  .remove(rightSection, allSides),
-              baseFingerprintedInclusionsByPath =
-                matchesAndTheirSections.reinstateInBaseFingerprintedInclusions(
-                  baseSection
-                ),
-              leftFingerprintedInclusionsByPath =
-                matchesAndTheirSections.reinstateInLeftFingerprintedInclusions(
-                  leftSection
-                ),
-              rightFingerprintedInclusionsByPath =
-                matchesAndTheirSections.reinstateInRightFingerprintedInclusions(
-                  rightSection
-                ),
-              parallelMatchesGroupIdsByMatch =
-                matchesAndTheirSections.parallelMatchesGroupIdsByMatch.removed(
-                  allSides
-                )
-            )
-
-          case (
-                matchesAndTheirSections,
-                baseAndLeft @ Match.BaseAndLeft(baseSection, leftSection)
-              ) =>
-            matchesAndTheirSections.copy(
-              baseSectionsByPath =
-                matchesAndTheirSections.baseExcluding(baseSection),
-              leftSectionsByPath =
-                matchesAndTheirSections.leftExcluding(leftSection),
-              sectionsAndTheirMatches =
-                matchesAndTheirSections.sectionsAndTheirMatches
-                  .remove(baseSection, baseAndLeft)
-                  .remove(leftSection, baseAndLeft),
-              parallelMatchesGroupIdsByMatch =
-                matchesAndTheirSections.parallelMatchesGroupIdsByMatch.removed(
-                  baseAndLeft
-                )
-            )
-
-          case (
-                matchesAndTheirSections,
-                baseAndRight @ Match.BaseAndRight(baseSection, rightSection)
-              ) =>
-            matchesAndTheirSections.copy(
-              baseSectionsByPath =
-                matchesAndTheirSections.baseExcluding(baseSection),
-              rightSectionsByPath =
-                matchesAndTheirSections.rightExcluding(rightSection),
-              sectionsAndTheirMatches =
-                matchesAndTheirSections.sectionsAndTheirMatches
-                  .remove(baseSection, baseAndRight)
-                  .remove(rightSection, baseAndRight),
-              parallelMatchesGroupIdsByMatch =
-                matchesAndTheirSections.parallelMatchesGroupIdsByMatch.removed(
-                  baseAndRight
-                )
-            )
-
-          case (
-                matchesAndTheirSections,
-                leftAndRight @ Match.LeftAndRight(leftSection, rightSection)
-              ) =>
-            matchesAndTheirSections.copy(
-              leftSectionsByPath =
-                matchesAndTheirSections.leftExcluding(leftSection),
-              rightSectionsByPath =
-                matchesAndTheirSections.rightExcluding(rightSection),
-              sectionsAndTheirMatches =
-                matchesAndTheirSections.sectionsAndTheirMatches
-                  .remove(leftSection, leftAndRight)
-                  .remove(rightSection, leftAndRight),
-              parallelMatchesGroupIdsByMatch =
-                matchesAndTheirSections.parallelMatchesGroupIdsByMatch.removed(
-                  leftAndRight
-                )
-            )
-        }
-      end withoutTheseMatches
-
       private def isRedundantPairwiseMatch(aMatch: GenericMatch[Element]) =
         aMatch match
           case Match.BaseAndLeft(baseSection, leftSection) =>
@@ -2063,48 +2109,6 @@ object MatchAnalysis extends StrictLogging:
           pathInclusions = pathInclusions
         )
       end withMatches
-
-      private def withMatch(
-          aMatch: GenericMatch[Element]
-      ): MatchesAndTheirSections =
-        aMatch match
-          case Match.AllSides(baseSection, leftSection, rightSection) =>
-            copy(
-              baseSectionsByPath = baseIncluding(baseSection),
-              leftSectionsByPath = leftIncluding(leftSection),
-              rightSectionsByPath = rightIncluding(rightSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch) + (rightSection -> aMatch),
-              baseFingerprintedInclusionsByPath =
-                knockOutFromBaseFingerprintedInclusions(baseSection),
-              leftFingerprintedInclusionsByPath =
-                knockOutFromLeftFingerprintedInclusions(leftSection),
-              rightFingerprintedInclusionsByPath =
-                knockOutFromRightFingerprintedInclusions(rightSection)
-            )
-          case baseAndLeft @ Match.BaseAndLeft(baseSection, leftSection) =>
-            copy(
-              baseSectionsByPath = baseIncluding(baseSection),
-              leftSectionsByPath = leftIncluding(leftSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch)
-            )
-          case baseAndRight @ Match.BaseAndRight(baseSection, rightSection) =>
-            copy(
-              baseSectionsByPath = baseIncluding(baseSection),
-              rightSectionsByPath = rightIncluding(rightSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch)
-            )
-          case leftAndRight @ Match.LeftAndRight(leftSection, rightSection) =>
-            copy(
-              leftSectionsByPath = leftIncluding(leftSection),
-              rightSectionsByPath = rightIncluding(rightSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch)
-            )
-        end match
-      end withMatch
 
       private def reconciliationPostcondition(): Unit =
         baseSectionsByPath.values.flatMap(_.iterator).foreach { baseSection =>
@@ -2554,7 +2558,7 @@ object MatchAnalysis extends StrictLogging:
         Element
       ]](
           aMatch: MatchType
-      ): ParallelMatchesGroupIdTracking[Option[ParedDownMatch[MatchType]]] =
+      ): ParallelMatchesGroupIdTracking[Option[DependentMatchType[MatchType]]] =
         // NOTE: one thing to watch out is when fragments resulting from
         // larger pairwise matches being eaten into collide with equivalent
         // pairwise matches found by fingerprint matching. This can take the
@@ -2563,7 +2567,7 @@ object MatchAnalysis extends StrictLogging:
         // by fragmentation if the all-sides eating into the larger pairwise
         // matches also come from the same fingerprinting that yielded the
         // pairwise matching. Intercepting this here addresses both cases. {
-        val result: Option[ParedDownMatch[MatchType]] = aMatch match
+        val result: Option[DependentMatchType[MatchType]] = aMatch match
           case Match.AllSides(baseSection, leftSection, rightSection) =>
             val trivialSubsumptionSize = baseSection.size
 
