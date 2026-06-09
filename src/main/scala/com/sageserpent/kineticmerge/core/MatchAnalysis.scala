@@ -559,6 +559,31 @@ object MatchAnalysis extends StrictLogging:
           )
       end overlapsOrIsSubsumedBy
 
+      private def overlappingOrSubsumedMatches(
+          sectionsAndTheirMatches: MatchedSections[Element]
+      )(
+          side: Sources[Path, Element],
+          sectionsByPath: Map[Path, SectionsSeen]
+      )(
+          section: Section[Element]
+      ): Set[GenericMatch[Element]] =
+        sectionsByPath
+          .get(side.pathFor(section))
+          .fold(ifEmpty = Set.empty)(
+            _.filterOverlaps(section.closedOpenInterval)
+              // NOTE: convert to a set at this point as we expect sections to
+              // be duplicated when involved in ambiguous matches.
+              .toSet
+              // Subsuming sections are considered to be overlapping by the
+              // implementation of `SectionSeen.filterOverlaps`, so filter with
+              // a nuanced predicate.
+              .filter(candidateSection =>
+                candidateSection.startOffset > section.startOffset || candidateSection.onePastEndOffset < section.onePastEndOffset
+              )
+              .flatMap(sectionsAndTheirMatches.get)
+          )
+      end overlappingOrSubsumedMatches
+
       private def including(
           side: Sources[Path, Element],
           sectionsByPath: Map[Path, SectionsSeen]
@@ -1287,6 +1312,26 @@ object MatchAnalysis extends StrictLogging:
       def purgedOfMatchesWithOverlappingSections(
           enabled: Boolean
       ): MatchesAndTheirSections =
+        // PLAN: start with a set of matches and for each match, determine the
+        // set of matches that overlap with it.
+        // Partition the matches into those that have no overlaps and those that
+        // do.
+        // Matches without overlaps go into a cumulative accumulation set for
+        // tail-recursion.
+        // Matches with overlaps have their overlaps mapped over to yield
+        // replacement matches that span just the overlapped content and nothing
+        // more, plus bites: these are associated with the match being
+        // overlapped.
+        // The fragmentation logic is used to bite into the match being
+        // overlapped to make fragments.
+        // The biting matches have group ids propagated to them from the group
+        // ids of the *overlapping* matches.
+        // A new `MatchesAndTheirSection` is built up from just the biting
+        // matches and fragments.
+        // Tail-recursion terminates once there are no longer any overlaps, and
+        // the accumulated non-overlapping matches are used to build a resulting
+        // `MatchesAndTheirSection`.
+
         def overlapsWithSomethingElse(aMatch: GenericMatch[Element]): Boolean =
           // NOTE: the invariant already guarantees that nothing will be
           // subsumed by the match's sections, so this is only testing for
