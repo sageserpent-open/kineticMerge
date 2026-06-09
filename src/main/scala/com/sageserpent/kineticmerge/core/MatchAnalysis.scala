@@ -790,14 +790,45 @@ object MatchAnalysis extends StrictLogging:
               size
             )
 
-          val (sectionSize, fragmentFactory) =
-            (aMatch match
-              // TODO: the all-sides case!
+          trait FragmentFactory:
+            def apply(
+                mealStartOffsetRelativeToMeal: Int,
+                size: Int
+            ): DependentMatchType[MatchType]
+          end FragmentFactory
+
+          val (sectionSize: Int, fragmentFactory: FragmentFactory) =
+            aMatch match
+              case Match.AllSides(baseSection, leftSection, rightSection) =>
+                (
+                  baseSection.size,
+                  new FragmentFactory:
+                    override def apply(
+                        mealStartOffsetRelativeToMeal: ParallelMatchesGroupId,
+                        size: ParallelMatchesGroupId
+                    ): DependentMatchType[MatchType] = Match.AllSides(
+                      sectionSlice(baseSources, baseSection)(
+                        mealStartOffsetRelativeToMeal,
+                        size
+                      ),
+                      sectionSlice(leftSources, leftSection)(
+                        mealStartOffsetRelativeToMeal,
+                        size
+                      ),
+                      sectionSlice(rightSources, rightSection)(
+                        mealStartOffsetRelativeToMeal,
+                        size
+                      )
+                    )
+                )
               case Match.BaseAndLeft(baseSection, leftSection) =>
                 (
                   baseSection.size,
-                  (mealStartOffsetRelativeToMeal: Int, size: Int) =>
-                    Match.BaseAndLeft(
+                  new FragmentFactory:
+                    override def apply(
+                        mealStartOffsetRelativeToMeal: ParallelMatchesGroupId,
+                        size: ParallelMatchesGroupId
+                    ): DependentMatchType[MatchType] = Match.BaseAndLeft(
                       sectionSlice(baseSources, baseSection)(
                         mealStartOffsetRelativeToMeal,
                         size
@@ -811,8 +842,11 @@ object MatchAnalysis extends StrictLogging:
               case Match.BaseAndRight(baseSection, rightSection) =>
                 (
                   baseSection.size,
-                  (mealStartOffsetRelativeToMeal: Int, size: Int) =>
-                    Match.BaseAndRight(
+                  new FragmentFactory:
+                    override def apply(
+                        mealStartOffsetRelativeToMeal: ParallelMatchesGroupId,
+                        size: ParallelMatchesGroupId
+                    ): DependentMatchType[MatchType] = Match.BaseAndRight(
                       sectionSlice(baseSources, baseSection)(
                         mealStartOffsetRelativeToMeal,
                         size
@@ -826,8 +860,11 @@ object MatchAnalysis extends StrictLogging:
               case Match.LeftAndRight(leftSection, rightSection) =>
                 (
                   leftSection.size,
-                  (mealStartOffsetRelativeToMeal: Int, size: Int) =>
-                    Match.LeftAndRight(
+                  new FragmentFactory:
+                    override def apply(
+                        mealStartOffsetRelativeToMeal: ParallelMatchesGroupId,
+                        size: ParallelMatchesGroupId
+                    ): DependentMatchType[MatchType] = Match.LeftAndRight(
                       sectionSlice(leftSources, leftSection)(
                         mealStartOffsetRelativeToMeal,
                         size
@@ -838,7 +875,6 @@ object MatchAnalysis extends StrictLogging:
                       )
                     )
                 )
-            ): (Int, (Int, Int) => DependentMatchType[MatchType])
 
           case class RecursionState(
               deferredGroupIdFromPrecedingBite: Option[ParallelMatchesGroupId],
