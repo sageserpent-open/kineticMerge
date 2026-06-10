@@ -542,6 +542,31 @@ object MatchAnalysis extends StrictLogging:
       // NOTE: this is partially applied in the class so that it means: "is
       // there anything on the given side that overlaps or is subsumed by
       // `section`".
+      private def overlappingOrSubsumedMatches(
+          sectionsAndTheirMatches: MatchedSections[Element]
+      )(
+          side: Sources[Path, Element],
+          sectionsByPath: Map[Path, SectionsSeen]
+      )(
+          section: Section[Element]
+      ): Set[GenericMatch[Element]] =
+        sectionsByPath
+          .get(side.pathFor(section))
+          .fold(ifEmpty = Set.empty)(
+            _.filterOverlaps(section.closedOpenInterval)
+              // NOTE: convert to a set at this point as we expect sections to
+              // be duplicated when involved in ambiguous matches.
+              .toSet
+              // Subsuming sections are considered to be overlapping by the
+              // implementation of `SectionSeen.filterOverlaps`, so filter with
+              // a nuanced predicate.
+              .filter(candidateSection =>
+                candidateSection.startOffset > section.startOffset || candidateSection.onePastEndOffset < section.onePastEndOffset
+              )
+              .flatMap(sectionsAndTheirMatches.get)
+          )
+      end overlappingOrSubsumedMatches
+
       private def overlapsOrIsSubsumedBy(
           side: Sources[Path, Element],
           sectionsByPath: Map[Path, SectionsSeen]
@@ -1094,6 +1119,24 @@ object MatchAnalysis extends StrictLogging:
         overlapsOrIsSubsumedBy(leftSources, leftSectionsByPath)
       private val rightOverlapsOrIsSubsumedBy: Section[Element] => Boolean =
         overlapsOrIsSubsumedBy(rightSources, rightSectionsByPath)
+      private val baseOverlappingOrSubsumedMatches
+          : Section[Element] => Set[GenericMatch[Element]] =
+        overlappingOrSubsumedMatches(sectionsAndTheirMatches)(
+          baseSources,
+          baseSectionsByPath
+        )
+      private val leftOverlappingOrSubsumedMatches
+          : Section[Element] => Set[GenericMatch[Element]] =
+        overlappingOrSubsumedMatches(sectionsAndTheirMatches)(
+          leftSources,
+          leftSectionsByPath
+        )
+      private val rightOverlappingOrSubsumedMatches
+          : Section[Element] => Set[GenericMatch[Element]] =
+        overlappingOrSubsumedMatches(sectionsAndTheirMatches)(
+          rightSources,
+          rightSectionsByPath
+        )
       private val baseIncluding: Section[Element] => Map[Path, SectionsSeen] =
         including(baseSources, baseSectionsByPath)
       private val leftIncluding: Section[Element] => Map[Path, SectionsSeen] =
@@ -1142,6 +1185,110 @@ object MatchAnalysis extends StrictLogging:
           rightSources,
           rightFingerprintedInclusionsByPath
         )
+
+      private def intersectionMatchesAndBiteEdges(
+          matchBeingBittenInto: GenericMatch[Element],
+          overlappingMatch: GenericMatch[Element]
+      ): Set[(GenericMatch[Element], BiteEdge, BiteEdge)] =
+        val commonSides = (matchBeingBittenInto match
+          case Match.AllSides(_, _, _) => Set("base", "left", "right")
+          case Match.BaseAndLeft(_, _) => Set("base", "left")
+          case Match.BaseAndRight(_, _) => Set("base", "right")
+          case Match.LeftAndRight(_, _) => Set("left", "right")
+        ) intersect (overlappingMatch match
+          case Match.AllSides(_, _, _) => Set("base", "left", "right")
+          case Match.BaseAndLeft(_, _) => Set("base", "left")
+          case Match.BaseAndRight(_, _) => Set("base", "right")
+          case Match.LeftAndRight(_, _) => Set("left", "right")
+        )
+
+        commonSides.flatMap(side =>
+          val (mSection, oSection) = side match
+            case "base" =>
+              (
+                matchBeingBittenInto.baseContribution.get,
+                overlappingMatch.baseContribution.get
+              )
+            case "left" =>
+              (
+                matchBeingBittenInto.leftContribution.get,
+                overlappingMatch.leftContribution.get
+              )
+            case "right" =>
+              (
+                matchBeingBittenInto.rightContribution.get,
+                overlappingMatch.rightContribution.get
+              )
+
+          val interStart = mSection.startOffset max oSection.startOffset
+          val interEnd   = mSection.onePastEndOffset min oSection.onePastEndOffset
+
+          if interStart < interEnd then
+            val size      = interEnd - interStart
+            val offsetInO = interStart - oSection.startOffset
+            val biteStart = interStart - mSection.startOffset
+            val biteEnd   = interEnd - mSection.startOffset
+
+            val overlapMatch = overlappingMatch match
+              case Match.AllSides(base, left, right) =>
+                Match.AllSides(
+                  baseSources.section(baseSources.pathFor(base))(
+                    base.startOffset + offsetInO,
+                    size
+                  ),
+                  leftSources.section(leftSources.pathFor(left))(
+                    left.startOffset + offsetInO,
+                    size
+                  ),
+                  rightSources.section(rightSources.pathFor(right))(
+                    right.startOffset + offsetInO,
+                    size
+                  )
+                )
+              case Match.BaseAndLeft(base, left) =>
+                Match.BaseAndLeft(
+                  baseSources.section(baseSources.pathFor(base))(
+                    base.startOffset + offsetInO,
+                    size
+                  ),
+                  leftSources.section(leftSources.pathFor(left))(
+                    left.startOffset + offsetInO,
+                    size
+                  )
+                )
+              case Match.BaseAndRight(base, right) =>
+                Match.BaseAndRight(
+                  baseSources.section(baseSources.pathFor(base))(
+                    base.startOffset + offsetInO,
+                    size
+                  ),
+                  rightSources.section(rightSources.pathFor(right))(
+                    right.startOffset + offsetInO,
+                    size
+                  )
+                )
+              case Match.LeftAndRight(left, right) =>
+                Match.LeftAndRight(
+                  leftSources.section(leftSources.pathFor(left))(
+                    left.startOffset + offsetInO,
+                    size
+                  ),
+                  rightSources.section(rightSources.pathFor(right))(
+                    right.startOffset + offsetInO,
+                    size
+                  )
+                )
+
+            Some(
+              (
+                overlapMatch,
+                BiteEdge.Start(biteStart),
+                BiteEdge.End(biteEnd)
+              )
+            )
+          else None
+        )
+      end intersectionMatchesAndBiteEdges
 
       def baseSections: Set[Section[Element]] =
         baseSectionsByPath.values.flatMap(_.iterator).toSet
@@ -1287,41 +1434,113 @@ object MatchAnalysis extends StrictLogging:
       def purgedOfMatchesWithOverlappingSections(
           enabled: Boolean
       ): MatchesAndTheirSections =
-        def overlapsWithSomethingElse(aMatch: GenericMatch[Element]): Boolean =
-          // NOTE: the invariant already guarantees that nothing will be
-          // subsumed by the match's sections, so this is only testing for
-          // overlaps.
-          aMatch match
-            case Match.AllSides(baseSection, leftSection, rightSection) =>
-              baseOverlapsOrIsSubsumedBy(baseSection) ||
-              leftOverlapsOrIsSubsumedBy(
-                leftSection
-              ) || rightOverlapsOrIsSubsumedBy(rightSection)
-            case Match.BaseAndLeft(baseSection, leftSection) =>
-              baseOverlapsOrIsSubsumedBy(baseSection) ||
-              leftOverlapsOrIsSubsumedBy(
-                leftSection
-              )
-            case Match.BaseAndRight(baseSection, rightSection) =>
-              baseOverlapsOrIsSubsumedBy(
-                baseSection
-              ) || rightOverlapsOrIsSubsumedBy(rightSection)
-            case Match.LeftAndRight(leftSection, rightSection) =>
-              leftOverlapsOrIsSubsumedBy(
-                leftSection
-              ) || rightOverlapsOrIsSubsumedBy(rightSection)
+        def overlapsWithSomethingElse(
+            matchesAndTheirSections: MatchesAndTheirSections,
+            aMatch: GenericMatch[Element]
+        ): Boolean =
+          aMatch.baseContribution.exists(
+            matchesAndTheirSections.baseOverlapsOrIsSubsumedBy
+          ) ||
+            aMatch.leftContribution.exists(
+              matchesAndTheirSections.leftOverlapsOrIsSubsumedBy
+            ) ||
+            aMatch.rightContribution.exists(
+              matchesAndTheirSections.rightOverlapsOrIsSubsumedBy
+            )
 
         val overlappingMatches =
           // NOTE: have to convert to a set to remove duplicates.
-          sectionsAndTheirMatches.values.toSet.filter(overlapsWithSomethingElse)
+          sectionsAndTheirMatches.values.toSet.filter(
+            overlapsWithSomethingElse(this, _)
+          )
 
         if overlappingMatches.nonEmpty then
           if enabled then
-            logger.debug(
-              s"Removing overlapping matches:\n${pprintCustomised(overlappingMatches)}"
-            )
+            def fragmentOverlaps(
+                matchesAndTheirSections: MatchesAndTheirSections,
+                accumulatedNonOverlappingMatches: Set[GenericMatch[Element]]
+            ): ParallelMatchesGroupIdTracking[MatchesAndTheirSections] =
+              FlatMap[ParallelMatchesGroupIdTracking].tailRecM(
+                (matchesAndTheirSections, accumulatedNonOverlappingMatches)
+              ) { case (currentState, accumulated) =>
+                val matches = currentState.matches
+                val (overlappingMatches, newlyDiscoveredNonOverlappingMatches) =
+                  matches.partition(aMatch =>
+                    overlapsWithSomethingElse(currentState, aMatch)
+                  )
 
-            withoutTheseMatches(overlappingMatches)
+                if overlappingMatches.isEmpty then
+                  State.pure(
+                    Right(
+                      (accumulated ++ newlyDiscoveredNonOverlappingMatches)
+                        .foldLeft(MatchesAndTheirSections.empty)(_ withMatch _)
+                    )
+                  )
+                else
+                  val allBites = overlappingMatches.flatMap(m =>
+                    val neighbors =
+                      (m.baseContribution.fold(Set.empty)(
+                        currentState.baseOverlappingOrSubsumedMatches
+                      ) ++
+                        m.leftContribution.fold(Set.empty)(
+                          currentState.leftOverlappingOrSubsumedMatches
+                        ) ++
+                        m.rightContribution.fold(Set.empty)(
+                          currentState.rightOverlappingOrSubsumedMatches
+                        )) intersect matches
+                    neighbors.flatMap(o =>
+                      intersectionMatchesAndBiteEdges(m, o).map(omAndBites =>
+                        (o, m, omAndBites)
+                      )
+                    )
+                  )
+
+                  val matchesToBeEaten =
+                    MultiDict.from(allBites.map {
+                      case (o, m, (om, start, end)) =>
+                        m -> (om, start, end)
+                    })
+
+                  for
+                    _ <- allBites.toSeq.traverse {
+                      case (o, m, (om, start, end)) =>
+                        for
+                          // Ensure 'o' has a group ID.
+                          _ <- State.get[
+                            ParallelMatchesGroupIdsByMatch[Element]
+                          ].flatMap(groupIdsByMatch =>
+                            if groupIdsByMatch.contains(o) then State.pure(())
+                            else MatchesAndTheirSections.assignGroupId(o, None)
+                          )
+                          _ <- MatchesAndTheirSections.propagateGroupIds(o, om)
+                        yield ()
+                    }
+                    fragments <- fragmentsOf(matchesToBeEaten)
+                    overlapMatches = allBites.map(_._3._1)
+                    nextMatchesAndTheirSections =
+                      (fragments ++ overlapMatches).foldLeft(
+                        MatchesAndTheirSections.empty
+                      )(_ withMatch _)
+                  yield Left(
+                    (
+                      nextMatchesAndTheirSections,
+                      accumulated ++ newlyDiscoveredNonOverlappingMatches
+                    )
+                  )
+                end if
+              }
+            end fragmentOverlaps
+
+            val (updatedParallelMatchesGroupIdsByMatch, result) =
+              fragmentOverlaps(this, Set.empty)
+                .run(parallelMatchesGroupIdsByMatch)
+                .value
+
+            result.copy(parallelMatchesGroupIdsByMatch =
+              updatedParallelMatchesGroupIdsByMatch.filter((m, _) =>
+                result.matches.contains(m)
+              )
+            )
           else
             throw new AdmissibleFailure(
               s"""Overlapping matches found: ${pprintCustomised(

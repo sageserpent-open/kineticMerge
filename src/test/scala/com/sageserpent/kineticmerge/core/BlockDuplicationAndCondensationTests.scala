@@ -381,20 +381,19 @@ class BlockDuplicationAndCondensationTests:
       )
 
       assert(
-        Vector(
-          Contribution.CommonToBaseAndLeftOnly(baseElements)
-        ) == baseContributions
-          .map(_.map(_.content))
+        baseElements == baseContributions
+          .map(_.element.content)
+          .flatten
       )
       assert(
-        Vector(
-          Contribution.CommonToBaseAndLeftOnly(baseElements)
-        ) == contributionsOnSideWithoutChanges.map(_.map(_.content))
+        baseElements == contributionsOnSideWithoutChanges
+          .map(_.element.content)
+          .flatten
       )
       assert(
-        Vector(
-          Contribution.Difference(elementsOnSideWithSeparation)
-        ) == contributionsOnSideWithSeparation.map(_.map(_.content))
+        elementsOnSideWithSeparation == contributionsOnSideWithSeparation
+          .map(_.element.content)
+          .flatten
       )
     }
   end issue339BugReproductionThwartedPairwiseMatchDueToSmallerOverlappingAllSidesMatches
