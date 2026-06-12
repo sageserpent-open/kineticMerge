@@ -4,7 +4,7 @@ import scala.language.postfixOps
 
 lazy val javaVersion = "17"
 
-ThisBuild / scalaVersion := "3.3.7"
+ThisBuild / scalaVersion := "3.3.8"
 
 ThisBuild / javacOptions ++= Seq("-source", javaVersion, "-target", javaVersion)
 
