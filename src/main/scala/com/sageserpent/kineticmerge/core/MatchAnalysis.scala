@@ -791,7 +791,7 @@ object MatchAnalysis extends StrictLogging:
 
       // There are contracts buried in the implementation that require the bite
       // edges to be sorted in terms of their offsets and not exceed the
-      // section's boundaries.
+      // boundaries of the match's sections.
       extension (biteEdges: SortedSet[BiteEdge])
         private def eatIntoMatch[MatchType <: GenericMatch[Element]](
             aMatch: MatchType,
