@@ -1041,6 +1041,7 @@ object MatchAnalysis extends StrictLogging:
             groupIdsByMatch + (fragment -> assignedGroupId)
         }
 
+      // TODO: use the singular - only one group id is propagated, if at all.
       private def propagateGroupIds(
           original: GenericMatch[Element],
           replacement: GenericMatch[Element]
@@ -1309,29 +1310,9 @@ object MatchAnalysis extends StrictLogging:
         tinyMatches.foldLeft(this)(_ withMatch _)
       end withTinyMatches
 
-      def purgedOfMatchesWithOverlappingSections(
+      private def purgedOfMatchesWithOverlappingSections(
           enabled: Boolean
       ): MatchesAndTheirSections =
-        // PLAN: start with a set of matches and for each match, determine the
-        // set of matches that overlap with it.
-        // Partition the matches into those that have no overlaps and those that
-        // do.
-        // Matches without overlaps go into a cumulative accumulation set for
-        // tail-recursion.
-        // Matches with overlaps have their overlaps mapped over to yield
-        // replacement matches that span just the overlapped content and nothing
-        // more, plus bites: these are associated with the match being
-        // overlapped.
-        // The fragmentation logic is used to bite into the match being
-        // overlapped to make fragments.
-        // The biting matches have group ids propagated to them from the group
-        // ids of the *overlapping* matches.
-        // A new `MatchesAndTheirSection` is built up from just the biting
-        // matches and fragments.
-        // Tail-recursion terminates once there are no longer any overlaps, and
-        // the accumulated non-overlapping matches are used to build a resulting
-        // `MatchesAndTheirSection`.
-
         def overlapsWithSomethingElse(aMatch: GenericMatch[Element]): Boolean =
           // NOTE: the invariant already guarantees that nothing will be
           // subsumed by the match's sections, so this is only testing for
@@ -1356,29 +1337,128 @@ object MatchAnalysis extends StrictLogging:
                 leftSection
               ) || rightOverlapsOrIsSubsumedBy(rightSection)
 
+        val matches = this.matches
+
         val overlappingMatches =
-          // NOTE: have to convert to a set to remove duplicates.
-          sectionsAndTheirMatches.values.toSet.filter(overlapsWithSomethingElse)
+          matches.filter(overlapsWithSomethingElse)
 
         if overlappingMatches.nonEmpty then
           if enabled then
             logger.debug(
-              s"Removing overlapping matches:\n${pprintCustomised(overlappingMatches)}"
+              s"Reconciling overlapping matches:\n${pprintCustomised(overlappingMatches)}"
             )
 
-            withoutTheseMatches(overlappingMatches)
+            val sessionLabel =
+              if configuration.label.nonEmpty then
+                s"${configuration.label} - number of overlapping matches to reconcile:"
+              else "Number of overlapping matches to reconcile:"
+
+            val Success(reconciled) =
+              Using(
+                progressRecording.newSession(
+                  label = sessionLabel,
+                  maximumProgress = matches.size
+                )(initialProgress = matches.size)
+              ) { progressRecordingSession =>
+                def reconcileUsing(
+                    matchesAndTheirSections: MatchesAndTheirSections
+                ): ParallelMatchesGroupIdTracking[
+                  Either[MatchesAndTheirSections, MatchesAndTheirSections]
+                ] =
+                  val matches = matchesAndTheirSections.matches
+
+                  val associations =
+                    matches.flatMap(aMatch =>
+                      overlappingMatchesWithBiteEdgesAndBitingMatch(aMatch)
+                        .map {
+                          case (
+                                overlappingMatch,
+                                biteStart,
+                                biteEnd,
+                                bitingMatch
+                              ) =>
+                            overlappingMatch -> (
+                              aMatch,
+                              biteStart,
+                              biteEnd,
+                              bitingMatch
+                            )
+                        }
+                    )
+
+                  if associations.isEmpty then
+                    State.pure(Right(matchesAndTheirSections))
+                  else
+                    val matchesToBeEaten: MultiDict[GenericMatch[
+                      Element
+                    ], (GenericMatch[Element], BiteEdge, BiteEdge)] =
+                      MultiDict.from(associations.map { case (key, quadruple) =>
+                        key -> quadruple.init
+                      })
+
+                    val replacements: MultiDict[GenericMatch[
+                      Element
+                    ], GenericMatch[Element]] =
+                      MultiDict.from(associations.map { case (key, quadruple) =>
+                        key -> quadruple.last
+                      })
+
+                    for
+                      _ <- State.set(
+                        matchesAndTheirSections.parallelMatchesGroupIdsByMatch
+                      )
+
+                      fragments <- fragmentsOf(matchesToBeEaten).map(
+                        _.diff(matches)
+                      )
+
+                      takingFragmentationIntoAccount =
+                        fragments.foldLeft(
+                          matchesAndTheirSections.withoutTheseMatches(
+                            matchesToBeEaten.keySet
+                          )
+                        )(_ withMatch _)
+
+                      withReplacements = replacements.values
+                        .foldLeft(
+                          takingFragmentationIntoAccount
+                        )(_ withMatch _)
+                        .withoutRedundantPairwiseMatches
+
+                      _ <- replacements.toSeq.traverse {
+                        case (former, replacement) =>
+                          propagateGroupIds(former, replacement)
+                      }
+
+                      parallelMatchesGroupIdsByMatch <- State.get
+                    yield Left(
+                      withReplacements.copy(parallelMatchesGroupIdsByMatch =
+                        parallelMatchesGroupIdsByMatch
+                      )
+                    )
+                    end for
+                  end if
+                end reconcileUsing
+
+                FlatMap[ParallelMatchesGroupIdTracking]
+                  .tailRecM(this)(reconcileUsing)
+                  .runA(Map.empty)
+                  .value
+              }: @unchecked
+
+            reconciled
           else
             throw new AdmissibleFailure(
               s"""Overlapping matches found: ${pprintCustomised(
                   overlappingMatches
                 )}.
-                   |Consider setting the command line parameter `--minimum-match-size` to something larger than ${overlappingMatches.map {
+                 |Consider setting the command line parameter `--minimum-match-size` to something larger than ${overlappingMatches.map {
                   case Match.AllSides(baseSection, _, _)  => baseSection.size
                   case Match.BaseAndLeft(baseSection, _)  => baseSection.size
                   case Match.BaseAndRight(baseSection, _) => baseSection.size
                   case Match.LeftAndRight(leftSection, _) => leftSection.size
                 }.min}.
-                   |""".stripMargin
+                 |""".stripMargin
             )
         else this
         end if
@@ -1530,7 +1610,7 @@ object MatchAnalysis extends StrictLogging:
       def reconcileMatches(
           suppressMatchesInvolvingOverlappingSections: Boolean
       ): MatchesAndTheirSections =
-        val matches = sectionsAndTheirMatches.values.toSet
+        val matches = this.matches
 
         val sessionLabel =
           if configuration.label.nonEmpty then
@@ -1553,7 +1633,7 @@ object MatchAnalysis extends StrictLogging:
             ] =
               val pairwiseMatchesToBeEaten: MultiDict[
                 PairwiseMatch,
-                (Match[Section[Element]], BiteEdge, BiteEdge)
+                (GenericMatch[Element], BiteEdge, BiteEdge)
               ] =
                 MultiDict.from(
                   allSidesMatches.flatMap(allSides =>
@@ -1563,7 +1643,6 @@ object MatchAnalysis extends StrictLogging:
                       }
                   )
                 )
-              end pairwiseMatchesToBeEaten
 
               this.checkInvariant()
 
@@ -2872,6 +2951,12 @@ object MatchAnalysis extends StrictLogging:
             )
         }
       end pairwiseMatchesSubsumingOnBothSidesWithBiteEdges
+
+      private def overlappingMatchesWithBiteEdgesAndBitingMatch(
+          aMatch: GenericMatch[Element]
+      ): Set[
+        (GenericMatch[Element], BiteEdge, BiteEdge, GenericMatch[Element])
+      ] = ???
 
       @tailrec
       private final def withAllSmallFryMatches(
