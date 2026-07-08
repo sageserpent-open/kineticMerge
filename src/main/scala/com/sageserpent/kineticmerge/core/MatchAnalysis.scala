@@ -832,11 +832,12 @@ object MatchAnalysis extends StrictLogging:
               parallelMatchesGroupIdsByMatch <- State
                 .get[ParallelMatchesGroupIdsByMatch[Element]]
 
-              biteEdgesWithGroupIds = bites.toSeq.flatMap {
-                case (bitingMatch, biteStart, biteEnd) =>
+              biteEdgesWithGroupIds = bites.toSeq
+                .flatMap { case (bitingMatch, biteStart, biteEnd) =>
                   val groupId = parallelMatchesGroupIdsByMatch(bitingMatch)
                   Seq(biteStart -> groupId, biteEnd -> groupId)
-              }.sortBy(_._1)
+                }
+                .sortBy(_._1)
 
               fragmentsFromMatch <-
                 biteEdgesWithGroupIds.eatIntoMatch(
@@ -863,7 +864,6 @@ object MatchAnalysis extends StrictLogging:
           // NOTE: here we work with zero-relative offsets from the start of the
           // meal, thus we can work directly with the offsets from the bite
           // edges.
-
 
           trait FragmentFactory:
             def apply(
@@ -1112,6 +1112,7 @@ object MatchAnalysis extends StrictLogging:
                 nextGroupId += 1
                 updated
             }
+          end if
         }
 
       private def propagateGroupIds(
@@ -1448,7 +1449,8 @@ object MatchAnalysis extends StrictLogging:
 
                   val associations =
                     matches.flatMap(aMatch =>
-                      overlappingMatchesWithBiteEdgesAndBitingMatch(aMatch)
+                      remnant
+                        .overlappingMatchesWithBiteEdgesAndBitingMatch(aMatch)
                         .map {
                           case (
                                 overlappingMatch,
@@ -1465,23 +1467,25 @@ object MatchAnalysis extends StrictLogging:
                         }
                     )
 
-                  val (overlapping, disjoint) =
-                    matches.partition(aMatch =>
-                      associations.exists(_._1 == aMatch)
-                    )
-
                   if associations.isEmpty then
                     State.pure(
                       Right(
-                        accumulatedMatches.foldLeft(remnant)(_ withMatch _)
+                        (accumulatedMatches union matches).foldLeft(remnant)(
+                          _ withMatch _
+                        )
                       )
                     )
                   else
+                    val (overlapping, disjoint) =
+                      matches.partition(aMatch =>
+                        associations.exists(_._1 == aMatch)
+                      )
+
                     for
                       _ <- enrolGroupIds(associations.flatMap {
                         case (overlappingMatch, (aMatch, _, _, bitingMatch)) =>
                           Seq(overlappingMatch, aMatch)
-                      }.toSet)
+                      })
 
                       _ <- associations.toSeq.traverse {
                         case (overlappingMatch, (aMatch, _, _, bitingMatch)) =>
@@ -1493,7 +1497,10 @@ object MatchAnalysis extends StrictLogging:
                         (GenericMatch[Element], BiteEdge, BiteEdge)
                       ] =
                         MultiDict.from(associations.map {
-                          case (key, (aMatch, biteStart, biteEnd, bitingMatch)) =>
+                          case (
+                                key,
+                                (aMatch, biteStart, biteEnd, bitingMatch)
+                              ) =>
                             key -> (bitingMatch, biteStart, biteEnd)
                         })
 
@@ -1517,20 +1524,15 @@ object MatchAnalysis extends StrictLogging:
                           )
                         )(_ withMatch _)
 
-                      withReplacements = (replacements.values.toSet ++ disjoint)
+                      withReplacements = replacements.values.toSet
                         .foldLeft(
                           takingFragmentationIntoAccount
                         )(_ withMatch _)
                         .withoutRedundantPairwiseMatches
-
-                      (overlappingAtEnd, disjointAtEnd) =
-                        withReplacements.matches.partition(aMatch =>
-                          overlappingMatchesWithBiteEdgesAndBitingMatch(aMatch).nonEmpty
-                        )
                     yield Left(
                       LoopState(
-                        withReplacements.withoutTheseMatches(disjointAtEnd),
-                        accumulatedMatches ++ disjointAtEnd
+                        withReplacements,
+                        accumulatedMatches ++ disjoint
                       )
                     )
                     end for
@@ -1714,6 +1716,7 @@ object MatchAnalysis extends StrictLogging:
                   sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch)
               )
           end match
+        end if
       end withMatch
 
       def reconcileMatches(
@@ -3076,8 +3079,7 @@ object MatchAnalysis extends StrictLogging:
           sectionsByPath
             .get(side.pathFor(section))
             .fold(ifEmpty = Set.empty)(
-              _.filterOverlaps(section.closedOpenInterval)
-                .toSet
+              _.filterOverlaps(section.closedOpenInterval).toSet
                 .filter(candidateSection =>
                   candidateSection.startOffset != section.startOffset || candidateSection.onePastEndOffset != section.onePastEndOffset
                 )
