@@ -599,12 +599,7 @@ object MatchAnalysis extends StrictLogging:
             // ambiguous matches.
             Some(sections + section)
           case None =>
-            Some(
-              // NOTE: don't use `Ordering[Int]` as while that is valid, it will
-              // pull in a Cats `Order[Int]` which round-trips back to an
-              // `Ordering`. That makes profiling difficult.
-              SectionsSeen.empty[Element] + section
-            )
+            Some(SectionsSeen.empty[Element] + section)
         }
       end including
 
