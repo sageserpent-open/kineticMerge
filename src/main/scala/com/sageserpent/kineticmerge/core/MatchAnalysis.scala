@@ -832,18 +832,15 @@ object MatchAnalysis extends StrictLogging:
               parallelMatchesGroupIdsByMatch <- State
                 .get[ParallelMatchesGroupIdsByMatch[Element]]
 
-              groupIdsBySortedBiteEdge = SortedMap.from(bites.flatMap {
+              biteEdgesWithGroupIds = bites.toSeq.flatMap {
                 case (bitingMatch, biteStart, biteEnd) =>
-                  Seq(biteStart, biteEnd)
-                    .map(_ -> parallelMatchesGroupIdsByMatch(bitingMatch))
-              })
-
-              sortedBiteEdges = groupIdsBySortedBiteEdge.keySet
+                  val groupId = parallelMatchesGroupIdsByMatch(bitingMatch)
+                  Seq(biteStart -> groupId, biteEnd -> groupId)
+              }.sortBy(_._1)
 
               fragmentsFromMatch <-
-                sortedBiteEdges.eatIntoMatch(
-                  matchBeingBittenInto,
-                  groupIdsBySortedBiteEdge
+                biteEdgesWithGroupIds.eatIntoMatch(
+                  matchBeingBittenInto
                 )
             yield
               logger.debug(
@@ -857,10 +854,9 @@ object MatchAnalysis extends StrictLogging:
       // There are contracts buried in the implementation that require the bite
       // edges to be sorted in terms of their offsets and not exceed the
       // boundaries of the match's sections.
-      extension (biteEdges: SortedSet[BiteEdge])
+      extension (biteEdgesWithGroupIds: Seq[(BiteEdge, ParallelMatchesGroupId)])
         private def eatIntoMatch[MatchType <: GenericMatch[Element]](
-            aMatch: MatchType,
-            groupIdsBySortedBiteEdge: Map[BiteEdge, ParallelMatchesGroupId]
+            aMatch: MatchType
         ): ParallelMatchesGroupIdTracking[
           Vector[DependentMatchType[MatchType]]
         ] =
@@ -959,7 +955,7 @@ object MatchAnalysis extends StrictLogging:
               deferredGroupIdFromPrecedingBite: Option[ParallelMatchesGroupId],
               mealStartOffsetRelativeToMeal: Int,
               biteDepth: Int,
-              remainingBiteEdges: Seq[BiteEdge],
+              remainingBiteEdges: Seq[(BiteEdge, ParallelMatchesGroupId)],
               fragments: Vector[DependentMatchType[MatchType]]
           ):
             final def biteEdgeStep: ParallelMatchesGroupIdTracking[
@@ -980,7 +976,10 @@ object MatchAnalysis extends StrictLogging:
                   else State.pure(Right(fragments))
 
                 case Seq(
-                      biteEdge @ BiteEdge.Start(startOffsetRelativeToMeal),
+                      (
+                        biteEdge @ BiteEdge.Start(startOffsetRelativeToMeal),
+                        groupIdFromSucceedingBite
+                      ),
                       tail*
                     ) =>
                   require(
@@ -993,9 +992,6 @@ object MatchAnalysis extends StrictLogging:
                       then
                         val size =
                           startOffsetRelativeToMeal - mealStartOffsetRelativeToMeal
-
-                        val groupIdFromSucceedingBite =
-                          groupIdsBySortedBiteEdge(biteEdge)
 
                         val groupId =
                           deferredGroupIdFromPrecedingBite.fold(ifEmpty =
@@ -1035,7 +1031,10 @@ object MatchAnalysis extends StrictLogging:
                   )
 
                 case Seq(
-                      biteEdge @ BiteEdge.End(onePastEndOffsetRelativeToMeal),
+                      (
+                        biteEdge @ BiteEdge.End(onePastEndOffsetRelativeToMeal),
+                        groupIdFromEndingBite
+                      ),
                       tail*
                     ) =>
                   assume(0 < biteDepth)
@@ -1053,7 +1052,7 @@ object MatchAnalysis extends StrictLogging:
                           // overwrite any prior contribution of a group id to
                           // the *succeeding* context.
                           deferredGroupIdFromPrecedingBite =
-                            Some(groupIdsBySortedBiteEdge(biteEdge)),
+                            Some(groupIdFromEndingBite),
                           mealStartOffsetRelativeToMeal =
                             onePastEndOffsetRelativeToMeal,
                           biteDepth = biteDepth - 1,
@@ -1071,7 +1070,7 @@ object MatchAnalysis extends StrictLogging:
               deferredGroupIdFromPrecedingBite = None,
               mealStartOffsetRelativeToMeal = 0,
               biteDepth = 0,
-              remainingBiteEdges = biteEdges.toSeq,
+              remainingBiteEdges = biteEdgesWithGroupIds,
               fragments = Vector.empty
             )
           )(_.biteEdgeStep)
