@@ -1039,16 +1039,16 @@ object MatchAnalysis extends StrictLogging:
             groupIdsByMatch + (fragment -> assignedGroupId)
         }
 
-      private def propagateGroupIds(
+      private def propagateGroupId(
           original: GenericMatch[Element],
           replacement: GenericMatch[Element]
       ): ParallelMatchesGroupIdTracking[Unit] =
         State.modify { groupIdsByMatch =>
-          val groupIds = groupIdsByMatch.get(original)
-
-          groupIds.fold(ifEmpty = groupIdsByMatch)(groupId =>
-            groupIdsByMatch + (replacement -> groupId)
-          )
+          groupIdsByMatch
+            .get(original)
+            .fold(ifEmpty = groupIdsByMatch)(groupId =>
+              groupIdsByMatch + (replacement -> groupId)
+            )
         }
 
       trait PathInclusions:
@@ -2767,7 +2767,7 @@ object MatchAnalysis extends StrictLogging:
           case _ => None
 
         result.traverse(paredDownMatch =>
-          propagateGroupIds(aMatch, paredDownMatch) as paredDownMatch
+          propagateGroupId(aMatch, paredDownMatch) as paredDownMatch
         )
       end pareDownOrSuppressCompletely
 
