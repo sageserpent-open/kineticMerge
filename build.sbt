@@ -61,24 +61,24 @@ lazy val root = (project in file("."))
 
       Seq(location)
     }.taskValue,
-    packageExecutable := {
-      val packagingVersion = (ThisBuild / version).value
-
-      println(s"Packaging executable with version: $packagingVersion")
-
-      val localArtifactCoordinates =
-        s"${organization.value}:${name.value}_${scalaBinaryVersion.value}:$packagingVersion"
-
-      val executablePath = s"${target.value}${Path.sep}${name.value}"
-
-      coursier.cli.Coursier.main(
-        s"bootstrap --verbose --bat=true --scala-version ${scalaBinaryVersion.value} -f $localArtifactCoordinates -o $executablePath"
-          .split("\\s+")
-      )
-
-      name.value
-    },
-    packageExecutable := (packageExecutable dependsOn publishLocal).value,
+//    packageExecutable := {
+//      val packagingVersion = (ThisBuild / version).value
+//
+//      println(s"Packaging executable with version: $packagingVersion")
+//
+//      val localArtifactCoordinates =
+//        s"${organization.value}:${name.value}_${scalaBinaryVersion.value}:$packagingVersion"
+//
+//      val executablePath = s"${target.value}${Path.sep}${name.value}"
+//
+//      coursier.cli.Coursier.main(
+//        s"bootstrap --verbose --bat=true --scala-version ${scalaBinaryVersion.value} -f $localArtifactCoordinates -o $executablePath"
+//          .split("\\s+")
+//      )
+//
+//      name.value
+//    },
+//    packageExecutable := (packageExecutable dependsOn publishLocal).value,
     libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.9.6",
     libraryDependencies += "ch.qos.logback"    % "logback-core"    % "1.5.37",
     libraryDependencies += "ch.qos.logback"    % "logback-classic" % "1.5.37",
