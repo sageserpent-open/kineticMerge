@@ -428,10 +428,10 @@ object MoveDestinationsReport:
     * @tparam Element
     */
   case class AnchoredMove[Element](
-                                    moveDestinationSide: MoveDestinationSide,
-                                    moveDestinationAnchor: Element,
-                                    oppositeSideAnchor: OppositeSideAnchor[Element],
-                                    sourceAnchor: Element
+      moveDestinationSide: MoveDestinationSide,
+      moveDestinationAnchor: Element,
+      oppositeSideAnchor: OppositeSideAnchor[Element],
+      sourceAnchor: Element
   )
 
   case class MoveEvaluation[Element](
