@@ -1629,10 +1629,10 @@ object MatchAnalysis extends StrictLogging:
           overallEncroachments.partitionMap(_.startToLeftAndEndToRight)
 
         val relativeStartOffsetToHiveOffFrom =
-          advancingRelativeOnePastEndOffsets.maxOption
+          advancingRelativeStartOffsets.maxOption
 
         val relativeOnePastEndOffsetToHiveOffTo =
-          advancingRelativeStartOffsets.minOption
+          advancingRelativeOnePastEndOffsets.minOption
 
         (
           relativeStartOffsetToHiveOffFrom,
