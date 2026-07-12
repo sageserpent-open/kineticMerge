@@ -1357,14 +1357,13 @@ object MatchAnalysis extends StrictLogging:
             looseExclusiveUpperBoundOnMaximumMatchSize =
               minimumWindowSizeAcrossAllFilesOverAllSides
           )(using progressRecordingSession)
-        }.get.purgedOfMatchesWithOverlappingSections(enabled = true).matches
+        }.get.purgedOfMatchesWithOverlappingSections.matches
 
         tinyMatches.foldLeft(this)(_ withMatch _)
       end withTinyMatches
 
-      private def purgedOfMatchesWithOverlappingSections(
-          enabled: Boolean
-      ): MatchesAndTheirSections =
+      private def purgedOfMatchesWithOverlappingSections
+          : MatchesAndTheirSections =
         def overlapsWithSomethingElse(aMatch: GenericMatch[Element]): Boolean =
           // NOTE: this is loose: it also considers subsumed matches to be
           // overlapping. In practise this method should only be called
@@ -1396,323 +1395,10 @@ object MatchAnalysis extends StrictLogging:
           matches.filter(overlapsWithSomethingElse)
 
         if overlappingMatches.nonEmpty then
-          if enabled then
-            logger.debug(
-              s"Reconciling overlapping matches:\n${pprintCustomised(overlappingMatches)}"
-            )
-
-            val sessionLabel =
-              if configuration.label.nonEmpty then
-                s"${configuration.label} - number of overlapping matches to reconcile:"
-              else "Number of overlapping matches to reconcile:"
-
-            val Success(reconciled) =
-              Using(
-                progressRecording.newSession(
-                  label = sessionLabel,
-                  maximumProgress = overlappingMatches.size
-                )(initialProgress = overlappingMatches.size)
-              ) { progressRecordingSession =>
-                case class RecursionState(
-                    remainingMatchesAndTheirSections: MatchesAndTheirSections,
-                    remainingContestedMatches: Set[GenericMatch[Element]]
-                )
-
-                def reconcileUsing(
-                    recursionState: RecursionState
-                ): ParallelMatchesGroupIdTracking[
-                  Either[RecursionState, MatchesAndTheirSections]
-                ] =
-                  val RecursionState(
-                    remainingMatchesAndTheirSections,
-                    remainingContestedMatches
-                  ) = recursionState
-
-                  val (matchesThatAreSubsumed, matchesThatAreNotSubsumed) =
-                    remainingContestedMatches.partition(aMatch =>
-                      aMatch.baseContribution.fold(ifEmpty = false)(
-                        remainingMatchesAndTheirSections.baseSubsumes(_)
-                      ) || aMatch.leftContribution.fold(ifEmpty = false)(
-                        remainingMatchesAndTheirSections.leftSubsumes(_)
-                      ) || aMatch.rightContribution.fold(ifEmpty = false)(
-                        remainingMatchesAndTheirSections.rightSubsumes(_)
-                      )
-                    )
-
-                  val remainingMatchesAndTheirSectionsWithoutSubsumedMatches =
-                    remainingMatchesAndTheirSections
-                      .withoutTheseMatches(matchesThatAreSubsumed)
-
-                  val (unsplitMatchesWithoutOverlaps, splits) =
-                    matchesThatAreNotSubsumed
-                      .map(
-                        remainingMatchesAndTheirSectionsWithoutSubsumedMatches.hiveOffNonOverlappedMatchFrom
-                      )
-                      .partitionMap(identity)
-
-                  progressRecordingSession.upTo(splits.size)
-
-                  if splits.isEmpty then
-                    for updatedParallelMatchesGroupIdsByMatch <- State.get
-                    yield
-                      val fullyReconciledMatches =
-                        remainingMatchesAndTheirSectionsWithoutSubsumedMatches.matches
-
-                      val parallelMatchesGroupIdsByMatch =
-                        updatedParallelMatchesGroupIdsByMatch
-                          .filter((key, _) =>
-                            fullyReconciledMatches.contains(key)
-                          )
-
-                      Right(
-                        remainingMatchesAndTheirSectionsWithoutSubsumedMatches
-                          .copy(parallelMatchesGroupIdsByMatch =
-                            parallelMatchesGroupIdsByMatch
-                          )
-                      )
-                  else
-                    for splitResults <- splits.sequence
-                    yield
-                      val hivedOffMatches =
-                        splitResults.flatMap(_.hivedOffNonOverlappedMatch)
-                      val remainingContestedMatches =
-                        splitResults.flatMap(_.remainingContestedMatches)
-
-                      Left(
-                        RecursionState(
-                          remainingMatchesAndTheirSections =
-                            // TODO: this is clumsy.
-                            (hivedOffMatches union remainingContestedMatches)
-                              .foldLeft(
-                                remainingMatchesAndTheirSectionsWithoutSubsumedMatches
-                                  .withoutTheseMatches(
-                                    matchesThatAreNotSubsumed diff unsplitMatchesWithoutOverlaps
-                                  )
-                              )(
-                                _ withMatch _
-                              )
-                              .withoutRedundantPairwiseMatches,
-                          remainingContestedMatches =
-                            // TODO: this is also clumsy.
-                            hivedOffMatches union remainingContestedMatches
-                        )
-                      )
-                    end for
-                  end if
-                end reconcileUsing
-
-                FlatMap[ParallelMatchesGroupIdTracking]
-                  .tailRecM(
-                    RecursionState(
-                      remainingMatchesAndTheirSections = this,
-                      remainingContestedMatches = overlappingMatches
-                    )
-                  )(reconcileUsing)
-                  .runA(parallelMatchesGroupIdsByMatch)
-                  .value
-              }: @unchecked
-
-            reconciled
-          else
-            throw new AdmissibleFailure(
-              s"""Overlapping matches found: ${pprintCustomised(
-                  overlappingMatches
-                )}.
-                 |Consider setting the command line parameter `--minimum-match-size` to something larger than ${overlappingMatches.map {
-                  case Match.AllSides(baseSection, _, _)  => baseSection.size
-                  case Match.BaseAndLeft(baseSection, _)  => baseSection.size
-                  case Match.BaseAndRight(baseSection, _) => baseSection.size
-                  case Match.LeftAndRight(leftSection, _) => leftSection.size
-                }.min}.
-                 |""".stripMargin
-            )
+          this.withoutTheseMatches(overlappingMatches)
         else this
         end if
       end purgedOfMatchesWithOverlappingSections
-
-      private def hiveOffNonOverlappedMatchFrom(
-          aMatch: GenericMatch[Element]
-      ): Either[
-        GenericMatch[Element], /* Original match if not split. */
-        ParallelMatchesGroupIdTracking[HivedOffNonOverlappedMatchResult]
-      ] =
-        enum Encroachment:
-          def startToLeftAndEndToRight: Either[Int, Int] =
-            this match
-              case OnTheStart(advancingRelativeStartOffset) =>
-                Left(advancingRelativeStartOffset)
-              case OnTheEnd(limitingRelativeEndOffset) =>
-                Right(limitingRelativeEndOffset)
-
-          case OnTheStart(advancingRelativeStartOffset: Int)
-          case OnTheEnd(limitingRelativeEndOffset: Int)
-        end Encroachment
-
-        def encroachments(
-            side: Sources[Path, Element],
-            sectionsByPath: Map[Path, SectionsSeen]
-        )(
-            section: Section[Element]
-        ): Iterable[Encroachment] =
-
-          sectionsByPath
-            .get(side.pathFor(section))
-            .fold(ifEmpty = Set.empty)(
-              _.filterOverlaps(section.closedOpenInterval)
-                // Subsuming sections are considered to be overlapping by the
-                // implementation of `SectionSeen.filterOverlaps`, so collect
-                // with a nuanced predicate.
-                // NOTE: this is a strict overlap, so if the candidate section
-                // is equivalent to `section`, it isn't considered to be a
-                // degenerate overlap. This is important, because the calling
-                // logic in `purgedOfMatchesWithOverlappingSections` needs to
-                // both completely hive off matches from overlaps *and* trim the
-                // overlaps down to ambiguous matches, so we expect to see
-                // equivalent sections belonging to multiple ambiguous matches.
-                .collect {
-                  case candidateSection
-                      if candidateSection.startOffset > section.startOffset && candidateSection.onePastEndOffset < section.onePastEndOffset =>
-                    throw new IllegalArgumentException(
-                      s"Precondition failure: match ${pprintCustomised(aMatch)} subsumes another match on at least one side."
-                    )
-                  case candidateSection
-                      if candidateSection.startOffset < section.startOffset && candidateSection.onePastEndOffset > section.onePastEndOffset =>
-                    throw new IllegalArgumentException(
-                      s"Precondition failure: match ${pprintCustomised(aMatch)} is subsumed by another match on at least one side."
-                    )
-                  case candidateSection
-                      if candidateSection.startOffset > section.startOffset =>
-                    // The overlapping `candidateSection` extends up to or past
-                    // the end of `section`, so this encroaches on the end. We
-                    // do allow a special case subsumption here where
-                    // `candidateSection` aligns with the end.
-                    Encroachment.OnTheEnd(
-                      candidateSection.startOffset - section.startOffset
-                    )
-                  case candidateSection
-                      if candidateSection.onePastEndOffset < section.onePastEndOffset =>
-                    // The overlapping `candidateSection` extends back to or
-                    // before the start of `section`, so this encroaches on the
-                    // start. We do allow a special case subsumption here where
-                    // `candidateSection` aligns with the start.
-                    Encroachment.OnTheStart(
-                      candidateSection.onePastEndOffset - section.startOffset
-                    )
-                }
-            )
-        end encroachments
-
-        val baseEncroachments =
-          aMatch.baseContribution.fold(ifEmpty = Seq.empty)(
-            encroachments(
-              baseSources,
-              baseSectionsByPath
-            )
-          )
-        val leftEncroachments =
-          aMatch.leftContribution.fold(ifEmpty = Seq.empty)(
-            encroachments(
-              leftSources,
-              leftSectionsByPath
-            )
-          )
-        val rightEncroachments =
-          aMatch.rightContribution.fold(ifEmpty = Seq.empty)(
-            encroachments(
-              rightSources,
-              rightSectionsByPath
-            )
-          )
-
-        val overallEncroachments =
-          baseEncroachments ++ leftEncroachments ++ rightEncroachments
-
-        val (
-          advancingRelativeStartOffsets,
-          advancingRelativeOnePastEndOffsets
-        ) =
-          overallEncroachments.partitionMap(_.startToLeftAndEndToRight)
-
-        val relativeStartOffsetToHiveOffFrom =
-          advancingRelativeStartOffsets.maxOption
-
-        val relativeOnePastEndOffsetToHiveOffTo =
-          advancingRelativeOnePastEndOffsets.minOption
-
-        (
-          relativeStartOffsetToHiveOffFrom,
-          relativeOnePastEndOffsetToHiveOffTo
-        ) match
-          case (None, None)                      => Left(aMatch)
-          case (Some(relativeStartOffset), None) =>
-            val remainingContestedMatch =
-              aMatch.slice(relativeStartOffset = 0, size = relativeStartOffset)
-            val hivedOffMatch = aMatch.slice(
-              relativeStartOffset = relativeStartOffset,
-              size = aMatch.size - relativeStartOffset
-            )
-
-            Right(
-              for
-                _ <- propagateGroupId(aMatch, remainingContestedMatch)
-                _ <- propagateGroupId(aMatch, hivedOffMatch)
-              yield new HivedOffNonOverlappedMatchResult:
-                def hivedOffNonOverlappedMatch: Option[GenericMatch[Element]] =
-                  Some(hivedOffMatch)
-                def remainingContestedMatches: Seq[GenericMatch[Element]] =
-                  Seq(remainingContestedMatch)
-            )
-          case (None, Some(relativeOnePastEndOffset)) =>
-            val hivedOffMatch = aMatch.slice(
-              relativeStartOffset = 0,
-              size = relativeOnePastEndOffset
-            )
-            val remainingContestedMatch = aMatch.slice(
-              relativeStartOffset = relativeOnePastEndOffset,
-              size = aMatch.size - relativeOnePastEndOffset
-            )
-
-            Right(
-              for
-                _ <- propagateGroupId(aMatch, hivedOffMatch)
-                _ <- propagateGroupId(aMatch, remainingContestedMatch)
-              yield new HivedOffNonOverlappedMatchResult:
-                def hivedOffNonOverlappedMatch: Option[GenericMatch[Element]] =
-                  Some(hivedOffMatch)
-                def remainingContestedMatches: Seq[GenericMatch[Element]] =
-                  Seq(remainingContestedMatch)
-            )
-          case (Some(relativeStartOffset), Some(relativeOnePastEndOffset)) =>
-            val leadingRemainingContestedMatch =
-              aMatch.slice(relativeStartOffset = 0, size = relativeStartOffset)
-            val hivedOffMatch =
-              Option.when(relativeStartOffset < relativeOnePastEndOffset)(
-                aMatch.slice(
-                  relativeStartOffset = relativeStartOffset,
-                  size = relativeOnePastEndOffset - relativeStartOffset
-                )
-              )
-            val trailingRemainingContestedMatch = aMatch.slice(
-              relativeStartOffset = relativeOnePastEndOffset,
-              size = aMatch.size - relativeOnePastEndOffset
-            )
-
-            Right(
-              for
-                _ <- propagateGroupId(aMatch, leadingRemainingContestedMatch)
-                _ <- hivedOffMatch.traverse(propagateGroupId(aMatch, _))
-                _ <- propagateGroupId(aMatch, trailingRemainingContestedMatch)
-              yield new HivedOffNonOverlappedMatchResult:
-                def hivedOffNonOverlappedMatch: Option[GenericMatch[Element]] =
-                  hivedOffMatch
-                def remainingContestedMatches: Seq[GenericMatch[Element]] =
-                  Seq(
-                    leadingRemainingContestedMatch,
-                    trailingRemainingContestedMatch
-                  )
-            )
-        end match
-      end hiveOffNonOverlappedMatchFrom
 
       def reconcileMatches(
           suppressMatchesInvolvingOverlappingSections: Boolean
@@ -1852,9 +1538,10 @@ object MatchAnalysis extends StrictLogging:
               .value
           }: @unchecked
 
-        val result = reconciled.purgedOfMatchesWithOverlappingSections(enabled =
-          suppressMatchesInvolvingOverlappingSections
-        )
+        val result =
+          reconciled.reconcileMatchesWithOverlappingSections(enabled =
+            suppressMatchesInvolvingOverlappingSections
+          )
 
         result.reconciliationPostcondition()
 
@@ -2524,6 +2211,358 @@ object MatchAnalysis extends StrictLogging:
             )
         end match
       end withMatch
+
+      private def reconcileMatchesWithOverlappingSections(
+          enabled: Boolean
+      ): MatchesAndTheirSections =
+        def overlapsWithSomethingElse(aMatch: GenericMatch[Element]): Boolean =
+          // NOTE: this is loose: it also considers subsumed matches to be
+          // overlapping. In practise this method should only be called
+          // post-reconciliation, so that's OK. Otherwise, any subsumed matches
+          // will cause a precondition failure later on.
+          aMatch match
+            case Match.AllSides(baseSection, leftSection, rightSection) =>
+              baseOverlapsOrIsSubsumedBy(baseSection) ||
+              leftOverlapsOrIsSubsumedBy(
+                leftSection
+              ) || rightOverlapsOrIsSubsumedBy(rightSection)
+            case Match.BaseAndLeft(baseSection, leftSection) =>
+              baseOverlapsOrIsSubsumedBy(baseSection) ||
+              leftOverlapsOrIsSubsumedBy(
+                leftSection
+              )
+            case Match.BaseAndRight(baseSection, rightSection) =>
+              baseOverlapsOrIsSubsumedBy(
+                baseSection
+              ) || rightOverlapsOrIsSubsumedBy(rightSection)
+            case Match.LeftAndRight(leftSection, rightSection) =>
+              leftOverlapsOrIsSubsumedBy(
+                leftSection
+              ) || rightOverlapsOrIsSubsumedBy(rightSection)
+
+        val matches = this.matches
+
+        val overlappingMatches =
+          matches.filter(overlapsWithSomethingElse)
+
+        if overlappingMatches.nonEmpty then
+          if enabled then
+            logger.debug(
+              s"Reconciling overlapping matches:\n${pprintCustomised(overlappingMatches)}"
+            )
+
+            val sessionLabel =
+              if configuration.label.nonEmpty then
+                s"${configuration.label} - number of overlapping matches to reconcile:"
+              else "Number of overlapping matches to reconcile:"
+
+            val Success(reconciled) =
+              Using(
+                progressRecording.newSession(
+                  label = sessionLabel,
+                  maximumProgress = overlappingMatches.size
+                )(initialProgress = overlappingMatches.size)
+              ) { progressRecordingSession =>
+                case class RecursionState(
+                    remainingMatchesAndTheirSections: MatchesAndTheirSections,
+                    remainingContestedMatches: Set[GenericMatch[Element]]
+                )
+
+                def reconcileUsing(
+                    recursionState: RecursionState
+                ): ParallelMatchesGroupIdTracking[
+                  Either[RecursionState, MatchesAndTheirSections]
+                ] =
+                  val RecursionState(
+                    remainingMatchesAndTheirSections,
+                    remainingContestedMatches
+                  ) = recursionState
+
+                  val (matchesThatAreSubsumed, matchesThatAreNotSubsumed) =
+                    remainingContestedMatches.partition(aMatch =>
+                      aMatch.baseContribution.fold(ifEmpty = false)(
+                        remainingMatchesAndTheirSections.baseSubsumes(_)
+                      ) || aMatch.leftContribution.fold(ifEmpty = false)(
+                        remainingMatchesAndTheirSections.leftSubsumes(_)
+                      ) || aMatch.rightContribution.fold(ifEmpty = false)(
+                        remainingMatchesAndTheirSections.rightSubsumes(_)
+                      )
+                    )
+
+                  val remainingMatchesAndTheirSectionsWithoutSubsumedMatches =
+                    remainingMatchesAndTheirSections
+                      .withoutTheseMatches(matchesThatAreSubsumed)
+
+                  val (unsplitMatchesWithoutOverlaps, splits) =
+                    matchesThatAreNotSubsumed
+                      .map(
+                        remainingMatchesAndTheirSectionsWithoutSubsumedMatches.hiveOffNonOverlappedMatchFrom
+                      )
+                      .partitionMap(identity)
+
+                  progressRecordingSession.upTo(splits.size)
+
+                  if splits.isEmpty then
+                    for updatedParallelMatchesGroupIdsByMatch <- State.get
+                    yield
+                      val fullyReconciledMatches =
+                        remainingMatchesAndTheirSectionsWithoutSubsumedMatches.matches
+
+                      val parallelMatchesGroupIdsByMatch =
+                        updatedParallelMatchesGroupIdsByMatch
+                          .filter((key, _) =>
+                            fullyReconciledMatches.contains(key)
+                          )
+
+                      Right(
+                        remainingMatchesAndTheirSectionsWithoutSubsumedMatches
+                          .copy(parallelMatchesGroupIdsByMatch =
+                            parallelMatchesGroupIdsByMatch
+                          )
+                      )
+                  else
+                    for splitResults <- splits.sequence
+                    yield
+                      val hivedOffMatches =
+                        splitResults.flatMap(_.hivedOffNonOverlappedMatch)
+                      val remainingContestedMatches =
+                        splitResults.flatMap(_.remainingContestedMatches)
+
+                      Left(
+                        RecursionState(
+                          remainingMatchesAndTheirSections =
+                            // TODO: this is clumsy.
+                            (hivedOffMatches union remainingContestedMatches)
+                              .foldLeft(
+                                remainingMatchesAndTheirSectionsWithoutSubsumedMatches
+                                  .withoutTheseMatches(
+                                    matchesThatAreNotSubsumed diff unsplitMatchesWithoutOverlaps
+                                  )
+                              )(
+                                _ withMatch _
+                              )
+                              .withoutRedundantPairwiseMatches,
+                          remainingContestedMatches =
+                            // TODO: this is also clumsy.
+                            hivedOffMatches union remainingContestedMatches
+                        )
+                      )
+                    end for
+                  end if
+                end reconcileUsing
+
+                FlatMap[ParallelMatchesGroupIdTracking]
+                  .tailRecM(
+                    RecursionState(
+                      remainingMatchesAndTheirSections = this,
+                      remainingContestedMatches = overlappingMatches
+                    )
+                  )(reconcileUsing)
+                  .runA(parallelMatchesGroupIdsByMatch)
+                  .value
+              }: @unchecked
+
+            reconciled
+          else
+            throw new AdmissibleFailure(
+              s"""Overlapping matches found: ${pprintCustomised(
+                  overlappingMatches
+                )}.
+                 |Consider setting the command line parameter `--minimum-match-size` to something larger than ${overlappingMatches.map {
+                  case Match.AllSides(baseSection, _, _)  => baseSection.size
+                  case Match.BaseAndLeft(baseSection, _)  => baseSection.size
+                  case Match.BaseAndRight(baseSection, _) => baseSection.size
+                  case Match.LeftAndRight(leftSection, _) => leftSection.size
+                }.min}.
+                 |""".stripMargin
+            )
+        else this
+        end if
+      end reconcileMatchesWithOverlappingSections
+
+      private def hiveOffNonOverlappedMatchFrom(
+          aMatch: GenericMatch[Element]
+      ): Either[
+        GenericMatch[Element], /* Original match if not split. */
+        ParallelMatchesGroupIdTracking[HivedOffNonOverlappedMatchResult]
+      ] =
+        enum Encroachment:
+          def startToLeftAndEndToRight: Either[Int, Int] =
+            this match
+              case OnTheStart(advancingRelativeStartOffset) =>
+                Left(advancingRelativeStartOffset)
+              case OnTheEnd(limitingRelativeEndOffset) =>
+                Right(limitingRelativeEndOffset)
+
+          case OnTheStart(advancingRelativeStartOffset: Int)
+          case OnTheEnd(limitingRelativeEndOffset: Int)
+        end Encroachment
+
+        def encroachments(
+            side: Sources[Path, Element],
+            sectionsByPath: Map[Path, SectionsSeen]
+        )(
+            section: Section[Element]
+        ): Iterable[Encroachment] =
+
+          sectionsByPath
+            .get(side.pathFor(section))
+            .fold(ifEmpty = Set.empty)(
+              _.filterOverlaps(section.closedOpenInterval)
+                // Subsuming sections are considered to be overlapping by the
+                // implementation of `SectionSeen.filterOverlaps`, so collect
+                // with a nuanced predicate.
+                // NOTE: this is a strict overlap, so if the candidate section
+                // is equivalent to `section`, it isn't considered to be a
+                // degenerate overlap. This is important, because the calling
+                // logic in `purgedOfMatchesWithOverlappingSections` needs to
+                // both completely hive off matches from overlaps *and* trim the
+                // overlaps down to ambiguous matches, so we expect to see
+                // equivalent sections belonging to multiple ambiguous matches.
+                .collect {
+                  case candidateSection
+                      if candidateSection.startOffset > section.startOffset && candidateSection.onePastEndOffset < section.onePastEndOffset =>
+                    throw new IllegalArgumentException(
+                      s"Precondition failure: match ${pprintCustomised(aMatch)} subsumes another match on at least one side."
+                    )
+                  case candidateSection
+                      if candidateSection.startOffset < section.startOffset && candidateSection.onePastEndOffset > section.onePastEndOffset =>
+                    throw new IllegalArgumentException(
+                      s"Precondition failure: match ${pprintCustomised(aMatch)} is subsumed by another match on at least one side."
+                    )
+                  case candidateSection
+                      if candidateSection.startOffset > section.startOffset =>
+                    // The overlapping `candidateSection` extends up to or past
+                    // the end of `section`, so this encroaches on the end. We
+                    // do allow a special case subsumption here where
+                    // `candidateSection` aligns with the end.
+                    Encroachment.OnTheEnd(
+                      candidateSection.startOffset - section.startOffset
+                    )
+                  case candidateSection
+                      if candidateSection.onePastEndOffset < section.onePastEndOffset =>
+                    // The overlapping `candidateSection` extends back to or
+                    // before the start of `section`, so this encroaches on the
+                    // start. We do allow a special case subsumption here where
+                    // `candidateSection` aligns with the start.
+                    Encroachment.OnTheStart(
+                      candidateSection.onePastEndOffset - section.startOffset
+                    )
+                }
+            )
+        end encroachments
+
+        val baseEncroachments =
+          aMatch.baseContribution.fold(ifEmpty = Seq.empty)(
+            encroachments(
+              baseSources,
+              baseSectionsByPath
+            )
+          )
+        val leftEncroachments =
+          aMatch.leftContribution.fold(ifEmpty = Seq.empty)(
+            encroachments(
+              leftSources,
+              leftSectionsByPath
+            )
+          )
+        val rightEncroachments =
+          aMatch.rightContribution.fold(ifEmpty = Seq.empty)(
+            encroachments(
+              rightSources,
+              rightSectionsByPath
+            )
+          )
+
+        val overallEncroachments =
+          baseEncroachments ++ leftEncroachments ++ rightEncroachments
+
+        val (
+          advancingRelativeStartOffsets,
+          advancingRelativeOnePastEndOffsets
+        ) =
+          overallEncroachments.partitionMap(_.startToLeftAndEndToRight)
+
+        val relativeStartOffsetToHiveOffFrom =
+          advancingRelativeStartOffsets.maxOption
+
+        val relativeOnePastEndOffsetToHiveOffTo =
+          advancingRelativeOnePastEndOffsets.minOption
+
+        (
+          relativeStartOffsetToHiveOffFrom,
+          relativeOnePastEndOffsetToHiveOffTo
+        ) match
+          case (None, None)                      => Left(aMatch)
+          case (Some(relativeStartOffset), None) =>
+            val remainingContestedMatch =
+              aMatch.slice(relativeStartOffset = 0, size = relativeStartOffset)
+            val hivedOffMatch = aMatch.slice(
+              relativeStartOffset = relativeStartOffset,
+              size = aMatch.size - relativeStartOffset
+            )
+
+            Right(
+              for
+                _ <- propagateGroupId(aMatch, remainingContestedMatch)
+                _ <- propagateGroupId(aMatch, hivedOffMatch)
+              yield new HivedOffNonOverlappedMatchResult:
+                def hivedOffNonOverlappedMatch: Option[GenericMatch[Element]] =
+                  Some(hivedOffMatch)
+                def remainingContestedMatches: Seq[GenericMatch[Element]] =
+                  Seq(remainingContestedMatch)
+            )
+          case (None, Some(relativeOnePastEndOffset)) =>
+            val hivedOffMatch = aMatch.slice(
+              relativeStartOffset = 0,
+              size = relativeOnePastEndOffset
+            )
+            val remainingContestedMatch = aMatch.slice(
+              relativeStartOffset = relativeOnePastEndOffset,
+              size = aMatch.size - relativeOnePastEndOffset
+            )
+
+            Right(
+              for
+                _ <- propagateGroupId(aMatch, hivedOffMatch)
+                _ <- propagateGroupId(aMatch, remainingContestedMatch)
+              yield new HivedOffNonOverlappedMatchResult:
+                def hivedOffNonOverlappedMatch: Option[GenericMatch[Element]] =
+                  Some(hivedOffMatch)
+                def remainingContestedMatches: Seq[GenericMatch[Element]] =
+                  Seq(remainingContestedMatch)
+            )
+          case (Some(relativeStartOffset), Some(relativeOnePastEndOffset)) =>
+            val leadingRemainingContestedMatch =
+              aMatch.slice(relativeStartOffset = 0, size = relativeStartOffset)
+            val hivedOffMatch =
+              Option.when(relativeStartOffset < relativeOnePastEndOffset)(
+                aMatch.slice(
+                  relativeStartOffset = relativeStartOffset,
+                  size = relativeOnePastEndOffset - relativeStartOffset
+                )
+              )
+            val trailingRemainingContestedMatch = aMatch.slice(
+              relativeStartOffset = relativeOnePastEndOffset,
+              size = aMatch.size - relativeOnePastEndOffset
+            )
+
+            Right(
+              for
+                _ <- propagateGroupId(aMatch, leadingRemainingContestedMatch)
+                _ <- hivedOffMatch.traverse(propagateGroupId(aMatch, _))
+                _ <- propagateGroupId(aMatch, trailingRemainingContestedMatch)
+              yield new HivedOffNonOverlappedMatchResult:
+                def hivedOffNonOverlappedMatch: Option[GenericMatch[Element]] =
+                  hivedOffMatch
+                def remainingContestedMatches: Seq[GenericMatch[Element]] =
+                  Seq(
+                    leadingRemainingContestedMatch,
+                    trailingRemainingContestedMatch
+                  )
+            )
+        end match
+      end hiveOffNonOverlappedMatchFrom
 
       private def reconciliationPostcondition(): Unit =
         baseSectionsByPath.values.flatMap(_.iterator).foreach { baseSection =>
