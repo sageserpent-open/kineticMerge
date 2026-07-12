@@ -1369,8 +1369,7 @@ object MatchAnalysis extends StrictLogging:
           // NOTE: this is loose: it also considers subsumed matches to be
           // overlapping. In practise this method should only be called
           // post-reconciliation, so that's OK. Otherwise, any subsumed matches
-          // will cause a precondition failure later on if overlap
-          // reconciliation is performed.
+          // will cause a precondition failure later on.
           aMatch match
             case Match.AllSides(baseSection, leftSection, rightSection) =>
               baseOverlapsOrIsSubsumedBy(baseSection) ||
@@ -1416,7 +1415,7 @@ object MatchAnalysis extends StrictLogging:
               ) { progressRecordingSession =>
                 case class RecursionState(
                     remainingMatchesAndTheirSections: MatchesAndTheirSections,
-                    accumulatedNonOverlappingMatches: Set[GenericMatch[Element]]
+                    remainingContestedMatches: Set[GenericMatch[Element]]
                 )
 
                 def reconcileUsing(
@@ -1426,11 +1425,11 @@ object MatchAnalysis extends StrictLogging:
                 ] =
                   val RecursionState(
                     remainingMatchesAndTheirSections,
-                    accumulatedMatches
+                    remainingContestedMatches
                   ) = recursionState
 
                   val (matchesThatAreSubsumed, matchesThatAreNotSubsumed) =
-                    remainingMatchesAndTheirSections.matches.partition(aMatch =>
+                    remainingContestedMatches.partition(aMatch =>
                       aMatch.baseContribution.fold(ifEmpty = false)(
                         remainingMatchesAndTheirSections.baseSubsumes(_)
                       ) || aMatch.leftContribution.fold(ifEmpty = false)(
@@ -1457,7 +1456,7 @@ object MatchAnalysis extends StrictLogging:
                     for updatedParallelMatchesGroupIdsByMatch <- State.get
                     yield
                       val fullyReconciledMatches =
-                        accumulatedMatches union unsplitMatchesWithoutOverlaps
+                        remainingMatchesAndTheirSectionsWithoutSubsumedMatches.matches
 
                       val parallelMatchesGroupIdsByMatch =
                         updatedParallelMatchesGroupIdsByMatch
@@ -1466,10 +1465,7 @@ object MatchAnalysis extends StrictLogging:
                           )
 
                       Right(
-                        fullyReconciledMatches
-                          .foldLeft(MatchesAndTheirSections.empty)(
-                            _ withMatch _
-                          )
+                        remainingMatchesAndTheirSectionsWithoutSubsumedMatches
                           .copy(parallelMatchesGroupIdsByMatch =
                             parallelMatchesGroupIdsByMatch
                           )
@@ -1484,12 +1480,21 @@ object MatchAnalysis extends StrictLogging:
 
                       Left(
                         RecursionState(
-                          remainingContestedMatches
-                            .foldLeft(MatchesAndTheirSections.empty)(
-                              _ withMatch _
-                            )
-                            .withoutRedundantPairwiseMatches,
-                          accumulatedMatches union unsplitMatchesWithoutOverlaps union hivedOffMatches
+                          remainingMatchesAndTheirSections =
+                            // TODO: this is clumsy.
+                            (hivedOffMatches union remainingContestedMatches)
+                              .foldLeft(
+                                remainingMatchesAndTheirSectionsWithoutSubsumedMatches
+                                  .withoutTheseMatches(
+                                    matchesThatAreNotSubsumed diff unsplitMatchesWithoutOverlaps
+                                  )
+                              )(
+                                _ withMatch _
+                              )
+                              .withoutRedundantPairwiseMatches,
+                          remainingContestedMatches =
+                            // TODO: this is also clumsy.
+                            hivedOffMatches union remainingContestedMatches
                         )
                       )
                     end for
@@ -1500,7 +1505,7 @@ object MatchAnalysis extends StrictLogging:
                   .tailRecM(
                     RecursionState(
                       remainingMatchesAndTheirSections = this,
-                      accumulatedNonOverlappingMatches = Set.empty
+                      remainingContestedMatches = overlappingMatches
                     )
                   )(reconcileUsing)
                   .runA(parallelMatchesGroupIdsByMatch)
