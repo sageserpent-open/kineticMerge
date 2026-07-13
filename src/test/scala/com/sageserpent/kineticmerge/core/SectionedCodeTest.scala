@@ -733,9 +733,7 @@ class SectionedCodeTest:
 
     // This is an even more pathological situation - we have overlapping matches
     // of the same size, one of which is a pairwise match and the other an
-    // all-sides match. This in itself is permitted (but will result in an
-    // admissible downstream exception due to the overlap when
-    // `CodeMotionAnalysis.of` builds up its files from the matches).
+    // all-sides match. This in itself is permitted.
 
     // The twist is when there is another smaller all-sides that is subsumed by
     // the pairwise match but does *not* overlap with the larger all-sides
@@ -797,14 +795,15 @@ class SectionedCodeTest:
     // There only be all-sides matches.
     assert(matches.forall(_.isAnAllSidesMatch))
 
-    // There should be two matches.
-    assert(matches.size == 2)
+    // There should be three matches.
+    assert(matches.size == 3)
 
-    // The contents should be that of the two all-sides matches.
+    // The contents should reflect the breakdown of the overlapping matches.
     assert(
       matches.map(_.content) == Set(
-        bigAllSidesContent,
-        smallAllSidesContent
+        prefix,
+        overlap,
+        suffix
       )
     )
   end eatenPairwiseMatchesMayBeSuppressedByACompetingOverlappingAllSidesMatch
@@ -1120,10 +1119,10 @@ class SectionedCodeTest:
       : Unit =
     // Here, we set up a larger pairwise match and eat into it via four smaller,
     // ambiguous *and* overlapping all-sides matches. The overlapping causes the
-    // collective all-sides matches to eat into all of the content of the
-    // pairwise matches, so apart from the all-sides matches (which are
-    // suppressed later by virtue of overlapping each other), there are no
-    // fragmented pairwise matches left over.
+    // collective all-sides matches to eat into all the content of the pairwise
+    // matches, so apart from the all-sides matches, there are no fragmented
+    // pairwise matches left over. The overlapping all-sides matches then
+    // reconcile to smaller ones.
 
     val configuration = Configuration(
       minimumMatchSize = 2,
@@ -1170,7 +1169,14 @@ class SectionedCodeTest:
         .map(analysis.matchesFor)
         .reduce(_ union _)
 
-    assert(matches.isEmpty)
+    // There should be just all-sides matches.
+    assert(matches.map(_.ordinal).size == 1)
+
+    // There should be eight all-sides matches.
+    assert((matches count {
+      case _: Match.AllSides[Section[Element]] => true
+      case _                                   => false
+    }) == 8)
   end overlappingSmallerAllSidesMatchesCanEatIntoALargerPairwiseMatchWithoutLeavingAnyFragments
 
   @Test
@@ -1247,8 +1253,14 @@ class SectionedCodeTest:
         .map(analysis.matchesFor)
         .reduce(_ union _)
 
-    // There should be just left-right matches.
-    assert(matches.map(_.ordinal).size == 1)
+    // There should be just all-sides and left-right matches.
+    assert(matches.map(_.ordinal).size == 2)
+
+    // There should be four left-right matches.
+    assert((matches count {
+      case _: Match.AllSides[Section[Element]] => true
+      case _                                   => false
+    }) == 4)
 
     // There should be two left-right matches.
     assert((matches count {
@@ -1260,7 +1272,10 @@ class SectionedCodeTest:
     assert(
       matches.map(_.content) == Set(
         Vector(alpha),
-        Vector(beta)
+        Vector(beta),
+        Vector(gamma),
+        Vector(delta),
+        Vector(epsilon)
       )
     )
   end problematicSituation
