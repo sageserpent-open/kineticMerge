@@ -308,8 +308,7 @@ class BlockDuplicationAndCondensationTests:
   end duplicateBlocksAreMergedOnOneSide
 
   @TestFactory
-  def issue339BugReproductionThwartedPairwiseMatchDueToSmallerOverlappingAllSidesMatches()
-      : DynamicTests =
+  def overlappingBlocksAreSeparatedOnOneSide(): DynamicTests =
     val configuration = Configuration(
       minimumMatchSize = 1,
       thresholdSizeFractionForMatching = 0,
@@ -382,22 +381,29 @@ class BlockDuplicationAndCondensationTests:
 
       assert(
         Vector(
-          Contribution.CommonToBaseAndLeftOnly(baseElements)
+          Contribution.Common(leadingContent),
+          Contribution.Common(overlapContent),
+          Contribution.Common(trailingContent)
         ) == baseContributions
           .map(_.map(_.content))
       )
       assert(
         Vector(
-          Contribution.CommonToBaseAndLeftOnly(baseElements)
+          Contribution.Common(leadingContent),
+          Contribution.Common(overlapContent),
+          Contribution.Common(trailingContent)
         ) == contributionsOnSideWithoutChanges.map(_.map(_.content))
       )
       assert(
         Vector(
-          Contribution.Difference(elementsOnSideWithSeparation)
+          Contribution.Common(leadingContent),
+          Contribution.Common(overlapContent),
+          Contribution.Difference(overlapContent),
+          Contribution.Common(trailingContent)
         ) == contributionsOnSideWithSeparation.map(_.map(_.content))
       )
     }
-  end issue339BugReproductionThwartedPairwiseMatchDueToSmallerOverlappingAllSidesMatches
+  end overlappingBlocksAreSeparatedOnOneSide
 
   @TestFactory
   def aBlockIsTriplicatedOnTwoSides(): DynamicTests =
