@@ -35,11 +35,13 @@ import scala.util.{Success, Using}
 trait MatchAnalysis[Path, Element]:
   def withAllSmallFryMatches(): MatchAnalysis[Path, Element]
 
+  def reconcileMatchesWithOverlappingSections(
+      enabled: Boolean
+  ): MatchAnalysis[Path, Element]
+
   def parallelMatchesOnly: MatchAnalysis[Path, Element]
 
-  def reconcileMatches(
-      suppressMatchesInvolvingOverlappingSections: Boolean
-  ): MatchAnalysis[Path, Element]
+  def reconcileMatches: MatchAnalysis[Path, Element]
 
   def groupsOfParallelMatches
       : Map[ParallelMatchesGroupId, SortedSet[GenericMatch[Element]]]
@@ -1400,9 +1402,7 @@ object MatchAnalysis extends StrictLogging:
         end if
       end purgedOfMatchesWithOverlappingSections
 
-      def reconcileMatches(
-          suppressMatchesInvolvingOverlappingSections: Boolean
-      ): MatchesAndTheirSections =
+      def reconcileMatches: MatchesAndTheirSections =
         val matches = this.matches
 
         val sessionLabel =
@@ -1538,18 +1538,13 @@ object MatchAnalysis extends StrictLogging:
               .value
           }: @unchecked
 
-        val result =
-          reconciled.reconcileMatchesWithOverlappingSections(enabled =
-            suppressMatchesInvolvingOverlappingSections
-          )
-
-        result.reconciliationPostcondition()
+        reconciled.reconciliationPostcondition()
 
         logger.debug(
-          s"Groups of parallel matches after reconciliation:\n${pprintCustomised(result.groupsOfParallelMatches)}"
+          s"Groups of parallel matches after reconciliation:\n${pprintCustomised(reconciled.groupsOfParallelMatches)}"
         )
 
-        result
+        reconciled
       end reconcileMatches
 
       def groupsOfParallelMatches: Map[ParallelMatchesGroupId, SortedSet[
@@ -2212,14 +2207,12 @@ object MatchAnalysis extends StrictLogging:
         end match
       end withMatch
 
-      private def reconcileMatchesWithOverlappingSections(
+      def reconcileMatchesWithOverlappingSections(
           enabled: Boolean
       ): MatchesAndTheirSections =
         def overlapsWithSomethingElse(aMatch: GenericMatch[Element]): Boolean =
           // NOTE: this is loose: it also considers subsumed matches to be
-          // overlapping. In practise this method should only be called
-          // post-reconciliation, so that's OK. Otherwise, any subsumed matches
-          // will cause a precondition failure later on.
+          // overlapping.
           aMatch match
             case Match.AllSides(baseSection, leftSection, rightSection) =>
               baseOverlapsOrIsSubsumedBy(baseSection) ||
@@ -2265,7 +2258,7 @@ object MatchAnalysis extends StrictLogging:
               ) { progressRecordingSession =>
                 case class RecursionState(
                     remainingMatchesAndTheirSections: MatchesAndTheirSections,
-                    remainingContestedMatches: Set[GenericMatch[Element]]
+                    accumulatedNonOverlappingMatches: Set[GenericMatch[Element]]
                 )
 
                 def reconcileUsing(
@@ -2275,28 +2268,15 @@ object MatchAnalysis extends StrictLogging:
                 ] =
                   val RecursionState(
                     remainingMatchesAndTheirSections,
-                    remainingContestedMatches
+                    accumulatedMatches
                   ) = recursionState
 
-                  val (matchesThatAreSubsumed, matchesThatAreNotSubsumed) =
-                    remainingContestedMatches.partition(aMatch =>
-                      aMatch.baseContribution.fold(ifEmpty = false)(
-                        remainingMatchesAndTheirSections.baseSubsumes(_)
-                      ) || aMatch.leftContribution.fold(ifEmpty = false)(
-                        remainingMatchesAndTheirSections.leftSubsumes(_)
-                      ) || aMatch.rightContribution.fold(ifEmpty = false)(
-                        remainingMatchesAndTheirSections.rightSubsumes(_)
-                      )
-                    )
-
-                  val remainingMatchesAndTheirSectionsWithoutSubsumedMatches =
-                    remainingMatchesAndTheirSections
-                      .withoutTheseMatches(matchesThatAreSubsumed)
+                  val matches = remainingMatchesAndTheirSections.matches
 
                   val (unsplitMatchesWithoutOverlaps, splits) =
-                    matchesThatAreNotSubsumed
+                    matches
                       .map(
-                        remainingMatchesAndTheirSectionsWithoutSubsumedMatches.hiveOffNonOverlappedMatchFrom
+                        remainingMatchesAndTheirSections.hiveOffNonOverlappedMatchFrom
                       )
                       .partitionMap(identity)
 
@@ -2306,7 +2286,7 @@ object MatchAnalysis extends StrictLogging:
                     for updatedParallelMatchesGroupIdsByMatch <- State.get
                     yield
                       val fullyReconciledMatches =
-                        remainingMatchesAndTheirSectionsWithoutSubsumedMatches.matches
+                        accumulatedMatches union unsplitMatchesWithoutOverlaps
 
                       val parallelMatchesGroupIdsByMatch =
                         updatedParallelMatchesGroupIdsByMatch
@@ -2315,7 +2295,10 @@ object MatchAnalysis extends StrictLogging:
                           )
 
                       Right(
-                        remainingMatchesAndTheirSectionsWithoutSubsumedMatches
+                        fullyReconciledMatches
+                          .foldLeft(MatchesAndTheirSections.empty)(
+                            _ withMatch _
+                          )
                           .copy(parallelMatchesGroupIdsByMatch =
                             parallelMatchesGroupIdsByMatch
                           )
@@ -2330,21 +2313,12 @@ object MatchAnalysis extends StrictLogging:
 
                       Left(
                         RecursionState(
-                          remainingMatchesAndTheirSections =
-                            // TODO: this is clumsy.
-                            (hivedOffMatches union remainingContestedMatches)
-                              .foldLeft(
-                                remainingMatchesAndTheirSectionsWithoutSubsumedMatches
-                                  .withoutTheseMatches(
-                                    matchesThatAreNotSubsumed diff unsplitMatchesWithoutOverlaps
-                                  )
-                              )(
-                                _ withMatch _
-                              )
-                              .withoutRedundantPairwiseMatches,
-                          remainingContestedMatches =
-                            // TODO: this is also clumsy.
-                            hivedOffMatches union remainingContestedMatches
+                          remainingContestedMatches
+                            .foldLeft(MatchesAndTheirSections.empty)(
+                              _ withMatch _
+                            )
+                            .withoutRedundantPairwiseMatches,
+                          accumulatedMatches union unsplitMatchesWithoutOverlaps union hivedOffMatches
                         )
                       )
                     end for
@@ -2355,7 +2329,7 @@ object MatchAnalysis extends StrictLogging:
                   .tailRecM(
                     RecursionState(
                       remainingMatchesAndTheirSections = this,
-                      remainingContestedMatches = overlappingMatches
+                      accumulatedNonOverlappingMatches = Set.empty
                     )
                   )(reconcileUsing)
                   .runA(parallelMatchesGroupIdsByMatch)
@@ -2404,7 +2378,6 @@ object MatchAnalysis extends StrictLogging:
         )(
             section: Section[Element]
         ): Iterable[Encroachment] =
-
           sectionsByPath
             .get(side.pathFor(section))
             .fold(ifEmpty = Set.empty)(
@@ -2421,17 +2394,7 @@ object MatchAnalysis extends StrictLogging:
                 // equivalent sections belonging to multiple ambiguous matches.
                 .collect {
                   case candidateSection
-                      if candidateSection.startOffset > section.startOffset && candidateSection.onePastEndOffset < section.onePastEndOffset =>
-                    throw new IllegalArgumentException(
-                      s"Precondition failure: match ${pprintCustomised(aMatch)} subsumes another match on at least one side."
-                    )
-                  case candidateSection
-                      if candidateSection.startOffset < section.startOffset && candidateSection.onePastEndOffset > section.onePastEndOffset =>
-                    throw new IllegalArgumentException(
-                      s"Precondition failure: match ${pprintCustomised(aMatch)} is subsumed by another match on at least one side."
-                    )
-                  case candidateSection
-                      if candidateSection.startOffset > section.startOffset =>
+                      if candidateSection.startOffset > section.startOffset && candidateSection.onePastEndOffset >= section.onePastEndOffset =>
                     // The overlapping `candidateSection` extends up to or past
                     // the end of `section`, so this encroaches on the end. We
                     // do allow a special case subsumption here where
@@ -2440,7 +2403,7 @@ object MatchAnalysis extends StrictLogging:
                       candidateSection.startOffset - section.startOffset
                     )
                   case candidateSection
-                      if candidateSection.onePastEndOffset < section.onePastEndOffset =>
+                      if candidateSection.startOffset <= section.startOffset && candidateSection.onePastEndOffset < section.onePastEndOffset =>
                     // The overlapping `candidateSection` extends back to or
                     // before the start of `section`, so this encroaches on the
                     // start. We do allow a special case subsumption here where
