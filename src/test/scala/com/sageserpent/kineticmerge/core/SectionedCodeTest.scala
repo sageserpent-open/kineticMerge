@@ -153,7 +153,7 @@ class SectionedCodeTest:
             // sections that intrude on the content the test is checking, so
             // rather than quietly suppressing the matches, we let admissible
             // failures for overlapping sections occur and reject the test case.
-            suppressMatchesInvolvingOverlappingSections = false
+            suppressMatchesInvolvingOverlappingSections = true
           ) match
             case Right(analysis) =>
               // Check that all matches are consistent with the base sections...
