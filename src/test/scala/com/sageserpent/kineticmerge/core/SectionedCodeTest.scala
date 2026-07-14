@@ -1256,11 +1256,11 @@ class SectionedCodeTest:
     // There should be just all-sides and left-right matches.
     assert(matches.map(_.ordinal).size == 2)
 
-    // There should be four left-right matches.
+    // There should be three left-right matches.
     assert((matches count {
       case _: Match.AllSides[Section[Element]] => true
       case _                                   => false
-    }) == 4)
+    }) == 3)
 
     // There should be two left-right matches.
     assert((matches count {
@@ -1271,10 +1271,9 @@ class SectionedCodeTest:
     // The contents should be broken down.
     assert(
       matches.map(_.content) == Set(
-        Vector(alpha),
+        Vector(alpha, delta),
         Vector(beta),
-        Vector(gamma),
-        Vector(delta),
+        Vector(gamma, delta),
         Vector(epsilon)
       )
     )
