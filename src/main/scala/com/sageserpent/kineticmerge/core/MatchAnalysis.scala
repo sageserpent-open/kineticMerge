@@ -2991,7 +2991,7 @@ object MatchAnalysis extends StrictLogging:
               )(reconcileUsing)
               .runA(parallelMatchesGroupIdsByMatch)
               .value
-          }.get // Allow an exception from the call to `hiveOffNonOverlappedMatchFrom` to propagate through.
+          }.get // Allow an exception to propagate through, specifically an `AdmissibleException` thrown if reconciliation is disabled.
 
         reconciled
 
