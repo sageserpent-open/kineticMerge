@@ -2296,7 +2296,7 @@ object MatchAnalysis extends StrictLogging:
                     splitResults.flatMap(_.remainingContestedMatches)
 
                   Left(
-                    (hivedOffMatches union remainingContestedMatches)
+                    (hivedOffMatches union remainingContestedMatches) // TODO: is there any point in separating the hived off and contested matches in `HivedOffNonOverlappedMatchResult`?
                       .foldLeft(
                         remainingMatchesAndTheirSections
                           .withoutTheseMatches(overlappingMatches)
