@@ -75,7 +75,7 @@ object SectionedCode extends StrictLogging:
 
     try
       val withOverlapsReconciled =
-        withTinyMatchesIncluded.reconcileMatchesWithOverlappingSections(
+        withTinyMatchesIncluded.reconcileOverlappingMatches(
           suppressMatchesInvolvingOverlappingSections
         )
 
