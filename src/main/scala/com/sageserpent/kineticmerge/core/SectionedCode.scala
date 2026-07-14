@@ -84,7 +84,8 @@ object SectionedCode extends StrictLogging:
       // parallel matches group id. Need to make this more robust.
       val parallelMatchesOnly = withOverlapsReconciled.parallelMatchesOnly
 
-      val matchesAndTheirSections = parallelMatchesOnly.reconcileMatches
+      val matchesAndTheirSections =
+        parallelMatchesOnly.reconcileSubsumingMatches
 
       val sectionsAndTheirMatches =
         matchesAndTheirSections.sectionsAndTheirMatches
