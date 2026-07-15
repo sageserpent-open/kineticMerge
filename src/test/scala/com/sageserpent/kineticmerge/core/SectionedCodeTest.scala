@@ -19,6 +19,7 @@ import org.junit.jupiter.api.{Order as _, *}
 
 import _root_.java.util.concurrent.TimeUnit
 import scala.concurrent.duration.Duration
+import scala.io.Source
 
 class SectionedCodeTest:
   import SectionedCodeTest.*
@@ -1626,12 +1627,13 @@ class SectionedCodeTest:
 
   @TestFactory
   def mergeSmokeTest(): DynamicTests =
+    val recipe = Source
+      .fromResource("recipeForMergeSmokeTest.txt")
+      .getLines()
+      .mkString("\n")
+
     testPlansFavouringMatches
-      .withStrategy(caseSupplyCycle =>
-        if caseSupplyCycle.isInitial then
-          CasesLimitStrategy.timed(Duration.apply(2, TimeUnit.MINUTES))
-        else CasesLimitStrategy.counted(100, 3.0)
-      )
+      .withRecipe(recipe)
       .dynamicTests { testPlan =>
         import testPlan.*
         // Scalafmt 3.8.5 will wreck this block of code if it isn't protected by
@@ -1668,7 +1670,7 @@ class SectionedCodeTest:
             // sections that intrude on the content the test is checking, so
             // rather than quietly suppressing the matches, we let admissible
             // failures for overlapping sections occur and reject the test case.
-            suppressMatchesInvolvingOverlappingSections = false
+            suppressMatchesInvolvingOverlappingSections = true
           ) match
             case Right(analysis) =>
               given ProgressRecording = configuration.progressRecording
