@@ -475,11 +475,74 @@ object SectionedCodeExtension extends StrictLogging:
         end if
       end representativeMatchesFrom
 
+      def matchesCross(
+          m1: Match[Section[Element]],
+          m2: Match[Section[Element]]
+      ): Boolean =
+        val baseCross =
+          for
+            b1 <- m1.baseContribution
+            b2 <- m2.baseContribution
+            l1 <- m1.leftContribution
+            l2 <- m2.leftContribution
+          yield (b1.startOffset < b2.startOffset && l1.startOffset >= l2.startOffset) ||
+            (b1.startOffset > b2.startOffset && l1.startOffset <= l2.startOffset)
+
+        val rightCross =
+          for
+            b1 <- m1.baseContribution
+            b2 <- m2.baseContribution
+            r1 <- m1.rightContribution
+            r2 <- m2.rightContribution
+          yield (b1.startOffset < b2.startOffset && r1.startOffset >= r2.startOffset) ||
+            (b1.startOffset > b2.startOffset && r1.startOffset <= r2.startOffset)
+
+        val leftRightCross =
+          for
+            l1 <- m1.leftContribution
+            l2 <- m2.leftContribution
+            r1 <- m1.rightContribution
+            r2 <- m2.rightContribution
+          yield (l1.startOffset < l2.startOffset && r1.startOffset >= r2.startOffset) ||
+            (l1.startOffset > l2.startOffset && r1.startOffset <= r2.startOffset)
+
+        baseCross.getOrElse(false) || rightCross.getOrElse(
+          false
+        ) || leftRightCross.getOrElse(false)
+      end matchesCross
+
+      @tailrec
+      def keepNonCrossing(
+          matches: Seq[Match[Section[Element]]],
+          accepted: Vector[Match[Section[Element]]]
+      ): Seq[Match[Section[Element]]] =
+        matches match
+          case Seq() => accepted
+          case Seq(head, tail*) =>
+            if accepted.exists(matchesCross(head, _)) then
+              keepNonCrossing(tail, accepted)
+            else
+              keepNonCrossing(tail, accepted :+ head)
+      end keepNonCrossing
+
       val bestMatches =
-        setsOfMatchesThatShareSectionsOnAtLeastOneSide.toList
+        val rawMatches = setsOfMatchesThatShareSectionsOnAtLeastOneSide.toList
           .flatMap((_, matchesSharingASectionOnAtLeastOneSide) =>
             representativeMatchesFrom(matchesSharingASectionOnAtLeastOneSide)
           )
+
+        val sortedBestMatches = rawMatches.sortBy { aMatch =>
+          val priority = if aMatch.isAnAllSidesMatch then 0 else 1
+          val baseStart =
+            aMatch.baseContribution.map(_.startOffset).getOrElse(Int.MaxValue)
+          val leftStart =
+            aMatch.leftContribution.map(_.startOffset).getOrElse(Int.MaxValue)
+          val rightStart =
+            aMatch.rightContribution.map(_.startOffset).getOrElse(Int.MaxValue)
+          (priority, baseStart, leftStart, rightStart)
+        }
+
+        keepNonCrossing(sortedBestMatches, Vector.empty)
 
       type Contributions = Map[Section[Element], Contribution[Section[Element]]]
 
