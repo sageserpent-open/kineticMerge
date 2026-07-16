@@ -479,23 +479,23 @@ object SectionedCodeExtension extends StrictLogging:
           m1: Match[Section[Element]],
           m2: Match[Section[Element]]
       ): Boolean =
-        val baseCross =
+        val baseLeftCross =
           for
             b1 <- m1.baseContribution
             b2 <- m2.baseContribution
             l1 <- m1.leftContribution
             l2 <- m2.leftContribution
-          yield (b1.startOffset < b2.startOffset && l1.startOffset >= l2.startOffset) ||
-            (b1.startOffset > b2.startOffset && l1.startOffset <= l2.startOffset)
+          yield (b1.startOffset < b2.startOffset && l1.startOffset > l2.startOffset) ||
+            (b1.startOffset > b2.startOffset && l1.startOffset < l2.startOffset)
 
-        val rightCross =
+        val baseRightCross =
           for
             b1 <- m1.baseContribution
             b2 <- m2.baseContribution
             r1 <- m1.rightContribution
             r2 <- m2.rightContribution
-          yield (b1.startOffset < b2.startOffset && r1.startOffset >= r2.startOffset) ||
-            (b1.startOffset > b2.startOffset && r1.startOffset <= r2.startOffset)
+          yield (b1.startOffset < b2.startOffset && r1.startOffset > r2.startOffset) ||
+            (b1.startOffset > b2.startOffset && r1.startOffset < r2.startOffset)
 
         val leftRightCross =
           for
@@ -503,12 +503,10 @@ object SectionedCodeExtension extends StrictLogging:
             l2 <- m2.leftContribution
             r1 <- m1.rightContribution
             r2 <- m2.rightContribution
-          yield (l1.startOffset < l2.startOffset && r1.startOffset >= r2.startOffset) ||
-            (l1.startOffset > l2.startOffset && r1.startOffset <= r2.startOffset)
+          yield (l1.startOffset < l2.startOffset && r1.startOffset > r2.startOffset) ||
+            (l1.startOffset > l2.startOffset && r1.startOffset < r2.startOffset)
 
-        baseCross.getOrElse(false) || rightCross.getOrElse(
-          false
-        ) || leftRightCross.getOrElse(false)
+        Seq(baseLeftCross, baseRightCross, leftRightCross).flatten.exists(identity)
       end matchesCross
 
       @tailrec
