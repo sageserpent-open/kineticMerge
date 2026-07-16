@@ -1770,13 +1770,12 @@ class SectionedCodeTest:
 
   @TestFactory
   def mergeSmokeTest(): DynamicTests =
-    val recipe = Source
-      .fromResource("recipeForMergeSmokeTest.txt")
-      .getLines()
-      .mkString("\n")
-
     testPlansFavouringMatches
-      .withRecipe(recipe)
+      .withStrategy(caseSupplyCycle =>
+        if caseSupplyCycle.isInitial then
+          CasesLimitStrategy.timed(Duration.apply(5, TimeUnit.MINUTES))
+        else CasesLimitStrategy.counted(100, 3.0)
+      )
       .dynamicTests { testPlan =>
         import testPlan.*
         // Scalafmt 3.8.5 will wreck this block of code if it isn't protected by
@@ -1809,10 +1808,6 @@ class SectionedCodeTest:
             rightSources
           )(
             configuration,
-            // NOTE: the test cases can exhibit matches with overlapping
-            // sections that intrude on the content the test is checking, so
-            // rather than quietly suppressing the matches, we let admissible
-            // failures for overlapping sections occur and reject the test case.
             suppressMatchesInvolvingOverlappingSections = true
           ) match
             case Right(analysis) =>
