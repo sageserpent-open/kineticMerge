@@ -485,8 +485,8 @@ object SectionedCodeExtension extends StrictLogging:
             b2 <- m2.baseContribution
             l1 <- m1.leftContribution
             l2 <- m2.leftContribution
-          yield (b1.startOffset < b2.startOffset && l1.startOffset > l2.startOffset) ||
-            (b1.startOffset > b2.startOffset && l1.startOffset < l2.startOffset)
+          yield (b1.startOffset < b2.startOffset && l1.startOffset >= l2.startOffset) ||
+            (b1.startOffset > b2.startOffset && l1.startOffset <= l2.startOffset)
 
         val baseRightCross =
           for
@@ -494,8 +494,8 @@ object SectionedCodeExtension extends StrictLogging:
             b2 <- m2.baseContribution
             r1 <- m1.rightContribution
             r2 <- m2.rightContribution
-          yield (b1.startOffset < b2.startOffset && r1.startOffset > r2.startOffset) ||
-            (b1.startOffset > b2.startOffset && r1.startOffset < r2.startOffset)
+          yield (b1.startOffset < b2.startOffset && r1.startOffset >= r2.startOffset) ||
+            (b1.startOffset > b2.startOffset && r1.startOffset <= r2.startOffset)
 
         val leftRightCross =
           for
@@ -503,10 +503,12 @@ object SectionedCodeExtension extends StrictLogging:
             l2 <- m2.leftContribution
             r1 <- m1.rightContribution
             r2 <- m2.rightContribution
-          yield (l1.startOffset < l2.startOffset && r1.startOffset > r2.startOffset) ||
-            (l1.startOffset > l2.startOffset && r1.startOffset < r2.startOffset)
+          yield (l1.startOffset < l2.startOffset && r1.startOffset >= r2.startOffset) ||
+            (l1.startOffset > l2.startOffset && r1.startOffset <= r2.startOffset)
 
-        Seq(baseLeftCross, baseRightCross, leftRightCross).flatten.exists(identity)
+        Seq(baseLeftCross, baseRightCross, leftRightCross).flatten.exists(
+          identity
+        )
       end matchesCross
 
       @tailrec
@@ -515,12 +517,11 @@ object SectionedCodeExtension extends StrictLogging:
           accepted: Vector[Match[Section[Element]]]
       ): Seq[Match[Section[Element]]] =
         matches match
-          case Seq() => accepted
+          case Seq()            => accepted
           case Seq(head, tail*) =>
             if accepted.exists(matchesCross(head, _)) then
               keepNonCrossing(tail, accepted)
-            else
-              keepNonCrossing(tail, accepted :+ head)
+            else keepNonCrossing(tail, accepted :+ head)
       end keepNonCrossing
 
       val bestMatches =
@@ -530,7 +531,7 @@ object SectionedCodeExtension extends StrictLogging:
           )
 
         val sortedBestMatches = rawMatches.sortBy { aMatch =>
-          val priority = if aMatch.isAnAllSidesMatch then 0 else 1
+          val priority  = if aMatch.isAnAllSidesMatch then 0 else 1
           val baseStart =
             aMatch.baseContribution.map(_.startOffset).getOrElse(Int.MaxValue)
           val leftStart =
@@ -541,6 +542,7 @@ object SectionedCodeExtension extends StrictLogging:
         }
 
         keepNonCrossing(sortedBestMatches, Vector.empty)
+      end bestMatches
 
       type Contributions = Map[Section[Element], Contribution[Section[Element]]]
 
