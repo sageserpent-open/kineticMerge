@@ -110,6 +110,153 @@ class SectionedCodeTest:
       )
   end sourcesCanBeReconstructedFromTheAnalysis
 
+  @Test
+  def reproduceStackOverflow(): Unit =
+    val recipe = Source
+      .fromResource("recipeForStackOverflow.txt")
+      .getLines()
+      .mkString("\n")
+
+    testPlansFavouringMatches
+      .withRecipe(recipe)
+      .supplyTo { testPlan =>
+        import testPlan.*
+        // Scalafmt 3.8.5 will wreck this block of code if it isn't
+        // protected by braces; it seems it doesn't play well with the
+        // preceding import statement.
+        {
+          println(
+            s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
+          )
+          println("Sizes of common to all three sides...")
+          pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
+          println("Sizes of common to base and left...")
+          pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
+          println("Sizes of common to base and right...")
+          pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
+          println("Sizes of common to left and right...")
+          pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
+
+          val configuration = Configuration(
+            minimumMatchSize = minimumPossibleExpectedMatchSize,
+            thresholdSizeFractionForMatching =
+              minimumSizeFractionForMotionDetection,
+            minimumAmbiguousMatchSize = 0,
+            ambiguousMatchesThreshold = 10
+          )
+
+          Assertions.assertDoesNotThrow { () =>
+            SectionedCode.of(
+              baseSources,
+              leftSources,
+              rightSources
+            )(
+              configuration,
+              suppressMatchesInvolvingOverlappingSections = true
+            )
+          }
+        }
+      }
+  end reproduceStackOverflow
+
+  @Test
+  def reproduceIllegalArgument(): Unit =
+    val recipe = Source
+      .fromResource("recipeForIllegalArgument.txt")
+      .getLines()
+      .mkString("\n")
+
+    testPlansFavouringMatches
+      .withRecipe(recipe)
+      .supplyTo { testPlan =>
+        import testPlan.*
+        // Scalafmt 3.8.5 will wreck this block of code if it isn't
+        // protected by braces; it seems it doesn't play well with the
+        // preceding import statement.
+        {
+          println(
+            s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
+          )
+          println("Sizes of common to all three sides...")
+          pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
+          println("Sizes of common to base and left...")
+          pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
+          println("Sizes of common to base and right...")
+          pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
+          println("Sizes of common to left and right...")
+          pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
+
+          val configuration = Configuration(
+            minimumMatchSize = minimumPossibleExpectedMatchSize,
+            thresholdSizeFractionForMatching =
+              minimumSizeFractionForMotionDetection,
+            minimumAmbiguousMatchSize = 0,
+            ambiguousMatchesThreshold = 10
+          )
+
+          Assertions.assertDoesNotThrow { () =>
+            SectionedCode.of(
+              baseSources,
+              leftSources,
+              rightSources
+            )(
+              configuration,
+              suppressMatchesInvolvingOverlappingSections = true
+            )
+          }
+        }
+      }
+  end reproduceIllegalArgument
+
+  @Test
+  def reproduceAssertionFailure(): Unit =
+    val recipe = Source
+      .fromResource("recipeForAssertionFailure.txt")
+      .getLines()
+      .mkString("\n")
+
+    testPlansFavouringMatches
+      .withRecipe(recipe)
+      .supplyTo { testPlan =>
+        import testPlan.*
+        // Scalafmt 3.8.5 will wreck this block of code if it isn't
+        // protected by braces; it seems it doesn't play well with the
+        // preceding import statement.
+        {
+          println(
+            s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
+          )
+          println("Sizes of common to all three sides...")
+          pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
+          println("Sizes of common to base and left...")
+          pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
+          println("Sizes of common to base and right...")
+          pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
+          println("Sizes of common to left and right...")
+          pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
+
+          val configuration = Configuration(
+            minimumMatchSize = minimumPossibleExpectedMatchSize,
+            thresholdSizeFractionForMatching =
+              minimumSizeFractionForMotionDetection,
+            minimumAmbiguousMatchSize = 0,
+            ambiguousMatchesThreshold = 10
+          )
+
+          Assertions.assertDoesNotThrow { () =>
+            SectionedCode.of(
+              baseSources,
+              leftSources,
+              rightSources
+            )(
+              configuration,
+              suppressMatchesInvolvingOverlappingSections = true
+            )
+          }
+        }
+      }
+  end reproduceAssertionFailure
+
   @TestFactory
   def matchingSectionsAreFound(): DynamicTests =
     testPlansFavouringMatches
@@ -150,10 +297,6 @@ class SectionedCodeTest:
             rightSources
           )(
             configuration,
-            // NOTE: the test cases can exhibit matches with overlapping
-            // sections that intrude on the content the test is checking, so
-            // rather than quietly suppressing the matches, we let admissible
-            // failures for overlapping sections occur and reject the test case.
             suppressMatchesInvolvingOverlappingSections = true
           ) match
             case Right(analysis) =>
