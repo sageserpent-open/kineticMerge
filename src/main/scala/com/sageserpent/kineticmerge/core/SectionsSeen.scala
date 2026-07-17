@@ -28,14 +28,12 @@ object SectionsSeen:
       override val size: Int
   ) extends SectionsSeen[Element]:
     override val hashCode: Int =
-      val leftHash = left match
-        case lt: Treap[Element] => lt.hashCode
-        case Empty              => 0
-      val rightHash = right match
-        case rt: Treap[Element] => rt.hashCode
-        case Empty              => 0
+      val leftHash  = left.hashCode
+      val rightHash = right.hashCode
 
-      (section, priority, maxOnePastEndOffset, leftHash, rightHash, size).hashCode()
+      (section, priority, maxOnePastEndOffset, leftHash, rightHash, size)
+        .hashCode()
+    end hashCode
 
     override def isEmpty: Boolean = false
 
@@ -94,7 +92,8 @@ object SectionsSeen:
     end filterOverlaps
 
     override def +(section: Section[Element]): SectionsSeen[Element] =
-      // Use both the section's hash code and the current treap's hash code to calculate a deterministic priority.
+      // Use both the section's hash code and the current treap's hash code to
+      // calculate a deterministic priority.
       val priority = (section, this).hashCode()
       def add(node: Treap[Element] | Empty.type): Treap[Element] = node match
         case Empty =>
@@ -181,14 +180,14 @@ object SectionsSeen:
   end Treap
 
   private object Empty extends SectionsSeen[Any]:
-    override val hashCode: Int = 0
+    override val hashCode: Int = 57
 
     override def filterIncludes(interval: (Int, Int)): Iterable[Section[Any]] =
       Iterable.empty
     override def filterOverlaps(interval: (Int, Int)): Iterable[Section[Any]] =
       Iterable.empty
     override def +(section: Section[Any]): SectionsSeen[Any] =
-      val priority = (section, 0).hashCode()
+      val priority = section.hashCode()
       Treap(
         section,
         priority,
@@ -197,6 +196,7 @@ object SectionsSeen:
         Empty,
         1
       )
+    end +
     override def -(section: Section[Any]): SectionsSeen[Any] = this
     override def iterator: Iterator[Section[Any]]            = Iterator.empty
     override def isEmpty: Boolean                            = true
