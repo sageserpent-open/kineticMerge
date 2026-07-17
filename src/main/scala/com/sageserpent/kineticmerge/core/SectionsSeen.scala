@@ -35,15 +35,7 @@ object SectionsSeen:
         case rt: Treap[Element] => rt.hashCode
         case Empty              => 0
 
-      import scala.util.hashing.MurmurHash3
-      val h0 = MurmurHash3.productSeed
-      val h1 = MurmurHash3.mix(h0, section.hashCode())
-      val h2 = MurmurHash3.mix(h1, priority)
-      val h3 = MurmurHash3.mix(h2, maxOnePastEndOffset)
-      val h4 = MurmurHash3.mix(h3, leftHash)
-      val h5 = MurmurHash3.mix(h4, rightHash)
-      val h6 = MurmurHash3.mixLast(h5, size)
-      MurmurHash3.finalizeHash(h6, 6)
+      (section, priority, maxOnePastEndOffset, leftHash, rightHash, size).hashCode()
 
     override def isEmpty: Boolean = false
 
@@ -103,7 +95,7 @@ object SectionsSeen:
 
     override def +(section: Section[Element]): SectionsSeen[Element] =
       // Use both the section's hash code and the current treap's hash code to calculate a deterministic priority.
-      val priority = scala.util.hashing.MurmurHash3.mix(section.hashCode(), this.hashCode())
+      val priority = (section, this).hashCode()
       def add(node: Treap[Element] | Empty.type): Treap[Element] = node match
         case Empty =>
           Treap(section, priority, section.onePastEndOffset, Empty, Empty, 1)
@@ -196,7 +188,7 @@ object SectionsSeen:
     override def filterOverlaps(interval: (Int, Int)): Iterable[Section[Any]] =
       Iterable.empty
     override def +(section: Section[Any]): SectionsSeen[Any] =
-      val priority = scala.util.hashing.MurmurHash3.mix(section.hashCode(), 0)
+      val priority = (section, 0).hashCode()
       Treap(
         section,
         priority,

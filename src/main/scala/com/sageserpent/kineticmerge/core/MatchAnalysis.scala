@@ -945,109 +945,123 @@ object MatchAnalysis extends StrictLogging:
             final def biteEdgeStep: ParallelMatchesGroupIdTracking[
               Either[RecursionState, Vector[DependentMatchType[MatchType]]]
             ] =
-              State.get[ParallelMatchesGroupIdsByMatch[Element]].flatMap { parallelMatchesGroupIdsByMatch =>
-                remainingBiteEdges match
-                  case Seq() =>
-                    require(0 == biteDepth)
+              remainingBiteEdges match
+                case Seq() =>
+                  require(0 == biteDepth)
 
-                    if sectionSize > mealStartOffsetRelativeToMeal then
-                      val size = sectionSize - mealStartOffsetRelativeToMeal
+                  if sectionSize > mealStartOffsetRelativeToMeal then
+                    val size = sectionSize - mealStartOffsetRelativeToMeal
 
-                      val fragment =
-                        fragmentFactory(mealStartOffsetRelativeToMeal, size)
+                    val fragment =
+                      fragmentFactory(mealStartOffsetRelativeToMeal, size)
 
-                      val deferredGroupIdsFromPrecedingBite =
+                    for
+                      parallelMatchesGroupIdsByMatch <- State.get[ParallelMatchesGroupIdsByMatch[Element]]
+                      deferredGroupIdsFromPrecedingBite =
                         deferredMatchesFromPrecedingBite.map(parallelMatchesGroupIdsByMatch)
-
-                      assignUniqueGroupId(
+                      result <- assignUniqueGroupId(
                         fragment,
                         deferredGroupIdsFromPrecedingBite
-                      ).map(_ => Right(fragments.appended(fragment)))
-                    else State.pure(Right(fragments))
-                    end if
+                      ) as Right(fragments.appended(fragment))
+                    yield result
+                  else State.pure(Right(fragments))
+                  end if
 
-                  case Seq(
-                        biteEdge @ BiteEdge.Start(startOffsetRelativeToMeal),
-                        tail*
-                      ) =>
-                    require(
-                      startOffsetRelativeToMeal >= mealStartOffsetRelativeToMeal
-                    )
-                    require(sectionSize > startOffsetRelativeToMeal)
+                case Seq(
+                      biteEdge @ BiteEdge.Start(startOffsetRelativeToMeal),
+                      tail*
+                    ) =>
+                  require(
+                    startOffsetRelativeToMeal >= mealStartOffsetRelativeToMeal
+                  )
+                  require(sectionSize > startOffsetRelativeToMeal)
 
-                    val matchesFromSucceedingBite =
-                      matchesByBiteEdge.get(biteEdge)
+                  val matchesFromSucceedingBite =
+                    matchesByBiteEdge.get(biteEdge)
 
-                    val size =
-                      startOffsetRelativeToMeal - mealStartOffsetRelativeToMeal
+                  for
+                    parallelMatchesGroupIdsByMatch <- State.get[ParallelMatchesGroupIdsByMatch[Element]]
+                    updatedFragments <-
+                      if 0 == biteDepth && startOffsetRelativeToMeal > mealStartOffsetRelativeToMeal
+                      then
+                        val size =
+                          startOffsetRelativeToMeal - mealStartOffsetRelativeToMeal
 
-                    val groupIdsFromSucceedingBite =
-                      matchesFromSucceedingBite.map(parallelMatchesGroupIdsByMatch)
+                        val groupIdsFromSucceedingBite =
+                          matchesFromSucceedingBite.map(parallelMatchesGroupIdsByMatch)
 
-                    val deferredGroupIdsFromPrecedingBite =
-                      deferredMatchesFromPrecedingBite.map(parallelMatchesGroupIdsByMatch)
+                        val deferredGroupIdsFromPrecedingBite =
+                          deferredMatchesFromPrecedingBite.map(parallelMatchesGroupIdsByMatch)
 
-                    val groupIds =
-                      if deferredGroupIdsFromPrecedingBite.isEmpty then
-                        groupIdsFromSucceedingBite
-                      else
-                        deferredGroupIdsFromPrecedingBite.intersect(
-                          groupIdsFromSucceedingBite
+                        val groupIds =
+                          if deferredGroupIdsFromPrecedingBite.isEmpty then
+                            groupIdsFromSucceedingBite
+                          else
+                            // Enforce consistency between the group ids
+                            // supplied by both bites. This allows some margin
+                            // for thinning out multiple group ids from one bite
+                            // if the bite on the other side has just one group
+                            // id, i.e. when one bite comes from an ambiguous
+                            // move and the other from a plain move in parallel
+                            // to one of the ambiguous ones.
+                            deferredGroupIdsFromPrecedingBite.intersect(
+                              groupIdsFromSucceedingBite
+                            )
+
+                        val fragment =
+                          fragmentFactory(mealStartOffsetRelativeToMeal, size)
+
+                        assignUniqueGroupId(fragment, groupIds) as
+                          fragments.appended(fragment)
+                      else State.pure(fragments)
+                  yield Left(
+                    this
+                      .copy(
+                        deferredMatchesFromPrecedingBite = Set.empty,
+                        mealStartOffsetRelativeToMeal =
+                          startOffsetRelativeToMeal,
+                        biteDepth =
+                          matchesFromSucceedingBite.size + biteDepth,
+                        remainingBiteEdges = tail,
+                        fragments = updatedFragments
+                      )
+                  )
+
+                case Seq(
+                      biteEdge @ BiteEdge.End(onePastEndOffsetRelativeToMeal),
+                      tail*
+                    ) =>
+                  assume(0 < biteDepth)
+
+                  require(
+                    mealStartOffsetRelativeToMeal <= onePastEndOffsetRelativeToMeal
+                  )
+                  require(onePastEndOffsetRelativeToMeal <= sectionSize)
+
+                  val matchesFromBite = matchesByBiteEdge.get(biteEdge)
+
+                  State.pure(
+                    Left(
+                      this
+                        .copy(
+                          // NOTE: nested or overlapping bites to the right
+                          // overwrite any prior contribution of a group id to
+                          // the *succeeding* context.
+                          deferredMatchesFromPrecedingBite = matchesFromBite,
+                          mealStartOffsetRelativeToMeal =
+                            onePastEndOffsetRelativeToMeal,
+                          biteDepth =
+                            // NOTE: have to account for the bites originating
+                            // from a *set* of keys into a multi-dictionary. May
+                            // have starting bite edge distinct whereas the
+                            // balancing ending bite edges collide.
+                            biteDepth - matchesFromBite.size,
+                          remainingBiteEdges = tail,
+                          fragments = fragments
                         )
-
-                    (if 0 == biteDepth && startOffsetRelativeToMeal > mealStartOffsetRelativeToMeal
-                     then
-                       val fragment =
-                         fragmentFactory(mealStartOffsetRelativeToMeal, size)
-
-                       assignUniqueGroupId(fragment, groupIds).map(_ =>
-                         fragments.appended(fragment)
-                       )
-                     else State.pure(fragments)
-                    ).map { updatedFragments =>
-                      Left(
-                        this
-                          .copy(
-                            deferredMatchesFromPrecedingBite = Set.empty,
-                            mealStartOffsetRelativeToMeal =
-                              startOffsetRelativeToMeal,
-                            biteDepth =
-                              matchesFromSucceedingBite.size + biteDepth,
-                            remainingBiteEdges = tail,
-                            fragments = updatedFragments
-                          )
-                      )
-                    }
-
-                  case Seq(
-                        biteEdge @ BiteEdge.End(onePastEndOffsetRelativeToMeal),
-                        tail*
-                      ) =>
-                    assume(0 < biteDepth)
-
-                    require(
-                      mealStartOffsetRelativeToMeal <= onePastEndOffsetRelativeToMeal
                     )
-                    require(onePastEndOffsetRelativeToMeal <= sectionSize)
-
-                    val matchesFromBite = matchesByBiteEdge.get(biteEdge)
-
-                    State.pure(
-                      Left(
-                        this
-                          .copy(
-                            deferredMatchesFromPrecedingBite = matchesFromBite,
-                            mealStartOffsetRelativeToMeal =
-                              onePastEndOffsetRelativeToMeal,
-                            biteDepth =
-                              biteDepth - matchesFromBite.size,
-                            remainingBiteEdges = tail,
-                            fragments = fragments
-                          )
-                      )
-                    )
-                end match
-              }
+                  )
+              end match
             end biteEdgeStep
           end RecursionState
 
@@ -1407,7 +1421,7 @@ object MatchAnalysis extends StrictLogging:
             s"${configuration.label} - number of matches to reconcile:"
           else "Number of matches to reconcile:"
 
-        val reconciled =
+        val Success(reconciled) =
           Using(
             progressRecording.newSession(
               label = sessionLabel,
@@ -1466,7 +1480,7 @@ object MatchAnalysis extends StrictLogging:
 
                 paredDownAllSidesMatches = paredDownMatches.collect {
                   case allSides: Match.AllSides[Section[Element]] => allSides
-                }.intersect(allSidesMatches)
+                }
 
                 _ =
                   // NOTE: `pareDownOrSuppressCompletely` does not create
@@ -1533,12 +1547,7 @@ object MatchAnalysis extends StrictLogging:
               })(reconcileUsing)
               .runA(Map.empty)
               .value
-          } match {
-            case scala.util.Success(reconciled) => reconciled
-            case scala.util.Failure(t) =>
-              t.printStackTrace()
-              throw t
-          }
+          }: @unchecked
 
         reconciled.reconciliationPostcondition()
 
