@@ -936,7 +936,9 @@ object MatchAnalysis extends StrictLogging:
                 )
 
           case class RecursionState(
-              deferredMatchesFromPrecedingBite: collection.Set[GenericMatch[Element]],
+              deferredMatchesFromPrecedingBite: collection.Set[GenericMatch[
+                Element
+              ]],
               mealStartOffsetRelativeToMeal: Int,
               biteDepth: Int,
               remainingBiteEdges: Seq[BiteEdge],
@@ -956,14 +958,18 @@ object MatchAnalysis extends StrictLogging:
                       fragmentFactory(mealStartOffsetRelativeToMeal, size)
 
                     for
-                      parallelMatchesGroupIdsByMatch <- State.get[ParallelMatchesGroupIdsByMatch[Element]]
+                      parallelMatchesGroupIdsByMatch <- State
+                        .get[ParallelMatchesGroupIdsByMatch[Element]]
                       deferredGroupIdsFromPrecedingBite =
-                        deferredMatchesFromPrecedingBite.map(parallelMatchesGroupIdsByMatch)
+                        deferredMatchesFromPrecedingBite.map(
+                          parallelMatchesGroupIdsByMatch
+                        )
                       result <- assignUniqueGroupId(
                         fragment,
                         deferredGroupIdsFromPrecedingBite
                       ) as Right(fragments.appended(fragment))
                     yield result
+                    end for
                   else State.pure(Right(fragments))
                   end if
 
@@ -980,7 +986,8 @@ object MatchAnalysis extends StrictLogging:
                     matchesByBiteEdge.get(biteEdge)
 
                   for
-                    parallelMatchesGroupIdsByMatch <- State.get[ParallelMatchesGroupIdsByMatch[Element]]
+                    parallelMatchesGroupIdsByMatch <- State
+                      .get[ParallelMatchesGroupIdsByMatch[Element]]
                     updatedFragments <-
                       if 0 == biteDepth && startOffsetRelativeToMeal > mealStartOffsetRelativeToMeal
                       then
@@ -988,10 +995,14 @@ object MatchAnalysis extends StrictLogging:
                           startOffsetRelativeToMeal - mealStartOffsetRelativeToMeal
 
                         val groupIdsFromSucceedingBite =
-                          matchesFromSucceedingBite.map(parallelMatchesGroupIdsByMatch)
+                          matchesFromSucceedingBite.map(
+                            parallelMatchesGroupIdsByMatch
+                          )
 
                         val deferredGroupIdsFromPrecedingBite =
-                          deferredMatchesFromPrecedingBite.map(parallelMatchesGroupIdsByMatch)
+                          deferredMatchesFromPrecedingBite.map(
+                            parallelMatchesGroupIdsByMatch
+                          )
 
                         val groupIds =
                           if deferredGroupIdsFromPrecedingBite.isEmpty then
@@ -1021,11 +1032,16 @@ object MatchAnalysis extends StrictLogging:
                         mealStartOffsetRelativeToMeal =
                           startOffsetRelativeToMeal,
                         biteDepth =
+                          // NOTE: have to account for the bites originating
+                          // from a *set* of keys into a multi-dictionary. May
+                          // have starting bite edge colliding whereas the
+                          // balancing ending bite edges are distinct.
                           matchesFromSucceedingBite.size + biteDepth,
                         remainingBiteEdges = tail,
                         fragments = updatedFragments
                       )
                   )
+                  end for
 
                 case Seq(
                       biteEdge @ BiteEdge.End(onePastEndOffsetRelativeToMeal),
@@ -1593,6 +1609,685 @@ object MatchAnalysis extends StrictLogging:
           (groupId, group) => groupId -> SortedSet.from(group.keys)
         })
       end groupsOfParallelMatches
+
+      private def startOffsetOnBase(
+          aMatch: GenericMatch[Element]
+      ): Option[Int] =
+        aMatch match
+          case Match.AllSides(baseSection, _, _) =>
+            Some(baseSection.startOffset)
+          case Match.BaseAndLeft(baseSection, _) =>
+            Some(baseSection.startOffset)
+          case Match.BaseAndRight(baseSection, _) =>
+            Some(baseSection.startOffset)
+          case _ => None
+
+      private def startOffsetOnLeft(
+          aMatch: GenericMatch[Element]
+      ): Option[Int] =
+        aMatch match
+          case Match.AllSides(_, leftSection, _) =>
+            Some(leftSection.startOffset)
+          case Match.BaseAndLeft(_, leftSection) =>
+            Some(leftSection.startOffset)
+          case Match.LeftAndRight(leftSection, _) =>
+            Some(leftSection.startOffset)
+          case _ => None
+
+      private def startOffsetOnRight(
+          aMatch: GenericMatch[Element]
+      ): Option[Int] =
+        aMatch match
+          case Match.AllSides(_, _, rightSection) =>
+            Some(rightSection.startOffset)
+          case Match.BaseAndRight(_, rightSection) =>
+            Some(rightSection.startOffset)
+          case Match.LeftAndRight(_, rightSection) =>
+            Some(rightSection.startOffset)
+          case _ => None
+
+      private def reconciliationPostcondition(): Unit =
+        baseSectionsByPath.values.flatMap(_.iterator).foreach { baseSection =>
+          assert(!baseSubsumes(baseSection))
+        }
+        leftSectionsByPath.values.flatMap(_.iterator).foreach { leftSection =>
+          assert(!leftSubsumes(leftSection))
+        }
+        rightSectionsByPath.values.flatMap(_.iterator).foreach { rightSection =>
+          assert(!rightSubsumes(rightSection))
+        }
+
+        // No match should be redundant - i.e. no match should involve sections
+        // that all belong to another match. This goes without saying for
+        // all-sides matches, as any redundancy would imply equivalent
+        // all-sides matches being associated with the same sections - this
+        // isn't allowed by a `MultiDict` instance. The same applies for
+        // pairwise matches of the same kind; pairwise matches of different
+        // kinds can't make each other redundant.
+        // What we have to watch out for are pairwise matches having *both*
+        // sections also belonging to an all-sides match. Note that it *is*
+        // legitimate to have a pairwise match sharing just one section with an
+        // all-sides match; they are just ambiguous matches.
+
+        val matchesBySectionPairs =
+          sectionsAndTheirMatches.values.toSet.foldLeft(
+            MultiDict.empty[(Section[Element], Section[Element]), Match[
+              Section[Element]
+            ]]
+          )((matchesBySectionPairs, aMatch) =>
+            aMatch match
+              case Match.AllSides(baseSection, leftSection, rightSection) =>
+                matchesBySectionPairs + ((
+                  baseSection,
+                  leftSection
+                ) -> aMatch) + ((baseSection, rightSection) -> aMatch) + ((
+                  leftSection,
+                  rightSection
+                ) -> aMatch)
+              case Match.BaseAndLeft(baseSection, leftSection) =>
+                matchesBySectionPairs + ((
+                  baseSection,
+                  leftSection
+                ) -> aMatch)
+              case Match.BaseAndRight(baseSection, rightSection) =>
+                matchesBySectionPairs + ((
+                  baseSection,
+                  rightSection
+                ) -> aMatch)
+              case Match.LeftAndRight(leftSection, rightSection) =>
+                matchesBySectionPairs + ((
+                  leftSection,
+                  rightSection
+                ) -> aMatch)
+          )
+
+        matchesBySectionPairs.keySet.foreach { sectionPair =>
+          val matches = matchesBySectionPairs.get(sectionPair)
+
+          val (allSides, pairwiseMatches) =
+            matches.partition(_.isAnAllSidesMatch)
+
+          if allSides.nonEmpty then
+            assert(
+              pairwiseMatches.isEmpty,
+              s"Found redundancy between pairwise matches: ${pprintCustomised(pairwiseMatches)} and an all-sides match in: ${pprintCustomised(allSides)}."
+            )
+          end if
+        }
+
+        if parallelMatchesGroupIdsByMatch.nonEmpty then
+          assert(
+            parallelMatchesGroupIdsByMatch.keySet == matches,
+            s"If groups of parallel matches have been discovered, they should cover the overall population of matches exactly."
+          )
+
+          parallelMatchesGroupIdsByMatch.toSeq
+            .groupBy(_._2)
+            .values
+            .foreach { group =>
+              val matchesInGroup = group.map(_._1)
+
+              case class SidePerspective(path: Path, startOffset: Int)
+
+              case class MatchSynopsis(
+                  base: Option[SidePerspective],
+                  left: Option[SidePerspective],
+                  right: Option[SidePerspective]
+              )
+
+              object MatchSynopsis:
+                def apply(aMatch: GenericMatch[Element]): MatchSynopsis =
+                  MatchSynopsis(
+                    base = (pathOnBase(aMatch), startOffsetOnBase(aMatch))
+                      .mapN(SidePerspective.apply),
+                    left = (pathOnLeft(aMatch), startOffsetOnLeft(aMatch))
+                      .mapN(SidePerspective.apply),
+                    right = (pathOnRight(aMatch), startOffsetOnRight(aMatch))
+                      .mapN(SidePerspective.apply)
+                  )
+              end MatchSynopsis
+
+              val basePaths = matchesInGroup.flatMap(pathOnBase).toSet
+              assert(
+                basePaths.size <= 1,
+                s"""Base paths for a group of parallel matches should be the same,
+                   |but vary: $basePaths.
+                   |Matches are: ${pprintCustomised(
+                    matchesInGroup.map(MatchSynopsis.apply)
+                  )}""".stripMargin
+              )
+
+              val leftPaths = matchesInGroup.flatMap(pathOnLeft).toSet
+              assert(
+                leftPaths.size <= 1,
+                s"""Left paths for a group of parallel matches should be the same,
+                   |but vary: $leftPaths.
+                   |Matches are: ${pprintCustomised(
+                    matchesInGroup.map(MatchSynopsis.apply)
+                  )}""".stripMargin
+              )
+
+              val rightPaths = matchesInGroup.flatMap(pathOnRight).toSet
+              assert(
+                rightPaths.size <= 1,
+                s"""Right paths for a group of parallel matches should be the same,
+                   |but vary: $rightPaths.
+                   |Matches are: ${pprintCustomised(
+                    matchesInGroup.map(MatchSynopsis.apply)
+                  )}""".stripMargin
+              )
+
+              def checkOrderIsConsistentAcrossSides(
+                  firstSide: String,
+                  secondSide: String,
+                  firstSideStartOffset: GenericMatch[Element] => Option[Int],
+                  secondSideStartOffset: GenericMatch[Element] => Option[Int]
+              ): Unit =
+                extension (matches: Seq[GenericMatch[Element]])
+                  private def sortWhereRelevantBy(
+                      startOffsetOf: GenericMatch[Element] => Option[Int]
+                  ): Seq[GenericMatch[Element]] =
+                    matches
+                      .flatMap(aMatch =>
+                        startOffsetOf(aMatch)
+                          .map(offset => aMatch -> offset)
+                      )
+                      .sortBy(_._2)
+                      .map(_._1)
+
+                end extension
+
+                // NOTE: in the next two bindings, we have to sort first
+                // according to the other side's perspective. This is to avoid
+                // situations where several matches happen to have the same
+                // start offset on one side but different offsets on the other.
+                // As sorting is stable, that could lead to the side with
+                // colliding offsets having the 'wrong' initial order that would
+                // be preserved by the sort. Tip of the hat to Jules for
+                // spotting the pitfall in the first place.
+
+                val matchesOrderedFromFirstSidePerspective =
+                  matchesInGroup
+                    .sortWhereRelevantBy(secondSideStartOffset)
+                    .sortWhereRelevantBy(firstSideStartOffset)
+
+                val matchesOrderedFromSecondSidePerspective =
+                  matchesInGroup
+                    .sortWhereRelevantBy(firstSideStartOffset)
+                    .sortWhereRelevantBy(secondSideStartOffset)
+
+                val commonMatches =
+                  matchesOrderedFromFirstSidePerspective.toSet intersect matchesOrderedFromSecondSidePerspective.toSet
+
+                val commonMatchesOrderedFromFirstSidePerspective =
+                  matchesOrderedFromFirstSidePerspective.filter(
+                    commonMatches.contains
+                  )
+                val commonMatchesOrderedFromSecondSidePerspective =
+                  matchesOrderedFromSecondSidePerspective.filter(
+                    commonMatches.contains
+                  )
+
+                assert(
+                  commonMatchesOrderedFromFirstSidePerspective == commonMatchesOrderedFromSecondSidePerspective,
+                  s"""
+                     |Expected a consistent ordering of matches relevant to the sides $firstSide and $secondSide,
+                     |on the $firstSide they are:
+                     |${pprintCustomised(
+                      commonMatchesOrderedFromFirstSidePerspective.map(
+                        MatchSynopsis.apply
+                      )
+                    )}
+                     |and on the $secondSide they are:
+                     |${pprintCustomised(
+                      commonMatchesOrderedFromSecondSidePerspective.map(
+                        MatchSynopsis.apply
+                      )
+                    )}
+                     |""".stripMargin
+                )
+              end checkOrderIsConsistentAcrossSides
+
+              checkOrderIsConsistentAcrossSides(
+                "base",
+                "left",
+                startOffsetOnBase,
+                startOffsetOnLeft
+              )
+              checkOrderIsConsistentAcrossSides(
+                "base",
+                "right",
+                startOffsetOnBase,
+                startOffsetOnRight
+              )
+              checkOrderIsConsistentAcrossSides(
+                "left",
+                "right",
+                startOffsetOnLeft,
+                startOffsetOnRight
+              )
+            }
+        end if
+      end reconciliationPostcondition
+
+      private def pathOnBase(aMatch: GenericMatch[Element]): Option[Path] =
+        aMatch match
+          case Match.AllSides(baseSection, _, _) =>
+            Some(baseSources.pathFor(baseSection))
+          case Match.BaseAndLeft(baseSection, _) =>
+            Some(baseSources.pathFor(baseSection))
+          case Match.BaseAndRight(baseSection, _) =>
+            Some(baseSources.pathFor(baseSection))
+          case _ => None
+
+      private def pathOnLeft(aMatch: GenericMatch[Element]): Option[Path] =
+        aMatch match
+          case Match.AllSides(_, leftSection, _) =>
+            Some(leftSources.pathFor(leftSection))
+          case Match.BaseAndLeft(_, leftSection) =>
+            Some(leftSources.pathFor(leftSection))
+          case Match.LeftAndRight(leftSection, _) =>
+            Some(leftSources.pathFor(leftSection))
+          case _ => None
+
+      private def pathOnRight(aMatch: GenericMatch[Element]): Option[Path] =
+        aMatch match
+          case Match.AllSides(_, _, rightSection) =>
+            Some(rightSources.pathFor(rightSection))
+          case Match.BaseAndRight(_, rightSection) =>
+            Some(rightSources.pathFor(rightSection))
+          case Match.LeftAndRight(_, rightSection) =>
+            Some(rightSources.pathFor(rightSection))
+          case _ => None
+
+      private def checkInvariant(): Unit =
+        // We expect to tally either two lots of a given pairwise match or three
+        // lots of a given all-sides match; we therefore scale the
+        // raw multiplicities of the section to take this into account.
+        val multiplicityScaleSubdivisibleByTwoOrThree = 6
+
+        val multiplicityScaleDividedIntoAThirdForEachSideOfAnAllSidesMatch =
+          multiplicityScaleSubdivisibleByTwoOrThree / 3
+
+        val multiplicityScaleDividedIntoAHalfForEachSideOfAPairwiseMatch =
+          multiplicityScaleSubdivisibleByTwoOrThree / 2
+
+        val baseSectionMultiplicities = baseSectionsByPath.values
+          .flatMap(_.iterator)
+          .groupBy(identity)
+          .map((section, group) =>
+            section -> multiplicityScaleSubdivisibleByTwoOrThree * group.size
+          )
+
+        val leftSectionMultiplicities = leftSectionsByPath.values
+          .flatMap(_.iterator)
+          .groupBy(identity)
+          .map((section, group) =>
+            section -> multiplicityScaleSubdivisibleByTwoOrThree * group.size
+          )
+
+        val rightSectionMultiplicities = rightSectionsByPath.values
+          .flatMap(_.iterator)
+          .groupBy(identity)
+          .map((section, group) =>
+            section -> multiplicityScaleSubdivisibleByTwoOrThree * group.size
+          )
+
+        val tallyAllSides: Option[Int] => Option[Int] = {
+          case Some(multiplicity) =>
+            // Once we've accounted for the multiplicity, remove the entry.
+            Option.unless(
+              multiplicityScaleDividedIntoAThirdForEachSideOfAnAllSidesMatch == multiplicity
+            )(
+              multiplicity - multiplicityScaleDividedIntoAThirdForEachSideOfAnAllSidesMatch
+            )
+          // If we have an occurrence and there is no entry, start a negative
+          // count.
+          case None =>
+            Some(
+              -multiplicityScaleDividedIntoAThirdForEachSideOfAnAllSidesMatch
+            )
+        }
+
+        val tallyPairwise: Option[Int] => Option[Int] = {
+          case Some(multiplicity) =>
+            // Once we've accounted for the multiplicity, remove the entry.
+            Option.unless(
+              multiplicityScaleDividedIntoAHalfForEachSideOfAPairwiseMatch == multiplicity
+            )(
+              multiplicity - multiplicityScaleDividedIntoAHalfForEachSideOfAPairwiseMatch
+            )
+          // If we have an occurrence and there is no entry, start a negative
+          // count.
+          case None =>
+            Some(-multiplicityScaleDividedIntoAHalfForEachSideOfAPairwiseMatch)
+        }
+
+        val (
+          unbalancedBaseSectionMultiplicities,
+          unbalancedLeftSectionMultiplicities,
+          unbalancedRightSectionMultiplicities
+        ) = sectionsAndTheirMatches.values.foldLeft(
+          (
+            baseSectionMultiplicities,
+            leftSectionMultiplicities,
+            rightSectionMultiplicities
+          )
+        ) {
+          case (
+                (
+                  baseSectionMultiplicities,
+                  leftSectionMultiplicities,
+                  rightSectionMultiplicities
+                ),
+                aMatch
+              ) =>
+            aMatch match
+              case Match.AllSides(
+                    baseSection,
+                    leftSection,
+                    rightSection
+                  ) =>
+                (
+                  baseSectionMultiplicities.updatedWith(baseSection)(
+                    tallyAllSides
+                  ),
+                  leftSectionMultiplicities.updatedWith(leftSection)(
+                    tallyAllSides
+                  ),
+                  rightSectionMultiplicities.updatedWith(rightSection)(
+                    tallyAllSides
+                  )
+                )
+              case Match.BaseAndLeft(
+                    baseSection,
+                    leftSection
+                  ) =>
+                (
+                  baseSectionMultiplicities.updatedWith(baseSection)(
+                    tallyPairwise
+                  ),
+                  leftSectionMultiplicities.updatedWith(leftSection)(
+                    tallyPairwise
+                  ),
+                  rightSectionMultiplicities
+                )
+              case Match.BaseAndRight(
+                    baseSection,
+                    rightSection
+                  ) =>
+                (
+                  baseSectionMultiplicities.updatedWith(baseSection)(
+                    tallyPairwise
+                  ),
+                  leftSectionMultiplicities,
+                  rightSectionMultiplicities.updatedWith(rightSection)(
+                    tallyPairwise
+                  )
+                )
+              case Match.LeftAndRight(
+                    leftSection,
+                    rightSection
+                  ) =>
+                (
+                  baseSectionMultiplicities,
+                  leftSectionMultiplicities.updatedWith(leftSection)(
+                    tallyPairwise
+                  ),
+                  rightSectionMultiplicities.updatedWith(rightSection)(
+                    tallyPairwise
+                  )
+                )
+        }
+
+        assert(
+          unbalancedBaseSectionMultiplicities.isEmpty,
+          s"Found unbalanced base section multiplicities, these are:\n${pprintCustomised(unbalancedBaseSectionMultiplicities)}"
+        )
+        assert(
+          unbalancedLeftSectionMultiplicities.isEmpty,
+          s"Found unbalanced left section multiplicities, these are:\n${pprintCustomised(unbalancedLeftSectionMultiplicities)}"
+        )
+        assert(
+          unbalancedRightSectionMultiplicities.isEmpty,
+          s"Found unbalanced right section multiplicities, these are:\n${pprintCustomised(unbalancedRightSectionMultiplicities)}"
+        )
+      end checkInvariant
+
+      private def pareDownOrSuppressCompletely[MatchType <: GenericMatch[
+        Element
+      ]](
+          aMatch: MatchType
+      ): ParallelMatchesGroupIdTracking[Option[DependentMatchType[MatchType]]] =
+        // NOTE: one thing to watch out is when fragments resulting from
+        // larger pairwise matches being eaten into collide with equivalent
+        // pairwise matches found by fingerprint matching. This can take the
+        // form of the fragments coming first due to larger all-sides matches,
+        // or the pairwise matches from fingerprint matching can be followed
+        // by fragmentation if the all-sides eating into the larger pairwise
+        // matches also come from the same fingerprinting that yielded the
+        // pairwise matching. Intercepting this here addresses both cases. {
+        val result: Option[DependentMatchType[MatchType]] = aMatch match
+          case Match.AllSides(baseSection, leftSection, rightSection) =>
+            val trivialSubsumptionSize = baseSection.size
+
+            val subsumingOnBase =
+              subsumingMatches(
+                sectionsAndTheirMatches
+              )(
+                baseSources,
+                baseSectionsByPath
+              )(
+                baseSection,
+                includeTrivialSubsumption = false
+              )
+
+            val subsumingOnLeft =
+              subsumingMatches(
+                sectionsAndTheirMatches
+              )(
+                leftSources,
+                leftSectionsByPath
+              )(
+                leftSection,
+                includeTrivialSubsumption = false
+              )
+
+            val subsumingOnRight =
+              subsumingMatches(
+                sectionsAndTheirMatches
+              )(
+                rightSources,
+                rightSectionsByPath
+              )(
+                rightSection,
+                includeTrivialSubsumption = false
+              )
+
+            val allSidesSubsumingOnLeft =
+              subsumingOnLeft.filter(_.isAnAllSidesMatch)
+            val allSidesSubsumingOnRight =
+              subsumingOnRight.filter(_.isAnAllSidesMatch)
+            val allSidesSubsumingOnBase =
+              subsumingOnBase.filter(_.isAnAllSidesMatch)
+
+            val subsumedByAnAllSidesMatchOnMoreThanOneSide =
+              (allSidesSubsumingOnLeft intersect allSidesSubsumingOnRight).nonEmpty
+                || (allSidesSubsumingOnBase intersect allSidesSubsumingOnLeft).nonEmpty
+                || (allSidesSubsumingOnBase intersect allSidesSubsumingOnRight).nonEmpty
+
+            if !subsumedByAnAllSidesMatchOnMoreThanOneSide then
+              val subsumedBySomeMatchOnJustTheBase =
+                (subsumingOnBase diff (subsumingOnLeft union subsumingOnRight)).nonEmpty
+              val subsumedBySomeMatchOnJustTheLeft =
+                (subsumingOnLeft diff (subsumingOnBase union subsumingOnRight)).nonEmpty
+              val subsumedBySomeMatchOnJustTheRight =
+                (subsumingOnRight diff (subsumingOnBase union subsumingOnLeft)).nonEmpty
+
+              // NOTE: an all-sides match could be subsumed by *some* match on
+              // just one side for two or three sides; they would be
+              // *different* matches, each doing a one-sided subsumption.
+              (
+                subsumedBySomeMatchOnJustTheBase,
+                subsumedBySomeMatchOnJustTheLeft,
+                subsumedBySomeMatchOnJustTheRight
+              ) match
+                case (false, false, false) =>
+                  Option.unless(
+                    baseSubsumes(baseSection) || leftSubsumes(
+                      leftSection
+                    ) || rightSubsumes(rightSection)
+                  )(aMatch)
+                case (true, false, false) =>
+                  Option.unless(
+                    leftSubsumes(leftSection) || rightSubsumes(
+                      rightSection
+                    )
+                  )(Match.LeftAndRight(leftSection, rightSection))
+                case (false, true, false) =>
+                  Option.unless(
+                    baseSubsumes(baseSection) || rightSubsumes(
+                      rightSection
+                    )
+                  )(Match.BaseAndRight(baseSection, rightSection))
+                case (false, false, true) =>
+                  Option.unless(
+                    baseSubsumes(baseSection) || leftSubsumes(
+                      leftSection
+                    )
+                  )(Match.BaseAndLeft(baseSection, leftSection))
+                case _ => None
+              end match
+            else None
+            end if
+
+          case Match.BaseAndLeft(baseSection, leftSection) =>
+            Option.unless(
+              baseSubsumes(baseSection) || leftSubsumes(
+                leftSection
+              )
+            )(aMatch)
+
+          case Match.BaseAndRight(baseSection, rightSection) =>
+            Option.unless(
+              baseSubsumes(baseSection) || rightSubsumes(
+                rightSection
+              )
+            )(aMatch)
+
+          case Match.LeftAndRight(leftSection, rightSection) =>
+            Option.unless(
+              leftSubsumes(leftSection) || rightSubsumes(
+                rightSection
+              )
+            )(aMatch)
+
+          case _ => None
+
+        result.traverse(paredDownMatch =>
+          propagateGroupId(aMatch, paredDownMatch) as paredDownMatch
+        )
+      end pareDownOrSuppressCompletely
+
+      private def pairwiseMatchesSubsumingOnBothSidesWithBiteEdges(
+          allSides: Match.AllSides[Section[Element]]
+      ): Set[(PairwiseMatch, BiteEdge, BiteEdge)] =
+        val subsumingOnBase =
+          subsumingPairwiseMatchesIncludingTriviallySubsuming(
+            sectionsAndTheirMatches
+          )(
+            baseSources,
+            baseSectionsByPath
+          )(
+            allSides.baseElement
+          )
+        val subsumingOnLeft =
+          subsumingPairwiseMatchesIncludingTriviallySubsuming(
+            sectionsAndTheirMatches
+          )(
+            leftSources,
+            leftSectionsByPath
+          )(
+            allSides.leftElement
+          )
+        val subsumingOnRight =
+          subsumingPairwiseMatchesIncludingTriviallySubsuming(
+            sectionsAndTheirMatches
+          )(
+            rightSources,
+            rightSectionsByPath
+          )(
+            allSides.rightElement
+          )
+
+        // NOTE: we have to be mindful that a pairwise match may have multiple
+        // sites where the same content can be matched by a smaller all-sides
+        // match that is ambiguous. That can lead to the biting all-sides match
+        // being a 'cross-over', where the two sides are misaligned - each side
+        // of the all-sides match refers to a different site in the pairwise
+        // match.
+        // NOTE: the above can also take place when only one of several
+        // potential ambiguous matches isn't suppressed elsewhere - in which
+        // case *no* fragmentation may occur. That leaves the misaligned
+        // all-sides match hanging around with the larger pairwise match still
+        // subsuming it, so it is left to `pareDownOrSuppressCompletely` to sort
+        // that out later on.
+        (subsumingOnBase intersect subsumingOnLeft).flatMap {
+          case subsuming: Match.BaseAndLeft[Section[Element]] =>
+            val offsetRelativeToSubsumingOnBaseSide =
+              allSides.baseElement.startOffset - subsuming.baseElement.startOffset
+            val offsetRelativeToSubsumingOnLeftSide =
+              allSides.leftElement.startOffset - subsuming.leftElement.startOffset
+
+            Option.when(
+              offsetRelativeToSubsumingOnBaseSide == offsetRelativeToSubsumingOnLeftSide
+            )(
+              subsuming,
+              BiteEdge.Start(startOffsetRelativeToMeal =
+                offsetRelativeToSubsumingOnBaseSide
+              ),
+              BiteEdge.End(onePastEndOffsetRelativeToMeal =
+                allSides.baseElement.onePastEndOffset - subsuming.baseElement.startOffset
+              )
+            )
+        } union (subsumingOnBase intersect subsumingOnRight).flatMap {
+          case subsuming: Match.BaseAndRight[Section[Element]] =>
+            val offsetRelativeToSubsumingOnBaseSide =
+              allSides.baseElement.startOffset - subsuming.baseElement.startOffset
+            val offsetRelativeToSubsumingOnRightSide =
+              allSides.rightElement.startOffset - subsuming.rightElement.startOffset
+
+            Option.when(
+              offsetRelativeToSubsumingOnBaseSide == offsetRelativeToSubsumingOnRightSide
+            )(
+              subsuming,
+              BiteEdge.Start(startOffsetRelativeToMeal =
+                offsetRelativeToSubsumingOnBaseSide
+              ),
+              BiteEdge.End(onePastEndOffsetRelativeToMeal =
+                allSides.baseElement.onePastEndOffset - subsuming.baseElement.startOffset
+              )
+            )
+        } union (subsumingOnLeft intersect subsumingOnRight).flatMap {
+          case subsuming: Match.LeftAndRight[Section[Element]] =>
+            val offsetRelativeToSubsumingOnLeftSide =
+              allSides.leftElement.startOffset - subsuming.leftElement.startOffset
+            val offsetRelativeToSubsumingOnRightSide =
+              allSides.rightElement.startOffset - subsuming.rightElement.startOffset
+
+            Option.when(
+              offsetRelativeToSubsumingOnLeftSide == offsetRelativeToSubsumingOnRightSide
+            )(
+              subsuming,
+              BiteEdge.Start(startOffsetRelativeToMeal =
+                offsetRelativeToSubsumingOnLeftSide
+              ),
+              BiteEdge.End(onePastEndOffsetRelativeToMeal =
+                allSides.leftElement.onePastEndOffset - subsuming.leftElement.startOffset
+              )
+            )
+        }
+      end pairwiseMatchesSubsumingOnBothSidesWithBiteEdges
 
       def parallelMatchesOnly: MatchesAndTheirSections =
         // PLAN:
@@ -2323,685 +3018,6 @@ object MatchAnalysis extends StrictLogging:
         reconciled
 
       end reconcileOverlappingMatches
-
-      private def startOffsetOnBase(
-          aMatch: GenericMatch[Element]
-      ): Option[Int] =
-        aMatch match
-          case Match.AllSides(baseSection, _, _) =>
-            Some(baseSection.startOffset)
-          case Match.BaseAndLeft(baseSection, _) =>
-            Some(baseSection.startOffset)
-          case Match.BaseAndRight(baseSection, _) =>
-            Some(baseSection.startOffset)
-          case _ => None
-
-      private def startOffsetOnLeft(
-          aMatch: GenericMatch[Element]
-      ): Option[Int] =
-        aMatch match
-          case Match.AllSides(_, leftSection, _) =>
-            Some(leftSection.startOffset)
-          case Match.BaseAndLeft(_, leftSection) =>
-            Some(leftSection.startOffset)
-          case Match.LeftAndRight(leftSection, _) =>
-            Some(leftSection.startOffset)
-          case _ => None
-
-      private def startOffsetOnRight(
-          aMatch: GenericMatch[Element]
-      ): Option[Int] =
-        aMatch match
-          case Match.AllSides(_, _, rightSection) =>
-            Some(rightSection.startOffset)
-          case Match.BaseAndRight(_, rightSection) =>
-            Some(rightSection.startOffset)
-          case Match.LeftAndRight(_, rightSection) =>
-            Some(rightSection.startOffset)
-          case _ => None
-
-      private def reconciliationPostcondition(): Unit =
-        baseSectionsByPath.values.flatMap(_.iterator).foreach { baseSection =>
-          assert(!baseSubsumes(baseSection))
-        }
-        leftSectionsByPath.values.flatMap(_.iterator).foreach { leftSection =>
-          assert(!leftSubsumes(leftSection))
-        }
-        rightSectionsByPath.values.flatMap(_.iterator).foreach { rightSection =>
-          assert(!rightSubsumes(rightSection))
-        }
-
-        // No match should be redundant - i.e. no match should involve sections
-        // that all belong to another match. This goes without saying for
-        // all-sides matches, as any redundancy would imply equivalent
-        // all-sides matches being associated with the same sections - this
-        // isn't allowed by a `MultiDict` instance. The same applies for
-        // pairwise matches of the same kind; pairwise matches of different
-        // kinds can't make each other redundant.
-        // What we have to watch out for are pairwise matches having *both*
-        // sections also belonging to an all-sides match. Note that it *is*
-        // legitimate to have a pairwise match sharing just one section with an
-        // all-sides match; they are just ambiguous matches.
-
-        val matchesBySectionPairs =
-          sectionsAndTheirMatches.values.toSet.foldLeft(
-            MultiDict.empty[(Section[Element], Section[Element]), Match[
-              Section[Element]
-            ]]
-          )((matchesBySectionPairs, aMatch) =>
-            aMatch match
-              case Match.AllSides(baseSection, leftSection, rightSection) =>
-                matchesBySectionPairs + ((
-                  baseSection,
-                  leftSection
-                ) -> aMatch) + ((baseSection, rightSection) -> aMatch) + ((
-                  leftSection,
-                  rightSection
-                ) -> aMatch)
-              case Match.BaseAndLeft(baseSection, leftSection) =>
-                matchesBySectionPairs + ((
-                  baseSection,
-                  leftSection
-                ) -> aMatch)
-              case Match.BaseAndRight(baseSection, rightSection) =>
-                matchesBySectionPairs + ((
-                  baseSection,
-                  rightSection
-                ) -> aMatch)
-              case Match.LeftAndRight(leftSection, rightSection) =>
-                matchesBySectionPairs + ((
-                  leftSection,
-                  rightSection
-                ) -> aMatch)
-          )
-
-        matchesBySectionPairs.keySet.foreach { sectionPair =>
-          val matches = matchesBySectionPairs.get(sectionPair)
-
-          val (allSides, pairwiseMatches) =
-            matches.partition(_.isAnAllSidesMatch)
-
-          if allSides.nonEmpty then
-            assert(
-              pairwiseMatches.isEmpty,
-              s"Found redundancy between pairwise matches: ${pprintCustomised(pairwiseMatches)} and an all-sides match in: ${pprintCustomised(allSides)}."
-            )
-          end if
-        }
-
-        if parallelMatchesGroupIdsByMatch.nonEmpty then
-          assert(
-            parallelMatchesGroupIdsByMatch.keySet == matches,
-            s"If groups of parallel matches have been discovered, they should cover the overall population of matches exactly."
-          )
-
-          parallelMatchesGroupIdsByMatch.toSeq
-            .groupBy(_._2)
-            .values
-            .foreach { group =>
-              val matchesInGroup = group.map(_._1)
-
-              case class SidePerspective(path: Path, startOffset: Int)
-
-              case class MatchSynopsis(
-                  base: Option[SidePerspective],
-                  left: Option[SidePerspective],
-                  right: Option[SidePerspective]
-              )
-
-              object MatchSynopsis:
-                def apply(aMatch: GenericMatch[Element]): MatchSynopsis =
-                  MatchSynopsis(
-                    base = (pathOnBase(aMatch), startOffsetOnBase(aMatch))
-                      .mapN(SidePerspective.apply),
-                    left = (pathOnLeft(aMatch), startOffsetOnLeft(aMatch))
-                      .mapN(SidePerspective.apply),
-                    right = (pathOnRight(aMatch), startOffsetOnRight(aMatch))
-                      .mapN(SidePerspective.apply)
-                  )
-              end MatchSynopsis
-
-              val basePaths = matchesInGroup.flatMap(pathOnBase).toSet
-              assert(
-                basePaths.size <= 1,
-                s"""Base paths for a group of parallel matches should be the same,
-                   |but vary: $basePaths.
-                   |Matches are: ${pprintCustomised(
-                    matchesInGroup.map(MatchSynopsis.apply)
-                  )}""".stripMargin
-              )
-
-              val leftPaths = matchesInGroup.flatMap(pathOnLeft).toSet
-              assert(
-                leftPaths.size <= 1,
-                s"""Left paths for a group of parallel matches should be the same,
-                   |but vary: $leftPaths.
-                   |Matches are: ${pprintCustomised(
-                    matchesInGroup.map(MatchSynopsis.apply)
-                  )}""".stripMargin
-              )
-
-              val rightPaths = matchesInGroup.flatMap(pathOnRight).toSet
-              assert(
-                rightPaths.size <= 1,
-                s"""Right paths for a group of parallel matches should be the same,
-                   |but vary: $rightPaths.
-                   |Matches are: ${pprintCustomised(
-                    matchesInGroup.map(MatchSynopsis.apply)
-                  )}""".stripMargin
-              )
-
-              def checkOrderIsConsistentAcrossSides(
-                  firstSide: String,
-                  secondSide: String,
-                  firstSideStartOffset: GenericMatch[Element] => Option[Int],
-                  secondSideStartOffset: GenericMatch[Element] => Option[Int]
-              ): Unit =
-                extension (matches: Seq[GenericMatch[Element]])
-                  private def sortWhereRelevantBy(
-                      startOffsetOf: GenericMatch[Element] => Option[Int]
-                  ): Seq[GenericMatch[Element]] =
-                    matches
-                      .flatMap(aMatch =>
-                        startOffsetOf(aMatch)
-                          .map(offset => aMatch -> offset)
-                      )
-                      .sortBy(_._2)
-                      .map(_._1)
-
-                end extension
-
-                // NOTE: in the next two bindings, we have to sort first
-                // according to the other side's perspective. This is to avoid
-                // situations where several matches happen to have the same
-                // start offset on one side but different offsets on the other.
-                // As sorting is stable, that could lead to the side with
-                // colliding offsets having the 'wrong' initial order that would
-                // be preserved by the sort. Tip of the hat to Jules for
-                // spotting the pitfall in the first place.
-
-                val matchesOrderedFromFirstSidePerspective =
-                  matchesInGroup
-                    .sortWhereRelevantBy(secondSideStartOffset)
-                    .sortWhereRelevantBy(firstSideStartOffset)
-
-                val matchesOrderedFromSecondSidePerspective =
-                  matchesInGroup
-                    .sortWhereRelevantBy(firstSideStartOffset)
-                    .sortWhereRelevantBy(secondSideStartOffset)
-
-                val commonMatches =
-                  matchesOrderedFromFirstSidePerspective.toSet intersect matchesOrderedFromSecondSidePerspective.toSet
-
-                val commonMatchesOrderedFromFirstSidePerspective =
-                  matchesOrderedFromFirstSidePerspective.filter(
-                    commonMatches.contains
-                  )
-                val commonMatchesOrderedFromSecondSidePerspective =
-                  matchesOrderedFromSecondSidePerspective.filter(
-                    commonMatches.contains
-                  )
-
-                assert(
-                  commonMatchesOrderedFromFirstSidePerspective == commonMatchesOrderedFromSecondSidePerspective,
-                  s"""
-                     |Expected a consistent ordering of matches relevant to the sides $firstSide and $secondSide,
-                     |on the $firstSide they are:
-                     |${pprintCustomised(
-                      commonMatchesOrderedFromFirstSidePerspective.map(
-                        MatchSynopsis.apply
-                      )
-                    )}
-                     |and on the $secondSide they are:
-                     |${pprintCustomised(
-                      commonMatchesOrderedFromSecondSidePerspective.map(
-                        MatchSynopsis.apply
-                      )
-                    )}
-                     |""".stripMargin
-                )
-              end checkOrderIsConsistentAcrossSides
-
-              checkOrderIsConsistentAcrossSides(
-                "base",
-                "left",
-                startOffsetOnBase,
-                startOffsetOnLeft
-              )
-              checkOrderIsConsistentAcrossSides(
-                "base",
-                "right",
-                startOffsetOnBase,
-                startOffsetOnRight
-              )
-              checkOrderIsConsistentAcrossSides(
-                "left",
-                "right",
-                startOffsetOnLeft,
-                startOffsetOnRight
-              )
-            }
-        end if
-      end reconciliationPostcondition
-
-      private def pathOnBase(aMatch: GenericMatch[Element]): Option[Path] =
-        aMatch match
-          case Match.AllSides(baseSection, _, _) =>
-            Some(baseSources.pathFor(baseSection))
-          case Match.BaseAndLeft(baseSection, _) =>
-            Some(baseSources.pathFor(baseSection))
-          case Match.BaseAndRight(baseSection, _) =>
-            Some(baseSources.pathFor(baseSection))
-          case _ => None
-
-      private def pathOnLeft(aMatch: GenericMatch[Element]): Option[Path] =
-        aMatch match
-          case Match.AllSides(_, leftSection, _) =>
-            Some(leftSources.pathFor(leftSection))
-          case Match.BaseAndLeft(_, leftSection) =>
-            Some(leftSources.pathFor(leftSection))
-          case Match.LeftAndRight(leftSection, _) =>
-            Some(leftSources.pathFor(leftSection))
-          case _ => None
-
-      private def pathOnRight(aMatch: GenericMatch[Element]): Option[Path] =
-        aMatch match
-          case Match.AllSides(_, _, rightSection) =>
-            Some(rightSources.pathFor(rightSection))
-          case Match.BaseAndRight(_, rightSection) =>
-            Some(rightSources.pathFor(rightSection))
-          case Match.LeftAndRight(_, rightSection) =>
-            Some(rightSources.pathFor(rightSection))
-          case _ => None
-
-      private def checkInvariant(): Unit =
-        // We expect to tally either two lots of a given pairwise match or three
-        // lots of a given all-sides match; we therefore scale the
-        // raw multiplicities of the section to take this into account.
-        val multiplicityScaleSubdivisibleByTwoOrThree = 6
-
-        val multiplicityScaleDividedIntoAThirdForEachSideOfAnAllSidesMatch =
-          multiplicityScaleSubdivisibleByTwoOrThree / 3
-
-        val multiplicityScaleDividedIntoAHalfForEachSideOfAPairwiseMatch =
-          multiplicityScaleSubdivisibleByTwoOrThree / 2
-
-        val baseSectionMultiplicities = baseSectionsByPath.values
-          .flatMap(_.iterator)
-          .groupBy(identity)
-          .map((section, group) =>
-            section -> multiplicityScaleSubdivisibleByTwoOrThree * group.size
-          )
-
-        val leftSectionMultiplicities = leftSectionsByPath.values
-          .flatMap(_.iterator)
-          .groupBy(identity)
-          .map((section, group) =>
-            section -> multiplicityScaleSubdivisibleByTwoOrThree * group.size
-          )
-
-        val rightSectionMultiplicities = rightSectionsByPath.values
-          .flatMap(_.iterator)
-          .groupBy(identity)
-          .map((section, group) =>
-            section -> multiplicityScaleSubdivisibleByTwoOrThree * group.size
-          )
-
-        val tallyAllSides: Option[Int] => Option[Int] = {
-          case Some(multiplicity) =>
-            // Once we've accounted for the multiplicity, remove the entry.
-            Option.unless(
-              multiplicityScaleDividedIntoAThirdForEachSideOfAnAllSidesMatch == multiplicity
-            )(
-              multiplicity - multiplicityScaleDividedIntoAThirdForEachSideOfAnAllSidesMatch
-            )
-          // If we have an occurrence and there is no entry, start a negative
-          // count.
-          case None =>
-            Some(
-              -multiplicityScaleDividedIntoAThirdForEachSideOfAnAllSidesMatch
-            )
-        }
-
-        val tallyPairwise: Option[Int] => Option[Int] = {
-          case Some(multiplicity) =>
-            // Once we've accounted for the multiplicity, remove the entry.
-            Option.unless(
-              multiplicityScaleDividedIntoAHalfForEachSideOfAPairwiseMatch == multiplicity
-            )(
-              multiplicity - multiplicityScaleDividedIntoAHalfForEachSideOfAPairwiseMatch
-            )
-          // If we have an occurrence and there is no entry, start a negative
-          // count.
-          case None =>
-            Some(-multiplicityScaleDividedIntoAHalfForEachSideOfAPairwiseMatch)
-        }
-
-        val (
-          unbalancedBaseSectionMultiplicities,
-          unbalancedLeftSectionMultiplicities,
-          unbalancedRightSectionMultiplicities
-        ) = sectionsAndTheirMatches.values.foldLeft(
-          (
-            baseSectionMultiplicities,
-            leftSectionMultiplicities,
-            rightSectionMultiplicities
-          )
-        ) {
-          case (
-                (
-                  baseSectionMultiplicities,
-                  leftSectionMultiplicities,
-                  rightSectionMultiplicities
-                ),
-                aMatch
-              ) =>
-            aMatch match
-              case Match.AllSides(
-                    baseSection,
-                    leftSection,
-                    rightSection
-                  ) =>
-                (
-                  baseSectionMultiplicities.updatedWith(baseSection)(
-                    tallyAllSides
-                  ),
-                  leftSectionMultiplicities.updatedWith(leftSection)(
-                    tallyAllSides
-                  ),
-                  rightSectionMultiplicities.updatedWith(rightSection)(
-                    tallyAllSides
-                  )
-                )
-              case Match.BaseAndLeft(
-                    baseSection,
-                    leftSection
-                  ) =>
-                (
-                  baseSectionMultiplicities.updatedWith(baseSection)(
-                    tallyPairwise
-                  ),
-                  leftSectionMultiplicities.updatedWith(leftSection)(
-                    tallyPairwise
-                  ),
-                  rightSectionMultiplicities
-                )
-              case Match.BaseAndRight(
-                    baseSection,
-                    rightSection
-                  ) =>
-                (
-                  baseSectionMultiplicities.updatedWith(baseSection)(
-                    tallyPairwise
-                  ),
-                  leftSectionMultiplicities,
-                  rightSectionMultiplicities.updatedWith(rightSection)(
-                    tallyPairwise
-                  )
-                )
-              case Match.LeftAndRight(
-                    leftSection,
-                    rightSection
-                  ) =>
-                (
-                  baseSectionMultiplicities,
-                  leftSectionMultiplicities.updatedWith(leftSection)(
-                    tallyPairwise
-                  ),
-                  rightSectionMultiplicities.updatedWith(rightSection)(
-                    tallyPairwise
-                  )
-                )
-        }
-
-        assert(
-          unbalancedBaseSectionMultiplicities.isEmpty,
-          s"Found unbalanced base section multiplicities, these are:\n${pprintCustomised(unbalancedBaseSectionMultiplicities)}"
-        )
-        assert(
-          unbalancedLeftSectionMultiplicities.isEmpty,
-          s"Found unbalanced left section multiplicities, these are:\n${pprintCustomised(unbalancedLeftSectionMultiplicities)}"
-        )
-        assert(
-          unbalancedRightSectionMultiplicities.isEmpty,
-          s"Found unbalanced right section multiplicities, these are:\n${pprintCustomised(unbalancedRightSectionMultiplicities)}"
-        )
-      end checkInvariant
-
-      private def pareDownOrSuppressCompletely[MatchType <: GenericMatch[
-        Element
-      ]](
-          aMatch: MatchType
-      ): ParallelMatchesGroupIdTracking[Option[DependentMatchType[MatchType]]] =
-        // NOTE: one thing to watch out is when fragments resulting from
-        // larger pairwise matches being eaten into collide with equivalent
-        // pairwise matches found by fingerprint matching. This can take the
-        // form of the fragments coming first due to larger all-sides matches,
-        // or the pairwise matches from fingerprint matching can be followed
-        // by fragmentation if the all-sides eating into the larger pairwise
-        // matches also come from the same fingerprinting that yielded the
-        // pairwise matching. Intercepting this here addresses both cases. {
-        val result: Option[DependentMatchType[MatchType]] = aMatch match
-          case Match.AllSides(baseSection, leftSection, rightSection) =>
-            val trivialSubsumptionSize = baseSection.size
-
-            val subsumingOnBase =
-              subsumingMatches(
-                sectionsAndTheirMatches
-              )(
-                baseSources,
-                baseSectionsByPath
-              )(
-                baseSection,
-                includeTrivialSubsumption = false
-              )
-
-            val subsumingOnLeft =
-              subsumingMatches(
-                sectionsAndTheirMatches
-              )(
-                leftSources,
-                leftSectionsByPath
-              )(
-                leftSection,
-                includeTrivialSubsumption = false
-              )
-
-            val subsumingOnRight =
-              subsumingMatches(
-                sectionsAndTheirMatches
-              )(
-                rightSources,
-                rightSectionsByPath
-              )(
-                rightSection,
-                includeTrivialSubsumption = false
-              )
-
-            val allSidesSubsumingOnLeft =
-              subsumingOnLeft.filter(_.isAnAllSidesMatch)
-            val allSidesSubsumingOnRight =
-              subsumingOnRight.filter(_.isAnAllSidesMatch)
-            val allSidesSubsumingOnBase =
-              subsumingOnBase.filter(_.isAnAllSidesMatch)
-
-            val subsumedByAnAllSidesMatchOnMoreThanOneSide =
-              (allSidesSubsumingOnLeft intersect allSidesSubsumingOnRight).nonEmpty
-                || (allSidesSubsumingOnBase intersect allSidesSubsumingOnLeft).nonEmpty
-                || (allSidesSubsumingOnBase intersect allSidesSubsumingOnRight).nonEmpty
-
-            if !subsumedByAnAllSidesMatchOnMoreThanOneSide then
-              val subsumedBySomeMatchOnJustTheBase =
-                (subsumingOnBase diff (subsumingOnLeft union subsumingOnRight)).nonEmpty
-              val subsumedBySomeMatchOnJustTheLeft =
-                (subsumingOnLeft diff (subsumingOnBase union subsumingOnRight)).nonEmpty
-              val subsumedBySomeMatchOnJustTheRight =
-                (subsumingOnRight diff (subsumingOnBase union subsumingOnLeft)).nonEmpty
-
-              // NOTE: an all-sides match could be subsumed by *some* match on
-              // just one side for two or three sides; they would be
-              // *different* matches, each doing a one-sided subsumption.
-              (
-                subsumedBySomeMatchOnJustTheBase,
-                subsumedBySomeMatchOnJustTheLeft,
-                subsumedBySomeMatchOnJustTheRight
-              ) match
-                case (false, false, false) =>
-                  Option.unless(
-                    baseSubsumes(baseSection) || leftSubsumes(
-                      leftSection
-                    ) || rightSubsumes(rightSection)
-                  )(aMatch)
-                case (true, false, false) =>
-                  Option.unless(
-                    leftSubsumes(leftSection) || rightSubsumes(
-                      rightSection
-                    )
-                  )(Match.LeftAndRight(leftSection, rightSection))
-                case (false, true, false) =>
-                  Option.unless(
-                    baseSubsumes(baseSection) || rightSubsumes(
-                      rightSection
-                    )
-                  )(Match.BaseAndRight(baseSection, rightSection))
-                case (false, false, true) =>
-                  Option.unless(
-                    baseSubsumes(baseSection) || leftSubsumes(
-                      leftSection
-                    )
-                  )(Match.BaseAndLeft(baseSection, leftSection))
-                case _ => None
-              end match
-            else None
-            end if
-
-          case Match.BaseAndLeft(baseSection, leftSection) =>
-            Option.unless(
-              baseSubsumes(baseSection) || leftSubsumes(
-                leftSection
-              )
-            )(aMatch)
-
-          case Match.BaseAndRight(baseSection, rightSection) =>
-            Option.unless(
-              baseSubsumes(baseSection) || rightSubsumes(
-                rightSection
-              )
-            )(aMatch)
-
-          case Match.LeftAndRight(leftSection, rightSection) =>
-            Option.unless(
-              leftSubsumes(leftSection) || rightSubsumes(
-                rightSection
-              )
-            )(aMatch)
-
-          case _ => None
-
-        result.traverse(paredDownMatch =>
-          propagateGroupId(aMatch, paredDownMatch) as paredDownMatch
-        )
-      end pareDownOrSuppressCompletely
-
-      private def pairwiseMatchesSubsumingOnBothSidesWithBiteEdges(
-          allSides: Match.AllSides[Section[Element]]
-      ): Set[(PairwiseMatch, BiteEdge, BiteEdge)] =
-        val subsumingOnBase =
-          subsumingPairwiseMatchesIncludingTriviallySubsuming(
-            sectionsAndTheirMatches
-          )(
-            baseSources,
-            baseSectionsByPath
-          )(
-            allSides.baseElement
-          )
-        val subsumingOnLeft =
-          subsumingPairwiseMatchesIncludingTriviallySubsuming(
-            sectionsAndTheirMatches
-          )(
-            leftSources,
-            leftSectionsByPath
-          )(
-            allSides.leftElement
-          )
-        val subsumingOnRight =
-          subsumingPairwiseMatchesIncludingTriviallySubsuming(
-            sectionsAndTheirMatches
-          )(
-            rightSources,
-            rightSectionsByPath
-          )(
-            allSides.rightElement
-          )
-
-        // NOTE: we have to be mindful that a pairwise match may have multiple
-        // sites where the same content can be matched by a smaller all-sides
-        // match that is ambiguous. That can lead to the biting all-sides match
-        // being a 'cross-over', where the two sides are misaligned - each side
-        // of the all-sides match refers to a different site in the pairwise
-        // match.
-        // NOTE: the above can also take place when only one of several
-        // potential ambiguous matches isn't suppressed elsewhere - in which
-        // case *no* fragmentation may occur. That leaves the misaligned
-        // all-sides match hanging around with the larger pairwise match still
-        // subsuming it, so it is left to `pareDownOrSuppressCompletely` to sort
-        // that out later on.
-        (subsumingOnBase intersect subsumingOnLeft).flatMap {
-          case subsuming: Match.BaseAndLeft[Section[Element]] =>
-            val offsetRelativeToSubsumingOnBaseSide =
-              allSides.baseElement.startOffset - subsuming.baseElement.startOffset
-            val offsetRelativeToSubsumingOnLeftSide =
-              allSides.leftElement.startOffset - subsuming.leftElement.startOffset
-
-            Option.when(
-              offsetRelativeToSubsumingOnBaseSide == offsetRelativeToSubsumingOnLeftSide
-            )(
-              subsuming,
-              BiteEdge.Start(startOffsetRelativeToMeal =
-                offsetRelativeToSubsumingOnBaseSide
-              ),
-              BiteEdge.End(onePastEndOffsetRelativeToMeal =
-                allSides.baseElement.onePastEndOffset - subsuming.baseElement.startOffset
-              )
-            )
-        } union (subsumingOnBase intersect subsumingOnRight).flatMap {
-          case subsuming: Match.BaseAndRight[Section[Element]] =>
-            val offsetRelativeToSubsumingOnBaseSide =
-              allSides.baseElement.startOffset - subsuming.baseElement.startOffset
-            val offsetRelativeToSubsumingOnRightSide =
-              allSides.rightElement.startOffset - subsuming.rightElement.startOffset
-
-            Option.when(
-              offsetRelativeToSubsumingOnBaseSide == offsetRelativeToSubsumingOnRightSide
-            )(
-              subsuming,
-              BiteEdge.Start(startOffsetRelativeToMeal =
-                offsetRelativeToSubsumingOnBaseSide
-              ),
-              BiteEdge.End(onePastEndOffsetRelativeToMeal =
-                allSides.baseElement.onePastEndOffset - subsuming.baseElement.startOffset
-              )
-            )
-        } union (subsumingOnLeft intersect subsumingOnRight).flatMap {
-          case subsuming: Match.LeftAndRight[Section[Element]] =>
-            val offsetRelativeToSubsumingOnLeftSide =
-              allSides.leftElement.startOffset - subsuming.leftElement.startOffset
-            val offsetRelativeToSubsumingOnRightSide =
-              allSides.rightElement.startOffset - subsuming.rightElement.startOffset
-
-            Option.when(
-              offsetRelativeToSubsumingOnLeftSide == offsetRelativeToSubsumingOnRightSide
-            )(
-              subsuming,
-              BiteEdge.Start(startOffsetRelativeToMeal =
-                offsetRelativeToSubsumingOnLeftSide
-              ),
-              BiteEdge.End(onePastEndOffsetRelativeToMeal =
-                allSides.leftElement.onePastEndOffset - subsuming.leftElement.startOffset
-              )
-            )
-        }
-      end pairwiseMatchesSubsumingOnBothSidesWithBiteEdges
 
       private def hiveOffNonOverlappedMatchFrom(
           aMatch: GenericMatch[Element]
