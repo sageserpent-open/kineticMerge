@@ -5,6 +5,7 @@ import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import de.sciss.fingertree.RangedSeq
 import org.junit.jupiter.api.TestFactory
+import scala.collection.immutable.MultiSet
 
 case class FakeSection(startOffset: Int, size: Int, id: Int = 0)
     extends Section[Int]:
@@ -133,7 +134,7 @@ class SectionsSeenTest:
 
       def operationSequences(
           partialResult: Vector[Operation],
-          sectionsSeen: Map[FakeSection, Int]
+          sectionsSeen: MultiSet[FakeSection]
       ): Trials[Vector[Operation]] =
         if partialResult.size >= numberOfOperations then
           Trials.api.only(partialResult)
@@ -144,7 +145,7 @@ class SectionsSeenTest:
               Trials.api.alternateWithWeights(
                 4 -> sections.map(Operation.Add.apply),
                 4 -> Trials.api
-                  .choose(sectionsSeen.keySet)
+                  .choose(sectionsSeen.toSet)
                   .map(
                     Operation.Add.apply
                   ) // Add some duplicates in occasionally.
@@ -154,7 +155,7 @@ class SectionsSeenTest:
             else
               Trials.api.alternateWithWeights(
                 6 -> Trials.api
-                  .choose(sectionsSeen.keySet)
+                  .choose(sectionsSeen.toSet)
                   .map(
                     Operation.Remove.apply
                   ),
@@ -165,22 +166,19 @@ class SectionsSeenTest:
                   ) // Attempt to remove a section that isn't present occasionally.
               )
             ,
-            ranges(sectionsSeen.keySet).map(Operation.QueryIncludes.apply),
-            ranges(sectionsSeen.keySet).map(Operation.QueryOverlaps.apply)
+            ranges(sectionsSeen.toSet).map(Operation.QueryIncludes.apply),
+            ranges(sectionsSeen.toSet).map(Operation.QueryOverlaps.apply)
           )
 
           operations.flatMap { op =>
             val nextSectionsSeen = op match
-              case Operation.Add(s)    => sectionsSeen.updated(s, sectionsSeen.getOrElse(s, 0) + 1)
-              case Operation.Remove(s) =>
-                val count = sectionsSeen.getOrElse(s, 0)
-                if count > 1 then sectionsSeen.updated(s, count - 1)
-                else sectionsSeen - s
+              case Operation.Add(s)    => sectionsSeen + s
+              case Operation.Remove(s) => sectionsSeen - s
               case _                   => sectionsSeen
             operationSequences(partialResult :+ op, nextSectionsSeen)
           }
 
-      operationSequences(Vector.empty, Map.empty)
+      operationSequences(Vector.empty, MultiSet.empty)
     }
 
   enum Operation:
