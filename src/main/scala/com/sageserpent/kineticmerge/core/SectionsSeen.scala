@@ -44,7 +44,6 @@ object SectionsSeen:
         size
       )
         .hashCode()
-    end hashCode
 
     override def isEmpty: Boolean = false
 
@@ -69,15 +68,12 @@ object SectionsSeen:
             search(t.left)
 
             if t.section.startOffset <= start then
-              if t.section.onePastEndOffset >= onePastEnd
-              then results += t.section
-              end if
+              if t.section.onePastEndOffset >= onePastEnd then
+                results += t.section
               search(t.right)
-            end if
 
       search(this)
       results
-    end filterIncludes
 
     override def filterOverlaps(
         interval: (Int, Int)
@@ -92,15 +88,12 @@ object SectionsSeen:
             search(t.left)
 
             if t.section.startOffset < onePastEnd then
-              if t.section.onePastEndOffset > start
-              then results += t.section
-              end if
+              if t.section.onePastEndOffset > start then
+                results += t.section
               search(t.right)
-            end if
 
       search(this)
       results
-    end filterOverlaps
 
     override def +(section: Section[Element]): SectionsSeen[Element] =
       // Use both the section's hash code and the current treap's hash code to
@@ -136,7 +129,6 @@ object SectionsSeen:
           else t.copy(right = add(t.right)).recompute
 
       add(this)
-    end +
 
     override def -(section: Section[Element]): SectionsSeen[Element] =
       def remove(
@@ -154,10 +146,8 @@ object SectionsSeen:
             val newRight = remove(t.right)
             if newRight eq t.right then t
             else t.copy(right = newRight).recompute
-            end if
 
       remove(this).asInstanceOf[SectionsSeen[Element]]
-    end -
 
     private def sectionIsUnique: Boolean = 1 == multiplicity
 
@@ -202,7 +192,6 @@ object SectionsSeen:
         maxOnePastEndOffset = section.onePastEndOffset max leftMax max rightMax,
         size = multiplicity + leftSize + rightSize
       )
-    end recompute
   end Treap
 
   private object Empty extends SectionsSeen[Any]:
@@ -223,7 +212,6 @@ object SectionsSeen:
         multiplicity = 1,
         size = 1
       )
-    end +
     override def -(section: Section[Any]): SectionsSeen[Any] = this
     override def iterator: Iterator[Section[Any]]            = Iterator.empty
     override def isEmpty: Boolean                            = true

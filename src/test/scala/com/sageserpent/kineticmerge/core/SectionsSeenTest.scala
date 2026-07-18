@@ -32,10 +32,22 @@ class SectionsSeenTest:
         case Operation.Add(s) =>
           sectionsSeen = sectionsSeen + s
           reference = reference + s
+          assert(sectionsSeen.isEmpty == reference.iterator.isEmpty)
+          assert(sectionsSeen.size == reference.iterator.size)
+          assert(sectionsSeen.isEmpty == sectionsSeen.iterator.isEmpty)
+          assert(sectionsSeen.nonEmpty == sectionsSeen.iterator.nonEmpty)
+          assert(sectionsSeen.size == sectionsSeen.iterator.size)
+          assert(sectionsSeen.headOption == sectionsSeen.iterator.toSeq.headOption)
         case Operation.Remove(s) =>
           if reference.iterator.contains(s) then referenceWasHit = true
           sectionsSeen = sectionsSeen - s
           reference = reference - s
+          assert(sectionsSeen.isEmpty == reference.iterator.isEmpty)
+          assert(sectionsSeen.size == reference.iterator.size)
+          assert(sectionsSeen.isEmpty == sectionsSeen.iterator.isEmpty)
+          assert(sectionsSeen.nonEmpty == sectionsSeen.iterator.nonEmpty)
+          assert(sectionsSeen.size == sectionsSeen.iterator.size)
+          assert(sectionsSeen.headOption == sectionsSeen.iterator.toSeq.headOption)
         case Operation.QueryIncludes(start, end) =>
           val result   = sectionsSeen.filterIncludes((start, end)).toSet
           val expected = reference.filterIncludes((start, end)).toSet
@@ -56,8 +68,12 @@ class SectionsSeenTest:
 
       if !referenceWasHit then Trials.reject()
 
+      val startOffsets = sectionsSeen.iterator.map(_.startOffset).toSeq
+      assert(startOffsets == startOffsets.sorted, "SectionsSeen iterator is not sorted by startOffset")
+
       assert(
-        reference.iterator.toSet == sectionsSeen.iterator.toSet,
+        reference.iterator.toSeq.sortBy(s => (s.startOffset, s.size, s.id)) ==
+          sectionsSeen.iterator.toSeq.sortBy(s => (s.startOffset, s.size, s.asInstanceOf[FakeSection].id)),
         "Final contents mismatch"
       )
     }
@@ -117,7 +133,7 @@ class SectionsSeenTest:
 
       def operationSequences(
           partialResult: Vector[Operation],
-          sectionsSeen: Set[FakeSection]
+          sectionsSeen: Map[FakeSection, Int]
       ): Trials[Vector[Operation]] =
         if partialResult.size >= numberOfOperations then
           Trials.api.only(partialResult)
@@ -126,9 +142,9 @@ class SectionsSeenTest:
             if sectionsSeen.isEmpty then sections.map(Operation.Add.apply)
             else
               Trials.api.alternateWithWeights(
-                3 -> sections.map(Operation.Add.apply),
-                1 -> Trials.api
-                  .choose(sectionsSeen)
+                4 -> sections.map(Operation.Add.apply),
+                4 -> Trials.api
+                  .choose(sectionsSeen.keySet)
                   .map(
                     Operation.Add.apply
                   ) // Add some duplicates in occasionally.
@@ -137,8 +153,8 @@ class SectionsSeenTest:
             if sectionsSeen.isEmpty then sections.map(Operation.Remove.apply)
             else
               Trials.api.alternateWithWeights(
-                3 -> Trials.api
-                  .choose(sectionsSeen)
+                6 -> Trials.api
+                  .choose(sectionsSeen.keySet)
                   .map(
                     Operation.Remove.apply
                   ),
@@ -149,19 +165,22 @@ class SectionsSeenTest:
                   ) // Attempt to remove a section that isn't present occasionally.
               )
             ,
-            ranges(sectionsSeen).map(Operation.QueryIncludes.apply),
-            ranges(sectionsSeen).map(Operation.QueryOverlaps.apply)
+            ranges(sectionsSeen.keySet).map(Operation.QueryIncludes.apply),
+            ranges(sectionsSeen.keySet).map(Operation.QueryOverlaps.apply)
           )
 
           operations.flatMap { op =>
             val nextSectionsSeen = op match
-              case Operation.Add(s)    => sectionsSeen + s
-              case Operation.Remove(s) => sectionsSeen - s
+              case Operation.Add(s)    => sectionsSeen.updated(s, sectionsSeen.getOrElse(s, 0) + 1)
+              case Operation.Remove(s) =>
+                val count = sectionsSeen.getOrElse(s, 0)
+                if count > 1 then sectionsSeen.updated(s, count - 1)
+                else sectionsSeen - s
               case _                   => sectionsSeen
             operationSequences(partialResult :+ op, nextSectionsSeen)
           }
 
-      operationSequences(Vector.empty, Set.empty)
+      operationSequences(Vector.empty, Map.empty)
     }
 
   enum Operation:
