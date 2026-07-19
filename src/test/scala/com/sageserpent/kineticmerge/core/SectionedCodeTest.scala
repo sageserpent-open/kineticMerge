@@ -19,6 +19,7 @@ import org.junit.jupiter.api.{Order as _, *}
 
 import _root_.java.util.concurrent.TimeUnit
 import scala.concurrent.duration.Duration
+import scala.io.Source
 
 class SectionedCodeTest:
   import SectionedCodeTest.*
@@ -109,6 +110,153 @@ class SectionedCodeTest:
       )
   end sourcesCanBeReconstructedFromTheAnalysis
 
+  @Test
+  def reproduceStackOverflow(): Unit =
+    val recipe = Source
+      .fromResource("recipeForStackOverflow.txt")
+      .getLines()
+      .mkString("\n")
+
+    testPlansFavouringMatches
+      .withRecipe(recipe)
+      .supplyTo { testPlan =>
+        import testPlan.*
+        // Scalafmt 3.8.5 will wreck this block of code if it isn't
+        // protected by braces; it seems it doesn't play well with the
+        // preceding import statement.
+        {
+          println(
+            s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
+          )
+          println("Sizes of common to all three sides...")
+          pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
+          println("Sizes of common to base and left...")
+          pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
+          println("Sizes of common to base and right...")
+          pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
+          println("Sizes of common to left and right...")
+          pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
+
+          val configuration = Configuration(
+            minimumMatchSize = minimumPossibleExpectedMatchSize,
+            thresholdSizeFractionForMatching =
+              minimumSizeFractionForMotionDetection,
+            minimumAmbiguousMatchSize = 0,
+            ambiguousMatchesThreshold = 10
+          )
+
+          Assertions.assertDoesNotThrow { () =>
+            SectionedCode.of(
+              baseSources,
+              leftSources,
+              rightSources
+            )(
+              configuration,
+              suppressMatchesInvolvingOverlappingSections = true
+            )
+          }
+        }
+      }
+  end reproduceStackOverflow
+
+  @Test
+  def reproduceIllegalArgument(): Unit =
+    val recipe = Source
+      .fromResource("recipeForIllegalArgument.txt")
+      .getLines()
+      .mkString("\n")
+
+    testPlansFavouringMatches
+      .withRecipe(recipe)
+      .supplyTo { testPlan =>
+        import testPlan.*
+        // Scalafmt 3.8.5 will wreck this block of code if it isn't
+        // protected by braces; it seems it doesn't play well with the
+        // preceding import statement.
+        {
+          println(
+            s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
+          )
+          println("Sizes of common to all three sides...")
+          pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
+          println("Sizes of common to base and left...")
+          pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
+          println("Sizes of common to base and right...")
+          pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
+          println("Sizes of common to left and right...")
+          pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
+
+          val configuration = Configuration(
+            minimumMatchSize = minimumPossibleExpectedMatchSize,
+            thresholdSizeFractionForMatching =
+              minimumSizeFractionForMotionDetection,
+            minimumAmbiguousMatchSize = 0,
+            ambiguousMatchesThreshold = 10
+          )
+
+          Assertions.assertDoesNotThrow { () =>
+            SectionedCode.of(
+              baseSources,
+              leftSources,
+              rightSources
+            )(
+              configuration,
+              suppressMatchesInvolvingOverlappingSections = true
+            )
+          }
+        }
+      }
+  end reproduceIllegalArgument
+
+  @Test
+  def reproduceAssertionFailure(): Unit =
+    val recipe = Source
+      .fromResource("recipeForAssertionFailure.txt")
+      .getLines()
+      .mkString("\n")
+
+    testPlansFavouringMatches
+      .withRecipe(recipe)
+      .supplyTo { testPlan =>
+        import testPlan.*
+        // Scalafmt 3.8.5 will wreck this block of code if it isn't
+        // protected by braces; it seems it doesn't play well with the
+        // preceding import statement.
+        {
+          println(
+            s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
+          )
+          println("Sizes of common to all three sides...")
+          pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
+          println("Sizes of common to base and left...")
+          pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
+          println("Sizes of common to base and right...")
+          pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
+          println("Sizes of common to left and right...")
+          pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
+
+          val configuration = Configuration(
+            minimumMatchSize = minimumPossibleExpectedMatchSize,
+            thresholdSizeFractionForMatching =
+              minimumSizeFractionForMotionDetection,
+            minimumAmbiguousMatchSize = 0,
+            ambiguousMatchesThreshold = 10
+          )
+
+          Assertions.assertDoesNotThrow { () =>
+            SectionedCode.of(
+              baseSources,
+              leftSources,
+              rightSources
+            )(
+              configuration,
+              suppressMatchesInvolvingOverlappingSections = true
+            )
+          }
+        }
+      }
+  end reproduceAssertionFailure
+
   @TestFactory
   def matchingSectionsAreFound(): DynamicTests =
     testPlansFavouringMatches
@@ -149,11 +297,7 @@ class SectionedCodeTest:
             rightSources
           )(
             configuration,
-            // NOTE: the test cases can exhibit matches with overlapping
-            // sections that intrude on the content the test is checking, so
-            // rather than quietly suppressing the matches, we let admissible
-            // failures for overlapping sections occur and reject the test case.
-            suppressMatchesInvolvingOverlappingSections = false
+            suppressMatchesInvolvingOverlappingSections = true
           ) match
             case Right(analysis) =>
               // Check that all matches are consistent with the base sections...
@@ -733,9 +877,7 @@ class SectionedCodeTest:
 
     // This is an even more pathological situation - we have overlapping matches
     // of the same size, one of which is a pairwise match and the other an
-    // all-sides match. This in itself is permitted (but will result in an
-    // admissible downstream exception due to the overlap when
-    // `CodeMotionAnalysis.of` builds up its files from the matches).
+    // all-sides match. This in itself is permitted.
 
     // The twist is when there is another smaller all-sides that is subsumed by
     // the pairwise match but does *not* overlap with the larger all-sides
@@ -797,14 +939,15 @@ class SectionedCodeTest:
     // There only be all-sides matches.
     assert(matches.forall(_.isAnAllSidesMatch))
 
-    // There should be two matches.
-    assert(matches.size == 2)
+    // There should be three matches.
+    assert(matches.size == 3)
 
-    // The contents should be that of the two all-sides matches.
+    // The contents should reflect the breakdown of the overlapping matches.
     assert(
       matches.map(_.content) == Set(
-        bigAllSidesContent,
-        smallAllSidesContent
+        prefix,
+        overlap,
+        suffix
       )
     )
   end eatenPairwiseMatchesMayBeSuppressedByACompetingOverlappingAllSidesMatch
@@ -1120,10 +1263,10 @@ class SectionedCodeTest:
       : Unit =
     // Here, we set up a larger pairwise match and eat into it via four smaller,
     // ambiguous *and* overlapping all-sides matches. The overlapping causes the
-    // collective all-sides matches to eat into all of the content of the
-    // pairwise matches, so apart from the all-sides matches (which are
-    // suppressed later by virtue of overlapping each other), there are no
-    // fragmented pairwise matches left over.
+    // collective all-sides matches to eat into all the content of the pairwise
+    // matches, so apart from the all-sides matches, there are no fragmented
+    // pairwise matches left over. The overlapping all-sides matches then
+    // reconcile to smaller ones.
 
     val configuration = Configuration(
       minimumMatchSize = 2,
@@ -1170,7 +1313,14 @@ class SectionedCodeTest:
         .map(analysis.matchesFor)
         .reduce(_ union _)
 
-    assert(matches.isEmpty)
+    // There should be just all-sides matches.
+    assert(matches.map(_.ordinal).size == 1)
+
+    // There should be eight all-sides matches.
+    assert((matches count {
+      case _: Match.AllSides[Section[Element]] => true
+      case _                                   => false
+    }) == 8)
   end overlappingSmallerAllSidesMatchesCanEatIntoALargerPairwiseMatchWithoutLeavingAnyFragments
 
   @Test
@@ -1247,8 +1397,14 @@ class SectionedCodeTest:
         .map(analysis.matchesFor)
         .reduce(_ union _)
 
-    // There should be just left-right matches.
-    assert(matches.map(_.ordinal).size == 1)
+    // There should be just all-sides and left-right matches.
+    assert(matches.map(_.ordinal).size == 2)
+
+    // There should be three left-right matches.
+    assert((matches count {
+      case _: Match.AllSides[Section[Element]] => true
+      case _                                   => false
+    }) == 3)
 
     // There should be two left-right matches.
     assert((matches count {
@@ -1259,8 +1415,10 @@ class SectionedCodeTest:
     // The contents should be broken down.
     assert(
       matches.map(_.content) == Set(
-        Vector(alpha),
-        Vector(beta)
+        Vector(alpha, delta),
+        Vector(beta),
+        Vector(gamma, delta),
+        Vector(epsilon)
       )
     )
   end problematicSituation

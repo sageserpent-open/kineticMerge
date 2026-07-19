@@ -4,7 +4,7 @@ import scala.language.postfixOps
 
 lazy val javaVersion = "17"
 
-ThisBuild / scalaVersion := "3.3.7"
+ThisBuild / scalaVersion := "3.3.8"
 
 ThisBuild / javacOptions ++= Seq("-source", javaVersion, "-target", javaVersion)
 
@@ -80,8 +80,8 @@ lazy val root = (project in file("."))
     },
     packageExecutable := (packageExecutable dependsOn publishLocal).value,
     libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.9.6",
-    libraryDependencies += "ch.qos.logback"    % "logback-core"    % "1.5.33",
-    libraryDependencies += "ch.qos.logback"    % "logback-classic" % "1.5.33",
+    libraryDependencies += "ch.qos.logback"    % "logback-core"    % "1.5.38",
+    libraryDependencies += "ch.qos.logback"    % "logback-classic" % "1.5.38",
     libraryDependencies += "org.typelevel"    %% "cats-core"       % "2.13.0",
     libraryDependencies += "com.github.scopt" %% "scopt"           % "4.1.0",
     libraryDependencies += "org.typelevel" %% "cats-collections-core" % "0.9.10",
@@ -105,8 +105,8 @@ lazy val root = (project in file("."))
     libraryDependencies += "org.apache.commons" % "commons-lang3" % "3.20.0",
     libraryDependencies +=
       "org.scala-lang.modules" %% "scala-parallel-collections" % "1.2.0",
-    libraryDependencies += "com.sageserpent" %% "americium" % "2.1.0" % Test,
-    libraryDependencies += "com.sageserpent" %% "americium-junit5" % "2.1.0" % Test,
+    libraryDependencies += "com.sageserpent" %% "americium" % "2.2.1" % Test,
+    libraryDependencies += "com.sageserpent" %% "americium-junit5" % "2.2.1" % Test,
     libraryDependencies += "com.eed3si9n.expecty" %% "expecty" % "0.17.1" % Test,
     libraryDependencies += "org.apache.commons" % "commons-text" % "1.15.0" % Test,
     libraryDependencies += "com.github.sbt.junit" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
