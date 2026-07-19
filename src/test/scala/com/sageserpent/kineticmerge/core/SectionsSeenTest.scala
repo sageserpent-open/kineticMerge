@@ -38,7 +38,9 @@ class SectionsSeenTest:
           assert(sectionsSeen.isEmpty == sectionsSeen.iterator.isEmpty)
           assert(sectionsSeen.nonEmpty == sectionsSeen.iterator.nonEmpty)
           assert(sectionsSeen.size == sectionsSeen.iterator.size)
-          assert(sectionsSeen.headOption == sectionsSeen.iterator.toSeq.headOption)
+          assert(
+            sectionsSeen.headOption == sectionsSeen.iterator.toSeq.headOption
+          )
         case Operation.Remove(s) =>
           if reference.iterator.contains(s) then referenceWasHit = true
           sectionsSeen = sectionsSeen - s
@@ -48,7 +50,9 @@ class SectionsSeenTest:
           assert(sectionsSeen.isEmpty == sectionsSeen.iterator.isEmpty)
           assert(sectionsSeen.nonEmpty == sectionsSeen.iterator.nonEmpty)
           assert(sectionsSeen.size == sectionsSeen.iterator.size)
-          assert(sectionsSeen.headOption == sectionsSeen.iterator.toSeq.headOption)
+          assert(
+            sectionsSeen.headOption == sectionsSeen.iterator.toSeq.headOption
+          )
         case Operation.QueryIncludes(start, end) =>
           val result   = sectionsSeen.filterIncludes((start, end)).toSet
           val expected = reference.filterIncludes((start, end)).toSet
@@ -70,11 +74,16 @@ class SectionsSeenTest:
       if !referenceWasHit then Trials.reject()
 
       val startOffsets = sectionsSeen.iterator.map(_.startOffset).toSeq
-      assert(startOffsets == startOffsets.sorted, "SectionsSeen iterator is not sorted by startOffset")
+      assert(
+        startOffsets == startOffsets.sorted,
+        "SectionsSeen iterator is not sorted by startOffset"
+      )
 
       assert(
         reference.iterator.toSeq.sortBy(s => (s.startOffset, s.size, s.id)) ==
-          sectionsSeen.iterator.toSeq.sortBy(s => (s.startOffset, s.size, s.asInstanceOf[FakeSection].id)),
+          sectionsSeen.iterator.toSeq.sortBy(s =>
+            (s.startOffset, s.size, s.asInstanceOf[FakeSection].id)
+          ),
         "Final contents mismatch"
       )
     }
