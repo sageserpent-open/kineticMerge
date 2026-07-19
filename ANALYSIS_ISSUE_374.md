@@ -10,7 +10,7 @@ The changes introduced on the `allow-more-overlaps` branch (releasing the prohib
 
 However, three tests fail. Our analysis reveals that:
 1. **One failure is a major improvement** where the new merge engine produces a semantically superior output compared to the original expected merge output, eliminating redundant duplicates.
-2. **One failure is a genuine bug / matching regression** where an extremely loose match ("eat" matching with "the bush. Better") is discovered, which corrupts the merged file layout.
+2. **One failure is a genuine bug / matching regression** where an extremely small, sub-optimal move destination (a dot/linebreak section) is produced during overlap reconciliation and subsequently has an edit migrated into it.
 3. **One failure is an artifact of improved match discovery** where a highly precise additional pairwise match is found, causing a pathological unit test with strict size/count expectations to fail.
 
 ---
@@ -57,19 +57,29 @@ A stitch in time saves nine.
 ```
 
 ### Analysis & Verdict:
-**Genuine Matching Regression.**
-The relaxed overlap restrictions allow the match finder to match `eat` (from `Better eat gram flour...` on the right side) to `the bush. Better` (from `A bird in hand is worth two in the bush. Better...` on the left/base sides).
-
-Because `eat` is extremely short (3 characters / 1 token), it matches a tiny subset of the other sides' content under the relaxed rules, creating a cross-side alignment link. During the reconciliation and merge phases, this bad match is treated as a core alignment point, causing:
-1. Part of the right-side edit (`Better eat gram flour...`) to be erroneously spliced directly into the middle of the first line (`the bush...`).
-2. The remaining part to be repeated later.
+**Genuine Matching & Reconciliation Regression.**
+The debug logs show that the edit from the right side (`eat gram flour, not the damned flowers.\n`) is migrated directly to a sub-optimal move destination on the left side:
+```scala
+Unique(
+  Section(
+    label = "left",
+    path = "*** PROVERBS ***",
+    start = TextPosition(line = 2, characterOffset = 39),
+    onePastEnd = TextPosition(line = 3, characterOffset = 0),
+    startTokenIndex = 11,
+    sizeInTokens = 1,
+    content = ".\n"
+  )
+)
+```
+This sub-optimal move destination (a single dot and a newline) is produced as a side effect during the overlap reconciliation phase. Because different-sized matches are allowed to overlap and are subsequently fragmented, reconciliation produces tiny fragmented sections (such as single-punctuation/token sections) that are treated as distinct, valid move destinations. This triggers a bad migration/splice alignment, corrupting the layout of the final merged file.
 
 **Recommendation:**
-This is a genuine issue with match discovery/reconciliation being too permissive for very small token sizes. The match discovery window or reconciliation phase should not allow extremely loose overlaps/cross-matches that have a high risk of being accidental, especially when token count is extremely low. A threshold on minimum overlapping match size relative to the files or a stricter tie-break / filtering mechanism is needed during reconciliation to discard such accidental alignments.
+This is a genuine issue with overlap reconciliation being too permissive in producing tiny fragmented sections when processing overlapping matches of different sizes. To prevent this, the reconciliation phase needs a minimum size constraint or filtering to discard extremely short, accidental sections (like single punctuation or newline characters) so that they are not treated as independent anchors/move destinations for edit migration.
 
 ---
 
-## 3. SectionedCodeTest: Eaten Pairwise Matches Suppressed by a Competing Overlapping All-Sides Match
+## 3. SectionedCodeTest: Eaten Pairwise Matches Suppressed by a Competing Ambiguous Pairwise Match
 
 ### Test Case:
 `SectionedCodeTest.eatenPairwiseMatchesMayBeSuppressedByACompetingOverlappingAllSidesMatch`
@@ -90,4 +100,4 @@ The expectations of this unit test need to be updated to accept the newly discov
 
 ## Summary of Action Items for the Maintainer
 1. **Accept New Outcomes:** Update `SectionedCodeExtensionTest.codeMotionAcrossTwoFiles...` and `SectionedCodeTest.eatenPairwiseMatches...` to reflect the superior/additional matches.
-2. **Implement Guardrails:** Introduce a safeguard in match discovery or the reconciliation phase of `MatchAnalysis` to prevent extremely small, accidental overlaps (like matching a single 3-letter word across entirely different context sentences) when dealing with different-sized matches.
+2. **Implement Guardrails:** Introduce a safeguard in the reconciliation phase of `MatchAnalysis` to prevent extremely small, accidental overlap fragments (like single-token punctuation or linebreaks) from becoming target anchors/move destinations for migrated edits.
