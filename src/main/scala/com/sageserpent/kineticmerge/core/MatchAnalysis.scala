@@ -197,6 +197,11 @@ object MatchAnalysis extends StrictLogging:
     val tiebreakContentSamplingLimit = 5
 
     object MatchesAndTheirSections:
+      sealed trait SplitResult:
+        val aMatch: GenericMatch[Element]
+      case class NoOverlaps(aMatch: GenericMatch[Element]) extends SplitResult
+      case class UnderMinimumSize(aMatch: GenericMatch[Element]) extends SplitResult
+
       type ParallelMatchesGroupIdTracking[X] =
         State[ParallelMatchesGroupIdsByMatch[Element], X]
       lazy val empty: MatchesAndTheirSections = MatchesAndTheirSections(
@@ -2940,19 +2945,34 @@ object MatchAnalysis extends StrictLogging:
             ] =
               val matches = remainingMatchesAndTheirSections.matches
 
-              val (unsplitMatchesWithoutOverlaps, splits) =
+              val (unsplitSplitResults, splits) =
                 matches
                   .map(
                     remainingMatchesAndTheirSections.hiveOffNonOverlappedMatchFrom
                   )
                   .partitionMap(identity)
 
+              val underMinimumSize = unsplitSplitResults.collect {
+                case UnderMinimumSize(m) => m
+              }
+
+              val noOverlaps = unsplitSplitResults.collect {
+                case NoOverlaps(m) => m
+              }
+
               progressRecordingSession.upTo(splits.size)
 
               def overlappingMatches =
-                matches diff unsplitMatchesWithoutOverlaps
+                matches diff noOverlaps
 
-              if splits.isEmpty then
+              if underMinimumSize.nonEmpty then
+                for updatedParallelMatchesGroupIdsByMatch <- State.get
+                yield
+                  Left(
+                    remainingMatchesAndTheirSections
+                      .withoutTheseMatches(underMinimumSize)
+                  )
+              else if splits.isEmpty then
                 for updatedParallelMatchesGroupIdsByMatch <- State.get
                 yield
                   val parallelMatchesGroupIdsByMatch =
@@ -3021,7 +3041,7 @@ object MatchAnalysis extends StrictLogging:
       private def hiveOffNonOverlappedMatchFrom(
           aMatch: GenericMatch[Element]
       ): Either[
-        GenericMatch[Element], /* Original match if not split. */
+        SplitResult,
         ParallelMatchesGroupIdTracking[HivedOffNonOverlappedMatchResult]
       ] =
         enum Encroachment:
@@ -3117,7 +3137,7 @@ object MatchAnalysis extends StrictLogging:
           relativeStartOffsetToHiveOffFrom,
           relativeOnePastEndOffsetToHiveOffTo
         ) match
-          case (None, None)                      => Left(aMatch)
+          case (None, None)                      => Left(NoOverlaps(aMatch))
           case (Some(relativeStartOffset), None) =>
             val remainingContestedMatch =
               aMatch.slice(relativeStartOffset = 0, size = relativeStartOffset)
@@ -3126,16 +3146,19 @@ object MatchAnalysis extends StrictLogging:
               size = aMatch.size - relativeStartOffset
             )
 
-            Right(
-              for
-                _ <- propagateGroupId(aMatch, remainingContestedMatch)
-                _ <- propagateGroupId(aMatch, hivedOffMatch)
-              yield new HivedOffNonOverlappedMatchResult:
-                def hivedOffNonOverlappedMatch: Option[GenericMatch[Element]] =
-                  Some(hivedOffMatch)
-                def remainingContestedMatches: Seq[GenericMatch[Element]] =
-                  Seq(remainingContestedMatch)
-            )
+            if remainingContestedMatch.size < minimumMatchSize || hivedOffMatch.size < minimumMatchSize
+            then Left(UnderMinimumSize(aMatch))
+            else
+              Right(
+                for
+                  _ <- propagateGroupId(aMatch, remainingContestedMatch)
+                  _ <- propagateGroupId(aMatch, hivedOffMatch)
+                yield new HivedOffNonOverlappedMatchResult:
+                  def hivedOffNonOverlappedMatch: Option[GenericMatch[Element]] =
+                    Some(hivedOffMatch)
+                  def remainingContestedMatches: Seq[GenericMatch[Element]] =
+                    Seq(remainingContestedMatch)
+              )
           case (None, Some(relativeOnePastEndOffset)) =>
             val hivedOffMatch = aMatch.slice(
               relativeStartOffset = 0,
@@ -3146,16 +3169,19 @@ object MatchAnalysis extends StrictLogging:
               size = aMatch.size - relativeOnePastEndOffset
             )
 
-            Right(
-              for
-                _ <- propagateGroupId(aMatch, hivedOffMatch)
-                _ <- propagateGroupId(aMatch, remainingContestedMatch)
-              yield new HivedOffNonOverlappedMatchResult:
-                def hivedOffNonOverlappedMatch: Option[GenericMatch[Element]] =
-                  Some(hivedOffMatch)
-                def remainingContestedMatches: Seq[GenericMatch[Element]] =
-                  Seq(remainingContestedMatch)
-            )
+            if hivedOffMatch.size < minimumMatchSize || remainingContestedMatch.size < minimumMatchSize
+            then Left(UnderMinimumSize(aMatch))
+            else
+              Right(
+                for
+                  _ <- propagateGroupId(aMatch, hivedOffMatch)
+                  _ <- propagateGroupId(aMatch, remainingContestedMatch)
+                yield new HivedOffNonOverlappedMatchResult:
+                  def hivedOffNonOverlappedMatch: Option[GenericMatch[Element]] =
+                    Some(hivedOffMatch)
+                  def remainingContestedMatches: Seq[GenericMatch[Element]] =
+                    Seq(remainingContestedMatch)
+              )
           case (Some(relativeStartOffset), Some(relativeOnePastEndOffset)) =>
             val leadingRemainingContestedMatch =
               aMatch.slice(relativeStartOffset = 0, size = relativeStartOffset)
@@ -3171,20 +3197,25 @@ object MatchAnalysis extends StrictLogging:
               size = aMatch.size - relativeOnePastEndOffset
             )
 
-            Right(
-              for
-                _ <- propagateGroupId(aMatch, leadingRemainingContestedMatch)
-                _ <- hivedOffMatch.traverse(propagateGroupId(aMatch, _))
-                _ <- propagateGroupId(aMatch, trailingRemainingContestedMatch)
-              yield new HivedOffNonOverlappedMatchResult:
-                def hivedOffNonOverlappedMatch: Option[GenericMatch[Element]] =
-                  hivedOffMatch
-                def remainingContestedMatches: Seq[GenericMatch[Element]] =
-                  Seq(
-                    leadingRemainingContestedMatch,
-                    trailingRemainingContestedMatch
-                  )
-            )
+            if leadingRemainingContestedMatch.size < minimumMatchSize ||
+               hivedOffMatch.exists(_.size < minimumMatchSize) ||
+               trailingRemainingContestedMatch.size < minimumMatchSize
+            then Left(UnderMinimumSize(aMatch))
+            else
+              Right(
+                for
+                  _ <- propagateGroupId(aMatch, leadingRemainingContestedMatch)
+                  _ <- hivedOffMatch.traverse(propagateGroupId(aMatch, _))
+                  _ <- propagateGroupId(aMatch, trailingRemainingContestedMatch)
+                yield new HivedOffNonOverlappedMatchResult:
+                  def hivedOffNonOverlappedMatch: Option[GenericMatch[Element]] =
+                    hivedOffMatch
+                  def remainingContestedMatches: Seq[GenericMatch[Element]] =
+                    Seq(
+                      leadingRemainingContestedMatch,
+                      trailingRemainingContestedMatch
+                    )
+              )
         end match
       end hiveOffNonOverlappedMatchFrom
 
