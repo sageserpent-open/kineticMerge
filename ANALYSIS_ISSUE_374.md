@@ -1,103 +1,49 @@
 # Analysis of Test Failures: GitHub Issue #374 (Allow more matching overlaps)
 
-This report details the investigation of the test failures resulting from allowing more matching overlaps of different sizes (specifically after committing changes in `allow-more-overlaps`).
+This report details the investigation of the test failures resulting from allowing more matching overlaps of different sizes, including an in-depth analysis of the impact of blocking overlap reconciliation when resulting fragments fall below `minimumMatchSize`.
 
 ---
 
-## Executive Summary
+## Part 1: Initial Investigation (With Relaxed Overlaps)
 
-The changes introduced on the `allow-more-overlaps` branch (releasing the prohibition of matching overlaps between matches of different sizes) significantly enhance the precision and flexibility of the match discovery and reconciliation phases.
+When overlaps are relaxed, three main test categories fail. Our analysis of those failures is as follows:
 
-However, three tests fail. Our analysis reveals that:
-1. **One failure is a major improvement** where the new merge engine produces a semantically superior output compared to the original expected merge output, eliminating redundant duplicates.
-2. **One failure is a genuine bug / matching regression** where an extremely small, sub-optimal move destination (a dot/linebreak section) is produced during overlap reconciliation and subsequently has an edit migrated into it.
-3. **One failure is an artifact of improved match discovery** where a highly precise additional pairwise match is found, causing a pathological unit test with strict size/count expectations to fail.
+### 1. Combining Two Files into a New Replacement File (`SectionedCodeExtensionTest.codeMotionAcrossTwoFiles...`)
+* **Symptom:** Mismatched tokens/whitespace on merge.
+* **Verdict: Semantic Outcome is Superior.** Under relaxed rules, the merge output is much cleaner. Duplicate/redundant blocks of inserted phrases like `(but you aren't going to need it)` are correctly unified rather than duplicated. However, because tokens align and consolidate more tightly, there are minor whitespace changes (such as missing linebreaks or spaces where sections are now adjacent).
+* **Recommendation:** Update test expectations to accept the superior semantically-merged layout with minor whitespace/token boundary adjustments.
 
----
+### 2. Migration of a Migrated Edit as an Insertion (`SectionedCodeExtensionTest.furtherMigrationOfAMigratedEdit...`)
+* **Symptom:** Corrupted layout where right-side edits are spliced into the middle of unrelated words.
+* **Verdict: Genuine Reconciliation Regression.** Overlap reconciliation produces tiny fragmented sections (such as a single dot `.` or newline) because different-sized matches overlap and are fragmented. These tiny sections are then treated as distinct, valid move destinations, attracting migrated edits to sub-optimal locations and corrupting the merged layout.
+* **Recommendation:** The reconciliation phase needs a minimum size constraint or filtering to discard extremely short, accidental sections so they are not treated as valid anchors/move destinations for edit migration.
 
-## 1. SectionedCodeExtensionTest: Combining Two Files into a New Replacement File
-
-### Test Case:
-`SectionedCodeExtensionTest.codeMotionAcrossTwoFilesWhoseContentIsCombinedTogetherToMakeANewReplacementFile`
-
-### Symptoms:
-The test asserts that the merge output matches a strictly specified text sequence. In multiple trials, the test fails on an assertion checking that the actual merge output is strictly equivalent to the expected tokens.
-
-### Analysis & Verdict:
-**Semantic Outcome is Superior.**
-When combining proverbs and palindromes into a single replacement file, the older algorithm suffered from more restrictive match overlapping prohibitions. This caused it to construct sub-optimal alignments and split identical blocks into separate regions, leading to redundant/duplicate code sequences on merge.
-
-Under the relaxed overlap rules, the merge output is much cleaner. For example, rather than duplicating sections of inserted phrases like `(but you aren't going to need it)` or misplacing them, the alignment group correctly groups the blocks.
-
-*However*, because the tokens are aligned and consolidated much more tightly, there are minor whitespace changes (such as missing linebreaks or spaces where sections are now adjacent rather than separated by gaps).
-
-**Recommendation:**
-Tweak the expected merge outputs in this test to accommodate the superior merged layout and account for the tighter token/whitespace alignment.
+### 3. Pairwise Match Suppression by a Competing All-Sides Match (`SectionedCodeTest.eatenPairwiseMatches...`)
+* **Symptom:** An additional `base + left` match is discovered, breaking strict count/size expectations.
+* **Verdict: Legitimate Improvement.** With relaxed constraints, tracking a legitimate alignment between `base` and `left` for a fragment of text is now possible. Finding this extra match is a valid and correct outcome of the relaxed overlap rules.
+* **Recommendation:** Update the test's strict expectations to accept the newly discovered pairwise match.
 
 ---
 
-## 2. SectionedCodeExtensionTest: Migration of a Migrated Edit as an Insertion
+## Part 2: Impact of Blocking Reconciliation for Fragments Below `minimumMatchSize`
 
-### Test Case:
-`SectionedCodeExtensionTest.furtherMigrationOfAMigratedEditAsAnInsertion`
+We implemented a blocking mechanism in `MatchAnalysis.scala` (`hiveOffNonOverlappedMatchFrom`) so that if a split/hive-off would result in hived-off or remaining contested matches below `configuration.minimumMatchSize`, the split is blocked. To prevent unresolved overlaps from triggering downstream `Overlapping section detected` runtime exceptions, matches that could not be safely split due to this minimum size constraint were cleanly suppressed (removed from the match analysis).
 
-### Symptoms:
-The test fails on `verifyContent` for `*** EXCISED PROVERBS ***` with mismatched tokens:
-```
-Expected:
-A bird in hand is worth two in the bush.
-Better eat gram flour, not the damned flowers.
-A stitch in time saves nine.
+Here is the impact of this change across the test suite:
 
-Actual (Fully Merged):
-A bird in hand is worth two in the busheat gram flour, not the damned flowers.
-Better eat gram flour, not the damned flowers.
-.
-A stitch in time saves nine.
-```
+### 1. Downstream Safety
+* **Impact:** 100% successful compile and run. All downstream `Overlapping section detected` runtime exceptions are completely resolved.
 
-### Analysis & Verdict:
-**Genuine Matching & Reconciliation Regression.**
-The debug logs show that the edit from the right side (`eat gram flour, not the damned flowers.\n`) is migrated directly to a sub-optimal move destination on the left side:
-```scala
-Unique(
-  Section(
-    label = "left",
-    path = "*** PROVERBS ***",
-    start = TextPosition(line = 2, characterOffset = 39),
-    onePastEnd = TextPosition(line = 3, characterOffset = 0),
-    startTokenIndex = 11,
-    sizeInTokens = 1,
-    content = ".\n"
-  )
-)
-```
-This sub-optimal move destination (a single dot and a newline) is produced as a side effect during the overlap reconciliation phase. Because different-sized matches are allowed to overlap and are subsequently fragmented, reconciliation produces tiny fragmented sections (such as single-punctuation/token sections) that are treated as distinct, valid move destinations. This triggers a bad migration/splice alignment, corrupting the layout of the final merged file.
+### 2. Elimination of Malformed Duplicates
+* **Impact: Positive.** In `furtherMigrationOfAMigratedEditAsAnInsertion`, the sub-optimal overlap fragment that caused the malformed text (`A bird in hand is worth two in the busheat gram flour...`) was cleanly suppressed. The merge finished without corrupting the first sentence.
 
-**Recommendation:**
-This is a genuine issue with overlap reconciliation being too permissive in producing tiny fragmented sections when processing overlapping matches of different sizes. To prevent this, the reconciliation phase needs a minimum size constraint or filtering to discard extremely short, accidental sections (like single punctuation or newline characters) so that they are not treated as independent anchors/move destinations for edit migration.
+### 3. Loss of Legitimate Alignments & Edit Migrations
+* **Impact: Negative.** By suppressing matches that fell below `minimumMatchSize` during overlap hiving-off, we also discarded many legitimate, highly valuable match alignments.
+  * In `furtherMigrationOfAMigratedEditAsAnInsertion`, the right-side edit (`Better eat gram flour, not the damned flowers.`) was **not migrated at all** because the match supporting its migration was suppressed. The output defaulted back to the left-side text (`Better a gramme than a damn.`), losing the edit entirely.
+  * 10 tests across `SectionedCodeExtensionTest` failed because legitimate code motions, splits, and file renames were blocked or reverted to default layouts, sometimes leading to clean merge failures (conflicts).
 
----
+### Conclusion & Verdict on Blocking Reconciliation
+While blocking and suppressing under-sized fragments is safe and avoids malformed duplicates, it is **too blunt of an instrument** because it throws the baby out with the bathwater. Suppressing the entire match because a single overlapped fragment is too small causes a significant loss of precision, reverting many legitimate code motion migrations and splitting alignments.
 
-## 3. SectionedCodeTest: Eaten Pairwise Matches Suppressed by a Competing Ambiguous Pairwise Match
-
-### Test Case:
-`SectionedCodeTest.eatenPairwiseMatchesMayBeSuppressedByACompetingOverlappingAllSidesMatch`
-
-### Symptoms:
-The test asserts that only three all-sides matches with specific sliced content (`prefix`, `overlap`, `suffix`) are found, and that the pairwise match is suppressed. Under the relaxed rules, an additional `base + left` match is discovered.
-
-### Analysis & Verdict:
-**Legitimate Improvement in Discovery.**
-This test setup is highly pathological and specifically designed to verify that a pairwise match gets suppressed under certain overlap and size conditions.
-
-With relaxed overlap constraints, the match finder is now capable of correctly tracking and preserving a legitimate alignment between `base` and `left` for a fragment of the text that was previously prohibited from being matched. Discovering this extra match is actually a *legitimate outcome of the greater flexibility in matching*.
-
-**Recommendation:**
-The expectations of this unit test need to be updated to accept the newly discovered `base+left` pairwise match, or the test's constraints need to be tweaked if the original suppression behavior must be strictly maintained for some reason.
-
----
-
-## Summary of Action Items for the Maintainer
-1. **Accept New Outcomes:** Update `SectionedCodeExtensionTest.codeMotionAcrossTwoFiles...` and `SectionedCodeTest.eatenPairwiseMatches...` to reflect the superior/additional matches.
-2. **Implement Guardrails:** Introduce a safeguard in the reconciliation phase of `MatchAnalysis` to prevent extremely small, accidental overlap fragments (like single-token punctuation or linebreaks) from becoming target anchors/move destinations for migrated edits.
+Instead of completely suppressing the match, a more surgical approach is required:
+* Overlap reconciliation should proceed, but we should refine the **migration anchor/move destination selector** in `SectionedCodeExtension` to refuse tiny single-character/token fragments (like `.` or linebreaks) as eligible destinations for edit/insertion migration.
