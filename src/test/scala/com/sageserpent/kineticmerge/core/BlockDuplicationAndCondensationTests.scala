@@ -43,6 +43,11 @@ object BlockDuplicationAndCondensationTests:
       if mirrored then longestCommonSubsequence.mirror
       else longestCommonSubsequence
   end extension
+
+  extension (contributions: IndexedSeq[Contribution[Section[Element]]])
+    def asElementContributions: IndexedSeq[Contribution[IndexedSeq[Element]]] =
+      contributions.map(_.map(_.content))
+  end extension
 end BlockDuplicationAndCondensationTests
 
 class BlockDuplicationAndCondensationTests:
@@ -114,19 +119,20 @@ class BlockDuplicationAndCondensationTests:
       )
 
       assert(
-        Vector(Contribution.Common(blockContent)) == baseContributions
-          .map(_.map(_.content))
+        Vector(
+          Contribution.Common(blockContent)
+        ) == baseContributions.asElementContributions
       )
       assert(
         Vector(
           Contribution.Common(blockContent)
-        ) == contributionsOnSideWithoutChanges.map(_.map(_.content))
+        ) == contributionsOnSideWithoutChanges.asElementContributions
       )
       assert(
         Vector(
           Contribution.Common(blockContent),
           Contribution.Difference(blockContent)
-        ) == contributionsOnSideWithDuplication.map(_.map(_.content))
+        ) == contributionsOnSideWithDuplication.asElementContributions
       )
     }
   end aBlockIsDuplicatedOnOneSide
@@ -196,20 +202,21 @@ class BlockDuplicationAndCondensationTests:
       )
 
       assert(
-        Vector(Contribution.Common(blockContent)) == baseContributions
-          .map(_.map(_.content))
+        Vector(
+          Contribution.Common(blockContent)
+        ) == baseContributions.asElementContributions
       )
       assert(
         Vector(
           Contribution.Common(blockContent),
           Contribution.CommonToLeftAndRightOnly(blockContent)
-        ) == contributionsOnOneSideWithDuplication.map(_.map(_.content))
+        ) == contributionsOnOneSideWithDuplication.asElementContributions
       )
       assert(
         Vector(
           Contribution.Common(blockContent),
           Contribution.CommonToLeftAndRightOnly(blockContent)
-        ) == contributionsOnTheOtherSideWithDuplication.map(_.map(_.content))
+        ) == contributionsOnTheOtherSideWithDuplication.asElementContributions
       )
     }
   end aBlockIsDuplicatedOnTwoSides
@@ -291,18 +298,18 @@ class BlockDuplicationAndCondensationTests:
         Vector(
           Contribution.Common(blockContent),
           Contribution.CommonToBaseAndLeftOnly(blockContent)
-        ) == baseContributionsWithDuplication.map(_.map(_.content))
+        ) == baseContributionsWithDuplication.asElementContributions
       )
       assert(
         Vector(
           Contribution.Common(blockContent),
           Contribution.CommonToBaseAndLeftOnly(blockContent)
-        ) == contributionsOnSideWithoutChanges.map(_.map(_.content))
+        ) == contributionsOnSideWithoutChanges.asElementContributions
       )
       assert(
         Vector(
           Contribution.Common(blockContent)
-        ) == contributionsOnTheOtherSideWithoutDuplication.map(_.map(_.content))
+        ) == contributionsOnTheOtherSideWithoutDuplication.asElementContributions
       )
     }
   end duplicateBlocksAreMergedOnOneSide
@@ -384,15 +391,14 @@ class BlockDuplicationAndCondensationTests:
           Contribution.Common(leadingContent),
           Contribution.Common(overlapContent),
           Contribution.Common(trailingContent)
-        ) == baseContributions
-          .map(_.map(_.content))
+        ) == baseContributions.asElementContributions
       )
       assert(
         Vector(
           Contribution.Common(leadingContent),
           Contribution.Common(overlapContent),
           Contribution.Common(trailingContent)
-        ) == contributionsOnSideWithoutChanges.map(_.map(_.content))
+        ) == contributionsOnSideWithoutChanges.asElementContributions
       )
       assert(
         Vector(
@@ -400,7 +406,7 @@ class BlockDuplicationAndCondensationTests:
           Contribution.Common(overlapContent),
           Contribution.Difference(overlapContent),
           Contribution.Common(trailingContent)
-        ) == contributionsOnSideWithSeparation.map(_.map(_.content))
+        ) == contributionsOnSideWithSeparation.asElementContributions
       )
     }
   end overlappingBlocksAreSeparatedOnOneSide
@@ -484,8 +490,7 @@ class BlockDuplicationAndCondensationTests:
       // alignment depends on the handedness of the merge inputs, and that is
       // a valid situation - both alignments are just as good.
 
-      val baseContent = baseContributions
-        .map(_.map(_.content))
+      val baseContent = baseContributions.asElementContributions
       assert(
         Vector(
           Contribution.Common(leadingContent),
@@ -499,7 +504,7 @@ class BlockDuplicationAndCondensationTests:
       )
 
       val unchangedSideContent =
-        contributionsOnSideWithoutChanges.map(_.map(_.content))
+        contributionsOnSideWithoutChanges.asElementContributions
       assert(
         Vector(
           Contribution.Common(leadingContent),
@@ -513,7 +518,7 @@ class BlockDuplicationAndCondensationTests:
       )
 
       val separationAndSwappingSideContent =
-        contributionsOnSideWithSeparationAndSwapping.map(_.map(_.content))
+        contributionsOnSideWithSeparationAndSwapping.asElementContributions
       assert(
         Vector(
           Contribution.Difference(overlapContent),
@@ -595,8 +600,9 @@ class BlockDuplicationAndCondensationTests:
       )
 
       assert(
-        Vector(Contribution.Common(blockContent)) == baseContributions
-          .map(_.map(_.content))
+        Vector(
+          Contribution.Common(blockContent)
+        ) == baseContributions.asElementContributions
       )
 
       val expectedTriplicatedSide = Vector(
@@ -611,8 +617,7 @@ class BlockDuplicationAndCondensationTests:
         )
       )
       assert(
-        expectedTriplicatedSide == contributionsOnTheOtherSideWithTriplication
-          .map(_.map(_.content))
+        expectedTriplicatedSide == contributionsOnTheOtherSideWithTriplication.asElementContributions
       )
     }
   end aBlockIsTriplicatedOnTwoSides
