@@ -406,6 +406,131 @@ class BlockDuplicationAndCondensationTests:
   end overlappingBlocksAreSeparatedOnOneSide
 
   @TestFactory
+  def overlappingBlocksAreSeparatedAndSwappedAroundOnOneSide(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val placeholderPath: Path = 1
+
+      val leadingContent  = Vector(1, 2)
+      val overlapContent  = Vector(3, 4)
+      val trailingContent = Vector(5, 6)
+
+      val baseElements: IndexedSeq[Element] =
+        leadingContent ++ overlapContent ++ trailingContent
+
+      val baseSources = FakeSources(
+        contentsByPath = Map(placeholderPath -> baseElements),
+        label = "base"
+      )
+
+      val elementsOnSideWithoutChanges: IndexedSeq[Element] = baseElements
+      val elementsOnSideWithSeparationAndSwapping: IndexedSeq[Element] =
+        overlapContent ++ trailingContent ++ leadingContent ++ overlapContent
+
+      val leftSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> (if mirrorImage then
+                                elementsOnSideWithSeparationAndSwapping
+                              else elementsOnSideWithoutChanges)
+        ),
+        label = "left"
+      )
+
+      val rightSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> (if mirrorImage then elementsOnSideWithoutChanges
+                              else elementsOnSideWithSeparationAndSwapping)
+        ),
+        label = "right"
+      )
+
+      val Right(sectionedCode) = SectionedCode.of(
+        baseSources = baseSources,
+        leftSources = leftSources,
+        rightSources = rightSources
+      )(configuration): @unchecked
+
+      val LongestCommonSubsequence(
+        baseContributions,
+        contributionsOnSideWithoutChanges,
+        contributionsOnSideWithSeparationAndSwapping,
+        _,
+        _,
+        _,
+        _
+      ) = sectionedCode
+        .longestCommonSubsequenceOf(path = placeholderPath)
+        .adaptedForMirroring(mirrorImage)
+
+      println(
+        s"Base overlapped contributions: ${pprintCustomised(baseContributions)}"
+      )
+      println(
+        s"Side without changes contributions: ${pprintCustomised(contributionsOnSideWithoutChanges)}"
+      )
+      println(
+        s"Side with separated contributions: ${pprintCustomised(contributionsOnSideWithSeparationAndSwapping)}"
+      )
+
+      // NOTE: in contrast with `overlappingBlocksAreSeparatedOnOneSide`, the
+      // assertions have to looser because the two blocks can't both align in
+      // the merge due to the swapping around on one side. Which one wins the
+      // alignment depends on the handedness of the merge inputs, and that is
+      // a valid situation - both alignments are just as good.
+
+      val baseContent = baseContributions
+        .map(_.map(_.content))
+      assert(
+        Vector(
+          Contribution.Common(leadingContent),
+          Contribution.Common(overlapContent),
+          Contribution.CommonToBaseAndLeftOnly(trailingContent)
+        ) == baseContent || Vector(
+          Contribution.CommonToBaseAndLeftOnly(leadingContent),
+          Contribution.Common(overlapContent),
+          Contribution.Common(trailingContent)
+        ) == baseContent
+      )
+
+      val unchangedSideContent =
+        contributionsOnSideWithoutChanges.map(_.map(_.content))
+      assert(
+        Vector(
+          Contribution.Common(leadingContent),
+          Contribution.Common(overlapContent),
+          Contribution.CommonToBaseAndLeftOnly(trailingContent)
+        ) == unchangedSideContent || Vector(
+          Contribution.CommonToBaseAndLeftOnly(leadingContent),
+          Contribution.Common(overlapContent),
+          Contribution.Common(trailingContent)
+        ) == unchangedSideContent
+      )
+
+      val separationAndSwappingSideContent =
+        contributionsOnSideWithSeparationAndSwapping.map(_.map(_.content))
+      assert(
+        Vector(
+          Contribution.Difference(overlapContent),
+          Contribution.Difference(trailingContent),
+          Contribution.Common(leadingContent),
+          Contribution.Common(overlapContent)
+        ) == separationAndSwappingSideContent || Vector(
+          Contribution.Common(overlapContent),
+          Contribution.Common(trailingContent),
+          Contribution.Difference(leadingContent),
+          Contribution.Difference(overlapContent)
+        ) == separationAndSwappingSideContent
+      )
+    }
+  end overlappingBlocksAreSeparatedAndSwappedAroundOnOneSide
+
+  @TestFactory
   def aBlockIsTriplicatedOnTwoSides(): DynamicTests =
     val configuration = Configuration(
       minimumMatchSize = 1,
