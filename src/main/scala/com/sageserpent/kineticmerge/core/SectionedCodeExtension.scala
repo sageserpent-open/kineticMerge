@@ -512,19 +512,37 @@ object SectionedCodeExtension extends StrictLogging:
         )
       end matchesCross
 
+      @tailrec
+      def keepNonCrossing(
+          matches: Seq[Match[Section[Element]]],
+          accepted: Vector[Match[Section[Element]]]
+      ): Seq[Match[Section[Element]]] =
+        matches match
+          case Seq()            => accepted
+          case Seq(head, tail*) =>
+            if accepted.exists(matchesCross(head, _)) then
+              keepNonCrossing(tail, accepted)
+            else keepNonCrossing(tail, accepted :+ head)
+      end keepNonCrossing
+
       val bestMatches =
         val rawMatches = setsOfMatchesThatShareSectionsOnAtLeastOneSide.toList
           .flatMap((_, matchesSharingASectionOnAtLeastOneSide) =>
             representativeMatchesFrom(matchesSharingASectionOnAtLeastOneSide)
           )
 
-        rawMatches.combinations(2).foreach {
-          case Seq(m1, m2) =>
-            assert(!matchesCross(m1, m2), s"Post-condition failed: matches cross!\n$m1\n$m2")
-          case _ =>
+        val sortedBestMatches = rawMatches.sortBy { aMatch =>
+          val priority  = if aMatch.isAnAllSidesMatch then 0 else 1
+          val baseStart =
+            aMatch.baseContribution.map(_.startOffset).getOrElse(Int.MaxValue)
+          val leftStart =
+            aMatch.leftContribution.map(_.startOffset).getOrElse(Int.MaxValue)
+          val rightStart =
+            aMatch.rightContribution.map(_.startOffset).getOrElse(Int.MaxValue)
+          (priority, baseStart, leftStart, rightStart)
         }
 
-        rawMatches
+        keepNonCrossing(sortedBestMatches, Vector.empty)
       end bestMatches
 
       type Contributions = Map[Section[Element], Contribution[Section[Element]]]
