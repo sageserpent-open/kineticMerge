@@ -43,6 +43,11 @@ object BlockDuplicationAndCondensationTests:
       if mirrored then longestCommonSubsequence.mirror
       else longestCommonSubsequence
   end extension
+
+  extension (contributions: IndexedSeq[Contribution[Section[Element]]])
+    def asElementContributions: IndexedSeq[Contribution[IndexedSeq[Element]]] =
+      contributions.map(_.map(_.content))
+  end extension
 end BlockDuplicationAndCondensationTests
 
 class BlockDuplicationAndCondensationTests:
@@ -114,19 +119,20 @@ class BlockDuplicationAndCondensationTests:
       )
 
       assert(
-        Vector(Contribution.Common(blockContent)) == baseContributions
-          .map(_.map(_.content))
+        Vector(
+          Contribution.Common(blockContent)
+        ) == baseContributions.asElementContributions
       )
       assert(
         Vector(
           Contribution.Common(blockContent)
-        ) == contributionsOnSideWithoutChanges.map(_.map(_.content))
+        ) == contributionsOnSideWithoutChanges.asElementContributions
       )
       assert(
         Vector(
           Contribution.Common(blockContent),
           Contribution.Difference(blockContent)
-        ) == contributionsOnSideWithDuplication.map(_.map(_.content))
+        ) == contributionsOnSideWithDuplication.asElementContributions
       )
     }
   end aBlockIsDuplicatedOnOneSide
@@ -196,20 +202,21 @@ class BlockDuplicationAndCondensationTests:
       )
 
       assert(
-        Vector(Contribution.Common(blockContent)) == baseContributions
-          .map(_.map(_.content))
+        Vector(
+          Contribution.Common(blockContent)
+        ) == baseContributions.asElementContributions
       )
       assert(
         Vector(
           Contribution.Common(blockContent),
           Contribution.CommonToLeftAndRightOnly(blockContent)
-        ) == contributionsOnOneSideWithDuplication.map(_.map(_.content))
+        ) == contributionsOnOneSideWithDuplication.asElementContributions
       )
       assert(
         Vector(
           Contribution.Common(blockContent),
           Contribution.CommonToLeftAndRightOnly(blockContent)
-        ) == contributionsOnTheOtherSideWithDuplication.map(_.map(_.content))
+        ) == contributionsOnTheOtherSideWithDuplication.asElementContributions
       )
     }
   end aBlockIsDuplicatedOnTwoSides
@@ -291,18 +298,18 @@ class BlockDuplicationAndCondensationTests:
         Vector(
           Contribution.Common(blockContent),
           Contribution.CommonToBaseAndLeftOnly(blockContent)
-        ) == baseContributionsWithDuplication.map(_.map(_.content))
+        ) == baseContributionsWithDuplication.asElementContributions
       )
       assert(
         Vector(
           Contribution.Common(blockContent),
           Contribution.CommonToBaseAndLeftOnly(blockContent)
-        ) == contributionsOnSideWithoutChanges.map(_.map(_.content))
+        ) == contributionsOnSideWithoutChanges.asElementContributions
       )
       assert(
         Vector(
           Contribution.Common(blockContent)
-        ) == contributionsOnTheOtherSideWithoutDuplication.map(_.map(_.content))
+        ) == contributionsOnTheOtherSideWithoutDuplication.asElementContributions
       )
     }
   end duplicateBlocksAreMergedOnOneSide
@@ -384,15 +391,14 @@ class BlockDuplicationAndCondensationTests:
           Contribution.Common(leadingContent),
           Contribution.Common(overlapContent),
           Contribution.Common(trailingContent)
-        ) == baseContributions
-          .map(_.map(_.content))
+        ) == baseContributions.asElementContributions
       )
       assert(
         Vector(
           Contribution.Common(leadingContent),
           Contribution.Common(overlapContent),
           Contribution.Common(trailingContent)
-        ) == contributionsOnSideWithoutChanges.map(_.map(_.content))
+        ) == contributionsOnSideWithoutChanges.asElementContributions
       )
       assert(
         Vector(
@@ -400,10 +406,134 @@ class BlockDuplicationAndCondensationTests:
           Contribution.Common(overlapContent),
           Contribution.Difference(overlapContent),
           Contribution.Common(trailingContent)
-        ) == contributionsOnSideWithSeparation.map(_.map(_.content))
+        ) == contributionsOnSideWithSeparation.asElementContributions
       )
     }
   end overlappingBlocksAreSeparatedOnOneSide
+
+  @TestFactory
+  def overlappingBlocksAreSeparatedAndSwappedAroundOnOneSide(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val placeholderPath: Path = 1
+
+      val leadingContent  = Vector(1, 2)
+      val overlapContent  = Vector(3, 4)
+      val trailingContent = Vector(5, 6)
+
+      val baseElements: IndexedSeq[Element] =
+        leadingContent ++ overlapContent ++ trailingContent
+
+      val baseSources = FakeSources(
+        contentsByPath = Map(placeholderPath -> baseElements),
+        label = "base"
+      )
+
+      val elementsOnSideWithoutChanges: IndexedSeq[Element] = baseElements
+      val elementsOnSideWithSeparationAndSwapping: IndexedSeq[Element] =
+        overlapContent ++ trailingContent ++ leadingContent ++ overlapContent
+
+      val leftSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> (if mirrorImage then
+                                elementsOnSideWithSeparationAndSwapping
+                              else elementsOnSideWithoutChanges)
+        ),
+        label = "left"
+      )
+
+      val rightSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> (if mirrorImage then elementsOnSideWithoutChanges
+                              else elementsOnSideWithSeparationAndSwapping)
+        ),
+        label = "right"
+      )
+
+      val Right(sectionedCode) = SectionedCode.of(
+        baseSources = baseSources,
+        leftSources = leftSources,
+        rightSources = rightSources
+      )(configuration): @unchecked
+
+      val LongestCommonSubsequence(
+        baseContributions,
+        contributionsOnSideWithoutChanges,
+        contributionsOnSideWithSeparationAndSwapping,
+        _,
+        _,
+        _,
+        _
+      ) = sectionedCode
+        .longestCommonSubsequenceOf(path = placeholderPath)
+        .adaptedForMirroring(mirrorImage)
+
+      println(
+        s"Base overlapped contributions: ${pprintCustomised(baseContributions)}"
+      )
+      println(
+        s"Side without changes contributions: ${pprintCustomised(contributionsOnSideWithoutChanges)}"
+      )
+      println(
+        s"Side with separated contributions: ${pprintCustomised(contributionsOnSideWithSeparationAndSwapping)}"
+      )
+
+      // NOTE: in contrast with `overlappingBlocksAreSeparatedOnOneSide`, the
+      // assertions have to looser because the two blocks can't both align in
+      // the merge due to the swapping around on one side. Which one wins the
+      // alignment depends on the handedness of the merge inputs, and that is
+      // a valid situation - both alignments are just as good.
+
+      val baseContent = baseContributions.asElementContributions
+      assert(
+        Vector(
+          Contribution.Common(leadingContent),
+          Contribution.Common(overlapContent),
+          Contribution.CommonToBaseAndLeftOnly(trailingContent)
+        ) == baseContent || Vector(
+          Contribution.CommonToBaseAndLeftOnly(leadingContent),
+          Contribution.Common(overlapContent),
+          Contribution.Common(trailingContent)
+        ) == baseContent
+      )
+
+      val unchangedSideContent =
+        contributionsOnSideWithoutChanges.asElementContributions
+      assert(
+        Vector(
+          Contribution.Common(leadingContent),
+          Contribution.Common(overlapContent),
+          Contribution.CommonToBaseAndLeftOnly(trailingContent)
+        ) == unchangedSideContent || Vector(
+          Contribution.CommonToBaseAndLeftOnly(leadingContent),
+          Contribution.Common(overlapContent),
+          Contribution.Common(trailingContent)
+        ) == unchangedSideContent
+      )
+
+      val separationAndSwappingSideContent =
+        contributionsOnSideWithSeparationAndSwapping.asElementContributions
+      assert(
+        Vector(
+          Contribution.Difference(overlapContent),
+          Contribution.Difference(trailingContent),
+          Contribution.Common(leadingContent),
+          Contribution.Common(overlapContent)
+        ) == separationAndSwappingSideContent || Vector(
+          Contribution.Common(overlapContent),
+          Contribution.Common(trailingContent),
+          Contribution.Difference(leadingContent),
+          Contribution.Difference(overlapContent)
+        ) == separationAndSwappingSideContent
+      )
+    }
+  end overlappingBlocksAreSeparatedAndSwappedAroundOnOneSide
 
   @TestFactory
   def aBlockIsTriplicatedOnTwoSides(): DynamicTests =
@@ -470,8 +600,9 @@ class BlockDuplicationAndCondensationTests:
       )
 
       assert(
-        Vector(Contribution.Common(blockContent)) == baseContributions
-          .map(_.map(_.content))
+        Vector(
+          Contribution.Common(blockContent)
+        ) == baseContributions.asElementContributions
       )
 
       val expectedTriplicatedSide = Vector(
@@ -486,8 +617,7 @@ class BlockDuplicationAndCondensationTests:
         )
       )
       assert(
-        expectedTriplicatedSide == contributionsOnTheOtherSideWithTriplication
-          .map(_.map(_.content))
+        expectedTriplicatedSide == contributionsOnTheOtherSideWithTriplication.asElementContributions
       )
     }
   end aBlockIsTriplicatedOnTwoSides

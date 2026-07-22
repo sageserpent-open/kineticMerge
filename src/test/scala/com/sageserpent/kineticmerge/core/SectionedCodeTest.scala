@@ -152,7 +152,7 @@ class SectionedCodeTest:
               rightSources
             )(
               configuration,
-              suppressMatchesInvolvingOverlappingSections = true
+              reconcileMatchesInvolvingOverlappingSections = true
             )
           }
         }
@@ -201,7 +201,7 @@ class SectionedCodeTest:
               rightSources
             )(
               configuration,
-              suppressMatchesInvolvingOverlappingSections = true
+              reconcileMatchesInvolvingOverlappingSections = true
             )
           }
         }
@@ -250,7 +250,7 @@ class SectionedCodeTest:
               rightSources
             )(
               configuration,
-              suppressMatchesInvolvingOverlappingSections = true
+              reconcileMatchesInvolvingOverlappingSections = true
             )
           }
         }
@@ -297,7 +297,7 @@ class SectionedCodeTest:
             rightSources
           )(
             configuration,
-            suppressMatchesInvolvingOverlappingSections = true
+            reconcileMatchesInvolvingOverlappingSections = true
           ) match
             case Right(analysis) =>
               // Check that all matches are consistent with the base sections...
@@ -1188,7 +1188,7 @@ class SectionedCodeTest:
           baseSources,
           leftSources,
           rightSources
-        )(configuration, suppressMatchesInvolvingOverlappingSections = true)
+        )(configuration, reconcileMatchesInvolvingOverlappingSections = true)
       ): @unchecked
     end val
 
@@ -1251,7 +1251,7 @@ class SectionedCodeTest:
         rightSources
       )(
         configuration,
-        suppressMatchesInvolvingOverlappingSections = false
+        reconcileMatchesInvolvingOverlappingSections = false
       ): @unchecked
 
     assert(exception.isInstanceOf[AdmissibleFailure])
@@ -1302,7 +1302,7 @@ class SectionedCodeTest:
         rightSources
       )(
         configuration,
-        suppressMatchesInvolvingOverlappingSections = true
+        reconcileMatchesInvolvingOverlappingSections = true
       ): @unchecked
     end val
 
@@ -1813,7 +1813,7 @@ class SectionedCodeTest:
             // sections that intrude on the content the test is checking, so
             // rather than quietly suppressing the matches, we let admissible
             // failures for overlapping sections occur and reject the test case.
-            suppressMatchesInvolvingOverlappingSections = true
+            reconcileMatchesInvolvingOverlappingSections = true
           ) match
             case Right(analysis) =>
               given ProgressRecording = configuration.progressRecording
