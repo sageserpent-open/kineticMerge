@@ -5,6 +5,7 @@ import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import de.sciss.fingertree.RangedSeq
 import org.junit.jupiter.api.TestFactory
+import scala.collection.immutable.MultiSet
 
 case class FakeSection(startOffset: Int, size: Int, id: Int = 0)
     extends Section[Int]:
@@ -32,10 +33,26 @@ class SectionsSeenTest:
         case Operation.Add(s) =>
           sectionsSeen = sectionsSeen + s
           reference = reference + s
+          assert(sectionsSeen.isEmpty == reference.iterator.isEmpty)
+          assert(sectionsSeen.size == reference.iterator.size)
+          assert(sectionsSeen.isEmpty == sectionsSeen.iterator.isEmpty)
+          assert(sectionsSeen.nonEmpty == sectionsSeen.iterator.nonEmpty)
+          assert(sectionsSeen.size == sectionsSeen.iterator.size)
+          assert(
+            sectionsSeen.headOption == sectionsSeen.iterator.toSeq.headOption
+          )
         case Operation.Remove(s) =>
           if reference.iterator.contains(s) then referenceWasHit = true
           sectionsSeen = sectionsSeen - s
           reference = reference - s
+          assert(sectionsSeen.isEmpty == reference.iterator.isEmpty)
+          assert(sectionsSeen.size == reference.iterator.size)
+          assert(sectionsSeen.isEmpty == sectionsSeen.iterator.isEmpty)
+          assert(sectionsSeen.nonEmpty == sectionsSeen.iterator.nonEmpty)
+          assert(sectionsSeen.size == sectionsSeen.iterator.size)
+          assert(
+            sectionsSeen.headOption == sectionsSeen.iterator.toSeq.headOption
+          )
         case Operation.QueryIncludes(start, end) =>
           val result   = sectionsSeen.filterIncludes((start, end)).toSet
           val expected = reference.filterIncludes((start, end)).toSet
@@ -56,8 +73,17 @@ class SectionsSeenTest:
 
       if !referenceWasHit then Trials.reject()
 
+      val startOffsets = sectionsSeen.iterator.map(_.startOffset).toSeq
       assert(
-        reference.iterator.toSet == sectionsSeen.iterator.toSet,
+        startOffsets == startOffsets.sorted,
+        "SectionsSeen iterator is not sorted by startOffset"
+      )
+
+      assert(
+        reference.iterator.toSeq.sortBy(s => (s.startOffset, s.size, s.id)) ==
+          sectionsSeen.iterator.toSeq.sortBy(s =>
+            (s.startOffset, s.size, s.asInstanceOf[FakeSection].id)
+          ),
         "Final contents mismatch"
       )
     }
@@ -117,7 +143,7 @@ class SectionsSeenTest:
 
       def operationSequences(
           partialResult: Vector[Operation],
-          sectionsSeen: Set[FakeSection]
+          sectionsSeen: MultiSet[FakeSection]
       ): Trials[Vector[Operation]] =
         if partialResult.size >= numberOfOperations then
           Trials.api.only(partialResult)
@@ -126,9 +152,9 @@ class SectionsSeenTest:
             if sectionsSeen.isEmpty then sections.map(Operation.Add.apply)
             else
               Trials.api.alternateWithWeights(
-                3 -> sections.map(Operation.Add.apply),
-                1 -> Trials.api
-                  .choose(sectionsSeen)
+                4 -> sections.map(Operation.Add.apply),
+                4 -> Trials.api
+                  .choose(sectionsSeen.toSet)
                   .map(
                     Operation.Add.apply
                   ) // Add some duplicates in occasionally.
@@ -137,8 +163,8 @@ class SectionsSeenTest:
             if sectionsSeen.isEmpty then sections.map(Operation.Remove.apply)
             else
               Trials.api.alternateWithWeights(
-                3 -> Trials.api
-                  .choose(sectionsSeen)
+                6 -> Trials.api
+                  .choose(sectionsSeen.toSet)
                   .map(
                     Operation.Remove.apply
                   ),
@@ -149,8 +175,8 @@ class SectionsSeenTest:
                   ) // Attempt to remove a section that isn't present occasionally.
               )
             ,
-            ranges(sectionsSeen).map(Operation.QueryIncludes.apply),
-            ranges(sectionsSeen).map(Operation.QueryOverlaps.apply)
+            ranges(sectionsSeen.toSet).map(Operation.QueryIncludes.apply),
+            ranges(sectionsSeen.toSet).map(Operation.QueryOverlaps.apply)
           )
 
           operations.flatMap { op =>
@@ -161,7 +187,7 @@ class SectionsSeenTest:
             operationSequences(partialResult :+ op, nextSectionsSeen)
           }
 
-      operationSequences(Vector.empty, Set.empty)
+      operationSequences(Vector.empty, MultiSet.empty)
     }
 
   enum Operation:

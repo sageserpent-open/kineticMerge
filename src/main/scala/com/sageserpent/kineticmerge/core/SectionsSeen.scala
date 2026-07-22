@@ -25,17 +25,23 @@ object SectionsSeen:
       maxOnePastEndOffset: Int,
       left: Treap[Element] | Empty.type,
       right: Treap[Element] | Empty.type,
+      multiplicity: Int,
       override val size: Int
   ) extends SectionsSeen[Element]:
-    override val hashCode: Int =
-      val leftHash = left match
-        case lt: Treap[Element] => lt.hashCode
-        case Empty              => 0
-      val rightHash = right match
-        case rt: Treap[Element] => rt.hashCode
-        case Empty              => 0
+    require(0 < multiplicity)
 
-      (section, priority, maxOnePastEndOffset, leftHash, rightHash, size)
+    override val hashCode: Int =
+      val leftHash  = left.hashCode
+      val rightHash = right.hashCode
+
+      (
+        section,
+        priority,
+        maxOnePastEndOffset,
+        leftHash,
+        rightHash,
+        multiplicity,
+size)
         .hashCode()
     end hashCode
 
@@ -45,7 +51,7 @@ object SectionsSeen:
       (left match
         case l: Treap[Element] => l.iterator
         case Empty             => Iterator.empty
-      ) ++ Iterator(section) ++ (right match
+      ) ++ Iterator.fill(multiplicity)(section) ++ (right match
         case r: Treap[Element] => r.iterator
         case Empty             => Iterator.empty)
 
@@ -62,8 +68,8 @@ object SectionsSeen:
             search(t.left)
 
             if t.section.startOffset <= start then
-              if t.section.onePastEndOffset >= onePastEnd
-              then results += t.section
+              if t.section.onePastEndOffset >= onePastEnd then
+                results += t.section
               end if
               search(t.right)
             end if
@@ -85,9 +91,7 @@ object SectionsSeen:
             search(t.left)
 
             if t.section.startOffset < onePastEnd then
-              if t.section.onePastEndOffset > start
-              then results += t.section
-              end if
+              if t.section.onePastEndOffset > start then results += t.section
               search(t.right)
             end if
 
@@ -101,17 +105,28 @@ object SectionsSeen:
       val priority = (section, this).hashCode()
       def add(node: Treap[Element] | Empty.type): Treap[Element] = node match
         case Empty =>
-          Treap(section, priority, section.onePastEndOffset, Empty, Empty, 1)
+          Treap(
+            section = section,
+            priority = priority,
+            maxOnePastEndOffset = section.onePastEndOffset,
+            left = Empty,
+            right = Empty,
+            multiplicity = 1,
+            size = 1
+          )
         case t: Treap[Element] =>
-          if priority > t.priority then
+          if t.section == section then
+            t.copy(multiplicity = 1 + t.multiplicity, size = 1 + t.size)
+          else if priority > t.priority then
             val (l, r) = split(t, section.startOffset)
             Treap(
-              section,
-              priority,
-              section.onePastEndOffset,
-              l,
-              r,
-              1
+              section = section,
+              priority = priority,
+              maxOnePastEndOffset = section.onePastEndOffset,
+              left = l,
+              right = r,
+              multiplicity = 1,
+              size = 1
             ).recompute
           else if section.startOffset < t.section.startOffset then
             t.copy(left = add(t.left)).recompute
@@ -126,7 +141,9 @@ object SectionsSeen:
       ): Treap[Element] | Empty.type = node match
         case Empty             => Empty
         case t: Treap[Element] =>
-          if t.section == section then merge(t.left, t.right)
+          if t.section == section then
+            if t.sectionIsUnique then merge(t.left, t.right)
+            else t.copy(multiplicity = t.multiplicity - 1, size = t.size - 1)
           else if section.startOffset < t.section.startOffset then
             val newLeft = remove(t.left)
             if newLeft eq t.left then t else t.copy(left = newLeft).recompute
@@ -138,6 +155,8 @@ object SectionsSeen:
 
       remove(this).asInstanceOf[SectionsSeen[Element]]
     end -
+
+    private def sectionIsUnique: Boolean = 1 == multiplicity
 
     private def split(
         node: Treap[Element] | Empty.type,
@@ -178,27 +197,28 @@ object SectionsSeen:
         case Empty              => 0
       copy(
         maxOnePastEndOffset = section.onePastEndOffset max leftMax max rightMax,
-        size = 1 + leftSize + rightSize
+        size = multiplicity + leftSize + rightSize
       )
     end recompute
   end Treap
 
   private object Empty extends SectionsSeen[Any]:
-    override val hashCode: Int = 0
+    override val hashCode: Int = 57
 
     override def filterIncludes(interval: (Int, Int)): Iterable[Section[Any]] =
       Iterable.empty
     override def filterOverlaps(interval: (Int, Int)): Iterable[Section[Any]] =
       Iterable.empty
     override def +(section: Section[Any]): SectionsSeen[Any] =
-      val priority = (section, 0).hashCode()
+      val priority = section.hashCode()
       Treap(
-        section,
-        priority,
-        section.onePastEndOffset,
-        Empty,
-        Empty,
-        1
+        section = section,
+        priority = priority,
+        maxOnePastEndOffset = section.onePastEndOffset,
+        left = Empty,
+        right = Empty,
+        multiplicity = 1,
+        size = 1
       )
     end +
     override def -(section: Section[Any]): SectionsSeen[Any] = this
