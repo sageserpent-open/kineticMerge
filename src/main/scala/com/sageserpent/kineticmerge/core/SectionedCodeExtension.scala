@@ -265,9 +265,8 @@ object SectionedCodeExtension extends StrictLogging:
 
       val matchSequence: MatchSequence[Section[Element]] =
         def matchSequenceOf(
-            previouslyEncounteredSections: Set[Section[Element]],
             threeSidedClump: ThreeSidedClump[Block[Element]]
-        ): (Set[Section[Element]], MatchSequence[Section[Element]]) =
+        ): MatchSequence[Section[Element]] =
           val sectionLevelMergeAlgebraExtractingAlignedMatchesOnly =
             new MergeAlgebra[MatchSequence, Section[Element]]:
               override def empty: MatchSequence[Section[Element]] = Vector.empty
@@ -358,32 +357,15 @@ object SectionedCodeExtension extends StrictLogging:
 
           given ProgressRecording = SilentProgressRecording
 
-          val baseSections =
-            threeSidedClump.base.flatMap(_.sectionsCoveredByGroup).distinct
-              .filterNot(previouslyEncounteredSections.contains)
-          val leftSections =
-            threeSidedClump.left.flatMap(_.sectionsCoveredByGroup).distinct
-              .filterNot(previouslyEncounteredSections.contains)
-          val rightSections =
-            threeSidedClump.right.flatMap(_.sectionsCoveredByGroup).distinct
-              .filterNot(previouslyEncounteredSections.contains)
-
-          (previouslyEncounteredSections ++ baseSections ++ leftSections ++ rightSections) -> mergeOf(
-            sectionLevelMergeAlgebraExtractingAlignedMatchesOnly
-          )(
-            baseSections,
-            leftSections,
-            rightSections,
+          mergeOf(sectionLevelMergeAlgebraExtractingAlignedMatchesOnly)(
+            threeSidedClump.base.flatMap(_.sectionsCoveredByGroup).distinct,
+            threeSidedClump.left.flatMap(_.sectionsCoveredByGroup).distinct,
+            threeSidedClump.right.flatMap(_.sectionsCoveredByGroup).distinct,
             label = "Sections merged in three-sided clump:"
           )
         end matchSequenceOf
 
-        import cats.syntax.traverse.*
-
-        (threeSidedClumps: Vector[ThreeSidedClump[Block[Element]]])
-          .mapAccumulate(init = Set.empty[Section[Element]])(matchSequenceOf)
-          ._2
-          .flatten
+        threeSidedClumps.flatMap(matchSequenceOf)
       end matchSequence
 
       // PLAN: put each match into its own disjoint set and use a mapping from
