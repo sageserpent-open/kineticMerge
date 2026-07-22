@@ -299,7 +299,10 @@ object SectionedCodeExtension extends StrictLogging:
                   insertedElementOnLeft: Section[Element],
                   insertedElementOnRight: Section[Element]
               ): MatchSequence[Section[Element]] = result.appended(
-                Match.LeftAndRight(insertedElementOnLeft, insertedElementOnRight)
+                Match.LeftAndRight(
+                  insertedElementOnLeft,
+                  insertedElementOnRight
+                )
               )
 
               override def leftDeletion(
@@ -357,6 +360,11 @@ object SectionedCodeExtension extends StrictLogging:
 
           given ProgressRecording = SilentProgressRecording
 
+          // A section may be involved in more than one block - that's fine in
+          // itself and is important to model in the preceding block-level
+          // merge, but here we are merging sections and thus need to avoid
+          // making fake alignments due to the same section being repeated on
+          // one side, say, but matching what distinct sections on the other.
           mergeOf(sectionLevelMergeAlgebraExtractingAlignedMatchesOnly)(
             threeSidedClump.base.flatMap(_.sectionsCoveredByGroup).distinct,
             threeSidedClump.left.flatMap(_.sectionsCoveredByGroup).distinct,
