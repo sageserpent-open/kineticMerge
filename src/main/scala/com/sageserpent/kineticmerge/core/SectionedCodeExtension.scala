@@ -263,109 +263,133 @@ object SectionedCodeExtension extends StrictLogging:
 
       type MatchSequence[X] = Vector[Match[X]]
 
-      def matchSequenceOf(
-          threeSidedClump: ThreeSidedClump[Block[Element]]
-      ): MatchSequence[Section[Element]] =
-        val sectionLevelMergeAlgebraExtractingAlignedMatchesOnly =
-          new MergeAlgebra[MatchSequence, Section[Element]]:
-            override def empty: MatchSequence[Section[Element]] = Vector.empty
-
-            override def preservation(
-                result: MatchSequence[Section[Element]],
-                preservedBaseElement: Section[Element],
-                preservedElementOnLeft: Section[Element],
-                preservedElementOnRight: Section[Element]
-            ): MatchSequence[Section[Element]] = result.appended(
-              Match.AllSides(
-                preservedBaseElement,
-                preservedElementOnLeft,
-                preservedElementOnRight
-              )
-            )
-
-            override def leftInsertion(
-                result: MatchSequence[Section[Element]],
-                insertedElement: Section[Element]
-            ): MatchSequence[Section[Element]] = result
-
-            override def rightInsertion(
-                result: MatchSequence[Section[Element]],
-                insertedElement: Section[Element]
-            ): MatchSequence[Section[Element]] = result
-
-            override def coincidentInsertion(
-                result: MatchSequence[Section[Element]],
-                insertedElementOnLeft: Section[Element],
-                insertedElementOnRight: Section[Element]
-            ): MatchSequence[Section[Element]] = result.appended(
-              Match.LeftAndRight(insertedElementOnLeft, insertedElementOnRight)
-            )
-
-            override def leftDeletion(
-                result: MatchSequence[Section[Element]],
-                deletedBaseElement: Section[Element],
-                deletedRightElement: Section[Element]
-            ): MatchSequence[Section[Element]] = result.appended(
-              Match.BaseAndRight(deletedBaseElement, deletedRightElement)
-            )
-
-            override def rightDeletion(
-                result: MatchSequence[Section[Element]],
-                deletedBaseElement: Section[Element],
-                deletedLeftElement: Section[Element]
-            ): MatchSequence[Section[Element]] = result.appended(
-              Match.BaseAndLeft(deletedBaseElement, deletedLeftElement)
-            )
-
-            override def coincidentDeletion(
-                result: MatchSequence[Section[Element]],
-                deletedElement: Section[Element]
-            ): MatchSequence[Section[Element]] = result
-
-            override def leftEdit(
-                result: MatchSequence[Section[Element]],
-                editedBaseElement: Section[Element],
-                editedRightElement: Section[Element],
-                editElements: IndexedSeq[Section[Element]]
-            ): MatchSequence[Section[Element]] = result.appended(
-              Match.BaseAndRight(editedBaseElement, editedRightElement)
-            )
-
-            override def rightEdit(
-                result: MatchSequence[Section[Element]],
-                editedBaseElement: Section[Element],
-                editedLeftElement: Section[Element],
-                editElements: IndexedSeq[Section[Element]]
-            ): MatchSequence[Section[Element]] = result.appended(
-              Match.BaseAndLeft(editedBaseElement, editedLeftElement)
-            )
-
-            override def coincidentEdit(
-                result: MatchSequence[Section[Element]],
-                editedElement: Section[Element],
-                editElements: IndexedSeq[(Section[Element], Section[Element])]
-            ): MatchSequence[Section[Element]] =
-              result.concat(editElements.map(Match.LeftAndRight.apply))
-
-            override def conflict(
-                result: MatchSequence[Section[Element]],
-                editedElements: IndexedSeq[Section[Element]],
-                leftEditElements: IndexedSeq[Section[Element]],
-                rightEditElements: IndexedSeq[Section[Element]]
-            ): MatchSequence[Section[Element]] = result
-
-        given ProgressRecording = SilentProgressRecording
-
-        mergeOf(sectionLevelMergeAlgebraExtractingAlignedMatchesOnly)(
-          threeSidedClump.base.flatMap(_.sectionsCoveredByGroup),
-          threeSidedClump.left.flatMap(_.sectionsCoveredByGroup),
-          threeSidedClump.right.flatMap(_.sectionsCoveredByGroup),
-          label = "Sections merged in three-sided clump:"
-        )
-      end matchSequenceOf
-
       val matchSequence: MatchSequence[Section[Element]] =
-        threeSidedClumps.flatMap(matchSequenceOf)
+        def matchSequenceOf(
+            // A section may be involved in more than one block - that's fine in
+            // itself and is important to model in the preceding block-level
+            // merge, but here we are merging sections and thus need to avoid
+            // making fake alignments due to the same section being repeated on
+            // one side, say, but matching what distinct sections on the other.
+            previouslyEncounteredSections: Set[Section[Element]],
+            threeSidedClump: ThreeSidedClump[Block[Element]]
+        ): (Set[Section[Element]], MatchSequence[Section[Element]]) =
+          val sectionLevelMergeAlgebraExtractingAlignedMatchesOnly =
+            new MergeAlgebra[MatchSequence, Section[Element]]:
+              override def empty: MatchSequence[Section[Element]] = Vector.empty
+
+              override def preservation(
+                  result: MatchSequence[Section[Element]],
+                  preservedBaseElement: Section[Element],
+                  preservedElementOnLeft: Section[Element],
+                  preservedElementOnRight: Section[Element]
+              ): MatchSequence[Section[Element]] = result.appended(
+                Match.AllSides(
+                  preservedBaseElement,
+                  preservedElementOnLeft,
+                  preservedElementOnRight
+                )
+              )
+
+              override def leftInsertion(
+                  result: MatchSequence[Section[Element]],
+                  insertedElement: Section[Element]
+              ): MatchSequence[Section[Element]] = result
+
+              override def rightInsertion(
+                  result: MatchSequence[Section[Element]],
+                  insertedElement: Section[Element]
+              ): MatchSequence[Section[Element]] = result
+
+              override def coincidentInsertion(
+                  result: MatchSequence[Section[Element]],
+                  insertedElementOnLeft: Section[Element],
+                  insertedElementOnRight: Section[Element]
+              ): MatchSequence[Section[Element]] = result.appended(
+                Match.LeftAndRight(
+                  insertedElementOnLeft,
+                  insertedElementOnRight
+                )
+              )
+
+              override def leftDeletion(
+                  result: MatchSequence[Section[Element]],
+                  deletedBaseElement: Section[Element],
+                  deletedRightElement: Section[Element]
+              ): MatchSequence[Section[Element]] = result.appended(
+                Match.BaseAndRight(deletedBaseElement, deletedRightElement)
+              )
+
+              override def rightDeletion(
+                  result: MatchSequence[Section[Element]],
+                  deletedBaseElement: Section[Element],
+                  deletedLeftElement: Section[Element]
+              ): MatchSequence[Section[Element]] = result.appended(
+                Match.BaseAndLeft(deletedBaseElement, deletedLeftElement)
+              )
+
+              override def coincidentDeletion(
+                  result: MatchSequence[Section[Element]],
+                  deletedElement: Section[Element]
+              ): MatchSequence[Section[Element]] = result
+
+              override def leftEdit(
+                  result: MatchSequence[Section[Element]],
+                  editedBaseElement: Section[Element],
+                  editedRightElement: Section[Element],
+                  editElements: IndexedSeq[Section[Element]]
+              ): MatchSequence[Section[Element]] = result.appended(
+                Match.BaseAndRight(editedBaseElement, editedRightElement)
+              )
+
+              override def rightEdit(
+                  result: MatchSequence[Section[Element]],
+                  editedBaseElement: Section[Element],
+                  editedLeftElement: Section[Element],
+                  editElements: IndexedSeq[Section[Element]]
+              ): MatchSequence[Section[Element]] = result.appended(
+                Match.BaseAndLeft(editedBaseElement, editedLeftElement)
+              )
+
+              override def coincidentEdit(
+                  result: MatchSequence[Section[Element]],
+                  editedElement: Section[Element],
+                  editElements: IndexedSeq[(Section[Element], Section[Element])]
+              ): MatchSequence[Section[Element]] =
+                result.concat(editElements.map(Match.LeftAndRight.apply))
+
+              override def conflict(
+                  result: MatchSequence[Section[Element]],
+                  editedElements: IndexedSeq[Section[Element]],
+                  leftEditElements: IndexedSeq[Section[Element]],
+                  rightEditElements: IndexedSeq[Section[Element]]
+              ): MatchSequence[Section[Element]] = result
+
+          given ProgressRecording = SilentProgressRecording
+
+          val baseSections =
+            threeSidedClump.base.flatMap(_.sectionsCoveredByGroup).distinct
+          val leftSections =
+            threeSidedClump.left.flatMap(_.sectionsCoveredByGroup).distinct
+          val rightSections =
+            threeSidedClump.right.flatMap(_.sectionsCoveredByGroup).distinct
+
+          (previouslyEncounteredSections ++ baseSections ++ leftSections ++ rightSections) -> mergeOf(
+            sectionLevelMergeAlgebraExtractingAlignedMatchesOnly
+          )(
+            baseSections,
+            leftSections,
+            rightSections,
+            label = "Sections merged in three-sided clump:"
+          )
+        end matchSequenceOf
+
+        import cats.syntax.traverse.*
+
+        (threeSidedClumps: Vector[ThreeSidedClump[Block[Element]]])
+          .mapAccumulate(init = Set.empty[Section[Element]])(matchSequenceOf)
+          ._2
+          .flatten
+      end matchSequence
 
       // PLAN: put each match into its own disjoint set and use a mapping from
       // section to match to see if a match shares any of its sections with a
