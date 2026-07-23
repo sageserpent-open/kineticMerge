@@ -471,7 +471,7 @@ object SectionedCodeExtension extends StrictLogging:
 
             val demotedMatch = (base, left, right) match
               case (Some(b), Some(l), Some(r)) => Some(Match.AllSides(b, l, r))
-              case (Some(b), Some(l), _)       => Some(Match.BaseAndLeft(b, l))
+              case (Some(b), Some(l), None)    => Some(Match.BaseAndLeft(b, l))
               case (Some(b), None, Some(r))    => Some(Match.BaseAndRight(b, r))
               case (None, Some(l), Some(r))    => Some(Match.LeftAndRight(l, r))
               case _                           => None
