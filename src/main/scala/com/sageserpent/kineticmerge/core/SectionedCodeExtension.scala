@@ -413,9 +413,16 @@ object SectionedCodeExtension extends StrictLogging:
             )
           )
 
-          previouslySeenMatchesSharingAtLeastOneSection.headOption
-            .fold(ifEmpty = resultStep)(
-              DisjointSets.union(matchJustEncountered, _) >> resultStep
+          // NOTE: have to unify *all* of the previously seen matches, because
+          // sharing a section between matches is not a transitive relationship
+          // in general.
+          previouslySeenMatchesSharingAtLeastOneSection
+            .foldRight(resultStep)(
+              (previouslySeenMatchSharingAtLeastOneSection, partialResult) =>
+                DisjointSets.union(
+                  matchJustEncountered,
+                  previouslySeenMatchSharingAtLeastOneSection
+                ) >> partialResult
             )
         } >> DisjointSets.toSets
 
@@ -528,7 +535,10 @@ object SectionedCodeExtension extends StrictLogging:
 
         rawMatches.combinations(2).foreach {
           case Seq(m1, m2) =>
-            assert(!matchesCross(m1, m2), s"Post-condition failed: matches cross!\n$m1\n$m2")
+            assert(
+              !matchesCross(m1, m2),
+              s"Post-condition failed: matches cross!\n$m1\n$m2"
+            )
           case _ =>
         }
 
