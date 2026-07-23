@@ -364,7 +364,7 @@ object SectionedCodeExtension extends StrictLogging:
           // itself and is important to model in the preceding block-level
           // merge, but here we are merging sections and thus need to avoid
           // making fake alignments due to the same section being repeated on
-          // one side, say, but matching what distinct sections on the other.
+          // one side, say, but matching with distinct sections on the other.
           mergeOf(sectionLevelMergeAlgebraExtractingAlignedMatchesOnly)(
             threeSidedClump.base.flatMap(_.sectionsCoveredByGroup).distinct,
             threeSidedClump.left.flatMap(_.sectionsCoveredByGroup).distinct,
