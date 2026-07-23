@@ -387,7 +387,7 @@ object SectionedCodeExtension extends StrictLogging:
                   result: MatchSequence[Section[Element]],
                   editedBaseElement: Section[Element],
                   editedRightElement: Section[Element],
-                  editElements: Seq[Section[Element]]
+                  editElements: IndexedSeq[Section[Element]]
               ): MatchSequence[Section[Element]] = result.appended(
                 Match.BaseAndRight(editedBaseElement, editedRightElement)
               )
@@ -396,7 +396,7 @@ object SectionedCodeExtension extends StrictLogging:
                   result: MatchSequence[Section[Element]],
                   editedBaseElement: Section[Element],
                   editedLeftElement: Section[Element],
-                  editElements: Seq[Section[Element]]
+                  editElements: IndexedSeq[Section[Element]]
               ): MatchSequence[Section[Element]] = result.appended(
                 Match.BaseAndLeft(editedBaseElement, editedLeftElement)
               )
@@ -404,15 +404,15 @@ object SectionedCodeExtension extends StrictLogging:
               override def coincidentEdit(
                   result: MatchSequence[Section[Element]],
                   editedElement: Section[Element],
-                  editElements: Seq[(Section[Element], Section[Element])]
+                  editElements: IndexedSeq[(Section[Element], Section[Element])]
               ): MatchSequence[Section[Element]] =
                 result.concat(editElements.map(Match.LeftAndRight.apply))
 
               override def conflict(
                   result: MatchSequence[Section[Element]],
-                  editedElements: Seq[Section[Element]],
-                  leftEditElements: Seq[Section[Element]],
-                  rightEditElements: Seq[Section[Element]]
+                  editedElements: IndexedSeq[Section[Element]],
+                  leftEditElements: IndexedSeq[Section[Element]],
+                  rightEditElements: IndexedSeq[Section[Element]]
               ): MatchSequence[Section[Element]] = result
 
           given ProgressRecording = SilentProgressRecording
