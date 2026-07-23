@@ -375,41 +375,32 @@ object LongestCommonSubsequence:
           val primaryResult = primary.compare(x, y)
           if primaryResult != 0 then primaryResult
           else
-            val isSection = x.base.headOption.exists {
-              case Contribution.Difference(e) => e.isInstanceOf[Section[?]]
-              case Contribution.Common(e) => e.isInstanceOf[Section[?]]
-              case Contribution.CommonToBaseAndLeftOnly(e) => e.isInstanceOf[Section[?]]
-              case Contribution.CommonToBaseAndRightOnly(e) => e.isInstanceOf[Section[?]]
-              case Contribution.CommonToLeftAndRightOnly(e) => e.isInstanceOf[Section[?]]
+            def score(c: Contribution[Element]): Int = c match
+              case Contribution.Common(_) => 3
+              case Contribution.CommonToLeftAndRightOnly(_) => 2
+              case Contribution.Difference(_) => 0
+              case _ => 1
+
+            def firstDiff(pairs: IndexedSeq[(Contribution[Element], Contribution[Element])]): Option[(Int, Int)] = {
+              val index = pairs.indexWhere { case (cx, cy) => score(cx) != score(cy) }
+              if index != -1 then
+                val (cx, cy) = pairs(index)
+                Some(index -> (if score(cx) > score(cy) then 1 else -1))
+              else None
             }
 
-            if isSection then
-              def score(c: Contribution[Element]): Int = c match
-                case Contribution.Common(_) => 2
-                case Contribution.Difference(_) => 0
-                case _ => 1
+            val baseDiff = firstDiff(x.base.zip(y.base))
+            val leftDiff = firstDiff(x.left.zip(y.left))
+            val rightDiff = firstDiff(x.right.zip(y.right))
 
-              def firstDiff(pairs: IndexedSeq[(Contribution[Element], Contribution[Element])]): Option[(Int, Int)] = {
-                val index = pairs.indexWhere { case (cx, cy) => score(cx) != score(cy) }
-                if index != -1 then
-                  val (cx, cy) = pairs(index)
-                  Some(index -> (if score(cx) > score(cy) then 1 else -1))
-                else None
-              }
+            // Sort by index ascending. If indices are equal, stably sort by base > left > right.
+            val finalRes = Seq(
+              baseDiff.map(d => (d._1, 0, d._2)),
+              leftDiff.map(d => (d._1, 1, d._2)),
+              rightDiff.map(d => (d._1, 2, d._2))
+            ).flatten.sortBy(d => (d._1, d._2)).headOption.map(_._3).getOrElse(0)
 
-              val baseDiff = firstDiff(x.base.zip(y.base))
-              val leftDiff = firstDiff(x.left.zip(y.left))
-              val rightDiff = firstDiff(x.right.zip(y.right))
-
-              // Sort by index ascending. If indices are equal, stably sort by base > left > right.
-              Seq(
-                baseDiff.map(d => (d._1, 0, d._2)),
-                leftDiff.map(d => (d._1, 1, d._2)),
-                rightDiff.map(d => (d._1, 2, d._2))
-              ).flatten.sortBy(d => (d._1, d._2)).headOption.map(_._3).getOrElse(0)
-            else
-              0
-            end if
+            finalRes
           end if
         end compare
       end new

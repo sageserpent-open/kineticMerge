@@ -303,7 +303,24 @@ object SectionedCodeExtension extends StrictLogging:
               .orElse(rightOverlap)
               .getOrElse(false)
 
-          val earliestOverlappingIndexOpt = coalescedClumps.indexWhere(overlaps)
+          var earliestOverlappingIndexOpt = -1
+          var index = coalescedClumps.size - 1
+          var keepScanning = true
+          while index >= 0 && keepScanning do
+            val clump = coalescedClumps(index)
+
+            val basePruned = clump.base.lastOption.map(_.onePastEndOffset).getOrElse(0) <= successor.base.headOption.map(_.startOffset).getOrElse(Int.MaxValue)
+            val leftPruned = clump.left.lastOption.map(_.onePastEndOffset).getOrElse(0) <= successor.left.headOption.map(_.startOffset).getOrElse(Int.MaxValue)
+            val rightPruned = clump.right.lastOption.map(_.onePastEndOffset).getOrElse(0) <= successor.right.headOption.map(_.startOffset).getOrElse(Int.MaxValue)
+
+            if basePruned && leftPruned && rightPruned then
+              keepScanning = false
+            else
+              if overlaps(clump) then
+                earliestOverlappingIndexOpt = index
+              index -= 1
+            end if
+          end while
 
           if earliestOverlappingIndexOpt != -1 then
             val (prefix, toCoalesce) = coalescedClumps.splitAt(earliestOverlappingIndexOpt)
