@@ -279,7 +279,7 @@ object SectionedCodeExtension extends StrictLogging:
         }
 
       val sectionClumps: Vector[ThreeSidedClump[Section[Element]]] =
-        rawSectionClumps.foldLeft(Vector.empty[ThreeSidedClump[Section[Element]]]) { (coalescedClumps, successor) =>
+        val coalescedWithMaxes = rawSectionClumps.foldLeft(Vector.empty[(ThreeSidedClump[Section[Element]], Int, Int, Int)]) { (coalescedClumps, successor) =>
           def overlaps(clump: ThreeSidedClump[Section[Element]]): Boolean =
             import cats.syntax.apply.catsSyntaxTuple2Semigroupal
 
@@ -307,11 +307,11 @@ object SectionedCodeExtension extends StrictLogging:
           var index = coalescedClumps.size - 1
           var keepScanning = true
           while index >= 0 && keepScanning do
-            val clump = coalescedClumps(index)
+            val (clump, maxBase, maxLeft, maxRight) = coalescedClumps(index)
 
-            val basePruned = clump.base.lastOption.map(_.onePastEndOffset).getOrElse(0) <= successor.base.headOption.map(_.startOffset).getOrElse(Int.MaxValue)
-            val leftPruned = clump.left.lastOption.map(_.onePastEndOffset).getOrElse(0) <= successor.left.headOption.map(_.startOffset).getOrElse(Int.MaxValue)
-            val rightPruned = clump.right.lastOption.map(_.onePastEndOffset).getOrElse(0) <= successor.right.headOption.map(_.startOffset).getOrElse(Int.MaxValue)
+            val basePruned = maxBase <= successor.base.headOption.map(_.startOffset).getOrElse(Int.MaxValue)
+            val leftPruned = maxLeft <= successor.left.headOption.map(_.startOffset).getOrElse(Int.MaxValue)
+            val rightPruned = maxRight <= successor.right.headOption.map(_.startOffset).getOrElse(Int.MaxValue)
 
             if basePruned && leftPruned && rightPruned then
               keepScanning = false
@@ -323,17 +323,36 @@ object SectionedCodeExtension extends StrictLogging:
           end while
 
           if earliestOverlappingIndexOpt != -1 then
-            val (prefix, toCoalesce) = coalescedClumps.splitAt(earliestOverlappingIndexOpt)
+            val (prefix, toCoalesceWithMaxes) = coalescedClumps.splitAt(earliestOverlappingIndexOpt)
+            val toCoalesce = toCoalesceWithMaxes.map(_._1)
             val allToCoalesce = toCoalesce :+ successor
             val coalesced = ThreeSidedClump(
               base = allToCoalesce.flatMap(_.base).distinct,
               left = allToCoalesce.flatMap(_.left).distinct,
               right = allToCoalesce.flatMap(_.right).distinct
             )
-            prefix :+ coalesced
+            val (prevMaxBase, prevMaxLeft, prevMaxRight) = prefix.lastOption.map {
+              case (_, mb, ml, mr) => (mb, ml, mr)
+            }.getOrElse((0, 0, 0))
+
+            val coalescedMaxBase = Math.max(prevMaxBase, coalesced.base.lastOption.map(_.onePastEndOffset).getOrElse(0))
+            val coalescedMaxLeft = Math.max(prevMaxLeft, coalesced.left.lastOption.map(_.onePastEndOffset).getOrElse(0))
+            val coalescedMaxRight = Math.max(prevMaxRight, coalesced.right.lastOption.map(_.onePastEndOffset).getOrElse(0))
+
+            prefix :+ (coalesced, coalescedMaxBase, coalescedMaxLeft, coalescedMaxRight)
           else
-            coalescedClumps :+ successor
+            val (prevMaxBase, prevMaxLeft, prevMaxRight) = coalescedClumps.lastOption.map {
+              case (_, mb, ml, mr) => (mb, ml, mr)
+            }.getOrElse((0, 0, 0))
+
+            val successorMaxBase = Math.max(prevMaxBase, successor.base.lastOption.map(_.onePastEndOffset).getOrElse(0))
+            val successorMaxLeft = Math.max(prevMaxLeft, successor.left.lastOption.map(_.onePastEndOffset).getOrElse(0))
+            val successorMaxRight = Math.max(prevMaxRight, successor.right.lastOption.map(_.onePastEndOffset).getOrElse(0))
+
+            coalescedClumps :+ (successor, successorMaxBase, successorMaxLeft, successorMaxRight)
+          end if
         }
+        coalescedWithMaxes.map(_._1)
 
       type MatchSequence[X] = Vector[Match[X]]
 
