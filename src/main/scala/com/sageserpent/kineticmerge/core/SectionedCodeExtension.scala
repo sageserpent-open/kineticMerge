@@ -105,11 +105,61 @@ object SectionedCodeExtension extends StrictLogging:
           base: IndexedSeq[X],
           left: IndexedSeq[X],
           right: IndexedSeq[X]
-      )
+      ):
+        def concatenate(successor: ThreeSidedClump[X]): ThreeSidedClump[X] =
+          ThreeSidedClump(
+            base = base ++ successor.base,
+            left = left ++ successor.left,
+            right = right ++ successor.right
+          )
+      end ThreeSidedClump
 
       type ThreeSidedClumps[X] = Vector[ThreeSidedClump[X]]
 
       val blockLevelMergeAlgebra =
+        extension (threeSidedClumps: ThreeSidedClumps[Block[Element]])
+          private def appendOrCoalesce(
+              successor: ThreeSidedClump[Block[Element]]
+          ): ThreeSidedClumps[Block[Element]] =
+            import cats.syntax.apply.catsSyntaxTuple2Semigroupal
+
+            val baseOverlap = (
+              threeSidedClumps.reverseIterator
+                .dropWhile(_.base.isEmpty)
+                .nextOption()
+                .map(_.base.last.onePastEndOffset),
+              successor.base.headOption.map(_.startOffset)
+            ).mapN(_ > _)
+
+            val leftOverlap = (
+              threeSidedClumps.reverseIterator
+                .dropWhile(_.left.isEmpty)
+                .nextOption()
+                .map(_.left.last.onePastEndOffset),
+              successor.left.headOption.map(_.startOffset)
+            ).mapN(_ > _)
+
+            val rightOverlap = (
+              threeSidedClumps.reverseIterator
+                .dropWhile(_.right.isEmpty)
+                .nextOption()
+                .map(_.right.last.onePastEndOffset),
+              successor.right.headOption.map(_.startOffset)
+            ).mapN(_ > _)
+
+            val overlapping = baseOverlap
+              .orElse(leftOverlap)
+              .orElse(rightOverlap)
+              .getOrElse(false)
+
+            if overlapping then
+              threeSidedClumps.init.appended(
+                threeSidedClumps.last.concatenate(successor)
+              )
+            else threeSidedClumps.appended(successor)
+            end if
+        end extension
+
         new MergeAlgebra[ThreeSidedClumps, Block[Element]]:
           override def empty: ThreeSidedClumps[Block[Element]] = Vector.empty
 
@@ -118,7 +168,7 @@ object SectionedCodeExtension extends StrictLogging:
               preservedBaseElement: Block[Element],
               preservedElementOnLeft: Block[Element],
               preservedElementOnRight: Block[Element]
-          ): ThreeSidedClumps[Block[Element]] = result.appended(
+          ): ThreeSidedClumps[Block[Element]] = result.appendOrCoalesce(
             ThreeSidedClump(
               Vector(preservedBaseElement),
               Vector(preservedElementOnLeft),
@@ -130,7 +180,7 @@ object SectionedCodeExtension extends StrictLogging:
               result: ThreeSidedClumps[Block[Element]],
               insertedElement: Block[Element]
           ): ThreeSidedClumps[Block[Element]] =
-            result.appended(
+            result.appendOrCoalesce(
               ThreeSidedClump(
                 Vector.empty,
                 Vector(insertedElement),
@@ -142,7 +192,7 @@ object SectionedCodeExtension extends StrictLogging:
               result: ThreeSidedClumps[Block[Element]],
               insertedElement: Block[Element]
           ): ThreeSidedClumps[Block[Element]] =
-            result.appended(
+            result.appendOrCoalesce(
               ThreeSidedClump(
                 Vector.empty,
                 Vector.empty,
@@ -154,7 +204,7 @@ object SectionedCodeExtension extends StrictLogging:
               result: ThreeSidedClumps[Block[Element]],
               insertedElementOnLeft: Block[Element],
               insertedElementOnRight: Block[Element]
-          ): ThreeSidedClumps[Block[Element]] = result.appended(
+          ): ThreeSidedClumps[Block[Element]] = result.appendOrCoalesce(
             ThreeSidedClump(
               Vector.empty,
               Vector(insertedElementOnLeft),
@@ -166,7 +216,7 @@ object SectionedCodeExtension extends StrictLogging:
               result: ThreeSidedClumps[Block[Element]],
               deletedBaseElement: Block[Element],
               deletedRightElement: Block[Element]
-          ): ThreeSidedClumps[Block[Element]] = result.appended(
+          ): ThreeSidedClumps[Block[Element]] = result.appendOrCoalesce(
             ThreeSidedClump(
               Vector(deletedBaseElement),
               Vector.empty,
@@ -178,7 +228,7 @@ object SectionedCodeExtension extends StrictLogging:
               result: ThreeSidedClumps[Block[Element]],
               deletedBaseElement: Block[Element],
               deletedLeftElement: Block[Element]
-          ): ThreeSidedClumps[Block[Element]] = result.appended(
+          ): ThreeSidedClumps[Block[Element]] = result.appendOrCoalesce(
             ThreeSidedClump(
               Vector(deletedBaseElement),
               Vector(deletedLeftElement),
@@ -190,7 +240,7 @@ object SectionedCodeExtension extends StrictLogging:
               result: ThreeSidedClumps[Block[Element]],
               deletedElement: Block[Element]
           ): ThreeSidedClumps[Block[Element]] =
-            result.appended(
+            result.appendOrCoalesce(
               ThreeSidedClump(
                 Vector(deletedElement),
                 Vector.empty,
@@ -203,7 +253,7 @@ object SectionedCodeExtension extends StrictLogging:
               editedBaseElement: Block[Element],
               editedRightElement: Block[Element],
               editElements: IndexedSeq[Block[Element]]
-          ): ThreeSidedClumps[Block[Element]] = result.appended(
+          ): ThreeSidedClumps[Block[Element]] = result.appendOrCoalesce(
             ThreeSidedClump(
               Vector(editedBaseElement),
               editElements,
@@ -216,7 +266,7 @@ object SectionedCodeExtension extends StrictLogging:
               editedBaseElement: Block[Element],
               editedLeftElement: Block[Element],
               editElements: IndexedSeq[Block[Element]]
-          ): ThreeSidedClumps[Block[Element]] = result.appended(
+          ): ThreeSidedClumps[Block[Element]] = result.appendOrCoalesce(
             ThreeSidedClump(
               Vector(editedBaseElement),
               Vector(editedLeftElement),
@@ -230,7 +280,7 @@ object SectionedCodeExtension extends StrictLogging:
               editElements: IndexedSeq[(Block[Element], Block[Element])]
           ): ThreeSidedClumps[Block[Element]] =
             val (leftEditElements, rightEditElements) = editElements.unzip
-            result.appended(
+            result.appendOrCoalesce(
               ThreeSidedClump(
                 Vector(editedElement),
                 leftEditElements,
@@ -245,13 +295,15 @@ object SectionedCodeExtension extends StrictLogging:
               leftEditElements: IndexedSeq[Block[Element]],
               rightEditElements: IndexedSeq[Block[Element]]
           ): ThreeSidedClumps[Block[Element]] =
-            result.appended(
+            result.appendOrCoalesce(
               ThreeSidedClump(
                 editedElements,
                 leftEditElements,
                 rightEditElements
               )
             )
+        end new
+      end blockLevelMergeAlgebra
 
       val threeSidedClumps: ThreeSidedClumps[Block[Element]] =
         mergeOf(blockLevelMergeAlgebra)(
