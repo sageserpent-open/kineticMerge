@@ -1771,11 +1771,7 @@ class SectionedCodeTest:
   @TestFactory
   def mergeSmokeTest(): DynamicTests =
     testPlansFavouringMatches
-      .withStrategy(caseSupplyCycle =>
-        if caseSupplyCycle.isInitial then
-          CasesLimitStrategy.timed(Duration.apply(5, TimeUnit.MINUTES))
-        else CasesLimitStrategy.counted(100, 3.0)
-      )
+      .withLimit(200)
       .dynamicTests { testPlan =>
         import testPlan.*
         // Scalafmt 3.8.5 will wreck this block of code if it isn't protected by
