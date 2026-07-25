@@ -475,11 +475,66 @@ object SectionedCodeExtension extends StrictLogging:
         end if
       end representativeMatchesFrom
 
+      def matchesCross(
+          m1: Match[Section[Element]],
+          m2: Match[Section[Element]]
+      ): Boolean =
+        val baseLeftCross =
+          for
+            b1 <- m1.baseContribution
+            b2 <- m2.baseContribution
+            l1 <- m1.leftContribution
+            l2 <- m2.leftContribution
+          yield (b1.startOffset < b2.startOffset && l1.startOffset >= l2.startOffset) ||
+            (b1.startOffset > b2.startOffset && l1.startOffset <= l2.startOffset)
+
+        val baseRightCross =
+          for
+            b1 <- m1.baseContribution
+            b2 <- m2.baseContribution
+            r1 <- m1.rightContribution
+            r2 <- m2.rightContribution
+          yield (b1.startOffset < b2.startOffset && r1.startOffset >= r2.startOffset) ||
+            (b1.startOffset > b2.startOffset && r1.startOffset <= r2.startOffset)
+
+        val leftRightCross =
+          for
+            l1 <- m1.leftContribution
+            l2 <- m2.leftContribution
+            r1 <- m1.rightContribution
+            r2 <- m2.rightContribution
+          yield (l1.startOffset < l2.startOffset && r1.startOffset >= r2.startOffset) ||
+            (l1.startOffset > l2.startOffset && r1.startOffset <= r2.startOffset)
+
+        Seq(baseLeftCross, baseRightCross, leftRightCross).flatten.exists(
+          identity
+        )
+      end matchesCross
+
+      def matchSize(m: Match[Section[Element]]): Int = m match
+        case Match.AllSides(baseSection, _, _)  => baseSection.size
+        case Match.BaseAndLeft(baseSection, _)  => baseSection.size
+        case Match.BaseAndRight(baseSection, _) => baseSection.size
+        case Match.LeftAndRight(leftSection, _) => leftSection.size
+
       val bestMatches =
-        setsOfMatchesThatShareSectionsOnAtLeastOneSide.toList
+        val rawMatches = setsOfMatchesThatShareSectionsOnAtLeastOneSide.toList
           .flatMap((_, matchesSharingASectionOnAtLeastOneSide) =>
             representativeMatchesFrom(matchesSharingASectionOnAtLeastOneSide)
           )
+
+        // Greedily keep matches that do not cross already accepted larger matches
+        val sortedBySizeDescending = rawMatches.sortBy(-matchSize(_))
+        val nonCrossingMatches = sortedBySizeDescending.foldLeft(Vector.empty[Match[Section[Element]]]) {
+          (accepted, candidate) =>
+            if accepted.exists(acc => matchesCross(acc, candidate)) then
+              accepted
+            else
+              accepted :+ candidate
+        }
+
+        nonCrossingMatches
+      end bestMatches
 
       type Contributions = Map[Section[Element], Contribution[Section[Element]]]
 
