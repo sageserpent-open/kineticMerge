@@ -368,7 +368,42 @@ object LongestCommonSubsequence:
       given Ordering[CommonSubsequenceSize] =
         Ordering.by(size => size.elementSizeSum)
 
-      Ordering.by(_.size)
+      val primary = Ordering.by[LongestCommonSubsequence[Element], (CommonSubsequenceSize, CommonSubsequenceSize)](_.size)
+
+      new Ordering[LongestCommonSubsequence[Element]]:
+        override def compare(x: LongestCommonSubsequence[Element], y: LongestCommonSubsequence[Element]): Int =
+          val primaryResult = primary.compare(x, y)
+          if primaryResult != 0 then primaryResult
+          else
+            def score(c: Contribution[Element]): Int = c match
+              case Contribution.Common(_) => 3
+              case Contribution.CommonToLeftAndRightOnly(_) => 2
+              case Contribution.Difference(_) => 0
+              case _ => 1
+
+            def firstDiff(pairs: IndexedSeq[(Contribution[Element], Contribution[Element])]): Option[(Int, Int)] = {
+              val index = pairs.indexWhere { case (cx, cy) => score(cx) != score(cy) }
+              if index != -1 then
+                val (cx, cy) = pairs(index)
+                Some(index -> (if score(cx) > score(cy) then 1 else -1))
+              else None
+            }
+
+            val baseDiff = firstDiff(x.base.zip(y.base))
+            val leftDiff = firstDiff(x.left.zip(y.left))
+            val rightDiff = firstDiff(x.right.zip(y.right))
+
+            // Sort by index ascending. If indices are equal, stably sort by base > left > right.
+            val finalRes = Seq(
+              baseDiff.map(d => (d._1, 0, d._2)),
+              leftDiff.map(d => (d._1, 1, d._2)),
+              rightDiff.map(d => (d._1, 2, d._2))
+            ).flatten.sortBy(d => (d._1, d._2)).headOption.map(_._3).getOrElse(0)
+
+            finalRes
+          end if
+        end compare
+      end new
     end orderBySize
 
     val equality = summon[Eq[Element]]
@@ -983,57 +1018,53 @@ object LongestCommonSubsequence:
 
           val baseEqualsLeft  = equality.eqv(baseElement, leftElement)
           val baseEqualsRight = equality.eqv(baseElement, rightElement)
+          val leftEqualsRight = equality.eqv(leftElement, rightElement)
 
-          if baseEqualsLeft && baseEqualsRight
-          then
+          val resultAligningAll =
+            if baseEqualsLeft && baseEqualsRight then
+              Some(
+                swathes
+                  .consultRelevantSwatheForSolution(
+                    baseIndex,
+                    leftIndex,
+                    rightIndex
+                  )
+                  .addCommon(baseElement, leftElement, rightElement)(
+                    sized.sizeOf
+                  )
+              )
+            else None
+
+          val resultDroppingTheEndOfTheBase =
             swathes
               .consultRelevantSwatheForSolution(
                 baseIndex,
+                onePastLeftIndex,
+                onePastRightIndex
+              )
+              .addBaseDifference(baseElement)
+
+          val resultDroppingTheEndOfTheLeft =
+            swathes
+              .consultRelevantSwatheForSolution(
+                onePastBaseIndex,
                 leftIndex,
+                onePastRightIndex
+              )
+              .addLeftDifference(leftElement)
+
+          val resultDroppingTheEndOfTheRight =
+            swathes
+              .consultRelevantSwatheForSolution(
+                onePastBaseIndex,
+                onePastLeftIndex,
                 rightIndex
               )
-              .addCommon(baseElement, leftElement, rightElement)(
-                sized.sizeOf
-              )
-          else
-            val leftEqualsRight = equality.eqv(leftElement, rightElement)
+              .addRightDifference(rightElement)
 
-            // NOTE: at this point, we can't have any two of
-            // `baseEqualsLeft`, `baseEqualsRight` or `leftEqualsRight`
-            // being true - because by transitive equality, that would imply
-            // all three sides are equal, and thus we should be following
-            // other branch. So we have to use all the next three bindings
-            // one way or the other...
-
-            val resultDroppingTheEndOfTheBase =
-              swathes
-                .consultRelevantSwatheForSolution(
-                  baseIndex,
-                  onePastLeftIndex,
-                  onePastRightIndex
-                )
-                .addBaseDifference(baseElement)
-
-            val resultDroppingTheEndOfTheLeft =
-              swathes
-                .consultRelevantSwatheForSolution(
-                  onePastBaseIndex,
-                  leftIndex,
-                  onePastRightIndex
-                )
-                .addLeftDifference(leftElement)
-
-            val resultDroppingTheEndOfTheRight =
-              swathes
-                .consultRelevantSwatheForSolution(
-                  onePastBaseIndex,
-                  onePastLeftIndex,
-                  rightIndex
-                )
-                .addRightDifference(rightElement)
-
-            val resultDroppingTheBaseAndLeft =
-              if baseEqualsLeft then
+          val resultDroppingTheBaseAndLeft =
+            if baseEqualsLeft then
+              Some(
                 swathes
                   .consultRelevantSwatheForSolution(
                     baseIndex,
@@ -1043,16 +1074,13 @@ object LongestCommonSubsequence:
                   .addCommonBaseAndLeft(baseElement, leftElement)(
                     sized.sizeOf
                   )
-              else
-                orderBySize.max(
-                  resultDroppingTheEndOfTheBase,
-                  resultDroppingTheEndOfTheLeft
-                )
-              end if
-            end resultDroppingTheBaseAndLeft
+              )
+            else None
+          end resultDroppingTheBaseAndLeft
 
-            val resultDroppingTheBaseAndRight =
-              if baseEqualsRight then
+          val resultDroppingTheBaseAndRight =
+            if baseEqualsRight then
+              Some(
                 swathes
                   .consultRelevantSwatheForSolution(
                     baseIndex,
@@ -1062,16 +1090,13 @@ object LongestCommonSubsequence:
                   .addCommonBaseAndRight(baseElement, rightElement)(
                     sized.sizeOf
                   )
-              else
-                orderBySize.max(
-                  resultDroppingTheEndOfTheBase,
-                  resultDroppingTheEndOfTheRight
-                )
-              end if
-            end resultDroppingTheBaseAndRight
+              )
+            else None
+          end resultDroppingTheBaseAndRight
 
-            val resultDroppingTheLeftAndRight =
-              if leftEqualsRight then
+          val resultDroppingTheLeftAndRight =
+            if leftEqualsRight then
+              Some(
                 swathes
                   .consultRelevantSwatheForSolution(
                     onePastBaseIndex,
@@ -1081,20 +1106,17 @@ object LongestCommonSubsequence:
                   .addCommonLeftAndRight(leftElement, rightElement)(
                     sized.sizeOf
                   )
-              else
-                orderBySize.max(
-                  resultDroppingTheEndOfTheLeft,
-                  resultDroppingTheEndOfTheRight
-                )
-              end if
-            end resultDroppingTheLeftAndRight
+              )
+            else None
+          end resultDroppingTheLeftAndRight
 
-            Iterator(
-              resultDroppingTheBaseAndLeft,
-              resultDroppingTheBaseAndRight,
-              resultDroppingTheLeftAndRight
-            ).max(orderBySize)
-          end if
+          val candidates = Iterator(
+            resultDroppingTheEndOfTheBase,
+            resultDroppingTheEndOfTheLeft,
+            resultDroppingTheEndOfTheRight
+          ) ++ resultAligningAll ++ resultDroppingTheBaseAndLeft ++ resultDroppingTheBaseAndRight ++ resultDroppingTheLeftAndRight
+
+          candidates.max(orderBySize)
       end match
     end ofConsultingSwathesForSubProblems
 

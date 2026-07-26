@@ -62,7 +62,7 @@ object SectionedCode extends StrictLogging:
       rightSources: Sources[Path, Element]
   )(
       configuration: AbstractConfiguration,
-      suppressMatchesInvolvingOverlappingSections: Boolean = true
+      reconcileMatchesInvolvingOverlappingSections: Boolean = true
   )(using
       hashFunction: HashFunction
   ): Either[Throwable, SectionedCode[Path, Element]] =
@@ -78,7 +78,7 @@ object SectionedCode extends StrictLogging:
     try
       val withOverlapsReconciled =
         withTinyMatchesIncluded.reconcileOverlappingMatches(
-          suppressMatchesInvolvingOverlappingSections
+          reconcileMatchesInvolvingOverlappingSections
         )
 
       // TODO: this also precariously protects some downstream logic in
