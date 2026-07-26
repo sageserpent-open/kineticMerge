@@ -840,8 +840,7 @@ object MatchAnalysis extends StrictLogging:
             aMatch: MatchType,
             matchesByBiteEdge: collection.MultiDict[
               BiteEdge,
-              GenericMatch[Element]
-            ]
+              GenericMatch[Element]]
         ): ParallelMatchesGroupIdTracking[
           Vector[DependentMatchType[MatchType]]
         ] =
@@ -3445,19 +3444,16 @@ object MatchAnalysis extends StrictLogging:
                 .from(
                   baseSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
                 )
-                .filterNot(baseOverlapsOrIsSubsumedBy)
 
               val leftSectionsThatDoNotOverlap = LazyList
                 .from(
                   leftSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
                 )
-                .filterNot(leftOverlapsOrIsSubsumedBy)
 
               val rightSectionsThatDoNotOverlap = LazyList
                 .from(
                   rightSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
                 )
-                .filterNot(rightOverlapsOrIsSubsumedBy)
 
               for
                 baseSection  <- baseSectionsThatDoNotOverlap
@@ -3506,13 +3502,11 @@ object MatchAnalysis extends StrictLogging:
                 .from(
                   baseSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
                 )
-                .filterNot(baseOverlapsOrIsSubsumedBy)
 
               val leftSectionsThatDoNotOverlap = LazyList
                 .from(
                   leftSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
                 )
-                .filterNot(leftOverlapsOrIsSubsumedBy)
 
               for
                 baseSection <- baseSectionsThatDoNotOverlap
@@ -3551,13 +3545,11 @@ object MatchAnalysis extends StrictLogging:
                 .from(
                   baseSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
                 )
-                .filterNot(baseOverlapsOrIsSubsumedBy)
 
               val rightSectionsThatDoNotOverlap = LazyList
                 .from(
                   rightSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
                 )
-                .filterNot(rightOverlapsOrIsSubsumedBy)
 
               for
                 baseSection  <- baseSectionsThatDoNotOverlap
@@ -3596,13 +3588,11 @@ object MatchAnalysis extends StrictLogging:
                 .from(
                   leftSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
                 )
-                .filterNot(leftOverlapsOrIsSubsumedBy)
 
               val rightSectionsThatDoNotOverlap = LazyList
                 .from(
                   rightSectionsByPotentialMatchKey.get(matchKeyAcrossAllSides)
                 )
-                .filterNot(rightOverlapsOrIsSubsumedBy)
 
               for
                 leftSection  <- leftSectionsThatDoNotOverlap
@@ -3656,7 +3646,6 @@ object MatchAnalysis extends StrictLogging:
           haveTrimmedMatches = false
         )
       end matchesForWindowSize
-
       trait HivedOffNonOverlappedMatchResult:
         require(remainingContestedMatches.nonEmpty)
 

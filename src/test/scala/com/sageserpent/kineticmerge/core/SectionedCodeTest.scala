@@ -936,11 +936,15 @@ class SectionedCodeTest:
         .map(analysis.matchesFor)
         .reduce(_ union _)
 
-    // There only be all-sides matches.
-    assert(matches.forall(_.isAnAllSidesMatch))
+    // There should be three all-sides matches and one base-left match.
+    assert(3 == matches.count(_.isAnAllSidesMatch))
+    assert(1 == matches.count {
+      case _: Match.BaseAndLeft[Section[Element]] => true
+      case _                                      => false
+    })
 
-    // There should be three matches.
-    assert(matches.size == 3)
+    // There should be four matches.
+    assert(matches.size == 4)
 
     // The contents should reflect the breakdown of the overlapping matches.
     assert(
