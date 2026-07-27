@@ -115,6 +115,21 @@ object SectionedCode extends StrictLogging:
       val groupsOfParallelMatches =
         matchesAndTheirSections.groupsOfParallelMatches
 
+      val filteredGroupsOfParallelMatches =
+        groupsOfParallelMatches.filter { (groupId, parallelMatches) =>
+          val isSingleton = parallelMatches.size == 1
+          if isSingleton then
+            val m = parallelMatches.head
+            val matchIsBelowMinimumSize = m match
+              case Match.AllSides(baseSection, _, _)  => baseSection.size < configuration.minimumMatchSize
+              case Match.BaseAndLeft(baseSection, _)  => baseSection.size < configuration.minimumMatchSize
+              case Match.BaseAndRight(baseSection, _) => baseSection.size < configuration.minimumMatchSize
+              case Match.LeftAndRight(leftSection, _) => leftSection.size < configuration.minimumMatchSize
+
+            !matchIsBelowMinimumSize
+          else true
+        }
+
       def blocksForASide(
           sectionExtractor: Match[Section[Element]] => Option[Section[Element]],
           pathExtractor: Section[Element] => Path,
@@ -156,7 +171,7 @@ object SectionedCode extends StrictLogging:
             }
         end blockFrom
 
-        val matchedBlocksByPath = groupsOfParallelMatches.toSeq
+        val matchedBlocksByPath = filteredGroupsOfParallelMatches.toSeq
           .map(blockFrom)
           .collect { case Some((path, block)) => path -> block }
           .groupMap(_._1)(_._2)
