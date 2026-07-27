@@ -16,8 +16,6 @@ trait SectionedCode[Path, Element]:
   def left: Map[Path, File[Element]]
   def right: Map[Path, File[Element]]
 
-  def minimumMatchSize: Int
-
   def matchesFor(
       section: Section[Element]
   ): collection.Set[Match[Section[Element]]]
@@ -229,8 +227,6 @@ object SectionedCode extends StrictLogging:
         override def left: Map[Path, File[Element]] = leftFilesByPath
 
         override def right: Map[Path, File[Element]] = rightFilesByPath
-
-        override def minimumMatchSize: Int = configuration.minimumMatchSize
 
         override def matchesFor(
             section: Section[Element]
