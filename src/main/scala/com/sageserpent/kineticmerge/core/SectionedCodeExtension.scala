@@ -1023,23 +1023,7 @@ object SectionedCodeExtension extends StrictLogging:
 
       val filteredMatchesFor: Section[Element] => collection.Set[Match[Section[Element]]] =
         (section: Section[Element]) =>
-          matchesFor(section).filter { m =>
-            val matchIsBelowMinimumSize = m match
-              case Match.AllSides(baseSection, _, _)  => baseSection.size < sectionedCode.minimumMatchSize
-              case Match.BaseAndLeft(baseSection, _)  => baseSection.size < sectionedCode.minimumMatchSize
-              case Match.BaseAndRight(baseSection, _) => baseSection.size < sectionedCode.minimumMatchSize
-              case Match.LeftAndRight(leftSection, _) => leftSection.size < sectionedCode.minimumMatchSize
-
-            val belongsToParallelGroupAsSoleMember =
-              sectionedCode.parallelMatchesGroupIdsByMatch
-                .get(m)
-                .flatMap(groupId =>
-                  sectionedCode.groupsOfParallelMatches.get(groupId)
-                )
-                .exists(_.size == 1)
-
-            !(matchIsBelowMinimumSize && belongsToParallelGroupAsSoleMember)
-          }
+          matchesFor(section).filter(sectionedCode.isGuardedMatch)
 
       val moveEvaluation @ MoveEvaluation(
         moveDestinationsReport,
