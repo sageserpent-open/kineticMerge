@@ -34,6 +34,14 @@ trait SectionedCode[Path, Element]:
   def groupsOfParallelMatches
       : Map[ParallelMatchesGroupId, SortedSet[GenericMatch[Element]]]
 
+  def isGuardedMatch(m: Match[Section[Element]]): Boolean =
+    SectionedCode.isGuardedMatch(
+      m,
+      minimumMatchSize,
+      parallelMatchesGroupIdsByMatch,
+      groupsOfParallelMatches
+    )
+
   def baseBlocksFor(path: Path): IndexedSeq[Block[Element]]
 
   def leftBlocksFor(path: Path): IndexedSeq[Block[Element]]
@@ -115,6 +123,19 @@ object SectionedCode extends StrictLogging:
       val groupsOfParallelMatches =
         matchesAndTheirSections.groupsOfParallelMatches
 
+      val filteredGroupsOfParallelMatches =
+        groupsOfParallelMatches.filter { (groupId, parallelMatches) =>
+          val isSingleton = parallelMatches.size == 1
+          if isSingleton then
+            isGuardedMatch(
+              parallelMatches.head,
+              configuration.minimumMatchSize,
+              matchesAndTheirSections.parallelMatchesGroupIdsByMatch,
+              groupsOfParallelMatches
+            )
+          else true
+        }
+
       def blocksForASide(
           sectionExtractor: Match[Section[Element]] => Option[Section[Element]],
           pathExtractor: Section[Element] => Path,
@@ -156,7 +177,7 @@ object SectionedCode extends StrictLogging:
             }
         end blockFrom
 
-        val matchedBlocksByPath = groupsOfParallelMatches.toSeq
+        val matchedBlocksByPath = filteredGroupsOfParallelMatches.toSeq
           .map(blockFrom)
           .collect { case Some((path, block)) => path -> block }
           .groupMap(_._1)(_._2)
@@ -309,6 +330,26 @@ object SectionedCode extends StrictLogging:
       case admissibleException: AdmissibleFailure => Left(admissibleException)
     end try
   end of
+
+  def isGuardedMatch[Element](
+      m: Match[Section[Element]],
+      minimumMatchSize: Int,
+      parallelMatchesGroupIdsByMatch: ParallelMatchesGroupIdsByMatch[Element],
+      groupsOfParallelMatches: Map[ParallelMatchesGroupId, SortedSet[GenericMatch[Element]]]
+  ): Boolean =
+    val matchIsBelowMinimumSize = m match
+      case Match.AllSides(baseSection, _, _)  => baseSection.size < minimumMatchSize
+      case Match.BaseAndLeft(baseSection, _)  => baseSection.size < minimumMatchSize
+      case Match.BaseAndRight(baseSection, _) => baseSection.size < minimumMatchSize
+      case Match.LeftAndRight(leftSection, _) => leftSection.size < minimumMatchSize
+
+    val belongsToParallelGroupAsSoleMember =
+      parallelMatchesGroupIdsByMatch
+        .get(m)
+        .flatMap(groupsOfParallelMatches.get)
+        .exists(_.size == 1)
+
+    !(matchIsBelowMinimumSize && belongsToParallelGroupAsSoleMember)
 
   case class Block[Element](
       parallelMatchesGroupId: Option[ParallelMatchesGroupId],

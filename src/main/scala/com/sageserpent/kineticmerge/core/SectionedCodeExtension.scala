@@ -620,29 +620,22 @@ object SectionedCodeExtension extends StrictLogging:
         )
       end matchesCross
 
-      def matchSize(m: Match[Section[Element]]): Int = m match
-        case Match.AllSides(baseSection, _, _)  => baseSection.size
-        case Match.BaseAndLeft(baseSection, _)  => baseSection.size
-        case Match.BaseAndRight(baseSection, _) => baseSection.size
-        case Match.LeftAndRight(leftSection, _) => leftSection.size
-
       val bestMatches =
         val rawMatches = setsOfMatchesThatShareSectionsOnAtLeastOneSide.toList
           .flatMap((_, matchesSharingASectionOnAtLeastOneSide) =>
             representativeMatchesFrom(matchesSharingASectionOnAtLeastOneSide)
           )
 
-        // Greedily keep matches that do not cross already accepted larger matches
-        val sortedBySizeDescending = rawMatches.sortBy(-matchSize(_))
-        val nonCrossingMatches = sortedBySizeDescending.foldLeft(Vector.empty[Match[Section[Element]]]) {
-          (accepted, candidate) =>
-            if accepted.exists(acc => matchesCross(acc, candidate)) then
-              accepted
-            else
-              accepted :+ candidate
+        rawMatches.combinations(2).foreach {
+          case Seq(m1, m2) =>
+            assert(
+              !matchesCross(m1, m2),
+              s"Post-condition failed: matches cross!\n$m1\n$m2"
+            )
+          case _ =>
         }
 
-        nonCrossingMatches
+        rawMatches
       end bestMatches
 
       type Contributions = Map[Section[Element], Contribution[Section[Element]]]
@@ -1023,23 +1016,7 @@ object SectionedCodeExtension extends StrictLogging:
 
       val filteredMatchesFor: Section[Element] => collection.Set[Match[Section[Element]]] =
         (section: Section[Element]) =>
-          matchesFor(section).filter { m =>
-            val matchIsBelowMinimumSize = m match
-              case Match.AllSides(baseSection, _, _)  => baseSection.size < sectionedCode.minimumMatchSize
-              case Match.BaseAndLeft(baseSection, _)  => baseSection.size < sectionedCode.minimumMatchSize
-              case Match.BaseAndRight(baseSection, _) => baseSection.size < sectionedCode.minimumMatchSize
-              case Match.LeftAndRight(leftSection, _) => leftSection.size < sectionedCode.minimumMatchSize
-
-            val belongsToParallelGroupAsSoleMember =
-              sectionedCode.parallelMatchesGroupIdsByMatch
-                .get(m)
-                .flatMap(groupId =>
-                  sectionedCode.groupsOfParallelMatches.get(groupId)
-                )
-                .exists(_.size == 1)
-
-            !(matchIsBelowMinimumSize && belongsToParallelGroupAsSoleMember)
-          }
+          matchesFor(section).filter(sectionedCode.isGuardedMatch)
 
       val moveEvaluation @ MoveEvaluation(
         moveDestinationsReport,
@@ -1050,7 +1027,7 @@ object SectionedCodeExtension extends StrictLogging:
         MoveDestinationsReport.evaluateSpeculativeSourcesAndDestinations(
           speculativeMigrationsBySource,
           speculativeMoveDestinations
-        )(filteredMatchesFor)
+        )(matchesFor)
 
       logger.debug(s"Move evaluation: ${pprintCustomised(moveEvaluation)}.")
 

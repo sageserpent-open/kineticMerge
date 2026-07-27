@@ -4178,7 +4178,7 @@ trait ProseExamples:
 
   protected val moveToTheEndWordPlayExpectedMerge: String =
     """
-      |A bird in hand is worth two in the bush(but you aren't going to need it).
+      |A bird in hand is worth two in the bush (but you aren't going to need it).
       |Fools rush in.
       |All's well that ends well.
       |Better a gramme than a damn.
@@ -4206,8 +4206,9 @@ trait ProseExamples:
       : String =
     """
       |A bird in hand is worth two in the bush.
-      |A stitch in time saves nine (but you aren't going to need it).
+      |A stitch in time saves nine (but you aren't going to need it)..
       |A man, a plan (but you aren't going to need it), a canal, Panama
+      |(but you aren't going to need it)
       |Fools rush in.
       |All's well that ends well.
       |Better a gramme than a damn.
@@ -4234,10 +4235,10 @@ trait ProseExamples:
       : String =
     """
       |A bird in hand is worth two in the bush.
-      |A stitch in time saves(but you aren't going to need it).
-      |.
+      |A stitch in time saves (but you aren't going to need it)..
       |A man, a plan (but you aren't going to need it), a canal, Panama
-      |(but you aren't going to need it)Fools rush in.
+      |(but you aren't going to need it)
+      |Fools rush in.
       |All's well that ends well.
       |Better a gramme than a damn.
       |Able was I ere I saw Elba
@@ -4270,7 +4271,6 @@ trait ProseExamples:
     """
       |A bird in hand is worth two in the bush.
       |Better eat gram flour, not the damned flowers.
-      |.
       |A stitch in time saves nine.
       |""".stripMargin
 
