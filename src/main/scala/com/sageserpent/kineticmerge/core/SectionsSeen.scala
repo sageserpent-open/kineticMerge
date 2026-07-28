@@ -41,7 +41,8 @@ object SectionsSeen:
         leftHash,
         rightHash,
         multiplicity,
-size)
+        size
+      )
         .hashCode()
     end hashCode
 
