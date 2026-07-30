@@ -1506,7 +1506,7 @@ object SectionedCodeExtension extends StrictLogging:
                     case (currentSplices, (move1, move2)) =>
                       val idx1 = allAnchorsInFileSorted.indexOf(move1.moveDestinationAnchor)
                       val idx2 = allAnchorsInFileSorted.indexOf(move2.moveDestinationAnchor)
-                      if Math.abs(idx1 - idx2) == 1 then
+                      if Math.abs(idx1 - idx2) == 1 && move1.sourceAnchor != move2.sourceAnchor then
                         val move2Splices = currentSplices(move2)
                         val thinnedMove2Splices = move2Splices.copy(precedingSplice = MergeResult.empty)
                         currentSplices.updated(move2, thinnedMove2Splices)
