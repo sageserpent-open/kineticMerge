@@ -2557,6 +2557,75 @@ class SectionedCodeExtensionTest extends ProseExamples:
     }
   end issue274BugReproduction
 
+  @Test
+  def coordinatedSplicesForParallelMatchGroups(): Unit =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    val originalPath: FakePath = "*** ORIGINAL ***"
+    val hivedOffPath: FakePath = "*** HIVED OFF ***"
+
+    val tokenRegex =
+      raw"Prefix|Suffix|AnchorOneEdited|AnchorTwoEdited|AnchorOne|AnchorTwo|InterveningLeft|InterveningRight|Middle|.".r.anchored
+
+    def stuntDoubleTokens(content: String): Vector[Token] = tokenRegex
+      .findAllMatchIn(content)
+      .map(_.group(0))
+      .map(Token.Significant.apply)
+      .toVector
+
+    // Base: two anchors separated by Middle surrounded by Prefix/Suffix
+    val baseText = "PrefixAnchorOneMiddleAnchorTwoSuffix"
+
+    // Left: stays in place, editing anchors and inserting intervening content
+    val leftText = "PrefixAnchorOneEditedInterveningLeftMiddleAnchorTwoEditedSuffix"
+
+    // Right: moves the anchors together to the end, inserting intervening content
+    val rightOriginalText = "PrefixMiddleSuffix"
+    val rightHivedOffText = "AnchorOneInterveningRightAnchorTwo"
+
+    // Expected: they are coordinated, yielding clean merged intervening content
+    val expectedOriginalMergeText = "PrefixMiddleSuffix"
+    val expectedHivedOffMergeText = "AnchorOneEditedInterveningLeftInterveningRightAnchorTwoEdited"
+
+    val baseSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(originalPath -> stuntDoubleTokens(baseText)),
+      label = "base"
+    )
+    val leftSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(originalPath -> stuntDoubleTokens(leftText)),
+      label = "left"
+    )
+    val rightSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(
+        originalPath -> stuntDoubleTokens(rightOriginalText),
+        hivedOffPath -> stuntDoubleTokens(rightHivedOffText)
+      ),
+      label = "right"
+    )
+
+    val Right(sectionedCode) = SectionedCode.of(
+      baseSources = baseSources,
+      leftSources = leftSources,
+      rightSources = rightSources
+    )(configuration): @unchecked
+
+    val (mergeResultsByPath, _) =
+      sectionedCode.merge
+
+    verifyContent(originalPath, mergeResultsByPath)(
+      stuntDoubleTokens(expectedOriginalMergeText)
+    )
+
+    verifyContent(hivedOffPath, mergeResultsByPath)(
+      stuntDoubleTokens(expectedHivedOffMergeText)
+    )
+  end coordinatedSplicesForParallelMatchGroups
+
 end SectionedCodeExtensionTest
 
 trait ProseExamples:

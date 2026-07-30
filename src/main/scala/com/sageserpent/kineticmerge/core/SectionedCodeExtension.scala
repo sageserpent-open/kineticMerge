@@ -20,6 +20,7 @@ import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{
   MoveEvaluation,
   OppositeSideAnchor
 }
+import com.sageserpent.kineticmerge.core.MatchAnalysis.ParallelMatchesGroupId
 import com.sageserpent.kineticmerge.core.SectionedCode.Block
 import com.sageserpent.kineticmerge.core.merge.{
   MergeAlgebra,
@@ -1472,6 +1473,52 @@ object SectionedCodeExtension extends StrictLogging:
         )
       end mergesFrom
 
+      def parallelMatchesGroupIdOf(section: Section[Element]): Option[ParallelMatchesGroupId] =
+        sectionedCode.matchesFor(section).flatMap(sectionedCode.parallelMatchesGroupIdsByMatch.get).headOption
+
+      val anchoredMovesByGroup = anchoredMoves.groupBy(move => parallelMatchesGroupIdOf(move.sourceAnchor))
+
+      val thinnedMigrationSplices: Map[AnchoredMove[Section[Element]], MigrationSplices] = {
+        val initialSplices = anchoredMoves.map(move => move -> mergesFrom(move)).toMap
+
+        def destinationPathOf(move: AnchoredMove[Section[Element]]): Path =
+          move.moveDestinationSide match {
+            case MoveDestinationSide.Left => sectionedCode.leftPathFor(move.moveDestinationAnchor)
+            case MoveDestinationSide.Right => sectionedCode.rightPathFor(move.moveDestinationAnchor)
+          }
+
+        anchoredMovesByGroup.foldLeft(initialSplices) {
+          case (accumulatedSplices, (None, _)) =>
+            accumulatedSplices
+          case (accumulatedSplices, (Some(groupId), moves)) =>
+            val movesBySideAndPath = moves.groupBy(move => (move.moveDestinationSide, destinationPathOf(move)))
+            movesBySideAndPath.foldLeft(accumulatedSplices) {
+              case (acc, ((side, path), sideMoves)) =>
+                val allAnchorsInFileSorted = anchoredMoves
+                  .filter(move => move.moveDestinationSide == side && destinationPathOf(move) == path)
+                  .map(_.moveDestinationAnchor)
+                  .toSeq
+                  .sortBy(_.startOffset)
+
+                val sortedMoves = sideMoves.toSeq.sortBy(_.moveDestinationAnchor.startOffset)
+                if sortedMoves.size > 1 then
+                  sortedMoves.zip(sortedMoves.tail).foldLeft(acc) {
+                    case (currentSplices, (move1, move2)) =>
+                      val idx1 = allAnchorsInFileSorted.indexOf(move1.moveDestinationAnchor)
+                      val idx2 = allAnchorsInFileSorted.indexOf(move2.moveDestinationAnchor)
+                      if Math.abs(idx1 - idx2) == 1 then
+                        val move2Splices = currentSplices(move2)
+                        val thinnedMove2Splices = move2Splices.copy(precedingSplice = MergeResult.empty)
+                        currentSplices.updated(move2, thinnedMove2Splices)
+                      else
+                        currentSplices
+                  }
+                else
+                  acc
+            }
+        }
+      }
+
       val (
         splicesByAnchoredMoveDestination: MultiDict[
           (Section[Element], AnchoringSense),
@@ -1491,7 +1538,7 @@ object SectionedCodeExtension extends StrictLogging:
             precedingSplice,
             succeedingSplice,
             spliceMigrationSuppressions
-          ) = mergesFrom(anchoredMove)
+          ) = thinnedMigrationSplices(anchoredMove)
 
           // NOTE: yes, this looks horrible, but try writing it using
           // `Option.unless` with flattening, or with `Option.fold`, or with
