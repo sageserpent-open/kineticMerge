@@ -1490,6 +1490,15 @@ object SectionedCodeExtension extends StrictLogging:
 
       val anchoredMovesByGroup = anchoredMoves.groupBy(parallelMatchesGroupIdOf)
 
+      // Group anchoredMoves by moveDestinationAnchor to detect collisions (converging moves)
+      val movesByDestinationAnchor = anchoredMoves.groupBy(_.moveDestinationAnchor)
+
+      // Pre-calculate group sizes for each move
+      def groupSizeOf(move: AnchoredMove[Section[Element]]): Int =
+        parallelMatchesGroupIdOf(move)
+          .flatMap(sectionedCode.groupsOfParallelMatches.get)
+          .fold(ifEmpty = 0)(_.size)
+
       val thinnedMigrationSplices: Map[AnchoredMove[Section[Element]], MigrationSplices] = {
         val initialSplices = anchoredMoves.map(move => move -> mergesFrom(move)).toMap
 
@@ -1499,7 +1508,8 @@ object SectionedCodeExtension extends StrictLogging:
             case MoveDestinationSide.Right => sectionedCode.rightPathFor(move.moveDestinationAnchor)
           }
 
-        anchoredMovesByGroup.foldLeft(initialSplices) {
+        // Phase 1: Thin out consecutive splices within the same parallel matches group (Alternative C)
+        val withinGroupThinned = anchoredMovesByGroup.foldLeft(initialSplices) {
           case (accumulatedSplices, (None, _)) =>
             accumulatedSplices
           case (accumulatedSplices, (Some(_), moves)) =>
@@ -1530,6 +1540,34 @@ object SectionedCodeExtension extends StrictLogging:
                 else
                   acc
             }
+        }
+
+        // Phase 2: Resolve collisions between converging moves targeting the same destination anchor
+        // by picking the move that belongs to the strictly largest parallel matches group.
+        movesByDestinationAnchor.foldLeft(withinGroupThinned) {
+          case (currentSplices, (_, collidingMoves)) if collidingMoves.size > 1 =>
+            val movesWithSizes = collidingMoves.map(move => move -> groupSizeOf(move)).toSeq
+            val maxGroupSize = movesWithSizes.map(_._2).max
+            val movesWithMaxSize = movesWithSizes.filter(_._2 == maxGroupSize)
+
+            // Only pick a winner if there is a strictly largest group (i.e. only one move achieves the maxGroupSize)
+            if movesWithMaxSize.size == 1 then
+              val winnerMove = movesWithMaxSize.head._1
+              collidingMoves.foldLeft(currentSplices) {
+                case (accSplices, move) if move != winnerMove =>
+                  // Thin out both splices for the non-winning colliding moves
+                  val thinnedSplices = accSplices(move).copy(
+                    precedingSplice = MergeResult.empty,
+                    succeedingSplice = MergeResult.empty
+                  )
+                  accSplices.updated(move, thinnedSplices)
+                case (accSplices, _) =>
+                  accSplices
+              }
+            else
+              currentSplices
+          case (currentSplices, _) =>
+            currentSplices
         }
       }
 
