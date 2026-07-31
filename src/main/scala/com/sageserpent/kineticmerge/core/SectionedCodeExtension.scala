@@ -1476,6 +1476,9 @@ object SectionedCodeExtension extends StrictLogging:
       def parallelMatchesGroupIdOf(move: AnchoredMove[Section[Element]]): Option[ParallelMatchesGroupId] =
         val matchesForSource = sectionedCode.matchesFor(move.sourceAnchor)
         val matchingMatchOpt = matchesForSource.find { aMatch =>
+          // A divergent move cannot result in an anchored move (it is handled separately
+          // as a non-anchored divergent move), so it is safe to ignore the opposite side
+          // of the anchored move and only check the destination side of the move.
           move.moveDestinationSide match {
             case MoveDestinationSide.Left =>
               aMatch.leftContribution.contains(move.moveDestinationAnchor)
