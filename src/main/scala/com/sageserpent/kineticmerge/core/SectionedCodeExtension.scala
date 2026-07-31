@@ -1473,10 +1473,19 @@ object SectionedCodeExtension extends StrictLogging:
         )
       end mergesFrom
 
-      def parallelMatchesGroupIdOf(section: Section[Element]): Option[ParallelMatchesGroupId] =
-        sectionedCode.matchesFor(section).flatMap(sectionedCode.parallelMatchesGroupIdsByMatch.get).headOption
+      def parallelMatchesGroupIdOf(move: AnchoredMove[Section[Element]]): Option[ParallelMatchesGroupId] =
+        val matchesForSource = sectionedCode.matchesFor(move.sourceAnchor)
+        val matchingMatchOpt = matchesForSource.find { aMatch =>
+          move.moveDestinationSide match {
+            case MoveDestinationSide.Left =>
+              aMatch.leftContribution.contains(move.moveDestinationAnchor)
+            case MoveDestinationSide.Right =>
+              aMatch.rightContribution.contains(move.moveDestinationAnchor)
+          }
+        }
+        matchingMatchOpt.flatMap(sectionedCode.parallelMatchesGroupIdsByMatch.get)
 
-      val anchoredMovesByGroup = anchoredMoves.groupBy(move => parallelMatchesGroupIdOf(move.sourceAnchor))
+      val anchoredMovesByGroup = anchoredMoves.groupBy(parallelMatchesGroupIdOf)
 
       val thinnedMigrationSplices: Map[AnchoredMove[Section[Element]], MigrationSplices] = {
         val initialSplices = anchoredMoves.map(move => move -> mergesFrom(move)).toMap
@@ -1490,7 +1499,7 @@ object SectionedCodeExtension extends StrictLogging:
         anchoredMovesByGroup.foldLeft(initialSplices) {
           case (accumulatedSplices, (None, _)) =>
             accumulatedSplices
-          case (accumulatedSplices, (Some(groupId), moves)) =>
+          case (accumulatedSplices, (Some(_), moves)) =>
             val movesBySideAndPath = moves.groupBy(move => (move.moveDestinationSide, destinationPathOf(move)))
             movesBySideAndPath.foldLeft(accumulatedSplices) {
               case (acc, ((side, path), sideMoves)) =>
@@ -1506,8 +1515,10 @@ object SectionedCodeExtension extends StrictLogging:
                     case (currentSplices, (move1, move2)) =>
                       val idx1 = allAnchorsInFileSorted.indexOf(move1.moveDestinationAnchor)
                       val idx2 = allAnchorsInFileSorted.indexOf(move2.moveDestinationAnchor)
-                      if Math.abs(idx1 - idx2) == 1 && move1.sourceAnchor != move2.sourceAnchor then
+                      if Math.abs(idx1 - idx2) == 1 then
                         val move2Splices = currentSplices(move2)
+                        // Downstream processing in `applySplices` ignores any empty splice MergeResult,
+                        // effectively suppressing it to avoid duplicate merges of the intervening gap.
                         val thinnedMove2Splices = move2Splices.copy(precedingSplice = MergeResult.empty)
                         currentSplices.updated(move2, thinnedMove2Splices)
                       else

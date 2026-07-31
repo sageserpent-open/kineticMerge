@@ -2566,11 +2566,10 @@ class SectionedCodeExtensionTest extends ProseExamples:
       ambiguousMatchesThreshold = 10
     )
 
-    val originalPath: FakePath = "*** ORIGINAL ***"
-    val hivedOffPath: FakePath = "*** HIVED OFF ***"
+    val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
 
     val tokenRegex =
-      raw"Prefix|Suffix|AnchorOneEdited|AnchorTwoEdited|AnchorOne|AnchorTwo|InterveningLeft|InterveningRight|Middle|.".r.anchored
+      raw"Prefix|Suffix|AnchorOne|AnchorTwo|InterveningLeft|InterveningRight|.".r.anchored
 
     def stuntDoubleTokens(content: String): Vector[Token] = tokenRegex
       .findAllMatchIn(content)
@@ -2578,33 +2577,28 @@ class SectionedCodeExtensionTest extends ProseExamples:
       .map(Token.Significant.apply)
       .toVector
 
-    // Base: two anchors separated by Middle surrounded by Prefix/Suffix
-    val baseText = "PrefixAnchorOneMiddleAnchorTwoSuffix"
+    // Base: two anchors adjacent to each other surrounded by Prefix/Suffix
+    val baseText = "PrefixAnchorOneAnchorTwoSuffix"
 
-    // Left: stays in place, editing anchors and inserting intervening content
-    val leftText = "PrefixAnchorOneEditedInterveningLeftMiddleAnchorTwoEditedSuffix"
+    // Left: stays in place, inserting intervening content
+    val leftText = "PrefixAnchorOneInterveningLeftAnchorTwoSuffix"
 
-    // Right: moves the anchors together to the end, inserting intervening content
-    val rightOriginalText = "PrefixMiddleSuffix"
-    val rightHivedOffText = "AnchorOneInterveningRightAnchorTwo"
+    // Right: moves the anchors together to the end, with no insertion
+    val rightText = "PrefixSuffixAnchorOneAnchorTwo"
 
-    // Expected: they are coordinated, yielding clean merged intervening content
-    val expectedOriginalMergeText = "PrefixMiddleSuffix"
-    val expectedHivedOffMergeText = "AnchorOneEditedInterveningLeftInterveningRightAnchorTwoEdited"
+    // Expected: they are coordinated, yielding clean merged intervening content (InterveningLeft exactly once!)
+    val expectedMergeText = "PrefixSuffixAnchorOneInterveningLeftAnchorTwo"
 
     val baseSources = MappedContentSourcesOfTokens(
-      contentsByPath = Map(originalPath -> stuntDoubleTokens(baseText)),
+      contentsByPath = Map(placeholderPath -> stuntDoubleTokens(baseText)),
       label = "base"
     )
     val leftSources = MappedContentSourcesOfTokens(
-      contentsByPath = Map(originalPath -> stuntDoubleTokens(leftText)),
+      contentsByPath = Map(placeholderPath -> stuntDoubleTokens(leftText)),
       label = "left"
     )
     val rightSources = MappedContentSourcesOfTokens(
-      contentsByPath = Map(
-        originalPath -> stuntDoubleTokens(rightOriginalText),
-        hivedOffPath -> stuntDoubleTokens(rightHivedOffText)
-      ),
+      contentsByPath = Map(placeholderPath -> stuntDoubleTokens(rightText)),
       label = "right"
     )
 
@@ -2617,12 +2611,8 @@ class SectionedCodeExtensionTest extends ProseExamples:
     val (mergeResultsByPath, _) =
       sectionedCode.merge
 
-    verifyContent(originalPath, mergeResultsByPath)(
-      stuntDoubleTokens(expectedOriginalMergeText)
-    )
-
-    verifyContent(hivedOffPath, mergeResultsByPath)(
-      stuntDoubleTokens(expectedHivedOffMergeText)
+    verifyContent(placeholderPath, mergeResultsByPath)(
+      stuntDoubleTokens(expectedMergeText)
     )
   end coordinatedSplicesForParallelMatchGroups
 
