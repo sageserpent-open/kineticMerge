@@ -374,67 +374,55 @@ object LongestCommonSubsequence:
   )(using
       progressRecording: ProgressRecording
   ): LongestCommonSubsequence[Element] =
-    import com.sageserpent.kineticmerge.core.SectionedCode.Block
+    val equality = summon[Eq[Element]]
 
-    val isSemanticElement = base.headOption.exists(e =>
-      e.isInstanceOf[Block[?]] || e.isInstanceOf[Section[?]]
-    )
+    val matchableBaseIndices = base.indices.filter(i => left.exists(equality.eqv(base(i), _)) || right.exists(equality.eqv(base(i), _)))
+    val matchableLeftIndices = left.indices.filter(j => base.exists(equality.eqv(left(j), _)) || right.exists(equality.eqv(left(j), _)))
+    val matchableRightIndices = right.indices.filter(k => base.exists(equality.eqv(right(k), _)) || left.exists(equality.eqv(right(k), _)))
 
-    if isSemanticElement || (base.size <= 100 && left.size <= 100 && right.size <= 100) then
-      solveLcsInternal(base, left, right)
+    if matchableBaseIndices.isEmpty && matchableLeftIndices.isEmpty && matchableRightIndices.isEmpty then
+      LongestCommonSubsequence(
+        base = base.map(Contribution.Difference.apply),
+        left = left.map(Contribution.Difference.apply),
+        right = right.map(Contribution.Difference.apply),
+        commonSubsequenceSize = CommonSubsequenceSize.zero,
+        commonToLeftAndRightOnlySize = CommonSubsequenceSize.zero,
+        commonToBaseAndLeftOnlySize = CommonSubsequenceSize.zero,
+        commonToBaseAndRightOnlySize = CommonSubsequenceSize.zero
+      )
     else
-      val baseSet = base.toSet
-      val leftSet = left.toSet
-      val rightSet = right.toSet
+      val filteredBase = matchableBaseIndices.map(base)
+      val filteredLeft = matchableLeftIndices.map(left)
+      val filteredRight = matchableRightIndices.map(right)
 
-      val matchableBaseIndices = base.indices.filter(i => leftSet.contains(base(i)) || rightSet.contains(base(i)))
-      val matchableLeftIndices = left.indices.filter(j => baseSet.contains(left(j)) || rightSet.contains(left(j)))
-      val matchableRightIndices = right.indices.filter(k => baseSet.contains(right(k)) || leftSet.contains(right(k)))
+      val filteredLcs = solveLcsInternal(filteredBase, filteredLeft, filteredRight)
 
-      if matchableBaseIndices.isEmpty && matchableLeftIndices.isEmpty && matchableRightIndices.isEmpty then
-        LongestCommonSubsequence(
-          base = base.map(Contribution.Difference.apply),
-          left = left.map(Contribution.Difference.apply),
-          right = right.map(Contribution.Difference.apply),
-          commonSubsequenceSize = CommonSubsequenceSize.zero,
-          commonToLeftAndRightOnlySize = CommonSubsequenceSize.zero,
-          commonToBaseAndLeftOnlySize = CommonSubsequenceSize.zero,
-          commonToBaseAndRightOnlySize = CommonSubsequenceSize.zero
-        )
-      else
-        val filteredBase = matchableBaseIndices.map(base)
-        val filteredLeft = matchableLeftIndices.map(left)
-        val filteredRight = matchableRightIndices.map(right)
+      def reconstruct(
+          original: IndexedSeq[Element],
+          matchableIndices: IndexedSeq[Int],
+          filteredContributions: IndexedSeq[Contribution[Element]]
+      ): IndexedSeq[Contribution[Element]] =
+        val builder = IndexedSeq.newBuilder[Contribution[Element]]
+        builder.sizeHint(original.size)
+        var filteredIdx = 0
+        val numMatchable = matchableIndices.size
+        for i <- original.indices do
+          if filteredIdx < numMatchable && matchableIndices(filteredIdx) == i then
+            builder += filteredContributions(filteredIdx)
+            filteredIdx += 1
+          else
+            builder += Contribution.Difference(original(i))
+        builder.result()
 
-        val filteredLcs = solveLcsInternal(filteredBase, filteredLeft, filteredRight)
-
-        def reconstruct(
-            original: IndexedSeq[Element],
-            matchableIndices: IndexedSeq[Int],
-            filteredContributions: IndexedSeq[Contribution[Element]]
-        ): IndexedSeq[Contribution[Element]] =
-          val builder = IndexedSeq.newBuilder[Contribution[Element]]
-          builder.sizeHint(original.size)
-          var filteredIdx = 0
-          val numMatchable = matchableIndices.size
-          for i <- original.indices do
-            if filteredIdx < numMatchable && matchableIndices(filteredIdx) == i then
-              builder += filteredContributions(filteredIdx)
-              filteredIdx += 1
-            else
-              builder += Contribution.Difference(original(i))
-          builder.result()
-
-        LongestCommonSubsequence(
-          base = reconstruct(base, matchableBaseIndices, filteredLcs.base),
-          left = reconstruct(left, matchableLeftIndices, filteredLcs.left),
-          right = reconstruct(right, matchableRightIndices, filteredLcs.right),
-          commonSubsequenceSize = filteredLcs.commonSubsequenceSize,
-          commonToLeftAndRightOnlySize = filteredLcs.commonToLeftAndRightOnlySize,
-          commonToBaseAndLeftOnlySize = filteredLcs.commonToBaseAndLeftOnlySize,
-          commonToBaseAndRightOnlySize = filteredLcs.commonToBaseAndRightOnlySize
-        )
-      end if
+      LongestCommonSubsequence(
+        base = reconstruct(base, matchableBaseIndices, filteredLcs.base),
+        left = reconstruct(left, matchableLeftIndices, filteredLcs.left),
+        right = reconstruct(right, matchableRightIndices, filteredLcs.right),
+        commonSubsequenceSize = filteredLcs.commonSubsequenceSize,
+        commonToLeftAndRightOnlySize = filteredLcs.commonToLeftAndRightOnlySize,
+        commonToBaseAndLeftOnlySize = filteredLcs.commonToBaseAndLeftOnlySize,
+        commonToBaseAndRightOnlySize = filteredLcs.commonToBaseAndRightOnlySize
+      )
     end if
   end solveLcs
 
