@@ -364,6 +364,133 @@ object LongestCommonSubsequence:
   )(using
       progressRecording: ProgressRecording
   ): LongestCommonSubsequence[Element] =
+    val equality = summon[Eq[Element]]
+    val sized    = summon[Sized[Element]]
+
+    var prefixLen = 0
+    val maxPrefixLen = base.size min left.size min right.size
+    while prefixLen < maxPrefixLen &&
+          equality.eqv(base(prefixLen), left(prefixLen)) &&
+          equality.eqv(base(prefixLen), right(prefixLen))
+    do prefixLen += 1
+
+    var suffixLen = 0
+    val maxSuffixLen = (base.size - prefixLen) min (left.size - prefixLen) min (right.size - prefixLen)
+    while suffixLen < maxSuffixLen &&
+          equality.eqv(base(base.size - 1 - suffixLen), left(left.size - 1 - suffixLen)) &&
+          equality.eqv(base(base.size - 1 - suffixLen), right(right.size - 1 - suffixLen))
+    do suffixLen += 1
+
+    if prefixLen == 0 && suffixLen == 0 then
+      solveLcs(base, left, right)
+    else
+      val trimmedBase = base.slice(prefixLen, base.size - suffixLen)
+      val trimmedLeft = left.slice(prefixLen, left.size - suffixLen)
+      val trimmedRight = right.slice(prefixLen, right.size - suffixLen)
+
+      val trimmedLcs = solveLcs(trimmedBase, trimmedLeft, trimmedRight)
+
+      val prefixBaseContributions = base.take(prefixLen).map(Contribution.Common.apply)
+      val prefixLeftContributions = left.take(prefixLen).map(Contribution.Common.apply)
+      val prefixRightContributions = right.take(prefixLen).map(Contribution.Common.apply)
+
+      val prefixSizeSum = base.take(prefixLen).map(sized.sizeOf).sum
+      val prefixSize = CommonSubsequenceSize(prefixLen, prefixSizeSum)
+
+      val suffixBaseContributions = base.takeRight(suffixLen).map(Contribution.Common.apply)
+      val suffixLeftContributions = left.takeRight(suffixLen).map(Contribution.Common.apply)
+      val suffixRightContributions = right.takeRight(suffixLen).map(Contribution.Common.apply)
+
+      val suffixSizeSum = base.takeRight(suffixLen).map(sized.sizeOf).sum
+      val suffixSize = CommonSubsequenceSize(suffixLen, suffixSizeSum)
+
+      LongestCommonSubsequence(
+        base = prefixBaseContributions ++ trimmedLcs.base ++ suffixBaseContributions,
+        left = prefixLeftContributions ++ trimmedLcs.left ++ suffixLeftContributions,
+        right = prefixRightContributions ++ trimmedLcs.right ++ suffixRightContributions,
+        commonSubsequenceSize = CommonSubsequenceSize(
+          length = prefixSize.length + trimmedLcs.commonSubsequenceSize.length + suffixSize.length,
+          elementSizeSum = prefixSize.elementSizeSum + trimmedLcs.commonSubsequenceSize.elementSizeSum + suffixSize.elementSizeSum
+        ),
+        commonToLeftAndRightOnlySize = trimmedLcs.commonToLeftAndRightOnlySize,
+        commonToBaseAndLeftOnlySize = trimmedLcs.commonToBaseAndLeftOnlySize,
+        commonToBaseAndRightOnlySize = trimmedLcs.commonToBaseAndRightOnlySize
+      )
+    end if
+  end of
+
+  private def solveLcs[Element: Eq: Sized](
+      base: IndexedSeq[Element],
+      left: IndexedSeq[Element],
+      right: IndexedSeq[Element]
+  )(using
+      progressRecording: ProgressRecording
+  ): LongestCommonSubsequence[Element] =
+    if base.size <= 100 && left.size <= 100 && right.size <= 100 then
+      solveLcsInternal(base, left, right)
+    else
+      val baseSet = base.toSet
+      val leftSet = left.toSet
+      val rightSet = right.toSet
+
+      val matchableBaseIndices = base.indices.filter(i => leftSet.contains(base(i)) || rightSet.contains(base(i)))
+      val matchableLeftIndices = left.indices.filter(j => baseSet.contains(left(j)) || rightSet.contains(left(j)))
+      val matchableRightIndices = right.indices.filter(k => baseSet.contains(right(k)) || leftSet.contains(right(k)))
+
+      if matchableBaseIndices.isEmpty && matchableLeftIndices.isEmpty && matchableRightIndices.isEmpty then
+        LongestCommonSubsequence(
+          base = base.map(Contribution.Difference.apply),
+          left = left.map(Contribution.Difference.apply),
+          right = right.map(Contribution.Difference.apply),
+          commonSubsequenceSize = CommonSubsequenceSize.zero,
+          commonToLeftAndRightOnlySize = CommonSubsequenceSize.zero,
+          commonToBaseAndLeftOnlySize = CommonSubsequenceSize.zero,
+          commonToBaseAndRightOnlySize = CommonSubsequenceSize.zero
+        )
+      else
+        val filteredBase = matchableBaseIndices.map(base)
+        val filteredLeft = matchableLeftIndices.map(left)
+        val filteredRight = matchableRightIndices.map(right)
+
+        val filteredLcs = solveLcsInternal(filteredBase, filteredLeft, filteredRight)
+
+        def reconstruct(
+            original: IndexedSeq[Element],
+            matchableIndices: IndexedSeq[Int],
+            filteredContributions: IndexedSeq[Contribution[Element]]
+        ): IndexedSeq[Contribution[Element]] =
+          val builder = IndexedSeq.newBuilder[Contribution[Element]]
+          builder.sizeHint(original.size)
+          var filteredIdx = 0
+          val numMatchable = matchableIndices.size
+          for i <- original.indices do
+            if filteredIdx < numMatchable && matchableIndices(filteredIdx) == i then
+              builder += filteredContributions(filteredIdx)
+              filteredIdx += 1
+            else
+              builder += Contribution.Difference(original(i))
+          builder.result()
+
+        LongestCommonSubsequence(
+          base = reconstruct(base, matchableBaseIndices, filteredLcs.base),
+          left = reconstruct(left, matchableLeftIndices, filteredLcs.left),
+          right = reconstruct(right, matchableRightIndices, filteredLcs.right),
+          commonSubsequenceSize = filteredLcs.commonSubsequenceSize,
+          commonToLeftAndRightOnlySize = filteredLcs.commonToLeftAndRightOnlySize,
+          commonToBaseAndLeftOnlySize = filteredLcs.commonToBaseAndLeftOnlySize,
+          commonToBaseAndRightOnlySize = filteredLcs.commonToBaseAndRightOnlySize
+        )
+      end if
+    end if
+  end solveLcs
+
+  private def solveLcsInternal[Element: Eq: Sized](
+      base: IndexedSeq[Element],
+      left: IndexedSeq[Element],
+      right: IndexedSeq[Element]
+  )(using
+      progressRecording: ProgressRecording
+  ): LongestCommonSubsequence[Element] =
     given orderBySize: Ordering[LongestCommonSubsequence[Element]] =
       given Ordering[CommonSubsequenceSize] =
         Ordering.by(size => size.elementSizeSum)
@@ -1159,7 +1286,7 @@ object LongestCommonSubsequence:
           )
         )
     }
-  end of
+  end solveLcsInternal
 
   trait Sized[Element]:
     def sizeOf(element: Element): Int
