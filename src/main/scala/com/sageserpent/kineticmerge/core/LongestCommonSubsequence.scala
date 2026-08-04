@@ -364,59 +364,7 @@ object LongestCommonSubsequence:
   )(using
       progressRecording: ProgressRecording
   ): LongestCommonSubsequence[Element] =
-    val equality = summon[Eq[Element]]
-    val sized    = summon[Sized[Element]]
-
-    var prefixLen = 0
-    val maxPrefixLen = base.size min left.size min right.size
-    while prefixLen < maxPrefixLen &&
-          equality.eqv(base(prefixLen), left(prefixLen)) &&
-          equality.eqv(base(prefixLen), right(prefixLen))
-    do prefixLen += 1
-
-    var suffixLen = 0
-    val maxSuffixLen = (base.size - prefixLen) min (left.size - prefixLen) min (right.size - prefixLen)
-    while suffixLen < maxSuffixLen &&
-          equality.eqv(base(base.size - 1 - suffixLen), left(left.size - 1 - suffixLen)) &&
-          equality.eqv(base(base.size - 1 - suffixLen), right(right.size - 1 - suffixLen))
-    do suffixLen += 1
-
-    if prefixLen == 0 && suffixLen == 0 then
-      solveLcs(base, left, right)
-    else
-      val trimmedBase = base.slice(prefixLen, base.size - suffixLen)
-      val trimmedLeft = left.slice(prefixLen, left.size - suffixLen)
-      val trimmedRight = right.slice(prefixLen, right.size - suffixLen)
-
-      val trimmedLcs = solveLcs(trimmedBase, trimmedLeft, trimmedRight)
-
-      val prefixBaseContributions = base.take(prefixLen).map(Contribution.Common.apply)
-      val prefixLeftContributions = left.take(prefixLen).map(Contribution.Common.apply)
-      val prefixRightContributions = right.take(prefixLen).map(Contribution.Common.apply)
-
-      val prefixSizeSum = base.take(prefixLen).map(sized.sizeOf).sum
-      val prefixSize = CommonSubsequenceSize(prefixLen, prefixSizeSum)
-
-      val suffixBaseContributions = base.takeRight(suffixLen).map(Contribution.Common.apply)
-      val suffixLeftContributions = left.takeRight(suffixLen).map(Contribution.Common.apply)
-      val suffixRightContributions = right.takeRight(suffixLen).map(Contribution.Common.apply)
-
-      val suffixSizeSum = base.takeRight(suffixLen).map(sized.sizeOf).sum
-      val suffixSize = CommonSubsequenceSize(suffixLen, suffixSizeSum)
-
-      LongestCommonSubsequence(
-        base = prefixBaseContributions ++ trimmedLcs.base ++ suffixBaseContributions,
-        left = prefixLeftContributions ++ trimmedLcs.left ++ suffixLeftContributions,
-        right = prefixRightContributions ++ trimmedLcs.right ++ suffixRightContributions,
-        commonSubsequenceSize = CommonSubsequenceSize(
-          length = prefixSize.length + trimmedLcs.commonSubsequenceSize.length + suffixSize.length,
-          elementSizeSum = prefixSize.elementSizeSum + trimmedLcs.commonSubsequenceSize.elementSizeSum + suffixSize.elementSizeSum
-        ),
-        commonToLeftAndRightOnlySize = trimmedLcs.commonToLeftAndRightOnlySize,
-        commonToBaseAndLeftOnlySize = trimmedLcs.commonToBaseAndLeftOnlySize,
-        commonToBaseAndRightOnlySize = trimmedLcs.commonToBaseAndRightOnlySize
-      )
-    end if
+    solveLcs(base, left, right)
   end of
 
   private def solveLcs[Element: Eq: Sized](
@@ -426,7 +374,13 @@ object LongestCommonSubsequence:
   )(using
       progressRecording: ProgressRecording
   ): LongestCommonSubsequence[Element] =
-    if base.size <= 100 && left.size <= 100 && right.size <= 100 then
+    import com.sageserpent.kineticmerge.core.SectionedCode.Block
+
+    val isSemanticElement = base.headOption.exists(e =>
+      e.isInstanceOf[Block[?]] || e.isInstanceOf[Section[?]]
+    )
+
+    if isSemanticElement || (base.size <= 100 && left.size <= 100 && right.size <= 100) then
       solveLcsInternal(base, left, right)
     else
       val baseSet = base.toSet
