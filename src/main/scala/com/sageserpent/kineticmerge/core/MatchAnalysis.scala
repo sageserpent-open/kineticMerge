@@ -2343,38 +2343,17 @@ object MatchAnalysis extends StrictLogging:
       private def startOffsetOnBase(
           aMatch: GenericMatch[Element]
       ): Option[Int] =
-        aMatch match
-          case Match.AllSides(baseSection, _, _) =>
-            Some(baseSection.startOffset)
-          case Match.BaseAndLeft(baseSection, _) =>
-            Some(baseSection.startOffset)
-          case Match.BaseAndRight(baseSection, _) =>
-            Some(baseSection.startOffset)
-          case _ => None
+        aMatch.baseContribution.map(_.startOffset)
 
       private def startOffsetOnLeft(
           aMatch: GenericMatch[Element]
       ): Option[Int] =
-        aMatch match
-          case Match.AllSides(_, leftSection, _) =>
-            Some(leftSection.startOffset)
-          case Match.BaseAndLeft(_, leftSection) =>
-            Some(leftSection.startOffset)
-          case Match.LeftAndRight(leftSection, _) =>
-            Some(leftSection.startOffset)
-          case _ => None
+        aMatch.leftContribution.map(_.startOffset)
 
       private def startOffsetOnRight(
           aMatch: GenericMatch[Element]
       ): Option[Int] =
-        aMatch match
-          case Match.AllSides(_, _, rightSection) =>
-            Some(rightSection.startOffset)
-          case Match.BaseAndRight(_, rightSection) =>
-            Some(rightSection.startOffset)
-          case Match.LeftAndRight(_, rightSection) =>
-            Some(rightSection.startOffset)
-          case _ => None
+        aMatch.rightContribution.map(_.startOffset)
 
       private def reconciliationPostcondition(): Unit =
         baseSectionsByPath.values.flatMap(_.iterator).foreach { baseSection =>
