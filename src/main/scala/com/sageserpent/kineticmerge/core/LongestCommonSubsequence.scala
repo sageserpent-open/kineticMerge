@@ -13,7 +13,7 @@ import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
 import monocle.syntax.all.*
 
 import scala.annotation.tailrec
-import scala.collection.IndexedSeqView
+import scala.collection.{IndexedSeqView, SortedSet}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.util.Using
@@ -453,7 +453,7 @@ object LongestCommonSubsequence:
   )(using
       progressRecording: ProgressRecording
   ): LongestCommonSubsequence[Element] =
-    val equality = summon[Eq[Element]]
+    given Ordering[Element] = summon[Order[Element]].toOrdering
 
     // PLAN: filter out elements that can't be matched at all with any element
     // on the other two sides - these will never align to make a common
@@ -461,29 +461,25 @@ object LongestCommonSubsequence:
     // is calculated, merge it with difference contributions from the leftover
     // rejected elements.
 
-    // NASTY HACK: this uses a quadratic time approach that isn't too bad for
-    // the sizes of inputs seen.
-    // It is tempting to cut over to using set membership or Bloom filters to
-    // optimise this, but beware that this will entail either defining a *very*
-    // permissive hash function to handle block-level merging correctly - and
-    // that defeats the purpose of this filtration, leading to poor performance
-    // - or using sorted sets and replacing the `Eq` type constraint with
-    // `Order`.
-    val matchableBaseIndices = base.indices.filter(i =>
-      left.exists(equality.eqv(base(i), _)) || right.exists(
-        equality.eqv(base(i), _)
-      )
-    )
-    val matchableLeftIndices = left.indices.filter(j =>
-      base.exists(equality.eqv(left(j), _)) || right.exists(
-        equality.eqv(left(j), _)
-      )
-    )
-    val matchableRightIndices = right.indices.filter(k =>
-      base.exists(equality.eqv(right(k), _)) || left.exists(
-        equality.eqv(right(k), _)
-      )
-    )
+    val baseSet  = SortedSet.from(base)
+    val leftSet  = SortedSet.from(left)
+    val rightSet = SortedSet.from(right)
+
+    val matchableBaseIndices = base.zipWithIndex.collect {
+      case (baseElement, index)
+          if leftSet.contains(baseElement) || rightSet.contains(baseElement) =>
+        index
+    }
+    val matchableLeftIndices = left.zipWithIndex.collect {
+      case (leftElement, index)
+          if baseSet.contains(leftElement) || rightSet.contains(leftElement) =>
+        index
+    }
+    val matchableRightIndices = right.zipWithIndex.collect {
+      case (rightElement, index)
+          if baseSet.contains(rightElement) || leftSet.contains(rightElement) =>
+        index
+    }
 
     if matchableBaseIndices.isEmpty && matchableLeftIndices.isEmpty && matchableRightIndices.isEmpty
     then
@@ -651,9 +647,6 @@ object LongestCommonSubsequence:
             resultSnapshotPriorToMutation
           end advanceToNextLeadingSwathe
 
-          private def notYetReachedFinalSwathe =
-            maximumSwatheIndex > _indexOfLeadingSwathe
-
           def topLevelSolution: LongestCommonSubsequence[Element] =
             require(!notYetReachedFinalSwathe)
 
@@ -664,6 +657,9 @@ object LongestCommonSubsequence:
               right.size
             )
           end topLevelSolution
+
+          private def notYetReachedFinalSwathe =
+            maximumSwatheIndex > _indexOfLeadingSwathe
 
           def consultRelevantSwatheForSolution(
               onePastBaseIndex: Int,
