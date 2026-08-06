@@ -13,6 +13,7 @@ import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
 import monocle.syntax.all.*
 
 import scala.annotation.tailrec
+import scala.collection.IndexedSeqView
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.util.Using
@@ -366,52 +367,78 @@ object LongestCommonSubsequence:
   ): LongestCommonSubsequence[Element] =
     val equality = summon[Eq[Element]]
     val sized    = summon[Sized[Element]]
-  
-    var prefixLen = 0
-    val maxPrefixLen = base.size min left.size min right.size
-    while prefixLen < maxPrefixLen &&
-      equality.eqv(base(prefixLen), left(prefixLen)) &&
-      equality.eqv(base(prefixLen), right(prefixLen))
-    do prefixLen += 1
-  
-    var suffixLen = 0
-    val maxSuffixLen = (base.size - prefixLen) min (left.size - prefixLen) min (right.size - prefixLen)
-    while suffixLen < maxSuffixLen &&
-      equality.eqv(base(base.size - 1 - suffixLen), left(left.size - 1 - suffixLen)) &&
-      equality.eqv(base(base.size - 1 - suffixLen), right(right.size - 1 - suffixLen))
-    do suffixLen += 1
-  
-    if prefixLen == 0 && suffixLen == 0 then
-      solveLcs(base, left, right)
+
+    // PLAN: trim off any common prefix and common suffix to avoid burdening the
+    // core LCS calculation.
+
+    def commonAffixLength(maximumLength: Int)(
+        base: IndexedSeqView[Element],
+        left: IndexedSeqView[Element],
+        right: IndexedSeqView[Element]
+    ) =
+      var index = 0
+
+      while index < maximumLength &&
+        equality.eqv(base(index), left(index)) &&
+        equality.eqv(base(index), right(index))
+      do index += 1
+      end while
+
+      index
+    end commonAffixLength
+
+    val minimumSizeAcrossSides = base.size min left.size min right.size
+
+    val prefixLength: Int =
+      commonAffixLength(maximumLength = minimumSizeAcrossSides)(
+        base.view,
+        left.view,
+        right.view
+      )
+
+    val suffixLength = commonAffixLength(maximumLength =
+      minimumSizeAcrossSides - prefixLength
+    )(base.view.reverse, left.view.reverse, right.view.reverse)
+
+    if prefixLength == 0 && suffixLength == 0 then
+      assumingTrimmedInputs(base, left, right)
     else
-      val trimmedBase = base.slice(prefixLen, base.size - suffixLen)
-      val trimmedLeft = left.slice(prefixLen, left.size - suffixLen)
-      val trimmedRight = right.slice(prefixLen, right.size - suffixLen)
-  
-      val trimmedLcs = solveLcs(trimmedBase, trimmedLeft, trimmedRight)
-  
-      val prefixBaseContributions = base.take(prefixLen).map(Contribution.Common.apply)
-      val prefixLeftContributions = left.take(prefixLen).map(Contribution.Common.apply)
-      val prefixRightContributions = right.take(prefixLen).map(Contribution.Common.apply)
-  
-      val prefixSizeSum = base.take(prefixLen).map(sized.sizeOf).sum
-      val prefixSize = CommonSubsequenceSize(prefixLen, prefixSizeSum)
-  
-      val suffixBaseContributions = base.takeRight(suffixLen).map(Contribution.Common.apply)
-      val suffixLeftContributions = left.takeRight(suffixLen).map(Contribution.Common.apply)
-      val suffixRightContributions = right.takeRight(suffixLen).map(Contribution.Common.apply)
-  
-      val suffixSizeSum = base.takeRight(suffixLen).map(sized.sizeOf).sum
-      val suffixSize = CommonSubsequenceSize(suffixLen, suffixSizeSum)
-  
+      val trimmedBase  = base.slice(prefixLength, base.size - suffixLength)
+      val trimmedLeft  = left.slice(prefixLength, left.size - suffixLength)
+      val trimmedRight = right.slice(prefixLength, right.size - suffixLength)
+
+      val trimmedLcs =
+        assumingTrimmedInputs(trimmedBase, trimmedLeft, trimmedRight)
+
+      val prefixBaseContributions =
+        base.take(prefixLength).map(Contribution.Common.apply)
+      val prefixLeftContributions =
+        left.take(prefixLength).map(Contribution.Common.apply)
+      val prefixRightContributions =
+        right.take(prefixLength).map(Contribution.Common.apply)
+
+      val prefixSizeSum = base.take(prefixLength).map(sized.sizeOf).sum
+      val prefixSize    = CommonSubsequenceSize(prefixLength, prefixSizeSum)
+
+      val suffixBaseContributions =
+        base.takeRight(suffixLength).map(Contribution.Common.apply)
+      val suffixLeftContributions =
+        left.takeRight(suffixLength).map(Contribution.Common.apply)
+      val suffixRightContributions =
+        right.takeRight(suffixLength).map(Contribution.Common.apply)
+
+      val suffixSizeSum = base.takeRight(suffixLength).map(sized.sizeOf).sum
+      val suffixSize    = CommonSubsequenceSize(suffixLength, suffixSizeSum)
+
       LongestCommonSubsequence(
-        base = prefixBaseContributions ++ trimmedLcs.base ++ suffixBaseContributions,
-        left = prefixLeftContributions ++ trimmedLcs.left ++ suffixLeftContributions,
-        right = prefixRightContributions ++ trimmedLcs.right ++ suffixRightContributions,
-        commonSubsequenceSize = CommonSubsequenceSize(
-          length = prefixSize.length + trimmedLcs.commonSubsequenceSize.length + suffixSize.length,
-          elementSizeSum = prefixSize.elementSizeSum + trimmedLcs.commonSubsequenceSize.elementSizeSum + suffixSize.elementSizeSum
-        ),
+        base =
+          prefixBaseContributions ++ trimmedLcs.base ++ suffixBaseContributions,
+        left =
+          prefixLeftContributions ++ trimmedLcs.left ++ suffixLeftContributions,
+        right =
+          prefixRightContributions ++ trimmedLcs.right ++ suffixRightContributions,
+        commonSubsequenceSize =
+          prefixSize plus trimmedLcs.commonSubsequenceSize plus suffixSize,
         commonToLeftAndRightOnlySize = trimmedLcs.commonToLeftAndRightOnlySize,
         commonToBaseAndLeftOnlySize = trimmedLcs.commonToBaseAndLeftOnlySize,
         commonToBaseAndRightOnlySize = trimmedLcs.commonToBaseAndRightOnlySize
@@ -419,7 +446,7 @@ object LongestCommonSubsequence:
     end if
   end of
 
-  private def solveLcs[Element: Eq: Sized](
+  private def assumingTrimmedInputs[Element: Eq: Sized](
       base: IndexedSeq[Element],
       left: IndexedSeq[Element],
       right: IndexedSeq[Element]
@@ -428,11 +455,38 @@ object LongestCommonSubsequence:
   ): LongestCommonSubsequence[Element] =
     val equality = summon[Eq[Element]]
 
-    val matchableBaseIndices = base.indices.filter(i => left.exists(equality.eqv(base(i), _)) || right.exists(equality.eqv(base(i), _)))
-    val matchableLeftIndices = left.indices.filter(j => base.exists(equality.eqv(left(j), _)) || right.exists(equality.eqv(left(j), _)))
-    val matchableRightIndices = right.indices.filter(k => base.exists(equality.eqv(right(k), _)) || left.exists(equality.eqv(right(k), _)))
+    // PLAN: filter out elements that can't be matched at all with any element
+    // on the other two sides - these will never align to make a common
+    // contribution, so we avoid burdening it with them. Once the filtered LCS
+    // is calculated, merge it with difference contributions from the leftover
+    // rejected elements.
 
-    if matchableBaseIndices.isEmpty && matchableLeftIndices.isEmpty && matchableRightIndices.isEmpty then
+    // NASTY HACK: this uses a quadratic time approach that isn't too bad for
+    // the sizes of inputs seen.
+    // It is tempting to cut over to using set membership or Bloom filters to
+    // optimise this, but beware that this will entail either defining a *very*
+    // permissive hash function to handle block-level merging correctly - and
+    // that defeats the purpose of this filtration, leading to poor performance
+    // - or using sorted sets and replacing the `Eq` type constraint with
+    // `Order`.
+    val matchableBaseIndices = base.indices.filter(i =>
+      left.exists(equality.eqv(base(i), _)) || right.exists(
+        equality.eqv(base(i), _)
+      )
+    )
+    val matchableLeftIndices = left.indices.filter(j =>
+      base.exists(equality.eqv(left(j), _)) || right.exists(
+        equality.eqv(left(j), _)
+      )
+    )
+    val matchableRightIndices = right.indices.filter(k =>
+      base.exists(equality.eqv(right(k), _)) || left.exists(
+        equality.eqv(right(k), _)
+      )
+    )
+
+    if matchableBaseIndices.isEmpty && matchableLeftIndices.isEmpty && matchableRightIndices.isEmpty
+    then
       LongestCommonSubsequence(
         base = base.map(Contribution.Difference.apply),
         left = left.map(Contribution.Difference.apply),
@@ -443,11 +497,16 @@ object LongestCommonSubsequence:
         commonToBaseAndRightOnlySize = CommonSubsequenceSize.zero
       )
     else
-      val filteredBase = matchableBaseIndices.map(base)
-      val filteredLeft = matchableLeftIndices.map(left)
+      val filteredBase  = matchableBaseIndices.map(base)
+      val filteredLeft  = matchableLeftIndices.map(left)
       val filteredRight = matchableRightIndices.map(right)
 
-      val filteredLcs = solveLcsInternal(filteredBase, filteredLeft, filteredRight)
+      val filteredLcs =
+        assumingInputsYieldSomeCommonAlignments(
+          filteredBase,
+          filteredLeft,
+          filteredRight
+        )
 
       def reconstruct(
           original: IndexedSeq[Element],
@@ -456,15 +515,17 @@ object LongestCommonSubsequence:
       ): IndexedSeq[Contribution[Element]] =
         val builder = IndexedSeq.newBuilder[Contribution[Element]]
         builder.sizeHint(original.size)
-        var filteredIdx = 0
+        var filteredIdx  = 0
         val numMatchable = matchableIndices.size
         for i <- original.indices do
-          if filteredIdx < numMatchable && matchableIndices(filteredIdx) == i then
+          if filteredIdx < numMatchable && matchableIndices(filteredIdx) == i
+          then
             builder += filteredContributions(filteredIdx)
             filteredIdx += 1
-          else
-            builder += Contribution.Difference(original(i))
+          else builder += Contribution.Difference(original(i))
+        end for
         builder.result()
+      end reconstruct
 
       LongestCommonSubsequence(
         base = reconstruct(base, matchableBaseIndices, filteredLcs.base),
@@ -476,9 +537,9 @@ object LongestCommonSubsequence:
         commonToBaseAndRightOnlySize = filteredLcs.commonToBaseAndRightOnlySize
       )
     end if
-  end solveLcs
+  end assumingTrimmedInputs
 
-  private def solveLcsInternal[Element: Eq: Sized](
+  private def assumingInputsYieldSomeCommonAlignments[Element: Eq: Sized](
       base: IndexedSeq[Element],
       left: IndexedSeq[Element],
       right: IndexedSeq[Element]
@@ -493,55 +554,50 @@ object LongestCommonSubsequence:
         Element
       ], (CommonSubsequenceSize, CommonSubsequenceSize)](_.size)
 
-      new Ordering[LongestCommonSubsequence[Element]]:
-        override def compare(
-            x: LongestCommonSubsequence[Element],
-            y: LongestCommonSubsequence[Element]
-        ): Int =
-          val primaryResult = primary.compare(x, y)
-          if primaryResult != 0 then primaryResult
-          else
-            def score(c: Contribution[Element]): Int = c match
-              case Contribution.Common(_)                   => 3
-              case Contribution.CommonToLeftAndRightOnly(_) => 2
-              case Contribution.Difference(_)               => 0
-              case _                                        => 1
+      (
+          x: LongestCommonSubsequence[Element],
+          y: LongestCommonSubsequence[Element]
+      ) =>
+        val primaryResult = primary.compare(x, y)
+        if primaryResult != 0 then primaryResult
+        else
+          def score(c: Contribution[Element]): Int = c match
+            case Contribution.Common(_)                   => 3
+            case Contribution.CommonToLeftAndRightOnly(_) => 2
+            case Contribution.Difference(_)               => 0
+            case _                                        => 1
 
-            def firstDiff(
-                pairs: IndexedSeq[
-                  (Contribution[Element], Contribution[Element])
-                ]
-            ): Option[(Int, Int)] =
-              val index = pairs.indexWhere { case (cx, cy) =>
-                score(cx) != score(cy)
-              }
-              if index != -1 then
-                val (cx, cy) = pairs(index)
-                Some(index -> (if score(cx) > score(cy) then 1 else -1))
-              else None
-              end if
-            end firstDiff
+          def firstDiff(
+              pairs: IndexedSeq[
+                (Contribution[Element], Contribution[Element])
+              ]
+          ): Option[(Int, Int)] =
+            val index = pairs.indexWhere { case (cx, cy) =>
+              score(cx) != score(cy)
+            }
 
-            val baseDiff  = firstDiff(x.base.zip(y.base))
-            val leftDiff  = firstDiff(x.left.zip(y.left))
-            val rightDiff = firstDiff(x.right.zip(y.right))
+            Option.when(index != -1) {
+              val (cx, cy) = pairs(index)
+              index -> (if score(cx) > score(cy) then 1 else -1)
+            }
+          end firstDiff
 
-            // Sort by index ascending. If indices are equal, stably sort by
-            // base > left > right.
-            val finalRes = Seq(
-              baseDiff.map(d => (d._1, 0, d._2)),
-              leftDiff.map(d => (d._1, 1, d._2)),
-              rightDiff.map(d => (d._1, 2, d._2))
-            ).flatten
-              .sortBy(d => (d._1, d._2))
-              .headOption
-              .map(_._3)
-              .getOrElse(0)
+          val baseDiff  = firstDiff(x.base.zip(y.base))
+          val leftDiff  = firstDiff(x.left.zip(y.left))
+          val rightDiff = firstDiff(x.right.zip(y.right))
 
-            finalRes
-          end if
-        end compare
-      end new
+          // Sort by index ascending. If indices are equal, stably sort by
+          // base > left > right.
+          Seq(
+            baseDiff.map(d => (d._1, 0, d._2)),
+            leftDiff.map(d => (d._1, 1, d._2)),
+            rightDiff.map(d => (d._1, 2, d._2))
+          ).flatten
+            .sortBy(d => (d._1, d._2))
+            .headOption
+            .map(_._3)
+            .getOrElse(0)
+        end if
     end orderBySize
 
     val equality = summon[Eq[Element]]
@@ -609,10 +665,6 @@ object LongestCommonSubsequence:
             )
           end topLevelSolution
 
-          inline private def storageLotForLeadingSwathe =
-            _indexOfLeadingSwathe % 2
-          end storageLotForLeadingSwathe
-
           def consultRelevantSwatheForSolution(
               onePastBaseIndex: Int,
               onePastLeftIndex: Int,
@@ -661,6 +713,10 @@ object LongestCommonSubsequence:
               onePastRightIndex
             ) = longestCommonSubsequence
           end storeSolutionInLeadingSwathe
+
+          inline private def storageLotForLeadingSwathe =
+            _indexOfLeadingSwathe % 2
+          end storageLotForLeadingSwathe
 
           inline private def newStorage = Storage(
             baseEqualToSwatheIndex =
@@ -1280,7 +1336,7 @@ object LongestCommonSubsequence:
           )
         )
     }
-  end solveLcsInternal
+  end assumingInputsYieldSomeCommonAlignments
 
   trait Sized[Element]:
     def sizeOf(element: Element): Int
