@@ -1,6 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
-import cats.Eq
+import cats.Order
 import cats.syntax.functor.*
 import com.google.common.hash.{HashFunction, Hashing}
 import com.sageserpent.americium.Trials
@@ -29,12 +29,9 @@ import org.junit.jupiter.api.TestFactory
 object BlockDuplicationAndCondensationTests:
   given HashFunction = Hashing.murmur3_32_fixed()
 
-  given ProgressRecording    = NoProgressRecording
-  given Eq[Section[Element]] =
-    given Eq[IndexedSeq[Element]] = Eq.fromUniversalEquals
-
-    Eq.by(_.content)
-  end given
+  given ProgressRecording       = NoProgressRecording
+  given Order[Section[Element]] =
+    Order.by[Section[Element], Seq[Element]](_.content)
 
   given Sized[Section[Element]] = defaultElementSize
 

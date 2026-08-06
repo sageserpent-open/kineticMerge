@@ -50,7 +50,7 @@ object SectionedCodeExtension extends StrictLogging:
         path: Path
     )(using
         progressRecording: ProgressRecording,
-        sectionEq: Eq[Section[Element]],
+        sectionOrder: Order[Section[Element]],
         sectionSized: Sized[Section[Element]]
     ): LongestCommonSubsequence[Section[Element]] =
       val groupsOfParallelMatches = sectionedCode.groupsOfParallelMatches
@@ -59,7 +59,7 @@ object SectionedCodeExtension extends StrictLogging:
       val leftBlocks  = sectionedCode.leftBlocksFor(path)
       val rightBlocks = sectionedCode.rightBlocksFor(path)
 
-      given Eq[Block[Element]] =
+      given Order[Block[Element]] =
         // NOTE: this is subtle - comparing by `Block.parallelMatchesGroupId` is
         // OK, but consider situations where two distinct blocks covering the
         // same content on the same side can fool the following block-level
@@ -70,21 +70,20 @@ object SectionedCodeExtension extends StrictLogging:
         // NOTE: tip of the hat to Jules for suggesting the content-based
         // comparison approach; I cheerfully ignored it at the time but have
         // come to realise its virtue!
-        Eq.or(
-          (lhs, rhs) =>
-            (
-              lhs.parallelMatchesGroupId,
-              rhs.parallelMatchesGroupId
-            ) match
-              case (Some(lhsGroupId), Some(rhsGroupId)) =>
-                lhsGroupId == rhsGroupId
-              case _ => false,
-          (lhs, rhs) =>
-            Eq.eqv(
-              lhs.sectionsCoveredByGroup: Seq[Section[Element]],
-              rhs.sectionsCoveredByGroup: Seq[Section[Element]]
-            )
-        )
+        (lhs, rhs) =>
+          val bothBelongToTheSameParallelMatchesGroup = (
+            lhs.parallelMatchesGroupId,
+            rhs.parallelMatchesGroupId
+          ) match
+            case (Some(lhsGroupId), Some(rhsGroupId)) =>
+              lhsGroupId == rhsGroupId
+            case _ => false
+
+          if bothBelongToTheSameParallelMatchesGroup then 0
+          else
+            Order[Seq[Section[Element]]]
+              .compare(lhs.sectionsCoveredByGroup, rhs.sectionsCoveredByGroup)
+          end if
       end given
 
       given Sized[Block[Element]] = _.size
@@ -744,25 +743,24 @@ object SectionedCodeExtension extends StrictLogging:
 
       given sectionSized[X]: Sized[Section[X]] = _.size
 
-      given Eq[Section[Element]] with
-        /** This is most definitely *not* [[Section.equals]] - we want to use
-          * matching of content, as the sections are expected to come from
-          * *different* sides. [[Section.equals]] is expected to consider
-          * sections from different sides as unequal. <p>If neither section is
-          * involved in a match, fall back to comparing the contents; this is
-          * vital for comparing sections that would have been part of a larger
-          * match if not for that match not achieving the threshold size.
+      given Order[Section[Element]] with
+        /** We want to use matching of content, as the sections are expected to
+          * come from *different* sides. <p>If neither section is involved in a
+          * match, fall back to comparing the contents; this is vital for
+          * comparing sections that would have been part of a larger match if
+          * not for that match not achieving the threshold size.
           */
-        override def eqv(
+        override def compare(
             lhs: Section[Element],
             rhs: Section[Element]
-        ): Boolean =
+        ): Int =
           val bothBelongToTheSameMatches =
             matchesFor(lhs).intersect(matchesFor(rhs)).nonEmpty
 
-          bothBelongToTheSameMatches || lhs.size == rhs.size && Eq[Seq[Element]]
-            .eqv(lhs.content, rhs.content)
-        end eqv
+          if bothBelongToTheSameMatches then 0
+          else Order[Seq[Element]].compare(lhs.content, rhs.content)
+          end if
+        end compare
       end given
 
       extension [Item: Sized](multiSided: MultiSided[Item])

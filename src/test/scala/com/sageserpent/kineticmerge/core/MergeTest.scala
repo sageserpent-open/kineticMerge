@@ -1,6 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
-import cats.Eq
+import cats.Order
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
@@ -47,7 +47,7 @@ class MergeTest:
 
     val matchesByElement: Map[Element, Match[Element]] = Map(a -> ab, b -> ab)
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a clean merge of the edit of `a` into `c`.
@@ -81,7 +81,7 @@ class MergeTest:
 
     val matchesByElement: Map[Element, Match[Element]] = Map(a -> ab, b -> ab)
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a clean merge of the edit of `a` into `d` followed by an
@@ -117,7 +117,7 @@ class MergeTest:
 
     val matchesByElement: Map[Element, Match[Element]] = Map(a -> ac, c -> ac)
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a clean merge of the insertion of `b` followed by a
@@ -153,7 +153,7 @@ class MergeTest:
 
     val matchesByElement: Map[Element, Match[Element]] = Map(a -> ac, c -> ac)
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a clean merge of the insertion of `b` followed by an edit
@@ -190,7 +190,7 @@ class MergeTest:
 
     val matchesByElement: Map[Element, Match[Element]] = Map(b -> bc, c -> bc)
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a clean merge of the coincident deletion of `a` followed
@@ -226,7 +226,7 @@ class MergeTest:
 
     val matchesByElement: Map[Element, Match[Element]] = Map(b -> bc, c -> bc)
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a clean merge of the coincident deletion of `a` with a
@@ -264,7 +264,7 @@ class MergeTest:
 
     val matchesByElement: Map[Element, Match[Element]] = Map(b -> bd, d -> bd)
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a clean merge of the insertion of `c`, followed by a
@@ -304,7 +304,7 @@ class MergeTest:
     val matchesByElement: Map[Element, Match[Element]] =
       Map(a -> ac, c -> ac, b -> bd, d -> bd)
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a clean merge of the edit of `a` into `e` followed by a
@@ -345,7 +345,7 @@ class MergeTest:
     val matchesByElement: Map[Element, Match[Element]] =
       Map(a -> ac, c -> ac, b -> bd, d -> bd)
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a clean merge of the edit of `a` into `f` followed by a
@@ -389,7 +389,7 @@ class MergeTest:
     val matchesByElement: Map[Element, Match[Element]] =
       Map(a -> ac, c -> ac, b -> be, e -> be)
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a clean merge of the edit of `a` into `f` followed by an
@@ -434,7 +434,7 @@ class MergeTest:
     val matchesByElement: Map[Element, Match[Element]] =
       Map(a -> ac, c -> ac, b -> be, e -> be)
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a clean merge of the edit of `a` into `f` followed by an
@@ -472,7 +472,7 @@ class MergeTest:
     val matchesByElement: Map[Element, Match[Element]] =
       Map(a -> ab, b -> ab)
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a clean merge of the edit of `a` into `c` coalesced with
@@ -512,7 +512,7 @@ class MergeTest:
     val matchesByElement: Map[Element, Match[Element]] =
       Map(a -> ab, b -> ab)
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a clean merge of the edit of `a` into `d` coalesced with
@@ -555,7 +555,7 @@ class MergeTest:
     val matchesByElement: Map[Element, Match[Element]] =
       Map(a -> af, f -> af, e -> eg, g -> eg)
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a clean merge of the left edit of `a` into `c` coalesced
@@ -600,7 +600,7 @@ class MergeTest:
     val matchesByElement: Map[Element, Match[Element]] =
       Map(a -> ac, c -> ac, b -> be, e -> be)
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a clean merge of the edit of `a` into `d` followed by a
@@ -634,7 +634,7 @@ class MergeTest:
 
     val matchesByElement: Map[Element, Match[Element]] = Map(a -> ab, b -> ab)
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a clean merge of the deletion of `a` followed by an
@@ -671,7 +671,7 @@ class MergeTest:
     val matchesByElement: Map[Element, Match[Element]] =
       Map(a -> ac, c -> ac, b -> bd, d -> bd)
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a clean merge of the deletion of `a` followed by a
@@ -708,7 +708,7 @@ class MergeTest:
     val matchesByElement: Map[Element, Match[Element]] =
       Map(a -> ac, c -> ac, b -> be, e -> be)
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a clean merge of the deletion of 'a' followed by an edit
@@ -749,7 +749,7 @@ class MergeTest:
       f -> bdf
     )
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect `b` to be preserved as `d` and `f` after the initial edit
@@ -799,7 +799,7 @@ class MergeTest:
       i -> cfi
     )
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a `c` to be preserved as `f` and `i` after the coalesced
@@ -851,7 +851,7 @@ class MergeTest:
       i -> cfi
     )
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a right edit of `b` into `g` and then `h` after the
@@ -910,7 +910,7 @@ class MergeTest:
       i -> cfi
     )
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a left edit of `b` into `d` and then `e` after the
@@ -971,7 +971,7 @@ class MergeTest:
       i -> bfi
     )
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect `a` to be preserved as `c` and `g` before the coalesced
@@ -1025,7 +1025,7 @@ class MergeTest:
       i -> cgi
     )
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect `a` to be preserved as `d` and `h` before the coalesced
@@ -1080,8 +1080,7 @@ class MergeTest:
       j -> dhj
     )
 
-    given Eq[Element] = matchesByElement.equivalent
-
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect `a` to be preserved as `e` and `i` before the coalesced
@@ -1129,7 +1128,7 @@ class MergeTest:
       e -> ace
     )
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect `a` to be preserved as `c` and `e` after the initial
@@ -1177,7 +1176,7 @@ class MergeTest:
       g -> adg
     )
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect `a` to be preserved as `d` and `g` after the coalesced
@@ -1230,7 +1229,7 @@ class MergeTest:
       h -> beh
     )
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a coincident insertion of `d` and `g` and then `b` to be
@@ -1280,7 +1279,7 @@ class MergeTest:
       g -> ceg
     )
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect `c` to be preserved as `e` and `g` after the initial edit
@@ -1321,7 +1320,7 @@ class MergeTest:
 
     val matchesByElement: Map[Element, Match[Element]] = Map.empty
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect the initial edit conflict to coalesce with the following
@@ -1364,7 +1363,7 @@ class MergeTest:
 
     val matchesByElement: Map[Element, Match[Element]] = Map(d -> df, f -> df)
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect the initial edit conflict to coalesce with the following
@@ -1415,7 +1414,7 @@ class MergeTest:
       g -> cg
     )
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a clean merge of the deletion of 'b' and the edit of 'c'
@@ -1461,7 +1460,7 @@ class MergeTest:
       e -> be
     )
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a left edit versus right deletion conflict that claims
@@ -1515,8 +1514,7 @@ class MergeTest:
       i -> dfi
     )
 
-    given Eq[Element] = matchesByElement.equivalent
-
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect `a` to be preserved as `e` and `g` before the coalesced
@@ -1568,7 +1566,7 @@ class MergeTest:
       d -> cd
     )
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a clean merge of the deletion of 'b' and the edit of 'c'
@@ -1614,7 +1612,7 @@ class MergeTest:
       f -> bf
     )
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a right edit versus left deletion conflict that claims
@@ -1661,7 +1659,7 @@ class MergeTest:
       e -> ce
     )
 
-    given Eq[Element]    = matchesByElement.equivalent
+    given Order[Element] = matchesByElement.compare
     given Sized[Element] = defaultElementSize
 
     // NOTE: we expect a clean merge of a coincident edit coalesced with the
@@ -1691,7 +1689,7 @@ class MergeTest:
         println("*************")
         pprintln(testCase)
 
-        given Eq[Element]    = equivalent(testCase.matchesByElement)
+        given Order[Element] = testCase.matchesByElement.compare
         given Sized[Element] = defaultElementSize
 
         val AugmentedMergeResult(_, result) =
@@ -1712,7 +1710,7 @@ class MergeTest:
     possiblyConflictedMergeTestCases
       .withLimit(4000)
       .dynamicTests: testCase =>
-        given Eq[Element]    = equivalent(testCase.matchesByElement)
+        given Order[Element] = testCase.matchesByElement.compare
         given Sized[Element] = defaultElementSize
 
         val AugmentedMergeResult(_, result) =
@@ -2024,20 +2022,31 @@ class MergeTest:
 end MergeTest
 
 object MergeTest:
-  given ProgressRecording = NoProgressRecording
-
   type Element = Int
 
+  given ProgressRecording = NoProgressRecording
+
   extension (matchesByElement: Map[Element, Match[Element]])
-    def equivalent(lhs: Element, rhs: Element): Boolean =
+    def compare(lhs: Element, rhs: Element): Int =
       matchesByElement.get(lhs) -> matchesByElement.get(rhs) match
-        case (None, None)                     => false
-        case (None, Some(_))                  => false
-        case (Some(_), None)                  => false
+        case (None, None)                     => lhs compare rhs
+        case (None, Some(_))                  => 1
+        case (Some(_), None)                  => -1
         case (Some(lhsMatch), Some(rhsMatch)) =>
-          lhsMatch == rhsMatch
+          Order.compare(
+            (
+              lhsMatch.baseContribution,
+              lhsMatch.leftContribution,
+              lhsMatch.rightContribution
+            ),
+            (
+              rhsMatch.baseContribution,
+              rhsMatch.leftContribution,
+              rhsMatch.rightContribution
+            )
+          )
       end match
-    end equivalent
+    end compare
   end extension
 
   private def emptyMergeTestCase(allowConflicts: Boolean): MergeTestCase =
@@ -2058,7 +2067,7 @@ object MergeTest:
       expectedMerge: Option[MergeResult[MultiSided[Element]]],
       moves: IndexedSeq[Move]
   ):
-    given Eq[Element] = equivalent(matchesByElement)
+    given Order[Element] = matchesByElement.compare
 
     def validate(result: MultiSidedMergeResult[Element]): Unit =
       def baseIsPreservedCorrectlyIn(
@@ -2641,7 +2650,7 @@ object MergeTest:
       case CoincidentEdit
     end State
 
-    case class AugmentedMergeResult[Element: Eq](
+    case class AugmentedMergeResult[Element: Order](
         state: State,
         coreMergeResult: MultiSidedMergeResult[Element]
     ):

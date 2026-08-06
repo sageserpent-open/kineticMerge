@@ -4,7 +4,7 @@ import cats.derived.*
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.syntax.all.{catsSyntaxApplyOps, catsSyntaxFlatMapOps}
-import cats.{Eq, Functor, Monad}
+import cats.{Eq, Functor, Monad, Order}
 import com.sageserpent.kineticmerge.ProgressRecording
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
   CommonSubsequenceSize,
@@ -358,7 +358,7 @@ object LongestCommonSubsequence:
 
   def defaultElementSize[Element](irrelevant: Element): Int = 1
 
-  def of[Element: Eq: Sized](
+  def of[Element: Order: Sized](
       base: IndexedSeq[Element],
       left: IndexedSeq[Element],
       right: IndexedSeq[Element]
@@ -446,7 +446,7 @@ object LongestCommonSubsequence:
     end if
   end of
 
-  private def assumingTrimmedInputs[Element: Eq: Sized](
+  private def assumingTrimmedInputs[Element: Order: Sized](
       base: IndexedSeq[Element],
       left: IndexedSeq[Element],
       right: IndexedSeq[Element]
