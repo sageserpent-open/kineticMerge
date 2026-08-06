@@ -20,6 +20,7 @@ import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{
   MoveEvaluation,
   OppositeSideAnchor
 }
+import com.sageserpent.kineticmerge.core.MatchAnalysis.ParallelMatchesGroupId
 import com.sageserpent.kineticmerge.core.SectionedCode.Block
 import com.sageserpent.kineticmerge.core.merge.{
   MergeAlgebra,
@@ -1472,6 +1473,104 @@ object SectionedCodeExtension extends StrictLogging:
         )
       end mergesFrom
 
+      def parallelMatchesGroupIdOf(move: AnchoredMove[Section[Element]]): Option[ParallelMatchesGroupId] =
+        val matchesForSource = sectionedCode.matchesFor(move.sourceAnchor)
+        val matchingMatchOpt = matchesForSource.find { aMatch =>
+          // A divergent move cannot result in an anchored move (it is handled separately
+          // as a non-anchored divergent move), so it is safe to ignore the opposite side
+          // of the anchored move and only check the destination side of the move.
+          move.moveDestinationSide match {
+            case MoveDestinationSide.Left =>
+              aMatch.leftContribution.contains(move.moveDestinationAnchor)
+            case MoveDestinationSide.Right =>
+              aMatch.rightContribution.contains(move.moveDestinationAnchor)
+          }
+        }
+        matchingMatchOpt.flatMap(sectionedCode.parallelMatchesGroupIdsByMatch.get)
+
+      val anchoredMovesByGroup = anchoredMoves.groupBy(parallelMatchesGroupIdOf)
+
+      // Group anchoredMoves by moveDestinationAnchor to detect collisions (converging moves)
+      val movesByDestinationAnchor = anchoredMoves.groupBy(_.moveDestinationAnchor)
+
+      // Pre-calculate group sizes for each move
+      def groupSizeOf(move: AnchoredMove[Section[Element]]): Int =
+        parallelMatchesGroupIdOf(move)
+          .flatMap(sectionedCode.groupsOfParallelMatches.get)
+          .fold(ifEmpty = 0)(_.size)
+
+      val thinnedMigrationSplices: Map[AnchoredMove[Section[Element]], MigrationSplices] = {
+        val initialSplices = anchoredMoves.map(move => move -> mergesFrom(move)).toMap
+
+        def destinationPathOf(move: AnchoredMove[Section[Element]]): Path =
+          move.moveDestinationSide match {
+            case MoveDestinationSide.Left => sectionedCode.leftPathFor(move.moveDestinationAnchor)
+            case MoveDestinationSide.Right => sectionedCode.rightPathFor(move.moveDestinationAnchor)
+          }
+
+        // Phase 1: Thin out consecutive splices within the same parallel matches group (Alternative C)
+        val withinGroupThinned = anchoredMovesByGroup.foldLeft(initialSplices) {
+          case (accumulatedSplices, (None, _)) =>
+            accumulatedSplices
+          case (accumulatedSplices, (Some(_), moves)) =>
+            val movesBySideAndPath = moves.groupBy(move => (move.moveDestinationSide, destinationPathOf(move)))
+            movesBySideAndPath.foldLeft(accumulatedSplices) {
+              case (acc, ((side, path), sideMoves)) =>
+                val allAnchorsInFileSorted = anchoredMoves
+                  .filter(move => move.moveDestinationSide == side && destinationPathOf(move) == path)
+                  .map(_.moveDestinationAnchor)
+                  .toSeq
+                  .sortBy(_.startOffset)
+
+                val sortedMoves = sideMoves.toSeq.sortBy(_.moveDestinationAnchor.startOffset)
+                if sortedMoves.size > 1 then
+                  sortedMoves.zip(sortedMoves.tail).foldLeft(acc) {
+                    case (currentSplices, (move1, move2)) =>
+                      val idx1 = allAnchorsInFileSorted.indexOf(move1.moveDestinationAnchor)
+                      val idx2 = allAnchorsInFileSorted.indexOf(move2.moveDestinationAnchor)
+                      if Math.abs(idx1 - idx2) == 1 then
+                        val move2Splices = currentSplices(move2)
+                        // Downstream processing in `applySplices` ignores any empty splice MergeResult,
+                        // effectively suppressing it to avoid duplicate merges of the intervening gap.
+                        val thinnedMove2Splices = move2Splices.copy(precedingSplice = MergeResult.empty)
+                        currentSplices.updated(move2, thinnedMove2Splices)
+                      else
+                        currentSplices
+                  }
+                else
+                  acc
+            }
+        }
+
+        // Phase 2: Resolve collisions between converging moves targeting the same destination anchor
+        // by picking the move that belongs to the strictly largest parallel matches group.
+        movesByDestinationAnchor.foldLeft(withinGroupThinned) {
+          case (currentSplices, (_, collidingMoves)) if collidingMoves.size > 1 =>
+            val movesWithSizes = collidingMoves.map(move => move -> groupSizeOf(move)).toSeq
+            val maxGroupSize = movesWithSizes.map(_._2).max
+            val movesWithMaxSize = movesWithSizes.filter(_._2 == maxGroupSize)
+
+            // Only pick a winner if there is a strictly largest group (i.e. only one move achieves the maxGroupSize)
+            if movesWithMaxSize.size == 1 then
+              val winnerMove = movesWithMaxSize.head._1
+              collidingMoves.foldLeft(currentSplices) {
+                case (accSplices, move) if move != winnerMove =>
+                  // Thin out both splices for the non-winning colliding moves
+                  val thinnedSplices = accSplices(move).copy(
+                    precedingSplice = MergeResult.empty,
+                    succeedingSplice = MergeResult.empty
+                  )
+                  accSplices.updated(move, thinnedSplices)
+                case (accSplices, _) =>
+                  accSplices
+              }
+            else
+              currentSplices
+          case (currentSplices, _) =>
+            currentSplices
+        }
+      }
+
       val (
         splicesByAnchoredMoveDestination: MultiDict[
           (Section[Element], AnchoringSense),
@@ -1491,7 +1590,7 @@ object SectionedCodeExtension extends StrictLogging:
             precedingSplice,
             succeedingSplice,
             spliceMigrationSuppressions
-          ) = mergesFrom(anchoredMove)
+          ) = thinnedMigrationSplices(anchoredMove)
 
           // NOTE: yes, this looks horrible, but try writing it using
           // `Option.unless` with flattening, or with `Option.fold`, or with
