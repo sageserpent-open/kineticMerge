@@ -1061,9 +1061,7 @@ object SectionedCodeExtension extends StrictLogging:
       val moveDestinationAnchors = anchoredMoves.map(_.moveDestinationAnchor)
 
       given sectionOrdering: Ordering[Section[Element]] =
-        Ordering.by[Section[Element], IndexedSeq[Element]](_.content)(
-          seqOrdering(summon[Order[Element]].toOrdering)
-        )
+        summon[Order[Section[Element]]].toOrdering
 
       val specialCaseEquivalenceBasedOnOrdering
           : Eq[MultiSided[Section[Element]]] =
