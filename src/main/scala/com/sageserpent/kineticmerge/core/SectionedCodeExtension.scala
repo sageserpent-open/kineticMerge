@@ -61,14 +61,30 @@ object SectionedCodeExtension extends StrictLogging:
 
       given Order[Block[Element]] =
         (lhs, rhs) =>
-          (lhs.parallelMatchesGroupId, rhs.parallelMatchesGroupId) match
+          val bothBelongToTheSameParallelMatchesGroup = (
+            lhs.parallelMatchesGroupId,
+            rhs.parallelMatchesGroupId
+          ) match
             case (Some(lhsGroupId), Some(rhsGroupId)) =>
-              lhsGroupId compare rhsGroupId
-            case (Some(_), None) => -1
-            case (None, Some(_)) => 1
-            case (None, None) =>
-              Order[Seq[Section[Element]]]
-                .compare(lhs.sectionsCoveredByGroup, rhs.sectionsCoveredByGroup)
+              lhsGroupId == rhsGroupId
+            case _ => false
+
+          if bothBelongToTheSameParallelMatchesGroup then 0
+          else
+            def matchedSections(block: Block[Element]): Seq[Section[Element]] =
+              block.parallelMatchesGroupId match
+                case Some(groupId) =>
+                  val groupMatches = groupsOfParallelMatches(groupId)
+                  block.sectionsCoveredByGroup.filter(s =>
+                    sectionedCode.matchesFor(s).intersect(groupMatches).nonEmpty
+                  )
+                case None =>
+                  block.sectionsCoveredByGroup
+            end matchedSections
+
+            Order[Seq[Section[Element]]]
+              .compare(matchedSections(lhs), matchedSections(rhs))
+          end if
       end given
 
       given Sized[Block[Element]] = _.size
