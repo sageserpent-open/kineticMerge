@@ -65,7 +65,7 @@ object SectionedCodeExtension extends StrictLogging:
         // same content on the same side can fool the following block-level
         // merge into a less than optimal alignment of blocks whenever the group
         // ids of the relevant blocks swap around from one to another. Peering
-        // inside the two blocks matched content and the groups of matches that
+        // inside the two blocks' matched content and the groups of matches that
         // the blocks refer to allows the merge to ignore the scrambled group
         // ids.
         // NOTE: tip of the hat to Jules for suggesting the content-based
@@ -79,6 +79,13 @@ object SectionedCodeExtension extends StrictLogging:
           )
         )
         (lhs, rhs) =>
+          // NOTE: be *very* careful about changing the logic here - for the
+          // order to be consistent, comparisons have to be partitioned into
+          // those between blocks that both have an associated parallel matches
+          // group and those that are merely filler-only blocks. The former are
+          // taken to be greater than the latter for cross-over comparisons.
+          // Consistency is much more stringent for `Order` than for `Eq`;
+          // expect bugs that are difficult to diagnose if you botch this up!
           (lhs.parallelMatchesGroupId, rhs.parallelMatchesGroupId) match
             case (Some(lhsGroupId), Some(rhsGroupId)) =>
               if lhsGroupId == rhsGroupId then 0
