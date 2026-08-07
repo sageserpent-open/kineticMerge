@@ -65,25 +65,33 @@ object SectionedCodeExtension extends StrictLogging:
         // same content on the same side can fool the following block-level
         // merge into a less than optimal alignment of blocks whenever the group
         // ids of the relevant blocks swap around from one to another. Peering
-        // inside the two blocks' matched content allows the merge to ignore the
-        // scrambled group ids.
+        // inside the two blocks matched content and the groups of matches that
+        // the blocks refer to allows the merge to ignore the scrambled group
+        // ids.
         // NOTE: tip of the hat to Jules for suggesting the content-based
         // comparison approach; I cheerfully ignored it at the time but have
         // come to realise its virtue!
+        given Order[Match[Section[Element]]] = Order.by(aMatch =>
+          (
+            aMatch.baseContribution.map(_.content: Seq[Element]),
+            aMatch.leftContribution.map(_.content: Seq[Element]),
+            aMatch.rightContribution.map(_.content: Seq[Element])
+          )
+        )
         (lhs, rhs) =>
-          val bothBelongToTheSameParallelMatchesGroup = (
-            lhs.parallelMatchesGroupId,
-            rhs.parallelMatchesGroupId
-          ) match
+          (lhs.parallelMatchesGroupId, rhs.parallelMatchesGroupId) match
             case (Some(lhsGroupId), Some(rhsGroupId)) =>
-              lhsGroupId == rhsGroupId
-            case _ => false
-
-          if bothBelongToTheSameParallelMatchesGroup then 0
-          else
-            Order[Seq[Section[Element]]]
-              .compare(lhs.sectionsCoveredByGroup, rhs.sectionsCoveredByGroup)
-          end if
+              if lhsGroupId == rhsGroupId then 0
+              else
+                Order.compare(
+                  groupsOfParallelMatches(lhsGroupId),
+                  groupsOfParallelMatches(rhsGroupId)
+                )
+            case (Some(_), None) => -1
+            case (None, Some(_)) => 1
+            case (None, None)    =>
+              Order[Seq[Section[Element]]]
+                .compare(lhs.sectionsCoveredByGroup, rhs.sectionsCoveredByGroup)
       end given
 
       given Sized[Block[Element]] = _.size

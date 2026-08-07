@@ -694,6 +694,10 @@ object LongestCommonSubsequence:
 
           def indexOfLeadingSwathe: Int = _indexOfLeadingSwathe
 
+          inline private def storageLotForLeadingSwathe =
+            _indexOfLeadingSwathe % 2
+          end storageLotForLeadingSwathe
+
           def storeSolutionInLeadingSwathe(
               onePastBaseIndex: Int,
               onePastLeftIndex: Int,
@@ -709,10 +713,6 @@ object LongestCommonSubsequence:
               onePastRightIndex
             ) = longestCommonSubsequence
           end storeSolutionInLeadingSwathe
-
-          inline private def storageLotForLeadingSwathe =
-            _indexOfLeadingSwathe % 2
-          end storageLotForLeadingSwathe
 
           inline private def newStorage = Storage(
             baseEqualToSwatheIndex =
