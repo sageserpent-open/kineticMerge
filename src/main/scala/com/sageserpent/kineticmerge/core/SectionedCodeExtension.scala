@@ -90,6 +90,14 @@ object SectionedCodeExtension extends StrictLogging:
             case (Some(lhsGroupId), Some(rhsGroupId)) =>
               if lhsGroupId == rhsGroupId then 0
               else
+                // NOTE: let's expand on the previous two comments here, because
+                // this is subtle: we're dealing with blocks that both have
+                // parallel matches group ids, but disagree on the id - but one
+                // or both of the blocks might represent the same chunk of code
+                // that moves divergently. As long as the matched content agrees
+                // precisely, then we let the blocks have a second chance at
+                // matching via the content, and that is what the special case
+                // `Order[Match[Section[Element]]]` from above does.
                 Order.compare(
                   groupsOfParallelMatches(lhsGroupId),
                   groupsOfParallelMatches(rhsGroupId)
