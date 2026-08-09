@@ -619,4 +619,228 @@ class BlockDuplicationAndCondensationTests:
     }
   end aBlockIsTriplicatedOnTwoSides
 
+  @TestFactory
+  def duplicateBlocksWithAnEditAreMerged(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val placeholderPath: Path = 1
+
+      val blockContent = Vector(1, 2, 3)
+      val editedBlockContent = Vector(1, 2, 4)
+      val baseAlien = Vector(99)
+      val leftAlien = Vector(999)
+      val rightAlien = Vector(9999)
+
+      val baseElements: IndexedSeq[Element] =
+        blockContent ++ baseAlien ++ blockContent
+
+      val baseSources = FakeSources(
+        contentsByPath = Map(placeholderPath -> baseElements),
+        label = "base"
+      )
+
+      val leftElements: IndexedSeq[Element] =
+        blockContent ++ leftAlien ++ editedBlockContent
+
+      val leftSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> leftElements
+        ),
+        label = "left"
+      )
+
+      val rightElements: IndexedSeq[Element] =
+        rightAlien ++ blockContent
+
+      val rightSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> rightElements
+        ),
+        label = "right"
+      )
+
+      val Right(sectionedCode) = SectionedCode.of(
+        baseSources = baseSources,
+        leftSources = leftSources,
+        rightSources = rightSources
+      )(configuration): @unchecked
+
+      val LongestCommonSubsequence(
+        baseContributions,
+        leftContributions,
+        rightContributions,
+        _,
+        _,
+        _,
+        _
+      ) = sectionedCode
+        .longestCommonSubsequenceOf(path = placeholderPath)
+
+      println(s"Base contributions: ${pprintCustomised(baseContributions)}")
+      println(s"Left contributions: ${pprintCustomised(leftContributions)}")
+      println(s"Right contributions: ${pprintCustomised(rightContributions)}")
+
+      println(s"Groups of parallel matches: ${pprintCustomised(sectionedCode.groupsOfParallelMatches)}")
+      println(s"Base blocks: ${pprintCustomised(sectionedCode.baseBlocksFor(placeholderPath))}")
+      println(s"Left blocks: ${pprintCustomised(sectionedCode.leftBlocksFor(placeholderPath))}")
+      println(s"Right blocks: ${pprintCustomised(sectionedCode.rightBlocksFor(placeholderPath))}")
+    }
+  end duplicateBlocksWithAnEditAreMerged
+
+  @TestFactory
+  def duplicateBlocksWithAnEditAreMergedWithoutAlien(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val placeholderPath: Path = 1
+
+      val blockContent = Vector(1, 2, 3)
+      val editedBlockContent = Vector(1, 2, 4)
+
+      val baseElements: IndexedSeq[Element] =
+        blockContent ++ blockContent
+
+      val baseSources = FakeSources(
+        contentsByPath = Map(placeholderPath -> baseElements),
+        label = "base"
+      )
+
+      val leftElements: IndexedSeq[Element] =
+        blockContent ++ editedBlockContent
+
+      val leftSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> leftElements
+        ),
+        label = "left"
+      )
+
+      val rightElements: IndexedSeq[Element] =
+        blockContent
+
+      val rightSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> rightElements
+        ),
+        label = "right"
+      )
+
+      val Right(sectionedCode) = SectionedCode.of(
+        baseSources = baseSources,
+        leftSources = leftSources,
+        rightSources = rightSources
+      )(configuration): @unchecked
+
+      val LongestCommonSubsequence(
+        baseContributions,
+        leftContributions,
+        rightContributions,
+        _,
+        _,
+        _,
+        _
+      ) = sectionedCode
+        .longestCommonSubsequenceOf(path = placeholderPath)
+
+      println(s"WithoutAlien Base contributions: ${pprintCustomised(baseContributions)}")
+      println(s"WithoutAlien Left contributions: ${pprintCustomised(leftContributions)}")
+      println(s"WithoutAlien Right contributions: ${pprintCustomised(rightContributions)}")
+
+      println(s"WithoutAlien Groups of parallel matches: ${pprintCustomised(sectionedCode.groupsOfParallelMatches)}")
+      println(s"WithoutAlien Base blocks: ${pprintCustomised(sectionedCode.baseBlocksFor(placeholderPath))}")
+      println(s"WithoutAlien Left blocks: ${pprintCustomised(sectionedCode.leftBlocksFor(placeholderPath))}")
+      println(s"WithoutAlien Right blocks: ${pprintCustomised(sectionedCode.rightBlocksFor(placeholderPath))}")
+    }
+  end duplicateBlocksWithAnEditAreMergedWithoutAlien
+
+  @TestFactory
+  def swappedDuplicateBlocksWithAnEdit(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val placeholderPath: Path = 1
+
+      val blockContent = Vector(1, 2, 3)
+      val editedBlockContent = Vector(1, 2, 4)
+
+      val baseElements: IndexedSeq[Element] =
+        blockContent ++ blockContent
+
+      val baseSources = FakeSources(
+        contentsByPath = Map(placeholderPath -> baseElements),
+        label = "base"
+      )
+
+      val leftElements: IndexedSeq[Element] =
+        editedBlockContent ++ blockContent
+
+      val leftSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> leftElements
+        ),
+        label = "left"
+      )
+
+      val rightElements: IndexedSeq[Element] =
+        blockContent ++ blockContent
+
+      val rightSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> rightElements
+        ),
+        label = "right"
+      )
+
+      val Right(sectionedCode) = SectionedCode.of(
+        baseSources = baseSources,
+        leftSources = leftSources,
+        rightSources = rightSources
+      )(configuration): @unchecked
+
+      val LongestCommonSubsequence(
+        baseContributions,
+        leftContributions,
+        rightContributions,
+        _,
+        _,
+        _,
+        _
+      ) = sectionedCode
+        .longestCommonSubsequenceOf(path = placeholderPath)
+
+      println(s"Swapped Base contributions: ${pprintCustomised(baseContributions)}")
+      println(s"Swapped Left contributions: ${pprintCustomised(leftContributions)}")
+      println(s"Swapped Right contributions: ${pprintCustomised(rightContributions)}")
+
+      println(s"Swapped Groups of parallel matches: ${pprintCustomised(sectionedCode.groupsOfParallelMatches)}")
+      println(s"Swapped Base blocks: ${pprintCustomised(sectionedCode.baseBlocksFor(placeholderPath))}")
+      println(s"Swapped Left blocks: ${pprintCustomised(sectionedCode.leftBlocksFor(placeholderPath))}")
+      println(s"Swapped Right blocks: ${pprintCustomised(sectionedCode.rightBlocksFor(placeholderPath))}")
+
+      val expectedLeft = Vector(
+        Contribution.Common(Vector(1, 2)),
+        Contribution.Difference(Vector(4)),
+        Contribution.Common(Vector(1, 2, 3))
+      )
+
+      assert(expectedLeft == leftContributions.asElementContributions)
+    }
+  end swappedDuplicateBlocksWithAnEdit
+
 end BlockDuplicationAndCondensationTests
