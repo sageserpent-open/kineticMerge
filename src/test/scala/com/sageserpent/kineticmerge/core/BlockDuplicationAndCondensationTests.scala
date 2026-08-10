@@ -641,7 +641,7 @@ class BlockDuplicationAndCondensationTests:
       )
 
       val leftElements: IndexedSeq[Element] =
-        Vector(1, 101, 2, 101, 3, 101, 4, 101, 1, 101, 2, 100, 3)
+        Vector(1, 101, 2, 101, 3, 101, 4, 101, 1, 101, 2, 101, 3)
 
       val leftSources = FakeSources(
         contentsByPath = Map(
@@ -687,18 +687,21 @@ class BlockDuplicationAndCondensationTests:
       println(s"Right blocks: ${pprintCustomised(sectionedCode.rightBlocksFor(placeholderPath))}")
 
       // IDEAL EXPECTATIONS (under correct block-level merge alignment):
-      // Because of the bug (asymmetry in Order[Block[Element]]), Group 3 (for element 4)
-      // and Group 2/7 (for 2, 100, 3) fail to align correctly, causing them to be classified
-      // as Differences instead of CommonToBaseAndLeftOnly.
+      // Because of the bug (asymmetry in Order[Block[Element]]), the block containing element 4
+      // fails to align correctly across groups, causing it to be classified as Difference instead of CommonToBaseAndLeftOnly.
       assert(
         Vector(
           Contribution.Common(Vector(1)),
           Contribution.Difference(Vector(100)),
-          Contribution.CommonToBaseAndLeftOnly(Vector(2, 100, 3)),
+          Contribution.Common(Vector(2)),
           Contribution.Difference(Vector(100)),
-          Contribution.Common(Vector(1)),
+          Contribution.Common(Vector(3)),
           Contribution.Difference(Vector(100)),
-          Contribution.CommonToBaseAndLeftOnly(Vector(2, 100, 3)),
+          Contribution.CommonToBaseAndLeftOnly(Vector(1)),
+          Contribution.Difference(Vector(100)),
+          Contribution.CommonToBaseAndLeftOnly(Vector(2)),
+          Contribution.Difference(Vector(100)),
+          Contribution.CommonToBaseAndLeftOnly(Vector(3)),
           Contribution.Difference(Vector(100)),
           Contribution.CommonToBaseAndLeftOnly(Vector(4))
         ) == baseContributions.asElementContributions
@@ -708,15 +711,17 @@ class BlockDuplicationAndCondensationTests:
         Vector(
           Contribution.Common(Vector(1)),
           Contribution.Difference(Vector(101)),
-          Contribution.CommonToLeftAndRightOnly(Vector(2)),
+          Contribution.Common(Vector(2)),
           Contribution.Difference(Vector(101)),
-          Contribution.CommonToLeftAndRightOnly(Vector(3)),
+          Contribution.Common(Vector(3)),
           Contribution.Difference(Vector(101)),
           Contribution.CommonToBaseAndLeftOnly(Vector(4)),
           Contribution.Difference(Vector(101)),
-          Contribution.Common(Vector(1)),
+          Contribution.CommonToBaseAndLeftOnly(Vector(1)),
           Contribution.Difference(Vector(101)),
-          Contribution.CommonToBaseAndLeftOnly(Vector(2, 100, 3))
+          Contribution.CommonToBaseAndLeftOnly(Vector(2)),
+          Contribution.Difference(Vector(101)),
+          Contribution.CommonToBaseAndLeftOnly(Vector(3))
         ) == leftContributions.asElementContributions
       )
 
@@ -724,9 +729,9 @@ class BlockDuplicationAndCondensationTests:
         Vector(
           Contribution.Common(Vector(1)),
           Contribution.Difference(Vector(102)),
-          Contribution.Difference(Vector(2)),
+          Contribution.Common(Vector(2)),
           Contribution.Difference(Vector(102)),
-          Contribution.Difference(Vector(3))
+          Contribution.Common(Vector(3))
         ) == rightContributions.asElementContributions
       )
     }
