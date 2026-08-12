@@ -86,25 +86,28 @@ object SectionedCodeExtension extends StrictLogging:
           // taken to be greater than the latter for cross-over comparisons.
           // Consistency is much more stringent for `Order` than for `Eq`;
           // expect bugs that are difficult to diagnose if you botch this up!
-          (lhs.parallelMatchesGroupId, rhs.parallelMatchesGroupId) match
-            case (Some(lhsGroupId), Some(rhsGroupId)) =>
-              if lhsGroupId == rhsGroupId then 0
+          (
+            lhs.parallelMatchesGroupIds.nonEmpty,
+            rhs.parallelMatchesGroupIds.nonEmpty
+          ) match
+            case (true, true) =>
+              val blocksAreEquivalentInTermsOfParallelMatchedContent =
+                (lhs.parallelMatchesGroupIds intersect rhs.parallelMatchesGroupIds).nonEmpty
+
+              if blocksAreEquivalentInTermsOfParallelMatchedContent then 0
               else
-                // NOTE: let's expand on the previous two comments here, because
-                // this is subtle: we're dealing with blocks that both have
-                // parallel matches group ids, but disagree on the id - but one
-                // or both of the blocks might represent the same chunk of code
-                // that moves divergently. As long as the matched content agrees
-                // precisely, then we let the blocks have a second chance at
-                // matching via the content, and that is what the special case
-                // `Order[Match[Section[Element]]]` from above does.
+                // Use the special case `Order[Match[Section[Element]]]` from
+                // above to peer into the matched content only; we can use any
+                // of the group ids to do this as they should all agree on the
+                // non-filler sections in the block.
                 Order.compare(
-                  groupsOfParallelMatches(lhsGroupId),
-                  groupsOfParallelMatches(rhsGroupId)
+                  groupsOfParallelMatches(lhs.parallelMatchesGroupIds.head),
+                  groupsOfParallelMatches(rhs.parallelMatchesGroupIds.head)
                 )
-            case (Some(_), None) => -1
-            case (None, Some(_)) => 1
-            case (None, None)    =>
+              end if
+            case (true, false)  => -1
+            case (false, true)  => 1
+            case (false, false) =>
               Order[Seq[Section[Element]]]
                 .compare(lhs.sectionsCoveredByGroup, rhs.sectionsCoveredByGroup)
       end given
