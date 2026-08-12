@@ -1978,23 +1978,17 @@ object MatchAnalysis extends StrictLogging:
               haveTrimmedMatches = false
             )
             .matchesAndTheirSections
-            .withoutRedundantPairwiseMatches
-
-        val backTranslatedMatches =
-          backTranslatedMatchesAndTheirSections.matches
 
         val parallelMatchesGroupIdsByMatch =
           Map.from(
             groupsOfBackTranslatedParallelMatches.zipWithIndex.flatMap(
-              (parallelMatches, groupId) =>
-                parallelMatches
-                  .filter(backTranslatedMatches.contains)
-                  .map(_ -> groupId)
+              (parallelMatches, groupId) => parallelMatches.map(_ -> groupId)
             )
           )
 
         backTranslatedMatchesAndTheirSections
           .copy(parallelMatchesGroupIdsByMatch = parallelMatchesGroupIdsByMatch)
+          .withoutRedundantPairwiseMatches
       end parallelMatchesOnly
 
       private def isSubsumedNonTriviallyByAnAllSidesMatch(
