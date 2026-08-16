@@ -861,7 +861,7 @@ object MainTest extends ProseExamples:
         os.temp.dir(prefix = "toyGitRepository")
       })(temporaryDirectory => IO { os.remove.all.apply(temporaryDirectory) })
       _ <- Resource.eval(IO {
-        os.proc("git", "init").call(temporaryDirectory).out.text()
+        os.proc("git", "init", "--quiet").call(temporaryDirectory).out.text()
       })
       _ <- Resource.eval(IO {
         os.proc("git", "config", "user.name", "MainTest")
@@ -871,6 +871,12 @@ object MainTest extends ProseExamples:
       })
       _ <- Resource.eval(IO {
         os.proc("git", "config", "user.email", "non-existent@dev.null")
+          .call(temporaryDirectory)
+          .out
+          .text()
+      })
+      _ <- Resource.eval(IO {
+        os.proc("git", "config", "init.defaultBranch", mainBranch)
           .call(temporaryDirectory)
           .out
           .text()
