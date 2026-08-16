@@ -22,7 +22,7 @@ import scala.util.Random
 object MainTest extends ProseExamples:
   private type ImperativeResource[Payload] = Resource[IO, Payload]
 
-  private val masterBranch = "master"
+  private val mainBranch = "main"
 
   private val binary = RelPath("pathPrefix1") / "binary.file"
 
@@ -876,7 +876,7 @@ object MainTest extends ProseExamples:
           .text()
       })
       _ <- Resource.eval(IO {
-        makeNewBranch(temporaryDirectory)(masterBranch)
+        makeNewBranch(temporaryDirectory)(mainBranch)
       })
     yield temporaryDirectory
     end for
@@ -936,13 +936,12 @@ class MainTest:
 
                 val commitOfAdvancedBranch = currentCommit(path)
 
-                if ourBranchIsBehindTheirs then
-                  checkoutBranch(path)(masterBranch)
+                if ourBranchIsBehindTheirs then checkoutBranch(path)(mainBranch)
                 end if
 
                 val (ourBranch, theirBranch) =
-                  if ourBranchIsBehindTheirs then masterBranch -> advancedBranch
-                  else advancedBranch                          -> masterBranch
+                  if ourBranchIsBehindTheirs then mainBranch -> advancedBranch
+                  else advancedBranch                        -> mainBranch
 
                 val exitCode = Main.mergeTheirBranch(
                   ApplicationRequest.default.copy(
@@ -1032,7 +1031,7 @@ class MainTest:
 
               val commitOfNewFileBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               arthurContinues(path)
 
@@ -1042,8 +1041,8 @@ class MainTest:
               end if
 
               val (ourBranch, theirBranch) =
-                if flipBranches then newFileBranch -> masterBranch
-                else masterBranch                  -> newFileBranch
+                if flipBranches then newFileBranch -> mainBranch
+                else mainBranch                    -> newFileBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest.default.copy(
@@ -1101,7 +1100,7 @@ class MainTest:
 
               val commitOfDeletedFileBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               enterTysonStageLeft(path)
 
@@ -1111,8 +1110,8 @@ class MainTest:
               end if
 
               val (ourBranch, theirBranch) =
-                if flipBranches then deletedFileBranch -> masterBranch
-                else masterBranch                      -> deletedFileBranch
+                if flipBranches then deletedFileBranch -> mainBranch
+                else mainBranch                        -> deletedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest.default.copy(
@@ -1174,11 +1173,11 @@ class MainTest:
 
               val commitOfBenignTwinBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               // This is purely to prevent the following call to
               // `introducingArthur` from making a *duplicate commit* of the one
-              // already done on the master branch. Otherwise, if Git infers a
+              // already done on the main branch. Otherwise, if Git infers a
               // duplicate commit, then the common ancestor will include the
               // Arthur file; thus we will not be testing file addition, rather
               // *modification*.
@@ -1196,8 +1195,8 @@ class MainTest:
               end if
 
               val (ourBranch, theirBranch) =
-                if flipBranches then benignTwinBranch -> masterBranch
-                else masterBranch                     -> benignTwinBranch
+                if flipBranches then benignTwinBranch -> mainBranch
+                else mainBranch                       -> benignTwinBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest.default.copy(
@@ -1257,7 +1256,7 @@ class MainTest:
 
               val commitOfEvilTwinBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               sandraHeadsOffHome(path)
 
@@ -1269,8 +1268,8 @@ class MainTest:
               end if
 
               val (ourBranch, theirBranch) =
-                if flipBranches then evilTwinBranch -> masterBranch
-                else masterBranch                   -> evilTwinBranch
+                if flipBranches then evilTwinBranch -> mainBranch
+                else mainBranch                     -> evilTwinBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest.default.copy(
@@ -1333,7 +1332,7 @@ class MainTest:
 
               val commitOfDeletedFileBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               sandraHeadsOffHome(path)
 
@@ -1347,8 +1346,8 @@ class MainTest:
               end if
 
               val (ourBranch, theirBranch) =
-                if flipBranches then deletedFileBranch -> masterBranch
-                else masterBranch                      -> deletedFileBranch
+                if flipBranches then deletedFileBranch -> mainBranch
+                else mainBranch                        -> deletedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest.default.copy(
@@ -1420,7 +1419,7 @@ class MainTest:
 
               val commitOfDeletedFileBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               sandraHeadsOffHome(path)
 
@@ -1436,8 +1435,8 @@ class MainTest:
               end if
 
               val (ourBranch, theirBranch) =
-                if flipBranches then deletedFileBranch -> masterBranch
-                else masterBranch                      -> deletedFileBranch
+                if flipBranches then deletedFileBranch -> mainBranch
+                else mainBranch                        -> deletedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest.default.copy(
@@ -1510,7 +1509,7 @@ class MainTest:
 
               val commitOfDeletedFileBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               sandraHeadsOffHome(path)
 
@@ -1522,8 +1521,8 @@ class MainTest:
               end if
 
               val (ourBranch, theirBranch) =
-                if flipBranches then deletedFileBranch -> masterBranch
-                else masterBranch                      -> deletedFileBranch
+                if flipBranches then deletedFileBranch -> mainBranch
+                else mainBranch                        -> deletedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest.default.copy(
@@ -1592,7 +1591,7 @@ class MainTest:
 
               val commitOfConcurrentlyModifiedFileBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               sandraHeadsOffHome(path)
 
@@ -1606,8 +1605,8 @@ class MainTest:
 
               val (ourBranch, theirBranch) =
                 if flipBranches then
-                  concurrentlyModifiedFileBranch -> masterBranch
-                else masterBranch -> concurrentlyModifiedFileBranch
+                  concurrentlyModifiedFileBranch -> mainBranch
+                else mainBranch -> concurrentlyModifiedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest.default.copy(
@@ -1673,7 +1672,7 @@ class MainTest:
 
               val commitOfConcurrentlyDeletedFileBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               sandraHeadsOffHome(path)
 
@@ -1688,9 +1687,8 @@ class MainTest:
               end if
 
               val (ourBranch, theirBranch) =
-                if flipBranches then
-                  concurrentlyDeletedFileBranch -> masterBranch
-                else masterBranch               -> concurrentlyDeletedFileBranch
+                if flipBranches then concurrentlyDeletedFileBranch -> mainBranch
+                else mainBranch -> concurrentlyDeletedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest.default.copy(
@@ -1755,7 +1753,7 @@ class MainTest:
 
               val commitOfConcurrentlyModifiedFileBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               sandraHeadsOffHome(path)
 
@@ -1769,8 +1767,8 @@ class MainTest:
 
               val (ourBranch, theirBranch) =
                 if flipBranches then
-                  concurrentlyModifiedFileBranch -> masterBranch
-                else masterBranch -> concurrentlyModifiedFileBranch
+                  concurrentlyModifiedFileBranch -> mainBranch
+                else mainBranch -> concurrentlyModifiedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest.default.copy(
@@ -1828,7 +1826,7 @@ class MainTest:
 
               val commitOfMovedFileBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               editingCasesLimitStrategy(path)
 
@@ -1838,8 +1836,8 @@ class MainTest:
               end if
 
               val (ourBranch, theirBranch) =
-                if flipBranches then movedFileBranch -> masterBranch
-                else masterBranch                    -> movedFileBranch
+                if flipBranches then movedFileBranch -> mainBranch
+                else mainBranch                      -> movedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest.default.copy(
@@ -1913,7 +1911,7 @@ class MainTest:
 
                 val commitOfSplitFileBranch = currentCommit(path)
 
-                checkoutBranch(path)(masterBranch)
+                checkoutBranch(path)(mainBranch)
 
                 editingCasesLimitStrategy(path)
 
@@ -1923,8 +1921,8 @@ class MainTest:
                 end if
 
                 val (ourBranch, theirBranch) =
-                  if flipBranches then splitFileBranch -> masterBranch
-                  else masterBranch                    -> splitFileBranch
+                  if flipBranches then splitFileBranch -> mainBranch
+                  else mainBranch                      -> splitFileBranch
 
                 val exitCode = Main.mergeTheirBranch(
                   ApplicationRequest.default.copy(
@@ -2016,7 +2014,7 @@ class MainTest:
 
                 val commitOfCondensedFilesBranch = currentCommit(path)
 
-                checkoutBranch(path)(masterBranch)
+                checkoutBranch(path)(mainBranch)
 
                 editingInterfaceOnlyCasesLimitStrategy(path)
                 editingCasesLimitStrategies(path)
@@ -2027,8 +2025,8 @@ class MainTest:
                 end if
 
                 val (ourBranch, theirBranch) =
-                  if flipBranches then condensedFilesBranch -> masterBranch
-                  else masterBranch -> condensedFilesBranch
+                  if flipBranches then condensedFilesBranch -> mainBranch
+                  else mainBranch -> condensedFilesBranch
 
                 val exitCode = Main.mergeTheirBranch(
                   ApplicationRequest.default.copy(
@@ -2097,7 +2095,7 @@ class MainTest:
 
               val commitOfSwappedFilesBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               editingExpectyFlavouredAssert(path)
 
@@ -2107,8 +2105,8 @@ class MainTest:
               end if
 
               val (ourBranch, theirBranch) =
-                if flipBranches then swappedFilesBranch -> masterBranch
-                else masterBranch                       -> swappedFilesBranch
+                if flipBranches then swappedFilesBranch -> mainBranch
+                else mainBranch                         -> swappedFilesBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest.default.copy(
@@ -2178,7 +2176,7 @@ class MainTest:
 
               val commitOfSwappedFilesBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               editingCasesLimitStrategy(path)
               editingExpectyFlavouredAssert(path)
@@ -2189,8 +2187,8 @@ class MainTest:
               end if
 
               val (ourBranch, theirBranch) =
-                if flipBranches then swappedFilesBranch -> masterBranch
-                else masterBranch                       -> swappedFilesBranch
+                if flipBranches then swappedFilesBranch -> mainBranch
+                else mainBranch                         -> swappedFilesBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest.default.copy(
@@ -2338,7 +2336,7 @@ class MainTest:
                 )
               }
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               {
                 os.write.over(
@@ -2370,7 +2368,7 @@ class MainTest:
               end if
 
               val theirBranch =
-                if flipBranches then masterBranch
+                if flipBranches then mainBranch
                 else movedFileBranch
 
               val _ = Main.mergeTheirBranch(
@@ -2411,7 +2409,7 @@ class MainTest:
 
               val commitOfMovedFileBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               emptyingCasesLimitStrategy(path)
 
@@ -2421,8 +2419,8 @@ class MainTest:
               end if
 
               val (ourBranch, theirBranch) =
-                if flipBranches then movedFileBranch -> masterBranch
-                else masterBranch                    -> movedFileBranch
+                if flipBranches then movedFileBranch -> mainBranch
+                else mainBranch                      -> movedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest.default.copy(
@@ -2483,7 +2481,7 @@ class MainTest:
 
               val commitOfMovedFileBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               removingCasesLimitStrategy(path)
 
@@ -2493,8 +2491,8 @@ class MainTest:
               end if
 
               val (ourBranch, theirBranch) =
-                if flipBranches then movedFileBranch -> masterBranch
-                else masterBranch                    -> movedFileBranch
+                if flipBranches then movedFileBranch -> mainBranch
+                else mainBranch                      -> movedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest.default.copy(
@@ -2557,7 +2555,7 @@ class MainTest:
 
               val commitOfMovedFileBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               removingCasesLimitStrategy(path)
 
@@ -2567,8 +2565,8 @@ class MainTest:
               end if
 
               val (ourBranch, theirBranch) =
-                if flipBranches then movedFileBranch -> masterBranch
-                else masterBranch                    -> movedFileBranch
+                if flipBranches then movedFileBranch -> mainBranch
+                else mainBranch                      -> movedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest.default.copy(
@@ -2633,7 +2631,7 @@ class MainTest:
 
               val commitOfCondensedFileBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               sandraStopsByBriefly(path)
 
@@ -2645,8 +2643,8 @@ class MainTest:
               end if
 
               val (ourBranch, theirBranch) =
-                if flipBranches then condensedFileBranch -> masterBranch
-                else masterBranch                        -> condensedFileBranch
+                if flipBranches then condensedFileBranch -> mainBranch
+                else mainBranch                          -> condensedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest.default.copy(
@@ -2709,7 +2707,7 @@ class MainTest:
 
               val commitOfMovedFileBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               removingCasesLimitStrategy(path)
 
@@ -2719,8 +2717,8 @@ class MainTest:
               end if
 
               val (ourBranch, theirBranch) =
-                if flipBranches then movedFileBranch -> masterBranch
-                else masterBranch                    -> movedFileBranch
+                if flipBranches then movedFileBranch -> mainBranch
+                else mainBranch                      -> movedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest.default.copy(
@@ -2791,7 +2789,7 @@ class MainTest:
 
               val commitOfMovedFileBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               removingCasesLimitStrategy(path)
 
@@ -2801,8 +2799,8 @@ class MainTest:
               end if
 
               val (ourBranch, theirBranch) =
-                if flipBranches then movedFileBranch -> masterBranch
-                else masterBranch                    -> movedFileBranch
+                if flipBranches then movedFileBranch -> mainBranch
+                else mainBranch                      -> movedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest.default.copy(
@@ -2871,7 +2869,7 @@ class MainTest:
 
               val commitOfMovedFileBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               arthurTakesOnAPseudonym(path)
 
@@ -2882,9 +2880,8 @@ class MainTest:
               end if
 
               val (ourBranch, theirBranch) =
-                if flipBranches then
-                  casesLimitStrategyMovesBranch -> masterBranch
-                else masterBranch               -> casesLimitStrategyMovesBranch
+                if flipBranches then casesLimitStrategyMovesBranch -> mainBranch
+                else mainBranch -> casesLimitStrategyMovesBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest.default.copy(
@@ -2943,7 +2940,7 @@ class MainTest:
 
               val commitOfModifiedFileBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               sandraHeadsOffHome(path)
 
@@ -2953,8 +2950,8 @@ class MainTest:
               end if
 
               val (ourBranch, theirBranch) =
-                if flipBranches then modifiedFileBranch -> masterBranch
-                else masterBranch                       -> modifiedFileBranch
+                if flipBranches then modifiedFileBranch -> mainBranch
+                else mainBranch                         -> modifiedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest.default.copy(
@@ -3025,7 +3022,7 @@ class MainTest:
 
               val commitOfConcurrentlyModifiedFileBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               sandraHeadsOffHome(path)
 
@@ -3041,8 +3038,8 @@ class MainTest:
 
               val (ourBranch, theirBranch) =
                 if flipBranches then
-                  concurrentlyModifiedFileBranch -> masterBranch
-                else masterBranch -> concurrentlyModifiedFileBranch
+                  concurrentlyModifiedFileBranch -> mainBranch
+                else mainBranch -> concurrentlyModifiedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest.default.copy(
@@ -3122,7 +3119,7 @@ class MainTest:
 
                 val commitOfMovedFileBranch = currentCommit(path)
 
-                checkoutBranch(path)(masterBranch)
+                checkoutBranch(path)(mainBranch)
 
                 editingCasesLimitStrategy(path)
 
@@ -3136,8 +3133,8 @@ class MainTest:
                 end if
 
                 val (ourBranch, theirBranch) =
-                  if flipBranches then movedFileBranch -> masterBranch
-                  else masterBranch                    -> movedFileBranch
+                  if flipBranches then movedFileBranch -> mainBranch
+                  else mainBranch                      -> movedFileBranch
 
                 val exitCode = Main.mergeTheirBranch(
                   ApplicationRequest.default.copy(
@@ -3230,7 +3227,7 @@ class MainTest:
 
               val commitOfEvilTwinBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               sandraHeadsOffHome(path)
 
@@ -3244,8 +3241,8 @@ class MainTest:
               end if
 
               val (ourBranch, theirBranch) =
-                if flipBranches then evilTwinBranch -> masterBranch
-                else masterBranch                   -> evilTwinBranch
+                if flipBranches then evilTwinBranch -> mainBranch
+                else mainBranch                     -> evilTwinBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest.default.copy(
@@ -3315,7 +3312,7 @@ class MainTest:
 
               val commitOfDeletedFileBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               enterTysonStageLeft(path)
 
@@ -3325,8 +3322,8 @@ class MainTest:
               end if
 
               val (ourBranch, theirBranch) =
-                if flipBranches then deletedFileBranch -> masterBranch
-                else masterBranch                      -> deletedFileBranch
+                if flipBranches then deletedFileBranch -> mainBranch
+                else mainBranch                        -> deletedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest.default.copy(
@@ -3393,7 +3390,7 @@ class MainTest:
 
               val commitOfDeletedFileBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               sandraHeadsOffHome(path)
 
@@ -3406,8 +3403,8 @@ class MainTest:
               end if
 
               val (ourBranch, theirBranch) =
-                if flipBranches then deletedFileBranch -> masterBranch
-                else masterBranch                      -> deletedFileBranch
+                if flipBranches then deletedFileBranch -> mainBranch
+                else mainBranch                        -> deletedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest.default.copy(
@@ -3478,7 +3475,7 @@ class MainTest:
 
               val commitOfConcurrentlyDeletedFileBranch = currentCommit(path)
 
-              checkoutBranch(path)(masterBranch)
+              checkoutBranch(path)(mainBranch)
 
               sandraHeadsOffHome(path)
 
@@ -3493,9 +3490,8 @@ class MainTest:
               end if
 
               val (ourBranch, theirBranch) =
-                if flipBranches then
-                  concurrentlyDeletedFileBranch -> masterBranch
-                else masterBranch               -> concurrentlyDeletedFileBranch
+                if flipBranches then concurrentlyDeletedFileBranch -> mainBranch
+                else mainBranch -> concurrentlyDeletedFileBranch
 
               val exitCode = Main.mergeTheirBranch(
                 ApplicationRequest.default.copy(
