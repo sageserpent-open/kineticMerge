@@ -127,13 +127,10 @@ lazy val root = (project in file("."))
     Test / testOptions += Tests.Argument(jupiterTestFramework, "-q"),
     Test / logBuffered                     := false,
     Test / fork                            := true,
-    Test / testForkedParallel              := false,
-    Test / javaOptions ++= Seq(
-      "-Xmx4g",
-      "-XX:+UseG1GC",
-      "-Djunit.jupiter.execution.parallel.enabled=true",
-      "-Djunit.jupiter.execution.parallel.mode.default=concurrent",
-      "-Djunit.jupiter.execution.parallel.mode.classes.default=concurrent",
-      "-Djunit.jupiter.execution.parallel.config.strategy=dynamic"
+    Test / testForkedParallel              := true,
+    Test / javaOptions ++= Seq("-Xmx2g", "-XX:+UseG1GC"),
+    Global / concurrentRestrictions := Seq(
+      Tags.limit(Tags.ForkedTestGroup, math.max(1, java.lang.Runtime.getRuntime.availableProcessors())),
+      Tags.limitAll(math.max(1, java.lang.Runtime.getRuntime.availableProcessors()))
     )
   )
