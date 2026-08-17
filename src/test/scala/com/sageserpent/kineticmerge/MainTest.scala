@@ -876,12 +876,6 @@ object MainTest extends ProseExamples:
           .text()
       })
       _ <- Resource.eval(IO {
-        os.proc("git", "config", "init.defaultBranch", mainBranch)
-          .call(temporaryDirectory)
-          .out
-          .text()
-      })
-      _ <- Resource.eval(IO {
         makeNewBranch(temporaryDirectory)(mainBranch)
       })
     yield temporaryDirectory
