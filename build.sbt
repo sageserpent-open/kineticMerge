@@ -6,9 +6,9 @@ lazy val javaVersion = "17"
 
 ThisBuild / scalaVersion := "3.3.8"
 
-ThisBuild / javacOptions ++= Seq("-source", javaVersion, "-target", javaVersion)
+javacOptions ++= Seq("-source", javaVersion, "-target", javaVersion)
 
-ThisBuild / scalacOptions ++= List(
+scalacOptions ++= List(
   s"-java-output-version:$javaVersion",
   "-source:future"
 )
