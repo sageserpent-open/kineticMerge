@@ -29,7 +29,7 @@ lazy val root = (project in file("."))
   .settings(
     pomIncludeRepository := { _ => false },
     publishMavenStyle    := true,
-    licenses += ("MIT", url("https://opensource.org/licenses/MIT")),
+    licenses += ("MIT", uri("https://opensource.org/licenses/MIT")),
     organization     := "com.sageserpent",
     organizationName := "sageserpent",
     description := "Merge branches in the presence of code motion within and between files.",
@@ -122,7 +122,10 @@ lazy val root = (project in file("."))
     libraryDependencies += "org.apache.commons" % "commons-text" % "1.15.0" % Test,
     libraryDependencies += "com.github.sbt.junit" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
     libraryDependencies += "org.typelevel" %% "kittens" % "3.5.0",
-    Test / test / logLevel                 := Level.Error,
+    Test / logLevel                        := Level.Error,
+    Global / logLevel                      := Level.Error,
+    Test / testOptions += Tests.Argument(jupiterTestFramework, "-q", "+v"),
     Test / fork                            := true,
-    Test / testForkedParallel              := true
+    Test / testForkedParallel              := true,
+    Global / concurrentRestrictions += Tags.limit(Tags.ForkedTestGroup, java.lang.Runtime.getRuntime.availableProcessors())
   )
