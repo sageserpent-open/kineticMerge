@@ -6,10 +6,10 @@ lazy val javaVersion = "17"
 
 ThisBuild / scalaVersion := "3.3.8"
 
-javacOptions ++= Seq("-source", javaVersion, "-target", javaVersion)
+Compile / javacOptions ++= Seq("--release", javaVersion)
 
-scalacOptions ++= List(
-  s"-java-output-version:$javaVersion",
+Compile / scalacOptions ++= List(
+  "-java-output-version", javaVersion,
   "-source:future"
 )
 
@@ -124,8 +124,16 @@ lazy val root = (project in file("."))
     libraryDependencies += "org.typelevel" %% "kittens" % "3.5.0",
     Test / logLevel                        := Level.Error,
     Global / logLevel                      := Level.Error,
-    Test / testOptions += Tests.Argument(jupiterTestFramework, "-q", "+v"),
+    Test / testOptions += Tests.Argument(jupiterTestFramework, "-q"),
+    Test / logBuffered                     := false,
     Test / fork                            := true,
-    Test / testForkedParallel              := true,
-    Global / concurrentRestrictions += Tags.limit(Tags.ForkedTestGroup, java.lang.Runtime.getRuntime.availableProcessors())
+    Test / testForkedParallel              := false,
+    Test / javaOptions ++= Seq(
+      "-Xmx4g",
+      "-XX:+UseG1GC",
+      "-Djunit.jupiter.execution.parallel.enabled=true",
+      "-Djunit.jupiter.execution.parallel.mode.default=concurrent",
+      "-Djunit.jupiter.execution.parallel.mode.classes.default=concurrent",
+      "-Djunit.jupiter.execution.parallel.config.strategy=dynamic"
+    )
   )
