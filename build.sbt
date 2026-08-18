@@ -4,11 +4,11 @@ import scala.language.postfixOps
 
 lazy val javaVersion = "17"
 
-ThisBuild / scalaVersion := "3.3.8"
+scalaVersion := "3.3.8"
 
-Compile / javacOptions ++= Seq("--release", javaVersion)
+javacOptions ++= Seq("--release", javaVersion)
 
-Compile / scalacOptions ++= List(
+scalacOptions ++= List(
   "-java-output-version", javaVersion,
   "-source:future"
 )
@@ -123,14 +123,7 @@ lazy val root = (project in file("."))
     libraryDependencies += "com.github.sbt.junit" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
     libraryDependencies += "org.typelevel" %% "kittens" % "3.5.0",
     Test / logLevel                        := Level.Error,
-    Global / logLevel                      := Level.Error,
     Test / testOptions += Tests.Argument(jupiterTestFramework, "-q"),
     Test / logBuffered                     := false,
-    Test / fork                            := true,
-    Test / testForkedParallel              := true,
-    Test / javaOptions ++= Seq("-Xmx3g", "-XX:+UseG1GC"),
-    Global / concurrentRestrictions := Seq(
-      Tags.limit(Tags.ForkedTestGroup, math.max(1, java.lang.Runtime.getRuntime.availableProcessors())),
-      Tags.limitAll(math.max(1, java.lang.Runtime.getRuntime.availableProcessors()))
-    )
+    Test / fork                            := true
   )
