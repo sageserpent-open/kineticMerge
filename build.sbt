@@ -9,7 +9,8 @@ scalaVersion := "3.3.8"
 javacOptions ++= Seq("--release", javaVersion)
 
 scalacOptions ++= List(
-  "-java-output-version", javaVersion,
+  "-java-output-version",
+  javaVersion,
   "-source:future"
 )
 
@@ -26,6 +27,7 @@ lazy val projectHoldingCoursierDependency = project.settings(
 )
 
 lazy val root = (project in file("."))
+  .disablePlugins(plugins.JUnitXmlReportPlugin)
   .settings(
     pomIncludeRepository := { _ => false },
     publishMavenStyle    := true,
@@ -124,6 +126,6 @@ lazy val root = (project in file("."))
     libraryDependencies += "org.typelevel" %% "kittens" % "3.5.0",
     Test / logLevel                        := Level.Error,
     Test / testOptions += Tests.Argument(jupiterTestFramework, "-q"),
-    Test / logBuffered                     := false,
-    Test / fork                            := true
+    Test / logBuffered := false,
+    Test / fork        := true
   )
