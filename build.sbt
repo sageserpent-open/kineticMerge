@@ -126,6 +126,5 @@ lazy val root = (project in file("."))
     libraryDependencies += "org.typelevel" %% "kittens" % "3.5.0",
     Test / logLevel                        := Level.Error,
     Test / testOptions += Tests.Argument(jupiterTestFramework, "-q"),
-    Test / logBuffered := false,
     Test / fork        := true
   )
