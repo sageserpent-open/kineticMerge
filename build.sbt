@@ -130,7 +130,7 @@ lazy val root = (project in file("."))
     Test / testForkedParallel              := true,
     Test / javaOptions ++= Seq("-Xmx3g", "-XX:+UseG1GC"),
     Global / concurrentRestrictions := Seq(
-      Tags.limit(Tags.ForkedTestGroup, 2),
-      Tags.limitAll(2)
+      Tags.limit(Tags.ForkedTestGroup, math.max(1, java.lang.Runtime.getRuntime.availableProcessors())),
+      Tags.limitAll(math.max(1, java.lang.Runtime.getRuntime.availableProcessors()))
     )
   )
