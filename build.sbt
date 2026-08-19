@@ -2,6 +2,8 @@ import sbtrelease.ReleaseStateTransformations.*
 
 import scala.language.postfixOps
 
+// I'm here to force a new build.
+
 lazy val javaVersion = "17"
 
 scalaVersion := "3.3.8"
