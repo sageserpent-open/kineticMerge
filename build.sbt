@@ -127,5 +127,6 @@ lazy val root = (project in file("."))
     Test / logLevel                        := Level.Error,
     Test / testOptions += Tests.Argument(jupiterTestFramework, "-q"),
     Test / fork               := true,
-    Test / testForkedParallel := true
+    Test / testForkedParallel := true,
+    Test / javaOptions        += "-Xmx8G"
   )
