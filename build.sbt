@@ -2,7 +2,7 @@ import sbtrelease.ReleaseStateTransformations.*
 
 import scala.language.postfixOps
 
-// I'm here to force a new build.
+// I'm still here to force another new build.
 
 lazy val javaVersion = "17"
 
