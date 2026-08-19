@@ -31,7 +31,7 @@ lazy val root = (project in file("."))
   .settings(
     pomIncludeRepository := { _ => false },
     publishMavenStyle    := true,
-    licenses += ("MIT", url("https://opensource.org/licenses/MIT")),
+    licenses += ("MIT", uri("https://opensource.org/licenses/MIT")),
     organization     := "com.sageserpent",
     organizationName := "sageserpent",
     description := "Merge branches in the presence of code motion within and between files.",
@@ -69,7 +69,7 @@ lazy val root = (project in file("."))
 
       Seq(location)
     }.taskValue,
-    packageExecutable := {
+    packageExecutable := Def.uncached {
       Def
         .taskDyn({
           val packagingVersion = (ThisBuild / version).value
