@@ -24,7 +24,7 @@ import com.sageserpent.kineticmerge.core.SectionedCodeTest.{
   given_Funnel_Element
 }
 import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording}
-import org.junit.jupiter.api.TestFactory
+import org.junit.jupiter.api.{Disabled, TestFactory}
 
 object BlockDuplicationAndCondensationTests:
   given HashFunction = Hashing.murmur3_32_fixed()
@@ -618,5 +618,123 @@ class BlockDuplicationAndCondensationTests:
       )
     }
   end aBlockIsTriplicatedOnTwoSides
+
+  @Disabled("Fails due to block merge alignment asymmetry under edits (Issue #403)")
+  @TestFactory
+  def duplicateBlocksWithAnEditAreMerged(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val placeholderPath: Path = 1
+
+      val baseElements: IndexedSeq[Element] =
+        Vector(1, 100, 2, 100, 3, 100, 1, 100, 2, 100, 3, 100, 4)
+
+      val baseSources = FakeSources(
+        contentsByPath = Map(placeholderPath -> baseElements),
+        label = "base"
+      )
+
+      val leftElements: IndexedSeq[Element] =
+        Vector(1, 101, 2, 101, 3, 101, 4, 101, 1, 101, 2, 101, 3)
+
+      val leftSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> leftElements
+        ),
+        label = "left"
+      )
+
+      val rightElements: IndexedSeq[Element] =
+        Vector(1, 102, 2, 102, 3)
+
+      val rightSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> rightElements
+        ),
+        label = "right"
+      )
+
+      val Right(sectionedCode) = SectionedCode.of(
+        baseSources = baseSources,
+        leftSources = leftSources,
+        rightSources = rightSources
+      )(configuration): @unchecked
+
+      val LongestCommonSubsequence(
+        baseContributions,
+        leftContributions,
+        rightContributions,
+        _,
+        _,
+        _,
+        _
+      ) = sectionedCode
+        .longestCommonSubsequenceOf(path = placeholderPath)
+
+      println(s"Base contributions: ${pprintCustomised(baseContributions)}")
+      println(s"Left contributions: ${pprintCustomised(leftContributions)}")
+      println(s"Right contributions: ${pprintCustomised(rightContributions)}")
+
+      println(s"Groups of parallel matches: ${pprintCustomised(sectionedCode.groupsOfParallelMatches)}")
+      println(s"Base blocks: ${pprintCustomised(sectionedCode.baseBlocksFor(placeholderPath))}")
+      println(s"Left blocks: ${pprintCustomised(sectionedCode.leftBlocksFor(placeholderPath))}")
+      println(s"Right blocks: ${pprintCustomised(sectionedCode.rightBlocksFor(placeholderPath))}")
+
+      // IDEAL EXPECTATIONS (under correct block-level merge alignment):
+      // Because of the bug (asymmetry in Order[Block[Element]]), the block containing element 4
+      // fails to align correctly across groups, causing it to be classified as Difference instead of CommonToBaseAndLeftOnly.
+      assert(
+        Vector(
+          Contribution.Common(Vector(1)),
+          Contribution.Difference(Vector(100)),
+          Contribution.Common(Vector(2)),
+          Contribution.Difference(Vector(100)),
+          Contribution.Common(Vector(3)),
+          Contribution.Difference(Vector(100)),
+          Contribution.CommonToBaseAndLeftOnly(Vector(1)),
+          Contribution.Difference(Vector(100)),
+          Contribution.CommonToBaseAndLeftOnly(Vector(2)),
+          Contribution.Difference(Vector(100)),
+          Contribution.CommonToBaseAndLeftOnly(Vector(3)),
+          Contribution.Difference(Vector(100)),
+          Contribution.CommonToBaseAndLeftOnly(Vector(4))
+        ) == baseContributions.asElementContributions
+      )
+
+      assert(
+        Vector(
+          Contribution.Common(Vector(1)),
+          Contribution.Difference(Vector(101)),
+          Contribution.Common(Vector(2)),
+          Contribution.Difference(Vector(101)),
+          Contribution.Common(Vector(3)),
+          Contribution.Difference(Vector(101)),
+          Contribution.CommonToBaseAndLeftOnly(Vector(4)),
+          Contribution.Difference(Vector(101)),
+          Contribution.CommonToBaseAndLeftOnly(Vector(1)),
+          Contribution.Difference(Vector(101)),
+          Contribution.CommonToBaseAndLeftOnly(Vector(2)),
+          Contribution.Difference(Vector(101)),
+          Contribution.CommonToBaseAndLeftOnly(Vector(3))
+        ) == leftContributions.asElementContributions
+      )
+
+      assert(
+        Vector(
+          Contribution.Common(Vector(1)),
+          Contribution.Difference(Vector(102)),
+          Contribution.Common(Vector(2)),
+          Contribution.Difference(Vector(102)),
+          Contribution.Common(Vector(3))
+        ) == rightContributions.asElementContributions
+      )
+    }
+  end duplicateBlocksWithAnEditAreMerged
 
 end BlockDuplicationAndCondensationTests
