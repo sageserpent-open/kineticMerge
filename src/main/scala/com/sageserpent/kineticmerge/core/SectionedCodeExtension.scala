@@ -14,6 +14,7 @@ import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
   Contribution,
   Sized
 }
+import com.sageserpent.kineticmerge.core.MatchAnalysis.ParallelMatchesGroupId
 import com.sageserpent.kineticmerge.core.MergeResult.given
 import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{
   AnchoredMove,
@@ -36,7 +37,7 @@ import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
 
 import scala.annotation.tailrec
-import scala.collection.immutable.MultiDict
+import scala.collection.immutable.{MultiDict, SortedSet}
 import scala.collection.{IndexedSeqView, Searching}
 import scala.math.Ordering.Implicits.seqOrdering
 import scala.util.Using
@@ -98,9 +99,23 @@ object SectionedCodeExtension extends StrictLogging:
                 // precisely, then we let the blocks have a second chance at
                 // matching via the content, and that is what the special case
                 // `Order[Match[Section[Element]]]` from above does.
+
+                def laxMatchesFrom(
+                    groupId: ParallelMatchesGroupId
+                ): SortedSet[Match[Section[Element]]] =
+                  val matchesGroup = groupsOfParallelMatches(groupId)
+
+                  val allSidesMatchesOnly =
+                    matchesGroup.filter(_.isAnAllSidesMatch)
+
+                  if allSidesMatchesOnly.nonEmpty then allSidesMatchesOnly
+                  else matchesGroup
+                  end if
+                end laxMatchesFrom
+
                 Order.compare(
-                  groupsOfParallelMatches(lhsGroupId),
-                  groupsOfParallelMatches(rhsGroupId)
+                  laxMatchesFrom(lhsGroupId),
+                  laxMatchesFrom(rhsGroupId)
                 )
             case (Some(_), None) => -1
             case (None, Some(_)) => 1
