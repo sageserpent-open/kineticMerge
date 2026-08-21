@@ -1680,8 +1680,7 @@ class MergeTest:
 
     assert(result == expectedMerge)
   end coincidentEditFollowedByACoincidentInsertion
-
-  @Disabled
+  
   @TestFactory
   def fullMerge: DynamicTests =
     fullyMergedTestCases
