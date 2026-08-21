@@ -21,7 +21,6 @@ import monocle.syntax.all.*
 import org.junit.jupiter.api.{Assertions, Disabled, Test, TestFactory}
 import pprintCustomised.*
 
-@Disabled
 class MergeTest:
   private val fullyMergedTestCases: Trials[MergeTestCase] =
     simpleMergeTestCases(MoveConstraints.empty(allowConflicts = false))(
@@ -1682,6 +1681,7 @@ class MergeTest:
     assert(result == expectedMerge)
   end coincidentEditFollowedByACoincidentInsertion
 
+  @Disabled
   @TestFactory
   def fullMerge: DynamicTests =
     fullyMergedTestCases
@@ -1706,6 +1706,7 @@ class MergeTest:
 
         testCase.validate(result)
 
+  @Disabled
   @TestFactory
   def conflictedMerge: DynamicTests =
     possiblyConflictedMergeTestCases
