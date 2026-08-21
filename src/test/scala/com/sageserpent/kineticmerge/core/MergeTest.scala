@@ -18,10 +18,9 @@ import com.sageserpent.kineticmerge.core.MergeTest.Move.*
 import com.sageserpent.kineticmerge.core.MergeTest.{*, given}
 import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording}
 import monocle.syntax.all.*
-import org.junit.jupiter.api.{Assertions, Disabled, Test, TestFactory}
+import org.junit.jupiter.api.{Assertions, Test, TestFactory}
 import pprintCustomised.*
 
-@Disabled
 class MergeTest:
   private val fullyMergedTestCases: Trials[MergeTestCase] =
     simpleMergeTestCases(MoveConstraints.empty(allowConflicts = false))(
