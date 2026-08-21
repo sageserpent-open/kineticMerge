@@ -18,8 +18,7 @@ import com.sageserpent.kineticmerge.core.MergeTest.Move.*
 import com.sageserpent.kineticmerge.core.MergeTest.{*, given}
 import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording}
 import monocle.syntax.all.*
-import org.junit.jupiter.api.{Assertions, Disabled, Test, TestFactory}
-import pprintCustomised.*
+import org.junit.jupiter.api.{Assertions, Test, TestFactory}
 
 class MergeTest:
   private val fullyMergedTestCases: Trials[MergeTestCase] =
@@ -1701,8 +1700,7 @@ class MergeTest:
           ): @unchecked
 
         testCase.validate(result)
-
-  @Disabled
+  
   @TestFactory
   def conflictedMerge: DynamicTests =
     possiblyConflictedMergeTestCases
@@ -1724,9 +1722,6 @@ class MergeTest:
 
         result match
           case MergedWithConflicts(_, _, _) =>
-            println("*************")
-            pprintln(testCase)
-
             testCase.validate(result)
           case FullyMerged(_) => Trials.reject()
         end match
