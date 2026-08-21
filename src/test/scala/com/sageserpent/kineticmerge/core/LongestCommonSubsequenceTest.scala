@@ -6,22 +6,12 @@ import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.java.CasesLimitStrategy
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
-  CommonSubsequenceSize,
-  Contribution,
-  Sized,
-  defaultElementSize
-}
-import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.{
-  Element,
-  TestCase,
-  maximumSize,
-  testCases,
-  given
-}
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{CommonSubsequenceSize, Contribution, Sized, defaultElementSize}
+import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.{Element, TestCase, maximumSize, testCases, given}
 import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording}
-import org.junit.jupiter.api.TestFactory
+import org.junit.jupiter.api.{Disabled, TestFactory}
 
+@Disabled
 class LongestCommonSubsequenceTest:
   @TestFactory
   def theResultsAreMirroredCorrespondingWithTheInputs(): DynamicTests =

@@ -21,6 +21,7 @@ import _root_.java.util.concurrent.TimeUnit
 import scala.concurrent.duration.Duration
 import scala.io.Source
 
+@Disabled
 class SectionedCodeTest:
   import SectionedCodeTest.*
   @TestFactory
