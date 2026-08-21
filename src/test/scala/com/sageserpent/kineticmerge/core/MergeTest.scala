@@ -1680,15 +1680,12 @@ class MergeTest:
 
     assert(result == expectedMerge)
   end coincidentEditFollowedByACoincidentInsertion
-  
+
   @TestFactory
   def fullMerge: DynamicTests =
     fullyMergedTestCases
       .withLimit(20000)
       .dynamicTests: testCase =>
-        println("*************")
-        pprintln(testCase)
-
         given Order[Element] = testCase.matchesByElement.compare
         given Sized[Element] = defaultElementSize
 
