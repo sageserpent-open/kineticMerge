@@ -4,12 +4,13 @@ import scala.language.postfixOps
 
 lazy val javaVersion = "17"
 
-ThisBuild / scalaVersion := "3.3.8"
+scalaVersion := "3.3.8"
 
-ThisBuild / javacOptions ++= Seq("-source", javaVersion, "-target", javaVersion)
+javacOptions ++= Seq("--release", javaVersion)
 
-ThisBuild / scalacOptions ++= List(
-  s"-java-output-version:$javaVersion",
+scalacOptions ++= List(
+  "-java-output-version",
+  javaVersion,
   "-source:future"
 )
 
@@ -19,11 +20,18 @@ lazy val packageExecutable =
 lazy val versionResource =
   settingKey[File]("Location of generated version resource file.")
 
+lazy val projectHoldingCoursierDependency = project.settings(
+  scalaVersion                             := "2.13.18",
+  libraryDependencies += "io.get-coursier" %% "coursier-cli" % "2.1.24",
+  Compile / run / mainClass                := Some("coursier.cli.Coursier")
+)
+
 lazy val root = (project in file("."))
+  .disablePlugins(plugins.JUnitXmlReportPlugin)
   .settings(
     pomIncludeRepository := { _ => false },
     publishMavenStyle    := true,
-    licenses += ("MIT", url("https://opensource.org/licenses/MIT")),
+    licenses += ("MIT", uri("https://opensource.org/licenses/MIT")),
     organization     := "com.sageserpent",
     organizationName := "sageserpent",
     description := "Merge branches in the presence of code motion within and between files.",
@@ -61,24 +69,29 @@ lazy val root = (project in file("."))
 
       Seq(location)
     }.taskValue,
-    packageExecutable := {
-      val packagingVersion = (ThisBuild / version).value
+    packageExecutable := Def.uncached {
+      Def
+        .taskDyn({
+          val packagingVersion = (ThisBuild / version).value
 
-      println(s"Packaging executable with version: $packagingVersion")
+          println(s"Packaging executable with version: $packagingVersion")
 
-      val localArtifactCoordinates =
-        s"${organization.value}:${name.value}_${scalaBinaryVersion.value}:$packagingVersion"
+          val localArtifactCoordinates =
+            s"${organization.value}:${name.value}_${scalaBinaryVersion.value}:$packagingVersion"
 
-      val executablePath = s"${target.value}${Path.sep}${name.value}"
+          val executablePath = s"${target.value}${Path.sep}${name.value}"
 
-      coursier.cli.Coursier.main(
-        s"bootstrap --verbose --bat=true --scala-version ${scalaBinaryVersion.value} -f $localArtifactCoordinates -o $executablePath"
-          .split("\\s+")
-      )
+          val necessaryLeadingWhitespace = " "
 
-      name.value
+          (projectHoldingCoursierDependency / Compile / run)
+            .toTask(
+              necessaryLeadingWhitespace + s"bootstrap --verbose --bat=true --scala-version ${scalaBinaryVersion.value} -f $localArtifactCoordinates -o $executablePath"
+            )
+            .map(_ => name.value)
+        })
+        .value
     },
-    packageExecutable := (packageExecutable dependsOn publishLocal).value,
+    packageExecutable := packageExecutable.dependsOn(publishLocal).value,
     libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.9.6",
     libraryDependencies += "ch.qos.logback"    % "logback-core"    % "1.6.2",
     libraryDependencies += "ch.qos.logback"    % "logback-classic" % "1.6.2",
@@ -111,7 +124,9 @@ lazy val root = (project in file("."))
     libraryDependencies += "org.apache.commons" % "commons-text" % "1.15.0" % Test,
     libraryDependencies += "com.github.sbt.junit" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
     libraryDependencies += "org.typelevel" %% "kittens" % "3.5.0",
-    Test / test / logLevel                 := Level.Error,
-    Test / fork                            := true,
-    Test / testForkedParallel              := true
+    Test / logLevel                        := Level.Error,
+    Test / testOptions += Tests.Argument(jupiterTestFramework, "-q"),
+    Test / fork               := true,
+    Test / testForkedParallel := true,
+    Test / javaOptions        += "-Xmx8G"
   )
