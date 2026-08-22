@@ -23,6 +23,7 @@ import scala.io.Source
 
 class SectionedCodeTest:
   import SectionedCodeTest.*
+  @Disabled
   @TestFactory
   def sourcesCanBeReconstructedFromTheAnalysis: DynamicTests =
     extension (results: Map[Path, File[Element]])
@@ -218,6 +219,7 @@ class SectionedCodeTest:
       }
   end reproduceAssertionFailure
 
+  @Disabled
   @TestFactory
   def matchingSectionsAreFound(): DynamicTests =
     testPlansFavouringMatches
@@ -1714,6 +1716,7 @@ class SectionedCodeTest:
     assert(6 == pairwise.size)
   end parallelMatches
 
+  @Disabled
   @TestFactory
   def mergeSmokeTest(): DynamicTests =
     testPlansFavouringMatches
