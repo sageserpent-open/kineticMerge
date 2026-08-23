@@ -1,5 +1,7 @@
+import sbt.OutputStrategy
 import sbtrelease.ReleaseStateTransformations.*
 
+import java.io.OutputStream
 import scala.language.postfixOps
 
 lazy val javaVersion = "17"
@@ -128,5 +130,10 @@ lazy val root = (project in file("."))
     Test / testOptions += Tests.Argument(jupiterTestFramework, "-q"),
     Test / fork               := true,
     Test / testForkedParallel := true,
-    Test / javaOptions ++= Seq("-Xmx8G", "-Dlogback-root-level=ERROR")
+    Test / javaOptions ++= Seq("-Xmx8G", "-Dlogback-root-level=ERROR"),
+    Test / outputStrategy := Some(
+      OutputStrategy.CustomOutput(
+        OutputStream.nullOutputStream
+      )
+    )
   )
