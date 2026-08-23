@@ -108,7 +108,6 @@ class SectionedCodeTest:
       )
   end sourcesCanBeReconstructedFromTheAnalysis
 
-  @Disabled
   @Test
   def reproduceStackOverflow(): Unit =
     val recipe = Source
@@ -146,7 +145,6 @@ class SectionedCodeTest:
       }
   end reproduceStackOverflow
 
-  @Disabled
   @Test
   def reproduceIllegalArgument(): Unit =
     val recipe = Source
@@ -184,7 +182,6 @@ class SectionedCodeTest:
       }
   end reproduceIllegalArgument
 
-  @Disabled
   @Test
   def reproduceAssertionFailure(): Unit =
     val recipe = Source
