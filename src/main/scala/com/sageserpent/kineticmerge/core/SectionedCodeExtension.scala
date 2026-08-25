@@ -43,7 +43,7 @@ import scala.util.Using
 
 object SectionedCodeExtension extends StrictLogging:
   /** Add merging capability to a [[SectionedCode]]. */
-  extension [Path, Element: Eq: Order](
+  extension [Path, Element: Order](
       sectionedCode: SectionedCode[Path, Element]
   )
     def longestCommonSubsequenceOf(
@@ -60,24 +60,6 @@ object SectionedCodeExtension extends StrictLogging:
       val rightBlocks = sectionedCode.rightBlocksFor(path)
 
       given Order[Block[Element]] =
-        // NOTE: this is subtle - comparing by `Block.parallelMatchesGroupId` is
-        // OK, but consider situations where two distinct blocks covering the
-        // same content on the same side can fool the following block-level
-        // merge into a less than optimal alignment of blocks whenever the group
-        // ids of the relevant blocks swap around from one to another. Peering
-        // inside the two blocks' matched content and the groups of matches that
-        // the blocks refer to allows the merge to ignore the scrambled group
-        // ids.
-        // NOTE: tip of the hat to Jules for suggesting the content-based
-        // comparison approach; I cheerfully ignored it at the time but have
-        // come to realise its virtue!
-        given Order[Match[Section[Element]]] = Order.by(aMatch =>
-          (
-            aMatch.baseContribution.map(_.content: Seq[Element]),
-            aMatch.leftContribution.map(_.content: Seq[Element]),
-            aMatch.rightContribution.map(_.content: Seq[Element])
-          )
-        )
         (lhs, rhs) =>
           // NOTE: be *very* careful about changing the logic here - for the
           // order to be consistent, comparisons have to be partitioned into
@@ -91,20 +73,34 @@ object SectionedCodeExtension extends StrictLogging:
             rhs.parallelMatchesGroupIds.nonEmpty
           ) match
             case (true, true) =>
-              val blocksAreEquivalentInTermsOfParallelMatchedContent =
-                (lhs.parallelMatchesGroupIds intersect rhs.parallelMatchesGroupIds).nonEmpty
-
-              if blocksAreEquivalentInTermsOfParallelMatchedContent then 0
-              else
-                // Use the special case `Order[Match[Section[Element]]]` from
-                // above to peer into the matched content only; we can use any
-                // of the group ids to do this as they should all agree on the
-                // non-filler sections in the block.
-                Order.compare(
-                  groupsOfParallelMatches(lhs.parallelMatchesGroupIds.head),
-                  groupsOfParallelMatches(rhs.parallelMatchesGroupIds.head)
-                )
-              end if
+              Order.compare(
+                lhs.parallelMatchesGroupIds
+                  .map(groupsOfParallelMatches.apply)
+                  .map(
+                    _.toSeq.map(aMatch =>
+                      (
+                        aMatch.baseContribution.map(_.content: Seq[Element]),
+                        aMatch.leftContribution.map(_.content: Seq[Element]),
+                        aMatch.rightContribution.map(_.content: Seq[Element])
+                      )
+                    )
+                  )
+                  .reduce(_ concat _)
+                  .distinct,
+                rhs.parallelMatchesGroupIds
+                  .map(groupsOfParallelMatches.apply)
+                  .map(
+                    _.toSeq.map(aMatch =>
+                      (
+                        aMatch.baseContribution.map(_.content: Seq[Element]),
+                        aMatch.leftContribution.map(_.content: Seq[Element]),
+                        aMatch.rightContribution.map(_.content: Seq[Element])
+                      )
+                    )
+                  )
+                  .reduce(_ concat _)
+                  .distinct
+              )
             case (true, false)  => -1
             case (false, true)  => 1
             case (false, false) =>

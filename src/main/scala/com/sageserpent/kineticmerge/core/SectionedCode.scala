@@ -148,7 +148,7 @@ object SectionedCode extends StrictLogging:
               )
 
               path -> Block(
-                parallelMatchesGroupIds = Set(parallelMatchesGroupId),
+                parallelMatchesGroupIds = SortedSet(parallelMatchesGroupId),
                 sectionsCoveredByGroup = sectionsCoveredByBlock
               )
             }
@@ -175,7 +175,7 @@ object SectionedCode extends StrictLogging:
                     val Searching.Found(endingSectionIndex) =
                       file.searchByStartOffset(block.startOffset): @unchecked
                     fillers :+ Block(
-                      parallelMatchesGroupIds = Set.empty,
+                      parallelMatchesGroupIds = SortedSet.empty,
                       sectionsCoveredByGroup = file.sections
                         .slice(startingSectionIndex, endingSectionIndex)
                     )
@@ -188,7 +188,7 @@ object SectionedCode extends StrictLogging:
               val Searching.Found(startingSectionIndex) =
                 file.searchByStartOffset(onePastLastEndOffset): @unchecked
               fillerBlocks :+ Block(
-                parallelMatchesGroupIds = Set.empty,
+                parallelMatchesGroupIds = SortedSet.empty,
                 sectionsCoveredByGroup =
                   file.sections.drop(startingSectionIndex)
               )
