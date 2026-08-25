@@ -82,7 +82,7 @@ object SectionedCodeExtension extends StrictLogging:
               ] =
                 block.parallelMatchesGroupIds
                   .map(groupsOfParallelMatches.apply)
-                  .map(
+                  .flatMap(
                     _.toSeq.map(aMatch =>
                       (
                         aMatch.baseContribution.map(_.content: Seq[Element]),
@@ -91,8 +91,7 @@ object SectionedCodeExtension extends StrictLogging:
                       )
                     )
                   )
-                  .reduce(_ concat _)
-                  .distinct
+                  .toSeq
 
               Order.compare(
                 orderedContentFrom(lhs),
