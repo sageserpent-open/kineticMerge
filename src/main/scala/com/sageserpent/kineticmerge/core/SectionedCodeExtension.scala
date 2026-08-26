@@ -59,7 +59,7 @@ object SectionedCodeExtension extends StrictLogging:
       val leftBlocks  = sectionedCode.leftBlocksFor(path)
       val rightBlocks = sectionedCode.rightBlocksFor(path)
 
-      val blockKeys: Map[Block[Element], Either[Seq[Section[Element]], Seq[
+      val comparableContentByBlock: Map[Block[Element], Either[Seq[Section[Element]], Seq[
         (Option[Seq[Element]], Int)
       ]]] =
         (baseBlocks ++ leftBlocks ++ rightBlocks).distinct.map { block =>
@@ -91,7 +91,7 @@ object SectionedCodeExtension extends StrictLogging:
           // expect bugs that are difficult to diagnose if you botch this up!
           if lhs == rhs then 0
           else
-            (blockKeys(lhs), blockKeys(rhs)) match
+            (comparableContentByBlock(lhs), comparableContentByBlock(rhs)) match
               case (Right(lhsContent), Right(rhsContent)) =>
                 if lhs.parallelMatchesGroupIds == rhs.parallelMatchesGroupIds
                 then 0
