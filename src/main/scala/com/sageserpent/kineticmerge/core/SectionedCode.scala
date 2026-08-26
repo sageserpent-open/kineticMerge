@@ -148,8 +148,8 @@ object SectionedCode extends StrictLogging:
               )
 
               path -> Block(
-                Some(parallelMatchesGroupId),
-                sectionsCoveredByBlock
+                parallelMatchesGroupIds = SortedSet(parallelMatchesGroupId),
+                sectionsCoveredByGroup = sectionsCoveredByBlock
               )
             }
         end blockFrom
@@ -175,7 +175,7 @@ object SectionedCode extends StrictLogging:
                     val Searching.Found(endingSectionIndex) =
                       file.searchByStartOffset(block.startOffset): @unchecked
                     fillers :+ Block(
-                      parallelMatchesGroupId = None,
+                      parallelMatchesGroupIds = SortedSet.empty,
                       sectionsCoveredByGroup = file.sections
                         .slice(startingSectionIndex, endingSectionIndex)
                     )
@@ -188,20 +188,48 @@ object SectionedCode extends StrictLogging:
               val Searching.Found(startingSectionIndex) =
                 file.searchByStartOffset(onePastLastEndOffset): @unchecked
               fillerBlocks :+ Block(
-                parallelMatchesGroupId = None,
+                parallelMatchesGroupIds = SortedSet.empty,
                 sectionsCoveredByGroup =
                   file.sections.drop(startingSectionIndex)
               )
             else fillerBlocks
 
-          path -> (matchedBlocks ++ allFillerBlocks).toIndexedSeq.sortBy(
-            block =>
+          val blocksSortedInOrderOfAppearanceInTheFile =
+            (matchedBlocks ++ allFillerBlocks).toIndexedSeq.sortBy(block =>
               (
                 block.startOffset,
-                block.onePastEndOffset,
-                block.parallelMatchesGroupId
+                block.onePastEndOffset
               )
-          )
+            )
+
+          import com.sageserpent.americium.utilities.seqEnrichment.given
+
+          val condensedBlocks = blocksSortedInOrderOfAppearanceInTheFile
+            .groupWhile((lhs, rhs) =>
+              // NOTE: we have to strict about the two blocks having to cover
+              // the exact same part of the file as opposed to say, sharing the
+              // same matches. It's OK and required for splice migration for
+              // blocks on different sides to disagree about filler sections and
+              // indeed the file location, but on the same side we want the
+              // parallel matches groups to refer to the exact same part of the
+              // file.
+              lhs.startOffset == rhs.startOffset && lhs.onePastEndOffset == rhs.onePastEndOffset
+            ) // TODO: change `groupWhile` in Americium to preserve the container type on the outer collection rather than the inner one.
+            .map { blocksCoveringTheSamePartOfTheFile =>
+              val parallelMatchesGroupIds = blocksCoveringTheSamePartOfTheFile
+                .map(
+                  _.parallelMatchesGroupIds
+                )
+                .reduce(_ union _)
+
+              val sectionsCoveredByGroup =
+                blocksCoveringTheSamePartOfTheFile.head.sectionsCoveredByGroup
+
+              Block(parallelMatchesGroupIds, sectionsCoveredByGroup)
+            }
+            .toIndexedSeq
+
+          path -> condensedBlocks
         }
       end blocksForASide
 
@@ -307,7 +335,7 @@ object SectionedCode extends StrictLogging:
   end of
 
   case class Block[Element](
-      parallelMatchesGroupId: Option[ParallelMatchesGroupId],
+      parallelMatchesGroupIds: Set[ParallelMatchesGroupId],
       sectionsCoveredByGroup: IndexedSeq[Section[Element]]
   ):
     require(sectionsCoveredByGroup.nonEmpty)
