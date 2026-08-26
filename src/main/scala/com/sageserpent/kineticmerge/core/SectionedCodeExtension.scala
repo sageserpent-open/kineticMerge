@@ -14,6 +14,7 @@ import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
   Contribution,
   Sized
 }
+import com.sageserpent.kineticmerge.core.MatchAnalysis.ParallelMatchesGroupId
 import com.sageserpent.kineticmerge.core.MergeResult.given
 import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{
   AnchoredMove,
@@ -36,7 +37,7 @@ import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
 
 import scala.annotation.tailrec
-import scala.collection.immutable.MultiDict
+import scala.collection.immutable.{MultiDict, SortedSet}
 import scala.collection.{IndexedSeqView, Searching}
 import scala.math.Ordering.Implicits.seqOrdering
 import scala.util.Using
@@ -59,13 +60,27 @@ object SectionedCodeExtension extends StrictLogging:
       val leftBlocks  = sectionedCode.leftBlocksFor(path)
       val rightBlocks = sectionedCode.rightBlocksFor(path)
 
-      val comparableContentByBlock: Map[Block[Element], Either[Seq[Section[Element]], Seq[
-        (Option[Seq[Element]], Int)
-      ]]] =
+      val comparableContentByBlock
+          : Map[Block[Element], Either[Seq[Section[Element]], Seq[
+            (Option[Seq[Element]], Int)
+          ]]] =
         (baseBlocks ++ leftBlocks ++ rightBlocks).distinct.map { block =>
           if block.parallelMatchesGroupIds.nonEmpty then
+            def laxMatchesFrom(
+                                groupId: ParallelMatchesGroupId
+                              ): SortedSet[Match[Section[Element]]] =
+              val matchesGroup = groupsOfParallelMatches(groupId)
+
+              val allSidesMatchesOnly =
+                matchesGroup.filter(_.isAnAllSidesMatch)
+
+              if allSidesMatchesOnly.nonEmpty then allSidesMatchesOnly
+              else matchesGroup
+              end if
+            end laxMatchesFrom
+            
             val content = block.parallelMatchesGroupIds
-              .map(groupsOfParallelMatches.apply)
+              .map(laxMatchesFrom)
               .flatMap(
                 _.toSeq.map(aMatch =>
                   (
