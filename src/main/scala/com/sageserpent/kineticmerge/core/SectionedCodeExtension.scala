@@ -73,21 +73,15 @@ object SectionedCodeExtension extends StrictLogging:
             rhs.parallelMatchesGroupIds.nonEmpty
           ) match
             case (true, true) =>
-              def orderedContentFrom(block: Block[Element]): Seq[
-                (
-                    Option[Seq[Element]],
-                    Option[Seq[Element]],
-                    Option[Seq[Element]]
-                )
-              ] =
+              def orderedContentFrom(block: Block[Element]) =
                 block.parallelMatchesGroupIds
                   .map(groupsOfParallelMatches.apply)
                   .flatMap(
                     _.toSeq.map(aMatch =>
                       (
-                        aMatch.baseContribution.map(_.content: Seq[Element]),
-                        aMatch.leftContribution.map(_.content: Seq[Element]),
-                        aMatch.rightContribution.map(_.content: Seq[Element])
+                        (aMatch.baseContribution orElse aMatch.leftContribution orElse aMatch.rightContribution)
+                          .map(_.content: Seq[Element]),
+                        aMatch.ordinal
                       )
                     )
                   )
