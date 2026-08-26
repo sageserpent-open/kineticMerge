@@ -619,4 +619,82 @@ class BlockDuplicationAndCondensationTests:
     }
   end aBlockIsTriplicatedOnTwoSides
 
+  @TestFactory
+  def duplicateBlocksWithAnEditAreMerged(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val placeholderPath: Path = 1
+
+      val baseElements: IndexedSeq[Element] =
+        Vector(1, 100, 2, 100, 3, 100, 1, 100, 2, 100, 3, 100, 4)
+
+      val baseSources = FakeSources(
+        contentsByPath = Map(placeholderPath -> baseElements),
+        label = "base"
+      )
+
+      val leftElements: IndexedSeq[Element] =
+        Vector(1, 101, 2, 101, 3, 101, 4, 101, 1, 101, 2, 101, 3)
+
+      val leftSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> leftElements
+        ),
+        label = "left"
+      )
+
+      val rightElements: IndexedSeq[Element] =
+        Vector(1, 102, 2, 102, 3)
+
+      val rightSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> rightElements
+        ),
+        label = "right"
+      )
+
+      val Right(sectionedCode) = SectionedCode.of(
+        baseSources = baseSources,
+        leftSources = leftSources,
+        rightSources = rightSources
+      )(configuration): @unchecked
+
+      val LongestCommonSubsequence(
+        baseContributions,
+        leftContributions,
+        rightContributions,
+        _,
+        _,
+        _,
+        _
+      ) = sectionedCode
+        .longestCommonSubsequenceOf(path = placeholderPath)
+
+      println(s"Base contributions: ${pprintCustomised(baseContributions)}")
+      println(s"Left contributions: ${pprintCustomised(leftContributions)}")
+      println(s"Right contributions: ${pprintCustomised(rightContributions)}")
+
+      println(
+        s"Groups of parallel matches: ${pprintCustomised(sectionedCode.groupsOfParallelMatches)}"
+      )
+      println(
+        s"Base blocks: ${pprintCustomised(sectionedCode.baseBlocksFor(placeholderPath))}"
+      )
+      println(
+        s"Left blocks: ${pprintCustomised(sectionedCode.leftBlocksFor(placeholderPath))}"
+      )
+      println(
+        s"Right blocks: ${pprintCustomised(sectionedCode.rightBlocksFor(placeholderPath))}"
+      )
+
+      // TODO: what should we expect here?
+    }
+  end duplicateBlocksWithAnEditAreMerged
+
 end BlockDuplicationAndCondensationTests
