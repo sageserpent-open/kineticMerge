@@ -465,6 +465,11 @@ object LongestCommonSubsequence:
       private val equality = summon[Eq[Element]]
     end SetDiagnosingInconsistentOrderImplementation
 
+    // NOTE: the plan *was* to remove this diagnostic utility once the dust had
+    // settled on the ordering for `Block` used by `SectionedCodeExtension`, but
+    // this has proven to be invaluable. It also adds hardly any performance
+    // overhead in the tests or the manual benchmark, so this comment serves as
+    // a gentle reminder not to be too hasty in removing this class.
     class SetDiagnosingInconsistentOrderImplementation(
         elements: IndexedSeq[Element]
     ):
