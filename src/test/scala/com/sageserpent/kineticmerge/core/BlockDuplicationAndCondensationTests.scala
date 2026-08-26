@@ -642,19 +642,21 @@ class BlockDuplicationAndCondensationTests:
       val leftElements: IndexedSeq[Element] =
         Vector(1, 101, 2, 101, 3, 101, 4, 101, 1, 101, 2, 101, 3)
 
+      val rightElements: IndexedSeq[Element] =
+        Vector(1, 102, 2, 102, 3)
+
       val leftSources = FakeSources(
         contentsByPath = Map(
-          placeholderPath -> leftElements
+          placeholderPath -> (if mirrorImage then rightElements
+                              else leftElements)
         ),
         label = "left"
       )
 
-      val rightElements: IndexedSeq[Element] =
-        Vector(1, 102, 2, 102, 3)
-
       val rightSources = FakeSources(
         contentsByPath = Map(
-          placeholderPath -> rightElements
+          placeholderPath -> (if mirrorImage then leftElements
+                              else rightElements)
         ),
         label = "right"
       )
@@ -675,6 +677,7 @@ class BlockDuplicationAndCondensationTests:
         _
       ) = sectionedCode
         .longestCommonSubsequenceOf(path = placeholderPath)
+        .adaptedForMirroring(mirrorImage)
 
       println(s"Base contributions: ${pprintCustomised(baseContributions)}")
       println(s"Left contributions: ${pprintCustomised(leftContributions)}")
@@ -693,7 +696,51 @@ class BlockDuplicationAndCondensationTests:
         s"Right blocks: ${pprintCustomised(sectionedCode.rightBlocksFor(placeholderPath))}"
       )
 
-      // TODO: what should we expect here?
+      assert(
+        Vector(
+          Contribution.Common(Vector(1)),
+          Contribution.Difference(Vector(100)),
+          Contribution.Common(Vector(2)),
+          Contribution.Difference(Vector(100)),
+          Contribution.Common(Vector(3)),
+          Contribution.Difference(Vector(100)),
+          Contribution.CommonToBaseAndLeftOnly(Vector(1)),
+          Contribution.Difference(Vector(100)),
+          Contribution.CommonToBaseAndLeftOnly(Vector(2)),
+          Contribution.Difference(Vector(100)),
+          Contribution.CommonToBaseAndLeftOnly(Vector(3)),
+          Contribution.Difference(Vector(100)),
+          Contribution.Difference(Vector(4))
+        ) == baseContributions.asElementContributions
+      )
+
+      assert(
+        Vector(
+          Contribution.Common(Vector(1)),
+          Contribution.Difference(Vector(101)),
+          Contribution.Common(Vector(2)),
+          Contribution.Difference(Vector(101)),
+          Contribution.Common(Vector(3)),
+          Contribution.Difference(Vector(101)),
+          Contribution.Difference(Vector(4)),
+          Contribution.Difference(Vector(101)),
+          Contribution.CommonToBaseAndLeftOnly(Vector(1)),
+          Contribution.Difference(Vector(101)),
+          Contribution.CommonToBaseAndLeftOnly(Vector(2)),
+          Contribution.Difference(Vector(101)),
+          Contribution.CommonToBaseAndLeftOnly(Vector(3))
+        ) == leftContributions.asElementContributions
+      )
+
+      assert(
+        Vector(
+          Contribution.Common(Vector(1)),
+          Contribution.Difference(Vector(102)),
+          Contribution.Common(Vector(2)),
+          Contribution.Difference(Vector(102)),
+          Contribution.Common(Vector(3))
+        ) == rightContributions.asElementContributions
+      )
     }
   end duplicateBlocksWithAnEditAreMerged
 
