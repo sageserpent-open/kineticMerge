@@ -59,6 +59,27 @@ object SectionedCodeExtension extends StrictLogging:
       val leftBlocks  = sectionedCode.leftBlocksFor(path)
       val rightBlocks = sectionedCode.rightBlocksFor(path)
 
+      val comparableContentByBlock: Map[Block[Element], Either[Seq[Section[Element]], Seq[
+        (Option[Seq[Element]], Int)
+      ]]] =
+        (baseBlocks ++ leftBlocks ++ rightBlocks).distinct.map { block =>
+          if block.parallelMatchesGroupIds.nonEmpty then
+            val content = block.parallelMatchesGroupIds
+              .map(groupsOfParallelMatches.apply)
+              .flatMap(
+                _.toSeq.map(aMatch =>
+                  (
+                    (aMatch.baseContribution orElse aMatch.leftContribution orElse aMatch.rightContribution)
+                      .map(_.content: Seq[Element]),
+                    aMatch.ordinal
+                  )
+                )
+              )
+              .toSeq
+            block -> Right(content)
+          else block -> Left(block.sectionsCoveredByGroup)
+        }.toMap
+
       given Order[Block[Element]] =
         (lhs, rhs) =>
           // NOTE: be *very* careful about changing the logic here - for the
@@ -68,34 +89,17 @@ object SectionedCodeExtension extends StrictLogging:
           // taken to be greater than the latter for cross-over comparisons.
           // Consistency is much more stringent for `Order` than for `Eq`;
           // expect bugs that are difficult to diagnose if you botch this up!
-          (
-            lhs.parallelMatchesGroupIds.nonEmpty,
-            rhs.parallelMatchesGroupIds.nonEmpty
-          ) match
-            case (true, true) =>
-              def orderedContentFrom(block: Block[Element]) =
-                block.parallelMatchesGroupIds
-                  .map(groupsOfParallelMatches.apply)
-                  .flatMap(
-                    _.toSeq.map(aMatch =>
-                      (
-                        (aMatch.baseContribution orElse aMatch.leftContribution orElse aMatch.rightContribution)
-                          .map(_.content: Seq[Element]),
-                        aMatch.ordinal
-                      )
-                    )
-                  )
-                  .toSeq
-
-              Order.compare(
-                orderedContentFrom(lhs),
-                orderedContentFrom(rhs)
-              )
-            case (true, false)  => -1
-            case (false, true)  => 1
-            case (false, false) =>
-              Order[Seq[Section[Element]]]
-                .compare(lhs.sectionsCoveredByGroup, rhs.sectionsCoveredByGroup)
+          if lhs == rhs then 0
+          else
+            (comparableContentByBlock(lhs), comparableContentByBlock(rhs)) match
+              case (Right(lhsContent), Right(rhsContent)) =>
+                if lhs.parallelMatchesGroupIds == rhs.parallelMatchesGroupIds
+                then 0
+                else Order.compare(lhsContent, rhsContent)
+              case (Right(_), Left(_))                    => -1
+              case (Left(_), Right(_))                    => 1
+              case (Left(lhsSections), Left(rhsSections)) =>
+                Order[Seq[Section[Element]]].compare(lhsSections, rhsSections)
       end given
 
       given Sized[Block[Element]] = _.size
