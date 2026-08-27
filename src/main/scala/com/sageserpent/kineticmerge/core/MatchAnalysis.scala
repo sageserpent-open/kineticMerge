@@ -2288,10 +2288,24 @@ object MatchAnalysis extends StrictLogging:
               val replacementGroupId = groupIdsForAllSidesMatches.head
 
               accumulatedRedundantPairwiseMatches.add(pairwiseMatch)
-              accumulatedGroupIdCandidateCutovers.addOne(
-                groupIdForPairwiseMatch,
-                replacementGroupId
-              )
+
+              val groupMatches = parallelMatchesGroupIdsByMatch.collect {
+                case (m, `groupIdForPairwiseMatch`) => m
+              }
+
+              val allGroupMatchesAreRedundantWithReplacementGroup =
+                groupMatches.forall {
+                  case RedundantMatch(_, _, groupIds) =>
+                    groupIds.size == 1 && groupIds.head == replacementGroupId
+                  case _ => false
+                }
+
+              if allGroupMatchesAreRedundantWithReplacementGroup then
+                accumulatedGroupIdCandidateCutovers.addOne(
+                  groupIdForPairwiseMatch,
+                  replacementGroupId
+                )
+              end if
 
             case RedundantMatch(pairwiseMatch, _, _) =>
               accumulatedRedundantPairwiseMatches.add(pairwiseMatch)
