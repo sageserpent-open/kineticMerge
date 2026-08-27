@@ -14,6 +14,7 @@ import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
   Contribution,
   Sized
 }
+import com.sageserpent.kineticmerge.core.MatchAnalysis.ParallelMatchesGroupId
 import com.sageserpent.kineticmerge.core.MergeResult.given
 import com.sageserpent.kineticmerge.core.MoveDestinationsReport.{
   AnchoredMove,
@@ -36,14 +37,14 @@ import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
 
 import scala.annotation.tailrec
-import scala.collection.immutable.MultiDict
+import scala.collection.immutable.{MultiDict, SortedSet}
 import scala.collection.{IndexedSeqView, Searching}
 import scala.math.Ordering.Implicits.seqOrdering
 import scala.util.Using
 
 object SectionedCodeExtension extends StrictLogging:
   /** Add merging capability to a [[SectionedCode]]. */
-  extension [Path, Element: Eq: Order](
+  extension [Path, Element: Order](
       sectionedCode: SectionedCode[Path, Element]
   )
     def longestCommonSubsequenceOf(
@@ -59,25 +60,42 @@ object SectionedCodeExtension extends StrictLogging:
       val leftBlocks  = sectionedCode.leftBlocksFor(path)
       val rightBlocks = sectionedCode.rightBlocksFor(path)
 
+      val comparableContentByBlock
+          : Map[Block[Element], Either[Seq[Section[Element]], Seq[
+            (Option[Seq[Element]], Int)
+          ]]] =
+        (baseBlocks ++ leftBlocks ++ rightBlocks).distinct.map { block =>
+          if block.parallelMatchesGroupIds.nonEmpty then
+            def laxMatchesFrom(
+                                groupId: ParallelMatchesGroupId
+                              ): SortedSet[Match[Section[Element]]] =
+              val matchesGroup = groupsOfParallelMatches(groupId)
+
+              val allSidesMatchesOnly =
+                matchesGroup.filter(_.isAnAllSidesMatch)
+
+              if allSidesMatchesOnly.nonEmpty then allSidesMatchesOnly
+              else matchesGroup
+              end if
+            end laxMatchesFrom
+            
+            val content = block.parallelMatchesGroupIds
+              .map(laxMatchesFrom)
+              .flatMap(
+                _.toSeq.map(aMatch =>
+                  (
+                    (aMatch.baseContribution orElse aMatch.leftContribution orElse aMatch.rightContribution)
+                      .map(_.content: Seq[Element]),
+                    aMatch.ordinal
+                  )
+                )
+              )
+              .toSeq
+            block -> Right(content)
+          else block -> Left(block.sectionsCoveredByGroup)
+        }.toMap
+
       given Order[Block[Element]] =
-        // NOTE: this is subtle - comparing by `Block.parallelMatchesGroupId` is
-        // OK, but consider situations where two distinct blocks covering the
-        // same content on the same side can fool the following block-level
-        // merge into a less than optimal alignment of blocks whenever the group
-        // ids of the relevant blocks swap around from one to another. Peering
-        // inside the two blocks' matched content and the groups of matches that
-        // the blocks refer to allows the merge to ignore the scrambled group
-        // ids.
-        // NOTE: tip of the hat to Jules for suggesting the content-based
-        // comparison approach; I cheerfully ignored it at the time but have
-        // come to realise its virtue!
-        given Order[Match[Section[Element]]] = Order.by(aMatch =>
-          (
-            aMatch.baseContribution.map(_.content: Seq[Element]),
-            aMatch.leftContribution.map(_.content: Seq[Element]),
-            aMatch.rightContribution.map(_.content: Seq[Element])
-          )
-        )
         (lhs, rhs) =>
           // NOTE: be *very* careful about changing the logic here - for the
           // order to be consistent, comparisons have to be partitioned into
@@ -86,27 +104,17 @@ object SectionedCodeExtension extends StrictLogging:
           // taken to be greater than the latter for cross-over comparisons.
           // Consistency is much more stringent for `Order` than for `Eq`;
           // expect bugs that are difficult to diagnose if you botch this up!
-          (lhs.parallelMatchesGroupId, rhs.parallelMatchesGroupId) match
-            case (Some(lhsGroupId), Some(rhsGroupId)) =>
-              if lhsGroupId == rhsGroupId then 0
-              else
-                // NOTE: let's expand on the previous two comments here, because
-                // this is subtle: we're dealing with blocks that both have
-                // parallel matches group ids, but disagree on the id - but one
-                // or both of the blocks might represent the same chunk of code
-                // that moves divergently. As long as the matched content agrees
-                // precisely, then we let the blocks have a second chance at
-                // matching via the content, and that is what the special case
-                // `Order[Match[Section[Element]]]` from above does.
-                Order.compare(
-                  groupsOfParallelMatches(lhsGroupId),
-                  groupsOfParallelMatches(rhsGroupId)
-                )
-            case (Some(_), None) => -1
-            case (None, Some(_)) => 1
-            case (None, None)    =>
-              Order[Seq[Section[Element]]]
-                .compare(lhs.sectionsCoveredByGroup, rhs.sectionsCoveredByGroup)
+          if lhs == rhs then 0
+          else
+            (comparableContentByBlock(lhs), comparableContentByBlock(rhs)) match
+              case (Right(lhsContent), Right(rhsContent)) =>
+                if lhs.parallelMatchesGroupIds == rhs.parallelMatchesGroupIds
+                then 0
+                else Order.compare(lhsContent, rhsContent)
+              case (Right(_), Left(_))                    => -1
+              case (Left(_), Right(_))                    => 1
+              case (Left(lhsSections), Left(rhsSections)) =>
+                Order[Seq[Section[Element]]].compare(lhsSections, rhsSections)
       end given
 
       given Sized[Block[Element]] = _.size

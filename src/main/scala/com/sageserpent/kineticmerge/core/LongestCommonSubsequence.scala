@@ -461,9 +461,51 @@ object LongestCommonSubsequence:
     // is calculated, merge it with difference contributions from the leftover
     // rejected elements.
 
-    val baseSet  = SortedSet.from(base)
-    val leftSet  = SortedSet.from(left)
-    val rightSet = SortedSet.from(right)
+    object SetDiagnosingInconsistentOrderImplementation:
+      private val equality = summon[Eq[Element]]
+    end SetDiagnosingInconsistentOrderImplementation
+
+    // NOTE: the plan *was* to remove this diagnostic utility once the dust had
+    // settled on the ordering for `Block` used by `SectionedCodeExtension`, but
+    // this has proven to be invaluable. It also adds hardly any performance
+    // overhead in the tests or the manual benchmark, so this comment serves as
+    // a gentle reminder not to be too hasty in removing this class.
+    class SetDiagnosingInconsistentOrderImplementation(
+        elements: IndexedSeq[Element]
+    ):
+      private val elementSet = SortedSet.from(elements)
+
+      def contains(candidate: Element): Boolean =
+        val verdict = elementSet.contains(candidate)
+
+        val referenceVerdict = elements.exists(
+          SetDiagnosingInconsistentOrderImplementation.equality
+            .eqv(_, candidate)
+        )
+
+        assert(
+          referenceVerdict == verdict,
+          s"""Inconsistency between containment verdicts on ${pprintCustomised(
+              candidate
+            )},
+             |the reference verdict using equality is: $referenceVerdict,
+             |whereas the verdict using order is: $verdict.
+             |Using equality would find: ${pprintCustomised(
+              elements.find(
+                SetDiagnosingInconsistentOrderImplementation.equality
+                  .eqv(_, candidate)
+              )
+            )}
+             |The elements are: ${pprintCustomised(elements)}""".stripMargin
+        )
+
+        verdict
+      end contains
+    end SetDiagnosingInconsistentOrderImplementation
+
+    val baseSet  = SetDiagnosingInconsistentOrderImplementation(base)
+    val leftSet  = SetDiagnosingInconsistentOrderImplementation(left)
+    val rightSet = SetDiagnosingInconsistentOrderImplementation(right)
 
     val matchableBaseIndices = base.zipWithIndex.collect {
       case (baseElement, index)
