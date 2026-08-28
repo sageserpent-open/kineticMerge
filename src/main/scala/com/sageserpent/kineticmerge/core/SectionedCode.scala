@@ -217,8 +217,18 @@ object SectionedCode extends StrictLogging:
               // indeed the file location, but on the same side we want the
               // parallel matches groups to refer to the exact same part of the
               // file.
-              lhs.startOffset == rhs.startOffset && lhs.onePastEndOffset == rhs.onePastEndOffset
+              lhs.startOffset == rhs.startOffset
             ) // TODO: change `groupWhile` in Americium to preserve the container type on the outer collection rather than the inner one.
+            .map { blocksStartingAtTheSamePartOfTheFile =>
+              val maximumOnePastEndOffset =
+                blocksStartingAtTheSamePartOfTheFile
+                  .map(_.onePastEndOffset)
+                  .max
+
+              blocksStartingAtTheSamePartOfTheFile.filter(
+                maximumOnePastEndOffset == _.onePastEndOffset
+              )
+            }
             .map { blocksCoveringTheSamePartOfTheFile =>
               val parallelMatchesGroupIds = blocksCoveringTheSamePartOfTheFile
                 .map(
