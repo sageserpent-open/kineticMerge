@@ -1771,7 +1771,7 @@ class SectionedCodeTest:
   @TestFactory
   def mergeSmokeTest(): DynamicTests =
     testPlansFavouringMatches
-      .withLimit(200)
+      .withLimit(500)
       .dynamicTests { testPlan =>
         import testPlan.*
         // Scalafmt 3.8.5 will wreck this block of code if it isn't protected by
