@@ -8,6 +8,7 @@ import com.sageserpent.kineticmerge.core.MatchAnalysis.*
 import com.sageserpent.kineticmerge.core.SectionedCode.Block
 import com.typesafe.scalalogging.StrictLogging
 
+import scala.annotation.tailrec
 import scala.collection.Searching
 import scala.collection.immutable.SortedSet
 
@@ -165,25 +166,26 @@ object SectionedCode extends StrictLogging:
 
           val sortedMatchedBlocks = matchedBlocks.sortBy(_.startOffset)
 
-          val (onePastLastEndOffset, fillerBlocks) =
-            sortedMatchedBlocks.foldLeft(0 -> Vector.empty[Block[Element]]) {
-              case ((currentEnd, fillers), block) =>
-                val nextFillers =
-                  if block.startOffset > currentEnd then
-                    val Searching.Found(startingSectionIndex) =
-                      file.searchByStartOffset(currentEnd): @unchecked
-                    val Searching.Found(endingSectionIndex) =
-                      file.searchByStartOffset(block.startOffset): @unchecked
-                    fillers :+ Block(
-                      parallelMatchesGroupIds = SortedSet.empty,
-                      sectionsCoveredByGroup = file.sections
-                        .slice(startingSectionIndex, endingSectionIndex)
-                    )
-                  else fillers
-                (currentEnd max block.onePastEndOffset) -> nextFillers
-            }
-
           val allFillerBlocks =
+            val (onePastLastEndOffset, fillerBlocks) =
+              sortedMatchedBlocks.foldLeft(0 -> Vector.empty[Block[Element]]) {
+                case ((currentEnd, fillers), block) =>
+                  val nextFillers =
+                    if block.startOffset > currentEnd then
+                      val Searching.Found(startingSectionIndex) =
+                        file.searchByStartOffset(currentEnd): @unchecked
+                      val Searching.Found(endingSectionIndex) =
+                        file.searchByStartOffset(block.startOffset): @unchecked
+                      fillers :+ Block(
+                        parallelMatchesGroupIds = SortedSet.empty,
+                        sectionsCoveredByGroup = file.sections
+                          .slice(startingSectionIndex, endingSectionIndex)
+                      )
+                    else fillers
+                  (currentEnd max block.onePastEndOffset) -> nextFillers
+              }
+            end val
+
             if onePastLastEndOffset < file.size then
               val Searching.Found(startingSectionIndex) =
                 file.searchByStartOffset(onePastLastEndOffset): @unchecked
@@ -193,12 +195,19 @@ object SectionedCode extends StrictLogging:
                   file.sections.drop(startingSectionIndex)
               )
             else fillerBlocks
+            end if
+          end allFillerBlocks
 
           val blocksSortedInOrderOfAppearanceInTheFile =
             (matchedBlocks ++ allFillerBlocks).toIndexedSeq.sortBy(block =>
               (
                 block.startOffset,
-                block.onePastEndOffset
+                // NASTY HACK: using the negative of the one-past-end offset
+                // causes a nested block that aligns with the start of its
+                // nesting block to come *after* said nesting block: that in
+                // turn allows the simplistic logic in `eliminateNestedBlocks`
+                // to deal with this situation.
+                -block.onePastEndOffset
               )
             )
 
@@ -229,7 +238,51 @@ object SectionedCode extends StrictLogging:
             }
             .toIndexedSeq
 
-          path -> condensedBlocks
+          val withoutNestedBlocks =
+            // This only eliminates nested blocks that follow their nesting
+            // blocks; see the comment above regarding block sort order.
+            @tailrec
+            def eliminateFollowingNestedBlocks(
+                startOffset: ParallelMatchesGroupId,
+                onePastEndOffset: ParallelMatchesGroupId,
+                blocksToExamine: IndexedSeq[Block[Element]],
+                partialResult: IndexedSeq[Block[Element]]
+            ): IndexedSeq[Block[Element]] =
+              if blocksToExamine.isEmpty then partialResult
+              else
+                val head = blocksToExamine.head
+
+                // NOTE: strictly speaking, `head` might just cover the same
+                // content, but as we have condensed the blocks already, we
+                // don't have to worry about that possibility.
+                val headIsNested =
+                  startOffset <= head.startOffset && onePastEndOffset >= head.onePastEndOffset
+
+                if headIsNested then
+                  eliminateFollowingNestedBlocks(
+                    startOffset,
+                    onePastEndOffset,
+                    blocksToExamine.tail,
+                    partialResult
+                  )
+                else
+                  eliminateFollowingNestedBlocks(
+                    head.startOffset,
+                    head.onePastEndOffset,
+                    blocksToExamine.tail,
+                    partialResult.appended(head)
+                  )
+                end if
+
+            eliminateFollowingNestedBlocks(
+              startOffset = -1,
+              onePastEndOffset = 0,
+              blocksToExamine = condensedBlocks,
+              partialResult = Vector.empty
+            )
+          end withoutNestedBlocks
+
+          path -> withoutNestedBlocks
         }
       end blocksForASide
 
