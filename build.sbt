@@ -115,5 +115,6 @@ lazy val root = (project in file("."))
     libraryDependencies += "org.typelevel" %% "kittens" % "3.5.0",
     Test / test / logLevel                 := Level.Error,
     Test / fork                            := true,
-    Test / testForkedParallel              := true
+    Test / testForkedParallel              := true,
+    Test / javaOptions ++= Seq("-Xmx8G"),
   )
