@@ -202,7 +202,12 @@ object SectionedCode extends StrictLogging:
             (matchedBlocks ++ allFillerBlocks).toIndexedSeq.sortBy(block =>
               (
                 block.startOffset,
-                block.onePastEndOffset
+                // NASTY HACK: using the negative of the one-past-end offset
+                // causes a nested block that aligns with the start of its
+                // nesting block to come *after* said nesting block: that in
+                // turn allows the simplistic logic in `eliminateNestedBlocks`
+                // to deal with this situation.
+                -block.onePastEndOffset
               )
             )
 
@@ -217,18 +222,8 @@ object SectionedCode extends StrictLogging:
               // indeed the file location, but on the same side we want the
               // parallel matches groups to refer to the exact same part of the
               // file.
-              lhs.startOffset == rhs.startOffset
+              lhs.startOffset == rhs.startOffset && lhs.onePastEndOffset == rhs.onePastEndOffset
             ) // TODO: change `groupWhile` in Americium to preserve the container type on the outer collection rather than the inner one.
-            .map { blocksStartingAtTheSamePartOfTheFile =>
-              val maximumOnePastEndOffset =
-                blocksStartingAtTheSamePartOfTheFile
-                  .map(_.onePastEndOffset)
-                  .max
-
-              blocksStartingAtTheSamePartOfTheFile.filter(
-                maximumOnePastEndOffset == _.onePastEndOffset
-              )
-            }
             .map { blocksCoveringTheSamePartOfTheFile =>
               val parallelMatchesGroupIds = blocksCoveringTheSamePartOfTheFile
                 .map(
@@ -244,8 +239,10 @@ object SectionedCode extends StrictLogging:
             .toIndexedSeq
 
           val withoutNestedBlocks =
+            // This only eliminates nested blocks that follow their nesting
+            // blocks; see the comment above regarding block sort order.
             @tailrec
-            def eliminateNestedBlocks(
+            def eliminateFollowingNestedBlocks(
                 startOffset: ParallelMatchesGroupId,
                 onePastEndOffset: ParallelMatchesGroupId,
                 blocksToExamine: IndexedSeq[Block[Element]],
@@ -262,14 +259,14 @@ object SectionedCode extends StrictLogging:
                   startOffset <= head.startOffset && onePastEndOffset >= head.onePastEndOffset
 
                 if headIsNested then
-                  eliminateNestedBlocks(
+                  eliminateFollowingNestedBlocks(
                     startOffset,
                     onePastEndOffset,
                     blocksToExamine.tail,
                     partialResult
                   )
                 else
-                  eliminateNestedBlocks(
+                  eliminateFollowingNestedBlocks(
                     head.startOffset,
                     head.onePastEndOffset,
                     blocksToExamine.tail,
@@ -277,7 +274,7 @@ object SectionedCode extends StrictLogging:
                   )
                 end if
 
-            eliminateNestedBlocks(
+            eliminateFollowingNestedBlocks(
               startOffset = -1,
               onePastEndOffset = 0,
               blocksToExamine = condensedBlocks,
