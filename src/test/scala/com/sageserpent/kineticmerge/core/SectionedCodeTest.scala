@@ -1821,6 +1821,64 @@ class SectionedCodeTest:
       }
   end mergeSmokeTest
 
+  @Test
+  def reproduceCrossedOverMatches(): Unit =
+    val recipe = Source
+      .fromResource("recipeForCrossedOverMatches.txt")
+      .getLines()
+      .mkString("\n")
+
+    testPlansFavouringMatches
+      .withRecipe(recipe)
+      .supplyTo { testPlan =>
+        import testPlan.*
+        // Scalafmt 3.8.5 will wreck this block of code if it isn't protected by
+        // braces; it seems it doesn't play well with the preceding import
+        // statement.
+        {
+          println(
+            s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
+          )
+          println("Sizes of common to all three sides...")
+          pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
+          println("Sizes of common to base and left...")
+          pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
+          println("Sizes of common to base and right...")
+          pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
+          println("Sizes of common to left and right...")
+          pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
+
+          val configuration = Configuration(
+            minimumMatchSize = minimumPossibleExpectedMatchSize,
+            thresholdSizeFractionForMatching =
+              minimumSizeFractionForMotionDetection,
+            minimumAmbiguousMatchSize = 0,
+            ambiguousMatchesThreshold = 10
+          )
+
+          SectionedCode.of(
+            baseSources,
+            leftSources,
+            rightSources
+          )(
+            configuration,
+            reconcileMatchesInvolvingOverlappingSections = true
+          ) match
+            case Right(analysis) =>
+              given ProgressRecording = configuration.progressRecording
+
+              assertDoesNotThrow(() => analysis.merge)
+
+            case Left(overlappingSections: AdmissibleFailure) =>
+              pprintCustomised.pprintln(overlappingSections)
+              Trials.reject()
+
+            case Left(unexpectedException) => throw unexpectedException
+          end match
+        }
+      }
+  end reproduceCrossedOverMatches
+
 end SectionedCodeTest
 
 object SectionedCodeTest:
