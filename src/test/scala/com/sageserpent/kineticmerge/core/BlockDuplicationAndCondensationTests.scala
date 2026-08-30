@@ -620,6 +620,81 @@ class BlockDuplicationAndCondensationTests:
   end aBlockIsTriplicatedOnTwoSides
 
   @TestFactory
+  def partiallyRedundantPairwiseMatchGroupFusionSuppressesMove(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val placeholderPath: Path = 1
+
+      val blockA = Vector(1, 2, 3)
+      val blockB = Vector(4, 5, 6)
+      val blockC = Vector(7, 8, 9)
+
+      // Pattern 1: blockA + blockB on Base, blockA + blockC on Left (edited B->C), blockA + blockB on Right
+      // Pattern 2: blockA + blockB on Base, Left, and Right (AllSides match for both A and B)
+      val baseElements: IndexedSeq[Element]  = blockA ++ blockB ++ Vector(100) ++ blockA ++ blockB
+      val leftElements: IndexedSeq[Element]  = blockA ++ blockC ++ Vector(100) ++ blockA ++ blockB
+      val rightElements: IndexedSeq[Element] = blockA ++ blockB ++ Vector(100) ++ blockA ++ blockB
+
+      val baseSources = FakeSources(
+        contentsByPath = Map(placeholderPath -> baseElements),
+        label = "base"
+      )
+
+      val leftSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> (if mirrorImage then rightElements
+                              else leftElements)
+        ),
+        label = "left"
+      )
+
+      val rightSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> (if mirrorImage then leftElements
+                              else rightElements)
+        ),
+        label = "right"
+      )
+
+      val Right(sectionedCode) = SectionedCode.of(
+        baseSources = baseSources,
+        leftSources = leftSources,
+        rightSources = rightSources
+      )(configuration): @unchecked
+
+      val LongestCommonSubsequence(
+        baseContributions,
+        leftContributions,
+        rightContributions,
+        _,
+        _,
+        _,
+        _
+      ) = sectionedCode
+        .longestCommonSubsequenceOf(path = placeholderPath)
+        .adaptedForMirroring(mirrorImage)
+
+      println(s"Base contributions: ${pprintCustomised(baseContributions)}")
+      println(s"Left contributions: ${pprintCustomised(leftContributions)}")
+      println(s"Right contributions: ${pprintCustomised(rightContributions)}")
+
+      // Both Pattern 1 and Pattern 2 should be aligned cleanly in LCS without Group 2's pairwise B match being wrongly fused into Pattern 2's AllSides group ID.
+      assert(
+        baseContributions.asElementContributions.collect {
+          case Contribution.CommonToBaseAndRightOnly(c) => c
+          case Contribution.CommonToBaseAndLeftOnly(c)  => c
+        }.contains(blockB)
+      )
+    }
+  end partiallyRedundantPairwiseMatchGroupFusionSuppressesMove
+
+  @TestFactory
   def duplicateBlocksWithAnEditAreMerged(): DynamicTests =
     val configuration = Configuration(
       minimumMatchSize = 1,
