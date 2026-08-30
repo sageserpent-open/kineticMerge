@@ -2306,10 +2306,7 @@ object MatchAnalysis extends StrictLogging:
             accumulatedGroupIdCandidateCutovers.sets
               .collect {
                 case (groupId, candidateReplacementGroupIds)
-                    if 1 == candidateReplacementGroupIds.size && groupsOfParallelMatches(groupId).forall {
-                      case pairwise: PairwiseMatch => accumulatedRedundantPairwiseMatches.contains(pairwise)
-                      case _ => false
-                    } =>
+                    if 1 == candidateReplacementGroupIds.size =>
                   val replacementGroupId = candidateReplacementGroupIds.head
                   val groupsOfParallelMatches = this.groupsOfParallelMatches
                   logger.debug(

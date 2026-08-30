@@ -620,6 +620,82 @@ class BlockDuplicationAndCondensationTests:
   end aBlockIsTriplicatedOnTwoSides
 
   @TestFactory
+  def partiallyRedundantPairwiseMatchGroupFusionSuppressesMove(): DynamicTests =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
+      val placeholderPath: Path = 1
+
+      val blockA = Vector(1, 2, 3)
+      val blockB = Vector(4, 5, 6)
+
+      val baseElements: IndexedSeq[Element] = blockA ++ blockB
+
+      val baseSources = FakeSources(
+        contentsByPath = Map(placeholderPath -> baseElements),
+        label = "base"
+      )
+
+      val leftElements: IndexedSeq[Element] = blockA
+
+      val rightElements: IndexedSeq[Element] = blockA ++ blockB
+
+      val leftSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> (if mirrorImage then rightElements
+                              else leftElements)
+        ),
+        label = "left"
+      )
+
+      val rightSources = FakeSources(
+        contentsByPath = Map(
+          placeholderPath -> (if mirrorImage then leftElements
+                              else rightElements)
+        ),
+        label = "right"
+      )
+
+      val Right(sectionedCode) = SectionedCode.of(
+        baseSources = baseSources,
+        leftSources = leftSources,
+        rightSources = rightSources
+      )(configuration): @unchecked
+
+      val LongestCommonSubsequence(
+        baseContributions,
+        leftContributions,
+        rightContributions,
+        _,
+        _,
+        _,
+        _
+      ) = sectionedCode
+        .longestCommonSubsequenceOf(path = placeholderPath)
+        .adaptedForMirroring(mirrorImage)
+
+      println(s"Base contributions: ${pprintCustomised(baseContributions)}")
+      println(s"Left contributions: ${pprintCustomised(leftContributions)}")
+      println(s"Right contributions: ${pprintCustomised(rightContributions)}")
+
+      assert(
+        Vector(
+          Contribution.Common(blockA),
+          Contribution.CommonToBaseAndRightOnly(blockB)
+        ) == baseContributions.asElementContributions || Vector(
+          Contribution.Common(blockA),
+          Contribution.CommonToBaseAndLeftOnly(blockB)
+        ) == baseContributions.asElementContributions
+      )
+    }
+  end partiallyRedundantPairwiseMatchGroupFusionSuppressesMove
+
+  @TestFactory
   def duplicateBlocksWithAnEditAreMerged(): DynamicTests =
     val configuration = Configuration(
       minimumMatchSize = 1,
