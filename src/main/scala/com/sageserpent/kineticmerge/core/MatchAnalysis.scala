@@ -2307,7 +2307,18 @@ object MatchAnalysis extends StrictLogging:
               .collect {
                 case (groupId, candidateReplacementGroupIds)
                     if 1 == candidateReplacementGroupIds.size =>
-                  groupId -> candidateReplacementGroupIds.head
+                  val replacementGroupId = candidateReplacementGroupIds.head
+                  val groupsOfParallelMatches = this.groupsOfParallelMatches
+                  logger.debug(
+                    s"""Fusing parallel pairwise matches group: ${pprintCustomised(
+                        groupId -> groupsOfParallelMatches(groupId)
+                      )} into parallel matches group: ${pprintCustomised(
+                        replacementGroupId -> groupsOfParallelMatches(
+                          replacementGroupId
+                        )
+                      )}."""
+                  )
+                  groupId -> replacementGroupId
               }
           )
         end val
