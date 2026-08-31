@@ -1978,23 +1978,17 @@ object MatchAnalysis extends StrictLogging:
               haveTrimmedMatches = false
             )
             .matchesAndTheirSections
-            .withoutRedundantPairwiseMatches
-
-        val backTranslatedMatches =
-          backTranslatedMatchesAndTheirSections.matches
 
         val parallelMatchesGroupIdsByMatch =
           Map.from(
             groupsOfBackTranslatedParallelMatches.zipWithIndex.flatMap(
-              (parallelMatches, groupId) =>
-                parallelMatches
-                  .filter(backTranslatedMatches.contains)
-                  .map(_ -> groupId)
+              (parallelMatches, groupId) => parallelMatches.map(_ -> groupId)
             )
           )
 
         backTranslatedMatchesAndTheirSections
           .copy(parallelMatchesGroupIdsByMatch = parallelMatchesGroupIdsByMatch)
+          .withoutRedundantPairwiseMatches
       end parallelMatchesOnly
 
       private def isSubsumedNonTriviallyByAnAllSidesMatch(
@@ -2197,14 +2191,138 @@ object MatchAnalysis extends StrictLogging:
         )
       end withMatches
 
-      // Cleans up the state when a putative all-sides match that would have
-      // been ambiguous on one side with another all-sides match was partially
-      // suppressed by a larger pairwise match. This situation results in a
-      // pairwise match that shares its sections on both sides with the other
-      // all-sides match; remove any such redundant pairwise matches.
       def withoutRedundantPairwiseMatches: MatchesAndTheirSections =
-        val redundantMatches =
-          sectionsAndTheirMatches.values.toSet.filter(isRedundantPairwiseMatch)
+        // PLAN: for each redundant pairwise match, find its parallel matches
+        // group id and those of the associated all-sides matches that make it
+        // redundant.
+        // Assemble the group ids from the all-sides matches according to the
+        // group ids of the redundant pairwise matches - any group id key from a
+        // redundant pairwise match that associates with more than one group id
+        // from an all-sides match is rejected.
+        // Cut over the mapping in `parallelMatchesGroupIdsByMatch` from the
+        // surviving group id keys to the unique associated group ids.
+        // Then remove the redundant pairwise matches!
+
+        object RedundantMatch:
+          def unapply(aMatch: GenericMatch[Element]): Option[
+            (
+                PairwiseMatch,
+                Option[ParallelMatchesGroupId],
+                collection.Set[ParallelMatchesGroupId]
+            )
+          ] =
+            aMatch match
+              case baseAndLeft @ Match.BaseAndLeft(baseSection, leftSection) =>
+                val allSides = sectionsAndTheirMatches
+                  .get(baseSection)
+                  .intersect(sectionsAndTheirMatches.get(leftSection))
+                  .filter(_.isAnAllSidesMatch)
+
+                val groupIdForBaseAndLeft =
+                  parallelMatchesGroupIdsByMatch.get(aMatch)
+
+                Option.when(allSides.nonEmpty)(
+                  baseAndLeft,
+                  groupIdForBaseAndLeft,
+                  allSides.flatMap(parallelMatchesGroupIdsByMatch.get)
+                )
+
+              case baseAndRight @ Match.BaseAndRight(
+                    baseSection,
+                    rightSection
+                  ) =>
+                val allSides = sectionsAndTheirMatches
+                  .get(baseSection)
+                  .intersect(sectionsAndTheirMatches.get(rightSection))
+                  .filter(_.isAnAllSidesMatch)
+
+                val groupIdForBaseAndRight =
+                  parallelMatchesGroupIdsByMatch.get(aMatch)
+
+                Option.when(allSides.nonEmpty)(
+                  baseAndRight,
+                  groupIdForBaseAndRight,
+                  allSides.flatMap(parallelMatchesGroupIdsByMatch.get)
+                )
+
+              case leftAndRight @ Match.LeftAndRight(
+                    leftSection,
+                    rightSection
+                  ) =>
+                val allSides = sectionsAndTheirMatches
+                  .get(leftSection)
+                  .intersect(sectionsAndTheirMatches.get(rightSection))
+                  .filter(_.isAnAllSidesMatch)
+
+                val groupIdForLeftAndRight =
+                  parallelMatchesGroupIdsByMatch.get(aMatch)
+
+                Option.when(allSides.nonEmpty)(
+                  leftAndRight,
+                  groupIdForLeftAndRight,
+                  allSides.flatMap(parallelMatchesGroupIdsByMatch.get)
+                )
+
+              case _: Match.AllSides[Section[Element]] => None
+        end RedundantMatch
+
+        val (
+          redundantMatches: collection.Set[PairwiseMatch],
+          groupIdCutovers: collection.Map[
+            ParallelMatchesGroupId,
+            ParallelMatchesGroupId
+          ]
+        ) =
+          val accumulatedRedundantPairwiseMatches =
+            mutable.Set.empty[PairwiseMatch]
+          val accumulatedGroupIdCandidateCutovers =
+            mutable.MultiDict
+              .empty[ParallelMatchesGroupId, ParallelMatchesGroupId]
+
+          sectionsAndTheirMatches.values.foreach {
+            case RedundantMatch(
+                  pairwiseMatch,
+                  Some(groupIdForPairwiseMatch),
+                  groupIdsForAllSidesMatches
+                ) =>
+              accumulatedRedundantPairwiseMatches.add(pairwiseMatch)
+              groupIdsForAllSidesMatches.foreach(
+                accumulatedGroupIdCandidateCutovers.addOne(
+                  groupIdForPairwiseMatch,
+                  _
+                )
+              )
+
+            case RedundantMatch(pairwiseMatch, None, _) =>
+              accumulatedRedundantPairwiseMatches.add(pairwiseMatch)
+
+            case _ =>
+          }
+
+          (
+            accumulatedRedundantPairwiseMatches,
+            accumulatedGroupIdCandidateCutovers.sets
+              .collect {
+                case (groupId, candidateReplacementGroupIds)
+                    // All the pairwise matches have to have just one consistent
+                    // group id cutover and that has to be consistent between
+                    // them.
+                    if 1 == candidateReplacementGroupIds.size =>
+                  val replacementGroupId = candidateReplacementGroupIds.head
+                  val groupsOfParallelMatches = this.groupsOfParallelMatches
+                  logger.debug(
+                    s"""Fusing parallel pairwise matches group: ${pprintCustomised(
+                        groupId -> groupsOfParallelMatches(groupId)
+                      )} into parallel matches group: ${pprintCustomised(
+                        replacementGroupId -> groupsOfParallelMatches(
+                          replacementGroupId
+                        )
+                      )}."""
+                  )
+                  groupId -> replacementGroupId
+              }
+          )
+        end val
 
         if redundantMatches.nonEmpty then
           logger.debug(
@@ -2212,27 +2330,20 @@ object MatchAnalysis extends StrictLogging:
           )
         end if
 
-        withoutTheseMatches(redundantMatches)
-      end withoutRedundantPairwiseMatches
+        val withoutRedundantMatches = withoutTheseMatches(redundantMatches)
 
-      private def isRedundantPairwiseMatch(aMatch: GenericMatch[Element]) =
-        aMatch match
-          case Match.BaseAndLeft(baseSection, leftSection) =>
-            sectionsAndTheirMatches
-              .get(baseSection)
-              .intersect(sectionsAndTheirMatches.get(leftSection))
-              .exists(_.isAnAllSidesMatch)
-          case Match.BaseAndRight(baseSection, rightSection) =>
-            sectionsAndTheirMatches
-              .get(baseSection)
-              .intersect(sectionsAndTheirMatches.get(rightSection))
-              .exists(_.isAnAllSidesMatch)
-          case Match.LeftAndRight(leftSection, rightSection) =>
-            sectionsAndTheirMatches
-              .get(leftSection)
-              .intersect(sectionsAndTheirMatches.get(rightSection))
-              .exists(_.isAnAllSidesMatch)
-          case _: Match.AllSides[Section[Element]] => false
+        val parallelMatchesGroupIdsByMatchWithReplacements =
+          withoutRedundantMatches.parallelMatchesGroupIdsByMatch.transform(
+            (_, groupId) =>
+              // NOTE: need a fallback here because we want to use the cutovers
+              // on *all* the group ids, not just the ones that need replacing.
+              groupIdCutovers.getOrElse(key = groupId, default = groupId)
+          )
+
+        withoutRedundantMatches.copy(parallelMatchesGroupIdsByMatch =
+          parallelMatchesGroupIdsByMatchWithReplacements
+        )
+      end withoutRedundantPairwiseMatches
 
       def reconcileOverlappingMatches(
           enabled: Boolean
