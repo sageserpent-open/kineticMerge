@@ -2284,16 +2284,16 @@ object MatchAnalysis extends StrictLogging:
                   pairwiseMatch,
                   Some(groupIdForPairwiseMatch),
                   groupIdsForAllSidesMatches
-                ) if 1 == groupIdsForAllSidesMatches.size =>
-              val replacementGroupId = groupIdsForAllSidesMatches.head
-
+                ) =>
               accumulatedRedundantPairwiseMatches.add(pairwiseMatch)
-              accumulatedGroupIdCandidateCutovers.addOne(
-                groupIdForPairwiseMatch,
-                replacementGroupId
+              groupIdsForAllSidesMatches.foreach(
+                accumulatedGroupIdCandidateCutovers.addOne(
+                  groupIdForPairwiseMatch,
+                  _
+                )
               )
 
-            case RedundantMatch(pairwiseMatch, _, _) =>
+            case RedundantMatch(pairwiseMatch, None, _) =>
               accumulatedRedundantPairwiseMatches.add(pairwiseMatch)
 
             case _ =>
@@ -2301,11 +2301,12 @@ object MatchAnalysis extends StrictLogging:
 
           (
             accumulatedRedundantPairwiseMatches,
-            // NOTE: need a fallback here because we want to use the cutovers on
-            // *all* the group ids, not just the ones that need replacing.
             accumulatedGroupIdCandidateCutovers.sets
               .collect {
                 case (groupId, candidateReplacementGroupIds)
+                    // All the pairwise matches have to have just one consistent
+                    // group id cutover and that has to be consistent between
+                    // them.
                     if 1 == candidateReplacementGroupIds.size =>
                   val replacementGroupId = candidateReplacementGroupIds.head
                   val groupsOfParallelMatches = this.groupsOfParallelMatches
@@ -2334,6 +2335,8 @@ object MatchAnalysis extends StrictLogging:
         val parallelMatchesGroupIdsByMatchWithReplacements =
           withoutRedundantMatches.parallelMatchesGroupIdsByMatch.transform(
             (_, groupId) =>
+              // NOTE: need a fallback here because we want to use the cutovers
+              // on *all* the group ids, not just the ones that need replacing.
               groupIdCutovers.getOrElse(key = groupId, default = groupId)
           )
 
