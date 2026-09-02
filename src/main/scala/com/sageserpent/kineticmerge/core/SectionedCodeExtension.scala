@@ -1073,6 +1073,17 @@ object SectionedCodeExtension extends StrictLogging:
         s"Coincident insertions or edits on right: ${pprintCustomised(coincidentInsertionsOrEditsOnRight)}."
       )
 
+      val firstAndLastMatchesInParallelMatchesGroups
+          : Set[Match[Section[Element]]] =
+        sectionedCode.groupsOfParallelMatches.values.flatMap { matches =>
+          if matches.nonEmpty then Seq(matches.head, matches.last)
+          else Seq.empty
+        }.toSet
+
+      val isFirstOrLastInParallelMatchesGroup
+          : Match[Section[Element]] => Boolean =
+        firstAndLastMatchesInParallelMatchesGroups.contains
+
       val moveEvaluation @ MoveEvaluation(
         moveDestinationsReport,
         migratedEditSuppressions,
@@ -1082,7 +1093,11 @@ object SectionedCodeExtension extends StrictLogging:
         MoveDestinationsReport.evaluateSpeculativeSourcesAndDestinations(
           speculativeMigrationsBySource,
           speculativeMoveDestinations
-        )(matchesFor)
+        )(
+          matchesFor = matchesFor,
+          isFirstOrLastInParallelMatchesGroup =
+            isFirstOrLastInParallelMatchesGroup
+        )
 
       logger.debug(s"Move evaluation: ${pprintCustomised(moveEvaluation)}.")
 
