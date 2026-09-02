@@ -1080,9 +1080,22 @@ object SectionedCodeExtension extends StrictLogging:
           else Seq.empty
         }.toSet
 
+      def hasMigratedEditOrDeletion(aMatch: Match[Section[Element]]): Boolean =
+        aMatch.baseContribution.exists { baseSection =>
+          speculativeMigrationsBySource.get(baseSection).exists {
+            case SpeculativeContentMigration.CoincidentEditOrDeletion(_) => true
+            case SpeculativeContentMigration.LeftEditOrDeletion(_, _)     => true
+            case SpeculativeContentMigration.RightEditOrDeletion(_, _)    => true
+            case SpeculativeContentMigration.Conflict(_, _, _)            => true
+            case _                                                        => false
+          }
+        }
+
       val isFirstOrLastInParallelMatchesGroup
           : Match[Section[Element]] => Boolean =
-        firstAndLastMatchesInParallelMatchesGroups.contains
+        aMatch =>
+          firstAndLastMatchesInParallelMatchesGroups.contains(aMatch) ||
+            hasMigratedEditOrDeletion(aMatch)
 
       val moveEvaluation @ MoveEvaluation(
         moveDestinationsReport,
@@ -1169,18 +1182,38 @@ object SectionedCodeExtension extends StrictLogging:
         selection(file.sections.view.drop(1 + indexOfSection))
       end succeedingAnchoredContentUsingSelection
 
+      def parallelGroupSectionsFor(
+          anchor: Section[Element],
+          sideExtractor: Match[Section[Element]] => Option[Section[Element]]
+      ): Set[Section[Element]] =
+        val matches: Set[Match[Section[Element]]] =
+          sectionedCode.matchesFor(anchor).toSet
+        matches.flatMap { (aMatch: Match[Section[Element]]) =>
+          sectionedCode.parallelMatchesGroupIdsByMatch.get(aMatch).toSeq.flatMap { groupId =>
+            sectionedCode.groupsOfParallelMatches.get(groupId) match
+              case Some(gMatches) =>
+                gMatches.toSeq.flatMap(sideExtractor)
+              case None =>
+                Seq.empty
+          }
+        }
+
       def anchoredContentFromSource(
           sourceAnchor: Section[Element]
       ): (IndexedSeq[Section[Element]], IndexedSeq[Section[Element]]) =
         val file =
           sectionedCode.base(sectionedCode.basePathFor(sourceAnchor))
 
+        val baseGroupSections =
+          parallelGroupSectionsFor(sourceAnchor, _.baseContribution)
+
         def selection(
             candidates: IndexedSeqView[Section[Element]]
         ): IndexedSeq[Section[Element]] =
           candidates
             .takeWhile(candidate =>
-              !basePreservations.contains(candidate) && !sourceAnchors
+              (!basePreservations.contains(candidate) || baseGroupSections
+                .contains(candidate)) && !sourceAnchors
                 .contains(
                   candidate
                 )
@@ -1203,7 +1236,7 @@ object SectionedCodeExtension extends StrictLogging:
           Option[IndexedSeq[Section[Element]]],
           Option[IndexedSeq[Section[Element]]]
       ) =
-        val (file, preservations, coincidentInsertionsOrEdits) =
+        val (file, preservations, coincidentInsertionsOrEdits, sideExtractor) =
           moveDestinationSide match
             case MoveDestinationSide.Left =>
               (
@@ -1211,7 +1244,8 @@ object SectionedCodeExtension extends StrictLogging:
                   sectionedCode.rightPathFor(oppositeSideAnchor.element)
                 ),
                 rightPreservations,
-                coincidentInsertionsOrEditsOnRight
+                coincidentInsertionsOrEditsOnRight,
+                (m: Match[Section[Element]]) => m.rightContribution
               )
             case MoveDestinationSide.Right =>
               (
@@ -1219,16 +1253,20 @@ object SectionedCodeExtension extends StrictLogging:
                   sectionedCode.leftPathFor(oppositeSideAnchor.element)
                 ),
                 leftPreservations,
-                coincidentInsertionsOrEditsOnLeft
+                coincidentInsertionsOrEditsOnLeft,
+                (m: Match[Section[Element]]) => m.leftContribution
               )
+
+        val oppositeGroupSections =
+          parallelGroupSectionsFor(oppositeSideAnchor.element, sideExtractor)
 
         def selection(
             candidates: IndexedSeqView[Section[Element]]
         ): IndexedSeq[Section[Element]] = candidates
           .takeWhile(candidate =>
-            !preservations.contains(
+            (!preservations.contains(
               candidate
-            ) && !oppositeSideAnchors.contains(
+            ) || oppositeGroupSections.contains(candidate)) && !oppositeSideAnchors.contains(
               candidate
             ) && !coincidentInsertionsOrEdits.contains(candidate)
           )
@@ -1288,7 +1326,7 @@ object SectionedCodeExtension extends StrictLogging:
           moveDestinationSide: MoveDestinationSide,
           moveDestinationAnchor: Section[Element]
       ): (IndexedSeq[Section[Element]], IndexedSeq[Section[Element]]) =
-        val (file, preservations, coincidentInsertionsOrEdits) =
+        val (file, preservations, coincidentInsertionsOrEdits, sideExtractor) =
           moveDestinationSide match
             case MoveDestinationSide.Left =>
               (
@@ -1296,7 +1334,8 @@ object SectionedCodeExtension extends StrictLogging:
                   sectionedCode.leftPathFor(moveDestinationAnchor)
                 ),
                 leftPreservations,
-                coincidentInsertionsOrEditsOnLeft
+                coincidentInsertionsOrEditsOnLeft,
+                (m: Match[Section[Element]]) => m.leftContribution
               )
             case MoveDestinationSide.Right =>
               (
@@ -1304,16 +1343,20 @@ object SectionedCodeExtension extends StrictLogging:
                   sectionedCode.rightPathFor(moveDestinationAnchor)
                 ),
                 rightPreservations,
-                coincidentInsertionsOrEditsOnRight
+                coincidentInsertionsOrEditsOnRight,
+                (m: Match[Section[Element]]) => m.rightContribution
               )
+
+        val destinationGroupSections =
+          parallelGroupSectionsFor(moveDestinationAnchor, sideExtractor)
 
         def selection(
             candidates: IndexedSeqView[Section[Element]]
         ): IndexedSeq[Section[Element]] = candidates
           .takeWhile(candidate =>
-            !preservations.contains(
+            (!preservations.contains(
               candidate
-            ) && !moveDestinationAnchors.contains(
+            ) || destinationGroupSections.contains(candidate)) && !moveDestinationAnchors.contains(
               candidate
             ) && !coincidentInsertionsOrEdits.contains(candidate)
           )
