@@ -1867,6 +1867,8 @@ object MatchAnalysis extends StrictLogging:
           override val progressRecording: ProgressRecording     =
             configuration.progressRecording
           override val label: String = "Meta-match analysis"
+          override val fuseMoreParallelMatchesGroups: Boolean  =
+            configuration.fuseMoreParallelMatchesGroups
         end metaMatchConfiguration
 
         given Eq[Section[Element]] = Eq.by(_.content: Seq[Element])
@@ -2301,26 +2303,28 @@ object MatchAnalysis extends StrictLogging:
 
           (
             accumulatedRedundantPairwiseMatches,
-            accumulatedGroupIdCandidateCutovers.sets
-              .collect {
-                case (groupId, candidateReplacementGroupIds)
-                    // All the pairwise matches have to have just one consistent
-                    // group id cutover and that has to be consistent between
-                    // them.
-                    if 1 == candidateReplacementGroupIds.size =>
-                  val replacementGroupId = candidateReplacementGroupIds.head
-                  val groupsOfParallelMatches = this.groupsOfParallelMatches
-                  logger.debug(
-                    s"""Fusing parallel pairwise matches group: ${pprintCustomised(
-                        groupId -> groupsOfParallelMatches(groupId)
-                      )} into parallel matches group: ${pprintCustomised(
-                        replacementGroupId -> groupsOfParallelMatches(
-                          replacementGroupId
-                        )
-                      )}."""
-                  )
-                  groupId -> replacementGroupId
-              }
+            if fuseMoreParallelMatchesGroups then
+              accumulatedGroupIdCandidateCutovers.sets
+                .collect {
+                  case (groupId, candidateReplacementGroupIds)
+                      // All the pairwise matches have to have just one consistent
+                      // group id cutover and that has to be consistent between
+                      // them.
+                      if 1 == candidateReplacementGroupIds.size =>
+                    val replacementGroupId = candidateReplacementGroupIds.head
+                    val groupsOfParallelMatches = this.groupsOfParallelMatches
+                    logger.debug(
+                      s"""Fusing parallel pairwise matches group: ${pprintCustomised(
+                          groupId -> groupsOfParallelMatches(groupId)
+                        )} into parallel matches group: ${pprintCustomised(
+                          replacementGroupId -> groupsOfParallelMatches(
+                            replacementGroupId
+                          )
+                        )}."""
+                    )
+                    groupId -> replacementGroupId
+                }
+            else Map.empty
           )
         end val
 
@@ -3818,6 +3822,7 @@ object MatchAnalysis extends StrictLogging:
     val ambiguousMatchesThreshold: Int
     val progressRecording: ProgressRecording
     val label: String = ""
+    val fuseMoreParallelMatchesGroups: Boolean = false
   end AbstractConfiguration
 
   class AdmissibleFailure(message: String) extends RuntimeException(message)
@@ -3840,7 +3845,8 @@ object MatchAnalysis extends StrictLogging:
       minimumAmbiguousMatchSize: Int,
       ambiguousMatchesThreshold: Int,
       progressRecording: ProgressRecording = NoProgressRecording,
-      override val label: String = ""
+      override val label: String = "",
+      override val fuseMoreParallelMatchesGroups: Boolean = false
   ) extends AbstractConfiguration:
     // TODO: why would `minimumMatchSize` be zero?
     require(0 <= minimumMatchSize)

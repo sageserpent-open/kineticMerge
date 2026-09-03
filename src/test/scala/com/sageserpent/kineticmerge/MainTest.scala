@@ -14,7 +14,7 @@ import com.sageserpent.kineticmerge.core.Token.{
   equality as tokenEquality
 }
 import com.softwaremill.tagging.*
-import org.junit.jupiter.api.TestFactory
+import org.junit.jupiter.api.{Test, TestFactory}
 import os.{Path, RelPath}
 
 import scala.util.Random
@@ -3529,5 +3529,18 @@ class MainTest:
           .unsafeRunSync()
       }
   end cleanMergeOfABinaryFileDeletedInBothBranches
+
+  @Test
+  def fuseMoreParallelMatchesGroupsOptionParsing(): Unit =
+    // Passing --help returns exit code 0 when option parsing succeeds.
+    val defaultHelpExitCode = Main.apply("--help")
+    assert(0 == defaultHelpExitCode)
+
+    val optionHelpExitCode = Main.apply(
+      "--fuse-more-parallel-matches-groups",
+      "--help"
+    )
+    assert(0 == optionHelpExitCode)
+  end fuseMoreParallelMatchesGroupsOptionParsing
 
 end MainTest

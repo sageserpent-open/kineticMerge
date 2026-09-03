@@ -111,6 +111,13 @@ object Main extends StrictLogging:
           .text(
             "Do not commit a successful merge - leave merged changes staged in the index for review. Off by default."
           ),
+        opt[Unit](name = "fuse-more-parallel-matches-groups")
+          .action((fuseMoreParallelMatchesGroups, commandLineArguments) =>
+            commandLineArguments.copy(fuseMoreParallelMatchesGroups = true)
+          )
+          .text(
+            "Fuse parallel matches groups when removing redundant pairwise matches. Off by default."
+          ),
         opt[Unit](name = "no-ff")
           .action((noFastForward, commandLineArguments) =>
             commandLineArguments.copy(noFastForward = true)
@@ -271,7 +278,8 @@ object Main extends StrictLogging:
       thresholdSizeFractionForMatching,
       minimumAmbiguousMatchSize,
       ambiguousMatchesThreshold,
-      progressRecording = progressRecording
+      progressRecording = progressRecording,
+      fuseMoreParallelMatchesGroups = fuseMoreParallelMatchesGroups
     )
 
     val workflow = for
@@ -454,7 +462,8 @@ object Main extends StrictLogging:
       minimumMatchSize: Int,
       thresholdSizeFractionForMatching: Double,
       minimumAmbiguousMatchSize: Int,
-      ambiguousMatchesThreshold: Int
+      ambiguousMatchesThreshold: Int,
+      fuseMoreParallelMatchesGroups: Boolean
   )
 
   enum Change:
@@ -2870,7 +2879,8 @@ object Main extends StrictLogging:
         2,
       thresholdSizeFractionForMatching = 0,
       minimumAmbiguousMatchSize = 10,
-      ambiguousMatchesThreshold = 20
+      ambiguousMatchesThreshold = 20,
+      fuseMoreParallelMatchesGroups = false
     )
   end ApplicationRequest
 
