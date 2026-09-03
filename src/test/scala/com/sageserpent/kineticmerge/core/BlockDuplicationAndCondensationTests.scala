@@ -684,16 +684,16 @@ class BlockDuplicationAndCondensationTests:
       println(s"Right contributions: ${pprintCustomised(rightContributions)}")
 
       println(
-        s"Groups of parallel matches: ${pprintCustomised(sectionedCode.groupsOfParallelMatches).plainText}"
+        s"Groups of parallel matches: ${pprintCustomised(sectionedCode.groupsOfParallelMatches)}"
       )
       println(
-        s"Base blocks: ${pprintCustomised(sectionedCode.baseBlocksFor(placeholderPath)).plainText}"
+        s"Base blocks: ${pprintCustomised(sectionedCode.baseBlocksFor(placeholderPath))}"
       )
       println(
-        s"Left blocks: ${pprintCustomised(sectionedCode.leftBlocksFor(placeholderPath)).plainText}"
+        s"Left blocks: ${pprintCustomised(sectionedCode.leftBlocksFor(placeholderPath))}"
       )
       println(
-        s"Right blocks: ${pprintCustomised(sectionedCode.rightBlocksFor(placeholderPath)).plainText}"
+        s"Right blocks: ${pprintCustomised(sectionedCode.rightBlocksFor(placeholderPath))}"
       )
 
       assert(
