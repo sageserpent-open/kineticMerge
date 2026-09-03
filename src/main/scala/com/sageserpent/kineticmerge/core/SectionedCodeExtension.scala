@@ -1073,6 +1073,30 @@ object SectionedCodeExtension extends StrictLogging:
         s"Coincident insertions or edits on right: ${pprintCustomised(coincidentInsertionsOrEditsOnRight)}."
       )
 
+      val firstAndLastMatchesInParallelMatchesGroups
+          : Set[Match[Section[Element]]] =
+        sectionedCode.groupsOfParallelMatches.values.flatMap { matches =>
+          if matches.nonEmpty then Seq(matches.head, matches.last)
+          else Seq.empty
+        }.toSet
+
+      def hasMigratedEditOrDeletion(aMatch: Match[Section[Element]]): Boolean =
+        aMatch.baseContribution.exists { baseSection =>
+          speculativeMigrationsBySource.get(baseSection).exists {
+            case SpeculativeContentMigration.CoincidentEditOrDeletion(_) => true
+            case SpeculativeContentMigration.LeftEditOrDeletion(_, _)     => true
+            case SpeculativeContentMigration.RightEditOrDeletion(_, _)    => true
+            case SpeculativeContentMigration.Conflict(_, _, _)            => true
+            case _                                                        => false
+          }
+        }
+
+      val isFirstOrLastInParallelMatchesGroup
+          : Match[Section[Element]] => Boolean =
+        aMatch =>
+          firstAndLastMatchesInParallelMatchesGroups.contains(aMatch) ||
+            hasMigratedEditOrDeletion(aMatch)
+
       val moveEvaluation @ MoveEvaluation(
         moveDestinationsReport,
         migratedEditSuppressions,
@@ -1082,7 +1106,11 @@ object SectionedCodeExtension extends StrictLogging:
         MoveDestinationsReport.evaluateSpeculativeSourcesAndDestinations(
           speculativeMigrationsBySource,
           speculativeMoveDestinations
-        )(matchesFor)
+        )(
+          matchesFor = matchesFor,
+          isFirstOrLastInParallelMatchesGroup =
+            isFirstOrLastInParallelMatchesGroup
+        )
 
       logger.debug(s"Move evaluation: ${pprintCustomised(moveEvaluation)}.")
 
@@ -1154,22 +1182,51 @@ object SectionedCodeExtension extends StrictLogging:
         selection(file.sections.view.drop(1 + indexOfSection))
       end succeedingAnchoredContentUsingSelection
 
+      def parallelGroupSectionsFor(
+          anchor: Section[Element],
+          blocksFor: Section[Element] => IndexedSeq[Block[Element]]
+      ): Set[Section[Element]] =
+        val matches: Set[Match[Section[Element]]] =
+          sectionedCode.matchesFor(anchor).toSet
+        val groupIds: Set[ParallelMatchesGroupId] = matches.flatMap { aMatch =>
+          sectionedCode.parallelMatchesGroupIdsByMatch.get(aMatch)
+        }
+        val blocksOnSide = blocksFor(anchor)
+        blocksOnSide.collect {
+          case block
+              if block.parallelMatchesGroupIds.exists(groupIds.contains) =>
+            block.sectionsCoveredByGroup
+        }.flatten.toSet
+
       def anchoredContentFromSource(
           sourceAnchor: Section[Element]
       ): (IndexedSeq[Section[Element]], IndexedSeq[Section[Element]]) =
         val file =
           sectionedCode.base(sectionedCode.basePathFor(sourceAnchor))
 
+        val baseGroupSections =
+          parallelGroupSectionsFor(
+            sourceAnchor,
+            s => sectionedCode.baseBlocksFor(sectionedCode.basePathFor(s))
+          )
+
         def selection(
             candidates: IndexedSeqView[Section[Element]]
         ): IndexedSeq[Section[Element]] =
           candidates
-            .takeWhile(candidate =>
-              !basePreservations.contains(candidate) && !sourceAnchors
-                .contains(
-                  candidate
-                )
-            )
+            .takeWhile { candidate =>
+              // Splices growing out from the start or end of the implied block are terminated
+              // by stationary preservations (or another anchor). Splices growing into the block
+              // hoover up the block's sections (including interior/filler sections of the same parallel move group).
+              val isNotStationaryPreservation =
+                !basePreservations.contains(candidate)
+              val isSectionWithinCurrentParallelMove =
+                baseGroupSections.contains(candidate)
+              val isNotAnchor =
+                !sourceAnchors.contains(candidate)
+
+              (isNotStationaryPreservation || isSectionWithinCurrentParallelMove) && isNotAnchor
+            }
             // At this point, we only have a plain view rather than an indexed
             // one...
             .toIndexedSeq
@@ -1188,7 +1245,7 @@ object SectionedCodeExtension extends StrictLogging:
           Option[IndexedSeq[Section[Element]]],
           Option[IndexedSeq[Section[Element]]]
       ) =
-        val (file, preservations, coincidentInsertionsOrEdits) =
+        val (file, preservations, coincidentInsertionsOrEdits, blocksFor) =
           moveDestinationSide match
             case MoveDestinationSide.Left =>
               (
@@ -1196,7 +1253,9 @@ object SectionedCodeExtension extends StrictLogging:
                   sectionedCode.rightPathFor(oppositeSideAnchor.element)
                 ),
                 rightPreservations,
-                coincidentInsertionsOrEditsOnRight
+                coincidentInsertionsOrEditsOnRight,
+                (s: Section[Element]) =>
+                  sectionedCode.rightBlocksFor(sectionedCode.rightPathFor(s))
               )
             case MoveDestinationSide.Right =>
               (
@@ -1204,19 +1263,37 @@ object SectionedCodeExtension extends StrictLogging:
                   sectionedCode.leftPathFor(oppositeSideAnchor.element)
                 ),
                 leftPreservations,
-                coincidentInsertionsOrEditsOnLeft
+                coincidentInsertionsOrEditsOnLeft,
+                (s: Section[Element]) =>
+                  sectionedCode.leftBlocksFor(sectionedCode.leftPathFor(s))
               )
+
+        val oppositeGroupSections =
+          parallelGroupSectionsFor(
+            oppositeSideAnchor.element,
+            blocksFor
+          )
 
         def selection(
             candidates: IndexedSeqView[Section[Element]]
         ): IndexedSeq[Section[Element]] = candidates
-          .takeWhile(candidate =>
-            !preservations.contains(
-              candidate
-            ) && !oppositeSideAnchors.contains(
-              candidate
-            ) && !coincidentInsertionsOrEdits.contains(candidate)
-          )
+          .takeWhile { candidate =>
+            // Splices growing out from the start or end of the implied block are terminated
+            // by stationary preservations (or another anchor). Splices growing into the block
+            // hoover up the block's sections (including interior/filler sections of the same parallel move group).
+            val isNotStationaryPreservation =
+              !preservations.contains(candidate)
+            val isSectionWithinCurrentParallelMove =
+              oppositeGroupSections.contains(candidate)
+            val isNotAnchor =
+              !oppositeSideAnchors.contains(candidate)
+            val isNotCoincidentInsertionOrEdit =
+              !coincidentInsertionsOrEdits.contains(candidate)
+
+            (isNotStationaryPreservation || isSectionWithinCurrentParallelMove) &&
+            isNotAnchor &&
+            isNotCoincidentInsertionOrEdit
+          }
           // At this point, we only have a plain view rather than an indexed
           // one...
           .toIndexedSeq
@@ -1273,7 +1350,7 @@ object SectionedCodeExtension extends StrictLogging:
           moveDestinationSide: MoveDestinationSide,
           moveDestinationAnchor: Section[Element]
       ): (IndexedSeq[Section[Element]], IndexedSeq[Section[Element]]) =
-        val (file, preservations, coincidentInsertionsOrEdits) =
+        val (file, preservations, coincidentInsertionsOrEdits, blocksFor) =
           moveDestinationSide match
             case MoveDestinationSide.Left =>
               (
@@ -1281,7 +1358,9 @@ object SectionedCodeExtension extends StrictLogging:
                   sectionedCode.leftPathFor(moveDestinationAnchor)
                 ),
                 leftPreservations,
-                coincidentInsertionsOrEditsOnLeft
+                coincidentInsertionsOrEditsOnLeft,
+                (s: Section[Element]) =>
+                  sectionedCode.leftBlocksFor(sectionedCode.leftPathFor(s))
               )
             case MoveDestinationSide.Right =>
               (
@@ -1289,19 +1368,37 @@ object SectionedCodeExtension extends StrictLogging:
                   sectionedCode.rightPathFor(moveDestinationAnchor)
                 ),
                 rightPreservations,
-                coincidentInsertionsOrEditsOnRight
+                coincidentInsertionsOrEditsOnRight,
+                (s: Section[Element]) =>
+                  sectionedCode.rightBlocksFor(sectionedCode.rightPathFor(s))
               )
+
+        val destinationGroupSections =
+          parallelGroupSectionsFor(
+            moveDestinationAnchor,
+            blocksFor
+          )
 
         def selection(
             candidates: IndexedSeqView[Section[Element]]
         ): IndexedSeq[Section[Element]] = candidates
-          .takeWhile(candidate =>
-            !preservations.contains(
-              candidate
-            ) && !moveDestinationAnchors.contains(
-              candidate
-            ) && !coincidentInsertionsOrEdits.contains(candidate)
-          )
+          .takeWhile { candidate =>
+            // Splices growing out from the start or end of the implied block are terminated
+            // by stationary preservations (or another anchor). Splices growing into the block
+            // hoover up the block's sections (including interior/filler sections of the same parallel move group).
+            val isNotStationaryPreservation =
+              !preservations.contains(candidate)
+            val isSectionWithinCurrentParallelMove =
+              destinationGroupSections.contains(candidate)
+            val isNotAnchor =
+              !moveDestinationAnchors.contains(candidate)
+            val isNotCoincidentInsertionOrEdit =
+              !coincidentInsertionsOrEdits.contains(candidate)
+
+            (isNotStationaryPreservation || isSectionWithinCurrentParallelMove) &&
+            isNotAnchor &&
+            isNotCoincidentInsertionOrEdit
+          }
           // At this point, we only have a plain view rather than an indexed
           // one...
           .toIndexedSeq
