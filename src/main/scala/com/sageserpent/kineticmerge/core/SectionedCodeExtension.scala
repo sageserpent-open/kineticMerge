@@ -1184,8 +1184,7 @@ object SectionedCodeExtension extends StrictLogging:
 
       def parallelGroupSectionsFor(
           anchor: Section[Element],
-          blocksFor: Section[Element] => IndexedSeq[Block[Element]],
-          sideExtractor: Match[Section[Element]] => Option[Section[Element]]
+          blocksFor: Section[Element] => IndexedSeq[Block[Element]]
       ): Set[Section[Element]] =
         val matches: Set[Match[Section[Element]]] =
           sectionedCode.matchesFor(anchor).toSet
@@ -1193,18 +1192,11 @@ object SectionedCodeExtension extends StrictLogging:
           sectionedCode.parallelMatchesGroupIdsByMatch.get(aMatch)
         }
         val blocksOnSide = blocksFor(anchor)
-        val sectionsFromBlocks = blocksOnSide.collect {
-          case block if block.parallelMatchesGroupIds.exists(groupIds.contains) =>
+        blocksOnSide.collect {
+          case block
+              if block.parallelMatchesGroupIds.exists(groupIds.contains) =>
             block.sectionsCoveredByGroup
         }.flatten.toSet
-
-        val sectionsFromMatches = groupIds.flatMap { groupId =>
-          sectionedCode.groupsOfParallelMatches.get(groupId) match
-            case Some(gMatches) => gMatches.toSeq.flatMap(sideExtractor)
-            case None           => Seq.empty
-        }
-
-        sectionsFromBlocks ++ sectionsFromMatches
 
       def anchoredContentFromSource(
           sourceAnchor: Section[Element]
@@ -1215,8 +1207,7 @@ object SectionedCodeExtension extends StrictLogging:
         val baseGroupSections =
           parallelGroupSectionsFor(
             sourceAnchor,
-            s => sectionedCode.baseBlocksFor(sectionedCode.basePathFor(s)),
-            _.baseContribution
+            s => sectionedCode.baseBlocksFor(sectionedCode.basePathFor(s))
           )
 
         def selection(
@@ -1254,7 +1245,7 @@ object SectionedCodeExtension extends StrictLogging:
           Option[IndexedSeq[Section[Element]]],
           Option[IndexedSeq[Section[Element]]]
       ) =
-        val (file, preservations, coincidentInsertionsOrEdits, blocksFor, sideExtractor) =
+        val (file, preservations, coincidentInsertionsOrEdits, blocksFor) =
           moveDestinationSide match
             case MoveDestinationSide.Left =>
               (
@@ -1263,8 +1254,8 @@ object SectionedCodeExtension extends StrictLogging:
                 ),
                 rightPreservations,
                 coincidentInsertionsOrEditsOnRight,
-                (s: Section[Element]) => sectionedCode.rightBlocksFor(sectionedCode.rightPathFor(s)),
-                (m: Match[Section[Element]]) => m.rightContribution
+                (s: Section[Element]) =>
+                  sectionedCode.rightBlocksFor(sectionedCode.rightPathFor(s))
               )
             case MoveDestinationSide.Right =>
               (
@@ -1273,15 +1264,14 @@ object SectionedCodeExtension extends StrictLogging:
                 ),
                 leftPreservations,
                 coincidentInsertionsOrEditsOnLeft,
-                (s: Section[Element]) => sectionedCode.leftBlocksFor(sectionedCode.leftPathFor(s)),
-                (m: Match[Section[Element]]) => m.leftContribution
+                (s: Section[Element]) =>
+                  sectionedCode.leftBlocksFor(sectionedCode.leftPathFor(s))
               )
 
         val oppositeGroupSections =
           parallelGroupSectionsFor(
             oppositeSideAnchor.element,
-            blocksFor,
-            sideExtractor
+            blocksFor
           )
 
         def selection(
@@ -1360,7 +1350,7 @@ object SectionedCodeExtension extends StrictLogging:
           moveDestinationSide: MoveDestinationSide,
           moveDestinationAnchor: Section[Element]
       ): (IndexedSeq[Section[Element]], IndexedSeq[Section[Element]]) =
-        val (file, preservations, coincidentInsertionsOrEdits, blocksFor, sideExtractor) =
+        val (file, preservations, coincidentInsertionsOrEdits, blocksFor) =
           moveDestinationSide match
             case MoveDestinationSide.Left =>
               (
@@ -1369,8 +1359,8 @@ object SectionedCodeExtension extends StrictLogging:
                 ),
                 leftPreservations,
                 coincidentInsertionsOrEditsOnLeft,
-                (s: Section[Element]) => sectionedCode.leftBlocksFor(sectionedCode.leftPathFor(s)),
-                (m: Match[Section[Element]]) => m.leftContribution
+                (s: Section[Element]) =>
+                  sectionedCode.leftBlocksFor(sectionedCode.leftPathFor(s))
               )
             case MoveDestinationSide.Right =>
               (
@@ -1379,15 +1369,14 @@ object SectionedCodeExtension extends StrictLogging:
                 ),
                 rightPreservations,
                 coincidentInsertionsOrEditsOnRight,
-                (s: Section[Element]) => sectionedCode.rightBlocksFor(sectionedCode.rightPathFor(s)),
-                (m: Match[Section[Element]]) => m.rightContribution
+                (s: Section[Element]) =>
+                  sectionedCode.rightBlocksFor(sectionedCode.rightPathFor(s))
               )
 
         val destinationGroupSections =
           parallelGroupSectionsFor(
             moveDestinationAnchor,
-            blocksFor,
-            sideExtractor
+            blocksFor
           )
 
         def selection(
