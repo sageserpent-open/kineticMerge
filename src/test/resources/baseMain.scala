@@ -178,50 +178,6 @@ object Main extends StrictLogging:
           AccumulatedMergeState.initial
         ) { case (partialResult, (path, mergeInput)) =>
           mergeInput match
-            case JustOurModification(
-                  ourModification,
-                  bestAncestorCommitIdMode,
-                  _
-                ) =>
-              ourModification.content.fold(ifEmpty = right(partialResult))(
-                ourContent =>
-                  mergeResultsByPath(path) match
-                    case FullyMerged(tokens) =>
-                      val mergedFileContent = reconstituteContentFrom(tokens)
-
-                      val ourModificationWasTweakedByTheMerge =
-                        mergedFileContent != ourContent
-
-                      if ourModificationWasTweakedByTheMerge then
-                        recordCleanMergeOfFile(
-                          partialResult,
-                          path,
-                          mergedFileContent,
-                          ourModification.mode
-                        )
-                      else right(partialResult)
-                      end if
-
-                    case MergedWithConflicts(
-                          baseTokens,
-                          leftTokens,
-                          rightTokens
-                        ) =>
-                      val baseContent  = reconstituteContentFrom(baseTokens)
-                      val leftContent  = reconstituteContentFrom(leftTokens)
-                      val rightContent = reconstituteContentFrom(rightTokens)
-
-                      recordConflictedMergeOfModifiedFile(
-                        partialResult,
-                        path,
-                        bestAncestorCommitIdMode,
-                        ourModification.mode,
-                        baseContent,
-                        leftContent,
-                        rightContent
-                      )
-              )
-
             case JustTheirModification(
                   theirModification,
                   bestAncestorCommitIdMode,

@@ -162,51 +162,6 @@ object Main extends StrictLogging:
           AccumulatedMergeState.initial
         ) { case (partialResult, (path, mergeInput)) =>
           mergeInput match
-            case JustOurModification(
-                  ourModification,
-                  baseContent
-                ) =>
-              mergeResultsByPath(path) match
-                case FullyMerged(tokens) =>
-                  val mergedFileContent = reconstituteTextFrom(tokens)
-
-                  val ourModificationWasTweakedByTheMerge =
-                    mergedFileContent != ourModification.content
-
-                  if ourModificationWasTweakedByTheMerge then
-                    recordCleanMergeOfFile(
-                      baseDirectory,
-                      ourDirectory,
-                      theirDirectory
-                    )(
-                      partialResult,
-                      path,
-                      mergedFileContent
-                    )
-                  else
-                    for
-                      _ <- copyFileOver(ourDirectory, baseDirectory)(path)
-                      _ <- copyFileOver(ourDirectory, theirDirectory)(path)
-                    yield partialResult
-                  end if
-
-                case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
-                  val baseContent  = reconstituteTextFrom(baseTokens)
-                  val leftContent  = reconstituteTextFrom(leftTokens)
-                  val rightContent = reconstituteTextFrom(rightTokens)
-
-                  recordConflictedMergeOfModifiedFile(
-                    baseDirectory,
-                    ourDirectory,
-                    theirDirectory
-                  )(
-                    partialResult,
-                    path,
-                    baseContent,
-                    leftContent,
-                    rightContent
-                  )
-
             case JustTheirModification(
                   theirModification,
                   baseContent
