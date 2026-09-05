@@ -2487,6 +2487,264 @@ class SectionedCodeExtensionTest extends ProseExamples:
     }
   end issue272BugReproduction
 
+  @Test
+  def mainScalaBenchmarkReproduction(): Unit =
+    val configuration = Configuration(
+      minimumMatchSize = 2,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 10,
+      ambiguousMatchesThreshold = 20
+    )
+
+    val placeholderPath: FakePath = "src/main/scala/com/sageserpent/kineticmerge/Main.scala"
+
+    val baseText  = """                    ourContent =>
+                      leftContentsByPath + (path -> ourContent.asTokens)
+                  ),
+                  rightContentsByPath,
+                  newPathsOnLeftOrRight
+                )
+
+              case TheirModificationAndOurDeletion(
+                    theirModification,
+                    _,
+                    _,
+                    bestAncestorCommitIdContent
+                  ) =>
+                (
+                  bestAncestorCommitIdContent.fold(ifEmpty =
+                    baseContentsByPath
+                  )(baseContent =>
+                    baseContentsByPath + (path -> baseContent.asTokens)
+                  ),
+                  leftContentsByPath,
+                  theirModification.content.fold(ifEmpty = rightContentsByPath)(
+                    theirContent =>
+                      rightContentsByPath + (path -> theirContent.asTokens)
+                  ),
+                  newPathsOnLeftOrRight
+                )
+
+              case BothContributeAnAddition(
+                    ourAddition,
+                    theirAddition,
+                  end if
+              )
+
+            case TheirModificationAndOurDeletion(
+                  theirModification,
+                  bestAncestorCommitIdMode,
+                  bestAncestorCommitIdBlobId,
+                  bestAncestorCommitIdContent
+                ) =>
+              val prelude =
+                for
+                  _ <- recordDeletionInIndex(path)
+                  _ <- recordConflictModificationInIndex(
+                    stageIndex = bestCommonAncestorStageIndex
+                  )(
+                    bestAncestorCommitId,
+                    path,
+                    bestAncestorCommitIdMode,
+                    bestAncestorCommitIdBlobId
+                  )
+                yield ()
+
+              def writeConflictingEntries =
+                for
+                  _ <- prelude
+                  _ <- restoreFileFromBlobId(
+                    path,
+                    theirModification.blobId
+                  )
+                  _ <- recordConflictModificationInIndex(
+                    stageIndex = theirStageIndex
+                  )(
+                    theirBranchHead,
+                    path,
+                    theirModification.mode,
+                    theirModification.blobId
+                  ).logOperation(
+                    s"Conflict - file ${underline(path)} was deleted on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
+                  )
+                yield partialResult.copy(goodForAMergeCommit = false)
+
+              theirModification.content.fold(ifEmpty = writeConflictingEntries)(
+                theirContent =>
+                  val tokens = justTheirSidesViewOfTheMergedContentAt(path)
+
+"""
+    val leftText  = """                )
+
+              case TheirModificationAndOurDeletion(
+                    theirModification,
+                    baseContent
+                  ) =>
+                (
+                  baseContentsByPath + (path -> tokens(
+                    baseContent
+                  ).get),
+                  leftContentsByPath,
+                  rightContentsByPath + (path -> tokens(
+                    theirModification.content
+                  ).get),
+                  newPathsOnLeftOrRight
+                )
+
+              case BothContributeAnAddition(
+                    ourAddition,
+                    theirAddition
+                  ) =>
+                (
+                  baseContentsByPath,
+                  leftContentsByPath + (path -> tokens(
+                    ourAddition.content
+              end if
+
+            case TheirModificationAndOurDeletion(theirModification, _) =>
+              val tokens = mergeResultsByPath(path) match
+                case FullyMerged(mergedTokens) => mergedTokens
+                case MergedWithConflicts(_, _, theirMergedTokens) =>
+                  // We don't care about our view of the merge - our side
+                  // simply deleted the whole file, so it contributes
+                  // nothing interesting to the merge; the only point of the
+                  // merge here was to pick up propagated edits / deletions
+                  // and to note move destinations.
+                  // TODO: is this even necessary? How would there be merge
+                  // conflicts?
+                  theirMergedTokens
+
+              val mergedFileContent = reconstituteTextFrom(tokens)
+              val theirModificationWasTweakedByTheMerge =
+                mergedFileContent != theirModification.content
+
+              if theirModificationWasTweakedByTheMerge then
+                if mergedFileContent.nonEmpty then
+                  for _ <- writeFileFor(theirDirectory)(path, mergedFileContent)
+                      .logOperation(
+                        s"Conflict - file ${underline(path)} was deleted from our directory ${underline(ourDirectory)} and modified in their directory ${underline(theirDirectory)}."
+                      )
+                  yield partialResult.copy(cleanlyMerged = false)
+                else
+                  // If their content is modified to being empty, this is taken
+                  // to mean that all of our original content has been migrated
+                  // to one or more other files.
+"""
+    val rightText = """                    ourContent =>
+                      leftContentsByPath + (path -> ourContent.asTokens)
+                  ),
+                  rightContentsByPath,
+                  newOrModifiedPathsOnLeftOrRight + (path -> false)
+                )
+
+              case TheirModificationAndOurDeletion(
+                    theirModification,
+                    _,
+                    _,
+                    bestAncestorCommitIdContent
+                  ) =>
+                (
+                  bestAncestorCommitIdContent.fold(ifEmpty =
+                    baseContentsByPath
+                  )(baseContent =>
+                    baseContentsByPath + (path -> baseContent.asTokens)
+                  ),
+                  leftContentsByPath,
+                  theirModification.content.fold(ifEmpty = rightContentsByPath)(
+                    theirContent =>
+                      rightContentsByPath + (path -> theirContent.asTokens)
+                  ),
+                  newOrModifiedPathsOnLeftOrRight + (path -> false)
+                )
+
+              case BothContributeAnAddition(
+                    ourAddition,
+                    theirAddition,
+                      ).logOperation(
+                        s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and deleted on their branch ${underline(theirBranchHead)}."
+                      )
+                    yield partialResult.copy(goodForAMergeCommit = false)
+                  else writeConflictingEntries
+                  end if
+              )
+
+            case TheirModificationAndOurDeletion(
+                  theirModification,
+                  bestAncestorCommitIdMode,
+                  bestAncestorCommitIdBlobId,
+                  bestAncestorCommitIdContent
+                ) =>
+              val prelude =
+                for
+                  _ <- recordDeletionInIndex(path)
+                  _ <- recordConflictModificationInIndex(
+                    stageIndex = bestCommonAncestorStageIndex
+                  )(
+                    bestAncestorCommitId,
+                    path,
+                    bestAncestorCommitIdMode,
+                    bestAncestorCommitIdBlobId
+                  )
+                yield ()
+
+              def writeConflictingEntries =
+                for
+                  _ <- prelude
+                  _ <- restoreFileFromBlobId(
+                    path,
+                    theirModification.blobId
+                  )
+                  _ <- recordConflictModificationInIndex(
+                    stageIndex = theirStageIndex
+                  )(
+                    theirBranchHead,
+                    path,
+                    theirModification.mode,
+                    theirModification.blobId
+                  ).logOperation(
+                    s"Conflict - file ${underline(path)} was deleted on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
+                  )
+                yield partialResult.copy(goodForAMergeCommit = false)
+"""
+
+    val baseSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(placeholderPath -> tokens(baseText).get),
+      label = "base"
+    )
+    val leftSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(placeholderPath -> tokens(leftText).get),
+      label = "left"
+    )
+    val rightSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(placeholderPath -> tokens(rightText).get),
+      label = "right"
+    )
+
+    val Right(sectionedCode) = SectionedCode.of(
+      baseSources = baseSources,
+      leftSources = leftSources,
+      rightSources = rightSources
+    )(configuration): @unchecked
+
+    val (mergeResultsByPath, moveDestinationsReport) =
+      sectionedCode.merge
+
+    println(fansi.Color.Yellow("Move Destinations Report Summary:"))
+    println(
+      fansi.Color
+        .Green(moveDestinationsReport.summarizeInText.mkString("\n"))
+    )
+
+    mergeResultsByPath(placeholderPath) match
+      case MergedWithConflicts(baseResult, leftResult, rightResult) =>
+        println(
+          fansi.Color
+            .Red("Merge resulted in conflicts as expected for Main.scala.")
+        )
+      case FullyMerged(result) =>
+        println(fansi.Color.Green("Fully merged cleanly as expected for minimal slice."))
+  end mainScalaBenchmarkReproduction
+
   @TestFactory
   def issue274BugReproduction(): DynamicTests =
     val configuration = Configuration(
