@@ -41,24 +41,6 @@ object Main extends StrictLogging:
   end Change
 
   enum MergeInput:
-    case JustOurModification(
-        ourModification: Change.Modification,
-        bestAncestorCommitIdMode: String @@ Tags.Mode,
-        bestAncestorCommitIdContent: Option[String @@ Tags.Content]
-    )
-    case JustTheirModification(
-        theirModification: Change.Modification,
-        bestAncestorCommitIdMode: String @@ Tags.Mode,
-        bestAncestorCommitIdContent: Option[String @@ Tags.Content]
-    )
-    case JustOurAddition(ourAddition: Change.Addition)
-    case JustTheirAddition(theirAddition: Change.Addition)
-    case JustOurDeletion(
-        bestAncestorCommitIdContent: Option[String @@ Tags.Content]
-    )
-    case JustTheirDeletion(
-        bestAncestorCommitIdContent: Option[String @@ Tags.Content]
-    )
     case OurModificationAndTheirDeletion(
         ourModification: Change.Modification,
         bestAncestorCommitIdMode: String @@ Tags.Mode,
@@ -131,87 +113,6 @@ object Main extends StrictLogging:
                 (path, mergeInput)
               ) =>
             mergeInput match
-              case JustOurModification(
-                    ourModification,
-                    _,
-                    bestAncestorCommitIdContent
-                  ) =>
-                (bestAncestorCommitIdContent, ourModification.content) match
-                  case (Some(baseContent), Some(ourContent)) =>
-                    val baseContentTokens = baseContent.asTokens
-
-                    (
-                      baseContentsByPath + (path  -> baseContentTokens),
-                      leftContentsByPath + (path  -> ourContent.asTokens),
-                      rightContentsByPath + (path -> baseContentTokens),
-                      newPathsOnLeftOrRight
-                    )
-                  case _ => passThrough
-
-              case JustTheirModification(
-                    theirModification,
-                    _,
-                    bestAncestorCommitIdContent
-                  ) =>
-                (bestAncestorCommitIdContent, theirModification.content) match
-                  case (Some(baseContent), Some(theirContent)) =>
-                    val baseContentTokens = baseContent.asTokens
-
-                    (
-                      baseContentsByPath + (path  -> baseContentTokens),
-                      leftContentsByPath + (path  -> baseContentTokens),
-                      rightContentsByPath + (path -> theirContent.asTokens),
-                      newPathsOnLeftOrRight
-                    )
-                  case _ => passThrough
-
-              case JustOurAddition(ourAddition) =>
-                ourAddition.content.fold(ifEmpty = passThrough)(ourContent =>
-                  (
-                    baseContentsByPath,
-                    leftContentsByPath + (path -> ourContent.asTokens),
-                    rightContentsByPath,
-                    newPathsOnLeftOrRight + path
-                  )
-                )
-
-              case JustTheirAddition(theirAddition) =>
-                theirAddition.content.fold(ifEmpty = passThrough)(
-                  theirContent =>
-                    (
-                      baseContentsByPath,
-                      leftContentsByPath,
-                      rightContentsByPath + (path -> theirContent.asTokens),
-                      newPathsOnLeftOrRight + path
-                    )
-                )
-
-              case JustOurDeletion(bestAncestorCommitIdContent) =>
-                bestAncestorCommitIdContent.fold(ifEmpty = passThrough) {
-                  baseContent =>
-                    val baseContentTokens = baseContent.asTokens
-
-                    (
-                      baseContentsByPath + (path -> baseContentTokens),
-                      leftContentsByPath,
-                      rightContentsByPath + (path -> baseContentTokens),
-                      newPathsOnLeftOrRight
-                    )
-                }
-
-              case JustTheirDeletion(bestAncestorCommitIdContent) =>
-                bestAncestorCommitIdContent.fold(ifEmpty = passThrough) {
-                  baseContent =>
-                    val baseContentTokens = baseContent.asTokens
-
-                    (
-                      baseContentsByPath + (path -> baseContentTokens),
-                      leftContentsByPath + (path -> baseContentTokens),
-                      rightContentsByPath,
-                      newPathsOnLeftOrRight
-                    )
-                }
-
               case OurModificationAndTheirDeletion(
                     ourModification,
                     _,

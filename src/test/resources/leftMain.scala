@@ -36,18 +36,6 @@ object Main extends StrictLogging:
   end Change
 
   enum MergeInput:
-    case JustOurModification(
-        ourModification: Change.Modification,
-        baseContent: String @@ Tags.Content
-    )
-    case JustTheirModification(
-        theirModification: Change.Modification,
-        baseContent: String @@ Tags.Content
-    )
-    case JustOurAddition(ourAddition: Change.Addition)
-    case JustTheirAddition(theirAddition: Change.Addition)
-    case JustOurDeletion(bestAncestorCommitIdContent: String @@ Tags.Content)
-    case JustTheirDeletion(bestAncestorCommitIdContent: String @@ Tags.Content)
     case OurModificationAndTheirDeletion(
         ourModification: Change.Modification,
         baseContent: String @@ Tags.Content
@@ -116,76 +104,6 @@ object Main extends StrictLogging:
                 (path, mergeInput)
               ) =>
             mergeInput match
-              case JustOurModification(
-                    ourModification,
-                    baseContent
-                  ) =>
-                val unchangedContent = tokens(baseContent).get
-
-                (
-                  baseContentsByPath + (path -> unchangedContent),
-                  leftContentsByPath + (path -> tokens(
-                    ourModification.content
-                  ).get),
-                  rightContentsByPath + (path -> unchangedContent),
-                  newPathsOnLeftOrRight
-                )
-
-              case JustTheirModification(
-                    theirModification,
-                    baseContent
-                  ) =>
-                val unchangedContent = tokens(baseContent).get
-
-                (
-                  baseContentsByPath + (path  -> unchangedContent),
-                  leftContentsByPath + (path  -> unchangedContent),
-                  rightContentsByPath + (path -> tokens(
-                    theirModification.content
-                  ).get),
-                  newPathsOnLeftOrRight
-                )
-
-              case JustOurAddition(ourAddition) =>
-                (
-                  baseContentsByPath,
-                  leftContentsByPath + (path -> tokens(
-                    ourAddition.content
-                  ).get),
-                  rightContentsByPath,
-                  newPathsOnLeftOrRight + path
-                )
-
-              case JustTheirAddition(theirAddition) =>
-                (
-                  baseContentsByPath,
-                  leftContentsByPath,
-                  rightContentsByPath + (path -> tokens(
-                    theirAddition.content
-                  ).get),
-                  newPathsOnLeftOrRight + path
-                )
-
-              case JustOurDeletion(baseContent) =>
-                val unchangedContent = tokens(baseContent).get
-
-                (
-                  baseContentsByPath + (path -> unchangedContent),
-                  leftContentsByPath,
-                  rightContentsByPath + (path -> unchangedContent),
-                  newPathsOnLeftOrRight
-                )
-
-              case JustTheirDeletion(baseContent) =>
-                val unchangedContent = tokens(baseContent).get
-
-                (
-                  baseContentsByPath + (path -> unchangedContent),
-                  leftContentsByPath + (path -> unchangedContent),
-                  rightContentsByPath,
-                  newPathsOnLeftOrRight
-                )
-
               case OurModificationAndTheirDeletion(
                     ourModification,
                     baseContent
