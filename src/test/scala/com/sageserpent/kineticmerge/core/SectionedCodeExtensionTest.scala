@@ -4,6 +4,7 @@ import cats.{Eq, Order}
 import com.google.common.hash.{Funnel, HashFunction, Hashing}
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.junit5.*
+import com.sageserpent.kineticmerge.Main.ApplicationRequest
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.MatchAnalysis.Configuration
 import com.sageserpent.kineticmerge.core.SectionedCodeExtension.*
@@ -17,6 +18,7 @@ import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording}
 import org.junit.jupiter.api.Assertions.{assertDoesNotThrow, fail}
 import org.junit.jupiter.api.{Test, TestFactory}
 
+import scala.io.Source
 import scala.util.Right
 
 object SectionedCodeExtensionTest:
@@ -2488,196 +2490,32 @@ class SectionedCodeExtensionTest extends ProseExamples:
   end issue272BugReproduction
 
   @Test
-  def mainScalaBenchmarkReproduction(): Unit =
+  def benchmarkMergeReproduction(): Unit =
     val configuration = Configuration(
-      minimumMatchSize = 2,
-      thresholdSizeFractionForMatching = 0,
-      minimumAmbiguousMatchSize = 10,
-      ambiguousMatchesThreshold = 20
+      minimumMatchSize = ApplicationRequest.default.minimumMatchSize,
+      thresholdSizeFractionForMatching =
+        ApplicationRequest.default.thresholdSizeFractionForMatching,
+      minimumAmbiguousMatchSize =
+        ApplicationRequest.default.minimumAmbiguousMatchSize,
+      ambiguousMatchesThreshold =
+        ApplicationRequest.default.ambiguousMatchesThreshold
     )
 
-    val placeholderPath: FakePath = "src/main/scala/com/sageserpent/kineticmerge/Main.scala"
+    val placeholderPath: FakePath =
+      "src/main/scala/com/sageserpent/kineticmerge/Main.scala"
 
-    val baseText  = """case TheirModificationAndOurDeletion(
-                    theirModification,
-                    bestAncestorCommitIdMode,
-                    bestAncestorCommitIdBlobId,
-                    bestAncestorCommitIdContent
-                  ) =>
-                (
-                  bestAncestorCommitIdContent.fold(ifEmpty =
-                    baseContentsByPath
-                  )(baseContent =>
-                    baseContentsByPath + (path -> baseContent.asTokens)
-                  ),
-                  leftContentsByPath,
-                  theirModification.content.fold(ifEmpty = rightContentsByPath)(
-                    theirContent =>
-                      rightContentsByPath + (path -> theirContent.asTokens)
-                  ),
-                  newPathsOnLeftOrRight
-                )
-
-              case BothContributeAnAddition(
-                    ourAddition,
-                    theirAddition,
-                    _
-                  ) =>
-                (
-                  baseContentsByPath,
-                  ourAddition.content.fold(ifEmpty = leftContentsByPath)(
-                    ourContent =>
-                      leftContentsByPath + (path -> ourContent.asTokens)
-                  ),
-                  theirAddition.content.fold(ifEmpty = rightContentsByPath)(
-                    theirContent =>
-                      rightContentsByPath + (path -> theirContent.asTokens)
-                  ),
-                  newPathsOnLeftOrRight + path
-                )
-
-              case TheirModificationAndOurDeletion(
-                    theirModification,
-                    bestAncestorCommitIdMode,
-                    bestAncestorCommitIdBlobId,
-                    bestAncestorCommitIdContent
-                  ) =>
-                val prelude =
-                  for
-                    _ <- recordDeletionInIndex(path)
-                    _ <- recordConflictModificationInIndex(
-                      stageIndex = bestCommonAncestorStageIndex
-                    )(
-                      bestAncestorCommitId,
-                      path,
-                      bestAncestorCommitIdMode,
-                      bestAncestorCommitIdBlobId
-                    )
-                  yield ()
-
-                def writeConflictingEntries =
-                  for
-                    _ <- prelude
-                    _ <- restoreFileFromBlobId(
-                      path,
-                      theirModification.blobId
-                    )
-                  yield partialResult.copy(goodForAMergeCommit = false)
-
-                theirModification.content.fold(ifEmpty = writeConflictingEntries)(
-                  theirContent =>
-                    val tokens = justTheirSidesViewOfTheMergedContentAt(path)
-                    val mergedFileContent = reconstituteContentFrom(tokens)
-                    writeConflictingEntries
-                )"""
-    val leftText  = """case BothContributeAnAddition(
-                    ourAddition,
-                    theirAddition
-                  ) =>
-                (
-                  baseContentsByPath,
-                  leftContentsByPath + (path -> tokens(
-                    ourAddition.content
-                  ).get),
-                  rightContentsByPath + (path -> tokens(
-                    theirAddition.content
-                  ).get),
-                  newPathsOnLeftOrRight + path
-                )
-
-              case TheirModificationAndOurDeletion(theirModification, _) =>
-                val tokens = mergeResultsByPath(path) match
-                  case FullyMerged(mergedTokens) => mergedTokens
-                  case MergedWithConflicts(_, _, theirMergedTokens) =>
-                    theirMergedTokens
-
-                val mergedFileContent = reconstituteTextFrom(tokens)
-                val theirModificationWasTweakedByTheMerge =
-                  mergedFileContent != theirModification.content
-
-                if theirModificationWasTweakedByTheMerge then
-                  for _ <- writeFileFor(theirDirectory)(path, mergedFileContent)
-                  yield partialResult.copy(cleanlyMerged = false)
-                else
-                  for
-                    _                      <- deleteFile(baseDirectory)(path)
-                    _                      <- deleteFile(ourDirectory)(path)
-                    decoratedPartialResult <-
-                      captureRenamesOfPathDeletedOnJustOneSide
-                  yield decoratedPartialResult
-                end if"""
-    val rightText = """case TheirModificationAndOurDeletion(
-                    theirModification,
-                    _,
-                    _,
-                    bestAncestorCommitIdContent
-                  ) =>
-                (
-                  bestAncestorCommitIdContent.fold(ifEmpty =
-                    baseContentsByPath
-                  )(baseContent =>
-                    baseContentsByPath + (path -> baseContent.asTokens)
-                  ),
-                  leftContentsByPath,
-                  theirModification.content.fold(ifEmpty = rightContentsByPath)(
-                    theirContent =>
-                      rightContentsByPath + (path -> theirContent.asTokens)
-                  ),
-                  newOrModifiedPathsOnLeftOrRight + (path -> false)
-                )
-
-              case BothContributeAnAddition(
-                    ourAddition,
-                    theirAddition,
-                    _
-                  ) =>
-                (
-                  baseContentsByPath,
-                  ourAddition.content.fold(ifEmpty = leftContentsByPath)(
-                    ourContent =>
-                      leftContentsByPath + (path -> ourContent.asTokens)
-                  ),
-                  theirAddition.content.fold(ifEmpty = rightContentsByPath)(
-                    theirContent =>
-                      rightContentsByPath + (path -> theirContent.asTokens)
-                  ),
-                  newOrModifiedPathsOnLeftOrRight + (path -> true)
-                )
-
-              case TheirModificationAndOurDeletion(
-                    theirModification,
-                    bestAncestorCommitIdMode,
-                    bestAncestorCommitIdBlobId,
-                    bestAncestorCommitIdContent
-                  ) =>
-                val prelude =
-                  for
-                    _ <- recordDeletionInIndex(path)
-                    _ <- recordConflictModificationInIndex(
-                      stageIndex = bestCommonAncestorStageIndex
-                    )(
-                      bestAncestorCommitId,
-                      path,
-                      bestAncestorCommitIdMode,
-                      bestAncestorCommitIdBlobId
-                    )
-                  yield ()
-
-                def writeConflictingEntries =
-                  for
-                    _ <- prelude
-                    _ <- restoreFileFromBlobId(
-                      path,
-                      theirModification.blobId
-                    )
-                  yield partialResult.copy(goodForAMergeCommit = false)
-
-                theirModification.content.fold(ifEmpty = writeConflictingEntries)(
-                  theirContent =>
-                    val tokens = justTheirSidesViewOfTheMergedContentAt(path)
-                    val mergedFileContent = reconstituteContentFrom(tokens)
-                    writeConflictingEntries
-                )"""
+    val baseText = Source
+      .fromResource("baseMain.scala")
+      .getLines()
+      .mkString("\n")
+    val leftText = Source
+      .fromResource("leftMain.scala")
+      .getLines()
+      .mkString("\n")
+    val rightText = Source
+      .fromResource("rightMain.scala")
+      .getLines()
+      .mkString("\n")
 
     val baseSources = MappedContentSourcesOfTokens(
       contentsByPath = Map(placeholderPath -> tokens(baseText).get),
@@ -2701,19 +2539,30 @@ class SectionedCodeExtensionTest extends ProseExamples:
     val (mergeResultsByPath, moveDestinationsReport) =
       sectionedCode.merge
 
-    println(fansi.Color.Yellow("Move Destinations Report Summary:"))
+    println(fansi.Color.Yellow("Move destinations report summary:"))
     println(
       fansi.Color
         .Green(moveDestinationsReport.summarizeInText.mkString("\n"))
     )
 
     mergeResultsByPath(placeholderPath) match
-      case MergedWithConflicts(baseResult, leftResult, rightResult) =>
-        println(fansi.Color.Red("Merge resulted in conflicts as expected for Main.scala benchmark slice."))
       case FullyMerged(result) =>
-        println(fansi.Color.Green("Fully merged result for reproduction test case."))
+        println(fansi.Color.Yellow("Fully merged result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(result)))
+
         assert(result.nonEmpty)
-  end mainScalaBenchmarkReproduction
+
+      case MergedWithConflicts(baseResult, leftResult, rightResult) =>
+        println(fansi.Color.Red(s"Base result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(baseResult)))
+        println(fansi.Color.Red(s"Left result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+        println(fansi.Color.Red(s"Right result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+        fail("Should have seen a clean merge.")
+    end match
+  end benchmarkMergeReproduction
 
   @TestFactory
   def issue274BugReproduction(): DynamicTests =
