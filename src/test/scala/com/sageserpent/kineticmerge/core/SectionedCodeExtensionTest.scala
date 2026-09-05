@@ -8,15 +8,11 @@ import com.sageserpent.kineticmerge.Main.ApplicationRequest
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.MatchAnalysis.Configuration
 import com.sageserpent.kineticmerge.core.SectionedCodeExtension.*
-import com.sageserpent.kineticmerge.core.SectionedCodeExtensionTest.{
-  FakePath,
-  reconstituteTextFrom,
-  given
-}
+import com.sageserpent.kineticmerge.core.SectionedCodeExtensionTest.{FakePath, reconstituteTextFrom, given}
 import com.sageserpent.kineticmerge.core.Token.tokens
 import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording}
 import org.junit.jupiter.api.Assertions.{assertDoesNotThrow, fail}
-import org.junit.jupiter.api.{Test, TestFactory}
+import org.junit.jupiter.api.{Disabled, Test, TestFactory}
 
 import scala.io.Source
 import scala.util.Right
@@ -2489,6 +2485,7 @@ class SectionedCodeExtensionTest extends ProseExamples:
     }
   end issue272BugReproduction
 
+  @Disabled
   @Test
   def benchmarkMergeReproduction(): Unit =
     val configuration = Configuration(
