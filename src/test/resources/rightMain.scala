@@ -392,31 +392,6 @@ object Main extends StrictLogging:
                     end if
               )
 
-            case JustOurDeletion(bestAncestorCommitIdContent) =>
-              // NOTE: we don't consult `mergeResultsByPath` because we know the
-              // outcome already. This is important, because deletion of an
-              // entire file on just one side is treated as a special case by
-              // `CodeMotionAnalysisExtension.mergeResultsByPath` and does not
-              // necessarily remove the content.
-              if bestAncestorCommitIdContent.isDefined then
-                captureRenamesOfPathDeletedOnJustOneSide
-              else right(partialResult)
-
-            case JustTheirDeletion(bestAncestorCommitIdContent) =>
-              // NOTE: we don't consult `mergeResultsByPath` because we know the
-              // outcome already. This is important, because deletion of an
-              // entire file on just one side is treated as a special case by
-              // `CodeMotionAnalysisExtension.mergeResultsByPath` and does not
-              // necessarily remove the content.
-              for
-                _                      <- recordDeletionInIndex(path)
-                _                      <- deleteFile(path)
-                decoratedPartialResult <-
-                  if bestAncestorCommitIdContent.isDefined then
-                    captureRenamesOfPathDeletedOnJustOneSide
-                  else right(partialResult)
-              yield decoratedPartialResult
-
             case OurModificationAndTheirDeletion(
                   ourModification,
                   bestAncestorCommitIdMode,

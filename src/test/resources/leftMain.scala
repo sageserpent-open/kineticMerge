@@ -362,32 +362,6 @@ object Main extends StrictLogging:
                     )
                   end if
 
-            case JustOurDeletion(_) =>
-              // NOTE: we don't consult `mergeResultsByPath` because we know the
-              // outcome already. This is important, because deletion of an
-              // entire file on just one side is treated as a special case by
-              // `CodeMotionAnalysisExtension.mergeResultsByPath` and does not
-              // necessarily remove the content.
-              for
-                _                      <- deleteFile(baseDirectory)(path)
-                _                      <- deleteFile(theirDirectory)(path)
-                decoratedPartialResult <-
-                  captureRenamesOfPathDeletedOnJustOneSide
-              yield decoratedPartialResult
-
-            case JustTheirDeletion(_) =>
-              // NOTE: we don't consult `mergeResultsByPath` because we know the
-              // outcome already. This is important, because deletion of an
-              // entire file on just one side is treated as a special case by
-              // `CodeMotionAnalysisExtension.mergeResultsByPath` and does not
-              // necessarily remove the content.
-              for
-                _                      <- deleteFile(baseDirectory)(path)
-                _                      <- deleteFile(ourDirectory)(path)
-                decoratedPartialResult <-
-                  captureRenamesOfPathDeletedOnJustOneSide
-              yield decoratedPartialResult
-
             case OurModificationAndTheirDeletion(
                   ourModification,
                   baseContent
