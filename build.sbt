@@ -4,7 +4,7 @@ import scala.language.postfixOps
 
 lazy val javaVersion = "17"
 
-ThisBuild / scalaVersion := "3.3.8"
+ThisBuild / scalaVersion := "3.9.0"
 
 ThisBuild / javacOptions ++= Seq("-source", javaVersion, "-target", javaVersion)
 
@@ -116,5 +116,5 @@ lazy val root = (project in file("."))
     Test / test / logLevel                 := Level.Error,
     Test / fork                            := true,
     Test / testForkedParallel              := true,
-    Test / javaOptions ++= Seq("-Xmx8G"),
+    Test / javaOptions ++= Seq("-Xmx8G")
   )
