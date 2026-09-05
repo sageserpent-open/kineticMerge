@@ -53,22 +53,6 @@ object Main extends StrictLogging:
         bestAncestorCommitIdBlobId: String @@ Tags.BlobId,
         bestAncestorCommitIdContent: Option[String @@ Tags.Content]
     )
-    case BothContributeAnAddition(
-        ourAddition: Change.Addition,
-        theirAddition: Change.Addition,
-        mergedFileMode: String @@ Tags.Mode
-    )
-    case BothContributeAModification(
-        ourModification: Change.Modification,
-        theirModification: Change.Modification,
-        bestAncestorCommitIdMode: String @@ Tags.Mode,
-        bestAncestorCommitIdBlobId: String @@ Tags.BlobId,
-        bestAncestorCommitIdContent: Option[String @@ Tags.Content],
-        mergedFileMode: String @@ Tags.Mode
-    )
-    case BothContributeADeletion(
-        bestAncestorCommitIdContent: Option[String @@ Tags.Content]
-    )
   end MergeInput
 
   private case class EarlyTermination(exitCode: Int @@ Tags.ExitCode)
@@ -151,60 +135,6 @@ object Main extends StrictLogging:
                       rightContentsByPath + (path -> theirContent.asTokens)
                   ),
                   newOrModifiedPathsOnLeftOrRight + (path -> false)
-                )
-
-              case BothContributeAnAddition(
-                    ourAddition,
-                    theirAddition,
-                    _
-                  ) =>
-                (
-                  baseContentsByPath,
-                  ourAddition.content.fold(ifEmpty = leftContentsByPath)(
-                    ourContent =>
-                      leftContentsByPath + (path -> ourContent.asTokens)
-                  ),
-                  theirAddition.content.fold(ifEmpty = rightContentsByPath)(
-                    theirContent =>
-                      rightContentsByPath + (path -> theirContent.asTokens)
-                  ),
-                  newOrModifiedPathsOnLeftOrRight + (path -> true)
-                )
-
-              case BothContributeAModification(
-                    ourModification,
-                    theirModification,
-                    _,
-                    _,
-                    bestAncestorCommitIdContent,
-                    _
-                  ) =>
-                (
-                  bestAncestorCommitIdContent.fold(ifEmpty =
-                    baseContentsByPath
-                  )(baseContent =>
-                    baseContentsByPath + (path -> baseContent.asTokens)
-                  ),
-                  ourModification.content.fold(ifEmpty = leftContentsByPath)(
-                    ourContent =>
-                      leftContentsByPath + (path -> ourContent.asTokens)
-                  ),
-                  theirModification.content.fold(ifEmpty = rightContentsByPath)(
-                    theirContent =>
-                      rightContentsByPath + (path -> theirContent.asTokens)
-                  ),
-                  newOrModifiedPathsOnLeftOrRight + (path -> false)
-                )
-
-              case BothContributeADeletion(bestAncestorCommitIdContent) =>
-                bestAncestorCommitIdContent.fold(ifEmpty = passThrough)(
-                  baseContent =>
-                    (
-                      baseContentsByPath + (path -> baseContent.asTokens),
-                      leftContentsByPath,
-                      rightContentsByPath,
-                      newOrModifiedPathsOnLeftOrRight
-                    )
                 )
         }
 

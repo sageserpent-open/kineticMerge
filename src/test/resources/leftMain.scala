@@ -44,18 +44,6 @@ object Main extends StrictLogging:
         theirModification: Change.Modification,
         baseContent: String @@ Tags.Content
     )
-    case BothContributeAnAddition(
-        ourAddition: Change.Addition,
-        theirAddition: Change.Addition
-    )
-    case BothContributeAModification(
-        ourModification: Change.Modification,
-        theirModification: Change.Modification,
-        baseContent: String @@ Tags.Content
-    )
-    case BothContributeADeletion(
-        baseContent: String @@ Tags.Content
-    )
   end MergeInput
 
   private case class EarlyTermination(exitCode: Int @@ Tags.ExitCode)
@@ -131,49 +119,6 @@ object Main extends StrictLogging:
                   rightContentsByPath + (path -> tokens(
                     theirModification.content
                   ).get),
-                  newPathsOnLeftOrRight
-                )
-
-              case BothContributeAnAddition(
-                    ourAddition,
-                    theirAddition
-                  ) =>
-                (
-                  baseContentsByPath,
-                  leftContentsByPath + (path -> tokens(
-                    ourAddition.content
-                  ).get),
-                  rightContentsByPath + (path -> tokens(
-                    theirAddition.content
-                  ).get),
-                  newPathsOnLeftOrRight + path
-                )
-
-              case BothContributeAModification(
-                    ourModification,
-                    theirModification,
-                    baseContent
-                  ) =>
-                (
-                  baseContentsByPath + (path -> tokens(
-                    baseContent
-                  ).get),
-                  leftContentsByPath + (path -> tokens(
-                    ourModification.content
-                  ).get),
-                  rightContentsByPath + (path -> tokens(
-                    theirModification.content
-                  ).get),
-                  newPathsOnLeftOrRight
-                )
-
-              case BothContributeADeletion(baseContent) =>
-                (
-                  baseContentsByPath + (path -> tokens(
-                    baseContent
-                  ).get),
-                  leftContentsByPath,
-                  rightContentsByPath,
                   newPathsOnLeftOrRight
                 )
         }
