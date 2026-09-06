@@ -2695,11 +2695,11 @@ object MatchAnalysis extends StrictLogging:
                 Section[Element]
               ],
               sources: Sources[Path, Element],
-              sectionsForSide: Set[Section[Element]]
+              sectionsForSide: collection.Set[Section[Element]]
           ): Unit =
             val sectionsOnSide = parallelMatches.toSeq.flatMap(sectionExtractor)
             if sectionsOnSide.nonEmpty then
-              val filesByPath = sources.filesByPathUtilising(mandatorySections = sectionsForSide)
+              val filesByPath = sources.filesByPathUtilising(mandatorySections = sectionsForSide.toSet)
               sectionsOnSide.groupBy(sources.pathFor).foreach { (path, sectionsForPath) =>
                 val file = filesByPath(path)
                 val minStart = sectionsForPath.map(_.startOffset).min
@@ -2725,11 +2725,10 @@ object MatchAnalysis extends StrictLogging:
             end if
           end checkSpanForSide
 
-          checkSpanForSide(_.baseContribution, baseSources, baseSections.toSet)
-          checkSpanForSide(_.leftContribution, leftSources, leftSections.toSet)
-          checkSpanForSide(_.rightContribution, rightSources, rightSections.toSet)
+          checkSpanForSide(_.baseContribution, baseSources, baseSections)
+          checkSpanForSide(_.leftContribution, leftSources, leftSections)
+          checkSpanForSide(_.rightContribution, rightSources, rightSections)
         }
-
       end reconciliationPostcondition
 
       private def pathOnBase(aMatch: GenericMatch[Element]): Option[Path] =
