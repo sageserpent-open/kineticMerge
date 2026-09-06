@@ -2688,6 +2688,48 @@ object MatchAnalysis extends StrictLogging:
               )
             }
         end if
+
+        groupsOfParallelMatches.foreach { (groupId, parallelMatches) =>
+          def checkSpanForSide(
+              sectionExtractor: Match[Section[Element]] => Option[
+                Section[Element]
+              ],
+              sources: Sources[Path, Element],
+              sectionsForSide: Set[Section[Element]]
+          ): Unit =
+            val sectionsOnSide = parallelMatches.toSeq.flatMap(sectionExtractor)
+            if sectionsOnSide.nonEmpty then
+              val filesByPath = sources.filesByPathUtilising(mandatorySections = sectionsForSide)
+              sectionsOnSide.groupBy(sources.pathFor).foreach { (path, sectionsForPath) =>
+                val file = filesByPath(path)
+                val minStart = sectionsForPath.map(_.startOffset).min
+                val maxStart = sectionsForPath.map(_.startOffset).max
+
+                val collection.Searching.Found(startIndex) =
+                  file.searchByStartOffset(minStart): @unchecked
+                val collection.Searching.Found(endIndex) =
+                  file.searchByStartOffset(maxStart): @unchecked
+
+                file.sections.slice(startIndex, 1 + endIndex).foreach { section =>
+                  val matchesForSection = sectionsAndTheirMatches.get(section)
+                  val isFiller = matchesForSection.isEmpty
+                  val belongsToGroup = matchesForSection.exists(m =>
+                    parallelMatchesGroupIdsByMatch.get(m).contains(groupId)
+                  )
+                  assert(
+                    isFiller || belongsToGroup,
+                    s"Section ${pprintCustomised(section)} in span of group $groupId belongs to alien matches: ${pprintCustomised(matchesForSection)} which do not include group $groupId."
+                  )
+                }
+              }
+            end if
+          end checkSpanForSide
+
+          checkSpanForSide(_.baseContribution, baseSources, baseSections.toSet)
+          checkSpanForSide(_.leftContribution, leftSources, leftSections.toSet)
+          checkSpanForSide(_.rightContribution, rightSources, rightSections.toSet)
+        }
+
       end reconciliationPostcondition
 
       private def pathOnBase(aMatch: GenericMatch[Element]): Option[Path] =
