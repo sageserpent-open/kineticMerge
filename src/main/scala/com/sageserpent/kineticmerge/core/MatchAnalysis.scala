@@ -1896,67 +1896,63 @@ object MatchAnalysis extends StrictLogging:
         // ignores gaps, we have to guard against sections that would have
         // formed the sides of a suppressed outer match making a second attempt
         // at building a match.
-        val groupsOfBackTranslatedParallelMatches = metaMatches
-          .map {
+        val groupsOfBackTranslatedParallelMatches = metaMatches.toSeq
+          .flatMap {
             case Match.AllSides(
                   baseMetaSection,
                   leftMetaSection,
                   rightMetaSection
                 ) =>
-              // NOTE: an all-sides meta-match implies a group of all-sides
-              // matches. Contrast this to a pairwise meta-match, which is
-              // exploded into singleton groups of pairwise matches. This is
-              // done because the pairwise matches can land on either side of an
-              // intervening all-sides group; we don't want to have group ids
-              // that are shared across such split groups.
-              // TODO: finesse this so that an attempt is made at grouping
-              // pairwise matches together if possible without violating the
-              // unique group id constraint, or at least do something about the
-              // nasty wrapping in `Seq` and then flat-mapping.
-
-              (baseMetaSection.content lazyZip leftMetaSection.content lazyZip rightMetaSection.content)
-                .collect {
-                  case (baseSection, leftSection, rightSection)
-                      if !isSubsumedNonTriviallyByAnAllSidesMatch(
-                        baseSection,
-                        leftSection,
-                        rightSection
-                      ) =>
-                    Match.AllSides(baseSection, leftSection, rightSection)
-                }
+              val backTranslated =
+                (baseMetaSection.content lazyZip leftMetaSection.content lazyZip rightMetaSection.content)
+                  .collect {
+                    case (baseSection, leftSection, rightSection)
+                        if !isSubsumedNonTriviallyByAnAllSidesMatch(
+                          baseSection,
+                          leftSection,
+                          rightSection
+                        ) =>
+                      Match.AllSides(baseSection, leftSection, rightSection)
+                  }
+              partitionIntoContiguousRuns(backTranslated)
             case Match.BaseAndLeft(baseMetaSection, leftMetaSection) =>
-              (baseMetaSection.content lazyZip leftMetaSection.content)
-                .collect {
-                  case (baseSection, leftSection)
-                      if !isSubsumedNonTriviallyByAMatchOnTheBaseAndLeft(
-                        baseSection,
-                        leftSection
-                      ) =>
-                    Match.BaseAndLeft(baseSection, leftSection)
-                }
+              val backTranslated =
+                (baseMetaSection.content lazyZip leftMetaSection.content)
+                  .collect {
+                    case (baseSection, leftSection)
+                        if !isSubsumedNonTriviallyByAMatchOnTheBaseAndLeft(
+                          baseSection,
+                          leftSection
+                        ) =>
+                      Match.BaseAndLeft(baseSection, leftSection)
+                  }
+              partitionIntoContiguousRuns(backTranslated)
             case Match.BaseAndRight(baseMetaSection, rightMetaSection) =>
-              (baseMetaSection.content lazyZip rightMetaSection.content)
-                .collect {
-                  case (baseSection, rightSection)
-                      if !isSubsumedNonTriviallyByAMatchOnTheBaseAndRight(
-                        baseSection,
-                        rightSection
-                      ) =>
-                    Match.BaseAndRight(baseSection, rightSection)
-                }
+              val backTranslated =
+                (baseMetaSection.content lazyZip rightMetaSection.content)
+                  .collect {
+                    case (baseSection, rightSection)
+                        if !isSubsumedNonTriviallyByAMatchOnTheBaseAndRight(
+                          baseSection,
+                          rightSection
+                        ) =>
+                      Match.BaseAndRight(baseSection, rightSection)
+                  }
+              partitionIntoContiguousRuns(backTranslated)
             case Match.LeftAndRight(leftMetaSection, rightMetaSection) =>
-              (leftMetaSection.content lazyZip rightMetaSection.content)
-                .collect {
-                  case (leftSection, rightSection)
-                      if !isSubsumedNonTriviallyByAMatchOnTheLeftAndRight(
-                        leftSection,
-                        rightSection
-                      ) =>
-                    Match.LeftAndRight(leftSection, rightSection)
-                }
+              val backTranslated =
+                (leftMetaSection.content lazyZip rightMetaSection.content)
+                  .collect {
+                    case (leftSection, rightSection)
+                        if !isSubsumedNonTriviallyByAMatchOnTheLeftAndRight(
+                          leftSection,
+                          rightSection
+                        ) =>
+                      Match.LeftAndRight(leftSection, rightSection)
+                  }
+              partitionIntoContiguousRuns(backTranslated)
           }
           .filter(_.nonEmpty)
-          .toSeq
 
         // 4. Build putative groups from the back-translated matches. These
         // won't be perfectly accurate, but are refined later by
@@ -1990,6 +1986,58 @@ object MatchAnalysis extends StrictLogging:
           .copy(parallelMatchesGroupIdsByMatch = parallelMatchesGroupIdsByMatch)
           .withoutRedundantPairwiseMatches
       end parallelMatchesOnly
+
+      private def matchesAbut(
+          first: GenericMatch[Element],
+          second: GenericMatch[Element]
+      ): Boolean =
+        (first, second) match
+          case (
+                Match.AllSides(base1, left1, right1),
+                Match.AllSides(base2, left2, right2)
+              ) =>
+            base1.onePastEndOffset == base2.startOffset &&
+            left1.onePastEndOffset == left2.startOffset &&
+            right1.onePastEndOffset == right2.startOffset
+
+          case (
+                Match.BaseAndLeft(base1, left1),
+                Match.BaseAndLeft(base2, left2)
+              ) =>
+            base1.onePastEndOffset == base2.startOffset &&
+            left1.onePastEndOffset == left2.startOffset
+
+          case (
+                Match.BaseAndRight(base1, right1),
+                Match.BaseAndRight(base2, right2)
+              ) =>
+            base1.onePastEndOffset == base2.startOffset &&
+            right1.onePastEndOffset == right2.startOffset
+
+          case (
+                Match.LeftAndRight(left1, right1),
+                Match.LeftAndRight(left2, right2)
+              ) =>
+            left1.onePastEndOffset == left2.startOffset &&
+            right1.onePastEndOffset == right2.startOffset
+
+          case _ => false
+
+      private def partitionIntoContiguousRuns(
+          matches: Iterable[GenericMatch[Element]]
+      ): Seq[Seq[GenericMatch[Element]]] =
+        val seq = matches.toSeq
+        if seq.isEmpty then Seq.empty
+        else
+          val (runs, lastRun) = seq.tail.foldLeft(
+            (Vector.empty[Seq[GenericMatch[Element]]], Vector(seq.head))
+          ) { case ((accRuns, currentRun), nextMatch) =>
+            if matchesAbut(currentRun.last, nextMatch) then
+              (accRuns, currentRun :+ nextMatch)
+            else
+              (accRuns :+ currentRun, Vector(nextMatch))
+          }
+          runs :+ lastRun
 
       private def isSubsumedNonTriviallyByAnAllSidesMatch(
           baseSection: Section[Element],
