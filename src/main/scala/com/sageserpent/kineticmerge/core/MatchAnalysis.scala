@@ -2536,16 +2536,25 @@ object MatchAnalysis extends StrictLogging:
         }
 
         if parallelMatchesGroupIdsByMatch.nonEmpty then
+          // The parallel matches groups should correspond to all the matches
+          // and vice versa...
           assert(
             parallelMatchesGroupIdsByMatch.keySet == matches,
             s"If groups of parallel matches have been discovered, they should cover the overall population of matches exactly."
           )
 
+          // Each group's matched sections on each side should lie on the same
+          // path, given that they come from parallel matches. Furthermore,
+          // those sections should occur in an order that is consistent with
+          // those from the other sides - they can't 'cross-over' when we jump
+          // from one side to another.
           parallelMatchesGroupIdsByMatch.toSeq
             .groupBy(_._2)
             .values
             .foreach { group =>
               val matchesInGroup = group.map(_._1)
+
+              assert(matchesInGroup.nonEmpty)
 
               case class SidePerspective(path: Path, startOffset: Int)
 
@@ -2687,7 +2696,79 @@ object MatchAnalysis extends StrictLogging:
                 startOffsetOnRight
               )
             }
+
+          // Finally, looking through the paths on each side, the matched
+          // sections should be associated with parallel matches group ids so
+          // that following matched sections don't exhibit gaps in the
+          // associated group ids - in other words, groups may overlap or nest
+          // each other on a given side, but they can't have 'alien' matches
+          // split them up into separate pieces.
+
+          def checkGroupsAreNotSplitByAlienMatches(
+              sectionsByPath: Map[Path, SectionsSeen]
+          ): Unit =
+            sectionsByPath.foreach { case (path, sectionsSeen) =>
+              val affiliatedGroupIds = mutable.Set.empty[ParallelMatchesGroupId]
+              val followingSectionGroupIdsByDisappearedGroupId =
+                mutable.Map.empty[ParallelMatchesGroupId, mutable.Set[
+                  ParallelMatchesGroupId
+                ]]
+              val alienGroupIdsBySplitGroupId =
+                mutable.MultiDict
+                  .empty[ParallelMatchesGroupId, ParallelMatchesGroupId]
+
+              sectionsSeen.foreach { section =>
+                val groupIds = sectionsAndTheirMatches
+                  .get(section)
+                  .map(parallelMatchesGroupIdsByMatch)
+
+                val reappearingGroupIds = groupIds.intersect(
+                  followingSectionGroupIdsByDisappearedGroupId.keySet
+                )
+
+                reappearingGroupIds.foreach { reappearingGroupId =>
+                  followingSectionGroupIdsByDisappearedGroupId
+                    .remove(
+                      reappearingGroupId
+                    )
+                    .foreach { alienGroupIds =>
+                      alienGroupIds.foreach {
+                        alienGroupIdsBySplitGroupId.addOne(
+                          reappearingGroupId,
+                          _
+                        )
+                      }
+                    }
+                }
+
+                val disappearingGroupIds = affiliatedGroupIds.diff(groupIds)
+
+                disappearingGroupIds.foreach { disappearingGroupId =>
+                  affiliatedGroupIds.remove(disappearingGroupId)
+                  followingSectionGroupIdsByDisappearedGroupId.addOne(
+                    disappearingGroupId,
+                    mutable.Set.empty
+                  )
+                }
+                followingSectionGroupIdsByDisappearedGroupId.foreach {
+                  case (disappearedGroupId, followingSectionGroupIds) =>
+                    followingSectionGroupIds.addAll(groupIds)
+                }
+
+                affiliatedGroupIds.addAll(groupIds)
+              }
+
+              assert(
+                alienGroupIdsBySplitGroupId.isEmpty,
+                s"Split groups found on path $path, these are: ${pprintCustomised(alienGroupIdsBySplitGroupId.sets)}."
+              )
+            }
+
+          checkGroupsAreNotSplitByAlienMatches(baseSectionsByPath)
+          checkGroupsAreNotSplitByAlienMatches(leftSectionsByPath)
+          checkGroupsAreNotSplitByAlienMatches(rightSectionsByPath)
         end if
+
       end reconciliationPostcondition
 
       private def pathOnBase(aMatch: GenericMatch[Element]): Option[Path] =
