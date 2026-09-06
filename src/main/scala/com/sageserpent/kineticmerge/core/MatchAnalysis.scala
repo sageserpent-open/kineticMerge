@@ -2689,17 +2689,20 @@ object MatchAnalysis extends StrictLogging:
             }
         end if
 
+        lazy val baseFilesByPath = baseSources.filesByPathUtilising(mandatorySections = baseSections.toSet)
+        lazy val leftFilesByPath = leftSources.filesByPathUtilising(mandatorySections = leftSections.toSet)
+        lazy val rightFilesByPath = rightSources.filesByPathUtilising(mandatorySections = rightSections.toSet)
+
         groupsOfParallelMatches.foreach { (groupId, parallelMatches) =>
           def checkSpanForSide(
               sectionExtractor: Match[Section[Element]] => Option[
                 Section[Element]
               ],
               sources: Sources[Path, Element],
-              sectionsForSide: collection.Set[Section[Element]]
+              filesByPath: Map[Path, File[Element]]
           ): Unit =
             val sectionsOnSide = parallelMatches.toSeq.flatMap(sectionExtractor)
             if sectionsOnSide.nonEmpty then
-              val filesByPath = sources.filesByPathUtilising(mandatorySections = sectionsForSide.toSet)
               sectionsOnSide.groupBy(sources.pathFor).foreach { (path, sectionsForPath) =>
                 val file = filesByPath(path)
                 val minStart = sectionsForPath.map(_.startOffset).min
@@ -2725,9 +2728,9 @@ object MatchAnalysis extends StrictLogging:
             end if
           end checkSpanForSide
 
-          checkSpanForSide(_.baseContribution, baseSources, baseSections)
-          checkSpanForSide(_.leftContribution, leftSources, leftSections)
-          checkSpanForSide(_.rightContribution, rightSources, rightSections)
+          checkSpanForSide(_.baseContribution, baseSources, baseFilesByPath)
+          checkSpanForSide(_.leftContribution, leftSources, leftFilesByPath)
+          checkSpanForSide(_.rightContribution, rightSources, rightFilesByPath)
         }
       end reconciliationPostcondition
 
