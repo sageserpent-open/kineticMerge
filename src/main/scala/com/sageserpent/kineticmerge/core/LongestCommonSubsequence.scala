@@ -128,7 +128,7 @@ case class LongestCommonSubsequence[Element] private (
       )
 
   def size: (CommonSubsequenceSize, CommonSubsequenceSize) =
-    commonSubsequenceSize -> (commonToLeftAndRightOnlySize plus commonToBaseAndLeftOnlySize plus commonToBaseAndRightOnlySize)
+    commonSubsequenceSize -> (commonToLeftAndRightOnlySize `plus` commonToBaseAndLeftOnlySize `plus` commonToBaseAndRightOnlySize)
 
   // TODO: this is for testing only, but attempting to define it in test code as
   // an extension runs afoul of the private constructor.
@@ -438,7 +438,7 @@ object LongestCommonSubsequence:
         right =
           prefixRightContributions ++ trimmedLcs.right ++ suffixRightContributions,
         commonSubsequenceSize =
-          prefixSize plus trimmedLcs.commonSubsequenceSize plus suffixSize,
+          prefixSize `plus` trimmedLcs.commonSubsequenceSize `plus` suffixSize,
         commonToLeftAndRightOnlySize = trimmedLcs.commonToLeftAndRightOnlySize,
         commonToBaseAndLeftOnlySize = trimmedLcs.commonToBaseAndLeftOnlySize,
         commonToBaseAndRightOnlySize = trimmedLcs.commonToBaseAndRightOnlySize
