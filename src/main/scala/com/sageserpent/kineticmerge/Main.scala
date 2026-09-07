@@ -1806,7 +1806,7 @@ object Main extends StrictLogging:
           sectionedCode.merge
 
         _ <- moveDestinationsReport.summarizeInText.foldLeft(right(()))(
-          _ `logOperation` _
+          _ logOperation _
         )
 
         fileRenamingReport = fileRenamingReportUsing(

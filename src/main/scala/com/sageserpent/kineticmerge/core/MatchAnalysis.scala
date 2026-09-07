@@ -658,11 +658,13 @@ object MatchAnalysis extends StrictLogging:
       ): Map[Path, SectionsSeen] =
         sectionsByPath.updatedWith(
           side.pathFor(section)
-        ) { case Some(sections) =>
-          // Allow the same section to be removed more than once, on behalf of
-          // ambiguous matches.
-          val withoutSection = sections - section
-          Option.unless(withoutSection.isEmpty)(withoutSection)
+        ) {
+          case Some(sections) =>
+            // Allow the same section to be removed more than once, on behalf of
+            // ambiguous matches.
+            val withoutSection = sections - section
+            Option.unless(withoutSection.isEmpty)(withoutSection)
+          case None => None
         }
       end excluding
 
@@ -3069,6 +3071,7 @@ object MatchAnalysis extends StrictLogging:
                 allSides.baseElement.onePastEndOffset - subsuming.baseElement.startOffset
               )
             )
+          case _ => None
         } union (subsumingOnBase intersect subsumingOnRight).flatMap {
           case subsuming: Match.BaseAndRight[Section[Element]] =>
             val offsetRelativeToSubsumingOnBaseSide =
@@ -3087,6 +3090,7 @@ object MatchAnalysis extends StrictLogging:
                 allSides.baseElement.onePastEndOffset - subsuming.baseElement.startOffset
               )
             )
+          case _ => None
         } union (subsumingOnLeft intersect subsumingOnRight).flatMap {
           case subsuming: Match.LeftAndRight[Section[Element]] =>
             val offsetRelativeToSubsumingOnLeftSide =
@@ -3105,6 +3109,7 @@ object MatchAnalysis extends StrictLogging:
                 allSides.leftElement.onePastEndOffset - subsuming.leftElement.startOffset
               )
             )
+          case _ => None
         }
       end pairwiseMatchesSubsumingOnBothSidesWithBiteEdges
 
@@ -3795,7 +3800,7 @@ object MatchAnalysis extends StrictLogging:
       end cachedHashCode
 
       override def equals(another: Any): Boolean =
-        another.asInstanceOf[Matchable] match
+        (another.asInstanceOf[Matchable]: @unchecked) match
           case PotentialMatchKey(anotherFingerprint, anotherImpliedContent) =>
             fingerprint == anotherFingerprint && PotentialMatchKey.impliedContentEquality
               .eqv(

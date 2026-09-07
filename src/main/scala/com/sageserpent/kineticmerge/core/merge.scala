@@ -1235,7 +1235,7 @@ object merge extends StrictLogging:
             partialResult: Result[Element],
             coalescence: Coalescence
         ): Result[Element] =
-          (coalescence, base, left, right) match
+          ((coalescence, base, left, right): @unchecked) match
             // SYMMETRIC...
             case (
                   NoCoalescence,
