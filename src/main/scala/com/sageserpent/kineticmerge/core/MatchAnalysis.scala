@@ -398,7 +398,6 @@ object MatchAnalysis extends StrictLogging:
         )
       end reinstateInFingerprintedInclusions
 
-      @tailrec
       private final def withAllMatches(
           matchesAndTheirSections: MatchesAndTheirSections,
           looseExclusiveUpperBoundOnMaximumMatchSize: Int

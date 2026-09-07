@@ -4,13 +4,12 @@ import scala.language.postfixOps
 
 lazy val javaVersion = "17"
 
-ThisBuild / scalaVersion := "3.3.8"
+ThisBuild / scalaVersion := "3.9.0"
 
 ThisBuild / javacOptions ++= Seq("-source", javaVersion, "-target", javaVersion)
 
 ThisBuild / scalacOptions ++= List(
-  s"-java-output-version:$javaVersion",
-  "-source:future"
+  s"-java-output-version:$javaVersion"
 )
 
 lazy val packageExecutable =
@@ -116,5 +115,6 @@ lazy val root = (project in file("."))
     Test / test / logLevel                 := Level.Error,
     Test / fork                            := true,
     Test / testForkedParallel              := true,
-    Test / javaOptions ++= Seq("-Xmx8G"),
+    Test / testOptions                    += Tests.Argument(jupiterTestFramework, "-q", "-c"),
+    Test / javaOptions ++= Seq("-Xmx8G", "-Djunit-jupiter.no-color=true"),
   )
