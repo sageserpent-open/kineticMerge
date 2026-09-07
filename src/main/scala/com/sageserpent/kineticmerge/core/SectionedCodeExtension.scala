@@ -1132,7 +1132,7 @@ object SectionedCodeExtension extends StrictLogging:
         require(items.nonEmpty)
 
         val migratedChangesSortedByContent =
-          items.toSeq.sorted(itemOrdering)
+          items.toSeq.sorted(using itemOrdering)
 
         val result =
           migratedChangesSortedByContent.tail.foldLeft(

@@ -156,7 +156,7 @@ object MatchAnalysis extends StrictLogging:
         baseSizesByPath.values.maxOption,
         leftSizesByPath.values.maxOption,
         rightSizesByPath.values.maxOption
-      ).flatten.sorted(Ordering[Int].reverse).take(2).lastOption.getOrElse(0)
+      ).flatten.sorted(using Ordering[Int].reverse).take(2).lastOption.getOrElse(0)
 
     val maximumFileSizeAcrossAllFilesOverAllSides =
       fileSizes.lastOption.getOrElse(0)
@@ -1395,7 +1395,7 @@ object MatchAnalysis extends StrictLogging:
           )(using progressRecordingSession)
         }.get.purgedOfOverlappingOrSubsumedMatches.matches
 
-        tinyMatches.foldLeft(this)(_ withMatch _)
+        tinyMatches.foldLeft(this)(_ `withMatch` _)
       end withTinyMatches
 
       private def purgedOfOverlappingOrSubsumedMatches
@@ -1620,7 +1620,7 @@ object MatchAnalysis extends StrictLogging:
                 takingFragmentationIntoAccount =
                   fragments.foldLeft(
                     withoutTheseMatches(pairwiseMatchesToBeEaten.keySet)
-                  )(_ withMatch _)
+                  )(_ `withMatch` _)
 
                 _ = takingFragmentationIntoAccount.checkInvariant()
 
@@ -1659,7 +1659,7 @@ object MatchAnalysis extends StrictLogging:
                       rebuilt =
                         (paredDownMatches union paredDownFragments.flatten)
                           .foldLeft(MatchesAndTheirSections.empty)(
-                            _ withMatch _
+                            _ `withMatch` _
                           )
                       _          = rebuilt.checkInvariant()
                       reconciled = rebuilt.withoutRedundantPairwiseMatches
@@ -2123,7 +2123,7 @@ object MatchAnalysis extends StrictLogging:
           haveTrimmedMatches: Boolean
       ): MatchingResult =
         val updatedMatchesAndTheirSections =
-          matches.foldLeft(this)(_ withMatch _)
+          matches.foldLeft(this)(_ `withMatch` _)
 
         val pathInclusions =
           if !haveTrimmedMatches then
@@ -2432,7 +2432,7 @@ object MatchAnalysis extends StrictLogging:
                         remainingMatchesAndTheirSections
                           .withoutTheseMatches(overlappingMatches)
                       )(
-                        _ withMatch _
+                        _ `withMatch` _
                       )
                       .withoutRedundantPairwiseMatches
                   )

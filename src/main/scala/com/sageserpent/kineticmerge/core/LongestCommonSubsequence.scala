@@ -1348,7 +1348,7 @@ object LongestCommonSubsequence:
             resultDroppingTheEndOfTheRight
           ) ++ resultAligningAll ++ resultDroppingTheBaseAndLeft ++ resultDroppingTheBaseAndRight ++ resultDroppingTheLeftAndRight
 
-          candidates.max(orderBySize)
+          candidates.max(using orderBySize)
       end match
     end ofConsultingSwathesForSubProblems
 
