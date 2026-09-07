@@ -156,7 +156,7 @@ object MatchAnalysis extends StrictLogging:
         baseSizesByPath.values.maxOption,
         leftSizesByPath.values.maxOption,
         rightSizesByPath.values.maxOption
-      ).flatten.sorted(Ordering[Int].reverse).take(2).lastOption.getOrElse(0)
+      ).flatten.sorted(using Ordering[Int].reverse).take(2).lastOption.getOrElse(0)
 
     val maximumFileSizeAcrossAllFilesOverAllSides =
       fileSizes.lastOption.getOrElse(0)
@@ -398,7 +398,6 @@ object MatchAnalysis extends StrictLogging:
         )
       end reinstateInFingerprintedInclusions
 
-      @tailrec
       private final def withAllMatches(
           matchesAndTheirSections: MatchesAndTheirSections,
           looseExclusiveUpperBoundOnMaximumMatchSize: Int
@@ -659,11 +658,13 @@ object MatchAnalysis extends StrictLogging:
       ): Map[Path, SectionsSeen] =
         sectionsByPath.updatedWith(
           side.pathFor(section)
-        ) { case Some(sections) =>
-          // Allow the same section to be removed more than once, on behalf of
-          // ambiguous matches.
-          val withoutSection = sections - section
-          Option.unless(withoutSection.isEmpty)(withoutSection)
+        ) {
+          case Some(sections) =>
+            // Allow the same section to be removed more than once, on behalf of
+            // ambiguous matches.
+            val withoutSection = sections - section
+            Option.unless(withoutSection.isEmpty)(withoutSection)
+          case None => None
         }
       end excluding
 
@@ -1396,7 +1397,7 @@ object MatchAnalysis extends StrictLogging:
           )(using progressRecordingSession)
         }.get.purgedOfOverlappingOrSubsumedMatches.matches
 
-        tinyMatches.foldLeft(this)(_ withMatch _)
+        tinyMatches.foldLeft(this)(_ `withMatch` _)
       end withTinyMatches
 
       private def purgedOfOverlappingOrSubsumedMatches
@@ -1621,7 +1622,7 @@ object MatchAnalysis extends StrictLogging:
                 takingFragmentationIntoAccount =
                   fragments.foldLeft(
                     withoutTheseMatches(pairwiseMatchesToBeEaten.keySet)
-                  )(_ withMatch _)
+                  )(_ `withMatch` _)
 
                 _ = takingFragmentationIntoAccount.checkInvariant()
 
@@ -1660,7 +1661,7 @@ object MatchAnalysis extends StrictLogging:
                       rebuilt =
                         (paredDownMatches union paredDownFragments.flatten)
                           .foldLeft(MatchesAndTheirSections.empty)(
-                            _ withMatch _
+                            _ `withMatch` _
                           )
                       _          = rebuilt.checkInvariant()
                       reconciled = rebuilt.withoutRedundantPairwiseMatches
@@ -2124,7 +2125,7 @@ object MatchAnalysis extends StrictLogging:
           haveTrimmedMatches: Boolean
       ): MatchingResult =
         val updatedMatchesAndTheirSections =
-          matches.foldLeft(this)(_ withMatch _)
+          matches.foldLeft(this)(_ `withMatch` _)
 
         val pathInclusions =
           if !haveTrimmedMatches then
@@ -2433,7 +2434,7 @@ object MatchAnalysis extends StrictLogging:
                         remainingMatchesAndTheirSections
                           .withoutTheseMatches(overlappingMatches)
                       )(
-                        _ withMatch _
+                        _ `withMatch` _
                       )
                       .withoutRedundantPairwiseMatches
                   )
@@ -3070,6 +3071,7 @@ object MatchAnalysis extends StrictLogging:
                 allSides.baseElement.onePastEndOffset - subsuming.baseElement.startOffset
               )
             )
+          case _ => None
         } union (subsumingOnBase intersect subsumingOnRight).flatMap {
           case subsuming: Match.BaseAndRight[Section[Element]] =>
             val offsetRelativeToSubsumingOnBaseSide =
@@ -3088,6 +3090,7 @@ object MatchAnalysis extends StrictLogging:
                 allSides.baseElement.onePastEndOffset - subsuming.baseElement.startOffset
               )
             )
+          case _ => None
         } union (subsumingOnLeft intersect subsumingOnRight).flatMap {
           case subsuming: Match.LeftAndRight[Section[Element]] =>
             val offsetRelativeToSubsumingOnLeftSide =
@@ -3106,6 +3109,7 @@ object MatchAnalysis extends StrictLogging:
                 allSides.leftElement.onePastEndOffset - subsuming.leftElement.startOffset
               )
             )
+          case _ => None
         }
       end pairwiseMatchesSubsumingOnBothSidesWithBiteEdges
 
@@ -3796,7 +3800,7 @@ object MatchAnalysis extends StrictLogging:
       end cachedHashCode
 
       override def equals(another: Any): Boolean =
-        another.asInstanceOf[Matchable] match
+        (another.asInstanceOf[Matchable]: @unchecked) match
           case PotentialMatchKey(anotherFingerprint, anotherImpliedContent) =>
             fingerprint == anotherFingerprint && PotentialMatchKey.impliedContentEquality
               .eqv(

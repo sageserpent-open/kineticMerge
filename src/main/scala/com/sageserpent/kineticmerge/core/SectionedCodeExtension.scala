@@ -1132,14 +1132,16 @@ object SectionedCodeExtension extends StrictLogging:
         require(items.nonEmpty)
 
         val migratedChangesSortedByContent =
-          items.toSeq.sorted(itemOrdering)
+          items.toSeq.sorted(using itemOrdering)
 
         val result =
           migratedChangesSortedByContent.tail.foldLeft(
             List(migratedChangesSortedByContent.head)
-          ) { case (partialResult @ head :: _, change) =>
-            if 0 == itemOrdering.compare(head, change) then partialResult
-            else change :: partialResult
+          ) {
+            case (partialResult @ head :: _, change) =>
+              if 0 == itemOrdering.compare(head, change) then partialResult
+              else change :: partialResult
+            case (Nil, _) => Nil
           }
 
         assume(result.nonEmpty)

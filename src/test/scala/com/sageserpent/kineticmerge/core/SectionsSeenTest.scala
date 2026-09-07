@@ -26,7 +26,7 @@ class SectionsSeenTest:
     sequences.withLimit(500).dynamicTests { ops =>
       var sectionsSeen = SectionsSeen.empty[Int]
       var reference    =
-        RangedSeq.empty[FakeSection, Int](_.closedOpenInterval, Ordering.Int)
+        RangedSeq.empty[FakeSection, Int](using _.closedOpenInterval, Ordering.Int)
       var referenceWasHit = false
 
       ops.foreach {

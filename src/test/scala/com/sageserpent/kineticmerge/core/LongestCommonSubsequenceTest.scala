@@ -31,7 +31,7 @@ class LongestCommonSubsequenceTest:
         (
           testCase: TestCase
         ) =>
-          given Sized[Element] = defaultElementSize
+          given Sized[Element] = defaultElementSize(_)
 
           val image @ LongestCommonSubsequence(base, left, right, _, _, _, _) =
             LongestCommonSubsequence
@@ -71,7 +71,7 @@ class LongestCommonSubsequenceTest:
         (
           testCase: TestCase
         ) =>
-          given Sized[Element] = defaultElementSize
+          given Sized[Element] = defaultElementSize(_)
 
           val LongestCommonSubsequence(base, left, right, _, _, _, _) =
             LongestCommonSubsequence
@@ -108,9 +108,9 @@ class LongestCommonSubsequenceTest:
 
               val commonSubsequence = indexedCommonParts.map(_._2)
 
-              val _ = commonSubsequence isSubsequenceOf testCase.base
-              val _ = commonSubsequence isSubsequenceOf testCase.left
-              val _ = commonSubsequence isSubsequenceOf testCase.right
+              val _ = commonSubsequence `isSubsequenceOf` testCase.base
+              val _ = commonSubsequence `isSubsequenceOf` testCase.left
+              val _ = commonSubsequence `isSubsequenceOf` testCase.right
 
               assert(commonSubsequence.size == commonSubsequenceSize)
 
@@ -121,15 +121,15 @@ class LongestCommonSubsequenceTest:
                   viveLaDifférence: IndexedSeq[Element]
               ): Unit =
                 if elements != testCase.base then
-                  val _ = viveLaDifférence isNotSubsequenceOf testCase.base
+                  val _ = viveLaDifférence `isNotSubsequenceOf` testCase.base
                 end if
 
                 if elements != testCase.left then
-                  val _ = viveLaDifférence isNotSubsequenceOf testCase.left
+                  val _ = viveLaDifférence `isNotSubsequenceOf` testCase.left
                 end if
 
                 if elements != testCase.right then
-                  val _ = viveLaDifférence isNotSubsequenceOf testCase.right
+                  val _ = viveLaDifférence `isNotSubsequenceOf` testCase.right
                 end if
               end verifyDifference
 
@@ -137,7 +137,7 @@ class LongestCommonSubsequenceTest:
                   viveLaDifférence: IndexedSeq[Element]
               ): Unit =
                 if elements != testCase.right then
-                  viveLaDifférence isNotSubsequenceOf testCase.right
+                  viveLaDifférence `isNotSubsequenceOf` testCase.right
                 end if
               end verifyCommonBaseAndLeft
 
@@ -145,7 +145,7 @@ class LongestCommonSubsequenceTest:
                   viveLaDifférence: IndexedSeq[Element]
               ): Unit =
                 if elements != testCase.left then
-                  viveLaDifférence isNotSubsequenceOf testCase.left
+                  viveLaDifférence `isNotSubsequenceOf` testCase.left
                 end if
               end verifyCommonBaseAndRight
 
@@ -153,7 +153,7 @@ class LongestCommonSubsequenceTest:
                   viveLaDifférence: IndexedSeq[Element]
               ): Unit =
                 if elements != testCase.base then
-                  viveLaDifférence isNotSubsequenceOf testCase.base
+                  viveLaDifférence `isNotSubsequenceOf` testCase.base
                 end if
               end verifyCommonLeftAndRight
 
@@ -259,7 +259,7 @@ class LongestCommonSubsequenceTest:
               }
           end extension
 
-          given Sized[Element] = defaultElementSize
+          given Sized[Element] = defaultElementSize(_)
 
           val LongestCommonSubsequence(
             base,
@@ -289,7 +289,7 @@ class LongestCommonSubsequenceTest:
             testCase.left,
             commonSubsequenceLength
           )
-          val _ = right verifyLongestCommonSubsequence (
+          val _ = right `verifyLongestCommonSubsequence` (
             testCase.right,
             commonSubsequenceLength
           )
@@ -310,7 +310,7 @@ class LongestCommonSubsequenceTest:
         (
           testCase: TestCase
         ) =>
-          given Sized[Element] = defaultElementSize
+          given Sized[Element] = defaultElementSize(_)
 
           val originalLongestCommonSubsequence @ LongestCommonSubsequence(
             base,
@@ -432,13 +432,13 @@ class LongestCommonSubsequenceTest:
         // mixture includes all the upper case sequence anyway.
 
         if missingSide != MissingSide.Base
-        then upperCaseSequence isSubsequenceOf baseCommonParts
+        then upperCaseSequence `isSubsequenceOf` baseCommonParts
         end if
         if missingSide != MissingSide.Left
-        then upperCaseSequence isSubsequenceOf leftCommonParts
+        then upperCaseSequence `isSubsequenceOf` leftCommonParts
         end if
         if missingSide != MissingSide.Right
-        then upperCaseSequence isSubsequenceOf rightCommonParts
+        then upperCaseSequence `isSubsequenceOf` rightCommonParts
         end if
       }
   end theLargestElementSizeSumIsTheTiebreakForLongestCommonSubsequencesOfTheSameLength
