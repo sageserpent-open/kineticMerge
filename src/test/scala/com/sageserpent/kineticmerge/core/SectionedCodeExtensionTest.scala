@@ -25,9 +25,9 @@ object SectionedCodeExtensionTest:
   def reconstituteTextFrom(tokens: Seq[Token]): String =
     tokens.map(_.text).mkString
 
-  given Eq[Token]         = Token.equality
-  given Order[Token]      = Token.comparison
-  given Funnel[Token]     = Token.funnel
+  given Eq[Token]         = Token.equality(_, _)
+  given Order[Token]      = Token.comparison(_, _)
+  given Funnel[Token]     = Token.funnel(_, _)
   given HashFunction      = Hashing.murmur3_32_fixed()
   given ProgressRecording = NoProgressRecording
 end SectionedCodeExtensionTest
@@ -549,7 +549,7 @@ class SectionedCodeExtensionTest extends ProseExamples:
       val (mergeResultsByPath, _) = sectionedCode.merge
 
       def merge(path: FakePath): Unit =
-        mergeResultsByPath(path) match
+        (mergeResultsByPath(path): @unchecked) match
           case FullyMerged(result) =>
             println(fansi.Color.Yellow("Fully merged result..."))
             println(fansi.Color.Green(reconstituteTextFrom(result)))
@@ -1429,7 +1429,7 @@ class SectionedCodeExtensionTest extends ProseExamples:
     println(fansi.Color.Yellow("Expected..."))
     println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
 
-    mergeResultsByPath(path) match
+    (mergeResultsByPath(path): @unchecked) match
       case FullyMerged(result) =>
         println(fansi.Color.Yellow("Fully merged result..."))
         println(fansi.Color.Green(reconstituteTextFrom(result)))
@@ -1450,7 +1450,7 @@ class SectionedCodeExtensionTest extends ProseExamples:
       path: FakePath,
       mergeResultsByPath: Map[FakePath, MergeResult[Token]]
   ): Unit =
-    mergeResultsByPath(path) match
+    (mergeResultsByPath(path): @unchecked) match
       case FullyMerged(result) =>
         assert(
           result.isEmpty,

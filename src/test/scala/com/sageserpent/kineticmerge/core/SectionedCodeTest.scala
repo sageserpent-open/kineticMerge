@@ -1638,7 +1638,7 @@ class SectionedCodeTest:
         if 2 == numberOfSourcesWithPaths then
           assert(
             2 == matches.size && matches
-              .forall(!_.isInstanceOf[Match.AllSides[Int]])
+              .forall(!_.isInstanceOf[Match.AllSides[?]])
           )
         else assert(matches.isEmpty)
         end if
@@ -1760,8 +1760,8 @@ class SectionedCodeTest:
     println(s"Resulting matches:\n${pprintCustomised(matches)}")
 
     val (allSides, pairwise) = matches.partition {
-      case _: Match.AllSides[Element] => true
-      case _                          => false
+      case _: Match.AllSides[?] => true
+      case _                    => false
     }
 
     assert(9 == allSides.size)

@@ -31,7 +31,7 @@ class LongestCommonSubsequenceTest:
         (
           testCase: TestCase
         ) =>
-          given Sized[Element] = defaultElementSize
+          given Sized[Element] = defaultElementSize(_)
 
           val image @ LongestCommonSubsequence(base, left, right, _, _, _, _) =
             LongestCommonSubsequence
@@ -71,7 +71,7 @@ class LongestCommonSubsequenceTest:
         (
           testCase: TestCase
         ) =>
-          given Sized[Element] = defaultElementSize
+          given Sized[Element] = defaultElementSize(_)
 
           val LongestCommonSubsequence(base, left, right, _, _, _, _) =
             LongestCommonSubsequence
@@ -259,7 +259,7 @@ class LongestCommonSubsequenceTest:
               }
           end extension
 
-          given Sized[Element] = defaultElementSize
+          given Sized[Element] = defaultElementSize(_)
 
           val LongestCommonSubsequence(
             base,
@@ -310,7 +310,7 @@ class LongestCommonSubsequenceTest:
         (
           testCase: TestCase
         ) =>
-          given Sized[Element] = defaultElementSize
+          given Sized[Element] = defaultElementSize(_)
 
           val originalLongestCommonSubsequence @ LongestCommonSubsequence(
             base,
