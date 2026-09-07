@@ -2795,7 +2795,13 @@ object MatchAnalysis extends StrictLogging:
                               sections
                             )
                             .sortBy(_.startOffset)
-                            .map(section => section -> groupIdsFor(section))
+                            .map(section =>
+                              (
+                                section,
+                                groupIdsFor(section),
+                                sectionsAndTheirMatches.get(section)
+                              )
+                            )
                     )
                   )}
                   |""".stripMargin
