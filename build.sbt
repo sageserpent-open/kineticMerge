@@ -93,7 +93,7 @@ lazy val root = (project in file("."))
       "dev.optics" %% "monocle-core"  % "3.3.0",
       "dev.optics" %% "monocle-macro" % "3.3.0"
     ),
-    libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "2.4.0",
+    libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "2.5.0",
     libraryDependencies += "com.lihaoyi"             %% "os-lib"  % "0.11.8",
     libraryDependencies += "com.lihaoyi"             %% "fansi"   % "0.5.1",
     libraryDependencies += "com.lihaoyi"             %% "pprint"  % "0.9.6",
@@ -115,5 +115,5 @@ lazy val root = (project in file("."))
     Test / test / logLevel                 := Level.Error,
     Test / fork                            := true,
     Test / testForkedParallel              := true,
-    Test / javaOptions ++= Seq("-Xmx8G"),
+    Test / javaOptions ++= Seq("-Xmx8G")
   )
