@@ -111,6 +111,40 @@ class SectionedCodeTest:
   end sourcesCanBeReconstructedFromTheAnalysis
 
   @Test
+  def reproduceParallelMatchesGroupSplitting(): Unit =
+    val base =
+      FakeSources(contentsByPath = Map(1 -> Vector(1, 1)), label = "base")
+    val left = FakeSources(
+      contentsByPath = Map(1 -> Vector(1, 1, 1, 1, 3, 2, 1)),
+      label = "left"
+    )
+    val right = FakeSources(
+      contentsByPath = Map(3 -> Vector(1, 1, 1, 3, 1)),
+      label = "right"
+    )
+
+    val minimumSizeFraction = 0
+
+    pprintCustomised.pprintln((base, left, right, minimumSizeFraction))
+
+    val configuration = Configuration(
+      minimumMatchSize = 2,
+      thresholdSizeFractionForMatching = minimumSizeFraction,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    SectionedCode.of(base, left, right)(
+      configuration
+    ) match
+      case Right(analysis) =>
+
+      case Left(unexpectedException) => throw unexpectedException
+    end match
+
+  end reproduceParallelMatchesGroupSplitting
+
+  @Test
   def reproduceStackOverflow(): Unit =
     val recipe = Source
       .fromResource("recipeForStackOverflow.txt")
