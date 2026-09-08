@@ -2733,6 +2733,17 @@ object MatchAnalysis extends StrictLogging:
                   .get(section)
                   .map(parallelMatchesGroupIdsByMatch)
 
+              def groupIdAndMatchPairsFor(
+                  section: Section[Element]
+              ): collection.Set[
+                (ParallelMatchesGroupId, GenericMatch[Element])
+              ] =
+                sectionsAndTheirMatches
+                  .get(section)
+                  .map(aMatch =>
+                    parallelMatchesGroupIdsByMatch(aMatch) -> aMatch
+                  )
+
               sectionsSeen.iterator.distinct.foreach { section =>
                 val groupIds = groupIdsFor(section)
 
@@ -2802,8 +2813,7 @@ object MatchAnalysis extends StrictLogging:
                             .map(section =>
                               (
                                 section,
-                                groupIdsFor(section),
-                                sectionsAndTheirMatches.get(section)
+                                groupIdAndMatchPairsFor(section)
                               )
                             )
                     )
