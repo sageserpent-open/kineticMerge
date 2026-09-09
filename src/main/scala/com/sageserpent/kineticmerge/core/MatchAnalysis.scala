@@ -958,9 +958,15 @@ object MatchAnalysis extends StrictLogging:
                       fragmentFactory(mealStartOffsetRelativeToMeal, size)
 
                     for
+                      parallelMatchesGroupIdsByMatch <- State
+                        .get[ParallelMatchesGroupIdsByMatch[Element]]
+                      deferredGroupIdsFromPrecedingBite =
+                        deferredMatchesFromPrecedingBite.map(
+                          parallelMatchesGroupIdsByMatch
+                        )
                       result <- assignUniqueGroupId(
                         fragment,
-                        Set.empty
+                        deferredGroupIdsFromPrecedingBite
                       ) as Right(fragments.appended(fragment))
                     yield result
                     end for
@@ -988,13 +994,29 @@ object MatchAnalysis extends StrictLogging:
                         val size =
                           startOffsetRelativeToMeal - mealStartOffsetRelativeToMeal
 
+                        val groupIdsFromSucceedingBite =
+                          matchesFromSucceedingBite.map(
+                            parallelMatchesGroupIdsByMatch
+                          )
+
+                        val deferredGroupIdsFromPrecedingBite =
+                          deferredMatchesFromPrecedingBite.map(
+                            parallelMatchesGroupIdsByMatch
+                          )
+
                         val groupIds =
-                          deferredMatchesFromPrecedingBite
-                            .map(parallelMatchesGroupIdsByMatch)
-                            .intersect(
-                              matchesFromSucceedingBite.map(
-                                parallelMatchesGroupIdsByMatch
-                              )
+                          if deferredGroupIdsFromPrecedingBite.isEmpty then
+                            groupIdsFromSucceedingBite
+                          else
+                            // Enforce consistency between the group ids
+                            // supplied by both bites. This allows some margin
+                            // for thinning out multiple group ids from one bite
+                            // if the bite on the other side has just one group
+                            // id, i.e. when one bite comes from an ambiguous
+                            // move and the other from a plain move in parallel
+                            // to one of the ambiguous ones.
+                            deferredGroupIdsFromPrecedingBite.intersect(
+                              groupIdsFromSucceedingBite
                             )
 
                         val fragment =
