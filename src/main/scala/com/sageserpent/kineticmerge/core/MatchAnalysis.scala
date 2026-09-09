@@ -2381,17 +2381,21 @@ object MatchAnalysis extends StrictLogging:
 
         val withoutRedundantMatches = withoutTheseMatches(redundantMatches)
 
-        val parallelMatchesGroupIdsByMatchWithReplacements =
-          withoutRedundantMatches.parallelMatchesGroupIdsByMatch.transform(
-            (_, groupId) =>
-              // NOTE: need a fallback here because we want to use the cutovers
-              // on *all* the group ids, not just the ones that need replacing.
-              groupIdCutovers.getOrElse(key = groupId, default = groupId)
-          )
+        // TODO: reinstate the use of fused parallel matches groups...
 
-        withoutRedundantMatches.copy(parallelMatchesGroupIdsByMatch =
-          parallelMatchesGroupIdsByMatchWithReplacements
-        )
+//        val parallelMatchesGroupIdsByMatchWithReplacements =
+//          withoutRedundantMatches.parallelMatchesGroupIdsByMatch.transform(
+//            (_, groupId) =>
+//              // NOTE: need a fallback here because we want to use the cutovers
+//              // on *all* the group ids, not just the ones that need replacing.
+//              groupIdCutovers.getOrElse(key = groupId, default = groupId)
+//          )
+//
+//        withoutRedundantMatches.copy(parallelMatchesGroupIdsByMatch =
+//          parallelMatchesGroupIdsByMatchWithReplacements
+//        )
+
+        withoutRedundantMatches
       end withoutRedundantPairwiseMatches
 
       def reconcileOverlappingMatches(
