@@ -2557,6 +2557,65 @@ class SectionedCodeExtensionTest extends ProseExamples:
     }
   end issue274BugReproduction
 
+  @Test
+  def coordinatedSplicesForParallelMatchGroups(): Unit =
+    val configuration = Configuration(
+      minimumMatchSize = 1,
+      thresholdSizeFractionForMatching = 0,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
+
+    val tokenRegex =
+      raw"Prefix|Suffix|AnchorOne|AnchorTwo|InterveningLeft|InterveningRight|.".r.anchored
+
+    def stuntDoubleTokens(content: String): Vector[Token] = tokenRegex
+      .findAllMatchIn(content)
+      .map(_.group(0))
+      .map(Token.Significant.apply)
+      .toVector
+
+    // Base: two anchors adjacent to each other surrounded by Prefix/Suffix
+    val baseText = "PrefixAnchorOneAnchorTwoSuffix"
+
+    // Left: stays in place, inserting intervening content
+    val leftText = "PrefixAnchorOneInterveningLeftAnchorTwoSuffix"
+
+    // Right: moves the anchors together to the end, with no insertion
+    val rightText = "PrefixSuffixAnchorOneAnchorTwo"
+
+    // Expected: they are coordinated, yielding clean merged intervening content (InterveningLeft exactly once!)
+    val expectedMergeText = "PrefixSuffixAnchorOneInterveningLeftAnchorTwo"
+
+    val baseSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(placeholderPath -> stuntDoubleTokens(baseText)),
+      label = "base"
+    )
+    val leftSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(placeholderPath -> stuntDoubleTokens(leftText)),
+      label = "left"
+    )
+    val rightSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(placeholderPath -> stuntDoubleTokens(rightText)),
+      label = "right"
+    )
+
+    val Right(sectionedCode) = SectionedCode.of(
+      baseSources = baseSources,
+      leftSources = leftSources,
+      rightSources = rightSources
+    )(configuration): @unchecked
+
+    val (mergeResultsByPath, _) =
+      sectionedCode.merge
+
+    verifyContent(placeholderPath, mergeResultsByPath)(
+      stuntDoubleTokens(expectedMergeText)
+    )
+  end coordinatedSplicesForParallelMatchGroups
+
 end SectionedCodeExtensionTest
 
 trait ProseExamples:
