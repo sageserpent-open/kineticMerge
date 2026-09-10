@@ -863,8 +863,8 @@ object MatchAnalysis extends StrictLogging:
                   baseSection.size,
                   new FragmentFactory:
                     override def apply(
-                        mealStartOffsetRelativeToMeal: ParallelMatchesGroupId,
-                        size: ParallelMatchesGroupId
+                        mealStartOffsetRelativeToMeal: Int,
+                        size: Int
                     ): DependentMatchType[MatchType] = Match.AllSides(
                       sectionSlice(baseSources, baseSection)(
                         mealStartOffsetRelativeToMeal,
@@ -885,8 +885,8 @@ object MatchAnalysis extends StrictLogging:
                   baseSection.size,
                   new FragmentFactory:
                     override def apply(
-                        mealStartOffsetRelativeToMeal: ParallelMatchesGroupId,
-                        size: ParallelMatchesGroupId
+                        mealStartOffsetRelativeToMeal: Int,
+                        size: Int
                     ): DependentMatchType[MatchType] = Match.BaseAndLeft(
                       sectionSlice(baseSources, baseSection)(
                         mealStartOffsetRelativeToMeal,
@@ -903,8 +903,8 @@ object MatchAnalysis extends StrictLogging:
                   baseSection.size,
                   new FragmentFactory:
                     override def apply(
-                        mealStartOffsetRelativeToMeal: ParallelMatchesGroupId,
-                        size: ParallelMatchesGroupId
+                        mealStartOffsetRelativeToMeal: Int,
+                        size: Int
                     ): DependentMatchType[MatchType] = Match.BaseAndRight(
                       sectionSlice(baseSources, baseSection)(
                         mealStartOffsetRelativeToMeal,
@@ -921,8 +921,8 @@ object MatchAnalysis extends StrictLogging:
                   leftSection.size,
                   new FragmentFactory:
                     override def apply(
-                        mealStartOffsetRelativeToMeal: ParallelMatchesGroupId,
-                        size: ParallelMatchesGroupId
+                        mealStartOffsetRelativeToMeal: Int,
+                        size: Int
                     ): DependentMatchType[MatchType] = Match.LeftAndRight(
                       sectionSlice(leftSources, leftSection)(
                         mealStartOffsetRelativeToMeal,
@@ -1108,27 +1108,6 @@ object MatchAnalysis extends StrictLogging:
               groupIdsByMatch.values.maxOption.fold(ifEmpty = 0)(1 + _)
 
             groupIdsByMatch + (fragment -> assignedGroupId)
-        }
-
-      // TODO: use the singular - only one group id is propagated, if at all.
-      private def enrolGroupIds(
-          matches: Iterable[GenericMatch[Element]]
-      ): ParallelMatchesGroupIdTracking[Unit] =
-        State.modify { groupIdsByMatch =>
-          val matchesMissingGroupIds =
-            matches.filterNot(groupIdsByMatch.contains)
-          if matchesMissingGroupIds.isEmpty then groupIdsByMatch
-          else
-            var nextGroupId =
-              if groupIdsByMatch.isEmpty then 0
-              else 1 + groupIdsByMatch.values.max
-            matchesMissingGroupIds.foldLeft(groupIdsByMatch) {
-              (groupIdsByMatch, aMatch) =>
-                val updated = groupIdsByMatch + (aMatch -> nextGroupId)
-                nextGroupId += 1
-                updated
-            }
-          end if
         }
 
       private def propagateGroupId(
