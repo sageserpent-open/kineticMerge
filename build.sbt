@@ -104,6 +104,8 @@ lazy val root = (project in file("."))
     libraryDependencies += "org.apache.commons" % "commons-lang3" % "3.20.0",
     libraryDependencies +=
       "org.scala-lang.modules" %% "scala-parallel-collections" % "1.2.0",
+    libraryDependencies += "io.getkyo" %% "kyo-core" % "0.19.0",
+    libraryDependencies += "io.getkyo" %% "kyo-prelude" % "0.19.0",
 
     libraryDependencies += "de.sciss"        %% "fingertree" % "1.5.5" % Test,
     libraryDependencies += "com.sageserpent" %% "americium"  % "2.2.2" % Test,
