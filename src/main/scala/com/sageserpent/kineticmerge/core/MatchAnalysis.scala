@@ -271,6 +271,25 @@ object MatchAnalysis extends StrictLogging:
                   rightSection
                 )(relativeStartOffset, size)
               )
+
+        def stableOrderingKey
+            : (Option[(Int, Int)], Option[(Int, Int)], Option[(Int, Int)]) =
+          def stableOrderingKey(sources: Sources[Path, Element])(
+              section: Section[Element]
+          ) = sources.pathFor(section).hashCode -> section.startOffset
+
+          (
+            aMatch.baseContribution.map(
+              stableOrderingKey(baseSources)(_)
+            ),
+            aMatch.leftContribution.map(
+              stableOrderingKey(leftSources)(_)
+            ),
+            aMatch.rightContribution.map(
+              stableOrderingKey(rightSources)(_)
+            )
+          )
+        end stableOrderingKey
       end extension
       private val rollingHashFactoryCache: Cache[Int, RollingHash.Factory] =
         Caffeine.newBuilder().build()
@@ -1647,30 +1666,17 @@ object MatchAnalysis extends StrictLogging:
                       _          = progressRecordingSession.upTo(amount = 0)
                       updatedParallelMatchesGroupIdsByMatch <- State.get
                     yield
-                      val fullyReconciledMatches         = reconciled.matches
-                      val parallelMatchesGroupIdsByMatch =
-                        updatedParallelMatchesGroupIdsByMatch
-                          .filter((key, _) =>
-                            fullyReconciledMatches.contains(key)
-                          )
-
-                      val compactGroupIdsKeyedByGroupsIdsWithPossibleGaps: Map[
-                        ParallelMatchesGroupId,
-                        ParallelMatchesGroupId
-                      ] =
-                        parallelMatchesGroupIdsByMatch.values.toSeq.distinct.zipWithIndex.toMap
-
-                      val parallelMatchesWithReorganisedGroupIdsByMatch =
-                        parallelMatchesGroupIdsByMatch.map((aMatch, groupId) =>
-                          aMatch -> compactGroupIdsKeyedByGroupsIdsWithPossibleGaps(
-                            groupId
-                          )
-                        )
-
+                      val fullyReconciledMatches = reconciled.matches
                       Right(
-                        reconciled.copy(parallelMatchesGroupIdsByMatch =
-                          parallelMatchesWithReorganisedGroupIdsByMatch
-                        )
+                        reconciled
+                          .copy(parallelMatchesGroupIdsByMatch =
+                            updatedParallelMatchesGroupIdsByMatch
+                              .filter((key, _) =>
+                                fullyReconciledMatches.contains(key)
+                              )
+                          )
+                          .splitStraddlingParallelMatchesGroups
+                          .reorganiseParallelMatchesGroupIds
                       )
                   else
                     progressRecordingSession.upTo(paredDownMatches.size)
@@ -1960,10 +1966,16 @@ object MatchAnalysis extends StrictLogging:
 
         val parallelMatchesGroupIdsByMatch =
           Map.from(
-            groupsOfBackTranslatedParallelMatches.zipWithIndex.flatMap(
-              (parallelMatches, groupId) => parallelMatches.map(_ -> groupId)
-            )
+            groupsOfBackTranslatedParallelMatches
+              // NOTE: sort the matches so that the allocated group ids are
+              // repeatable between debugging sessions!
+              .sortBy(_.toSeq.map(_.stableOrderingKey))
+              .zipWithIndex
+              .flatMap((parallelMatches, groupId) =>
+                parallelMatches.map(_ -> groupId)
+              )
           )
+        end parallelMatchesGroupIdsByMatch
 
         backTranslatedMatchesAndTheirSections
           .copy(parallelMatchesGroupIdsByMatch = parallelMatchesGroupIdsByMatch)
@@ -2448,6 +2460,144 @@ object MatchAnalysis extends StrictLogging:
           aMatch: GenericMatch[Element]
       ): Option[Int] =
         aMatch.rightContribution.map(_.startOffset)
+
+      private def splitStraddlingParallelMatchesGroups
+          : MatchesAndTheirSections =
+        case class State(
+            parallelMatchesGroupIdsByMatch: ParallelMatchesGroupIdsByMatch[
+              Element
+            ],
+            groupIdReplacements: Map[
+              ParallelMatchesGroupId,
+              ParallelMatchesGroupId
+            ],
+            enteredGroupIds: Set[ParallelMatchesGroupId],
+            exitedGroupIds: Set[ParallelMatchesGroupId],
+            nextGroupId: ParallelMatchesGroupId
+        ):
+          require(nextGroupId > parallelMatchesGroupIdsByMatch.values.max)
+          require(enteredGroupIds.intersect(exitedGroupIds).isEmpty)
+          require(!enteredGroupIds.contains(nextGroupId))
+          require(!exitedGroupIds.contains(nextGroupId))
+
+          def step(section: Section[Element]): State =
+            val matches = sectionsAndTheirMatches.get(section)
+
+            val affiliatedGroupIds = matches.map(parallelMatchesGroupIdsByMatch)
+
+            val freshEnteredGroupIds = affiliatedGroupIds diff enteredGroupIds
+
+            val freshExitedGroupIds = enteredGroupIds diff affiliatedGroupIds
+
+            val updatedEnteredGroupIds =
+              enteredGroupIds -- freshExitedGroupIds ++ freshEnteredGroupIds
+
+            val straddledGroupIds =
+              exitedGroupIds intersect freshEnteredGroupIds
+
+            val updatedExitedGroupIds =
+              exitedGroupIds -- straddledGroupIds ++ freshExitedGroupIds
+
+            val updatedGroupIdReplacements =
+              groupIdReplacements ++ straddledGroupIds.toSeq.zipWithIndex.map(
+                (originalGroupId, delta) =>
+                  originalGroupId -> (nextGroupId + delta)
+              )
+
+            val updatedNextGroupId = nextGroupId + straddledGroupIds.size
+
+            val updatedParallelMatchesGroupIdsByMatch =
+              matches.foldLeft(parallelMatchesGroupIdsByMatch)(
+                _.updatedWith(_)(payload =>
+                  (payload: @unchecked) match
+                    case Some(originalGroupId) =>
+                      Some(updatedGroupIdReplacements(originalGroupId))
+                )
+              )
+
+            State(
+              updatedParallelMatchesGroupIdsByMatch,
+              updatedGroupIdReplacements,
+              updatedEnteredGroupIds,
+              updatedExitedGroupIds,
+              updatedNextGroupId
+            )
+          end step
+        end State
+
+        object State:
+          def startingFrom(
+              parallelMatchesGroupIdsByMatch: ParallelMatchesGroupIdsByMatch[
+                Element
+              ]
+          ): State =
+            State(
+              parallelMatchesGroupIdsByMatch,
+              groupIdReplacements = Map.empty.withDefault(identity),
+              enteredGroupIds = Set.empty,
+              exitedGroupIds = Set.empty,
+              nextGroupId = 1 + parallelMatchesGroupIdsByMatch.values.max
+            )
+        end State
+
+        val parallelMatchesGroupIdsByMatchWithSplits =
+          val parallelMatchesGroupIdsByMatchUpdatedFromTheBase =
+            baseSectionsByPath.foldLeft(parallelMatchesGroupIdsByMatch) {
+              case (parallelMatchesGroupIdsByMatch, (path, sectionsSeen)) =>
+                sectionsSeen
+                  .foldLeft(State.startingFrom(parallelMatchesGroupIdsByMatch))(
+                    _ step _
+                  )
+                  .parallelMatchesGroupIdsByMatch
+            }
+
+          val parallelMatchesGroupIdsByMatchUpdatedFromTheLeft =
+            leftSectionsByPath.foldLeft(
+              parallelMatchesGroupIdsByMatchUpdatedFromTheBase
+            ) { case (parallelMatchesGroupIdsByMatch, (path, sectionsSeen)) =>
+              sectionsSeen
+                .foldLeft(State.startingFrom(parallelMatchesGroupIdsByMatch))(
+                  _ step _
+                )
+                .parallelMatchesGroupIdsByMatch
+            }
+
+          rightSectionsByPath.foldLeft(
+            parallelMatchesGroupIdsByMatchUpdatedFromTheLeft
+          ) { case (parallelMatchesGroupIdsByMatch, (path, sectionsSeen)) =>
+            sectionsSeen
+              .foldLeft(State.startingFrom(parallelMatchesGroupIdsByMatch))(
+                _ step _
+              )
+              .parallelMatchesGroupIdsByMatch
+          }
+        end parallelMatchesGroupIdsByMatchWithSplits
+
+        this.copy(parallelMatchesGroupIdsByMatch =
+          parallelMatchesGroupIdsByMatchWithSplits
+        )
+      end splitStraddlingParallelMatchesGroups
+
+      private def reorganiseParallelMatchesGroupIds: MatchesAndTheirSections =
+        val compactGroupIdsKeyedByGroupsIdsWithPossibleGaps
+            : Map[ParallelMatchesGroupId, ParallelMatchesGroupId] =
+          parallelMatchesGroupIdsByMatch.toSeq
+            .sortBy(_._1.stableOrderingKey)
+            .map(_._2)
+            .distinct
+            .zipWithIndex
+            .toMap
+
+        val parallelMatchesWithReorganisedGroupIdsByMatch =
+          parallelMatchesGroupIdsByMatch.map((aMatch, groupId) =>
+            aMatch -> compactGroupIdsKeyedByGroupsIdsWithPossibleGaps(
+              groupId
+            )
+          )
+        copy(parallelMatchesGroupIdsByMatch =
+          parallelMatchesWithReorganisedGroupIdsByMatch
+        )
+      end reorganiseParallelMatchesGroupIds
 
       private def reconciliationPostcondition(): Unit =
         baseSectionsByPath.values.flatMap(_.iterator).foreach { baseSection =>
