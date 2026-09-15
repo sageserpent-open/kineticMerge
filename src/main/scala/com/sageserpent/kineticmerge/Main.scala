@@ -906,7 +906,7 @@ object Main extends StrictLogging:
                 right(ourModification.mode)
               else
                 left(
-                  s"Conflicting file modes for file ${underline(path)}; on best ancestor commit ${underline(bestAncestorCommitIdMode)}, on our branch head ${underline(ourModification.mode)} and on their branch head ${underline(theirModification.mode)}."
+                  s"Conflicting file modes for file ${underline(path)}; on best ancestor commit ${underline(bestAncestorCommitIdMode)}, on our branch head ${underline(ourModification.mode)} and on their branch head ${underline(theirBranchHead)}."
                 )
           yield path -> BothContributeAModification(
             ourModification,
@@ -1775,7 +1775,7 @@ object Main extends StrictLogging:
           sectionedCode.merge
 
         _ <- Kyo.foreach(moveDestinationsReport.summarizeInText)(msg =>
-          Emit.value[ErrorOrOperationMessage](Right(msg))
+          right(()).logOperation(msg)
         )
 
         fileRenamingReport = fileRenamingReportUsing(
