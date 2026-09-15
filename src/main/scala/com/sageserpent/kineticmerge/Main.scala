@@ -1,12 +1,6 @@
 package com.sageserpent.kineticmerge
 
 import cats.Order
-import cats.data.{EitherT, WriterT}
-import cats.effect.IO
-import cats.effect.unsafe.implicits.global
-import cats.syntax.foldable.toFoldableOps
-import cats.syntax.functor.toFunctorOps
-import cats.syntax.traverse.toTraverseOps
 import com.google.common.hash.{Funnel, HashFunction, Hashing}
 import com.sageserpent.kineticmerge.Main.MergeInput.*
 import com.sageserpent.kineticmerge.core.*
@@ -16,7 +10,10 @@ import com.sageserpent.kineticmerge.core.Token.tokens
 import com.softwaremill.tagging.*
 import com.typesafe.scalalogging.StrictLogging
 import fansi.Str
+import kyo.*
 import os.{Path, RelPath}
+import java.lang.System as JavaSystem
+import scala.Console as ScalaConsole
 import scopt.{DefaultOEffectSetup, OParser}
 
 import scala.annotation.varargs
@@ -33,10 +30,10 @@ object Main extends StrictLogging:
   // 2.42.0 being the latest stable release.
   private type ErrorOrOperationMessage =
     Either[String @@ Tags.ErrorMessage, String]
-  private type WorkflowLog                = List[ErrorOrOperationMessage]
-  private type WorkflowLogWriter[Payload] = WriterT[IO, WorkflowLog, Payload]
-  private type Workflow[Payload]          =
-    EitherT[WorkflowLogWriter, String @@ Tags.ErrorMessage, Payload]
+
+  // Kyo-based workflow effect type:
+  type KyoWorkflow[Payload] =
+    Payload < (kyo.IO & Abort[String] & Emit[ErrorOrOperationMessage])
   private val whitespaceRun                                       = "\\s+"
   private val noBranchProvided: String @@ Tags.CommitOrBranchName =
     "".taggedWith[Tags.CommitOrBranchName]
@@ -70,7 +67,7 @@ object Main extends StrictLogging:
     *   specification.
     */
   def main(commandLineArguments: Array[String]): Unit =
-    System.exit(
+    JavaSystem.exit(
       apply(progressRecording = ConsoleProgressRecording, commandLineArguments*)
     )
   end main
@@ -275,12 +272,12 @@ object Main extends StrictLogging:
     )
 
     val workflow = for
-      _ <- IO {
+      _ <- kyo.IO {
         os.proc("git", "--version").call(workingDirectory)
       }
         .labelExceptionWith(errorMessage = "Git is not available.")
 
-      topLevel <- IO {
+      topLevel <- kyo.IO {
         os.proc("git", "rev-parse", "--show-toplevel")
           .call(workingDirectory)
           .out
@@ -290,7 +287,7 @@ object Main extends StrictLogging:
         "The current working directory is not part of a Git working tree."
       )
 
-      topLevelWorkingDirectory <- IO { Path(topLevel) }
+      topLevelWorkingDirectory <- kyo.IO { Path(topLevel) }
         .labelExceptionWith(errorMessage =
           s"Unexpected error: top level of Git repository ${underline(topLevel)} is not a valid path."
         )
@@ -367,47 +364,57 @@ object Main extends StrictLogging:
           end for
     yield exitCode
 
-    val (log, exitCode) = workflow
-      .foldF(
-        errorMessage =>
-          for _ <- WriterT.tell(List(Left(errorMessage)))
-          yield error,
-        WriterT.value
+    import AllowUnsafe.embrace.danger
+
+    val (log, exitCode) = (kyo.IO.Unsafe.evalOrThrow(
+      Emit.run(
+        Abort.run[String](workflow)
       )
-      .run
-      .unsafeRunSync()
+    ): @unchecked) match
+      case (emitted, Result.Success(exitCode)) =>
+        (emitted.toList, exitCode)
+      case (emitted, Result.Failure(errorMessage)) =>
+        (emitted.toList :+ Left(errorMessage.taggedWith[Tags.ErrorMessage]), error)
+      case (emitted, Result.Panic(ex)) =>
+        throw ex
 
     log.foreach {
-      case Left(errorMessage)      => Console.err.println(errorMessage)
-      case Right(operationMessage) => Console.println(operationMessage)
+      case Left(errorMessage)      => ScalaConsole.err.println(errorMessage)
+      case Right(operationMessage) => ScalaConsole.println(operationMessage)
     }
 
     exitCode
   end mergeTheirBranch
 
-  private def right[Payload](payload: Payload): Workflow[Payload] =
-    EitherT.rightT[WorkflowLogWriter, String @@ Tags.ErrorMessage](payload)
+  private def right[Payload](payload: Payload): KyoWorkflow[Payload] =
+    payload
 
   private def underline(anything: Any): Str =
     fansi.Underlined.On(anything.toString)
 
-  extension [Payload](fallible: IO[Payload])
-    private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
-      EitherT
-        .liftAttemptK[WorkflowLogWriter, Throwable]
-        .apply(WriterT.liftF(fallible))
-        .leftMap(exception =>
-          // TODO: something pure, functional and wholesome that could be seen
-          // at high church...
-          logger.error(exception.getMessage)
-          exception.printStackTrace()
-          errorMessage.taggedWith[Tags.ErrorMessage]
-        )
+  extension [Payload](fallible: Payload < kyo.IO)
+    private def labelExceptionWith(errorMessage: String): KyoWorkflow[Payload] =
+      val handled: Result[Throwable, Payload] < kyo.IO = Abort.run[Throwable](fallible)
+      handled.flatMap {
+        case Result.Success(v) => (v: KyoWorkflow[Payload])
+        case Result.Failure(ex) =>
+          kyo.IO {
+            logger.error(ex.getMessage)
+            ex.printStackTrace()
+          }.andThen(Abort.fail[String](errorMessage))
+        case Result.Panic(ex) =>
+          kyo.IO {
+            logger.error(ex.getMessage)
+            ex.printStackTrace()
+          }.andThen(Abort.fail[String](errorMessage))
+      }
   end extension
 
-  extension [Payload](workflow: Workflow[Payload])
-    private def logOperation(message: String): Workflow[Payload] =
-      workflow.semiflatTap(_ => WriterT.tell(List(Right(message))))
+  extension [Payload](workflow: KyoWorkflow[Payload])
+    private def logOperation(message: String): KyoWorkflow[Payload] =
+      workflow.flatMap { payload =>
+        Emit.value[ErrorOrOperationMessage](Right(message)).map(_ => payload)
+      }
   end extension
 
   extension (content: String @@ Tags.Content)
@@ -426,16 +433,14 @@ object Main extends StrictLogging:
     commandLineArguments = commandLineArguments*
   )
 
-  private def left[Payload](errorMessage: String): Workflow[Payload] =
-    EitherT.leftT[WorkflowLogWriter, Payload](
-      errorMessage.taggedWith[Tags.ErrorMessage]
-    )
+  private def left[Payload](errorMessage: String): KyoWorkflow[Payload] =
+    Abort.fail[String](errorMessage)
 
   private def temporaryFile(
       suffix: String,
       content: String @@ Tags.Content
-  ): Workflow[Path] =
-    for temporaryFile <- IO {
+  ): KyoWorkflow[Path] =
+    for temporaryFile <- kyo.IO {
         os.temp(
           contents = content,
           prefix = "kinetic-merge-",
@@ -528,7 +533,7 @@ object Main extends StrictLogging:
   ):
     private val numberOfDigitsForShortFormOfCommitId = 8
 
-    def ourBranchHead(): Workflow[String @@ Main.Tags.CommitOrBranchName] =
+    def ourBranchHead(): KyoWorkflow[String @@ Main.Tags.CommitOrBranchName] =
       IO {
         val branchName = os
           .proc("git", "branch", "--show-current")
@@ -555,7 +560,7 @@ object Main extends StrictLogging:
     def firstBranchIsContainedBySecond(
         firstBranchHead: String @@ Tags.CommitOrBranchName,
         secondBranchHead: String @@ Tags.CommitOrBranchName
-    ): Workflow[Boolean] =
+    ): KyoWorkflow[Boolean] =
       IO {
         os.proc(
           "git",
@@ -572,7 +577,7 @@ object Main extends StrictLogging:
     def fastForwardToTheirs(
         ourBranchHead: String @@ Main.Tags.CommitOrBranchName,
         theirBranchHead: String @@ Main.Tags.CommitOrBranchName
-    ): Workflow[Int @@ Main.Tags.ExitCode] =
+    ): KyoWorkflow[Int @@ Main.Tags.ExitCode] =
       IO {
         os.proc("git", "reset", "--hard", theirBranchHead)
           .call(workingDirectory): Unit
@@ -587,7 +592,7 @@ object Main extends StrictLogging:
 
     def confirmThereAreNoUncommittedChanges(
         ourBranchHead: String @@ Main.Tags.CommitOrBranchName
-    ): Workflow[Unit] =
+    ): KyoWorkflow[Unit] =
       IO {
         val _ = os
           .proc("git", "diff-index", "--exit-code", ourBranchHead)
@@ -600,7 +605,7 @@ object Main extends StrictLogging:
     def bestAncestorCommitId(
         ourBranchHead: String @@ Main.Tags.CommitOrBranchName,
         theirBranchHead: String @@ Main.Tags.CommitOrBranchName
-    ): Workflow[String @@ Main.Tags.CommitOrBranchName] =
+    ): KyoWorkflow[String @@ Main.Tags.CommitOrBranchName] =
       IO {
         os.proc("git", "merge-base", ourBranchHead, theirBranchHead)
           .call(workingDirectory)
@@ -616,9 +621,9 @@ object Main extends StrictLogging:
         branchOrCommit: String @@ Main.Tags.CommitOrBranchName,
         bestAncestorCommitId: String @@ Main.Tags.CommitOrBranchName,
         possessive: String
-    ): Workflow[Map[Path, Change]] =
+    ): KyoWorkflow[Map[Path, Change]] =
       for
-        statusLines <- IO {
+        statusLines <- kyo.IO {
           os.proc(
             "git",
             "diff",
@@ -633,7 +638,7 @@ object Main extends StrictLogging:
           s"Could not determine status for changes made on $possessive branch ${underline(branchOrCommit)} since ancestor commit ${underline(bestAncestorCommitId)}."
         )
 
-        binaryFiles <- IO {
+        binaryFiles <- kyo.IO {
           // NOTE: this is imprecise for *modified* files, as we don't know
           // whether a file was binary prior to modification, has been modified
           // into a binary file or started out as and remains binary. To some
@@ -661,10 +666,10 @@ object Main extends StrictLogging:
           s"Could not determine if binary content was involved for changes made on $possessive branch ${underline(branchOrCommit)} since ancestor commit ${underline(bestAncestorCommitId)}."
         )
 
-        result <- statusLines
-          .traverse(pathChangeFor(branchOrCommit)(_, binaryFiles.contains))
-          .map(_.toMap)
-      yield result
+        pairs <- Kyo.foreach(statusLines)(
+          pathChangeFor(branchOrCommit)(_, binaryFiles.contains)
+        )
+      yield pairs.toMap
       end for
     end changes
 
@@ -673,42 +678,39 @@ object Main extends StrictLogging:
     )(
         line: String,
         binaryContentInvolvedFor: Path => Boolean
-    ): Workflow[(Path, Change)] =
-      IO {
-        line.split(whitespaceRun) match
-          case Array("M", changedFile) =>
-            val path = workingDirectory / RelPath(changedFile)
-            path -> blobFor(commitIdOrBranchName)(
-              path
-            ).flatMap { case (mode, blobId) =>
-              Option
-                .unless(binaryContentInvolvedFor(path))(
-                  contentFor(commitIdOrBranchName, path)(blobId)
-                )
-                .sequence
-                .map(Change.Modification(mode, blobId, _))
-            }
-          case Array("A", addedFile) =>
-            val path = workingDirectory / RelPath(addedFile)
-            path -> blobFor(commitIdOrBranchName)(
-              path
-            ).flatMap { case (mode, blobId) =>
-              Option
-                .unless(binaryContentInvolvedFor(path))(
-                  contentFor(commitIdOrBranchName, path)(blobId)
-                )
-                .sequence
-                .map(Change.Addition(mode, blobId, _))
-            }
-          case Array("D", deletedFile) =>
-            val path = workingDirectory / RelPath(deletedFile)
-            path -> right(
-              Change.Deletion(binaryContentInvolvedFor(path))
-            )
-        end match
-      }.labelExceptionWith(errorMessage =
-        s"Unexpected error - can't parse changes reported by Git ${underline(line)}."
-      ).flatMap { case (path, changed) => changed.map(path -> _) }
+    ): KyoWorkflow[(Path, Change)] =
+      line.split(whitespaceRun) match
+        case Array("M", changedFile) =>
+          for
+            path <- kyo.IO { workingDirectory / RelPath(changedFile) }
+              .labelExceptionWith(s"Unexpected error - can't parse changes reported by Git ${underline(line)}.")
+            modeAndBlob <- blobFor(commitIdOrBranchName)(path)
+            (mode, blobId) = modeAndBlob
+            contentOpt <-
+              if binaryContentInvolvedFor(path) then right(Option.empty[String @@ Tags.Content])
+              else contentFor(commitIdOrBranchName, path)(blobId).map(Some.apply)
+          yield path -> Change.Modification(mode, blobId, contentOpt)
+
+        case Array("A", addedFile) =>
+          for
+            path <- kyo.IO { workingDirectory / RelPath(addedFile) }
+              .labelExceptionWith(s"Unexpected error - can't parse changes reported by Git ${underline(line)}.")
+            modeAndBlob <- blobFor(commitIdOrBranchName)(path)
+            (mode, blobId) = modeAndBlob
+            contentOpt <-
+              if binaryContentInvolvedFor(path) then right(Option.empty[String @@ Tags.Content])
+              else contentFor(commitIdOrBranchName, path)(blobId).map(Some.apply)
+          yield path -> Change.Addition(mode, blobId, contentOpt)
+
+        case Array("D", deletedFile) =>
+          for
+            path <- kyo.IO { workingDirectory / RelPath(deletedFile) }
+              .labelExceptionWith(s"Unexpected error - can't parse changes reported by Git ${underline(line)}.")
+          yield path -> Change.Deletion(binaryContentInvolvedFor(path))
+
+        case _ =>
+          left(s"Unexpected error - can't parse changes reported by Git ${underline(line)}.")
+      end match
 
     def mergeInputsOf(
         bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
@@ -717,274 +719,232 @@ object Main extends StrictLogging:
     )(
         ourChanges: Map[Path, Change],
         theirChanges: Map[Path, Change]
-    ): Workflow[List[(Path, MergeInput)]] =
+    ): KyoWorkflow[List[(Path, MergeInput)]] =
 
       val outerJoin = ourChanges.mergeByKey(theirChanges)
 
-      outerJoin.toList
-        .traverse {
-          case (path, (None, None)) =>
-            throw IllegalStateException(s"Neither side present for path $path")
+      Kyo.foreach(outerJoin.toList) {
+        case (path, (None, None)) =>
+          throw IllegalStateException(s"Neither side present for path $path")
 
-          case (
-                path,
-                (
-                  Some(_: Change.Addition),
-                  Some(_: Change.Deletion | _: Change.Modification)
-                )
-              ) =>
-            left(
-              s"Unexpected error: file ${underline(path)} has been added on our branch ${underline(ourBranchHead)} and either deleted or modified on their branch ${underline(theirBranchHead)}."
-            )
-
-          case (
-                path,
-                (
-                  Some(_: Change.Deletion | _: Change.Modification),
-                  Some(_: Change.Addition)
-                )
-              ) =>
-            left(
-              s"Unexpected error: file ${underline(path)} has been either deleted or modified on our branch ${underline(ourBranchHead)} and added on their branch ${underline(theirBranchHead)}."
-            )
-
-          case (
-                path,
-                (Some(ourModification: Change.Modification), None)
-              ) =>
-            for
+        case (
+              path,
               (
-                bestAncestorCommitIdMode,
-                bestAncestorCommitIdBlobId
-              )                           <- blobFor(bestAncestorCommitId)(path)
-              bestAncestorCommitIdContent <- ourModification.content
-                .as(
-                  contentFor(bestAncestorCommitId, path)(
-                    bestAncestorCommitIdBlobId
-                  )
-                )
-                .sequence
-            yield path -> JustOurModification(
-              ourModification,
-              bestAncestorCommitIdMode,
-              bestAncestorCommitIdContent
-            )
+                Some(_: Change.Addition),
+                Some(_: Change.Deletion | _: Change.Modification)
+              )
+            ) =>
+          left(
+            s"Unexpected error: file ${underline(path)} has been added on our branch ${underline(ourBranchHead)} and either deleted or modified on their branch ${underline(theirBranchHead)}."
+          )
 
-          case (
-                path,
-                (None, Some(theirModification: Change.Modification))
-              ) =>
-            for
+        case (
+              path,
               (
-                bestAncestorCommitIdMode,
-                bestAncestorCommitIdBlobId
-              )                           <- blobFor(bestAncestorCommitId)(path)
-              bestAncestorCommitIdContent <- theirModification.content
-                .as(
-                  contentFor(bestAncestorCommitId, path)(
-                    bestAncestorCommitIdBlobId
-                  )
-                )
-                .sequence
-            yield path -> JustTheirModification(
-              theirModification,
-              bestAncestorCommitIdMode,
-              bestAncestorCommitIdContent
-            )
+                Some(_: Change.Deletion | _: Change.Modification),
+                Some(_: Change.Addition)
+              )
+            ) =>
+          left(
+            s"Unexpected error: file ${underline(path)} has been either deleted or modified on our branch ${underline(ourBranchHead)} and added on their branch ${underline(theirBranchHead)}."
+          )
 
-          case (
-                path,
-                (Some(ourAddition: Change.Addition), None)
-              ) =>
-            right(path -> JustOurAddition(ourAddition))
+        case (
+              path,
+              (Some(ourModification: Change.Modification), None)
+            ) =>
+          for
+            modeAndBlob <- blobFor(bestAncestorCommitId)(path)
+            (bestAncestorCommitIdMode, bestAncestorCommitIdBlobId) = modeAndBlob
+            bestAncestorCommitIdContent <-
+              if ourModification.content.isDefined then
+                contentFor(bestAncestorCommitId, path)(bestAncestorCommitIdBlobId).map(Some.apply)
+              else right(Option.empty[String @@ Tags.Content])
+          yield path -> JustOurModification(
+            ourModification,
+            bestAncestorCommitIdMode,
+            bestAncestorCommitIdContent
+          )
 
-          case (
-                path,
-                (None, Some(theirAddition: Change.Addition))
-              ) =>
-            right(path -> JustTheirAddition(theirAddition))
+        case (
+              path,
+              (None, Some(theirModification: Change.Modification))
+            ) =>
+          for
+            modeAndBlob <- blobFor(bestAncestorCommitId)(path)
+            (bestAncestorCommitIdMode, bestAncestorCommitIdBlobId) = modeAndBlob
+            bestAncestorCommitIdContent <-
+              if theirModification.content.isDefined then
+                contentFor(bestAncestorCommitId, path)(bestAncestorCommitIdBlobId).map(Some.apply)
+              else right(Option.empty[String @@ Tags.Content])
+          yield path -> JustTheirModification(
+            theirModification,
+            bestAncestorCommitIdMode,
+            bestAncestorCommitIdContent
+          )
 
-          case (
-                path,
-                (Some(Change.Deletion(binaryContentDeleted)), None)
-              ) =>
-            for
+        case (
+              path,
+              (Some(ourAddition: Change.Addition), None)
+            ) =>
+          right(path -> JustOurAddition(ourAddition))
+
+        case (
+              path,
+              (None, Some(theirAddition: Change.Addition))
+            ) =>
+          right(path -> JustTheirAddition(theirAddition))
+
+        case (
+              path,
+              (Some(Change.Deletion(binaryContentDeleted)), None)
+            ) =>
+          for
+            modeAndBlob <- blobFor(bestAncestorCommitId)(path)
+            (_, bestAncestorCommitIdBlobId) = modeAndBlob
+            bestAncestorCommitIdContent <-
+              if !binaryContentDeleted then
+                contentFor(bestAncestorCommitId, path)(bestAncestorCommitIdBlobId).map(Some.apply)
+              else right(Option.empty[String @@ Tags.Content])
+          yield path -> JustOurDeletion(bestAncestorCommitIdContent)
+
+        case (
+              path,
+              (None, Some(Change.Deletion(binaryContentDeleted)))
+            ) =>
+          for
+            modeAndBlob <- blobFor(bestAncestorCommitId)(path)
+            (_, bestAncestorCommitIdBlobId) = modeAndBlob
+            bestAncestorCommitIdContent <-
+              if !binaryContentDeleted then
+                contentFor(bestAncestorCommitId, path)(bestAncestorCommitIdBlobId).map(Some.apply)
+              else right(Option.empty[String @@ Tags.Content])
+          yield path -> JustTheirDeletion(bestAncestorCommitIdContent)
+
+        case (
+              path,
               (
-                _,
-                bestAncestorCommitIdBlobId
-              )                           <- blobFor(bestAncestorCommitId)(path)
-              bestAncestorCommitIdContent <- Option
-                .unless(binaryContentDeleted)(
-                  contentFor(bestAncestorCommitId, path)(
-                    bestAncestorCommitIdBlobId
-                  )
-                )
-                .sequence
-            yield path -> JustOurDeletion(bestAncestorCommitIdContent)
+                Some(ourModification: Change.Modification),
+                Some(Change.Deletion(binaryContentDeleted))
+              )
+            ) =>
+          for
+            modeAndBlob <- blobFor(bestAncestorCommitId)(path)
+            (bestAncestorCommitIdMode, bestAncestorCommitIdBlobId) = modeAndBlob
+            bestAncestorCommitIdContent <-
+              if !binaryContentDeleted then
+                contentFor(bestAncestorCommitId, path)(bestAncestorCommitIdBlobId).map(Some.apply)
+              else right(Option.empty[String @@ Tags.Content])
+          yield path -> OurModificationAndTheirDeletion(
+            ourModification,
+            bestAncestorCommitIdMode,
+            bestAncestorCommitIdBlobId,
+            bestAncestorCommitIdContent
+          )
 
-          case (
-                path,
-                (None, Some(Change.Deletion(binaryContentDeleted)))
-              ) =>
-            for
+        case (
+              path,
               (
-                _,
-                bestAncestorCommitIdBlobId
-              )                           <- blobFor(bestAncestorCommitId)(path)
-              bestAncestorCommitIdContent <- Option
-                .unless(binaryContentDeleted)(
-                  contentFor(bestAncestorCommitId, path)(
-                    bestAncestorCommitIdBlobId
-                  )
-                )
-                .sequence
-            yield path -> JustTheirDeletion(bestAncestorCommitIdContent)
+                Some(Change.Deletion(binaryContentDeleted)),
+                Some(theirModification: Change.Modification)
+              )
+            ) =>
+          for
+            modeAndBlob <- blobFor(bestAncestorCommitId)(path)
+            (bestAncestorCommitIdMode, bestAncestorCommitIdBlobId) = modeAndBlob
+            bestAncestorCommitIdContent <-
+              if !binaryContentDeleted then
+                contentFor(bestAncestorCommitId, path)(bestAncestorCommitIdBlobId).map(Some.apply)
+              else right(Option.empty[String @@ Tags.Content])
+          yield path -> TheirModificationAndOurDeletion(
+            theirModification,
+            bestAncestorCommitIdMode,
+            bestAncestorCommitIdBlobId,
+            bestAncestorCommitIdContent
+          )
 
-          case (
-                path,
-                (
-                  Some(ourModification: Change.Modification),
-                  Some(Change.Deletion(binaryContentDeleted))
-                )
-              ) =>
-            for
+        case (
+              path,
               (
-                bestAncestorCommitIdMode,
-                bestAncestorCommitIdBlobId
-              )                           <- blobFor(bestAncestorCommitId)(path)
-              bestAncestorCommitIdContent <- Option
-                .unless(binaryContentDeleted)(
-                  contentFor(bestAncestorCommitId, path)(
-                    bestAncestorCommitIdBlobId
-                  )
+                Some(ourAddition: Change.Addition),
+                Some(theirAddition: Change.Addition)
+              )
+            ) =>
+          for mergedFileMode <-
+              if ourAddition.mode == theirAddition.mode then
+                right(ourAddition.mode)
+              else
+                left(
+                  s"Conflicting file modes for file ${underline(path)}; on our branch head ${underline(ourAddition.mode)} and on their branch head ${underline(theirAddition.mode)}."
                 )
-                .sequence
-            yield path -> OurModificationAndTheirDeletion(
-              ourModification,
-              bestAncestorCommitIdMode,
-              bestAncestorCommitIdBlobId,
-              bestAncestorCommitIdContent
-            )
+          yield path -> BothContributeAnAddition(
+            ourAddition,
+            theirAddition,
+            mergedFileMode
+          )
 
-          case (
-                path,
-                (
-                  Some(Change.Deletion(binaryContentDeleted)),
-                  Some(theirModification: Change.Modification)
-                )
-              ) =>
-            for
+        case (
+              path,
               (
-                bestAncestorCommitIdMode,
-                bestAncestorCommitIdBlobId
-              )                           <- blobFor(bestAncestorCommitId)(path)
-              bestAncestorCommitIdContent <- Option
-                .unless(binaryContentDeleted)(
-                  contentFor(bestAncestorCommitId, path)(
-                    bestAncestorCommitIdBlobId
-                  )
+                Some(ourModification: Change.Modification),
+                Some(theirModification: Change.Modification)
+              )
+            ) =>
+          for
+            modeAndBlob <- blobFor(bestAncestorCommitId)(path)
+            (bestAncestorCommitIdMode, bestAncestorCommitIdBlobId) = modeAndBlob
+            bestAncestorCommitIdContent <-
+              if (ourModification.content orElse theirModification.content).isDefined then
+                contentFor(bestAncestorCommitId, path)(bestAncestorCommitIdBlobId).map(Some.apply)
+              else right(Option.empty[String @@ Tags.Content])
+            mergedFileMode <-
+              if bestAncestorCommitIdMode == ourModification.mode then
+                right(theirModification.mode)
+              else if bestAncestorCommitIdMode == theirModification.mode then
+                right(ourModification.mode)
+              else if ourModification.mode == theirModification.mode then
+                right(ourModification.mode)
+              else
+                left(
+                  s"Conflicting file modes for file ${underline(path)}; on best ancestor commit ${underline(bestAncestorCommitIdMode)}, on our branch head ${underline(ourModification.mode)} and on their branch head ${underline(theirModification.mode)}."
                 )
-                .sequence
-            yield path -> TheirModificationAndOurDeletion(
-              theirModification,
-              bestAncestorCommitIdMode,
-              bestAncestorCommitIdBlobId,
-              bestAncestorCommitIdContent
-            )
+          yield path -> BothContributeAModification(
+            ourModification,
+            theirModification,
+            bestAncestorCommitIdMode,
+            bestAncestorCommitIdBlobId,
+            bestAncestorCommitIdContent,
+            mergedFileMode
+          )
 
-          case (
-                path,
-                (
-                  Some(ourAddition: Change.Addition),
-                  Some(theirAddition: Change.Addition)
-                )
-              ) =>
-            for mergedFileMode <-
-                if ourAddition.mode == theirAddition.mode then
-                  right(ourAddition.mode)
-                else
-                  left(
-                    s"Conflicting file modes for file ${underline(path)}; on our branch head ${underline(ourAddition.mode)} and on their branch head ${underline(theirAddition.mode)}."
-                  )
-            yield path -> BothContributeAnAddition(
-              ourAddition,
-              theirAddition,
-              mergedFileMode
-            )
-
-          case (
-                path,
-                (
-                  Some(ourModification: Change.Modification),
-                  Some(theirModification: Change.Modification)
-                )
-              ) =>
-            for
+        case (
+              path,
               (
-                bestAncestorCommitIdMode,
-                bestAncestorCommitIdBlobId
-              )                           <- blobFor(bestAncestorCommitId)(path)
-              bestAncestorCommitIdContent <-
-                (ourModification.content orElse theirModification.content)
-                  .as(
-                    contentFor(bestAncestorCommitId, path)(
-                      bestAncestorCommitIdBlobId
-                    )
-                  )
-                  .sequence
-              mergedFileMode <-
-                if bestAncestorCommitIdMode == ourModification.mode then
-                  right(theirModification.mode)
-                else if bestAncestorCommitIdMode == theirModification.mode then
-                  right(ourModification.mode)
-                else if ourModification.mode == theirModification.mode then
-                  right(ourModification.mode)
-                else
-                  left(
-                    s"Conflicting file modes for file ${underline(path)}; on best ancestor commit ${underline(bestAncestorCommitIdMode)}, on our branch head ${underline(ourModification.mode)} and on their branch head ${underline(theirModification.mode)}."
-                  )
-            yield path -> BothContributeAModification(
-              ourModification,
-              theirModification,
-              bestAncestorCommitIdMode,
-              bestAncestorCommitIdBlobId,
-              bestAncestorCommitIdContent,
-              mergedFileMode
-            )
+                Some(Change.Deletion(binaryContentDeletedOnLeft)),
+                Some(Change.Deletion(binaryContentDeletedOnRight))
+              )
+            ) =>
+          for
+            modeAndBlob <- blobFor(bestAncestorCommitId)(path)
+            (_, bestAncestorCommitIdBlobId) = modeAndBlob
+            _ <-
+              if binaryContentDeletedOnLeft != binaryContentDeletedOnRight
+              then
+                def description(isBinary: Boolean) =
+                  if isBinary then "binary" else "text"
 
-          case (
-                path,
-                (
-                  Some(Change.Deletion(binaryContentDeletedOnLeft)),
-                  Some(Change.Deletion(binaryContentDeletedOnRight))
+                left(
+                  s"Unexpected error: file ${underline(path)} is deleted on both our branch and their branch, " +
+                    s"but our branch thinks the original is ${description(binaryContentDeletedOnLeft)} " +
+                    s"and their branch thinks the original is ${description(binaryContentDeletedOnRight)}."
                 )
-              ) =>
-            for
-              (
-                _,
-                bestAncestorCommitIdBlobId
-              ) <- blobFor(bestAncestorCommitId)(path)
-              _ <-
-                if binaryContentDeletedOnLeft != binaryContentDeletedOnRight
-                then
-                  def description(isBinary: Boolean) =
-                    if isBinary then "binary" else "text"
-
-                  left(
-                    s"Unexpected error: file ${underline(path)} is deleted on both our branch and their branch, " +
-                      s"but our branch thinks the original is ${description(binaryContentDeletedOnLeft)} " +
-                      s"and their branch thinks the original is ${description(binaryContentDeletedOnRight)}."
-                  )
-                else right(())
-              bestAncestorCommitIdContent <- Option
-                .unless(binaryContentDeletedOnLeft)(
-                  contentFor(bestAncestorCommitId, path)(
-                    bestAncestorCommitIdBlobId
-                  )
-                )
-                .sequence
-            yield path -> BothContributeADeletion(bestAncestorCommitIdContent)
-        }
+              else right(())
+            bestAncestorCommitIdContent <-
+              if !binaryContentDeletedOnLeft then
+                contentFor(bestAncestorCommitId, path)(bestAncestorCommitIdBlobId).map(Some.apply)
+              else right(Option.empty[String @@ Tags.Content])
+          yield path -> BothContributeADeletion(bestAncestorCommitIdContent)
+      }.map(_.toList)
     end mergeInputsOf
 
     private def contentFor(
@@ -992,8 +952,8 @@ object Main extends StrictLogging:
         path: Path
     )(
         blobId: String @@ Tags.BlobId
-    ): Workflow[String @@ Tags.Content] =
-      IO {
+    ): KyoWorkflow[String @@ Tags.Content] =
+      kyo.IO {
         os
           .proc("git", "cat-file", "blob", blobId)
           .call(workingDirectory)
@@ -1009,21 +969,20 @@ object Main extends StrictLogging:
         commitIdOrBranchName: String @@ Tags.CommitOrBranchName
     )(
         path: Path
-    ): Workflow[
+    ): KyoWorkflow[
       (String @@ Tags.Mode, String @@ Tags.BlobId)
     ] =
       for
-        Array(mode, entryType, entryId, _) <- IO {
-          val line = os
+        line <- kyo.IO {
+          os
             .proc("git", "ls-tree", commitIdOrBranchName, path)
             .call(workingDirectory)
             .out
             .text()
-
-          line.split(whitespaceRun)
         }.labelExceptionWith(errorMessage =
           s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
         )
+        Array(mode, entryType, entryId, _*) = (line.split(whitespaceRun): Array[String]).runtimeChecked
         _ <-
           entryType match
             case "blob" =>
@@ -1049,7 +1008,7 @@ object Main extends StrictLogging:
         noCommit: Boolean,
         noFastForward: Boolean,
         configuration: Configuration
-    )(mergeInputs: List[(Path, MergeInput)]): Workflow[Int @@ Tags.ExitCode] =
+    )(mergeInputs: List[(Path, MergeInput)]): KyoWorkflow[Int @@ Tags.ExitCode] =
       val workflow =
         for
           goodForAMergeCommit <- indexUpdates(
@@ -1066,7 +1025,7 @@ object Main extends StrictLogging:
 
             if goodForAMergeCommit && !noCommit then
               for
-                treeId <- IO {
+                treeId <- kyo.IO {
                   os.proc("git", "write-tree")
                     .call(workingDirectory)
                     .out
@@ -1076,7 +1035,7 @@ object Main extends StrictLogging:
                   .labelExceptionWith(errorMessage =
                     s"Unexpected error: could not write a tree object from the index."
                   )
-                commitId <- IO {
+                commitId <- kyo.IO {
                   os.proc(
                     "git",
                     "commit-tree",
@@ -1094,7 +1053,7 @@ object Main extends StrictLogging:
                 }.labelExceptionWith(errorMessage =
                   s"Unexpected error: could not create a commit from tree object ${underline(treeId)}"
                 )
-                _ <- IO {
+                _ <- kyo.IO {
                   os.proc("git", "reset", "--soft", commitId)
                     .call(workingDirectory)
                     .out
@@ -1109,7 +1068,7 @@ object Main extends StrictLogging:
               yield successfulMerge
             else
               for
-                gitDir <- IO {
+                gitDir <- kyo.IO {
                   os.proc("git", "rev-parse", "--absolute-git-dir")
                     .call(workingDirectory)
                     .out
@@ -1119,25 +1078,25 @@ object Main extends StrictLogging:
                   .labelExceptionWith(errorMessage =
                     "Could not determine location of `GIT_DIR`."
                   )
-                gitDirPath <- IO {
+                gitDirPath <- kyo.IO {
                   Path(gitDir)
                 }
                   .labelExceptionWith(errorMessage =
                     s"Unexpected error: `GIT_DIR` reported by Git ${underline(gitDir)} is not a valid path."
                   )
                 theirCommitId <- theirCommitId(theirBranchHead)
-                _             <- IO {
+                _             <- kyo.IO {
                   os.write.over(gitDirPath / "MERGE_HEAD", theirCommitId)
                 }.labelExceptionWith(errorMessage =
                   s"Unexpected error: could not write `MERGE_HEAD` to reference their branch ${underline(theirBranchHead)}."
                 )
                 mergeMode = if noFastForward then "no-ff" else ""
-                _ <- IO {
+                _ <- kyo.IO {
                   os.write.over(gitDirPath / "MERGE_MODE", mergeMode)
                 }.labelExceptionWith(errorMessage =
                   s"Unexpected error: could not write `MERGE_MODE` to propagate the merge mode ${underline(mergeMode)}."
                 )
-                _ <- IO {
+                _ <- kyo.IO {
                   os.write.over(gitDirPath / "MERGE_MSG", commitMessage)
                 }.labelExceptionWith(errorMessage =
                   s"Unexpected error: could not write `MERGE_MSG` to prepare the commit message ${underline(commitMessage)}."
@@ -1155,7 +1114,7 @@ object Main extends StrictLogging:
       val workflowWithWorkaround =
         for
           payload <- workflow
-          _       <- IO {
+          _       <- kyo.IO {
             // Do this to work around the issue mentioned here:
             // https://stackoverflow.com/questions/51146392/cannot-git-merge-abort-until-git-status,
             // this has been observed when `git merge-file` successfully writes
@@ -1169,21 +1128,30 @@ object Main extends StrictLogging:
         yield payload
 
       // NASTY HACK: hokey cleanup, need to think about the best approach...
-      workflowWithWorkaround.leftMap(label =>
-        try os.proc("git", "reset", "--hard").call(workingDirectory)
-        catch
-          case exception =>
-            println(s"Failed to rollback changes after unexpected error.")
-        end try
-
-        label
-      )
+      val handled = Abort.run[String](workflowWithWorkaround)
+      handled.flatMap {
+        case Result.Success(v) => v
+        case Result.Failure(err) =>
+          try os.proc("git", "reset", "--hard").call(workingDirectory)
+          catch
+            case exception =>
+              println(s"Failed to rollback changes after unexpected error.")
+          end try
+          Abort.fail[String](err)
+        case Result.Panic(ex) =>
+          try os.proc("git", "reset", "--hard").call(workingDirectory)
+          catch
+            case exception =>
+              println(s"Failed to rollback changes after unexpected error.")
+          end try
+          throw ex
+      }
     end mergeWithRollback
 
     def theirCommitId(
         theirBranchHead: String @@ Main.Tags.CommitOrBranchName
-    ): Workflow[String @@ Tags.CommitOrBranchName] =
-      IO {
+    ): KyoWorkflow[String @@ Tags.CommitOrBranchName] =
+      kyo.IO {
         os.proc(
           "git",
           "rev-parse",
@@ -1205,7 +1173,7 @@ object Main extends StrictLogging:
         configuration: Configuration
     )(
         mergeInputs: List[(Path, MergeInput)]
-    ): Workflow[Boolean] =
+    ): KyoWorkflow[Boolean] =
       given Order[Token]  = Token.comparison(_, _)
       given Funnel[Token] = Token.funnel(_, _)
       given HashFunction  = Hashing.murmur3_32_fixed()
@@ -1444,9 +1412,9 @@ object Main extends StrictLogging:
       ):
         // NOTE: no need to yield an updated `AccumulatedMergeState` with
         // `goodForAMergeCommit` as false - this is done upstream already.
-        def reportConflictingAdditionsTakingRenamesIntoAccount: Workflow[Unit] =
-          conflictingAdditionPathsAndTheirLastMinuteResolutions.toSeq
-            .traverse_ { case (path, lastMinuteResolution) =>
+        def reportConflictingAdditionsTakingRenamesIntoAccount: KyoWorkflow[Unit] =
+          Kyo.foreach(conflictingAdditionPathsAndTheirLastMinuteResolutions.toSeq) {
+            case (path, lastMinuteResolution) =>
               (
                 deletedPathsByLeftRenamePath
                   .get(path)
@@ -1474,52 +1442,48 @@ object Main extends StrictLogging:
                   right(()).logOperation(
                     s"Conflict - file ${underline(path)} is a rename on our branch ${underline(ourBranchHead)} of ${underline(originalPathRenamedOnTheLeft)} and is a rename on their branch ${underline(theirBranchHead)} of ${underline(originalPathRenamedOnTheRight)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
                   )
-            }
+          }.map(_ => ())
 
         def reportLeftRenamesConflictingWithRightDeletions
-            : Workflow[AccumulatedMergeState] =
-          conflictingDeletedPathsByLeftRenamePath.toSeq
-            .foldM(this) {
-              case (partialResult, (leftRenamedPath, conflictingDeletedPath)) =>
-                for
-                  _              <- recordDeletionInIndex(leftRenamedPath)
-                  (mode, blobId) <- blobFor(ourBranchHead)(
-                    leftRenamedPath
-                  )
-                  _ <- recordConflictModificationInIndex(ourStageIndex)(
-                    ourBranchHead,
-                    leftRenamedPath,
-                    mode,
-                    blobId
-                  ).logOperation(
-                    s"Conflict - file ${underline(conflictingDeletedPath)} was renamed on our branch ${underline(ourBranchHead)} to ${underline(leftRenamedPath)} and deleted on their branch ${underline(theirBranchHead)}."
-                  )
-                yield partialResult.copy(goodForAMergeCommit = false)
-            }
+            : KyoWorkflow[AccumulatedMergeState] =
+          Kyo.foldLeft(conflictingDeletedPathsByLeftRenamePath.toSeq)(this) {
+            case (partialResult, (leftRenamedPath, conflictingDeletedPath)) =>
+              for
+                _              <- recordDeletionInIndex(leftRenamedPath)
+                modeAndBlob    <- blobFor(ourBranchHead)(leftRenamedPath)
+                (mode, blobId) = modeAndBlob
+                _ <- recordConflictModificationInIndex(ourStageIndex)(
+                  ourBranchHead,
+                  leftRenamedPath,
+                  mode,
+                  blobId
+                ).logOperation(
+                  s"Conflict - file ${underline(conflictingDeletedPath)} was renamed on our branch ${underline(ourBranchHead)} to ${underline(leftRenamedPath)} and deleted on their branch ${underline(theirBranchHead)}."
+                )
+              yield partialResult.copy(goodForAMergeCommit = false)
+          }
 
         def reportLeftDeletionsConflictingWithRightRenames
-            : Workflow[AccumulatedMergeState] =
-          conflictingDeletedPathsByRightRenamePath.toSeq
-            .foldM(this) {
-              case (
-                    partialResult,
-                    (rightRenamedPath, conflictingDeletedPath)
-                  ) =>
-                for
-                  _              <- recordDeletionInIndex(rightRenamedPath)
-                  (mode, blobId) <- blobFor(theirBranchHead)(
-                    rightRenamedPath
-                  )
-                  _ <- recordConflictModificationInIndex(theirStageIndex)(
-                    theirBranchHead,
-                    rightRenamedPath,
-                    mode,
-                    blobId
-                  ).logOperation(
-                    s"Conflict - file ${underline(conflictingDeletedPath)} was deleted on our branch ${underline(ourBranchHead)} and renamed on their branch ${underline(theirBranchHead)} to ${underline(rightRenamedPath)}."
-                  )
-                yield partialResult.copy(goodForAMergeCommit = false)
-            }
+            : KyoWorkflow[AccumulatedMergeState] =
+          Kyo.foldLeft(conflictingDeletedPathsByRightRenamePath.toSeq)(this) {
+            case (
+                  partialResult,
+                  (rightRenamedPath, conflictingDeletedPath)
+                ) =>
+              for
+                _              <- recordDeletionInIndex(rightRenamedPath)
+                modeAndBlob    <- blobFor(theirBranchHead)(rightRenamedPath)
+                (mode, blobId) = modeAndBlob
+                _ <- recordConflictModificationInIndex(theirStageIndex)(
+                  theirBranchHead,
+                  rightRenamedPath,
+                  mode,
+                  blobId
+                ).logOperation(
+                  s"Conflict - file ${underline(conflictingDeletedPath)} was deleted on our branch ${underline(ourBranchHead)} and renamed on their branch ${underline(theirBranchHead)} to ${underline(rightRenamedPath)}."
+                )
+              yield partialResult.copy(goodForAMergeCommit = false)
+          }
       end AccumulatedMergeState
 
       object AccumulatedMergeState:
@@ -1795,21 +1759,23 @@ object Main extends StrictLogging:
       end writeConflictedIndexEntriesForAddition
 
       for
-        sectionedCode: SectionedCode[Path, Token] <- EitherT
-          .fromEither[WorkflowLogWriter] {
-            SectionedCode.of(baseSources, leftSources, rightSources)(
-              configuration.copy(label = "Match analysis")
-            )
-          }
-          .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
+        sectionedCode: SectionedCode[Path, Token] <- Abort.get(
+          SectionedCode.of(
+            baseSources,
+            leftSources,
+            rightSources
+          )(
+            configuration.copy(label = "Match analysis")
+          ).left.map(_.toString)
+        )
 
         (mergeResultsByPath, moveDestinationsReport) =
           given ProgressRecording = configuration.progressRecording
 
           sectionedCode.merge
 
-        _ <- moveDestinationsReport.summarizeInText.foldLeft(right(()))(
-          _ `logOperation` _
+        _ <- Kyo.foreach(moveDestinationsReport.summarizeInText)(msg =>
+          right(()).logOperation(msg)
         )
 
         fileRenamingReport = fileRenamingReportUsing(
@@ -1817,7 +1783,7 @@ object Main extends StrictLogging:
           moveDestinationsReport
         )
 
-        accumulatedMergeState <- mergeInputs.foldM(
+        accumulatedMergeState <- Kyo.foldLeft(mergeInputs)(
           AccumulatedMergeState.initial
         ) { case (partialResult, (path, mergeInput)) =>
           def recordConflictedMergeOfAddedFile(
@@ -2754,7 +2720,7 @@ object Main extends StrictLogging:
       end for
     end indexUpdates
 
-    private def deleteFile(path: Path): Workflow[Unit] = IO {
+    private def deleteFile(path: Path): KyoWorkflow[Unit] = kyo.IO {
       os.remove(path): Unit
     }.labelExceptionWith(errorMessage =
       s"Unexpected error: could not update working directory tree by deleting file ${underline(path)}."
@@ -2763,8 +2729,8 @@ object Main extends StrictLogging:
     private def restoreFileFromBlobId(
         path: Path,
         blobId: String @@ Main.Tags.BlobId
-    ) =
-      IO {
+    ): KyoWorkflow[Unit] =
+      kyo.IO {
         os.write.over(
           path,
           os.proc(
@@ -2789,8 +2755,8 @@ object Main extends StrictLogging:
         path: Path,
         mode: String @@ Tags.Mode,
         blobId: String @@ Tags.BlobId
-    ): Workflow[Unit] =
-      IO {
+    ): KyoWorkflow[Unit] =
+      kyo.IO {
         val _ = os
           .proc("git", "update-index", "--index-info")
           .call(
@@ -2804,8 +2770,8 @@ object Main extends StrictLogging:
     private def storeBlobFor(
         path: Path,
         content: String @@ Tags.Content
-    ): Workflow[String @@ Tags.BlobId] =
-      IO {
+    ): KyoWorkflow[String @@ Tags.BlobId] =
+      kyo.IO {
         val line = os
           .proc("git", "hash-object", "-t", "blob", "-w", "--stdin")
           .call(workingDirectory, stdin = content)
@@ -2821,8 +2787,8 @@ object Main extends StrictLogging:
 
     private def recordDeletionInIndex(
         path: Path
-    ): Workflow[Unit] =
-      IO {
+    ): KyoWorkflow[Unit] =
+      kyo.IO {
         val _ = os
           .proc("git", "update-index", "--index-info")
           .call(
@@ -2841,8 +2807,8 @@ object Main extends StrictLogging:
         path: Path,
         mode: String @@ Tags.Mode,
         blobId: String @@ Tags.BlobId
-    ): Workflow[Unit] =
-      IO {
+    ): KyoWorkflow[Unit] =
+      kyo.IO {
         val _ = os
           .proc("git", "update-index", "--index-info")
           .call(
