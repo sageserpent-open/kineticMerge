@@ -685,7 +685,7 @@ object Main extends StrictLogging:
             (mode, blobId) = modeAndBlob
             contentOpt <-
               if binaryContentInvolvedFor(path) then right(Option.empty[String @@ Tags.Content])
-              else contentFor(commitIdOrBranchName, path)(blobId).map(c => Some(c))
+              else contentFor(commitIdOrBranchName, path)(blobId).map(Some.apply)
           yield path -> Change.Modification(mode, blobId, contentOpt)
 
         case Array("A", addedFile) =>
@@ -695,7 +695,7 @@ object Main extends StrictLogging:
             (mode, blobId) = modeAndBlob
             contentOpt <-
               if binaryContentInvolvedFor(path) then right(Option.empty[String @@ Tags.Content])
-              else contentFor(commitIdOrBranchName, path)(blobId).map(c => Some(c))
+              else contentFor(commitIdOrBranchName, path)(blobId).map(Some.apply)
           yield path -> Change.Addition(mode, blobId, contentOpt)
 
         case Array("D", deletedFile) =>
@@ -752,7 +752,7 @@ object Main extends StrictLogging:
             (bestAncestorCommitIdMode, bestAncestorCommitIdBlobId) = modeAndBlob
             bestAncestorCommitIdContent <-
               if ourModification.content.isDefined then
-                contentFor(bestAncestorCommitId, path)(bestAncestorCommitIdBlobId).map(c => Some(c))
+                contentFor(bestAncestorCommitId, path)(bestAncestorCommitIdBlobId).map(Some.apply)
               else right(Option.empty[String @@ Tags.Content])
           yield path -> JustOurModification(
             ourModification,
@@ -769,7 +769,7 @@ object Main extends StrictLogging:
             (bestAncestorCommitIdMode, bestAncestorCommitIdBlobId) = modeAndBlob
             bestAncestorCommitIdContent <-
               if theirModification.content.isDefined then
-                contentFor(bestAncestorCommitId, path)(bestAncestorCommitIdBlobId).map(c => Some(c))
+                contentFor(bestAncestorCommitId, path)(bestAncestorCommitIdBlobId).map(Some.apply)
               else right(Option.empty[String @@ Tags.Content])
           yield path -> JustTheirModification(
             theirModification,
@@ -798,7 +798,7 @@ object Main extends StrictLogging:
             (_, bestAncestorCommitIdBlobId) = modeAndBlob
             bestAncestorCommitIdContent <-
               if !binaryContentDeleted then
-                contentFor(bestAncestorCommitId, path)(bestAncestorCommitIdBlobId).map(c => Some(c))
+                contentFor(bestAncestorCommitId, path)(bestAncestorCommitIdBlobId).map(Some.apply)
               else right(Option.empty[String @@ Tags.Content])
           yield path -> JustOurDeletion(bestAncestorCommitIdContent)
 
@@ -811,7 +811,7 @@ object Main extends StrictLogging:
             (_, bestAncestorCommitIdBlobId) = modeAndBlob
             bestAncestorCommitIdContent <-
               if !binaryContentDeleted then
-                contentFor(bestAncestorCommitId, path)(bestAncestorCommitIdBlobId).map(c => Some(c))
+                contentFor(bestAncestorCommitId, path)(bestAncestorCommitIdBlobId).map(Some.apply)
               else right(Option.empty[String @@ Tags.Content])
           yield path -> JustTheirDeletion(bestAncestorCommitIdContent)
 
@@ -827,7 +827,7 @@ object Main extends StrictLogging:
             (bestAncestorCommitIdMode, bestAncestorCommitIdBlobId) = modeAndBlob
             bestAncestorCommitIdContent <-
               if !binaryContentDeleted then
-                contentFor(bestAncestorCommitId, path)(bestAncestorCommitIdBlobId).map(c => Some(c))
+                contentFor(bestAncestorCommitId, path)(bestAncestorCommitIdBlobId).map(Some.apply)
               else right(Option.empty[String @@ Tags.Content])
           yield path -> OurModificationAndTheirDeletion(
             ourModification,
@@ -848,7 +848,7 @@ object Main extends StrictLogging:
             (bestAncestorCommitIdMode, bestAncestorCommitIdBlobId) = modeAndBlob
             bestAncestorCommitIdContent <-
               if !binaryContentDeleted then
-                contentFor(bestAncestorCommitId, path)(bestAncestorCommitIdBlobId).map(c => Some(c))
+                contentFor(bestAncestorCommitId, path)(bestAncestorCommitIdBlobId).map(Some.apply)
               else right(Option.empty[String @@ Tags.Content])
           yield path -> TheirModificationAndOurDeletion(
             theirModification,
@@ -889,7 +889,7 @@ object Main extends StrictLogging:
             (bestAncestorCommitIdMode, bestAncestorCommitIdBlobId) = modeAndBlob
             bestAncestorCommitIdContent <-
               if (ourModification.content orElse theirModification.content).isDefined then
-                contentFor(bestAncestorCommitId, path)(bestAncestorCommitIdBlobId).map(c => Some(c))
+                contentFor(bestAncestorCommitId, path)(bestAncestorCommitIdBlobId).map(Some.apply)
               else right(Option.empty[String @@ Tags.Content])
             mergedFileMode <-
               if bestAncestorCommitIdMode == ourModification.mode then
@@ -935,7 +935,7 @@ object Main extends StrictLogging:
               else right(())
             bestAncestorCommitIdContent <-
               if !binaryContentDeletedOnLeft then
-                contentFor(bestAncestorCommitId, path)(bestAncestorCommitIdBlobId).map(c => Some(c))
+                contentFor(bestAncestorCommitId, path)(bestAncestorCommitIdBlobId).map(Some.apply)
               else right(Option.empty[String @@ Tags.Content])
           yield path -> BothContributeADeletion(bestAncestorCommitIdContent)
       }.map(_.toList)
@@ -967,18 +967,16 @@ object Main extends StrictLogging:
       (String @@ Tags.Mode, String @@ Tags.BlobId)
     ] =
       for
-        parsed <- kyo.IO {
-          val line = os
+        line <- kyo.IO {
+          os
             .proc("git", "ls-tree", commitIdOrBranchName, path)
             .call(workingDirectory)
             .out
             .text()
-
-          line.split(whitespaceRun)
         }.labelExceptionWith(errorMessage =
           s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
         )
-        Array(mode, entryType, entryId, _*) = (parsed: Array[String]).runtimeChecked
+        Array(mode, entryType, entryId, _*) = (line.split(whitespaceRun): Array[String]).runtimeChecked
         _ <-
           entryType match
             case "blob" =>
@@ -1125,7 +1123,7 @@ object Main extends StrictLogging:
 
       // NASTY HACK: hokey cleanup, need to think about the best approach...
       val handled = Abort.run[String](workflowWithWorkaround)
-      handled.map {
+      handled.flatMap {
         case Result.Success(v) => v
         case Result.Failure(err) =>
           try os.proc("git", "reset", "--hard").call(workingDirectory)
@@ -1755,15 +1753,14 @@ object Main extends StrictLogging:
       end writeConflictedIndexEntriesForAddition
 
       for
-        sectionedCode: SectionedCode[Path, Token] <- SectionedCode.of(
-          baseSources,
-          leftSources,
-          rightSources
-        )(
-          configuration.copy(label = "Match analysis")
-        ).fold(
-          err => Abort.fail[String](err.toString),
-          code => right(code)
+        sectionedCode: SectionedCode[Path, Token] <- Abort.get(
+          SectionedCode.of(
+            baseSources,
+            leftSources,
+            rightSources
+          )(
+            configuration.copy(label = "Match analysis")
+          ).left.map(_.toString)
         )
 
         (mergeResultsByPath, moveDestinationsReport) =
