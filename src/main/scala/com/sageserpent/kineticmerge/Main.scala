@@ -398,13 +398,15 @@ object Main extends StrictLogging:
       handled.flatMap {
         case Result.Success(v) => (v: KyoWorkflow[Payload])
         case Result.Failure(ex) =>
-          logger.error(ex.getMessage)
-          ex.printStackTrace()
-          Abort.fail[String](errorMessage)
+          kyo.IO {
+            logger.error(ex.getMessage)
+            ex.printStackTrace()
+          }.andThen(Abort.fail[String](errorMessage))
         case Result.Panic(ex) =>
-          logger.error(ex.getMessage)
-          ex.printStackTrace()
-          Abort.fail[String](errorMessage)
+          kyo.IO {
+            logger.error(ex.getMessage)
+            ex.printStackTrace()
+          }.andThen(Abort.fail[String](errorMessage))
       }
   end extension
 
@@ -679,8 +681,9 @@ object Main extends StrictLogging:
     ): KyoWorkflow[(Path, Change)] =
       line.split(whitespaceRun) match
         case Array("M", changedFile) =>
-          val path = workingDirectory / RelPath(changedFile)
           for
+            path <- kyo.IO { workingDirectory / RelPath(changedFile) }
+              .labelExceptionWith(s"Unexpected error - can't parse changes reported by Git ${underline(line)}.")
             modeAndBlob <- blobFor(commitIdOrBranchName)(path)
             (mode, blobId) = modeAndBlob
             contentOpt <-
@@ -689,8 +692,9 @@ object Main extends StrictLogging:
           yield path -> Change.Modification(mode, blobId, contentOpt)
 
         case Array("A", addedFile) =>
-          val path = workingDirectory / RelPath(addedFile)
           for
+            path <- kyo.IO { workingDirectory / RelPath(addedFile) }
+              .labelExceptionWith(s"Unexpected error - can't parse changes reported by Git ${underline(line)}.")
             modeAndBlob <- blobFor(commitIdOrBranchName)(path)
             (mode, blobId) = modeAndBlob
             contentOpt <-
@@ -699,8 +703,10 @@ object Main extends StrictLogging:
           yield path -> Change.Addition(mode, blobId, contentOpt)
 
         case Array("D", deletedFile) =>
-          val path = workingDirectory / RelPath(deletedFile)
-          right(path -> Change.Deletion(binaryContentInvolvedFor(path)))
+          for
+            path <- kyo.IO { workingDirectory / RelPath(deletedFile) }
+              .labelExceptionWith(s"Unexpected error - can't parse changes reported by Git ${underline(line)}.")
+          yield path -> Change.Deletion(binaryContentInvolvedFor(path))
 
         case _ =>
           left(s"Unexpected error - can't parse changes reported by Git ${underline(line)}.")
@@ -900,7 +906,7 @@ object Main extends StrictLogging:
                 right(ourModification.mode)
               else
                 left(
-                  s"Conflicting file modes for file ${underline(path)}; on best ancestor commit ${underline(bestAncestorCommitIdMode)}, on our branch head ${underline(ourModification.mode)} and on their branch head ${underline(theirBranchHead)}."
+                  s"Conflicting file modes for file ${underline(path)}; on best ancestor commit ${underline(bestAncestorCommitIdMode)}, on our branch head ${underline(ourModification.mode)} and on their branch head ${underline(theirModification.mode)}."
                 )
           yield path -> BothContributeAModification(
             ourModification,
