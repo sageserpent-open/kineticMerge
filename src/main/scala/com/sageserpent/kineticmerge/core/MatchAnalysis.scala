@@ -2479,6 +2479,10 @@ object MatchAnalysis extends StrictLogging:
           require(enteredGroupIds.intersect(exitedGroupIds).isEmpty)
           require(!enteredGroupIds.contains(nextGroupId))
           require(!exitedGroupIds.contains(nextGroupId))
+          groupIdReplacements.values.foreach { replacementGroupId =>
+            require(!enteredGroupIds.contains(replacementGroupId))
+            require(!exitedGroupIds.contains(replacementGroupId))
+          }
 
           def step(section: Section[Element]): State =
             val matches = sectionsAndTheirMatches.get(section)
@@ -2544,7 +2548,7 @@ object MatchAnalysis extends StrictLogging:
           val parallelMatchesGroupIdsByMatchUpdatedFromTheBase =
             baseSectionsByPath.foldLeft(parallelMatchesGroupIdsByMatch) {
               case (parallelMatchesGroupIdsByMatch, (path, sectionsSeen)) =>
-                sectionsSeen
+                sectionsSeen.iterator.distinct
                   .foldLeft(State.startingFrom(parallelMatchesGroupIdsByMatch))(
                     _ step _
                   )
@@ -2555,7 +2559,7 @@ object MatchAnalysis extends StrictLogging:
             leftSectionsByPath.foldLeft(
               parallelMatchesGroupIdsByMatchUpdatedFromTheBase
             ) { case (parallelMatchesGroupIdsByMatch, (path, sectionsSeen)) =>
-              sectionsSeen
+              sectionsSeen.iterator.distinct
                 .foldLeft(State.startingFrom(parallelMatchesGroupIdsByMatch))(
                   _ step _
                 )
@@ -2565,7 +2569,7 @@ object MatchAnalysis extends StrictLogging:
           rightSectionsByPath.foldLeft(
             parallelMatchesGroupIdsByMatchUpdatedFromTheLeft
           ) { case (parallelMatchesGroupIdsByMatch, (path, sectionsSeen)) =>
-            sectionsSeen
+            sectionsSeen.iterator.distinct
               .foldLeft(State.startingFrom(parallelMatchesGroupIdsByMatch))(
                 _ step _
               )
