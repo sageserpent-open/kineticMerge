@@ -4,19 +4,17 @@ import cats.{Eq, Order}
 import com.google.common.hash.{Funnel, HashFunction, Hashing}
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.junit5.*
+import com.sageserpent.kineticmerge.Main.ApplicationRequest
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.MatchAnalysis.Configuration
 import com.sageserpent.kineticmerge.core.SectionedCodeExtension.*
-import com.sageserpent.kineticmerge.core.SectionedCodeExtensionTest.{
-  FakePath,
-  reconstituteTextFrom,
-  given
-}
+import com.sageserpent.kineticmerge.core.SectionedCodeExtensionTest.{FakePath, reconstituteTextFrom, given}
 import com.sageserpent.kineticmerge.core.Token.tokens
 import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording}
 import org.junit.jupiter.api.Assertions.{assertDoesNotThrow, fail}
-import org.junit.jupiter.api.{Test, TestFactory}
+import org.junit.jupiter.api.{Disabled, Test, TestFactory}
 
+import scala.io.Source
 import scala.util.Right
 
 object SectionedCodeExtensionTest:
@@ -2486,6 +2484,82 @@ class SectionedCodeExtensionTest extends ProseExamples:
       assertDoesNotThrow(() => sectionedCode.merge)
     }
   end issue272BugReproduction
+
+  @Disabled
+  @Test
+  def benchmarkMergeReproduction(): Unit =
+    val configuration = Configuration(
+      minimumMatchSize = ApplicationRequest.default.minimumMatchSize,
+      thresholdSizeFractionForMatching =
+        ApplicationRequest.default.thresholdSizeFractionForMatching,
+      minimumAmbiguousMatchSize =
+        ApplicationRequest.default.minimumAmbiguousMatchSize,
+      ambiguousMatchesThreshold =
+        ApplicationRequest.default.ambiguousMatchesThreshold
+    )
+
+    val placeholderPath: FakePath =
+      "src/main/scala/com/sageserpent/kineticmerge/Main.scala"
+
+    val baseText = Source
+      .fromResource("baseMain.scala")
+      .getLines()
+      .mkString("\n")
+    val leftText = Source
+      .fromResource("leftMain.scala")
+      .getLines()
+      .mkString("\n")
+    val rightText = Source
+      .fromResource("rightMain.scala")
+      .getLines()
+      .mkString("\n")
+
+    val baseSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(placeholderPath -> tokens(baseText).get),
+      label = "base"
+    )
+    val leftSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(placeholderPath -> tokens(leftText).get),
+      label = "left"
+    )
+    val rightSources = MappedContentSourcesOfTokens(
+      contentsByPath = Map(placeholderPath -> tokens(rightText).get),
+      label = "right"
+    )
+
+    val Right(sectionedCode) = SectionedCode.of(
+      baseSources = baseSources,
+      leftSources = leftSources,
+      rightSources = rightSources
+    )(configuration): @unchecked
+
+    val (mergeResultsByPath, moveDestinationsReport) =
+      sectionedCode.merge
+
+    println(fansi.Color.Yellow("Move destinations report summary:"))
+    println(
+      fansi.Color
+        .Green(moveDestinationsReport.summarizeInText.mkString("\n"))
+    )
+
+    mergeResultsByPath(placeholderPath) match
+      case FullyMerged(result) =>
+        println(fansi.Color.Yellow("Fully merged result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(result)))
+
+        assert(result.nonEmpty)
+
+      case MergedWithConflicts(baseResult, leftResult, rightResult) =>
+        println(fansi.Color.Red(s"Base result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(baseResult)))
+        println(fansi.Color.Red(s"Left result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
+        println(fansi.Color.Red(s"Right result..."))
+        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+
+        fail("Should have seen a clean merge.")
+    end match
+  end benchmarkMergeReproduction
 
   @TestFactory
   def issue274BugReproduction(): DynamicTests =

@@ -271,6 +271,25 @@ object MatchAnalysis extends StrictLogging:
                   rightSection
                 )(relativeStartOffset, size)
               )
+
+        def stableOrderingKey
+            : (Option[(Int, Int)], Option[(Int, Int)], Option[(Int, Int)]) =
+          def stableOrderingKey(sources: Sources[Path, Element])(
+              section: Section[Element]
+          ) = sources.pathFor(section).hashCode -> section.startOffset
+
+          (
+            aMatch.baseContribution.map(
+              stableOrderingKey(baseSources)(_)
+            ),
+            aMatch.leftContribution.map(
+              stableOrderingKey(leftSources)(_)
+            ),
+            aMatch.rightContribution.map(
+              stableOrderingKey(rightSources)(_)
+            )
+          )
+        end stableOrderingKey
       end extension
       private val rollingHashFactoryCache: Cache[Int, RollingHash.Factory] =
         Caffeine.newBuilder().build()
@@ -1648,30 +1667,17 @@ object MatchAnalysis extends StrictLogging:
                       _          = progressRecordingSession.upTo(amount = 0)
                       updatedParallelMatchesGroupIdsByMatch <- State.get
                     yield
-                      val fullyReconciledMatches         = reconciled.matches
-                      val parallelMatchesGroupIdsByMatch =
-                        updatedParallelMatchesGroupIdsByMatch
-                          .filter((key, _) =>
-                            fullyReconciledMatches.contains(key)
-                          )
-
-                      val compactGroupIdsKeyedByGroupsIdsWithPossibleGaps: Map[
-                        ParallelMatchesGroupId,
-                        ParallelMatchesGroupId
-                      ] =
-                        parallelMatchesGroupIdsByMatch.values.toSeq.distinct.zipWithIndex.toMap
-
-                      val parallelMatchesWithReorganisedGroupIdsByMatch =
-                        parallelMatchesGroupIdsByMatch.map((aMatch, groupId) =>
-                          aMatch -> compactGroupIdsKeyedByGroupsIdsWithPossibleGaps(
-                            groupId
-                          )
-                        )
-
+                      val fullyReconciledMatches = reconciled.matches
                       Right(
-                        reconciled.copy(parallelMatchesGroupIdsByMatch =
-                          parallelMatchesWithReorganisedGroupIdsByMatch
-                        )
+                        reconciled
+                          .copy(parallelMatchesGroupIdsByMatch =
+                            updatedParallelMatchesGroupIdsByMatch
+                              .filter((key, _) =>
+                                fullyReconciledMatches.contains(key)
+                              )
+                          )
+                          .splitStraddlingParallelMatchesGroups
+                          .reorganiseParallelMatchesGroupIds
                       )
                   else
                     progressRecordingSession.upTo(paredDownMatches.size)
@@ -1961,10 +1967,16 @@ object MatchAnalysis extends StrictLogging:
 
         val parallelMatchesGroupIdsByMatch =
           Map.from(
-            groupsOfBackTranslatedParallelMatches.zipWithIndex.flatMap(
-              (parallelMatches, groupId) => parallelMatches.map(_ -> groupId)
-            )
+            groupsOfBackTranslatedParallelMatches
+              // NOTE: sort the matches so that the allocated group ids are
+              // repeatable between debugging sessions!
+              .sortBy(_.toSeq.map(_.stableOrderingKey))
+              .zipWithIndex
+              .flatMap((parallelMatches, groupId) =>
+                parallelMatches.map(_ -> groupId)
+              )
           )
+        end parallelMatchesGroupIdsByMatch
 
         backTranslatedMatchesAndTheirSections
           .copy(parallelMatchesGroupIdsByMatch = parallelMatchesGroupIdsByMatch)
@@ -2446,6 +2458,163 @@ object MatchAnalysis extends StrictLogging:
       ): Option[Int] =
         aMatch.rightContribution.map(_.startOffset)
 
+      private def splitStraddlingParallelMatchesGroups
+          : MatchesAndTheirSections =
+        @tailrec
+        def refine(
+            parallelMatchesGroupIdsByMatch: ParallelMatchesGroupIdsByMatch[
+              Element
+            ]
+        ): ParallelMatchesGroupIdsByMatch[Element] =
+          case class State(
+              parallelMatchesGroupIdsByMatch: ParallelMatchesGroupIdsByMatch[
+                Element
+              ],
+              groupIdReplacements: Map[
+                ParallelMatchesGroupId,
+                ParallelMatchesGroupId
+              ],
+              enteredGroupIds: Set[ParallelMatchesGroupId],
+              exitedGroupIds: Set[ParallelMatchesGroupId],
+              nextGroupId: ParallelMatchesGroupId
+          ):
+            require(nextGroupId > parallelMatchesGroupIdsByMatch.values.max)
+            require(enteredGroupIds.intersect(exitedGroupIds).isEmpty)
+            require(!enteredGroupIds.contains(nextGroupId))
+            require(!exitedGroupIds.contains(nextGroupId))
+            groupIdReplacements.values.foreach { replacementGroupId =>
+              require(!enteredGroupIds.contains(replacementGroupId))
+              require(!exitedGroupIds.contains(replacementGroupId))
+            }
+
+            def step(section: Section[Element]): State =
+              val matches = sectionsAndTheirMatches.get(section)
+
+              val affiliatedGroupIds =
+                matches.map(parallelMatchesGroupIdsByMatch)
+
+              val freshEnteredGroupIds = affiliatedGroupIds diff enteredGroupIds
+
+              val freshExitedGroupIds = enteredGroupIds diff affiliatedGroupIds
+
+              val updatedEnteredGroupIds =
+                enteredGroupIds -- freshExitedGroupIds ++ freshEnteredGroupIds
+
+              val straddledGroupIds =
+                exitedGroupIds intersect freshEnteredGroupIds
+
+              val updatedExitedGroupIds =
+                exitedGroupIds -- straddledGroupIds ++ freshExitedGroupIds
+
+              val updatedGroupIdReplacements =
+                groupIdReplacements ++ straddledGroupIds.toSeq.zipWithIndex.map(
+                  (originalGroupId, delta) =>
+                    originalGroupId -> (nextGroupId + delta)
+                )
+
+              val updatedNextGroupId = nextGroupId + straddledGroupIds.size
+
+              val updatedParallelMatchesGroupIdsByMatch =
+                matches.foldLeft(parallelMatchesGroupIdsByMatch)(
+                  _.updatedWith(_)(payload =>
+                    (payload: @unchecked) match
+                      case Some(originalGroupId) =>
+                        Some(updatedGroupIdReplacements(originalGroupId))
+                  )
+                )
+
+              State(
+                updatedParallelMatchesGroupIdsByMatch,
+                updatedGroupIdReplacements,
+                updatedEnteredGroupIds,
+                updatedExitedGroupIds,
+                updatedNextGroupId
+              )
+            end step
+          end State
+
+          object State:
+            def startingFrom(
+                parallelMatchesGroupIdsByMatch: ParallelMatchesGroupIdsByMatch[
+                  Element
+                ]
+            ): State =
+              State(
+                parallelMatchesGroupIdsByMatch,
+                groupIdReplacements = Map.empty.withDefault(identity),
+                enteredGroupIds = Set.empty,
+                exitedGroupIds = Set.empty,
+                nextGroupId = 1 + parallelMatchesGroupIdsByMatch.values.max
+              )
+          end State
+
+          val parallelMatchesGroupIdsByMatchWithSplits =
+            val parallelMatchesGroupIdsByMatchUpdatedFromTheBase =
+              baseSectionsByPath.foldLeft(parallelMatchesGroupIdsByMatch) {
+                case (parallelMatchesGroupIdsByMatch, (path, sectionsSeen)) =>
+                  sectionsSeen.iterator.distinct
+                    .foldLeft(
+                      State.startingFrom(parallelMatchesGroupIdsByMatch)
+                    )(
+                      _ step _
+                    )
+                    .parallelMatchesGroupIdsByMatch
+              }
+
+            val parallelMatchesGroupIdsByMatchUpdatedFromTheLeft =
+              leftSectionsByPath.foldLeft(
+                parallelMatchesGroupIdsByMatchUpdatedFromTheBase
+              ) { case (parallelMatchesGroupIdsByMatch, (path, sectionsSeen)) =>
+                sectionsSeen.iterator.distinct
+                  .foldLeft(State.startingFrom(parallelMatchesGroupIdsByMatch))(
+                    _ step _
+                  )
+                  .parallelMatchesGroupIdsByMatch
+              }
+
+            rightSectionsByPath.foldLeft(
+              parallelMatchesGroupIdsByMatchUpdatedFromTheLeft
+            ) { case (parallelMatchesGroupIdsByMatch, (path, sectionsSeen)) =>
+              sectionsSeen.iterator.distinct
+                .foldLeft(State.startingFrom(parallelMatchesGroupIdsByMatch))(
+                  _ step _
+                )
+                .parallelMatchesGroupIdsByMatch
+            }
+          end parallelMatchesGroupIdsByMatchWithSplits
+
+          if parallelMatchesGroupIdsByMatchWithSplits == parallelMatchesGroupIdsByMatch
+          then parallelMatchesGroupIdsByMatch
+          else refine(parallelMatchesGroupIdsByMatchWithSplits)
+          end if
+        end refine
+
+        this.copy(parallelMatchesGroupIdsByMatch =
+          refine(parallelMatchesGroupIdsByMatch)
+        )
+      end splitStraddlingParallelMatchesGroups
+
+      private def reorganiseParallelMatchesGroupIds: MatchesAndTheirSections =
+        val compactGroupIdsKeyedByGroupsIdsWithPossibleGaps
+            : Map[ParallelMatchesGroupId, ParallelMatchesGroupId] =
+          parallelMatchesGroupIdsByMatch.toSeq
+            .sortBy(_._1.stableOrderingKey)
+            .map(_._2)
+            .distinct
+            .zipWithIndex
+            .toMap
+
+        val parallelMatchesWithReorganisedGroupIdsByMatch =
+          parallelMatchesGroupIdsByMatch.map((aMatch, groupId) =>
+            aMatch -> compactGroupIdsKeyedByGroupsIdsWithPossibleGaps(
+              groupId
+            )
+          )
+        copy(parallelMatchesGroupIdsByMatch =
+          parallelMatchesWithReorganisedGroupIdsByMatch
+        )
+      end reorganiseParallelMatchesGroupIds
+
       private def reconciliationPostcondition(): Unit =
         baseSectionsByPath.values.flatMap(_.iterator).foreach { baseSection =>
           assert(!baseSubsumes(baseSection))
@@ -2516,16 +2685,25 @@ object MatchAnalysis extends StrictLogging:
         }
 
         if parallelMatchesGroupIdsByMatch.nonEmpty then
+          // The parallel matches groups should correspond to all the matches
+          // and vice versa...
           assert(
             parallelMatchesGroupIdsByMatch.keySet == matches,
             s"If groups of parallel matches have been discovered, they should cover the overall population of matches exactly."
           )
 
+          // Each group's matched sections on each side should lie on the same
+          // path, given that they come from parallel matches. Furthermore,
+          // those sections should occur in an order that is consistent with
+          // those from the other sides - they can't 'cross-over' when we jump
+          // from one side to another.
           parallelMatchesGroupIdsByMatch.toSeq
             .groupBy(_._2)
             .values
             .foreach { group =>
               val matchesInGroup = group.map(_._1)
+
+              assert(matchesInGroup.nonEmpty)
 
               case class SidePerspective(path: Path, startOffset: Int)
 
@@ -2667,7 +2845,133 @@ object MatchAnalysis extends StrictLogging:
                 startOffsetOnRight
               )
             }
+
+          // Finally, looking through the paths on each side, the matched
+          // sections should be associated with parallel matches group ids so
+          // that following matched sections don't exhibit gaps in the
+          // associated group ids - in other words, groups may overlap or nest
+          // each other on a given side, but they can't have 'alien' matches
+          // split them up into separate pieces.
+
+          def checkGroupsAreNotSplitByAlienMatches(
+              sectionsByPath: Map[Path, SectionsSeen]
+          ): Unit =
+            sectionsByPath.foreach { case (path, sectionsSeen) =>
+              val affiliatedGroupIds = mutable.Set.empty[ParallelMatchesGroupId]
+              val affiliatedSectionsByGroupId =
+                mutable.Map.empty[ParallelMatchesGroupId, mutable.ListBuffer[
+                  Section[Element]
+                ]]
+              val followingSectionsByDisappearedGroupId =
+                mutable.Map.empty[ParallelMatchesGroupId, mutable.ListBuffer[
+                  Section[Element]
+                ]]
+              val alienGroupSectionsBySplitGroupId =
+                mutable.Map.empty[ParallelMatchesGroupId, mutable.ListBuffer[
+                  Section[Element]
+                ]]
+
+              def groupIdsFor(
+                  section: Section[Element]
+              ): collection.Set[ParallelMatchesGroupId] =
+                sectionsAndTheirMatches
+                  .get(section)
+                  .map(parallelMatchesGroupIdsByMatch)
+
+              def groupIdAndMatchPairsFor(
+                  section: Section[Element]
+              ): collection.Set[
+                (ParallelMatchesGroupId, GenericMatch[Element])
+              ] =
+                sectionsAndTheirMatches
+                  .get(section)
+                  .map(aMatch =>
+                    parallelMatchesGroupIdsByMatch(aMatch) -> aMatch
+                  )
+
+              sectionsSeen.iterator.distinct.foreach { section =>
+                val groupIds = groupIdsFor(section)
+
+                val reappearingGroupIds = groupIds.intersect(
+                  followingSectionsByDisappearedGroupId.keySet
+                )
+
+                reappearingGroupIds.foreach { reappearingGroupId =>
+                  followingSectionsByDisappearedGroupId
+                    .remove(
+                      reappearingGroupId
+                    )
+                    .foreach {
+                      alienGroupSectionsBySplitGroupId.addOne(
+                        reappearingGroupId,
+                        _
+                      )
+                    }
+                }
+
+                val disappearingGroupIds = affiliatedGroupIds.diff(groupIds)
+
+                disappearingGroupIds.foreach { disappearingGroupId =>
+                  affiliatedGroupIds.remove(disappearingGroupId)
+                  followingSectionsByDisappearedGroupId.addOne(
+                    disappearingGroupId,
+                    mutable.ListBuffer.empty
+                  )
+                }
+                followingSectionsByDisappearedGroupId.foreach {
+                  case (disappearedGroupId, followingSections) =>
+                    followingSections.append(section)
+                }
+
+                groupIds.foreach { groupId =>
+                  affiliatedGroupIds.addOne(groupId)
+                  affiliatedSectionsByGroupId.updateWith(groupId)(sections =>
+                    Some(
+                      sections
+                        .getOrElse(mutable.ListBuffer.empty)
+                        .append(section)
+                    )
+                  )
+                }
+              }
+
+              assert(
+                alienGroupSectionsBySplitGroupId.isEmpty,
+                s"""Split groups found on path $path, these are: ${pprintCustomised(
+                    alienGroupSectionsBySplitGroupId.map(
+                      (splitGroupId, sections) =>
+                        splitGroupId -> sections
+                          .map(groupIdsFor)
+                          .reduce(_ union _)
+                    )
+                  )}.
+                  |Breakdown of section affiliations is as follows:
+                  |${pprintCustomised(
+                    alienGroupSectionsBySplitGroupId.map(
+                      (splitGroupId, sections) =>
+                        splitGroupId ->
+                          affiliatedSectionsByGroupId(splitGroupId).toSeq
+                            .concat(
+                              sections
+                            )
+                            .sortBy(_.startOffset)
+                            .map(section =>
+                              (
+                                section,
+                                groupIdAndMatchPairsFor(section)
+                              )
+                            )
+                    )
+                  )}
+                  |""".stripMargin
+              )
+            }
+
+          checkGroupsAreNotSplitByAlienMatches(baseSectionsByPath)
+          checkGroupsAreNotSplitByAlienMatches(leftSectionsByPath)
+          checkGroupsAreNotSplitByAlienMatches(rightSectionsByPath)
         end if
+
       end reconciliationPostcondition
 
       private def pathOnBase(aMatch: GenericMatch[Element]): Option[Path] =
