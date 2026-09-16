@@ -699,26 +699,24 @@ object SectionedCodeExtension extends StrictLogging:
           mToDemote match
             case Match.AllSides(b, l, r) =>
               val demotionCandidates = Seq(
-                (Match.BaseAndLeft(b, l), Option(r)),
-                (Match.BaseAndRight(b, r), Option(l)),
-                (Match.LeftAndRight(l, r), Option(b))
+                (Match.BaseAndLeft(b, l), r),
+                (Match.BaseAndRight(b, r), l),
+                (Match.LeftAndRight(l, r), b)
               )
 
-              demotionCandidates.iterator.flatMap { case (demoted, freedSectionOpt) =>
+              demotionCandidates.iterator.flatMap { case (demoted, freedSection) =>
                 val remaining = matches.filterNot(_ == mToDemote)
                 if !remaining.exists(matchesCross(demoted, _)) then
-                  val replacementOpt = freedSectionOpt.flatMap { freedSection =>
-                    matchSequence.find { candidate =>
-                      !matches.contains(candidate) &&
-                      (candidate.baseContribution.contains(freedSection) ||
-                       candidate.leftContribution.contains(freedSection) ||
-                       candidate.rightContribution.contains(freedSection)) &&
-                      !remaining.exists(matchesCross(candidate, _)) &&
-                      !matchesCross(candidate, demoted) &&
-                      !candidate.baseContribution.exists(b => remaining.flatMap(_.baseContribution).contains(b) || demoted.baseContribution.contains(b)) &&
-                      !candidate.leftContribution.exists(l => remaining.flatMap(_.leftContribution).contains(l) || demoted.leftContribution.contains(l)) &&
-                      !candidate.rightContribution.exists(r => remaining.flatMap(_.rightContribution).contains(r) || demoted.rightContribution.contains(r))
-                    }
+                  val replacementOpt = matchSequence.find { candidate =>
+                    !matches.contains(candidate) &&
+                    (candidate.baseContribution.contains(freedSection) ||
+                     candidate.leftContribution.contains(freedSection) ||
+                     candidate.rightContribution.contains(freedSection)) &&
+                    !remaining.exists(matchesCross(candidate, _)) &&
+                    !matchesCross(candidate, demoted) &&
+                    !candidate.baseContribution.exists(b => remaining.flatMap(_.baseContribution).contains(b) || demoted.baseContribution.contains(b)) &&
+                    !candidate.leftContribution.exists(l => remaining.flatMap(_.leftContribution).contains(l) || demoted.leftContribution.contains(l)) &&
+                    !candidate.rightContribution.exists(r => remaining.flatMap(_.rightContribution).contains(r) || demoted.rightContribution.contains(r))
                   }
                   Some(remaining ++ Seq(demoted) ++ replacementOpt.toSeq)
                 else None
