@@ -681,23 +681,78 @@ object SectionedCodeExtension extends StrictLogging:
       end matchesCross
 
       val bestMatches =
-        val rawMatches = setsOfMatchesThatShareSectionsOnAtLeastOneSide.toList
+        val initialMatches = setsOfMatchesThatShareSectionsOnAtLeastOneSide.toList
           .flatMap((_, matchesSharingASectionOnAtLeastOneSide) =>
             representativeMatchesFrom(matchesSharingASectionOnAtLeastOneSide)
           )
+
+        def findCrossingPair(matches: Seq[Match[Section[Element]]]): Option[(Match[Section[Element]], Match[Section[Element]])] =
+          matches.combinations(2).collectFirst {
+            case Seq(m1, m2) if matchesCross(m1, m2) => (m1, m2)
+          }
+
+        def tryDemoteToResolve(
+            mToDemote: Match[Section[Element]],
+            mOther: Match[Section[Element]],
+            matches: Seq[Match[Section[Element]]]
+        ): Option[Seq[Match[Section[Element]]]] =
+          mToDemote match
+            case Match.AllSides(b, l, r) =>
+              val demotionCandidates = Seq(
+                (Match.BaseAndLeft(b, l), Option(r)),
+                (Match.BaseAndRight(b, r), Option(l)),
+                (Match.LeftAndRight(l, r), Option(b))
+              )
+
+              demotionCandidates.iterator.flatMap { case (demoted, freedSectionOpt) =>
+                val remaining = matches.filterNot(_ == mToDemote)
+                if !remaining.exists(matchesCross(demoted, _)) then
+                  val replacementOpt = freedSectionOpt.flatMap { freedSection =>
+                    matchSequence.find { candidate =>
+                      !matches.contains(candidate) &&
+                      (candidate.baseContribution.contains(freedSection) ||
+                       candidate.leftContribution.contains(freedSection) ||
+                       candidate.rightContribution.contains(freedSection)) &&
+                      !remaining.exists(matchesCross(candidate, _)) &&
+                      !matchesCross(candidate, demoted) &&
+                      !candidate.baseContribution.exists(b => remaining.flatMap(_.baseContribution).contains(b) || demoted.baseContribution.contains(b)) &&
+                      !candidate.leftContribution.exists(l => remaining.flatMap(_.leftContribution).contains(l) || demoted.leftContribution.contains(l)) &&
+                      !candidate.rightContribution.exists(r => remaining.flatMap(_.rightContribution).contains(r) || demoted.rightContribution.contains(r))
+                    }
+                  }
+                  Some(remaining ++ Seq(demoted) ++ replacementOpt.toSeq)
+                else None
+              }.nextOption()
+
+            case _ => None
+
+        @tailrec
+        def resolveCrossovers(
+            currentMatches: Seq[Match[Section[Element]]]
+        ): Seq[Match[Section[Element]]] =
+          findCrossingPair(currentMatches) match
+            case None => currentMatches
+            case Some((m1, m2)) =>
+              val resolution = tryDemoteToResolve(m1, m2, currentMatches)
+                .orElse(tryDemoteToResolve(m2, m1, currentMatches))
+                .getOrElse {
+                  currentMatches.filterNot(_ == m2)
+                }
+              resolveCrossovers(resolution)
+
+        val rawMatches = resolveCrossovers(initialMatches)
 
         rawMatches.combinations(2).foreach {
           case Seq(m1, m2) =>
             assert(
               !matchesCross(m1, m2),
-              s"Post-condition failed: matches cross!\n$m1\n$m2"
+              s"Post-condition failed: matches cross!\n\n"
             )
           case _ =>
         }
 
         rawMatches
       end bestMatches
-
       type Contributions = Map[Section[Element], Contribution[Section[Element]]]
 
       def recordContributionsFromMatch(
