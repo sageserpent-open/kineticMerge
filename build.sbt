@@ -9,7 +9,7 @@ ThisBuild / scalaVersion := "3.9.0"
 ThisBuild / javacOptions ++= Seq("-source", javaVersion, "-target", javaVersion)
 
 ThisBuild / scalacOptions ++= List(
-  s"-java-output-version:$javaVersion"
+  s"-java-output-version:$javaVersion", "-deprecation"
 )
 
 lazy val packageExecutable =

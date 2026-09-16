@@ -83,7 +83,7 @@ object merge extends StrictLogging:
     *   [[Contribution.CommonToLeftAndRightOnly]] elements to make a long
     *   coincident edit.
     */
-  def of[Result[_], Element: Order: Sized](
+  def of[Result[_], Element: {Order, Sized}](
       mergeAlgebra: MergeAlgebra[Result, Element]
   )(
       base: IndexedSeq[Element],

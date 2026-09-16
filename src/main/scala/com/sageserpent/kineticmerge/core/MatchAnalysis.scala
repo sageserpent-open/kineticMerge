@@ -91,7 +91,7 @@ object MatchAnalysis extends StrictLogging:
     *   A [[MatchAnalysis]] that contains a breakdown into [[GenericMatch]]
     *   instances.
     */
-  def of[Path, Element: Eq: Funnel](
+  def of[Path, Element: {Eq, Funnel}](
       baseSources: Sources[Path, Element],
       leftSources: Sources[Path, Element],
       rightSources: Sources[Path, Element]
@@ -156,7 +156,11 @@ object MatchAnalysis extends StrictLogging:
         baseSizesByPath.values.maxOption,
         leftSizesByPath.values.maxOption,
         rightSizesByPath.values.maxOption
-      ).flatten.sorted(using Ordering[Int].reverse).take(2).lastOption.getOrElse(0)
+      ).flatten
+        .sorted(using Ordering[Int].reverse)
+        .take(2)
+        .lastOption
+        .getOrElse(0)
 
     val maximumFileSizeAcrossAllFilesOverAllSides =
       fileSizes.lastOption.getOrElse(0)
@@ -2556,7 +2560,7 @@ object MatchAnalysis extends StrictLogging:
                     .foldLeft(
                       State.startingFrom(parallelMatchesGroupIdsByMatch)
                     )(
-                      _ step _
+                      _ `step` _
                     )
                     .parallelMatchesGroupIdsByMatch
               }
@@ -2567,7 +2571,7 @@ object MatchAnalysis extends StrictLogging:
               ) { case (parallelMatchesGroupIdsByMatch, (path, sectionsSeen)) =>
                 sectionsSeen.iterator.distinct
                   .foldLeft(State.startingFrom(parallelMatchesGroupIdsByMatch))(
-                    _ step _
+                    _ `step` _
                   )
                   .parallelMatchesGroupIdsByMatch
               }
@@ -2577,7 +2581,7 @@ object MatchAnalysis extends StrictLogging:
             ) { case (parallelMatchesGroupIdsByMatch, (path, sectionsSeen)) =>
               sectionsSeen.iterator.distinct
                 .foldLeft(State.startingFrom(parallelMatchesGroupIdsByMatch))(
-                  _ step _
+                  _ `step` _
                 )
                 .parallelMatchesGroupIdsByMatch
             }

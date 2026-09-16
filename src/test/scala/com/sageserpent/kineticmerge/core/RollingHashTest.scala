@@ -26,7 +26,7 @@ class RollingHashTest:
         subsequences = trialsApi.bytes.lotsOfSize[Vector[Byte]](windowSize)
 
         distinctSequences <- subsequences
-          .several[Vector[Vector[Byte]]]
+          .collections[Vector[Vector[Byte]]]
           .filter(_.nonEmpty)
           .map(_.distinct)
       yield TestCase(windowSize, distinctSequences)
@@ -80,7 +80,7 @@ class RollingHashTest:
         .lotsOfSize[Vector[Byte]](windowSize)
 
       distinctSubsequences <- subsequences
-        .several[Vector[Vector[Byte]]]
+        .collections[Vector[Vector[Byte]]]
         .filter(_.nonEmpty)
         .map(_.distinct)
       permutation <- trialsApi

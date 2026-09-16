@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.{Order as _, *}
 
 import _root_.java.util.concurrent.TimeUnit
+import scala.annotation.nowarn
 import scala.concurrent.duration.Duration
 import scala.io.Source
 
@@ -145,6 +146,7 @@ class SectionedCodeTest:
   end reproduceParallelMatchesGroupSplitting
 
   @Test
+  @nowarn("cat=deprecation")
   def reproduceStackOverflow(): Unit =
     val recipe = Source
       .fromResource("recipeForStackOverflow.txt")
@@ -194,6 +196,7 @@ class SectionedCodeTest:
   end reproduceStackOverflow
 
   @Test
+  @nowarn("cat=deprecation")
   def reproduceIllegalArgument(): Unit =
     val recipe = Source
       .fromResource("recipeForIllegalArgument.txt")
@@ -243,6 +246,7 @@ class SectionedCodeTest:
   end reproduceIllegalArgument
 
   @Test
+  @nowarn("cat=deprecation")
   def reproduceAssertionFailure(): Unit =
     val recipe = Source
       .fromResource("recipeForAssertionFailure.txt")
@@ -1856,6 +1860,7 @@ class SectionedCodeTest:
   end mergeSmokeTest
 
   @Test
+  @nowarn("cat=deprecation")
   def reproduceCrossedOverMatches(): Unit =
     val recipe = Source
       .fromResource("recipeForCrossedOverMatches.txt")

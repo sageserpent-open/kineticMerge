@@ -154,7 +154,7 @@ end LongestCommonSubsequence
 
 object LongestCommonSubsequence:
 
-  def apply[Element: Eq: Sized](
+  def apply[Element: {Eq, Sized}](
       base: IndexedSeq[Contribution[Element]],
       left: IndexedSeq[Contribution[Element]],
       right: IndexedSeq[Contribution[Element]]
@@ -358,7 +358,7 @@ object LongestCommonSubsequence:
 
   def defaultElementSize[Element](irrelevant: Element): Int = 1
 
-  def of[Element: Order: Sized](
+  def of[Element: {Order, Sized}](
       base: IndexedSeq[Element],
       left: IndexedSeq[Element],
       right: IndexedSeq[Element]
@@ -446,7 +446,7 @@ object LongestCommonSubsequence:
     end if
   end of
 
-  private def assumingTrimmedInputs[Element: Order: Sized](
+  private def assumingTrimmedInputs[Element: {Order, Sized}](
       base: IndexedSeq[Element],
       left: IndexedSeq[Element],
       right: IndexedSeq[Element]
@@ -577,7 +577,7 @@ object LongestCommonSubsequence:
     end if
   end assumingTrimmedInputs
 
-  private def assumingInputsYieldSomeCommonAlignments[Element: Eq: Sized](
+  private def assumingInputsYieldSomeCommonAlignments[Element: {Eq, Sized}](
       base: IndexedSeq[Element],
       left: IndexedSeq[Element],
       right: IndexedSeq[Element]
