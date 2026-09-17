@@ -703,12 +703,11 @@ object SectionedCodeExtension extends StrictLogging:
                 Match.LeftAndRight(l, r)
               )
 
-              demotionCandidates.find { demoted =>
-                val remaining = matches.filterNot(_ == mToDemote)
-                !remaining.exists(matchesCross(demoted, _))
-              }.map { demoted =>
-                matches.filterNot(_ == mToDemote) :+ demoted
-              }
+              val remaining = matches.filterNot(_ == mToDemote)
+
+              demotionCandidates
+                .find(demoted => !remaining.exists(matchesCross(demoted, _)))
+                .map(remaining :+ _)
 
             case _ => None
 
