@@ -693,7 +693,6 @@ object SectionedCodeExtension extends StrictLogging:
 
         def tryDemoteToResolve(
             mToDemote: Match[Section[Element]],
-            mOther: Match[Section[Element]],
             matches: Seq[Match[Section[Element]]]
         ): Option[Seq[Match[Section[Element]]]] =
           mToDemote match
@@ -731,8 +730,8 @@ object SectionedCodeExtension extends StrictLogging:
           findCrossingPair(currentMatches) match
             case None => currentMatches
             case Some((m1, m2)) =>
-              val resolution = tryDemoteToResolve(m1, m2, currentMatches)
-                .orElse(tryDemoteToResolve(m2, m1, currentMatches))
+              val resolution = tryDemoteToResolve(m1, currentMatches)
+                .orElse(tryDemoteToResolve(m2, currentMatches))
                 .getOrElse {
                   currentMatches.filterNot(_ == m2)
                 }
