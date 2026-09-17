@@ -695,49 +695,78 @@ object SectionedCodeExtension extends StrictLogging:
               representativeMatchesFrom(matchesSharingASectionOnAtLeastOneSide)
             )
 
-        def findCrossingPair(
-            matches: Seq[Match[Section[Element]]]
-        ): Option[(Match[Section[Element]], Match[Section[Element]])] =
-          matches.combinations(2).collectFirst {
-            case Seq(m1, m2) if matchesCross(m1, m2) => (m1, m2)
-          }
+        given Sized[Match[Section[Element]]] = _.size
 
-        def tryDemoteToResolve(
-            mToDemote: Match[Section[Element]],
-            matches: Seq[Match[Section[Element]]]
-        ): Option[Seq[Match[Section[Element]]]] =
-          mToDemote match
-            case Match.AllSides(b, l, r) =>
-              val demotionCandidates = Seq(
-                Match.BaseAndLeft(b, l),
-                Match.BaseAndRight(b, r),
-                Match.LeftAndRight(l, r)
-              )
+        given Order[Match[Section[Element]]] = Order.by(aMatch =>
+          (
+            aMatch.baseContribution.map(_.startOffset),
+            aMatch.leftContribution.map(_.startOffset),
+            aMatch.rightContribution.map(_.startOffset)
+          )
+        )
 
-              val remaining = matches.filterNot(_ == mToDemote)
+        val baseMatches = initialMatches
+          .flatMap(m => m.baseContribution.map(_ => m))
+          .sortBy(m =>
+            (
+              m.baseContribution.get.startOffset,
+              m.leftContribution.map(_.startOffset),
+              m.rightContribution.map(_.startOffset)
+            )
+          )
+          .toVector
 
-              demotionCandidates
-                .find(demoted => !remaining.exists(matchesCross(demoted, _)))
-                .map(remaining :+ _)
+        val leftMatches = initialMatches
+          .flatMap(m => m.leftContribution.map(_ => m))
+          .sortBy(m =>
+            (
+              m.leftContribution.get.startOffset,
+              m.baseContribution.map(_.startOffset),
+              m.rightContribution.map(_.startOffset)
+            )
+          )
+          .toVector
 
-            case _ => None
+        val rightMatches = initialMatches
+          .flatMap(m => m.rightContribution.map(_ => m))
+          .sortBy(m =>
+            (
+              m.rightContribution.get.startOffset,
+              m.baseContribution.map(_.startOffset),
+              m.leftContribution.map(_.startOffset)
+            )
+          )
+          .toVector
 
-        @tailrec
-        def resolveCrossovers(
-            currentMatches: Seq[Match[Section[Element]]]
-        ): Seq[Match[Section[Element]]] =
-          findCrossingPair(currentMatches) match
-            case None           => currentMatches
-            case Some((m1, m2)) =>
-              val resolution = tryDemoteToResolve(m1, currentMatches)
-                .orElse(tryDemoteToResolve(m2, currentMatches))
-                .getOrElse {
-                  val losingMatch = if m1.size > m2.size then m2 else m1
-                  currentMatches.filterNot(_ == losingMatch)
-                }
-              resolveCrossovers(resolution)
+        val lcs = LongestCommonSubsequence.of(
+          baseMatches,
+          leftMatches,
+          rightMatches
+        )
 
-        val rawMatches = resolveCrossovers(initialMatches)
+        val rawMatchesFromBase = lcs.base.collect {
+          case Contribution.Common(aMatch) => aMatch
+          case Contribution.CommonToBaseAndLeftOnly(aMatch) =>
+            Match.BaseAndLeft(
+              aMatch.baseContribution.get,
+              aMatch.leftContribution.get
+            )
+          case Contribution.CommonToBaseAndRightOnly(aMatch) =>
+            Match.BaseAndRight(
+              aMatch.baseContribution.get,
+              aMatch.rightContribution.get
+            )
+        }
+
+        val rawMatchesFromLeft = lcs.left.collect {
+          case Contribution.CommonToLeftAndRightOnly(aMatch) =>
+            Match.LeftAndRight(
+              aMatch.leftContribution.get,
+              aMatch.rightContribution.get
+            )
+        }
+
+        val rawMatches = rawMatchesFromBase ++ rawMatchesFromLeft
 
         rawMatches.combinations(2).foreach {
           case Seq(m1, m2) =>
