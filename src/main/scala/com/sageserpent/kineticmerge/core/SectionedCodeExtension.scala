@@ -695,37 +695,27 @@ object SectionedCodeExtension extends StrictLogging:
               representativeMatchesFrom(matchesSharingASectionOnAtLeastOneSide)
             )
 
-        val baseMatches = initialMatches
+        val canonicallyOrderedMatches = initialMatches.sortBy(m =>
+          (
+            m.baseContribution.map(_.startOffset),
+            m.leftContribution.map(_.startOffset),
+            m.rightContribution.map(_.startOffset)
+          )
+        )
+
+        val baseMatches = canonicallyOrderedMatches
           .flatMap(m => m.baseContribution.map(_ => m))
-          .sortBy(m =>
-            (
-              m.baseContribution.get.startOffset,
-              m.leftContribution.map(_.startOffset),
-              m.rightContribution.map(_.startOffset)
-            )
-          )
+          .sortBy(_.baseContribution.get.startOffset)
           .toVector
 
-        val leftMatches = initialMatches
+        val leftMatches = canonicallyOrderedMatches
           .flatMap(m => m.leftContribution.map(_ => m))
-          .sortBy(m =>
-            (
-              m.leftContribution.get.startOffset,
-              m.baseContribution.map(_.startOffset),
-              m.rightContribution.map(_.startOffset)
-            )
-          )
+          .sortBy(_.leftContribution.get.startOffset)
           .toVector
 
-        val rightMatches = initialMatches
+        val rightMatches = canonicallyOrderedMatches
           .flatMap(m => m.rightContribution.map(_ => m))
-          .sortBy(m =>
-            (
-              m.rightContribution.get.startOffset,
-              m.baseContribution.map(_.startOffset),
-              m.leftContribution.map(_.startOffset)
-            )
-          )
+          .sortBy(_.rightContribution.get.startOffset)
           .toVector
 
         given Sized[Match[Section[Element]]] = _.size
