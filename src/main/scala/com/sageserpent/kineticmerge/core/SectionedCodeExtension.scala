@@ -695,16 +695,6 @@ object SectionedCodeExtension extends StrictLogging:
               representativeMatchesFrom(matchesSharingASectionOnAtLeastOneSide)
             )
 
-        given Sized[Match[Section[Element]]] = _.size
-
-        given Order[Match[Section[Element]]] = Order.by(aMatch =>
-          (
-            aMatch.baseContribution.map(_.startOffset),
-            aMatch.leftContribution.map(_.startOffset),
-            aMatch.rightContribution.map(_.startOffset)
-          )
-        )
-
         val baseMatches = initialMatches
           .flatMap(m => m.baseContribution.map(_ => m))
           .sortBy(m =>
@@ -737,6 +727,16 @@ object SectionedCodeExtension extends StrictLogging:
             )
           )
           .toVector
+
+        given Sized[Match[Section[Element]]] = _.size
+
+        given Order[Match[Section[Element]]] = Order.by(aMatch =>
+          (
+            aMatch.baseContribution.map(_.startOffset),
+            aMatch.leftContribution.map(_.startOffset),
+            aMatch.rightContribution.map(_.startOffset)
+          )
+        )
 
         val lcs = LongestCommonSubsequence.of(
           baseMatches,
