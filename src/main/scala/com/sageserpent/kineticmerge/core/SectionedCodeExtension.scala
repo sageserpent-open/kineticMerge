@@ -706,18 +706,7 @@ object SectionedCodeExtension extends StrictLogging:
               demotionCandidates.iterator.flatMap { case (demoted, freedSection) =>
                 val remaining = matches.filterNot(_ == mToDemote)
                 if !remaining.exists(matchesCross(demoted, _)) then
-                  val replacementOpt = matchSequence.find { candidate =>
-                    !matches.contains(candidate) &&
-                    (candidate.baseContribution.contains(freedSection) ||
-                     candidate.leftContribution.contains(freedSection) ||
-                     candidate.rightContribution.contains(freedSection)) &&
-                    !remaining.exists(matchesCross(candidate, _)) &&
-                    !matchesCross(candidate, demoted) &&
-                    !candidate.baseContribution.exists(b => remaining.flatMap(_.baseContribution).contains(b) || demoted.baseContribution.contains(b)) &&
-                    !candidate.leftContribution.exists(l => remaining.flatMap(_.leftContribution).contains(l) || demoted.leftContribution.contains(l)) &&
-                    !candidate.rightContribution.exists(r => remaining.flatMap(_.rightContribution).contains(r) || demoted.rightContribution.contains(r))
-                  }
-                  Some(remaining ++ Seq(demoted) ++ replacementOpt.toSeq)
+                  Some(remaining ++ Seq(demoted))
                 else None
               }.nextOption()
 
