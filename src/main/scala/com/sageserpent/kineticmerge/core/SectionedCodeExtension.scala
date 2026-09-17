@@ -698,17 +698,17 @@ object SectionedCodeExtension extends StrictLogging:
           mToDemote match
             case Match.AllSides(b, l, r) =>
               val demotionCandidates = Seq(
-                (Match.BaseAndLeft(b, l), r),
-                (Match.BaseAndRight(b, r), l),
-                (Match.LeftAndRight(l, r), b)
+                Match.BaseAndLeft(b, l),
+                Match.BaseAndRight(b, r),
+                Match.LeftAndRight(l, r)
               )
 
-              demotionCandidates.iterator.flatMap { case (demoted, freedSection) =>
+              demotionCandidates.find { demoted =>
                 val remaining = matches.filterNot(_ == mToDemote)
-                if !remaining.exists(matchesCross(demoted, _)) then
-                  Some(remaining ++ Seq(demoted))
-                else None
-              }.nextOption()
+                !remaining.exists(matchesCross(demoted, _))
+              }.map { demoted =>
+                matches.filterNot(_ == mToDemote) :+ demoted
+              }
 
             case _ => None
 
