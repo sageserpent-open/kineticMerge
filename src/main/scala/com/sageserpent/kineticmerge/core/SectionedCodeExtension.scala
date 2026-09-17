@@ -689,24 +689,67 @@ object SectionedCodeExtension extends StrictLogging:
       end extension
 
       val bestMatches =
-        val rawMatches = setsOfMatchesThatShareSectionsOnAtLeastOneSide.toList
-          .flatMap((_, matchesSharingASectionOnAtLeastOneSide) =>
-            representativeMatchesFrom(matchesSharingASectionOnAtLeastOneSide)
-          )
+        val initialMatches =
+          setsOfMatchesThatShareSectionsOnAtLeastOneSide.toList
+            .flatMap((_, matchesSharingASectionOnAtLeastOneSide) =>
+              representativeMatchesFrom(matchesSharingASectionOnAtLeastOneSide)
+            )
 
-        // Greedily keep matches that do not cross already accepted larger
-        // matches.
-        val sortedBySizeDescending = rawMatches.sortBy(-_.size)
-        val nonCrossingMatches     = sortedBySizeDescending.foldLeft(
-          Vector.empty[Match[Section[Element]]]
-        ) { (accepted, candidate) =>
-          if accepted.exists(acc => matchesCross(acc, candidate)) then accepted
-          else accepted :+ candidate
+        def findCrossingPair(
+            matches: Seq[Match[Section[Element]]]
+        ): Option[(Match[Section[Element]], Match[Section[Element]])] =
+          matches.combinations(2).collectFirst {
+            case Seq(m1, m2) if matchesCross(m1, m2) => (m1, m2)
+          }
+
+        def tryDemoteToResolve(
+            mToDemote: Match[Section[Element]],
+            matches: Seq[Match[Section[Element]]]
+        ): Option[Seq[Match[Section[Element]]]] =
+          mToDemote match
+            case Match.AllSides(b, l, r) =>
+              val demotionCandidates = Seq(
+                Match.BaseAndLeft(b, l),
+                Match.BaseAndRight(b, r),
+                Match.LeftAndRight(l, r)
+              )
+
+              val remaining = matches.filterNot(_ == mToDemote)
+
+              demotionCandidates
+                .find(demoted => !remaining.exists(matchesCross(demoted, _)))
+                .map(remaining :+ _)
+
+            case _ => None
+
+        @tailrec
+        def resolveCrossovers(
+            currentMatches: Seq[Match[Section[Element]]]
+        ): Seq[Match[Section[Element]]] =
+          findCrossingPair(currentMatches) match
+            case None           => currentMatches
+            case Some((m1, m2)) =>
+              val resolution = tryDemoteToResolve(m1, currentMatches)
+                .orElse(tryDemoteToResolve(m2, currentMatches))
+                .getOrElse {
+                  val losingMatch = if m1.size > m2.size then m2 else m1
+                  currentMatches.filterNot(_ == losingMatch)
+                }
+              resolveCrossovers(resolution)
+
+        val rawMatches = resolveCrossovers(initialMatches)
+
+        rawMatches.combinations(2).foreach {
+          case Seq(m1, m2) =>
+            assert(
+              !matchesCross(m1, m2),
+              s"Post-condition failed: matches cross!\n\n"
+            )
+          case _ =>
         }
 
-        nonCrossingMatches
+        rawMatches
       end bestMatches
-
       type Contributions = Map[Section[Element], Contribution[Section[Element]]]
 
       def recordContributionsFromMatch(
