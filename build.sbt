@@ -112,6 +112,7 @@ lazy val root = (project in file("."))
     libraryDependencies += "org.apache.commons" % "commons-text" % "1.15.0" % Test,
     libraryDependencies += "com.github.sbt.junit" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
     libraryDependencies += "org.typelevel" %% "kittens" % "3.5.0",
+    libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async" % "0.9.23",
     Test / test / logLevel                 := Level.Error,
     Test / fork                            := true,
     Test / testForkedParallel              := true,
