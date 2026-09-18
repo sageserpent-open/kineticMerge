@@ -27,6 +27,16 @@ import scala.io.Source
 import scala.util.Try
 
 object Main extends StrictLogging:
+  object Tags:
+    trait Mode
+    trait BlobId
+    trait Content
+    trait CommitOrBranchName
+    trait ErrorMessage
+    trait ExitCode
+    trait StageIndex
+  end Tags
+
   // NOTE: the use of Git below is based on spike work on MacOS - the version of
   // Git shipped tends to be a *long* way behind the latest release, so the
   // latest and greatest versions of commands are not always available. At time
@@ -287,12 +297,11 @@ object Main extends StrictLogging:
     )
 
     val workflow = reify {
-      reflect(IO {
+      IO {
         os.proc("git", "--version").call(workingDirectory)
-      }.labelExceptionWith(errorMessage = "Git is not available."))
+      }.labelExceptionWith(errorMessage = "Git is not available.").reflect
 
-      val topLevel = reflect(
-        IO {
+      val topLevel = IO {
           os.proc("git", "rev-parse", "--show-toplevel")
             .call(workingDirectory)
             .out
@@ -300,102 +309,79 @@ object Main extends StrictLogging:
             .strip()
         }.labelExceptionWith(errorMessage =
           "The current working directory is not part of a Git working tree."
-        )
-      )
+        ).reflect
 
-      val topLevelWorkingDirectory = reflect(
-        IO { Path(topLevel) }
+      val topLevelWorkingDirectory = IO { Path(topLevel) }
           .labelExceptionWith(errorMessage =
             s"Unexpected error: top level of Git repository ${underline(topLevel)} is not a valid path."
-          )
-      )
+          ).reflect
 
       val inTopLevelWorkingDirectory =
         InWorkingDirectory(topLevelWorkingDirectory)
 
-      val ourBranchHead = reflect(inTopLevelWorkingDirectory.ourBranchHead())
+      val ourBranchHead = inTopLevelWorkingDirectory.ourBranchHead().reflect
 
-      reflect(inTopLevelWorkingDirectory.theirCommitId(theirBranchHead))
+      inTopLevelWorkingDirectory.theirCommitId(theirBranchHead).reflect
 
-      val oursAlreadyContainsTheirs = reflect(
-        inTopLevelWorkingDirectory
+      val oursAlreadyContainsTheirs = inTopLevelWorkingDirectory
           .firstBranchIsContainedBySecond(
             theirBranchHead,
             ourBranchHead
-          )
-      )
+          ).reflect
 
-      val theirsAlreadyContainsOurs = reflect(
-        inTopLevelWorkingDirectory
+      val theirsAlreadyContainsOurs = inTopLevelWorkingDirectory
           .firstBranchIsContainedBySecond(
             ourBranchHead,
             theirBranchHead
-          )
-      )
+          ).reflect
 
       if oursAlreadyContainsTheirs
       then
         // Nothing to do, our branch has all their commits already.
-        reflect(
-          right(successfulMerge)
+        right(successfulMerge)
             .logOperation(
               s"Nothing to do - our branch ${underline(ourBranchHead)} already contains ${underline(theirBranchHead)}."
-            )
-        )
+            ).reflect
       else if theirsAlreadyContainsOurs && !noFastForward
       then
-        reflect(
-          inTopLevelWorkingDirectory.fastForwardToTheirs(
+        inTopLevelWorkingDirectory.fastForwardToTheirs(
             ourBranchHead,
             theirBranchHead
-          )
-        )
+          ).reflect
       else // Perform a real merge...
-        reflect(
-          inTopLevelWorkingDirectory.confirmThereAreNoUncommittedChanges(
+        inTopLevelWorkingDirectory.confirmThereAreNoUncommittedChanges(
             ourBranchHead
-          )
-        )
+          ).reflect
 
-        val bestAncestorCommitId = reflect(
-          inTopLevelWorkingDirectory
-            .bestAncestorCommitId(ourBranchHead, theirBranchHead)
-        )
+        val bestAncestorCommitId = inTopLevelWorkingDirectory
+            .bestAncestorCommitId(ourBranchHead, theirBranchHead).reflect
 
-        val ourChanges = reflect(
-          inTopLevelWorkingDirectory.changes(
+        val ourChanges = inTopLevelWorkingDirectory.changes(
             ourBranchHead,
             bestAncestorCommitId,
             possessive = "our"
-          )
-        )
+          ).reflect
 
-        val theirChanges = reflect(
-          inTopLevelWorkingDirectory.changes(
+        val theirChanges = inTopLevelWorkingDirectory.changes(
             theirBranchHead,
             bestAncestorCommitId,
             possessive = "their"
-          )
-        )
+          ).reflect
 
-        val mergeInputs = reflect(
-          inTopLevelWorkingDirectory.mergeInputsOf(
+        val mergeInputs = inTopLevelWorkingDirectory.mergeInputsOf(
             bestAncestorCommitId,
             ourBranchHead,
             theirBranchHead
-          )(ourChanges, theirChanges)
-        )
+          )(ourChanges, theirChanges).reflect
 
-        reflect(
-          inTopLevelWorkingDirectory.mergeWithRollback(
+        inTopLevelWorkingDirectory.mergeWithRollback(
             bestAncestorCommitId,
             ourBranchHead,
             theirBranchHead,
             noCommit,
             noFastForward,
             configuration
-          )(mergeInputs)
-        )
+          )(mergeInputs).reflect
       end if
     }
 
@@ -649,8 +635,7 @@ object Main extends StrictLogging:
         possessive: String
     ): Workflow[Map[Path, Change]] =
       reify {
-        val statusLines = reflect(
-          IO {
+        val statusLines = IO {
             os.proc(
               "git",
               "diff",
@@ -663,10 +648,9 @@ object Main extends StrictLogging:
               .lines()
           }.labelExceptionWith(errorMessage =
             s"Could not determine status for changes made on $possessive branch ${underline(branchOrCommit)} since ancestor commit ${underline(bestAncestorCommitId)}."
-          )
-        )
+          ).reflect
 
-        val binaryFiles = reflect(
+        val binaryFiles =
           IO {
             // NOTE: this is imprecise for *modified* files, as we don't know
             // modified into a binary file or started out as and remains binary.
@@ -692,14 +676,11 @@ object Main extends StrictLogging:
               .toSet
           }.labelExceptionWith(errorMessage =
             s"Could not determine if binary content was involved for changes made on $possessive branch ${underline(branchOrCommit)} since ancestor commit ${underline(bestAncestorCommitId)}."
-          )
-        )
+          ).reflect
 
-        reflect(
-          statusLines
+        statusLines
             .traverse(pathChangeFor(branchOrCommit)(_, binaryFiles.contains))
-            .map(_.toMap)
-        )
+            .map(_.toMap).reflect
       }
     end changes
 
@@ -791,16 +772,14 @@ object Main extends StrictLogging:
               val (
                 bestAncestorCommitIdMode,
                 bestAncestorCommitIdBlobId
-              ) = reflect(blobFor(bestAncestorCommitId)(path))
-              val bestAncestorCommitIdContent = reflect(
-                ourModification.content
+              ) = blobFor(bestAncestorCommitId)(path).reflect
+              val bestAncestorCommitIdContent = ourModification.content
                   .as(
                     contentFor(bestAncestorCommitId, path)(
                       bestAncestorCommitIdBlobId
                     )
                   )
-                  .sequence
-              )
+                  .sequence.reflect
               path -> JustOurModification(
                 ourModification,
                 bestAncestorCommitIdMode,
@@ -816,16 +795,14 @@ object Main extends StrictLogging:
               val (
                 bestAncestorCommitIdMode,
                 bestAncestorCommitIdBlobId
-              ) = reflect(blobFor(bestAncestorCommitId)(path))
-              val bestAncestorCommitIdContent = reflect(
-                theirModification.content
+              ) = blobFor(bestAncestorCommitId)(path).reflect
+              val bestAncestorCommitIdContent = theirModification.content
                   .as(
                     contentFor(bestAncestorCommitId, path)(
                       bestAncestorCommitIdBlobId
                     )
                   )
-                  .sequence
-              )
+                  .sequence.reflect
               path -> JustTheirModification(
                 theirModification,
                 bestAncestorCommitIdMode,
@@ -853,16 +830,14 @@ object Main extends StrictLogging:
               val (
                 _,
                 bestAncestorCommitIdBlobId
-              ) = reflect(blobFor(bestAncestorCommitId)(path))
-              val bestAncestorCommitIdContent = reflect(
-                Option
+              ) = blobFor(bestAncestorCommitId)(path).reflect
+              val bestAncestorCommitIdContent = Option
                   .unless(binaryContentDeleted)(
                     contentFor(bestAncestorCommitId, path)(
                       bestAncestorCommitIdBlobId
                     )
                   )
-                  .sequence
-              )
+                  .sequence.reflect
               path -> JustOurDeletion(bestAncestorCommitIdContent)
             }
 
@@ -874,16 +849,14 @@ object Main extends StrictLogging:
               val (
                 _,
                 bestAncestorCommitIdBlobId
-              ) = reflect(blobFor(bestAncestorCommitId)(path))
-              val bestAncestorCommitIdContent = reflect(
-                Option
+              ) = blobFor(bestAncestorCommitId)(path).reflect
+              val bestAncestorCommitIdContent = Option
                   .unless(binaryContentDeleted)(
                     contentFor(bestAncestorCommitId, path)(
                       bestAncestorCommitIdBlobId
                     )
                   )
-                  .sequence
-              )
+                  .sequence.reflect
               path -> JustTheirDeletion(bestAncestorCommitIdContent)
             }
 
@@ -898,16 +871,14 @@ object Main extends StrictLogging:
               val (
                 bestAncestorCommitIdMode,
                 bestAncestorCommitIdBlobId
-              ) = reflect(blobFor(bestAncestorCommitId)(path))
-              val bestAncestorCommitIdContent = reflect(
-                Option
+              ) = blobFor(bestAncestorCommitId)(path).reflect
+              val bestAncestorCommitIdContent = Option
                   .unless(binaryContentDeleted)(
                     contentFor(bestAncestorCommitId, path)(
                       bestAncestorCommitIdBlobId
                     )
                   )
-                  .sequence
-              )
+                  .sequence.reflect
               path -> OurModificationAndTheirDeletion(
                 ourModification,
                 bestAncestorCommitIdMode,
@@ -927,16 +898,14 @@ object Main extends StrictLogging:
               val (
                 bestAncestorCommitIdMode,
                 bestAncestorCommitIdBlobId
-              ) = reflect(blobFor(bestAncestorCommitId)(path))
-              val bestAncestorCommitIdContent = reflect(
-                Option
+              ) = blobFor(bestAncestorCommitId)(path).reflect
+              val bestAncestorCommitIdContent = Option
                   .unless(binaryContentDeleted)(
                     contentFor(bestAncestorCommitId, path)(
                       bestAncestorCommitIdBlobId
                     )
                   )
-                  .sequence
-              )
+                  .sequence.reflect
               path -> TheirModificationAndOurDeletion(
                 theirModification,
                 bestAncestorCommitIdMode,
@@ -956,11 +925,9 @@ object Main extends StrictLogging:
               val mergedFileMode =
                 if ourAddition.mode == theirAddition.mode then ourAddition.mode
                 else
-                  reflect(
-                    left(
+                  left(
                       s"Conflicting file modes for file ${underline(path)}; on our branch head ${underline(ourAddition.mode)} and on their branch head ${underline(theirAddition.mode)}."
-                    )
-                  )
+                    ).reflect
               path -> BothContributeAnAddition(
                 ourAddition,
                 theirAddition,
@@ -979,16 +946,14 @@ object Main extends StrictLogging:
               val (
                 bestAncestorCommitIdMode,
                 bestAncestorCommitIdBlobId
-              ) = reflect(blobFor(bestAncestorCommitId)(path))
-              val bestAncestorCommitIdContent = reflect(
-                (ourModification.content orElse theirModification.content)
+              ) = blobFor(bestAncestorCommitId)(path).reflect
+              val bestAncestorCommitIdContent = (ourModification.content orElse theirModification.content)
                   .as(
                     contentFor(bestAncestorCommitId, path)(
                       bestAncestorCommitIdBlobId
                     )
                   )
-                  .sequence
-              )
+                  .sequence.reflect
               val mergedFileMode =
                 if bestAncestorCommitIdMode == ourModification.mode then
                   theirModification.mode
@@ -997,11 +962,9 @@ object Main extends StrictLogging:
                 else if ourModification.mode == theirModification.mode then
                   ourModification.mode
                 else
-                  reflect(
-                    left(
+                  left(
                       s"Conflicting file modes for file ${underline(path)}; on best ancestor commit ${underline(bestAncestorCommitIdMode)}, on our branch head ${underline(ourModification.mode)} and on their branch head ${underline(theirModification.mode)}."
-                    )
-                  )
+                    ).reflect
               path -> BothContributeAModification(
                 ourModification,
                 theirModification,
@@ -1023,28 +986,24 @@ object Main extends StrictLogging:
               val (
                 _,
                 bestAncestorCommitIdBlobId
-              ) = reflect(blobFor(bestAncestorCommitId)(path))
+              ) = blobFor(bestAncestorCommitId)(path).reflect
               if binaryContentDeletedOnLeft != binaryContentDeletedOnRight then
                 def description(isBinary: Boolean) =
                   if isBinary then "binary" else "text"
 
-                reflect(
-                  left(
+                left(
                     s"Unexpected error: file ${underline(path)} is deleted on both our branch and their branch, " +
                       s"but our branch thinks the original is ${description(binaryContentDeletedOnLeft)} " +
                       s"and their branch thinks the original is ${description(binaryContentDeletedOnRight)}."
-                  )
-                )
+                  ).reflect
               end if
-              val bestAncestorCommitIdContent = reflect(
-                Option
+              val bestAncestorCommitIdContent = Option
                   .unless(binaryContentDeletedOnLeft)(
                     contentFor(bestAncestorCommitId, path)(
                       bestAncestorCommitIdBlobId
                     )
                   )
-                  .sequence
-              )
+                  .sequence.reflect
               path -> BothContributeADeletion(bestAncestorCommitIdContent)
             }
         }
@@ -1076,8 +1035,7 @@ object Main extends StrictLogging:
       (String @@ Tags.Mode, String @@ Tags.BlobId)
     ] =
       reify {
-        val Array(mode, entryType, entryId, _) = reflect(
-          IO {
+        val Array(mode, entryType, entryId, _) = IO {
             val line = os
               .proc("git", "ls-tree", commitIdOrBranchName, path)
               .call(workingDirectory)
@@ -1087,23 +1045,18 @@ object Main extends StrictLogging:
             line.split(whitespaceRun)
           }.labelExceptionWith(errorMessage =
             s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
-          )
-        )
+          ).reflect
 
         entryType match
           case "blob"   =>
           case "commit" =>
-            reflect(
-              left(
+            left(
                 s"Submodule changes not supported: encountered a submodule commit when trying to retrieve blob for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}, the commit id is: ${underline(entryId)}."
-              )
-            )
+              ).reflect
           case _ =>
-            reflect(
-              left(
+            left(
                 s"Unexpected error - Git reports an unsupported type ${underline(entryType)} when trying to retrieve blob for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}, the id is: ${underline(entryId)}."
-              )
-            )
+              ).reflect
         end match
 
         (
@@ -1122,22 +1075,19 @@ object Main extends StrictLogging:
         configuration: Configuration
     )(mergeInputs: List[(Path, MergeInput)]): Workflow[Int @@ Tags.ExitCode] =
       val workflow = reify {
-        val goodForAMergeCommit = reflect(
-          indexUpdates(
+        val goodForAMergeCommit = indexUpdates(
             bestAncestorCommitId,
             ourBranchHead,
             theirBranchHead,
             configuration
-          )(mergeInputs)
-        )
+          )(mergeInputs).reflect
 
         val commitMessage =
           // No underlining here, please...
           s"Merge from $theirBranchHead into $ourBranchHead."
 
         if goodForAMergeCommit && !noCommit then
-          val treeId = reflect(
-            IO {
+          val treeId = IO {
               os.proc("git", "write-tree")
                 .call(workingDirectory)
                 .out
@@ -1145,10 +1095,8 @@ object Main extends StrictLogging:
                 .strip()
             }.labelExceptionWith(errorMessage =
               s"Unexpected error: could not write a tree object from the index."
-            )
-          )
-          val commitId = reflect(
-            IO {
+            ).reflect
+          val commitId = IO {
               os.proc(
                 "git",
                 "commit-tree",
@@ -1165,27 +1113,21 @@ object Main extends StrictLogging:
                 .strip()
             }.labelExceptionWith(errorMessage =
               s"Unexpected error: could not create a commit from tree object ${underline(treeId)}"
-            )
-          )
-          reflect(
-            IO {
+            ).reflect
+          IO {
               os.proc("git", "reset", "--soft", commitId)
                 .call(workingDirectory)
                 .out
                 .text()
             }.labelExceptionWith(errorMessage =
               s"Unexpected error: could not advance branch ${underline(ourBranchHead)} to commit ${underline(commitId)}."
-            )
-          )
-          reflect(
-            right(()).logOperation(
+            ).reflect
+          right(()).logOperation(
               s"Successful merge, made a new commit ${underline(commitId)}."
-            )
-          )
+            ).reflect
           successfulMerge
         else
-          val gitDir = reflect(
-            IO {
+          val gitDir = IO {
               os.proc("git", "rev-parse", "--absolute-git-dir")
                 .call(workingDirectory)
                 .out
@@ -1193,54 +1135,42 @@ object Main extends StrictLogging:
                 .strip()
             }.labelExceptionWith(errorMessage =
               "Could not determine location of `GIT_DIR`."
-            )
-          )
-          val gitDirPath = reflect(
-            IO {
+            ).reflect
+          val gitDirPath = IO {
               Path(gitDir)
             }.labelExceptionWith(errorMessage =
               s"Unexpected error: `GIT_DIR` reported by Git ${underline(gitDir)} is not a valid path."
-            )
-          )
-          val theirCommitIdVal = reflect(theirCommitId(theirBranchHead))
-          reflect(
-            IO {
+            ).reflect
+          val theirCommitIdVal = theirCommitId(theirBranchHead).reflect
+          IO {
               os.write.over(gitDirPath / "MERGE_HEAD", theirCommitIdVal)
             }.labelExceptionWith(errorMessage =
               s"Unexpected error: could not write `MERGE_HEAD` to reference their branch ${underline(theirBranchHead)}."
-            )
-          )
+            ).reflect
           val mergeMode = if noFastForward then "no-ff" else ""
-          reflect(
-            IO {
+          IO {
               os.write.over(gitDirPath / "MERGE_MODE", mergeMode)
             }.labelExceptionWith(errorMessage =
               s"Unexpected error: could not write `MERGE_MODE` to propagate the merge mode ${underline(mergeMode)}."
-            )
-          )
-          reflect(
-            IO {
+            ).reflect
+          IO {
               os.write.over(gitDirPath / "MERGE_MSG", commitMessage)
             }.labelExceptionWith(errorMessage =
               s"Unexpected error: could not write `MERGE_MSG` to prepare the commit message ${underline(commitMessage)}."
-            )
-          )
-          reflect(
-            right(()).logOperation(
+            ).reflect
+          right(()).logOperation(
               if goodForAMergeCommit then
                 "Successful merge, leaving merged changes in the index for review..."
               else
                 "Merge conflicts found, handing over for manual resolution..."
-            )
-          )
+            ).reflect
           conflictedMerge
         end if
       }
 
       val workflowWithWorkaround = reify {
-        val payload = reflect(workflow)
-        reflect(
-          IO {
+        val payload = workflow.reflect
+        IO {
             // Do this to work around the issue mentioned here:
             // https://stackoverflow.com/questions/51146392/cannot-git-merge-abort-until-git-status,
             // this has been observed when `git merge-file` successfully writes
@@ -1250,8 +1180,7 @@ object Main extends StrictLogging:
               .call(workingDirectory)
           }.labelExceptionWith(errorMessage =
             s"Unexpected error: could not check the status of the working tree."
-          )
-        )
+          ).reflect
         payload
       }
 
@@ -1569,22 +1498,18 @@ object Main extends StrictLogging:
             .foldM(this) {
               case (partialResult, (leftRenamedPath, conflictingDeletedPath)) =>
                 reify {
-                  reflect(recordDeletionInIndex(leftRenamedPath))
-                  val (mode, blobId) = reflect(
-                    blobFor(ourBranchHead)(
+                  recordDeletionInIndex(leftRenamedPath).reflect
+                  val (mode, blobId) = blobFor(ourBranchHead)(
                       leftRenamedPath
-                    )
-                  )
-                  reflect(
-                    recordConflictModificationInIndex(ourStageIndex)(
+                    ).reflect
+                  recordConflictModificationInIndex(ourStageIndex)(
                       ourBranchHead,
                       leftRenamedPath,
                       mode,
                       blobId
                     ).logOperation(
                       s"Conflict - file ${underline(conflictingDeletedPath)} was renamed on our branch ${underline(ourBranchHead)} to ${underline(leftRenamedPath)} and deleted on their branch ${underline(theirBranchHead)}."
-                    )
-                  )
+                    ).reflect
                   partialResult.copy(goodForAMergeCommit = false)
                 }
             }
@@ -1598,22 +1523,18 @@ object Main extends StrictLogging:
                     (rightRenamedPath, conflictingDeletedPath)
                   ) =>
                 reify {
-                  reflect(recordDeletionInIndex(rightRenamedPath))
-                  val (mode, blobId) = reflect(
-                    blobFor(theirBranchHead)(
+                  recordDeletionInIndex(rightRenamedPath).reflect
+                  val (mode, blobId) = blobFor(theirBranchHead)(
                       rightRenamedPath
-                    )
-                  )
-                  reflect(
-                    recordConflictModificationInIndex(theirStageIndex)(
+                    ).reflect
+                  recordConflictModificationInIndex(theirStageIndex)(
                       theirBranchHead,
                       rightRenamedPath,
                       mode,
                       blobId
                     ).logOperation(
                       s"Conflict - file ${underline(conflictingDeletedPath)} was deleted on our branch ${underline(ourBranchHead)} and renamed on their branch ${underline(theirBranchHead)} to ${underline(rightRenamedPath)}."
-                    )
-                  )
+                    ).reflect
                   partialResult.copy(goodForAMergeCommit = false)
                 }
             }
@@ -1830,29 +1751,24 @@ object Main extends StrictLogging:
           leftBlobId: String @@ Tags.BlobId,
           rightBlobId: String @@ Tags.BlobId
       ) = reify {
-        reflect(recordDeletionInIndex(path))
-        reflect(
-          recordConflictModificationInIndex(
+        recordDeletionInIndex(path).reflect
+        recordConflictModificationInIndex(
             stageIndex = bestCommonAncestorStageIndex
           )(
             bestAncestorCommitId,
             path,
             bestAncestorCommitIdMode,
             baseBlobId
-          )
-        )
-        reflect(
-          recordConflictModificationInIndex(
+          ).reflect
+        recordConflictModificationInIndex(
             stageIndex = ourStageIndex
           )(
             ourBranchHead,
             path,
             mode,
             leftBlobId
-          )
-        )
-        reflect(
-          recordConflictModificationInIndex(
+          ).reflect
+        recordConflictModificationInIndex(
             stageIndex = theirStageIndex
           )(
             theirBranchHead,
@@ -1863,8 +1779,7 @@ object Main extends StrictLogging:
             s"Conflict - file ${underline(path)} was modified on our branch ${underline(
                 ourBranchHead
               )} and modified on their branch ${underline(theirBranchHead)}${lastMinuteResolutionNotes(lastMinuteResolution)}."
-          )
-        )
+          ).reflect
         accumulatedMergeState.copy(goodForAMergeCommit = false)
       }
       end writeConflictedIndexEntriesForModification
@@ -1877,27 +1792,23 @@ object Main extends StrictLogging:
           leftBlobId: String @@ Tags.BlobId,
           rightBlobId: String @@ Tags.BlobId
       ) = reify {
-        reflect(recordDeletionInIndex(path))
-        reflect(
-          recordConflictModificationInIndex(
+        recordDeletionInIndex(path).reflect
+        recordConflictModificationInIndex(
             stageIndex = ourStageIndex
           )(
             ourBranchHead,
             path,
             mode,
             leftBlobId
-          )
-        )
-        reflect(
-          recordConflictModificationInIndex(
+          ).reflect
+        recordConflictModificationInIndex(
             stageIndex = theirStageIndex
           )(
             theirBranchHead,
             path,
             mode,
             rightBlobId
-          )
-        )
+          ).reflect
         accumulatedMergeState.copy(
           goodForAMergeCommit = false,
           conflictingAdditionPathsAndTheirLastMinuteResolutions =
@@ -1939,29 +1850,22 @@ object Main extends StrictLogging:
               leftContent: String @@ Tags.Content,
               rightContent: String @@ Tags.Content
           ) = reify {
-            val fakeBaseTemporaryFile = reflect(
-              temporaryFile(
+            val fakeBaseTemporaryFile = temporaryFile(
                 suffix = ".base",
                 content = "".taggedWith[Tags.Content]
-              )
-            )
+              ).reflect
 
-            val leftTemporaryFile = reflect(
-              temporaryFile(
+            val leftTemporaryFile = temporaryFile(
                 suffix = ".left",
                 content = leftContent
-              )
-            )
+              ).reflect
 
-            val rightTemporaryFile = reflect(
-              temporaryFile(
+            val rightTemporaryFile = temporaryFile(
                 suffix = ".right",
                 content = rightContent
-              )
-            )
+              ).reflect
 
-            val lastMinuteResolutionVal = reflect(
-              lastMinuteResolution(
+            val lastMinuteResolutionVal = lastMinuteResolution(
                 path,
                 fakeBaseTemporaryFile,
                 leftTemporaryFile,
@@ -1969,28 +1873,23 @@ object Main extends StrictLogging:
                 baseLabel = bestAncestorCommitId,
                 leftLabel = ourBranchHead,
                 rightLabel = theirBranchHead
-              )
-            )
-            reflect(
-              IO {
+              ).reflect
+            IO {
                 os.copy.over(leftTemporaryFile, path)
               }.labelExceptionWith(errorMessage =
                 s"Unexpected error: could not copy results of conflicted merge in ${underline(leftTemporaryFile)} to working directory tree file ${underline(path)}."
-              )
-            )
+              ).reflect
 
-            val leftBlobId  = reflect(storeBlobFor(path, leftContent))
-            val rightBlobId = reflect(storeBlobFor(path, rightContent))
-            reflect(
-              writeConflictedIndexEntriesForAddition(
+            val leftBlobId  = storeBlobFor(path, leftContent).reflect
+            val rightBlobId = storeBlobFor(path, rightContent).reflect
+            writeConflictedIndexEntriesForAddition(
                 accumulatedMergeState,
                 path,
                 mode,
                 lastMinuteResolutionVal,
                 leftBlobId,
                 rightBlobId
-              )
-            )
+              ).reflect
           }
           end recordConflictedMergeOfAddedFile
 
@@ -2003,29 +1902,22 @@ object Main extends StrictLogging:
               leftContent: String @@ Tags.Content,
               rightContent: String @@ Tags.Content
           ) = reify {
-            val baseTemporaryFile = reflect(
-              temporaryFile(
+            val baseTemporaryFile = temporaryFile(
                 suffix = ".base",
                 content = baseContent
-              )
-            )
+              ).reflect
 
-            val leftTemporaryFile = reflect(
-              temporaryFile(
+            val leftTemporaryFile = temporaryFile(
                 suffix = ".left",
                 content = leftContent
-              )
-            )
+              ).reflect
 
-            val rightTemporaryFile = reflect(
-              temporaryFile(
+            val rightTemporaryFile = temporaryFile(
                 suffix = ".right",
                 content = rightContent
-              )
-            )
+              ).reflect
 
-            val lastMinuteResolutionVal = reflect(
-              lastMinuteResolution(
+            val lastMinuteResolutionVal = lastMinuteResolution(
                 path,
                 baseTemporaryFile,
                 leftTemporaryFile,
@@ -2033,22 +1925,18 @@ object Main extends StrictLogging:
                 baseLabel = bestAncestorCommitId,
                 leftLabel = ourBranchHead,
                 rightLabel = theirBranchHead
-              )
-            )
-            reflect(
-              IO {
+              ).reflect
+            IO {
                 os.copy.over(leftTemporaryFile, path)
               }.labelExceptionWith(errorMessage =
                 s"Unexpected error: could not copy results of conflicted merge in ${underline(leftTemporaryFile)} to working directory tree file ${underline(path)}."
-              )
-            )
+              ).reflect
 
-            val baseBlobId  = reflect(storeBlobFor(path, baseContent))
-            val leftBlobId  = reflect(storeBlobFor(path, leftContent))
-            val rightBlobId = reflect(storeBlobFor(path, rightContent))
+            val baseBlobId  = storeBlobFor(path, baseContent).reflect
+            val leftBlobId  = storeBlobFor(path, leftContent).reflect
+            val rightBlobId = storeBlobFor(path, rightContent).reflect
 
-            reflect(
-              writeConflictedIndexEntriesForModification(
+            writeConflictedIndexEntriesForModification(
                 accumulatedMergeState,
                 path,
                 bestAncestorCommitIdMode,
@@ -2057,8 +1945,7 @@ object Main extends StrictLogging:
                 baseBlobId,
                 leftBlobId,
                 rightBlobId
-              )
-            )
+              ).reflect
           }
           end recordConflictedMergeOfModifiedFile
 
@@ -2068,20 +1955,16 @@ object Main extends StrictLogging:
               mergedFileContent: String @@ Tags.Content,
               mode: String @@ Tags.Mode
           ) = reify {
-            val blobId = reflect(storeBlobFor(path, mergedFileContent))
-            reflect(
-              restoreFileFromBlobId(
+            val blobId = storeBlobFor(path, mergedFileContent).reflect
+            restoreFileFromBlobId(
                 path,
                 blobId
-              )
-            )
-            reflect(
-              recordModificationInIndex(
+              ).reflect
+            recordModificationInIndex(
                 path,
                 mode,
                 blobId
-              )
-            )
+              ).reflect
             accumulatedMergeState
           }
 
@@ -2091,19 +1974,15 @@ object Main extends StrictLogging:
               mode: String @@ Tags.Mode,
               blobId: String @@ Tags.BlobId
           ) = reify {
-            reflect(
-              restoreFileFromBlobId(
+            restoreFileFromBlobId(
                 path,
                 blobId
-              )
-            )
-            reflect(
-              recordModificationInIndex(
+              ).reflect
+            recordModificationInIndex(
                 path,
                 mode,
                 blobId
-              )
-            )
+              ).reflect
             accumulatedMergeState
           }
 
@@ -3017,14 +2896,6 @@ object Main extends StrictLogging:
     )
   end ApplicationRequest
 
-  object Tags:
-    trait Mode
-    trait BlobId
-    trait Content
-    trait CommitOrBranchName
-    trait ErrorMessage
-    trait ExitCode
-    trait StageIndex
-  end Tags
+
 
 end Main
