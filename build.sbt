@@ -104,6 +104,8 @@ lazy val root = (project in file("."))
     libraryDependencies += "org.apache.commons" % "commons-lang3" % "3.20.0",
     libraryDependencies +=
       "org.scala-lang.modules" %% "scala-parallel-collections" % "1.2.0",
+    libraryDependencies += "org.typelevel" %% "kittens" % "3.5.0",
+    libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async" % "1.3.4",
 
     libraryDependencies += "de.sciss"        %% "fingertree" % "1.5.5" % Test,
     libraryDependencies += "com.sageserpent" %% "americium"  % "2.2.2" % Test,
@@ -111,9 +113,7 @@ lazy val root = (project in file("."))
     libraryDependencies += "com.eed3si9n.expecty" %% "expecty" % "0.17.1" % Test,
     libraryDependencies += "org.apache.commons" % "commons-text" % "1.15.0" % Test,
     libraryDependencies += "com.github.sbt.junit" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
-    libraryDependencies += "org.typelevel" %% "kittens" % "3.5.0",
-    libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async" % "0.9.23",
-    Test / test / logLevel                 := Level.Error,
+      Test / test / logLevel                 := Level.Error,
     Test / fork                            := true,
     Test / testForkedParallel              := true,
     Test / javaOptions ++= Seq("-Xmx8G")
