@@ -467,20 +467,16 @@ object Main extends StrictLogging:
       suffix: String,
       content: String @@ Tags.Content
   ): Workflow[Path] =
-    reify {
-      reflect(
-        IO {
-          os.temp(
-            contents = content,
-            prefix = "kinetic-merge-",
-            suffix = ".base",
-            deleteOnExit = true
-          )
-        }.labelExceptionWith(
-          s"Unexpected error: could not create temporary file."
-        )
+    IO {
+      os.temp(
+        contents = content,
+        prefix = "kinetic-merge-",
+        suffix = ".base",
+        deleteOnExit = true
       )
-    }
+    }.labelExceptionWith(
+      s"Unexpected error: could not create temporary file."
+    )
 
   case class ApplicationRequest(
       theirBranchHead: String @@ Main.Tags.CommitOrBranchName,
