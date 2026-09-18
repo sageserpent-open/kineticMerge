@@ -1,14 +1,12 @@
 package com.sageserpent.kineticmerge
 
-import cats.Monad
-import cats.Order
 import cats.data.{EitherT, WriterT}
-import cps.*
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.syntax.foldable.toFoldableOps
 import cats.syntax.functor.toFunctorOps
 import cats.syntax.traverse.toTraverseOps
+import cats.{Monad, Order}
 import com.google.common.hash.{Funnel, HashFunction, Hashing}
 import com.sageserpent.kineticmerge.Main.MergeInput.*
 import com.sageserpent.kineticmerge.core.*
@@ -17,6 +15,7 @@ import com.sageserpent.kineticmerge.core.SectionedCodeExtension.*
 import com.sageserpent.kineticmerge.core.Token.tokens
 import com.softwaremill.tagging.*
 import com.typesafe.scalalogging.StrictLogging
+import cps.*
 import fansi.Str
 import os.{Path, RelPath}
 import scopt.{DefaultOEffectSetup, OParser}
@@ -43,11 +42,13 @@ object Main extends StrictLogging:
   given workflowCpsMonad(using
       M: Monad[Workflow]
   ): CpsMonad[Workflow] with CpsPureMonadInstanceContext[Workflow] with
-    override def pure[T](x: T): Workflow[T] = M.pure(x)
-    override def map[A, B](fa: Workflow[A])(f: A => B): Workflow[B] = M.map(fa)(f)
+    override def pure[T](x: T): Workflow[T]                         = M.pure(x)
+    override def map[A, B](fa: Workflow[A])(f: A => B): Workflow[B] =
+      M.map(fa)(f)
     override def flatMap[A, B](
         fa: Workflow[A]
     )(f: A => Workflow[B]): Workflow[B] = M.flatMap(fa)(f)
+  end workflowCpsMonad
   private val whitespaceRun                                       = "\\s+"
   private val noBranchProvided: String @@ Tags.CommitOrBranchName =
     "".taggedWith[Tags.CommitOrBranchName]
@@ -290,86 +291,112 @@ object Main extends StrictLogging:
         os.proc("git", "--version").call(workingDirectory)
       }.labelExceptionWith(errorMessage = "Git is not available."))
 
-      val topLevel = reflect(IO {
-        os.proc("git", "rev-parse", "--show-toplevel")
-          .call(workingDirectory)
-          .out
-          .text()
-          .strip()
-      }.labelExceptionWith(errorMessage =
-        "The current working directory is not part of a Git working tree."
-      ))
+      val topLevel = reflect(
+        IO {
+          os.proc("git", "rev-parse", "--show-toplevel")
+            .call(workingDirectory)
+            .out
+            .text()
+            .strip()
+        }.labelExceptionWith(errorMessage =
+          "The current working directory is not part of a Git working tree."
+        )
+      )
 
-      val topLevelWorkingDirectory = reflect(IO { Path(topLevel) }
-        .labelExceptionWith(errorMessage =
-          s"Unexpected error: top level of Git repository ${underline(topLevel)} is not a valid path."
-        ))
+      val topLevelWorkingDirectory = reflect(
+        IO { Path(topLevel) }
+          .labelExceptionWith(errorMessage =
+            s"Unexpected error: top level of Git repository ${underline(topLevel)} is not a valid path."
+          )
+      )
 
-      val inTopLevelWorkingDirectory = InWorkingDirectory(topLevelWorkingDirectory)
+      val inTopLevelWorkingDirectory =
+        InWorkingDirectory(topLevelWorkingDirectory)
 
       val ourBranchHead = reflect(inTopLevelWorkingDirectory.ourBranchHead())
 
       reflect(inTopLevelWorkingDirectory.theirCommitId(theirBranchHead))
 
-      val oursAlreadyContainsTheirs = reflect(inTopLevelWorkingDirectory
-        .firstBranchIsContainedBySecond(
-          theirBranchHead,
-          ourBranchHead
-        ))
+      val oursAlreadyContainsTheirs = reflect(
+        inTopLevelWorkingDirectory
+          .firstBranchIsContainedBySecond(
+            theirBranchHead,
+            ourBranchHead
+          )
+      )
 
-      val theirsAlreadyContainsOurs = reflect(inTopLevelWorkingDirectory
-        .firstBranchIsContainedBySecond(
-          ourBranchHead,
-          theirBranchHead
-        ))
+      val theirsAlreadyContainsOurs = reflect(
+        inTopLevelWorkingDirectory
+          .firstBranchIsContainedBySecond(
+            ourBranchHead,
+            theirBranchHead
+          )
+      )
 
       if oursAlreadyContainsTheirs
       then
         // Nothing to do, our branch has all their commits already.
-        reflect(right(successfulMerge)
-          .logOperation(
-            s"Nothing to do - our branch ${underline(ourBranchHead)} already contains ${underline(theirBranchHead)}."
-          ))
+        reflect(
+          right(successfulMerge)
+            .logOperation(
+              s"Nothing to do - our branch ${underline(ourBranchHead)} already contains ${underline(theirBranchHead)}."
+            )
+        )
       else if theirsAlreadyContainsOurs && !noFastForward
       then
-        reflect(inTopLevelWorkingDirectory.fastForwardToTheirs(
-          ourBranchHead,
-          theirBranchHead
-        ))
+        reflect(
+          inTopLevelWorkingDirectory.fastForwardToTheirs(
+            ourBranchHead,
+            theirBranchHead
+          )
+        )
       else // Perform a real merge...
-        reflect(inTopLevelWorkingDirectory.confirmThereAreNoUncommittedChanges(
-          ourBranchHead
-        ))
+        reflect(
+          inTopLevelWorkingDirectory.confirmThereAreNoUncommittedChanges(
+            ourBranchHead
+          )
+        )
 
-        val bestAncestorCommitId = reflect(inTopLevelWorkingDirectory
-          .bestAncestorCommitId(ourBranchHead, theirBranchHead))
+        val bestAncestorCommitId = reflect(
+          inTopLevelWorkingDirectory
+            .bestAncestorCommitId(ourBranchHead, theirBranchHead)
+        )
 
-        val ourChanges = reflect(inTopLevelWorkingDirectory.changes(
-          ourBranchHead,
-          bestAncestorCommitId,
-          possessive = "our"
-        ))
+        val ourChanges = reflect(
+          inTopLevelWorkingDirectory.changes(
+            ourBranchHead,
+            bestAncestorCommitId,
+            possessive = "our"
+          )
+        )
 
-        val theirChanges = reflect(inTopLevelWorkingDirectory.changes(
-          theirBranchHead,
-          bestAncestorCommitId,
-          possessive = "their"
-        ))
+        val theirChanges = reflect(
+          inTopLevelWorkingDirectory.changes(
+            theirBranchHead,
+            bestAncestorCommitId,
+            possessive = "their"
+          )
+        )
 
-        val mergeInputs = reflect(inTopLevelWorkingDirectory.mergeInputsOf(
-          bestAncestorCommitId,
-          ourBranchHead,
-          theirBranchHead
-        )(ourChanges, theirChanges))
+        val mergeInputs = reflect(
+          inTopLevelWorkingDirectory.mergeInputsOf(
+            bestAncestorCommitId,
+            ourBranchHead,
+            theirBranchHead
+          )(ourChanges, theirChanges)
+        )
 
-        reflect(inTopLevelWorkingDirectory.mergeWithRollback(
-          bestAncestorCommitId,
-          ourBranchHead,
-          theirBranchHead,
-          noCommit,
-          noFastForward,
-          configuration
-        )(mergeInputs))
+        reflect(
+          inTopLevelWorkingDirectory.mergeWithRollback(
+            bestAncestorCommitId,
+            ourBranchHead,
+            theirBranchHead,
+            noCommit,
+            noFastForward,
+            configuration
+          )(mergeInputs)
+        )
+      end if
     }
 
     val (log, exitCode) = workflow
@@ -441,16 +468,18 @@ object Main extends StrictLogging:
       content: String @@ Tags.Content
   ): Workflow[Path] =
     reify {
-      reflect(IO {
-        os.temp(
-          contents = content,
-          prefix = "kinetic-merge-",
-          suffix = ".base",
-          deleteOnExit = true
+      reflect(
+        IO {
+          os.temp(
+            contents = content,
+            prefix = "kinetic-merge-",
+            suffix = ".base",
+            deleteOnExit = true
+          )
+        }.labelExceptionWith(
+          s"Unexpected error: could not create temporary file."
         )
-      }.labelExceptionWith(
-        s"Unexpected error: could not create temporary file."
-      ))
+      )
     }
 
   case class ApplicationRequest(
@@ -624,52 +653,57 @@ object Main extends StrictLogging:
         possessive: String
     ): Workflow[Map[Path, Change]] =
       reify {
-        val statusLines = reflect(IO {
-          os.proc(
-            "git",
-            "diff",
-            "--no-renames",
-            "--name-status",
-            bestAncestorCommitId,
-            branchOrCommit
-          ).call(workingDirectory)
-            .out
-            .lines()
-        }.labelExceptionWith(errorMessage =
-          s"Could not determine status for changes made on $possessive branch ${underline(branchOrCommit)} since ancestor commit ${underline(bestAncestorCommitId)}."
-        ))
+        val statusLines = reflect(
+          IO {
+            os.proc(
+              "git",
+              "diff",
+              "--no-renames",
+              "--name-status",
+              bestAncestorCommitId,
+              branchOrCommit
+            ).call(workingDirectory)
+              .out
+              .lines()
+          }.labelExceptionWith(errorMessage =
+            s"Could not determine status for changes made on $possessive branch ${underline(branchOrCommit)} since ancestor commit ${underline(bestAncestorCommitId)}."
+          )
+        )
 
-        val binaryFiles = reflect(IO {
-          // NOTE: this is imprecise for *modified* files, as we don't know
-          // whether a file was binary prior to modification, has been modified
-          // into a binary file or started out as and remains binary. To some
-          // extent we muddle through this where two changes from our or their
-          // branch can be combined to pin down whether the *base* file is
-          // textual, but otherwise it is possible for either our or their file
-          // to be considered binary when it is textual.
-          os.proc(
-            "git",
-            "diff",
-            "--no-renames",
-            "--numstat",
-            bestAncestorCommitId,
-            branchOrCommit
-          ).call(workingDirectory)
-            .out
-            .lines()
-            .collect {
-              _.split(whitespaceRun) match
-                case Array("-", "-", file) =>
-                  workingDirectory / RelPath(file)
-            }
-            .toSet
-        }.labelExceptionWith(errorMessage =
-          s"Could not determine if binary content was involved for changes made on $possessive branch ${underline(branchOrCommit)} since ancestor commit ${underline(bestAncestorCommitId)}."
-        ))
+        val binaryFiles = reflect(
+          IO {
+            // NOTE: this is imprecise for *modified* files, as we don't know
+            // modified into a binary file or started out as and remains binary.
+            // To some extent we muddle through this where two changes from our
+            // or their branch can be combined to pin down whether the *base*
+            // file is textual, but otherwise it is possible for either our or
+            // their file to be considered binary when it is textual.
+            os.proc(
+              "git",
+              "diff",
+              "--no-renames",
+              "--numstat",
+              bestAncestorCommitId,
+              branchOrCommit
+            ).call(workingDirectory)
+              .out
+              .lines()
+              .collect {
+                _.split(whitespaceRun) match
+                  case Array("-", "-", file) =>
+                    workingDirectory / RelPath(file)
+              }
+              .toSet
+          }.labelExceptionWith(errorMessage =
+            s"Could not determine if binary content was involved for changes made on $possessive branch ${underline(branchOrCommit)} since ancestor commit ${underline(bestAncestorCommitId)}."
+          )
+        )
 
-        reflect(statusLines
-          .traverse(pathChangeFor(branchOrCommit)(_, binaryFiles.contains))
-          .map(_.toMap))
+        reflect(
+          statusLines
+            .traverse(pathChangeFor(branchOrCommit)(_, binaryFiles.contains))
+            .map(_.toMap)
+        )
       }
     end changes
 
@@ -924,8 +958,7 @@ object Main extends StrictLogging:
               ) =>
             reify {
               val mergedFileMode =
-                if ourAddition.mode == theirAddition.mode then
-                  ourAddition.mode
+                if ourAddition.mode == theirAddition.mode then ourAddition.mode
                 else
                   reflect(
                     left(
@@ -1047,20 +1080,22 @@ object Main extends StrictLogging:
       (String @@ Tags.Mode, String @@ Tags.BlobId)
     ] =
       reify {
-        val Array(mode, entryType, entryId, _) = reflect(IO {
-          val line = os
-            .proc("git", "ls-tree", commitIdOrBranchName, path)
-            .call(workingDirectory)
-            .out
-            .text()
+        val Array(mode, entryType, entryId, _) = reflect(
+          IO {
+            val line = os
+              .proc("git", "ls-tree", commitIdOrBranchName, path)
+              .call(workingDirectory)
+              .out
+              .text()
 
-          line.split(whitespaceRun)
-        }.labelExceptionWith(errorMessage =
-          s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
-        ))
+            line.split(whitespaceRun)
+          }.labelExceptionWith(errorMessage =
+            s"Unexpected error - can't determine blob id for path ${underline(path)} in commit or branch ${underline(commitIdOrBranchName)}."
+          )
+        )
 
         entryType match
-          case "blob" =>
+          case "blob"   =>
           case "commit" =>
             reflect(
               left(
@@ -1539,9 +1574,11 @@ object Main extends StrictLogging:
               case (partialResult, (leftRenamedPath, conflictingDeletedPath)) =>
                 reify {
                   reflect(recordDeletionInIndex(leftRenamedPath))
-                  val (mode, blobId) = reflect(blobFor(ourBranchHead)(
-                    leftRenamedPath
-                  ))
+                  val (mode, blobId) = reflect(
+                    blobFor(ourBranchHead)(
+                      leftRenamedPath
+                    )
+                  )
                   reflect(
                     recordConflictModificationInIndex(ourStageIndex)(
                       ourBranchHead,
@@ -1566,9 +1603,11 @@ object Main extends StrictLogging:
                   ) =>
                 reify {
                   reflect(recordDeletionInIndex(rightRenamedPath))
-                  val (mode, blobId) = reflect(blobFor(theirBranchHead)(
-                    rightRenamedPath
-                  ))
+                  val (mode, blobId) = reflect(
+                    blobFor(theirBranchHead)(
+                      rightRenamedPath
+                    )
+                  )
                   reflect(
                     recordConflictModificationInIndex(theirStageIndex)(
                       theirBranchHead,
@@ -1730,7 +1769,10 @@ object Main extends StrictLogging:
               renamingDescription.nonEmpty || transplantationDescription.nonEmpty
             )
 
-            ((renamingDescription, transplantationDescription): @unchecked) match
+            ((
+              renamingDescription,
+              transplantationDescription
+            ): @unchecked) match
               case (Some(renaming), Some(transplantation)) =>
                 s"File ${underline(path)} was $renaming; it was also $transplantation."
               case (Some(renaming), None) =>
