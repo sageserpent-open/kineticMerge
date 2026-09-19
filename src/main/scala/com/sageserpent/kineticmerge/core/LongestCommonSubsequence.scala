@@ -478,6 +478,10 @@ object LongestCommonSubsequence:
       def contains(candidate: Element): Boolean =
         val verdict = elementSet.contains(candidate)
 
+        // TODO: this begs the question - if it hardly adds any overhead to do a
+        // linear search through `elements`, then what is the point of using
+        // `SortedSet` and `Order`? Switching back to `Eq` would allow much more
+        // lenient equality between `Block` instances....
         val referenceVerdict = elements.exists(
           SetDiagnosingInconsistentOrderImplementation.equality
             .eqv(_, candidate)
