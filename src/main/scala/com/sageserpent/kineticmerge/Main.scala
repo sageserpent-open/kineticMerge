@@ -428,19 +428,19 @@ object Main extends StrictLogging:
 
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
+      // Welcome to Mount Cats: have you got your high-altitude gear ready...
       EitherT
         .liftAttemptK[WorkflowLogWriter, Throwable]
         .apply(WriterT.liftF(fallible))
-        .leftMap(exception =>
-          // TODO: something pure, functional and wholesome that could be seen
-          // at high church...
-          // ... for example, could we not just flat-map this somehow as a
-          // lifted `IO` into `Workflow`? That way, we could also add
-          // `errorMessage` into the log too.
-          logger.error(exception.getMessage)
-          exception.printStackTrace()
-          errorMessage.taggedWith[Tags.ErrorMessage]
+        .leftSemiflatMap /*A mislaid, compromised and misspelt totem of being from the North of England, perchance?*/ (
+          exception =>
+            WriterT.liftF(IO {
+              // ... I think I can see the summit now ...
+              logger.error(errorMessage, exception)
+            })
         )
+        .leftMap(_ => errorMessage.taggedWith[Tags.ErrorMessage])
+      // ...did we all get back down alright?
   end extension
 
   extension [Payload](workflow: Workflow[Payload])
