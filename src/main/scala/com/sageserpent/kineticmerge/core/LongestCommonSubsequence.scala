@@ -432,13 +432,126 @@ object LongestCommonSubsequence:
   )(using
       progressRecording: ProgressRecording
   ): LongestCommonSubsequence[Element] =
-    val equality = summon[Eq[Element]]
-    val sized    = summon[Sized[Element]]
     given Ordering[Element] = summon[Order[Element]].toOrdering
 
     val baseSet  = SetDiagnosingInconsistentOrderImplementation(base)
     val leftSet  = SetDiagnosingInconsistentOrderImplementation(left)
     val rightSet = SetDiagnosingInconsistentOrderImplementation(right)
+
+    assumingMatchableInputs(
+      base,
+      left,
+      right,
+      baseSet,
+      leftSet,
+      rightSet
+    )
+  end of
+
+  private def assumingMatchableInputs[Element: {Order, Sized}](
+      base: IndexedSeq[Element],
+      left: IndexedSeq[Element],
+      right: IndexedSeq[Element],
+      baseSet: SetDiagnosingInconsistentOrderImplementation[Element],
+      leftSet: SetDiagnosingInconsistentOrderImplementation[Element],
+      rightSet: SetDiagnosingInconsistentOrderImplementation[Element]
+  )(using
+      progressRecording: ProgressRecording
+  ): LongestCommonSubsequence[Element] =
+    given Ordering[Element] = summon[Order[Element]].toOrdering
+
+    // PLAN: filter out elements that can't be matched at all with any element
+    // on the other two sides - these will never align to make a common
+    // contribution, so we avoid burdening prefix/suffix trimming or swathe
+    // DP with them. Once the filtered LCS is calculated, merge it with
+    // difference contributions from the leftover rejected elements.
+
+    val matchableBaseIndices = base.zipWithIndex.collect {
+      case (baseElement, index)
+          if leftSet.contains(baseElement) || rightSet.contains(baseElement) =>
+        index
+    }
+    val matchableLeftIndices = left.zipWithIndex.collect {
+      case (leftElement, index)
+          if baseSet.contains(leftElement) || rightSet.contains(leftElement) =>
+        index
+    }
+    val matchableRightIndices = right.zipWithIndex.collect {
+      case (rightElement, index)
+          if baseSet.contains(rightElement) || leftSet.contains(rightElement) =>
+        index
+    }
+
+    if matchableBaseIndices.isEmpty && matchableLeftIndices.isEmpty && matchableRightIndices.isEmpty
+    then
+      LongestCommonSubsequence(
+        base = base.map(Contribution.Difference.apply),
+        left = left.map(Contribution.Difference.apply),
+        right = right.map(Contribution.Difference.apply),
+        commonSubsequenceSize = CommonSubsequenceSize.zero,
+        commonToLeftAndRightOnlySize = CommonSubsequenceSize.zero,
+        commonToBaseAndLeftOnlySize = CommonSubsequenceSize.zero,
+        commonToBaseAndRightOnlySize = CommonSubsequenceSize.zero
+      )
+    else
+      val filteredBase  = matchableBaseIndices.map(base)
+      val filteredLeft  = matchableLeftIndices.map(left)
+      val filteredRight = matchableRightIndices.map(right)
+
+      val filteredLcs =
+        ofMatchableInputs(
+          filteredBase,
+          filteredLeft,
+          filteredRight,
+          SetDiagnosingInconsistentOrderImplementation(filteredBase),
+          SetDiagnosingInconsistentOrderImplementation(filteredLeft),
+          SetDiagnosingInconsistentOrderImplementation(filteredRight)
+        )
+
+      def reconstruct(
+          original: IndexedSeq[Element],
+          matchableIndices: IndexedSeq[Int],
+          filteredContributions: IndexedSeq[Contribution[Element]]
+      ): IndexedSeq[Contribution[Element]] =
+        val builder = IndexedSeq.newBuilder[Contribution[Element]]
+        builder.sizeHint(original.size)
+        var filteredIdx  = 0
+        val numMatchable = matchableIndices.size
+        for i <- original.indices do
+          if filteredIdx < numMatchable && matchableIndices(filteredIdx) == i
+          then
+            builder += filteredContributions(filteredIdx)
+            filteredIdx += 1
+          else builder += Contribution.Difference(original(i))
+        end for
+        builder.result()
+      end reconstruct
+
+      LongestCommonSubsequence(
+        base = reconstruct(base, matchableBaseIndices, filteredLcs.base),
+        left = reconstruct(left, matchableLeftIndices, filteredLcs.left),
+        right = reconstruct(right, matchableRightIndices, filteredLcs.right),
+        commonSubsequenceSize = filteredLcs.commonSubsequenceSize,
+        commonToLeftAndRightOnlySize = filteredLcs.commonToLeftAndRightOnlySize,
+        commonToBaseAndLeftOnlySize = filteredLcs.commonToBaseAndLeftOnlySize,
+        commonToBaseAndRightOnlySize = filteredLcs.commonToBaseAndRightOnlySize
+      )
+    end if
+  end assumingMatchableInputs
+
+  private def ofMatchableInputs[Element: {Order, Sized}](
+      base: IndexedSeq[Element],
+      left: IndexedSeq[Element],
+      right: IndexedSeq[Element],
+      baseSet: SetDiagnosingInconsistentOrderImplementation[Element],
+      leftSet: SetDiagnosingInconsistentOrderImplementation[Element],
+      rightSet: SetDiagnosingInconsistentOrderImplementation[Element]
+  )(using
+      progressRecording: ProgressRecording
+  ): LongestCommonSubsequence[Element] =
+    val equality = summon[Eq[Element]]
+    val sized    = summon[Sized[Element]]
+    given Ordering[Element] = summon[Order[Element]].toOrdering
 
     // PLAN: trim off any common prefix and common suffix to avoid burdening the
     // core LCS calculation, taking into account pairwise matches as well as
@@ -447,7 +560,10 @@ object LongestCommonSubsequence:
     def commonPrefixContributions(
         base: IndexedSeq[Element],
         left: IndexedSeq[Element],
-        right: IndexedSeq[Element]
+        right: IndexedSeq[Element],
+        baseSet: SetDiagnosingInconsistentOrderImplementation[Element],
+        leftSet: SetDiagnosingInconsistentOrderImplementation[Element],
+        rightSet: SetDiagnosingInconsistentOrderImplementation[Element]
     ): LongestCommonSubsequence[Element] =
       var baseIdx  = 0
       var leftIdx  = 0
@@ -492,99 +608,35 @@ object LongestCommonSubsequence:
             else keepGoing = false
             end if
           else
-            if !leftSet.contains(b) && !rightSet.contains(b) then
-              result = result.addBaseDifference(b)
-              baseIdx += 1
-            else if !baseSet.contains(l) && !rightSet.contains(l) then
-              result = result.addLeftDifference(l)
-              leftIdx += 1
-            else if !baseSet.contains(r) && !leftSet.contains(r) then
-              result = result.addRightDifference(r)
-              rightIdx += 1
-            else keepGoing = false
-            end if
+            keepGoing = false
           end if
         else if hasBase && hasLeft then
           val b = base(baseIdx)
           val l = left(leftIdx)
 
-          if equality.eqv(b, l) then
-            if !rightSet.contains(b) then
-              result = result.addCommonBaseAndLeft(b, l)(sized.sizeOf)
-              baseIdx += 1
-              leftIdx += 1
-            else keepGoing = false
-            end if
-          else
-            if !leftSet.contains(b) && !rightSet.contains(b) then
-              result = result.addBaseDifference(b)
-              baseIdx += 1
-            else if !baseSet.contains(l) && !rightSet.contains(l) then
-              result = result.addLeftDifference(l)
-              leftIdx += 1
-            else keepGoing = false
-            end if
+          if equality.eqv(b, l) && !rightSet.contains(b) then
+            result = result.addCommonBaseAndLeft(b, l)(sized.sizeOf)
+            baseIdx += 1
+            leftIdx += 1
+          else keepGoing = false
           end if
         else if hasBase && hasRight then
           val b = base(baseIdx)
           val r = right(rightIdx)
 
-          if equality.eqv(b, r) then
-            if !leftSet.contains(b) then
-              result = result.addCommonBaseAndRight(b, r)(sized.sizeOf)
-              baseIdx += 1
-              rightIdx += 1
-            else keepGoing = false
-            end if
-          else
-            if !leftSet.contains(b) && !rightSet.contains(b) then
-              result = result.addBaseDifference(b)
-              baseIdx += 1
-            else if !baseSet.contains(r) && !leftSet.contains(r) then
-              result = result.addRightDifference(r)
-              rightIdx += 1
-            else keepGoing = false
-            end if
+          if equality.eqv(b, r) && !leftSet.contains(b) then
+            result = result.addCommonBaseAndRight(b, r)(sized.sizeOf)
+            baseIdx += 1
+            rightIdx += 1
+          else keepGoing = false
           end if
         else if hasLeft && hasRight then
           val l = left(leftIdx)
           val r = right(rightIdx)
 
-          if equality.eqv(l, r) then
-            if !baseSet.contains(l) then
-              result = result.addCommonLeftAndRight(l, r)(sized.sizeOf)
-              leftIdx += 1
-              rightIdx += 1
-            else keepGoing = false
-            end if
-          else
-            if !baseSet.contains(l) && !rightSet.contains(l) then
-              result = result.addLeftDifference(l)
-              leftIdx += 1
-            else if !baseSet.contains(r) && !leftSet.contains(r) then
-              result = result.addRightDifference(r)
-              rightIdx += 1
-            else keepGoing = false
-            end if
-          end if
-        else if hasBase then
-          val b = base(baseIdx)
-          if !leftSet.contains(b) && !rightSet.contains(b) then
-            result = result.addBaseDifference(b)
-            baseIdx += 1
-          else keepGoing = false
-          end if
-        else if hasLeft then
-          val l = left(leftIdx)
-          if !baseSet.contains(l) && !rightSet.contains(l) then
-            result = result.addLeftDifference(l)
+          if equality.eqv(l, r) && !baseSet.contains(l) then
+            result = result.addCommonLeftAndRight(l, r)(sized.sizeOf)
             leftIdx += 1
-          else keepGoing = false
-          end if
-        else if hasRight then
-          val r = right(rightIdx)
-          if !baseSet.contains(r) && !leftSet.contains(r) then
-            result = result.addRightDifference(r)
             rightIdx += 1
           else keepGoing = false
           end if
@@ -598,7 +650,10 @@ object LongestCommonSubsequence:
     def commonSuffixContributions(
         base: IndexedSeq[Element],
         left: IndexedSeq[Element],
-        right: IndexedSeq[Element]
+        right: IndexedSeq[Element],
+        baseSet: SetDiagnosingInconsistentOrderImplementation[Element],
+        leftSet: SetDiagnosingInconsistentOrderImplementation[Element],
+        rightSet: SetDiagnosingInconsistentOrderImplementation[Element]
     ): LongestCommonSubsequence[Element] =
       var baseIdx   = base.size - 1
       var leftIdx   = left.size - 1
@@ -643,99 +698,35 @@ object LongestCommonSubsequence:
             else keepGoing = false
             end if
           else
-            if !leftSet.contains(b) && !rightSet.contains(b) then
-              reverseLcs = reverseLcs.addBaseDifference(b)
-              baseIdx -= 1
-            else if !baseSet.contains(l) && !rightSet.contains(l) then
-              reverseLcs = reverseLcs.addLeftDifference(l)
-              leftIdx -= 1
-            else if !baseSet.contains(r) && !leftSet.contains(r) then
-              reverseLcs = reverseLcs.addRightDifference(r)
-              rightIdx -= 1
-            else keepGoing = false
-            end if
+            keepGoing = false
           end if
         else if hasBase && hasLeft then
           val b = base(baseIdx)
           val l = left(leftIdx)
 
-          if equality.eqv(b, l) then
-            if !rightSet.contains(b) then
-              reverseLcs = reverseLcs.addCommonBaseAndLeft(b, l)(sized.sizeOf)
-              baseIdx -= 1
-              leftIdx -= 1
-            else keepGoing = false
-            end if
-          else
-            if !leftSet.contains(b) && !rightSet.contains(b) then
-              reverseLcs = reverseLcs.addBaseDifference(b)
-              baseIdx -= 1
-            else if !baseSet.contains(l) && !rightSet.contains(l) then
-              reverseLcs = reverseLcs.addLeftDifference(l)
-              leftIdx -= 1
-            else keepGoing = false
-            end if
+          if equality.eqv(b, l) && !rightSet.contains(b) then
+            reverseLcs = reverseLcs.addCommonBaseAndLeft(b, l)(sized.sizeOf)
+            baseIdx -= 1
+            leftIdx -= 1
+          else keepGoing = false
           end if
         else if hasBase && hasRight then
           val b = base(baseIdx)
           val r = right(rightIdx)
 
-          if equality.eqv(b, r) then
-            if !leftSet.contains(b) then
-              reverseLcs = reverseLcs.addCommonBaseAndRight(b, r)(sized.sizeOf)
-              baseIdx -= 1
-              rightIdx -= 1
-            else keepGoing = false
-            end if
-          else
-            if !leftSet.contains(b) && !rightSet.contains(b) then
-              reverseLcs = reverseLcs.addBaseDifference(b)
-              baseIdx -= 1
-            else if !baseSet.contains(r) && !leftSet.contains(r) then
-              reverseLcs = reverseLcs.addRightDifference(r)
-              rightIdx -= 1
-            else keepGoing = false
-            end if
+          if equality.eqv(b, r) && !leftSet.contains(b) then
+            reverseLcs = reverseLcs.addCommonBaseAndRight(b, r)(sized.sizeOf)
+            baseIdx -= 1
+            rightIdx -= 1
+          else keepGoing = false
           end if
         else if hasLeft && hasRight then
           val l = left(leftIdx)
           val r = right(rightIdx)
 
-          if equality.eqv(l, r) then
-            if !baseSet.contains(l) then
-              reverseLcs = reverseLcs.addCommonLeftAndRight(l, r)(sized.sizeOf)
-              leftIdx -= 1
-              rightIdx -= 1
-            else keepGoing = false
-            end if
-          else
-            if !baseSet.contains(l) && !rightSet.contains(l) then
-              reverseLcs = reverseLcs.addLeftDifference(l)
-              leftIdx -= 1
-            else if !baseSet.contains(r) && !leftSet.contains(r) then
-              reverseLcs = reverseLcs.addRightDifference(r)
-              rightIdx -= 1
-            else keepGoing = false
-            end if
-          end if
-        else if hasBase then
-          val b = base(baseIdx)
-          if !leftSet.contains(b) && !rightSet.contains(b) then
-            reverseLcs = reverseLcs.addBaseDifference(b)
-            baseIdx -= 1
-          else keepGoing = false
-          end if
-        else if hasLeft then
-          val l = left(leftIdx)
-          if !baseSet.contains(l) && !rightSet.contains(l) then
-            reverseLcs = reverseLcs.addLeftDifference(l)
+          if equality.eqv(l, r) && !baseSet.contains(l) then
+            reverseLcs = reverseLcs.addCommonLeftAndRight(l, r)(sized.sizeOf)
             leftIdx -= 1
-          else keepGoing = false
-          end if
-        else if hasRight then
-          val r = right(rightIdx)
-          if !baseSet.contains(r) && !leftSet.contains(r) then
-            reverseLcs = reverseLcs.addRightDifference(r)
             rightIdx -= 1
           else keepGoing = false
           end if
@@ -754,7 +745,7 @@ object LongestCommonSubsequence:
       )
     end commonSuffixContributions
 
-    val prefixLcs = commonPrefixContributions(base, left, right)
+    val prefixLcs = commonPrefixContributions(base, left, right, baseSet, leftSet, rightSet)
 
     val baseAfterPrefix = base.slice(prefixLcs.base.size, base.size)
     val leftAfterPrefix = left.slice(prefixLcs.left.size, left.size)
@@ -763,7 +754,10 @@ object LongestCommonSubsequence:
     val suffixLcs = commonSuffixContributions(
       baseAfterPrefix,
       leftAfterPrefix,
-      rightAfterPrefix
+      rightAfterPrefix,
+      SetDiagnosingInconsistentOrderImplementation(baseAfterPrefix),
+      SetDiagnosingInconsistentOrderImplementation(leftAfterPrefix),
+      SetDiagnosingInconsistentOrderImplementation(rightAfterPrefix)
     )
 
     val trimmedBase = baseAfterPrefix.slice(
@@ -783,106 +777,15 @@ object LongestCommonSubsequence:
       if trimmedBase.isEmpty && trimmedLeft.isEmpty && trimmedRight.isEmpty then
         emptyLcs[Element]
       else
-        assumingTrimmedInputs(
+        assumingInputsYieldSomeCommonAlignments(
           trimmedBase,
           trimmedLeft,
-          trimmedRight,
-          baseSet,
-          leftSet,
-          rightSet
+          trimmedRight
         )
       end if
 
     prefixLcs.concat(trimmedLcs).concat(suffixLcs)
-  end of
-
-  private def assumingTrimmedInputs[Element: {Order, Sized}](
-      base: IndexedSeq[Element],
-      left: IndexedSeq[Element],
-      right: IndexedSeq[Element],
-      baseSet: SetDiagnosingInconsistentOrderImplementation[Element],
-      leftSet: SetDiagnosingInconsistentOrderImplementation[Element],
-      rightSet: SetDiagnosingInconsistentOrderImplementation[Element]
-  )(using
-      progressRecording: ProgressRecording
-  ): LongestCommonSubsequence[Element] =
-    given Ordering[Element] = summon[Order[Element]].toOrdering
-
-    // PLAN: filter out elements that can't be matched at all with any element
-    // on the other two sides - these will never align to make a common
-    // contribution, so we avoid burdening it with them. Once the filtered LCS
-    // is calculated, merge it with difference contributions from the leftover
-    // rejected elements.
-
-    val matchableBaseIndices = base.zipWithIndex.collect {
-      case (baseElement, index)
-          if leftSet.contains(baseElement) || rightSet.contains(baseElement) =>
-        index
-    }
-    val matchableLeftIndices = left.zipWithIndex.collect {
-      case (leftElement, index)
-          if baseSet.contains(leftElement) || rightSet.contains(leftElement) =>
-        index
-    }
-    val matchableRightIndices = right.zipWithIndex.collect {
-      case (rightElement, index)
-          if baseSet.contains(rightElement) || leftSet.contains(rightElement) =>
-        index
-    }
-
-    if matchableBaseIndices.isEmpty && matchableLeftIndices.isEmpty && matchableRightIndices.isEmpty
-    then
-      LongestCommonSubsequence(
-        base = base.map(Contribution.Difference.apply),
-        left = left.map(Contribution.Difference.apply),
-        right = right.map(Contribution.Difference.apply),
-        commonSubsequenceSize = CommonSubsequenceSize.zero,
-        commonToLeftAndRightOnlySize = CommonSubsequenceSize.zero,
-        commonToBaseAndLeftOnlySize = CommonSubsequenceSize.zero,
-        commonToBaseAndRightOnlySize = CommonSubsequenceSize.zero
-      )
-    else
-      val filteredBase  = matchableBaseIndices.map(base)
-      val filteredLeft  = matchableLeftIndices.map(left)
-      val filteredRight = matchableRightIndices.map(right)
-
-      val filteredLcs =
-        assumingInputsYieldSomeCommonAlignments(
-          filteredBase,
-          filteredLeft,
-          filteredRight
-        )
-
-      def reconstruct(
-          original: IndexedSeq[Element],
-          matchableIndices: IndexedSeq[Int],
-          filteredContributions: IndexedSeq[Contribution[Element]]
-      ): IndexedSeq[Contribution[Element]] =
-        val builder = IndexedSeq.newBuilder[Contribution[Element]]
-        builder.sizeHint(original.size)
-        var filteredIdx  = 0
-        val numMatchable = matchableIndices.size
-        for i <- original.indices do
-          if filteredIdx < numMatchable && matchableIndices(filteredIdx) == i
-          then
-            builder += filteredContributions(filteredIdx)
-            filteredIdx += 1
-          else builder += Contribution.Difference(original(i))
-        end for
-        builder.result()
-      end reconstruct
-
-      LongestCommonSubsequence(
-        base = reconstruct(base, matchableBaseIndices, filteredLcs.base),
-        left = reconstruct(left, matchableLeftIndices, filteredLcs.left),
-        right = reconstruct(right, matchableRightIndices, filteredLcs.right),
-        commonSubsequenceSize = filteredLcs.commonSubsequenceSize,
-        commonToLeftAndRightOnlySize = filteredLcs.commonToLeftAndRightOnlySize,
-        commonToBaseAndLeftOnlySize = filteredLcs.commonToBaseAndLeftOnlySize,
-        commonToBaseAndRightOnlySize = filteredLcs.commonToBaseAndRightOnlySize
-      )
-    end if
-  end assumingTrimmedInputs
+  end ofMatchableInputs
 
   private def assumingInputsYieldSomeCommonAlignments[Element: {Eq, Sized}](
       base: IndexedSeq[Element],
