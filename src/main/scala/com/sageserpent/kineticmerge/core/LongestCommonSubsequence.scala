@@ -144,6 +144,9 @@ case class LongestCommonSubsequence[Element] private (
         this.commonToBaseAndRightOnlySize `plus` that.commonToBaseAndRightOnlySize
     )
 
+  def reverse: LongestCommonSubsequence[Element] =
+    this.copy(base = base.reverse, left = left.reverse, right = right.reverse)
+
   def size: (CommonSubsequenceSize, CommonSubsequenceSize) =
     commonSubsequenceSize -> (commonToLeftAndRightOnlySize `plus` commonToBaseAndLeftOnlySize `plus` commonToBaseAndRightOnlySize)
 
@@ -381,7 +384,8 @@ object LongestCommonSubsequence:
       elements: IndexedSeq[Element]
   ):
     private val equality   = summon[Eq[Element]]
-    private val elementSet = SortedSet.from(elements)(using summon[Order[Element]].toOrdering)
+    private val elementSet =
+      SortedSet.from(elements)(using summon[Order[Element]].toOrdering)
 
     def contains(candidate: Element): Boolean =
       val verdict = elementSet.contains(candidate)
@@ -438,7 +442,7 @@ object LongestCommonSubsequence:
     val leftSet  = SetDiagnosingInconsistentOrderImplementation(left)
     val rightSet = SetDiagnosingInconsistentOrderImplementation(right)
 
-    assumingMatchableInputs(
+    optimisingForUnmatchableElementsFirst(
       base,
       left,
       right,
@@ -448,7 +452,7 @@ object LongestCommonSubsequence:
     )
   end of
 
-  private def assumingMatchableInputs[Element: {Order, Sized}](
+  private def optimisingForUnmatchableElementsFirst[Element: {Order, Sized}](
       base: IndexedSeq[Element],
       left: IndexedSeq[Element],
       right: IndexedSeq[Element],
@@ -499,7 +503,7 @@ object LongestCommonSubsequence:
       val filteredRight = matchableRightIndices.map(right)
 
       val filteredLcs =
-        ofMatchableInputs(
+        optimisingForCommonAfficesFirst(
           filteredBase,
           filteredLeft,
           filteredRight,
@@ -537,9 +541,9 @@ object LongestCommonSubsequence:
         commonToBaseAndRightOnlySize = filteredLcs.commonToBaseAndRightOnlySize
       )
     end if
-  end assumingMatchableInputs
+  end optimisingForUnmatchableElementsFirst
 
-  private def ofMatchableInputs[Element: {Order, Sized}](
+  private def optimisingForCommonAfficesFirst[Element: {Order, Sized}](
       base: IndexedSeq[Element],
       left: IndexedSeq[Element],
       right: IndexedSeq[Element],
@@ -549,26 +553,26 @@ object LongestCommonSubsequence:
   )(using
       progressRecording: ProgressRecording
   ): LongestCommonSubsequence[Element] =
-    val equality = summon[Eq[Element]]
-    val sized    = summon[Sized[Element]]
+    val equality            = summon[Eq[Element]]
+    val sized               = summon[Sized[Element]]
     given Ordering[Element] = summon[Order[Element]].toOrdering
 
     // PLAN: trim off any common prefix and common suffix to avoid burdening the
     // core LCS calculation, taking into account pairwise matches as well as
     // 3-way matches.
 
-    def commonPrefixContributions(
-        base: IndexedSeq[Element],
-        left: IndexedSeq[Element],
-        right: IndexedSeq[Element],
+    def commonAffix(
+        base: IndexedSeqView[Element],
+        left: IndexedSeqView[Element],
+        right: IndexedSeqView[Element],
         baseSet: SetDiagnosingInconsistentOrderImplementation[Element],
         leftSet: SetDiagnosingInconsistentOrderImplementation[Element],
         rightSet: SetDiagnosingInconsistentOrderImplementation[Element]
     ): LongestCommonSubsequence[Element] =
-      var baseIdx  = 0
-      var leftIdx  = 0
-      var rightIdx = 0
-      var result   = emptyLcs[Element]
+      var baseIdx   = 0
+      var leftIdx   = 0
+      var rightIdx  = 0
+      var result    = emptyLcs[Element]
       var keepGoing = true
 
       while keepGoing do
@@ -607,8 +611,7 @@ object LongestCommonSubsequence:
               rightIdx += 1
             else keepGoing = false
             end if
-          else
-            keepGoing = false
+          else keepGoing = false
           end if
         else if hasBase && hasLeft then
           val b = base(baseIdx)
@@ -645,120 +648,29 @@ object LongestCommonSubsequence:
       end while
 
       result
-    end commonPrefixContributions
+    end commonAffix
 
-    def commonSuffixContributions(
-        base: IndexedSeq[Element],
-        left: IndexedSeq[Element],
-        right: IndexedSeq[Element],
-        baseSet: SetDiagnosingInconsistentOrderImplementation[Element],
-        leftSet: SetDiagnosingInconsistentOrderImplementation[Element],
-        rightSet: SetDiagnosingInconsistentOrderImplementation[Element]
-    ): LongestCommonSubsequence[Element] =
-      var baseIdx   = base.size - 1
-      var leftIdx   = left.size - 1
-      var rightIdx  = right.size - 1
-      var reverseLcs = emptyLcs[Element]
-      var keepGoing  = true
+    val prefixLcs = commonAffix(
+      base.view,
+      left.view,
+      right.view,
+      baseSet,
+      leftSet,
+      rightSet
+    )
 
-      while keepGoing do
-        val hasBase  = baseIdx >= 0
-        val hasLeft  = leftIdx >= 0
-        val hasRight = rightIdx >= 0
-
-        if hasBase && hasLeft && hasRight then
-          val b = base(baseIdx)
-          val l = left(leftIdx)
-          val r = right(rightIdx)
-
-          if equality.eqv(b, l) && equality.eqv(b, r) then
-            reverseLcs = reverseLcs.addCommon(b, l, r)(sized.sizeOf)
-            baseIdx -= 1
-            leftIdx -= 1
-            rightIdx -= 1
-          else if equality.eqv(b, l) then
-            if !rightSet.contains(b) then
-              reverseLcs = reverseLcs.addCommonBaseAndLeft(b, l)(sized.sizeOf)
-              baseIdx -= 1
-              leftIdx -= 1
-            else keepGoing = false
-            end if
-          else if equality.eqv(b, r) then
-            if !leftSet.contains(b) then
-              reverseLcs = reverseLcs.addCommonBaseAndRight(b, r)(sized.sizeOf)
-              baseIdx -= 1
-              rightIdx -= 1
-            else keepGoing = false
-            end if
-          else if equality.eqv(l, r) then
-            if !baseSet.contains(l) then
-              reverseLcs = reverseLcs.addCommonLeftAndRight(l, r)(sized.sizeOf)
-              leftIdx -= 1
-              rightIdx -= 1
-            else keepGoing = false
-            end if
-          else
-            keepGoing = false
-          end if
-        else if hasBase && hasLeft then
-          val b = base(baseIdx)
-          val l = left(leftIdx)
-
-          if equality.eqv(b, l) && !rightSet.contains(b) then
-            reverseLcs = reverseLcs.addCommonBaseAndLeft(b, l)(sized.sizeOf)
-            baseIdx -= 1
-            leftIdx -= 1
-          else keepGoing = false
-          end if
-        else if hasBase && hasRight then
-          val b = base(baseIdx)
-          val r = right(rightIdx)
-
-          if equality.eqv(b, r) && !leftSet.contains(b) then
-            reverseLcs = reverseLcs.addCommonBaseAndRight(b, r)(sized.sizeOf)
-            baseIdx -= 1
-            rightIdx -= 1
-          else keepGoing = false
-          end if
-        else if hasLeft && hasRight then
-          val l = left(leftIdx)
-          val r = right(rightIdx)
-
-          if equality.eqv(l, r) && !baseSet.contains(l) then
-            reverseLcs = reverseLcs.addCommonLeftAndRight(l, r)(sized.sizeOf)
-            leftIdx -= 1
-            rightIdx -= 1
-          else keepGoing = false
-          end if
-        else keepGoing = false
-        end if
-      end while
-
-      LongestCommonSubsequence(
-        base = reverseLcs.base.reverse,
-        left = reverseLcs.left.reverse,
-        right = reverseLcs.right.reverse,
-        commonSubsequenceSize = reverseLcs.commonSubsequenceSize,
-        commonToLeftAndRightOnlySize = reverseLcs.commonToLeftAndRightOnlySize,
-        commonToBaseAndLeftOnlySize = reverseLcs.commonToBaseAndLeftOnlySize,
-        commonToBaseAndRightOnlySize = reverseLcs.commonToBaseAndRightOnlySize
-      )
-    end commonSuffixContributions
-
-    val prefixLcs = commonPrefixContributions(base, left, right, baseSet, leftSet, rightSet)
-
-    val baseAfterPrefix = base.slice(prefixLcs.base.size, base.size)
-    val leftAfterPrefix = left.slice(prefixLcs.left.size, left.size)
+    val baseAfterPrefix  = base.slice(prefixLcs.base.size, base.size)
+    val leftAfterPrefix  = left.slice(prefixLcs.left.size, left.size)
     val rightAfterPrefix = right.slice(prefixLcs.right.size, right.size)
 
-    val suffixLcs = commonSuffixContributions(
-      baseAfterPrefix,
-      leftAfterPrefix,
-      rightAfterPrefix,
-      SetDiagnosingInconsistentOrderImplementation(baseAfterPrefix),
-      SetDiagnosingInconsistentOrderImplementation(leftAfterPrefix),
-      SetDiagnosingInconsistentOrderImplementation(rightAfterPrefix)
-    )
+    val suffixLcs = commonAffix(
+      baseAfterPrefix.view.reverse,
+      leftAfterPrefix.view.reverse,
+      rightAfterPrefix.view.reverse,
+      baseSet,
+      leftSet,
+      rightSet
+    ).reverse
 
     val trimmedBase = baseAfterPrefix.slice(
       0,
@@ -777,17 +689,18 @@ object LongestCommonSubsequence:
       if trimmedBase.isEmpty && trimmedLeft.isEmpty && trimmedRight.isEmpty then
         emptyLcs[Element]
       else
-        assumingInputsYieldSomeCommonAlignments(
+        usingCoreDynamicProgrammingAlgorithm(
           trimmedBase,
           trimmedLeft,
           trimmedRight
         )
       end if
+    end trimmedLcs
 
     prefixLcs.concat(trimmedLcs).concat(suffixLcs)
-  end ofMatchableInputs
+  end optimisingForCommonAfficesFirst
 
-  private def assumingInputsYieldSomeCommonAlignments[Element: {Eq, Sized}](
+  private def usingCoreDynamicProgrammingAlgorithm[Element: {Eq, Sized}](
       base: IndexedSeq[Element],
       left: IndexedSeq[Element],
       right: IndexedSeq[Element]
@@ -1584,7 +1497,7 @@ object LongestCommonSubsequence:
           )
         )
     }
-  end assumingInputsYieldSomeCommonAlignments
+  end usingCoreDynamicProgrammingAlgorithm
 
   trait Sized[Element]:
     def sizeOf(element: Element): Int
