@@ -442,7 +442,7 @@ object LongestCommonSubsequence:
     val leftSet  = SetDiagnosingInconsistentOrderImplementation(left)
     val rightSet = SetDiagnosingInconsistentOrderImplementation(right)
 
-    assumingMatchableInputs(
+    optimisingForUnmatchableElementsFirst(
       base,
       left,
       right,
@@ -452,7 +452,7 @@ object LongestCommonSubsequence:
     )
   end of
 
-  private def assumingMatchableInputs[Element: {Order, Sized}](
+  private def optimisingForUnmatchableElementsFirst[Element: {Order, Sized}](
       base: IndexedSeq[Element],
       left: IndexedSeq[Element],
       right: IndexedSeq[Element],
@@ -503,7 +503,7 @@ object LongestCommonSubsequence:
       val filteredRight = matchableRightIndices.map(right)
 
       val filteredLcs =
-        ofMatchableInputs(
+        optimisingForCommonAfficesFirst(
           filteredBase,
           filteredLeft,
           filteredRight,
@@ -541,9 +541,9 @@ object LongestCommonSubsequence:
         commonToBaseAndRightOnlySize = filteredLcs.commonToBaseAndRightOnlySize
       )
     end if
-  end assumingMatchableInputs
+  end optimisingForUnmatchableElementsFirst
 
-  private def ofMatchableInputs[Element: {Order, Sized}](
+  private def optimisingForCommonAfficesFirst[Element: {Order, Sized}](
       base: IndexedSeq[Element],
       left: IndexedSeq[Element],
       right: IndexedSeq[Element],
@@ -689,7 +689,7 @@ object LongestCommonSubsequence:
       if trimmedBase.isEmpty && trimmedLeft.isEmpty && trimmedRight.isEmpty then
         emptyLcs[Element]
       else
-        assumingInputsYieldSomeCommonAlignments(
+        usingCoreDynamicProgrammingAlgorithm(
           trimmedBase,
           trimmedLeft,
           trimmedRight
@@ -698,9 +698,9 @@ object LongestCommonSubsequence:
     end trimmedLcs
 
     prefixLcs.concat(trimmedLcs).concat(suffixLcs)
-  end ofMatchableInputs
+  end optimisingForCommonAfficesFirst
 
-  private def assumingInputsYieldSomeCommonAlignments[Element: {Eq, Sized}](
+  private def usingCoreDynamicProgrammingAlgorithm[Element: {Eq, Sized}](
       base: IndexedSeq[Element],
       left: IndexedSeq[Element],
       right: IndexedSeq[Element]
@@ -1497,7 +1497,7 @@ object LongestCommonSubsequence:
           )
         )
     }
-  end assumingInputsYieldSomeCommonAlignments
+  end usingCoreDynamicProgrammingAlgorithm
 
   trait Sized[Element]:
     def sizeOf(element: Element): Int
