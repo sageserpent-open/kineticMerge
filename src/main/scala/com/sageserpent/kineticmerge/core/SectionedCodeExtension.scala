@@ -287,7 +287,7 @@ object SectionedCodeExtension extends StrictLogging:
           label = "Blocks merged:"
         )
 
-      val rawSectionClumps: Vector[ThreeSidedClump[Section[Element]]] =
+      val sectionClumps: Vector[ThreeSidedClump[Section[Element]]] =
         threeSidedClumps.map { clump =>
           ThreeSidedClump(
             base = clump.base.flatMap(_.sectionsCoveredByGroup).distinct,
@@ -296,8 +296,9 @@ object SectionedCodeExtension extends StrictLogging:
           )
         }
 
-      val sectionClumps: Vector[ThreeSidedClump[Section[Element]]] =
-        val coalescedWithMaxes = rawSectionClumps.foldLeft(
+      val nonOverlappingCoalescedSectionClumps
+          : Vector[ThreeSidedClump[Section[Element]]] =
+        val coalescedWithMaxes = sectionClumps.foldLeft(
           Vector.empty[(ThreeSidedClump[Section[Element]], Int, Int, Int)]
         ) { (coalescedClumps, successor) =>
           def overlaps(clump: ThreeSidedClump[Section[Element]]): Boolean =
@@ -412,7 +413,7 @@ object SectionedCodeExtension extends StrictLogging:
           end if
         }
         coalescedWithMaxes.map(_._1)
-      end sectionClumps
+      end nonOverlappingCoalescedSectionClumps
 
       type MatchSequence[X] = Vector[Match[X]]
 
@@ -526,7 +527,7 @@ object SectionedCodeExtension extends StrictLogging:
           )
         end matchSequenceOf
 
-        sectionClumps.flatMap(matchSequenceOf)
+        nonOverlappingCoalescedSectionClumps.flatMap(matchSequenceOf)
       end matchSequence
 
       // PLAN: put each match into its own disjoint set and use a mapping from
