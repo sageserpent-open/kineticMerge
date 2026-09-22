@@ -9,7 +9,8 @@ ThisBuild / scalaVersion := "3.9.0"
 ThisBuild / javacOptions ++= Seq("-source", javaVersion, "-target", javaVersion)
 
 ThisBuild / scalacOptions ++= List(
-  s"-java-output-version:$javaVersion", "-deprecation"
+  s"-java-output-version:$javaVersion",
+  "-deprecation"
 )
 
 lazy val packageExecutable =
@@ -99,7 +100,7 @@ lazy val root = (project in file("."))
     libraryDependencies += "com.lihaoyi"             %% "pprint"  % "0.9.6",
     libraryDependencies += "com.softwaremill.common" %% "tagging" % "2.3.5",
     libraryDependencies += "com.google.guava" % "guava" % "33.7.1-jre",
-    libraryDependencies += "com.github.ben-manes.caffeine" % "caffeine" % "3.2.4",
+    libraryDependencies += "com.github.ben-manes.caffeine" % "caffeine" % "3.3.0",
     libraryDependencies += "me.tongfei"         % "progressbar"   % "0.10.2",
     libraryDependencies += "org.apache.commons" % "commons-lang3" % "3.20.0",
     libraryDependencies +=
@@ -113,8 +114,8 @@ lazy val root = (project in file("."))
     libraryDependencies += "com.eed3si9n.expecty" %% "expecty" % "0.17.1" % Test,
     libraryDependencies += "org.apache.commons" % "commons-text" % "1.15.0" % Test,
     libraryDependencies += "com.github.sbt.junit" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
-      Test / test / logLevel                 := Level.Error,
-    Test / fork                            := true,
-    Test / testForkedParallel              := true,
+    Test / test / logLevel    := Level.Error,
+    Test / fork               := true,
+    Test / testForkedParallel := true,
     Test / javaOptions ++= Seq("-Xmx8G")
   )
