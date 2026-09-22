@@ -179,9 +179,6 @@ object LongestCommonSubsequence:
       left: IndexedSeq[Contribution[Element]],
       right: IndexedSeq[Contribution[Element]]
   ): LongestCommonSubsequence[Element] =
-    // TODO: add contract checking - we expect the subsequences of fully or
-    // partially common contributions to align on each pair of sides.
-
     // PLAN: go through the three sequences, looking for a side or sides that
     // have either a partially or fully common contribution (if more than one,
     // they should agree on the contribution kind and elements). Advance through
@@ -378,7 +375,13 @@ object LongestCommonSubsequence:
 
   def defaultElementSize[Element](irrelevant: Element): Int = 1
 
-  class SetDiagnosingInconsistentOrderImplementation[
+  // NOTE: the plan *was* to remove this diagnostic utility once the dust had
+  // settled on the ordering for `Block` used by `SectionedCodeExtension`, but
+  // this has proven to be invaluable for teasing out bugs. It also adds hardly
+  // any performance overhead in the tests or the manual benchmark, so this
+  // comment serves as a gentle reminder not to be too hasty in removing this
+  // class.
+  private class SetDiagnosingInconsistentOrderImplementation[
       Element: {Eq, Order}
   ](
       elements: IndexedSeq[Element]
@@ -390,10 +393,23 @@ object LongestCommonSubsequence:
     def contains(candidate: Element): Boolean =
       val verdict = elementSet.contains(candidate)
 
-      // TODO: this begs the question - if it hardly adds any overhead to do a
+      // NOTE: this begs the question - if it hardly adds any overhead to do a
       // linear search through `elements`, then what is the point of using
       // `SortedSet` and `Order`? Switching back to `Eq` would allow much more
-      // lenient equality between `Block` instances....
+      // lenient equality between `Block` instances.
+
+      // The decision to use `Order` rather than `Eq` was motivated by being
+      // unable to use hash set implementations or Bloom filters when `Element`
+      // is substituted by `Block[X]` - there is a fast-path for equality for
+      // `Block[X]` that isn't correctly captured by a hash function, because it
+      // relies on knowledge of *both* blocks being compared. Using `Order`
+      // allowed an efficient sorted set implementation as a replacement for an
+      // efficient hash set or Bloom filter. Nevertheless, the
+      // implementation of `Order[Block[X]]` is so tricky (because the
+      // aforementioned fast-path equality comparisons have to be consistent
+      // with the total ordering), we've ended up with this internal self-check
+      // that takes linear time. So should we just accept this state of affairs
+      // and use `Eq`?
       val referenceVerdict = elements.exists(
         equality.eqv(_, candidate)
       )
