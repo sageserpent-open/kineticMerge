@@ -1716,7 +1716,7 @@ object MatchAnalysis extends StrictLogging:
               x: GenericMatch[Element],
               y: GenericMatch[Element]
           ): Int =
-            (startOffsetOnLeft(x), startOffsetOnLeft(y)) match
+            val primary = (startOffsetOnLeft(x), startOffsetOnLeft(y)) match
               case (Some(xLeftStartOffset), Some(yLeftStartOffset)) =>
                 Ordering[Int].compare(xLeftStartOffset, yLeftStartOffset)
               case _ =>
@@ -1736,6 +1736,15 @@ object MatchAnalysis extends StrictLogging:
                           xBaseStartOffset,
                           yBaseStartOffset
                         )
+            if primary != 0 then primary
+            else
+              Ordering[
+                (
+                    Option[(Int, Int)],
+                    Option[(Int, Int)],
+                    Option[(Int, Int)]
+                )
+              ].compare(x.stableOrderingKey, y.stableOrderingKey)
         end unsafeOrderingValidOnlyForParallelMatches
 
         SortedMap.from(parallelMatchesGroupIdsByMatch.groupBy(_._2).map {
@@ -2359,8 +2368,7 @@ object MatchAnalysis extends StrictLogging:
           def step(section: Section[Element]): State =
             val relevantMatchesByAffiliatedGroupId = sectionsAndTheirMatches
               .get(section)
-              .map(aMatch => parallelMatchesGroupIdsByMatch(aMatch) -> aMatch)
-              .toMap
+              .groupBy(parallelMatchesGroupIdsByMatch)
 
             val affiliatedGroupIds = relevantMatchesByAffiliatedGroupId.keySet
 
@@ -2378,9 +2386,9 @@ object MatchAnalysis extends StrictLogging:
               exitedGroupIds -- straddlingGroupIds ++ freshExitedGroupIds
 
             val updatedGroupIdSplits =
-              groupIdSplits ++ straddlingGroupIds.map(straddlingGroupId =>
-                straddlingGroupId -> relevantMatchesByAffiliatedGroupId(
-                  straddlingGroupId
+              groupIdSplits ++ straddlingGroupIds.flatMap(straddlingGroupId =>
+                relevantMatchesByAffiliatedGroupId(straddlingGroupId).map(
+                  aMatch => straddlingGroupId -> aMatch
                 )
               )
 
