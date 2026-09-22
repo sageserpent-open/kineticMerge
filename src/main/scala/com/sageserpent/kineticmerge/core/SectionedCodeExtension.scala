@@ -704,17 +704,17 @@ object SectionedCodeExtension extends StrictLogging:
         )
 
         val baseMatches = canonicallyOrderedMatches
-          .flatMap(m => m.baseContribution.map(_ => m))
+          .filter(_.baseContribution.isDefined)
           .sortBy(_.baseContribution.get.startOffset)
           .toVector
 
         val leftMatches = canonicallyOrderedMatches
-          .flatMap(m => m.leftContribution.map(_ => m))
+          .filter(_.leftContribution.isDefined)
           .sortBy(_.leftContribution.get.startOffset)
           .toVector
 
         val rightMatches = canonicallyOrderedMatches
-          .flatMap(m => m.rightContribution.map(_ => m))
+          .filter(_.rightContribution.isDefined)
           .sortBy(_.rightContribution.get.startOffset)
           .toVector
 
@@ -735,7 +735,7 @@ object SectionedCodeExtension extends StrictLogging:
         )
 
         val rawMatchesFromBase = lcs.base.collect {
-          case Contribution.Common(aMatch) => aMatch
+          case Contribution.Common(aMatch)                  => aMatch
           case Contribution.CommonToBaseAndLeftOnly(aMatch) =>
             Match.BaseAndLeft(
               aMatch.baseContribution.get,
