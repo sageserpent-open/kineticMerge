@@ -1738,9 +1738,35 @@ object MatchAnalysis extends StrictLogging:
                         )
         end unsafeOrderingValidOnlyForParallelMatches
 
-        SortedMap.from(parallelMatchesGroupIdsByMatch.groupBy(_._2).map {
-          (groupId, group) => groupId -> SortedSet.from(group.keys)
-        })
+        val result =
+          SortedMap.from(parallelMatchesGroupIdsByMatch.groupBy(_._2).map {
+            (groupId, group) => groupId -> SortedSet.from(group.keys)
+          })
+
+        {
+          // Check that the groups are consistent with
+          // `parallelMatchesGroupIdsByMatch` - this is really a self-check of
+          // the ordering.
+          val underlyingMatches = parallelMatchesGroupIdsByMatch.keySet
+          val flattenedGroups   = result.values
+            .map(_.toSeq)
+            .reduceOption(_ ++ _)
+            .fold(ifEmpty = Set.empty)(_.toSet)
+
+          assume(
+            underlyingMatches == flattenedGroups,
+            s"""Mismatch between `groupsOfParallelMatches` and the underlying `parallelMatchesGroupIdsByMatch`.
+               |Flattened groups minus underlying matches: ${pprintCustomised(
+                flattenedGroups diff underlyingMatches
+              )}.
+               |Underlying matches minus flattened groups: ${pprintCustomised(
+                underlyingMatches diff flattenedGroups
+              )}.
+               |""".stripMargin
+          )
+        }
+
+        result
       end groupsOfParallelMatches
 
       def parallelMatchesOnly: MatchesAndTheirSections =
@@ -2576,7 +2602,14 @@ object MatchAnalysis extends StrictLogging:
           // and vice versa...
           assert(
             parallelMatchesGroupIdsByMatch.keySet == matches,
-            s"If groups of parallel matches have been discovered, they should cover the overall population of matches exactly."
+            s"""
+               |If groups of parallel matches have been discovered, they should cover the overall population of matches exactly.
+               |Parallel matches group keys minus those from the match set: ${pprintCustomised(
+                parallelMatchesGroupIdsByMatch.keySet diff matches
+              )}.
+               |Match set minus those from parallel matches group keys: ${pprintCustomised(
+                matches diff parallelMatchesGroupIdsByMatch.keySet
+              )}.""".stripMargin
           )
 
           // Each group's matched sections on each side should lie on the same
