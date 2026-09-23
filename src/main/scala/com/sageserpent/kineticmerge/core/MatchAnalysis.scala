@@ -2530,8 +2530,7 @@ object MatchAnalysis extends StrictLogging:
           // from one side to another.
           parallelMatchesGroupIdsByMatch.toSeq
             .groupBy(_._2)
-            .values
-            .foreach { group =>
+            .foreach { case (groupId, group) =>
               val matchesInGroup = group.map(_._1)
 
               assert(matchesInGroup.nonEmpty)
@@ -2559,7 +2558,7 @@ object MatchAnalysis extends StrictLogging:
               val basePaths = matchesInGroup.flatMap(pathOnBase).toSet
               assert(
                 basePaths.size <= 1,
-                s"""Base paths for a group of parallel matches should be the same,
+                s"""Base paths for group $groupId of parallel matches should be the same,
                    |but vary: $basePaths.
                    |Matches are: ${pprintCustomised(
                     matchesInGroup.map(MatchSynopsis.apply)
@@ -2569,7 +2568,7 @@ object MatchAnalysis extends StrictLogging:
               val leftPaths = matchesInGroup.flatMap(pathOnLeft).toSet
               assert(
                 leftPaths.size <= 1,
-                s"""Left paths for a group of parallel matches should be the same,
+                s"""Left paths for group $groupId of parallel matches should be the same,
                    |but vary: $leftPaths.
                    |Matches are: ${pprintCustomised(
                     matchesInGroup.map(MatchSynopsis.apply)
@@ -2579,7 +2578,7 @@ object MatchAnalysis extends StrictLogging:
               val rightPaths = matchesInGroup.flatMap(pathOnRight).toSet
               assert(
                 rightPaths.size <= 1,
-                s"""Right paths for a group of parallel matches should be the same,
+                s"""Right paths for group $groupId of parallel matches should be the same,
                    |but vary: $rightPaths.
                    |Matches are: ${pprintCustomised(
                     matchesInGroup.map(MatchSynopsis.apply)
@@ -2619,7 +2618,7 @@ object MatchAnalysis extends StrictLogging:
                             ) =>
                               assert(
                                 predecessorStartOffset < successorStartOffset,
-                                s"Found matches ${pprintCustomised(predecessor -> successor)} in the same group whose start offsets collide."
+                                s"Found matches ${pprintCustomised(predecessor -> successor)} in group $groupId whose start offsets collide."
                               )
                             case _ =>
                       }
@@ -2663,7 +2662,7 @@ object MatchAnalysis extends StrictLogging:
                 assert(
                   commonMatchesOrderedFromFirstSidePerspective == commonMatchesOrderedFromSecondSidePerspective,
                   s"""
-                     |Expected a consistent ordering of matches relevant to the sides $firstSide and $secondSide,
+                     |In group $groupId, expected a consistent ordering of matches relevant to the sides $firstSide and $secondSide,
                      |on the $firstSide they are:
                      |${pprintCustomised(
                       commonMatchesOrderedFromFirstSidePerspective.map(
