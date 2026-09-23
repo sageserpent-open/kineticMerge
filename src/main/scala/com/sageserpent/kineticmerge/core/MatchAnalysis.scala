@@ -1928,17 +1928,6 @@ object MatchAnalysis extends StrictLogging:
                   leftMetaSection,
                   rightMetaSection
                 ) =>
-              // NOTE: an all-sides meta-match implies a group of all-sides
-              // matches. Contrast this to a pairwise meta-match, which is
-              // exploded into singleton groups of pairwise matches. This is
-              // done because the pairwise matches can land on either side of an
-              // intervening all-sides group; we don't want to have group ids
-              // that are shared across such split groups.
-              // TODO: finesse this so that an attempt is made at grouping
-              // pairwise matches together if possible without violating the
-              // unique group id constraint, or at least do something about the
-              // nasty wrapping in `Seq` and then flat-mapping.
-
               (baseMetaSection.content lazyZip leftMetaSection.content lazyZip rightMetaSection.content)
                 .collect {
                   case (baseSection, leftSection, rightSection)
