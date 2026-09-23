@@ -2520,7 +2520,14 @@ object MatchAnalysis extends StrictLogging:
           // and vice versa...
           assert(
             parallelMatchesGroupIdsByMatch.keySet == matches,
-            s"If groups of parallel matches have been discovered, they should cover the overall population of matches exactly."
+            s"""
+               |If groups of parallel matches have been discovered, they should cover the overall population of matches exactly.
+               |Parallel matches group keys minus those from the match set: ${pprintCustomised(
+                parallelMatchesGroupIdsByMatch.keySet diff matches
+              )}.
+               |Match set minus those from parallel matches group keys: ${pprintCustomised(
+                matches diff parallelMatchesGroupIdsByMatch.keySet
+              )}.""".stripMargin
           )
 
           // Each group's matched sections on each side should lie on the same
