@@ -2064,7 +2064,16 @@ object MatchAnalysis extends StrictLogging:
             includeTrivialSubsumption = false
           )
 
-        (subsumingOnBase intersect subsumingOnLeft intersect subsumingOnRight).nonEmpty
+        val allSidesSubsumingOnBase =
+          subsumingOnBase.filter(_.isAnAllSidesMatch)
+        val allSidesSubsumingOnLeft =
+          subsumingOnLeft.filter(_.isAnAllSidesMatch)
+        val allSidesSubsumingOnRight =
+          subsumingOnRight.filter(_.isAnAllSidesMatch)
+
+        (allSidesSubsumingOnLeft intersect allSidesSubsumingOnRight).nonEmpty
+          || (allSidesSubsumingOnBase intersect allSidesSubsumingOnLeft).nonEmpty
+          || (allSidesSubsumingOnBase intersect allSidesSubsumingOnRight).nonEmpty
       end isSubsumedNonTriviallyByAnAllSidesMatch
 
       private def isSubsumedNonTriviallyByAMatchOnTheLeftAndRight(
