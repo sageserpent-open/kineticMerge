@@ -2594,15 +2594,38 @@ object MatchAnalysis extends StrictLogging:
               ): Unit =
                 extension (matches: Seq[GenericMatch[Element]])
                   private def sortWhereRelevantBy(
-                      startOffsetOf: GenericMatch[Element] => Option[Int]
-                  ): Seq[GenericMatch[Element]] =
-                    matches
+                                                   startOffsetOf: GenericMatch[Element] => Option[Int]
+                                                 ): Seq[GenericMatch[Element]] =
+                    val result = matches
                       .flatMap(aMatch =>
                         startOffsetOf(aMatch)
                           .map(offset => aMatch -> offset)
                       )
                       .sortBy(_._2)
                       .map(_._1)
+
+                    // While we're here, let's confirm that the offsets actually
+                    // *increase* within the group.
+                    if result.nonEmpty then
+                      result.zip(result.tail).foreach {
+                        case (predecessor, successor) =>
+                          (
+                            startOffsetOf(predecessor),
+                            startOffsetOf(successor)
+                          ) match
+                            case (
+                              Some(predecessorStartOffset),
+                              Some(successorStartOffset)
+                            ) =>
+                              assert(
+                                predecessorStartOffset < successorStartOffset,
+                                s"Found matches ${pprintCustomised(predecessor -> successor)} in the same group whose start offsets collide."
+                              )
+                            case _ =>
+                      }
+                    end if
+
+                    result
 
                 end extension
 
