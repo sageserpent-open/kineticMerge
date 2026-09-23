@@ -960,9 +960,6 @@ object MatchAnalysis extends StrictLogging:
                 )
 
           case class RecursionState(
-              deferredMatchesFromPrecedingBite: collection.Set[GenericMatch[
-                Element
-              ]],
               mealStartOffsetRelativeToMeal: Int,
               biteDepth: Int,
               remainingBiteEdges: Seq[BiteEdge],
@@ -984,13 +981,8 @@ object MatchAnalysis extends StrictLogging:
                     for
                       parallelMatchesGroupIdsByMatch <- State
                         .get[ParallelMatchesGroupIdsByMatch[Element]]
-                      deferredGroupIdsFromPrecedingBite =
-                        deferredMatchesFromPrecedingBite.map(
-                          parallelMatchesGroupIdsByMatch
-                        )
                       result <- assignUniqueGroupId(
-                        fragment,
-                        deferredGroupIdsFromPrecedingBite
+                        fragment
                       ) as Right(fragments.appended(fragment))
                     yield result
                     end for
@@ -1018,41 +1010,15 @@ object MatchAnalysis extends StrictLogging:
                         val size =
                           startOffsetRelativeToMeal - mealStartOffsetRelativeToMeal
 
-                        val groupIdsFromSucceedingBite =
-                          matchesFromSucceedingBite.map(
-                            parallelMatchesGroupIdsByMatch
-                          )
-
-                        val deferredGroupIdsFromPrecedingBite =
-                          deferredMatchesFromPrecedingBite.map(
-                            parallelMatchesGroupIdsByMatch
-                          )
-
-                        val groupIds =
-                          if deferredGroupIdsFromPrecedingBite.isEmpty then
-                            groupIdsFromSucceedingBite
-                          else
-                            // Enforce consistency between the group ids
-                            // supplied by both bites. This allows some margin
-                            // for thinning out multiple group ids from one bite
-                            // if the bite on the other side has just one group
-                            // id, i.e. when one bite comes from an ambiguous
-                            // move and the other from a plain move in parallel
-                            // to one of the ambiguous ones.
-                            deferredGroupIdsFromPrecedingBite.intersect(
-                              groupIdsFromSucceedingBite
-                            )
-
                         val fragment =
                           fragmentFactory(mealStartOffsetRelativeToMeal, size)
 
-                        assignUniqueGroupId(fragment, groupIds) as
+                        assignUniqueGroupId(fragment) as
                           fragments.appended(fragment)
                       else State.pure(fragments)
                   yield Left(
                     this
                       .copy(
-                        deferredMatchesFromPrecedingBite = Set.empty,
                         mealStartOffsetRelativeToMeal =
                           startOffsetRelativeToMeal,
                         biteDepth =
@@ -1084,10 +1050,6 @@ object MatchAnalysis extends StrictLogging:
                     Left(
                       this
                         .copy(
-                          // NOTE: nested or overlapping bites to the right
-                          // overwrite any prior contribution of a group id to
-                          // the *succeeding* context.
-                          deferredMatchesFromPrecedingBite = matchesFromBite,
                           mealStartOffsetRelativeToMeal =
                             onePastEndOffsetRelativeToMeal,
                           biteDepth =
@@ -1107,7 +1069,6 @@ object MatchAnalysis extends StrictLogging:
 
           FlatMap[ParallelMatchesGroupIdTracking].tailRecM(
             RecursionState(
-              deferredMatchesFromPrecedingBite = Set.empty,
               mealStartOffsetRelativeToMeal = 0,
               biteDepth = 0,
               remainingBiteEdges = biteEdges.toSeq,
@@ -1119,13 +1080,11 @@ object MatchAnalysis extends StrictLogging:
       end extension
 
       private def assignUniqueGroupId[MatchType <: GenericMatch[Element]](
-          fragment: MatchType,
-          groupIds: collection.Set[ParallelMatchesGroupId]
+          fragment: MatchType
       ): ParallelMatchesGroupIdTracking[Unit] =
         State.modify[ParallelMatchesGroupIdsByMatch[Element]] {
           groupIdsByMatch =>
-            val assignedGroupId = if 1 == groupIds.size then groupIds.head
-            else
+            val assignedGroupId =
               // TODO: trawling linearly through the group ids to find the
               // maximum isn't a great idea. Perhaps there should be a maximum
               // group id too?
@@ -1738,9 +1697,35 @@ object MatchAnalysis extends StrictLogging:
                         )
         end unsafeOrderingValidOnlyForParallelMatches
 
-        SortedMap.from(parallelMatchesGroupIdsByMatch.groupBy(_._2).map {
-          (groupId, group) => groupId -> SortedSet.from(group.keys)
-        })
+        val result =
+          SortedMap.from(parallelMatchesGroupIdsByMatch.groupBy(_._2).map {
+            (groupId, group) => groupId -> SortedSet.from(group.keys)
+          })
+
+        {
+          // Check that the groups are consistent with
+          // `parallelMatchesGroupIdsByMatch` - this is really a self-check of
+          // the ordering.
+          val underlyingMatches = parallelMatchesGroupIdsByMatch.keySet
+          val flattenedGroups   = result.values
+            .map(_.toSeq)
+            .reduceOption(_ ++ _)
+            .fold(ifEmpty = Set.empty)(_.toSet)
+
+          assume(
+            underlyingMatches == flattenedGroups,
+            s"""Mismatch between `groupsOfParallelMatches` and the underlying `parallelMatchesGroupIdsByMatch`.
+               |Flattened groups minus underlying matches: ${pprintCustomised(
+                flattenedGroups diff underlyingMatches
+              )}.
+               |Underlying matches minus flattened groups: ${pprintCustomised(
+                underlyingMatches diff flattenedGroups
+              )}.
+               |""".stripMargin
+          )
+        }
+
+        result
       end groupsOfParallelMatches
 
       def parallelMatchesOnly: MatchesAndTheirSections =
@@ -1893,17 +1878,6 @@ object MatchAnalysis extends StrictLogging:
                   leftMetaSection,
                   rightMetaSection
                 ) =>
-              // NOTE: an all-sides meta-match implies a group of all-sides
-              // matches. Contrast this to a pairwise meta-match, which is
-              // exploded into singleton groups of pairwise matches. This is
-              // done because the pairwise matches can land on either side of an
-              // intervening all-sides group; we don't want to have group ids
-              // that are shared across such split groups.
-              // TODO: finesse this so that an attempt is made at grouping
-              // pairwise matches together if possible without violating the
-              // unique group id constraint, or at least do something about the
-              // nasty wrapping in `Seq` and then flat-mapping.
-
               (baseMetaSection.content lazyZip leftMetaSection.content lazyZip rightMetaSection.content)
                 .collect {
                   case (baseSection, leftSection, rightSection)
