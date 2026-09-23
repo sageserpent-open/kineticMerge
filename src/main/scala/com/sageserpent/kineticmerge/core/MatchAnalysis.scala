@@ -30,7 +30,7 @@ import scala.collection.immutable.{
 }
 import scala.collection.parallel.CollectionConverters.*
 import scala.collection.{immutable, mutable}
-import scala.util.{Success, Using}
+import scala.util.Using
 
 trait MatchAnalysis[Path, Element]:
   def withAllSmallFryMatches(): MatchAnalysis[Path, Element]
@@ -1583,7 +1583,7 @@ object MatchAnalysis extends StrictLogging:
             s"${configuration.label} - number of matches to reconcile:"
           else "Number of matches to reconcile:"
 
-        val Success(reconciled) =
+        val outcome =
           Using(
             progressRecording.newSession(
               label = sessionLabel,
@@ -1671,17 +1671,22 @@ object MatchAnalysis extends StrictLogging:
                       _          = progressRecordingSession.upTo(amount = 0)
                       updatedParallelMatchesGroupIdsByMatch <- State.get
                     yield
-                      val fullyReconciledMatches = reconciled.matches
+                      val fullyReconciledMatches           = reconciled.matches
+                      val withUpdatedParallelMatchesGroups = reconciled
+                        .copy(parallelMatchesGroupIdsByMatch =
+                          updatedParallelMatchesGroupIdsByMatch
+                            .filter((key, _) =>
+                              fullyReconciledMatches.contains(key)
+                            )
+                        )
+
+                      withUpdatedParallelMatchesGroups
+                        .checkParallelMatchesGroups(checksForSplitGroupsToo =
+                          false
+                        )
+
                       Right(
-                        reconciled
-                          .copy(parallelMatchesGroupIdsByMatch =
-                            updatedParallelMatchesGroupIdsByMatch
-                              .filter((key, _) =>
-                                fullyReconciledMatches.contains(key)
-                              )
-                          )
-                          .splitStraddlingParallelMatchesGroups
-                          .reorganiseParallelMatchesGroupIds
+                        withUpdatedParallelMatchesGroups.splitStraddlingParallelMatchesGroups.reorganiseParallelMatchesGroupIds
                       )
                   else
                     progressRecordingSession.upTo(paredDownMatches.size)
@@ -1697,6 +1702,10 @@ object MatchAnalysis extends StrictLogging:
               .runA(Map.empty)
               .value
           }: @unchecked
+
+        // NOTE: do this and not a refutable pattern match so that any assertion
+        // failures propagate out cleanly - it makes debugging a lot easier.
+        val reconciled = outcome.get
 
         reconciled.reconciliationPostcondition()
 
@@ -2008,9 +2017,13 @@ object MatchAnalysis extends StrictLogging:
           )
         end parallelMatchesGroupIdsByMatch
 
-        backTranslatedMatchesAndTheirSections
+        val result = backTranslatedMatchesAndTheirSections
           .copy(parallelMatchesGroupIdsByMatch = parallelMatchesGroupIdsByMatch)
           .withoutRedundantPairwiseMatches
+
+        result.checkParallelMatchesGroups(checksForSplitGroupsToo = false)
+
+        result
       end parallelMatchesOnly
 
       private def isSubsumedNonTriviallyByAnAllSidesMatch(
@@ -2528,75 +2541,9 @@ object MatchAnalysis extends StrictLogging:
         )
       end reorganiseParallelMatchesGroupIds
 
-      private def reconciliationPostcondition(): Unit =
-        baseSectionsByPath.values.flatMap(_.iterator).foreach { baseSection =>
-          assert(!baseSubsumes(baseSection))
-        }
-        leftSectionsByPath.values.flatMap(_.iterator).foreach { leftSection =>
-          assert(!leftSubsumes(leftSection))
-        }
-        rightSectionsByPath.values.flatMap(_.iterator).foreach { rightSection =>
-          assert(!rightSubsumes(rightSection))
-        }
-
-        // No match should be redundant - i.e. no match should involve sections
-        // that all belong to another match. This goes without saying for
-        // all-sides matches, as any redundancy would imply equivalent
-        // all-sides matches being associated with the same sections - this
-        // isn't allowed by a `MultiDict` instance. The same applies for
-        // pairwise matches of the same kind; pairwise matches of different
-        // kinds can't make each other redundant.
-        // What we have to watch out for are pairwise matches having *both*
-        // sections also belonging to an all-sides match. Note that it *is*
-        // legitimate to have a pairwise match sharing just one section with an
-        // all-sides match; they are just ambiguous matches.
-
-        val matchesBySectionPairs =
-          sectionsAndTheirMatches.values.toSet.foldLeft(
-            MultiDict.empty[(Section[Element], Section[Element]), Match[
-              Section[Element]
-            ]]
-          )((matchesBySectionPairs, aMatch) =>
-            aMatch match
-              case Match.AllSides(baseSection, leftSection, rightSection) =>
-                matchesBySectionPairs + ((
-                  baseSection,
-                  leftSection
-                ) -> aMatch) + ((baseSection, rightSection) -> aMatch) + ((
-                  leftSection,
-                  rightSection
-                ) -> aMatch)
-              case Match.BaseAndLeft(baseSection, leftSection) =>
-                matchesBySectionPairs + ((
-                  baseSection,
-                  leftSection
-                ) -> aMatch)
-              case Match.BaseAndRight(baseSection, rightSection) =>
-                matchesBySectionPairs + ((
-                  baseSection,
-                  rightSection
-                ) -> aMatch)
-              case Match.LeftAndRight(leftSection, rightSection) =>
-                matchesBySectionPairs + ((
-                  leftSection,
-                  rightSection
-                ) -> aMatch)
-          )
-
-        matchesBySectionPairs.keySet.foreach { sectionPair =>
-          val matches = matchesBySectionPairs.get(sectionPair)
-
-          val (allSides, pairwiseMatches) =
-            matches.partition(_.isAnAllSidesMatch)
-
-          if allSides.nonEmpty then
-            assert(
-              pairwiseMatches.isEmpty,
-              s"Found redundancy between pairwise matches: ${pprintCustomised(pairwiseMatches)} and an all-sides match in: ${pprintCustomised(allSides)}."
-            )
-          end if
-        }
-
+      private def checkParallelMatchesGroups(
+          checksForSplitGroupsToo: Boolean
+      ): Unit =
         if parallelMatchesGroupIdsByMatch.nonEmpty then
           // The parallel matches groups should correspond to all the matches
           // and vice versa...
@@ -2685,13 +2632,36 @@ object MatchAnalysis extends StrictLogging:
                   private def sortWhereRelevantBy(
                       startOffsetOf: GenericMatch[Element] => Option[Int]
                   ): Seq[GenericMatch[Element]] =
-                    matches
+                    val result = matches
                       .flatMap(aMatch =>
                         startOffsetOf(aMatch)
                           .map(offset => aMatch -> offset)
                       )
                       .sortBy(_._2)
                       .map(_._1)
+
+                    // While we're here, let's confirm that the offsets actually
+                    // *increase* within the group.
+                    if result.nonEmpty then
+                      result.zip(result.tail).foreach {
+                        case (predecessor, successor) =>
+                          (
+                            startOffsetOf(predecessor),
+                            startOffsetOf(successor)
+                          ) match
+                            case (
+                                  Some(predecessorStartOffset),
+                                  Some(successorStartOffset)
+                                ) =>
+                              assert(
+                                predecessorStartOffset < successorStartOffset,
+                                s"Found matches ${pprintCustomised(predecessor -> successor)} in the same group whose start offsets collide."
+                              )
+                            case _ =>
+                      }
+                    end if
+
+                    result
 
                 end extension
 
@@ -2766,132 +2736,206 @@ object MatchAnalysis extends StrictLogging:
               )
             }
 
-          // Finally, looking through the paths on each side, the matched
-          // sections should be associated with parallel matches group ids so
-          // that following matched sections don't exhibit gaps in the
-          // associated group ids - in other words, groups may overlap or nest
-          // each other on a given side, but they can't have 'alien' matches
-          // split them up into separate pieces.
+          if checksForSplitGroupsToo then
+            // Finally, looking through the paths on each side, the matched
+            // sections should be associated with parallel matches group ids so
+            // that following matched sections don't exhibit gaps in the
+            // associated group ids - in other words, groups may overlap or nest
+            // each other on a given side, but they can't have 'alien' matches
+            // split them up into separate pieces.
 
-          def checkGroupsAreNotSplitByAlienMatches(
-              sectionsByPath: Map[Path, SectionsSeen]
-          ): Unit =
-            sectionsByPath.foreach { case (path, sectionsSeen) =>
-              val affiliatedGroupIds = mutable.Set.empty[ParallelMatchesGroupId]
-              val affiliatedSectionsByGroupId =
-                mutable.Map.empty[ParallelMatchesGroupId, mutable.ListBuffer[
-                  Section[Element]
-                ]]
-              val followingSectionsByDisappearedGroupId =
-                mutable.Map.empty[ParallelMatchesGroupId, mutable.ListBuffer[
-                  Section[Element]
-                ]]
-              val alienGroupSectionsBySplitGroupId =
-                mutable.Map.empty[ParallelMatchesGroupId, mutable.ListBuffer[
-                  Section[Element]
-                ]]
+            def checkGroupsAreNotSplitByAlienMatches(
+                sectionsByPath: Map[Path, SectionsSeen]
+            ): Unit =
+              sectionsByPath.foreach { case (path, sectionsSeen) =>
+                val affiliatedGroupIds =
+                  mutable.Set.empty[ParallelMatchesGroupId]
+                val affiliatedSectionsByGroupId =
+                  mutable.Map.empty[ParallelMatchesGroupId, mutable.ListBuffer[
+                    Section[Element]
+                  ]]
+                val followingSectionsByDisappearedGroupId =
+                  mutable.Map.empty[ParallelMatchesGroupId, mutable.ListBuffer[
+                    Section[Element]
+                  ]]
+                val alienGroupSectionsBySplitGroupId =
+                  mutable.Map.empty[ParallelMatchesGroupId, mutable.ListBuffer[
+                    Section[Element]
+                  ]]
 
-              def groupIdsFor(
-                  section: Section[Element]
-              ): collection.Set[ParallelMatchesGroupId] =
-                sectionsAndTheirMatches
-                  .get(section)
-                  .map(parallelMatchesGroupIdsByMatch)
+                def groupIdsFor(
+                    section: Section[Element]
+                ): collection.Set[ParallelMatchesGroupId] =
+                  sectionsAndTheirMatches
+                    .get(section)
+                    .map(parallelMatchesGroupIdsByMatch)
 
-              def groupIdAndMatchPairsFor(
-                  section: Section[Element]
-              ): collection.Set[
-                (ParallelMatchesGroupId, GenericMatch[Element])
-              ] =
-                sectionsAndTheirMatches
-                  .get(section)
-                  .map(aMatch =>
-                    parallelMatchesGroupIdsByMatch(aMatch) -> aMatch
+                def groupIdAndMatchPairsFor(
+                    section: Section[Element]
+                ): collection.Set[
+                  (ParallelMatchesGroupId, GenericMatch[Element])
+                ] =
+                  sectionsAndTheirMatches
+                    .get(section)
+                    .map(aMatch =>
+                      parallelMatchesGroupIdsByMatch(aMatch) -> aMatch
+                    )
+
+                sectionsSeen.iterator.distinct.foreach { section =>
+                  val groupIds = groupIdsFor(section)
+
+                  val reappearingGroupIds = groupIds.intersect(
+                    followingSectionsByDisappearedGroupId.keySet
                   )
 
-              sectionsSeen.iterator.distinct.foreach { section =>
-                val groupIds = groupIdsFor(section)
-
-                val reappearingGroupIds = groupIds.intersect(
-                  followingSectionsByDisappearedGroupId.keySet
-                )
-
-                reappearingGroupIds.foreach { reappearingGroupId =>
-                  followingSectionsByDisappearedGroupId
-                    .remove(
-                      reappearingGroupId
-                    )
-                    .foreach {
-                      alienGroupSectionsBySplitGroupId.addOne(
-                        reappearingGroupId,
-                        _
+                  reappearingGroupIds.foreach { reappearingGroupId =>
+                    followingSectionsByDisappearedGroupId
+                      .remove(
+                        reappearingGroupId
                       )
-                    }
-                }
+                      .foreach {
+                        alienGroupSectionsBySplitGroupId.addOne(
+                          reappearingGroupId,
+                          _
+                        )
+                      }
+                  }
 
-                val disappearingGroupIds = affiliatedGroupIds.diff(groupIds)
+                  val disappearingGroupIds = affiliatedGroupIds.diff(groupIds)
 
-                disappearingGroupIds.foreach { disappearingGroupId =>
-                  affiliatedGroupIds.remove(disappearingGroupId)
-                  followingSectionsByDisappearedGroupId.addOne(
-                    disappearingGroupId,
-                    mutable.ListBuffer.empty
-                  )
-                }
-                followingSectionsByDisappearedGroupId.foreach {
-                  case (disappearedGroupId, followingSections) =>
-                    followingSections.append(section)
-                }
-
-                groupIds.foreach { groupId =>
-                  affiliatedGroupIds.addOne(groupId)
-                  affiliatedSectionsByGroupId.updateWith(groupId)(sections =>
-                    Some(
-                      sections
-                        .getOrElse(mutable.ListBuffer.empty)
-                        .append(section)
+                  disappearingGroupIds.foreach { disappearingGroupId =>
+                    affiliatedGroupIds.remove(disappearingGroupId)
+                    followingSectionsByDisappearedGroupId.addOne(
+                      disappearingGroupId,
+                      mutable.ListBuffer.empty
                     )
-                  )
+                  }
+                  followingSectionsByDisappearedGroupId.foreach {
+                    case (disappearedGroupId, followingSections) =>
+                      followingSections.append(section)
+                  }
+
+                  groupIds.foreach { groupId =>
+                    affiliatedGroupIds.addOne(groupId)
+                    affiliatedSectionsByGroupId.updateWith(groupId)(sections =>
+                      Some(
+                        sections
+                          .getOrElse(mutable.ListBuffer.empty)
+                          .append(section)
+                      )
+                    )
+                  }
                 }
+
+                assert(
+                  alienGroupSectionsBySplitGroupId.isEmpty,
+                  s"""Split groups found on path $path, these are: ${pprintCustomised(
+                      alienGroupSectionsBySplitGroupId.map(
+                        (splitGroupId, sections) =>
+                          splitGroupId -> sections
+                            .map(groupIdsFor)
+                            .reduce(_ union _)
+                      )
+                    )}.
+                     |Breakdown of section affiliations is as follows:
+                     |${pprintCustomised(
+                      alienGroupSectionsBySplitGroupId.map(
+                        (splitGroupId, sections) =>
+                          splitGroupId ->
+                            affiliatedSectionsByGroupId(splitGroupId).toSeq
+                              .concat(
+                                sections
+                              )
+                              .sortBy(_.startOffset)
+                              .map(section =>
+                                (
+                                  section,
+                                  groupIdAndMatchPairsFor(section)
+                                )
+                              )
+                      )
+                    )}
+                     |""".stripMargin
+                )
               }
 
-              assert(
-                alienGroupSectionsBySplitGroupId.isEmpty,
-                s"""Split groups found on path $path, these are: ${pprintCustomised(
-                    alienGroupSectionsBySplitGroupId.map(
-                      (splitGroupId, sections) =>
-                        splitGroupId -> sections
-                          .map(groupIdsFor)
-                          .reduce(_ union _)
-                    )
-                  )}.
-                  |Breakdown of section affiliations is as follows:
-                  |${pprintCustomised(
-                    alienGroupSectionsBySplitGroupId.map(
-                      (splitGroupId, sections) =>
-                        splitGroupId ->
-                          affiliatedSectionsByGroupId(splitGroupId).toSeq
-                            .concat(
-                              sections
-                            )
-                            .sortBy(_.startOffset)
-                            .map(section =>
-                              (
-                                section,
-                                groupIdAndMatchPairsFor(section)
-                              )
-                            )
-                    )
-                  )}
-                  |""".stripMargin
-              )
-            }
-
-          checkGroupsAreNotSplitByAlienMatches(baseSectionsByPath)
-          checkGroupsAreNotSplitByAlienMatches(leftSectionsByPath)
-          checkGroupsAreNotSplitByAlienMatches(rightSectionsByPath)
+            checkGroupsAreNotSplitByAlienMatches(baseSectionsByPath)
+            checkGroupsAreNotSplitByAlienMatches(leftSectionsByPath)
+            checkGroupsAreNotSplitByAlienMatches(rightSectionsByPath)
+          end if
         end if
+      end checkParallelMatchesGroups
 
+      private def reconciliationPostcondition(): Unit =
+        baseSectionsByPath.values.flatMap(_.iterator).foreach { baseSection =>
+          assert(!baseSubsumes(baseSection))
+        }
+        leftSectionsByPath.values.flatMap(_.iterator).foreach { leftSection =>
+          assert(!leftSubsumes(leftSection))
+        }
+        rightSectionsByPath.values.flatMap(_.iterator).foreach { rightSection =>
+          assert(!rightSubsumes(rightSection))
+        }
+
+        // No match should be redundant - i.e. no match should involve sections
+        // that all belong to another match. This goes without saying for
+        // all-sides matches, as any redundancy would imply equivalent
+        // all-sides matches being associated with the same sections - this
+        // isn't allowed by a `MultiDict` instance. The same applies for
+        // pairwise matches of the same kind; pairwise matches of different
+        // kinds can't make each other redundant.
+        // What we have to watch out for are pairwise matches having *both*
+        // sections also belonging to an all-sides match. Note that it *is*
+        // legitimate to have a pairwise match sharing just one section with an
+        // all-sides match; they are just ambiguous matches.
+
+        val matchesBySectionPairs =
+          sectionsAndTheirMatches.values.toSet.foldLeft(
+            MultiDict.empty[(Section[Element], Section[Element]), Match[
+              Section[Element]
+            ]]
+          )((matchesBySectionPairs, aMatch) =>
+            aMatch match
+              case Match.AllSides(baseSection, leftSection, rightSection) =>
+                matchesBySectionPairs + ((
+                  baseSection,
+                  leftSection
+                ) -> aMatch) + ((baseSection, rightSection) -> aMatch) + ((
+                  leftSection,
+                  rightSection
+                ) -> aMatch)
+              case Match.BaseAndLeft(baseSection, leftSection) =>
+                matchesBySectionPairs + ((
+                  baseSection,
+                  leftSection
+                ) -> aMatch)
+              case Match.BaseAndRight(baseSection, rightSection) =>
+                matchesBySectionPairs + ((
+                  baseSection,
+                  rightSection
+                ) -> aMatch)
+              case Match.LeftAndRight(leftSection, rightSection) =>
+                matchesBySectionPairs + ((
+                  leftSection,
+                  rightSection
+                ) -> aMatch)
+          )
+
+        matchesBySectionPairs.keySet.foreach { sectionPair =>
+          val matches = matchesBySectionPairs.get(sectionPair)
+
+          val (allSides, pairwiseMatches) =
+            matches.partition(_.isAnAllSidesMatch)
+
+          if allSides.nonEmpty then
+            assert(
+              pairwiseMatches.isEmpty,
+              s"Found redundancy between pairwise matches: ${pprintCustomised(pairwiseMatches)} and an all-sides match in: ${pprintCustomised(allSides)}."
+            )
+          end if
+        }
+
+        checkParallelMatchesGroups(checksForSplitGroupsToo = true)
       end reconciliationPostcondition
 
       private def pathOnBase(aMatch: GenericMatch[Element]): Option[Path] =
