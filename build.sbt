@@ -9,7 +9,8 @@ ThisBuild / scalaVersion := "3.9.0"
 ThisBuild / javacOptions ++= Seq("-source", javaVersion, "-target", javaVersion)
 
 ThisBuild / scalacOptions ++= List(
-  s"-java-output-version:$javaVersion", "-deprecation"
+  s"-java-output-version:$javaVersion",
+  "-deprecation"
 )
 
 lazy val packageExecutable =
@@ -79,8 +80,8 @@ lazy val root = (project in file("."))
     },
     packageExecutable := (packageExecutable dependsOn publishLocal).value,
     libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.9.6",
-    libraryDependencies += "ch.qos.logback"    % "logback-core"    % "1.6.3",
-    libraryDependencies += "ch.qos.logback"    % "logback-classic" % "1.6.3",
+    libraryDependencies += "ch.qos.logback"    % "logback-core"    % "1.6.4",
+    libraryDependencies += "ch.qos.logback"    % "logback-classic" % "1.6.4",
     libraryDependencies += "org.typelevel"    %% "cats-core"       % "2.13.0",
     libraryDependencies += "com.github.scopt" %% "scopt"           % "4.1.0",
     libraryDependencies += "com.sageserpent" %% "americium-utilities" % "2.2.2",
@@ -113,8 +114,8 @@ lazy val root = (project in file("."))
     libraryDependencies += "com.eed3si9n.expecty" %% "expecty" % "0.17.1" % Test,
     libraryDependencies += "org.apache.commons" % "commons-text" % "1.15.0" % Test,
     libraryDependencies += "com.github.sbt.junit" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
-      Test / test / logLevel                 := Level.Error,
-    Test / fork                            := true,
-    Test / testForkedParallel              := true,
+    Test / test / logLevel    := Level.Error,
+    Test / fork               := true,
+    Test / testForkedParallel := true,
     Test / javaOptions ++= Seq("-Xmx8G")
   )
