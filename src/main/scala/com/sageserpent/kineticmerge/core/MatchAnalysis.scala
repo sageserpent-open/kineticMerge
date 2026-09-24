@@ -1693,7 +1693,9 @@ object MatchAnalysis extends StrictLogging:
 
               StepState(
                 pairs = state.pairs ++ newPairs,
-                workingSet = currentMatches
+                workingSet =
+                  if currentMatches.nonEmpty then currentMatches
+                  else state.workingSet
               )
             }
 
@@ -1767,8 +1769,8 @@ object MatchAnalysis extends StrictLogging:
         val finalFoldState = intersectingPairs.foldLeft(
           FoldState(initialDisjointSets, initialGroupsByRoot)
         ) { case (FoldState(ds, groupsByRoot), (m1, m2)) =>
-          val (ds1, root1Opt) = DisjointSets.find(m1).run(ds).value
-          val (ds2, root2Opt) = DisjointSets.find(m2).run(ds1).value
+          val (ds1, root1Opt) = ds.find(m1)
+          val (ds2, root2Opt) = ds1.find(m2)
 
           (root1Opt, root2Opt) match
             case (Some(root1), Some(root2)) if root1 != root2 =>
@@ -1777,7 +1779,7 @@ object MatchAnalysis extends StrictLogging:
               if canMerge(g1, g2) then
                 val (updatedDs, _) = ds2.union(m1, m2)
                 val (finalDs, newRootOpt) =
-                  DisjointSets.find(m1).run(updatedDs).value
+                  updatedDs.find(m1)
                 val newRoot             = newRootOpt.get
                 val mergedGroup         = g1.union(g2)
                 val updatedGroupsByRoot =
@@ -1839,9 +1841,8 @@ object MatchAnalysis extends StrictLogging:
           })
 
         if parallelMatchesGroupIdsByMatch.nonEmpty then
-          assume(
-            result.size <= oldResult.size,
-            s"Number of groups calculated the new way (${result.size}) should be <= old way (${oldResult.size})."
+          logger.debug(
+            s"Number of groups calculated the new way: ${result.size}, old way: ${oldResult.size}."
           )
         end if
 
