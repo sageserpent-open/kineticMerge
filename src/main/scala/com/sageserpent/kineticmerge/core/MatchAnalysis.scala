@@ -1,7 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
 import alleycats.std.set.given
-import cats.collections.{Diet, Range as CatsInclusiveRange}
+import cats.collections.{Diet, DisjointSets, Range as CatsInclusiveRange}
 import cats.data.State
 import cats.implicits.catsKernelOrderingForOrder
 import cats.instances.seq.*
@@ -1669,58 +1669,199 @@ object MatchAnalysis extends StrictLogging:
       def groupsOfParallelMatches: Map[ParallelMatchesGroupId, SortedSet[
         GenericMatch[Element]
       ]] =
-        given unsafeOrderingValidOnlyForParallelMatches
-            : Ordering[GenericMatch[Element]] with
-          override def compare(
-              x: GenericMatch[Element],
-              y: GenericMatch[Element]
-          ): Int =
-            (startOffsetOnLeft(x), startOffsetOnLeft(y)) match
-              case (Some(xLeftStartOffset), Some(yLeftStartOffset)) =>
-                Ordering[Int].compare(xLeftStartOffset, yLeftStartOffset)
-              case _ =>
-                (startOffsetOnRight(x), startOffsetOnRight(y)) match
-                  case (Some(xRightStartOffset), Some(yRightStartOffset)) =>
-                    Ordering[Int].compare(
-                      xRightStartOffset,
-                      yRightStartOffset
-                    )
-                  case _ =>
-                    ((
-                      startOffsetOnBase(x),
-                      startOffsetOnBase(y)
-                    ): @unchecked) match
-                      case (Some(xBaseStartOffset), Some(yBaseStartOffset)) =>
-                        Ordering[Int].compare(
-                          xBaseStartOffset,
-                          yBaseStartOffset
-                        )
-        end unsafeOrderingValidOnlyForParallelMatches
+        def adjacentPairsFor(
+            sectionsByPath: Map[Path, SectionsSeen]
+        ): Set[(GenericMatch[Element], GenericMatch[Element])] =
+          sectionsByPath.values.foldLeft(
+            Set.empty[(GenericMatch[Element], GenericMatch[Element])]
+          ) { (accumulatedPairs, sectionsSeen) =>
+            case class StepState(
+                pairs: Set[(GenericMatch[Element], GenericMatch[Element])],
+                workingSet: Set[GenericMatch[Element]]
+            )
 
-        val result =
+            val finalState = sectionsSeen.iterator.distinct.foldLeft(
+              StepState(Set.empty, Set.empty)
+            ) { (state, section) =>
+              val currentMatches =
+                sectionsAndTheirMatches.get(section).toSet
+              val newPairs = for
+                prev <- state.workingSet
+                curr <- currentMatches
+                if prev != curr
+              yield (prev, curr)
+
+              StepState(
+                pairs = state.pairs ++ newPairs,
+                workingSet = currentMatches
+              )
+            }
+
+            accumulatedPairs ++ finalState.pairs
+          }
+
+        given orderForMatch: cats.Order[GenericMatch[Element]] =
+          cats.Order.by(_.stableOrderingKey)
+
+        val basePairs  = adjacentPairsFor(baseSectionsByPath)
+        val leftPairs  = adjacentPairsFor(leftSectionsByPath)
+        val rightPairs = adjacentPairsFor(rightSectionsByPath)
+
+        val intersectingPairs =
+          basePairs intersect leftPairs intersect rightPairs
+
+        def canMerge(
+            group1: Set[GenericMatch[Element]],
+            group2: Set[GenericMatch[Element]]
+        ): Boolean =
+          val combined = group1 union group2
+
+          def basePaths = combined.flatMap(pathOnBase)
+          if basePaths.size > 1 then false
+          else
+            def leftPaths = combined.flatMap(pathOnLeft)
+            if leftPaths.size > 1 then false
+            else
+              def rightPaths = combined.flatMap(pathOnRight)
+              if rightPaths.size > 1 then false
+              else
+                def orderIsConsistent(
+                    startOffset1: GenericMatch[Element] => Option[Int],
+                    startOffset2: GenericMatch[Element] => Option[Int]
+                ): Boolean =
+                  val relevant = combined.toSeq.filter(m =>
+                    startOffset1(m).isDefined && startOffset2(m).isDefined
+                  )
+                  if relevant.length <= 1 then true
+                  else
+                    val sortedBySide1 = relevant.sortBy(m =>
+                      (startOffset1(m).get, startOffset2(m).get)
+                    )
+                    val sortedBySide2 = relevant.sortBy(m =>
+                      (startOffset2(m).get, startOffset1(m).get)
+                    )
+                    if sortedBySide1 != sortedBySide2 then false
+                    else
+                      sortedBySide1.zip(sortedBySide1.tail).forall {
+                        case (m1, m2) =>
+                          startOffset1(m1).get < startOffset1(m2).get &&
+                          startOffset2(m1).get < startOffset2(m2).get
+                      }
+
+                orderIsConsistent(startOffsetOnBase, startOffsetOnLeft) &&
+                orderIsConsistent(startOffsetOnBase, startOffsetOnRight) &&
+                orderIsConsistent(startOffsetOnLeft, startOffsetOnRight)
+
+        val initialDisjointSets = DisjointSets(this.matches.toSeq*)
+
+        case class FoldState(
+            disjointSets: DisjointSets[GenericMatch[Element]],
+            groupsByRoot: Map[
+              GenericMatch[Element],
+              Set[GenericMatch[Element]]
+            ]
+        )
+
+        val initialGroupsByRoot = this.matches.map(m => m -> Set(m)).toMap
+
+        val finalFoldState = intersectingPairs.foldLeft(
+          FoldState(initialDisjointSets, initialGroupsByRoot)
+        ) { case (FoldState(ds, groupsByRoot), (m1, m2)) =>
+          val (ds1, root1Opt) = DisjointSets.find(m1).run(ds).value
+          val (ds2, root2Opt) = DisjointSets.find(m2).run(ds1).value
+
+          (root1Opt, root2Opt) match
+            case (Some(root1), Some(root2)) if root1 != root2 =>
+              val g1 = groupsByRoot(root1)
+              val g2 = groupsByRoot(root2)
+              if canMerge(g1, g2) then
+                val (updatedDs, _) = ds2.union(m1, m2)
+                val (finalDs, newRootOpt) =
+                  DisjointSets.find(m1).run(updatedDs).value
+                val newRoot             = newRootOpt.get
+                val mergedGroup         = g1.union(g2)
+                val updatedGroupsByRoot =
+                  (groupsByRoot - root1 - root2) + (newRoot -> mergedGroup)
+                FoldState(finalDs, updatedGroupsByRoot)
+              else FoldState(ds2, groupsByRoot)
+            case _ => FoldState(ds2, groupsByRoot)
+        }
+
+        val unsafeOrderingValidOnlyForParallelMatches
+            : Ordering[GenericMatch[Element]] =
+          new Ordering[GenericMatch[Element]]:
+            override def compare(
+                x: GenericMatch[Element],
+                y: GenericMatch[Element]
+            ): Int =
+              (startOffsetOnLeft(x), startOffsetOnLeft(y)) match
+                case (Some(xLeftStartOffset), Some(yLeftStartOffset)) =>
+                  Ordering[Int].compare(xLeftStartOffset, yLeftStartOffset)
+                case _ =>
+                  (startOffsetOnRight(x), startOffsetOnRight(y)) match
+                    case (Some(xRightStartOffset), Some(yRightStartOffset)) =>
+                      Ordering[Int].compare(
+                        xRightStartOffset,
+                        yRightStartOffset
+                      )
+                    case _ =>
+                      ((
+                        startOffsetOnBase(x),
+                        startOffsetOnBase(y)
+                      ): @unchecked) match
+                        case (Some(xBaseStartOffset), Some(yBaseStartOffset)) =>
+                          Ordering[Int].compare(
+                            xBaseStartOffset,
+                            yBaseStartOffset
+                          )
+
+        val sortedGroups = finalFoldState.groupsByRoot.values
+          .map(group =>
+            SortedSet.from(group)(
+              using unsafeOrderingValidOnlyForParallelMatches
+            )
+          )
+          .toSeq
+          .sortBy(_.head.stableOrderingKey)
+
+        val result = SortedMap.from(
+          sortedGroups.zipWithIndex.map { case (group, index) =>
+            index -> group
+          }
+        )
+
+        val oldResult =
           SortedMap.from(parallelMatchesGroupIdsByMatch.groupBy(_._2).map {
-            (groupId, group) => groupId -> SortedSet.from(group.keys)
+            (groupId, group) =>
+              groupId -> SortedSet.from(group.keys)(
+                using unsafeOrderingValidOnlyForParallelMatches
+              )
           })
 
+        if parallelMatchesGroupIdsByMatch.nonEmpty then
+          assume(
+            result.size <= oldResult.size,
+            s"Number of groups calculated the new way (${result.size}) should be <= old way (${oldResult.size})."
+          )
+        end if
+
         {
-          // Check that the groups are consistent with
-          // `parallelMatchesGroupIdsByMatch` - this is really a self-check of
-          // the ordering.
-          val underlyingMatches = parallelMatchesGroupIdsByMatch.keySet
+          val underlyingMatches = this.matches
           val flattenedGroups   = result.values
             .map(_.toSeq)
             .reduceOption(_ ++ _)
             .fold(ifEmpty = Set.empty)(_.toSet)
 
+          val extraInFlattened =
+            pprintCustomised(flattenedGroups.diff(underlyingMatches))
+          val extraInUnderlying =
+            pprintCustomised(underlyingMatches.diff(flattenedGroups))
+
           assume(
             underlyingMatches == flattenedGroups,
-            s"""Mismatch between `groupsOfParallelMatches` and the underlying `parallelMatchesGroupIdsByMatch`.
-               |Flattened groups minus underlying matches: ${pprintCustomised(
-                flattenedGroups diff underlyingMatches
-              )}.
-               |Underlying matches minus flattened groups: ${pprintCustomised(
-                underlyingMatches diff flattenedGroups
-              )}.
+            s"""Mismatch between `groupsOfParallelMatches` and the underlying matches.
+               |Flattened groups minus underlying matches: $extraInFlattened.
+               |Underlying matches minus flattened groups: $extraInUnderlying.
                |""".stripMargin
           )
         }
