@@ -1,12 +1,12 @@
 package com.sageserpent.kineticmerge.core
 
 import alleycats.std.set.given
-import cats.collections.{Diet, Range as CatsInclusiveRange}
+import cats.collections.{Diet, DisjointSets, Range as CatsInclusiveRange}
 import cats.data.State
 import cats.implicits.catsKernelOrderingForOrder
 import cats.instances.seq.*
 import cats.syntax.all.*
-import cats.{Eq, FlatMap}
+import cats.{Eq, FlatMap, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction, PrimitiveSink}
 import com.sageserpent.kineticmerge
@@ -1666,7 +1666,7 @@ object MatchAnalysis extends StrictLogging:
         reconciled
       end reconcileSubsumingMatches
 
-      def groupsOfParallelMatches: Map[ParallelMatchesGroupId, SortedSet[
+      def groupsOfParallelMatchesOldWay: Map[ParallelMatchesGroupId, SortedSet[
         GenericMatch[Element]
       ]] =
         given unsafeOrderingValidOnlyForParallelMatches
@@ -1701,6 +1701,211 @@ object MatchAnalysis extends StrictLogging:
           SortedMap.from(parallelMatchesGroupIdsByMatch.groupBy(_._2).map {
             (groupId, group) => groupId -> SortedSet.from(group.keys)
           })
+
+        {
+          // Check that the groups are consistent with
+          // `parallelMatchesGroupIdsByMatch` - this is really a self-check of
+          // the ordering.
+          val underlyingMatches = parallelMatchesGroupIdsByMatch.keySet
+          val flattenedGroups   = result.values
+            .map(_.toSeq)
+            .reduceOption(_ ++ _)
+            .fold(ifEmpty = Set.empty)(_.toSet)
+
+          assume(
+            underlyingMatches == flattenedGroups,
+            s"""Mismatch between `groupsOfParallelMatches` and the underlying `parallelMatchesGroupIdsByMatch`.
+               |Flattened groups minus underlying matches: ${pprintCustomised(
+                flattenedGroups diff underlyingMatches
+              )}.
+               |Underlying matches minus flattened groups: ${pprintCustomised(
+                underlyingMatches diff flattenedGroups
+              )}.
+               |""".stripMargin
+          )
+        }
+
+        result
+      end groupsOfParallelMatchesOldWay
+
+      def groupsOfParallelMatches: Map[ParallelMatchesGroupId, SortedSet[
+        GenericMatch[Element]
+      ]] =
+        type PrecedingAndSucceedingMatch =
+          (GenericMatch[Element], GenericMatch[Element])
+        type PrecedingAndSucceedingMatchPairs = Set[PrecedingAndSucceedingMatch]
+
+        case class FollowingMatchDiscoveryState(
+            precedingAndSucceedingMatchPairs: PrecedingAndSucceedingMatchPairs,
+            precedingMatchesFromPriorIteration: collection.Set[GenericMatch[
+              Element
+            ]]
+        ):
+          def step(section: Section[Element]): FollowingMatchDiscoveryState =
+            val succeedingMatches = sectionsAndTheirMatches.get(section)
+
+            val cartesianProduct =
+              for
+                predecessor <- precedingMatchesFromPriorIteration
+                successor   <- succeedingMatches
+              yield predecessor -> successor
+
+            FollowingMatchDiscoveryState(
+              precedingAndSucceedingMatchPairs =
+                precedingAndSucceedingMatchPairs `union` cartesianProduct,
+              precedingMatchesFromPriorIteration = succeedingMatches
+            )
+          end step
+        end FollowingMatchDiscoveryState
+
+        object FollowingMatchDiscoveryState:
+
+          def initial(): FollowingMatchDiscoveryState =
+            FollowingMatchDiscoveryState(
+              precedingAndSucceedingMatchPairs = Set.empty,
+              precedingMatchesFromPriorIteration = Set.empty
+            )
+        end FollowingMatchDiscoveryState
+
+        def precedingAndSucceedingMatchPairsFrom(
+            sectionsByPath: Map[Path, SectionsSeen]
+        ): PrecedingAndSucceedingMatchPairs =
+          sectionsByPath
+            .map((_, sectionsSeen) =>
+              sectionsSeen.iterator.distinct
+                .foldLeft(FollowingMatchDiscoveryState.initial())(_ `step` _)
+                .precedingAndSucceedingMatchPairs
+            )
+            .foldLeft(Set.empty: PrecedingAndSucceedingMatchPairs)(
+              _ union _
+            )
+
+        val basePrecedingAndSucceedingMatchPairs =
+          precedingAndSucceedingMatchPairsFrom(
+            baseSectionsByPath
+          )
+
+        val leftPrecedingAndSucceedingMatchPairs =
+          precedingAndSucceedingMatchPairsFrom(
+            leftSectionsByPath
+          )
+
+        val rightPrecedingAndSucceedingMatchPairs =
+          precedingAndSucceedingMatchPairsFrom(
+            rightSectionsByPath
+          )
+
+        val precedingAndSucceedingMatchPairsAcrossBaseAndLeft =
+          basePrecedingAndSucceedingMatchPairs `intersect` leftPrecedingAndSucceedingMatchPairs
+
+        val precedingAndSucceedingMatchPairsAcrossBaseAndRight =
+          basePrecedingAndSucceedingMatchPairs `intersect` rightPrecedingAndSucceedingMatchPairs
+
+        val precedingAndSucceedingMatchPairsAcrossLeftAndRight =
+          leftPrecedingAndSucceedingMatchPairs `intersect` rightPrecedingAndSucceedingMatchPairs
+
+        val precedingAndSucceedingParallelMatchPairsAcrossAllThreeSides =
+          precedingAndSucceedingMatchPairsAcrossBaseAndLeft `intersect` precedingAndSucceedingMatchPairsAcrossBaseAndRight
+
+        // Use this predicate to filter-out pairs from two-sided intersections;
+        // such pairs are either genuine parallel match pairs, in which case
+        // they already belong to
+        // `precedingAndSucceedingParallelMatchPairsAcrossAllThreeSides`, or
+        // are incomplete across all-three sides and are thus invalid as
+        // parallel candidates.
+        def invalidAsParallelMatchesAcrossJustTwoSides(
+            predecessor: GenericMatch[Element],
+            successor: GenericMatch[Element]
+        ): Boolean =
+          predecessor.isAnAllSidesMatch && successor.isAnAllSidesMatch
+
+        val precedingAndSucceedingParallelMatchPairsAcrossJustTwoSides =
+          (precedingAndSucceedingMatchPairsAcrossBaseAndLeft
+            `union` precedingAndSucceedingMatchPairsAcrossBaseAndRight
+            `union` precedingAndSucceedingMatchPairsAcrossLeftAndRight)
+            .filterNot(invalidAsParallelMatchesAcrossJustTwoSides)
+
+        // Look for pairs that signify chains of parallel matches that would
+        // diverge from a common predecessor.
+        val pairsWithCollidingPredecessors =
+          precedingAndSucceedingParallelMatchPairsAcrossJustTwoSides
+            .groupBy(_._1)
+            .filter(1 < _._2.size)
+            .values
+            .flatten
+
+        // Look for pairs that signify chains of parallel matches that would
+        // converge to a common successor.
+        val pairsWithCollidingSuccessors =
+          precedingAndSucceedingParallelMatchPairsAcrossJustTwoSides
+            .groupBy(_._2)
+            .filter(1 < _._2.size)
+            .values
+            .flatten
+
+        val vettedPrecedingAndSucceedingParallelMatchPairsAcrossJustTwoSides =
+          precedingAndSucceedingParallelMatchPairsAcrossJustTwoSides -- pairsWithCollidingPredecessors -- pairsWithCollidingSuccessors
+
+        val precedingAndSucceedingParallelMatchPairs =
+          precedingAndSucceedingParallelMatchPairsAcrossAllThreeSides `union` vettedPrecedingAndSucceedingParallelMatchPairsAcrossJustTwoSides
+
+        val groups =
+          val unificationWorkflow =
+            precedingAndSucceedingParallelMatchPairs.traverseVoid {
+              case (predecessor, successor) =>
+                DisjointSets.union(predecessor, successor)
+            } >> DisjointSets.toSets
+
+          // NOTE: keep this around and keep it local; refer to
+          // `unsafeOrderingValidOnlyForParallelMatches` a bit later on. This
+          // one is valid for all matches, regardless of parallel matches group
+          // membership, but is not the right thing for sorting an indvidual
+          // group.
+          given Order[GenericMatch[Element]] = Order.by(aMatch =>
+            (
+              aMatch.baseContribution.map(_.startOffset),
+              aMatch.leftContribution.map(_.startOffset),
+              aMatch.rightContribution.map(_.startOffset)
+            )
+          )
+          unificationWorkflow
+            .runA(DisjointSets(matches.toSeq*))
+            .value
+            .toList
+            .map(_._2.toList)
+        end groups
+
+        given unsafeOrderingValidOnlyForParallelMatches
+            : Ordering[GenericMatch[Element]] with
+          override def compare(
+              x: GenericMatch[Element],
+              y: GenericMatch[Element]
+          ): Int =
+            (startOffsetOnLeft(x), startOffsetOnLeft(y)) match
+              case (Some(xLeftStartOffset), Some(yLeftStartOffset)) =>
+                Ordering[Int].compare(xLeftStartOffset, yLeftStartOffset)
+              case _ =>
+                (startOffsetOnRight(x), startOffsetOnRight(y)) match
+                  case (Some(xRightStartOffset), Some(yRightStartOffset)) =>
+                    Ordering[Int].compare(
+                      xRightStartOffset,
+                      yRightStartOffset
+                    )
+                  case _ =>
+                    ((
+                      startOffsetOnBase(x),
+                      startOffsetOnBase(y)
+                    ): @unchecked) match
+                      case (Some(xBaseStartOffset), Some(yBaseStartOffset)) =>
+                        Ordering[Int].compare(
+                          xBaseStartOffset,
+                          yBaseStartOffset
+                        )
+        end unsafeOrderingValidOnlyForParallelMatches
+
+        val result = groups.zipWithIndex.map { case (group, groupId) =>
+          groupId -> SortedSet.from(group)
+        }.toMap
 
         {
           // Check that the groups are consistent with
@@ -2600,8 +2805,8 @@ object MatchAnalysis extends StrictLogging:
               ): Unit =
                 extension (matches: Seq[GenericMatch[Element]])
                   private def sortWhereRelevantBy(
-                                                   startOffsetOf: GenericMatch[Element] => Option[Int]
-                                                 ): Seq[GenericMatch[Element]] =
+                      startOffsetOf: GenericMatch[Element] => Option[Int]
+                  ): Seq[GenericMatch[Element]] =
                     val result = matches
                       .flatMap(aMatch =>
                         startOffsetOf(aMatch)
@@ -2620,9 +2825,9 @@ object MatchAnalysis extends StrictLogging:
                             startOffsetOf(successor)
                           ) match
                             case (
-                              Some(predecessorStartOffset),
-                              Some(successorStartOffset)
-                            ) =>
+                                  Some(predecessorStartOffset),
+                                  Some(successorStartOffset)
+                                ) =>
                               assert(
                                 predecessorStartOffset < successorStartOffset,
                                 s"Found matches ${pprintCustomised(predecessor -> successor)} in group $groupId whose start offsets collide."
