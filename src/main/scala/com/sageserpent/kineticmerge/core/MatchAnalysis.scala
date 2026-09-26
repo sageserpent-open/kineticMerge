@@ -1859,15 +1859,9 @@ object MatchAnalysis extends StrictLogging:
           // NOTE: keep this around and keep it local; refer to
           // `unsafeOrderingValidOnlyForParallelMatches` a bit later on. This
           // one is valid for all matches, regardless of parallel matches group
-          // membership, but is not the right thing for sorting an indvidual
+          // membership, but is not the right thing for sorting an individual
           // group.
-          given Order[GenericMatch[Element]] = Order.by(aMatch =>
-            (
-              aMatch.baseContribution.map(_.startOffset),
-              aMatch.leftContribution.map(_.startOffset),
-              aMatch.rightContribution.map(_.startOffset)
-            )
-          )
+          given Order[GenericMatch[Element]] = Order.by(_.stableOrderingKey)
           unificationWorkflow
             .runA(DisjointSets(matches.toSeq*))
             .value
