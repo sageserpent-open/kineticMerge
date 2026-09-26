@@ -214,7 +214,7 @@ object MatchAnalysis extends StrictLogging:
           fingerprintedInclusionsByPath(leftSources),
         rightFingerprintedInclusionsByPath =
           fingerprintedInclusionsByPath(rightSources),
-        parallelMatchesGroupIdsByMatch = Map.empty
+        parallelMatchesGroupIdsByMatchObsolete = Map.empty
       )
 
       extension (aMatch: GenericMatch[Element])
@@ -1155,7 +1155,9 @@ object MatchAnalysis extends StrictLogging:
         baseFingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions],
         leftFingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions],
         rightFingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions],
-        parallelMatchesGroupIdsByMatch: ParallelMatchesGroupIdsByMatch[Element]
+        parallelMatchesGroupIdsByMatchObsolete: ParallelMatchesGroupIdsByMatch[
+          Element
+        ]
     ) extends MatchAnalysis[Path, Element]:
       import MatchesAndTheirSections.*
 
@@ -1427,10 +1429,11 @@ object MatchAnalysis extends StrictLogging:
                 matchesAndTheirSections.reinstateInRightFingerprintedInclusions(
                   rightSection
                 ),
-              parallelMatchesGroupIdsByMatch =
-                matchesAndTheirSections.parallelMatchesGroupIdsByMatch.removed(
-                  allSides
-                )
+              parallelMatchesGroupIdsByMatchObsolete =
+                matchesAndTheirSections.parallelMatchesGroupIdsByMatchObsolete
+                  .removed(
+                    allSides
+                  )
             )
 
           case (
@@ -1446,10 +1449,11 @@ object MatchAnalysis extends StrictLogging:
                 matchesAndTheirSections.sectionsAndTheirMatches
                   .remove(baseSection, baseAndLeft)
                   .remove(leftSection, baseAndLeft),
-              parallelMatchesGroupIdsByMatch =
-                matchesAndTheirSections.parallelMatchesGroupIdsByMatch.removed(
-                  baseAndLeft
-                )
+              parallelMatchesGroupIdsByMatchObsolete =
+                matchesAndTheirSections.parallelMatchesGroupIdsByMatchObsolete
+                  .removed(
+                    baseAndLeft
+                  )
             )
 
           case (
@@ -1465,10 +1469,11 @@ object MatchAnalysis extends StrictLogging:
                 matchesAndTheirSections.sectionsAndTheirMatches
                   .remove(baseSection, baseAndRight)
                   .remove(rightSection, baseAndRight),
-              parallelMatchesGroupIdsByMatch =
-                matchesAndTheirSections.parallelMatchesGroupIdsByMatch.removed(
-                  baseAndRight
-                )
+              parallelMatchesGroupIdsByMatchObsolete =
+                matchesAndTheirSections.parallelMatchesGroupIdsByMatchObsolete
+                  .removed(
+                    baseAndRight
+                  )
             )
 
           case (
@@ -1484,10 +1489,11 @@ object MatchAnalysis extends StrictLogging:
                 matchesAndTheirSections.sectionsAndTheirMatches
                   .remove(leftSection, leftAndRight)
                   .remove(rightSection, leftAndRight),
-              parallelMatchesGroupIdsByMatch =
-                matchesAndTheirSections.parallelMatchesGroupIdsByMatch.removed(
-                  leftAndRight
-                )
+              parallelMatchesGroupIdsByMatchObsolete =
+                matchesAndTheirSections.parallelMatchesGroupIdsByMatchObsolete
+                  .removed(
+                    leftAndRight
+                  )
             )
         }
       end withoutTheseMatches
@@ -1574,7 +1580,7 @@ object MatchAnalysis extends StrictLogging:
               for
                 // Reset the state for each iteration of `reconcileUsing`. Refer
                 // to the assumption below as well...
-                _ <- State.set(parallelMatchesGroupIdsByMatch)
+                _ <- State.set(parallelMatchesGroupIdsByMatchObsolete)
 
                 fragments <- fragmentsOf(pairwiseMatchesToBeEaten).map(
                   _.diff(matches)
@@ -1633,7 +1639,7 @@ object MatchAnalysis extends StrictLogging:
                       val fullyReconciledMatches = reconciled.matches
                       Right(
                         reconciled
-                          .copy(parallelMatchesGroupIdsByMatch =
+                          .copy(parallelMatchesGroupIdsByMatchObsolete =
                             updatedParallelMatchesGroupIdsByMatch
                               .filter((key, _) =>
                                 fullyReconciledMatches.contains(key)
@@ -1698,15 +1704,17 @@ object MatchAnalysis extends StrictLogging:
         end unsafeOrderingValidOnlyForParallelMatches
 
         val result =
-          SortedMap.from(parallelMatchesGroupIdsByMatch.groupBy(_._2).map {
-            (groupId, group) => groupId -> SortedSet.from(group.keys)
-          })
+          SortedMap.from(
+            parallelMatchesGroupIdsByMatchObsolete.groupBy(_._2).map {
+              (groupId, group) => groupId -> SortedSet.from(group.keys)
+            }
+          )
 
         {
           // Check that the groups are consistent with
           // `parallelMatchesGroupIdsByMatch` - this is really a self-check of
           // the ordering.
-          val underlyingMatches = parallelMatchesGroupIdsByMatch.keySet
+          val underlyingMatches = parallelMatchesGroupIdsByMatchObsolete.keySet
           val flattenedGroups   = result.values
             .map(_.toSeq)
             .reduceOption(_ ++ _)
@@ -1728,7 +1736,7 @@ object MatchAnalysis extends StrictLogging:
         result
       end groupsOfParallelMatchesOldWay
 
-      def groupsOfParallelMatches: Map[ParallelMatchesGroupId, SortedSet[
+      lazy val groupsOfParallelMatches: Map[ParallelMatchesGroupId, SortedSet[
         GenericMatch[Element]
       ]] =
         type PrecedingAndSucceedingMatch =
@@ -1902,23 +1910,21 @@ object MatchAnalysis extends StrictLogging:
         }.toMap
 
         {
-          // Check that the groups are consistent with
-          // `parallelMatchesGroupIdsByMatch` - this is really a self-check of
-          // the ordering.
-          val underlyingMatches = parallelMatchesGroupIdsByMatch.keySet
-          val flattenedGroups   = result.values
+          // Check that the groups are consistent with `matches` - this is
+          // really a self-check of the ordering.
+          val flattenedGroups = result.values
             .map(_.toSeq)
             .reduceOption(_ ++ _)
             .fold(ifEmpty = Set.empty)(_.toSet)
 
           assume(
-            underlyingMatches == flattenedGroups,
+            matches == flattenedGroups,
             s"""Mismatch between `groupsOfParallelMatches` and the underlying `parallelMatchesGroupIdsByMatch`.
                |Flattened groups minus underlying matches: ${pprintCustomised(
-                flattenedGroups diff underlyingMatches
+                flattenedGroups diff matches
               )}.
                |Underlying matches minus flattened groups: ${pprintCustomised(
-                underlyingMatches diff flattenedGroups
+                matches diff flattenedGroups
               )}.
                |""".stripMargin
           )
@@ -1926,6 +1932,12 @@ object MatchAnalysis extends StrictLogging:
 
         result
       end groupsOfParallelMatches
+
+      lazy val parallelMatchesGroupIdsByMatch
+          : ParallelMatchesGroupIdsByMatch[Element] =
+        groupsOfParallelMatches.toSeq.flatMap { case (groupId, group) =>
+          group.toSeq.map(_ -> groupId)
+        }.toMap
 
       def parallelMatchesOnly: MatchesAndTheirSections =
         // PLAN:
@@ -2156,7 +2168,9 @@ object MatchAnalysis extends StrictLogging:
         end parallelMatchesGroupIdsByMatch
 
         backTranslatedMatchesAndTheirSections
-          .copy(parallelMatchesGroupIdsByMatch = parallelMatchesGroupIdsByMatch)
+          .copy(parallelMatchesGroupIdsByMatchObsolete =
+            parallelMatchesGroupIdsByMatch
+          )
           .withoutRedundantPairwiseMatches
       end parallelMatchesOnly
 
@@ -2446,7 +2460,7 @@ object MatchAnalysis extends StrictLogging:
 
                   Right(
                     remainingMatchesAndTheirSections
-                      .copy(parallelMatchesGroupIdsByMatch =
+                      .copy(parallelMatchesGroupIdsByMatchObsolete =
                         parallelMatchesGroupIdsByMatch
                       )
                   )
@@ -2495,7 +2509,7 @@ object MatchAnalysis extends StrictLogging:
 
             FlatMap[ParallelMatchesGroupIdTracking]
               .tailRecM(this)(reconcileUsing)
-              .runA(parallelMatchesGroupIdsByMatch)
+              .runA(parallelMatchesGroupIdsByMatchObsolete)
               .value
           }.get // Allow an exception to propagate through, specifically an `AdmissibleException` thrown if reconciliation is disabled.
 
@@ -2532,7 +2546,9 @@ object MatchAnalysis extends StrictLogging:
           def step(section: Section[Element]): State =
             val relevantMatchesByAffiliatedGroupId = sectionsAndTheirMatches
               .get(section)
-              .map(aMatch => parallelMatchesGroupIdsByMatch(aMatch) -> aMatch)
+              .map(aMatch =>
+                parallelMatchesGroupIdsByMatchObsolete(aMatch) -> aMatch
+              )
               .toMap
 
             val affiliatedGroupIds = relevantMatchesByAffiliatedGroupId.keySet
@@ -2619,7 +2635,7 @@ object MatchAnalysis extends StrictLogging:
                 case (groupId, result) => (1 + groupId) -> result
           }
 
-        this.copy(parallelMatchesGroupIdsByMatch =
+        this.copy(parallelMatchesGroupIdsByMatchObsolete =
           parallelMatchesReplacedGroupIdsByMatch
         )
       end splitStraddlingParallelMatchesGroups
@@ -2627,7 +2643,7 @@ object MatchAnalysis extends StrictLogging:
       private def reorganiseParallelMatchesGroupIds: MatchesAndTheirSections =
         val compactGroupIdsKeyedByGroupsIdsWithPossibleGaps
             : Map[ParallelMatchesGroupId, ParallelMatchesGroupId] =
-          parallelMatchesGroupIdsByMatch.toSeq
+          parallelMatchesGroupIdsByMatchObsolete.toSeq
             .sortBy(_._1.stableOrderingKey)
             .map(_._2)
             .distinct
@@ -2635,12 +2651,12 @@ object MatchAnalysis extends StrictLogging:
             .toMap
 
         val parallelMatchesWithReorganisedGroupIdsByMatch =
-          parallelMatchesGroupIdsByMatch.map((aMatch, groupId) =>
+          parallelMatchesGroupIdsByMatchObsolete.map((aMatch, groupId) =>
             aMatch -> compactGroupIdsKeyedByGroupsIdsWithPossibleGaps(
               groupId
             )
           )
-        copy(parallelMatchesGroupIdsByMatch =
+        copy(parallelMatchesGroupIdsByMatchObsolete =
           parallelMatchesWithReorganisedGroupIdsByMatch
         )
       end reorganiseParallelMatchesGroupIds
