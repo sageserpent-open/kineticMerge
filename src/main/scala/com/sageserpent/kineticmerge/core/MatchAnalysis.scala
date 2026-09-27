@@ -3460,7 +3460,10 @@ object MatchAnalysis extends StrictLogging:
 
             Right(
               for
-                _ <- propagateGroupId(aMatch, remainingContestedMatch)
+                _ <- assignUniqueGroupId(
+                  remainingContestedMatch,
+                  groupIds = Set.empty
+                )
                 _ <- propagateGroupId(aMatch, hivedOffMatch)
               yield new HivedOffNonOverlappedMatchResult:
                 def hivedOffNonOverlappedMatch: Option[GenericMatch[Element]] =
@@ -3481,7 +3484,10 @@ object MatchAnalysis extends StrictLogging:
             Right(
               for
                 _ <- propagateGroupId(aMatch, hivedOffMatch)
-                _ <- propagateGroupId(aMatch, remainingContestedMatch)
+                _ <- assignUniqueGroupId(
+                  remainingContestedMatch,
+                  groupIds = Set.empty
+                )
               yield new HivedOffNonOverlappedMatchResult:
                 def hivedOffNonOverlappedMatch: Option[GenericMatch[Element]] =
                   Some(hivedOffMatch)
@@ -3505,9 +3511,15 @@ object MatchAnalysis extends StrictLogging:
 
             Right(
               for
-                _ <- propagateGroupId(aMatch, leadingRemainingContestedMatch)
+                _ <- assignUniqueGroupId(
+                  leadingRemainingContestedMatch,
+                  groupIds = Set.empty
+                )
                 _ <- hivedOffMatch.traverse(propagateGroupId(aMatch, _))
-                _ <- propagateGroupId(aMatch, trailingRemainingContestedMatch)
+                _ <- assignUniqueGroupId(
+                  trailingRemainingContestedMatch,
+                  groupIds = Set.empty
+                )
               yield new HivedOffNonOverlappedMatchResult:
                 def hivedOffNonOverlappedMatch: Option[GenericMatch[Element]] =
                   hivedOffMatch
