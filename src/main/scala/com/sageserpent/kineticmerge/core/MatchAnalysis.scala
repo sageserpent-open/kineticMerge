@@ -2354,6 +2354,8 @@ object MatchAnalysis extends StrictLogging:
               .value
           }.get // Allow an exception to propagate through, specifically an `AdmissibleException` thrown if reconciliation is disabled.
 
+        reconciled.checkParallelMatchesGroups(checksForSplitGroupsToo = false)
+
         reconciled
 
       end reconcileOverlappingMatches
