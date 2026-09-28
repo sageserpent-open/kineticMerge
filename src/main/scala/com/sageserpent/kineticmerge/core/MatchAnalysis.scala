@@ -1536,6 +1536,20 @@ object MatchAnalysis extends StrictLogging:
         }
       end withoutTheseMatches
 
+      private def contains(aMatch: GenericMatch[Element]): Boolean =
+        val matches = aMatch match
+          case Match.AllSides(baseElement, _, _) =>
+            sectionsAndTheirMatches.get(baseElement)
+          case Match.BaseAndLeft(baseElement, _) =>
+            sectionsAndTheirMatches.get(baseElement)
+          case Match.BaseAndRight(baseElement, _) =>
+            sectionsAndTheirMatches.get(baseElement)
+          case Match.LeftAndRight(leftElement, _) =>
+            sectionsAndTheirMatches.get(leftElement)
+
+        matches.contains(aMatch)
+      end contains
+
       private def withMatch(
           aMatch: GenericMatch[Element]
       ): MatchesAndTheirSections =
@@ -2337,16 +2351,24 @@ object MatchAnalysis extends StrictLogging:
                   val remainingContestedMatches =
                     splitResults.flatMap(_.remainingContestedMatches)
 
-                  Left(
-                    (hivedOffMatches union remainingContestedMatches) // TODO: is there any point in separating the hived off and contested matches in `HivedOffNonOverlappedMatchResult`?
-                      .foldLeft(
-                        remainingMatchesAndTheirSections
-                          .withoutTheseMatches(overlappingMatches)
-                      )(
+                  val withoutOverlaps =
+                    remainingMatchesAndTheirSections.withoutTheseMatches(
+                      overlappingMatches
+                    )
+
+                  val withSplitsReintroduced =
+                    (hivedOffMatches union remainingContestedMatches)
+                      .filterNot(
+                        withoutOverlaps.contains
+                      ) // TODO: is there any point in separating the hived off and contested matches in `HivedOffNonOverlappedMatchResult`?
+                      .foldLeft(withoutOverlaps)(
                         _ `withMatch` _
                       )
-                      .withoutRedundantPairwiseMatches
-                  )
+
+                  val refined =
+                    withSplitsReintroduced.withoutRedundantPairwiseMatches
+
+                  Left(refined)
                 end for
               end if
             end reconcileUsing
