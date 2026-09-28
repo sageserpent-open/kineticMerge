@@ -1,10 +1,11 @@
 package com.sageserpent.kineticmerge.core
 
 import alleycats.std.set.given
-import cats.collections.{Diet, Range as CatsInclusiveRange}
+import cats.collections.{Diet, DisjointSets, Range as CatsInclusiveRange}
 import cats.data.State
 import cats.implicits.catsKernelOrderingForOrder
 import cats.instances.seq.*
+import cats.kernel.Order
 import cats.syntax.all.*
 import cats.{Eq, FlatMap}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
@@ -40,6 +41,8 @@ trait MatchAnalysis[Path, Element]:
   ): MatchAnalysis[Path, Element]
 
   def parallelMatchesOnly: MatchAnalysis[Path, Element]
+
+  def withParallelMatchesGroupsAssigned: MatchAnalysis[Path, Element]
 
   def reconcileSubsumingMatches: MatchAnalysis[Path, Element]
 
@@ -1610,8 +1613,6 @@ object MatchAnalysis extends StrictLogging:
                   )
                 )
 
-              this.checkInvariant()
-
               for
                 // Reset the state for each iteration of `reconcileUsing`. Refer
                 // to the assumption below as well...
@@ -2010,7 +2011,9 @@ object MatchAnalysis extends StrictLogging:
           .copy(parallelMatchesGroupIdsByMatch = parallelMatchesGroupIdsByMatch)
           .withoutRedundantPairwiseMatches
 
-        result.checkParallelMatchesGroups(checksForSplitGroupsToo = false)
+        // result.checkParallelMatchesGroups(checksForSplitGroupsToo = false)
+
+        result.checkInvariant()
 
         result
       end parallelMatchesOnly
@@ -2354,7 +2357,10 @@ object MatchAnalysis extends StrictLogging:
               .value
           }.get // Allow an exception to propagate through, specifically an `AdmissibleException` thrown if reconciliation is disabled.
 
-        reconciled.checkParallelMatchesGroups(checksForSplitGroupsToo = false)
+        // reconciled.checkParallelMatchesGroups(checksForSplitGroupsToo =
+        // false)
+
+        reconciled.checkInvariant()
 
         reconciled
 
@@ -2374,6 +2380,152 @@ object MatchAnalysis extends StrictLogging:
           aMatch: GenericMatch[Element]
       ): Option[Int] =
         aMatch.rightContribution.map(_.startOffset)
+
+      def withParallelMatchesGroupsAssigned: MatchesAndTheirSections =
+        type PrecedingAndSucceedingMatch =
+          (GenericMatch[Element], GenericMatch[Element])
+        type PrecedingAndSucceedingMatchPairs = Set[PrecedingAndSucceedingMatch]
+
+        def precedingAndSucceedingMatchPairsFrom(
+            sectionsByPath: Map[Path, SectionsSeen],
+            startOffsetFrom: GenericMatch[Element] => Int
+        ): PrecedingAndSucceedingMatchPairs =
+          case class FollowingMatchDiscoveryState(
+              precedingAndSucceedingMatchPairs: PrecedingAndSucceedingMatchPairs,
+              precedingMatchesFromPriorIteration: collection.Set[GenericMatch[
+                Element
+              ]]
+          ):
+            def step(section: Section[Element]): FollowingMatchDiscoveryState =
+              val succeedingMatches = sectionsAndTheirMatches.get(section)
+
+              val cartesianProduct =
+                for
+                  predecessor <- precedingMatchesFromPriorIteration
+                  successor   <- succeedingMatches
+                  // if startOffsetFrom(predecessor) <
+                  // startOffsetFrom(successor)
+                  isNotABridge =
+                    // A bridge from an all-sides to a pairwise match or
+                    // vice versa would allow malformed groups to be formed,
+                    // either via converging chains of parallel matches, or
+                    // diverging chains of parallel matches, or crossed-over
+                    // matches on one side, or matches distributed over multiple
+                    // paths on one side.
+                    predecessor.isAnAllSidesMatch == successor.isAnAllSidesMatch
+                  if isNotABridge
+                yield predecessor -> successor
+
+              FollowingMatchDiscoveryState(
+                precedingAndSucceedingMatchPairs =
+                  precedingAndSucceedingMatchPairs `union` cartesianProduct,
+                precedingMatchesFromPriorIteration = succeedingMatches
+              )
+            end step
+          end FollowingMatchDiscoveryState
+
+          object FollowingMatchDiscoveryState:
+
+            def initial(): FollowingMatchDiscoveryState =
+              FollowingMatchDiscoveryState(
+                precedingAndSucceedingMatchPairs = Set.empty,
+                precedingMatchesFromPriorIteration = Set.empty
+              )
+          end FollowingMatchDiscoveryState
+
+          sectionsByPath
+            .map((_, sectionsSeen) =>
+              sectionsSeen.iterator.distinct
+                .foldLeft(FollowingMatchDiscoveryState.initial())(_ `step` _)
+                .precedingAndSucceedingMatchPairs
+            )
+            .foldLeft(Set.empty: PrecedingAndSucceedingMatchPairs)(
+              _ union _
+            )
+        end precedingAndSucceedingMatchPairsFrom
+
+        val basePrecedingAndSucceedingMatchPairs =
+          precedingAndSucceedingMatchPairsFrom(
+            baseSectionsByPath,
+            startOffsetFrom = _.baseContribution.get.startOffset
+          )
+
+        val leftPrecedingAndSucceedingMatchPairs =
+          precedingAndSucceedingMatchPairsFrom(
+            leftSectionsByPath,
+            startOffsetFrom = _.leftContribution.get.startOffset
+          )
+
+        val rightPrecedingAndSucceedingMatchPairs =
+          precedingAndSucceedingMatchPairsFrom(
+            rightSectionsByPath,
+            startOffsetFrom = _.rightContribution.get.startOffset
+          )
+
+        val precedingAndSucceedingMatchPairsAcrossBaseAndLeft =
+          basePrecedingAndSucceedingMatchPairs `intersect` leftPrecedingAndSucceedingMatchPairs
+
+        val precedingAndSucceedingMatchPairsAcrossBaseAndRight =
+          basePrecedingAndSucceedingMatchPairs `intersect` rightPrecedingAndSucceedingMatchPairs
+
+        val precedingAndSucceedingMatchPairsAcrossLeftAndRight =
+          leftPrecedingAndSucceedingMatchPairs `intersect` rightPrecedingAndSucceedingMatchPairs
+
+        val precedingAndSucceedingParallelMatchPairsAcrossAllThreeSides =
+          precedingAndSucceedingMatchPairsAcrossBaseAndLeft `intersect` precedingAndSucceedingMatchPairsAcrossBaseAndRight
+
+        // Use this predicate to filter out pairs from two-sided intersections;
+        // such pairs are either genuine parallel match pairs, in which case
+        // they already belong to
+        // `precedingAndSucceedingParallelMatchPairsAcrossAllThreeSides`, or
+        // are incomplete across all-three sides and are thus invalid as
+        // parallel candidates.
+        def invalidAsParallelMatchesAcrossJustTwoSides(
+            predecessor: GenericMatch[Element],
+            successor: GenericMatch[Element]
+        ): Boolean =
+          predecessor.isAnAllSidesMatch && successor.isAnAllSidesMatch
+
+        val precedingAndSucceedingParallelMatchPairsAcrossJustTwoSides =
+          (precedingAndSucceedingMatchPairsAcrossBaseAndLeft
+            `union` precedingAndSucceedingMatchPairsAcrossBaseAndRight
+            `union` precedingAndSucceedingMatchPairsAcrossLeftAndRight)
+            .filterNot(invalidAsParallelMatchesAcrossJustTwoSides)
+
+        val precedingAndSucceedingParallelMatchPairs =
+          precedingAndSucceedingParallelMatchPairsAcrossAllThreeSides `union` precedingAndSucceedingParallelMatchPairsAcrossJustTwoSides
+
+        val parallelMatchesGroups =
+          val unificationWorkflow =
+            precedingAndSucceedingParallelMatchPairs.traverseVoid {
+              case (predecessor, successor) =>
+                DisjointSets.union(predecessor, successor)
+            } >> DisjointSets.toSets
+
+          // NOTE: keep this around and keep it local; refer to
+          // `unsafeOrderingValidOnlyForParallelMatches` a bit later on. This
+          // one is valid for all matches, regardless of parallel matches group
+          // membership, but is not the right thing for sorting an individual
+          // group.
+          given Order[GenericMatch[Element]] = Order.by(_.stableOrderingKey)
+
+          unificationWorkflow
+            .runA(DisjointSets(matches.toSeq*))
+            .value
+            .toList
+            .map(_._2.toList)
+        end parallelMatchesGroups
+
+        val result = copy(parallelMatchesGroupIdsByMatch =
+          parallelMatchesGroups.zipWithIndex.flatMap { case (group, groupId) =>
+            group.map(_ -> groupId)
+          }.toMap
+        )
+
+        result.checkInvariant()
+
+        result
+      end withParallelMatchesGroupsAssigned
 
       private def splitStraddlingParallelMatchesGroups
           : MatchesAndTheirSections =

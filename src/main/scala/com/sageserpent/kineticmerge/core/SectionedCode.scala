@@ -85,8 +85,11 @@ object SectionedCode extends StrictLogging:
           reconcileMatchesInvolvingOverlappingSections
         )
 
+      val withParallelMatchesGroupsAssigned =
+        withOverlapsReconciled.withParallelMatchesGroupsAssigned
+
       val matchesAndTheirSections =
-        withOverlapsReconciled.reconcileSubsumingMatches
+        withParallelMatchesGroupsAssigned.reconcileSubsumingMatches
 
       val sectionsAndTheirMatches =
         matchesAndTheirSections.sectionsAndTheirMatches
