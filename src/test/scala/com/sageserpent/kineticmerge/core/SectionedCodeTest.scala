@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.{Order as _, *}
 
 import _root_.java.util.concurrent.TimeUnit
+import scala.annotation.nowarn
 import scala.concurrent.duration.Duration
 import scala.io.Source
 
@@ -111,6 +112,41 @@ class SectionedCodeTest:
   end sourcesCanBeReconstructedFromTheAnalysis
 
   @Test
+  def reproduceParallelMatchesGroupSplitting(): Unit =
+    val base =
+      FakeSources(contentsByPath = Map(1 -> Vector(1, 1)), label = "base")
+    val left = FakeSources(
+      contentsByPath = Map(1 -> Vector(1, 1, 1, 1, 3, 2, 1)),
+      label = "left"
+    )
+    val right = FakeSources(
+      contentsByPath = Map(3 -> Vector(1, 1, 1, 3, 1)),
+      label = "right"
+    )
+
+    val minimumSizeFraction = 0
+
+    pprintCustomised.pprintln((base, left, right, minimumSizeFraction))
+
+    val configuration = Configuration(
+      minimumMatchSize = 2,
+      thresholdSizeFractionForMatching = minimumSizeFraction,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    SectionedCode.of(base, left, right)(
+      configuration
+    ) match
+      case Right(analysis) =>
+
+      case Left(unexpectedException) => throw unexpectedException
+    end match
+
+  end reproduceParallelMatchesGroupSplitting
+
+  @Test
+  @nowarn("cat=deprecation")
   def reproduceStackOverflow(): Unit =
     val recipe = Source
       .fromResource("recipeForStackOverflow.txt")
@@ -160,6 +196,7 @@ class SectionedCodeTest:
   end reproduceStackOverflow
 
   @Test
+  @nowarn("cat=deprecation")
   def reproduceIllegalArgument(): Unit =
     val recipe = Source
       .fromResource("recipeForIllegalArgument.txt")
@@ -209,6 +246,7 @@ class SectionedCodeTest:
   end reproduceIllegalArgument
 
   @Test
+  @nowarn("cat=deprecation")
   def reproduceAssertionFailure(): Unit =
     val recipe = Source
       .fromResource("recipeForAssertionFailure.txt")
@@ -1638,7 +1676,7 @@ class SectionedCodeTest:
         if 2 == numberOfSourcesWithPaths then
           assert(
             2 == matches.size && matches
-              .forall(!_.isInstanceOf[Match.AllSides[Int]])
+              .forall(!_.isInstanceOf[Match.AllSides[?]])
           )
         else assert(matches.isEmpty)
         end if
@@ -1760,8 +1798,8 @@ class SectionedCodeTest:
     println(s"Resulting matches:\n${pprintCustomised(matches)}")
 
     val (allSides, pairwise) = matches.partition {
-      case _: Match.AllSides[Element] => true
-      case _                          => false
+      case _: Match.AllSides[?] => true
+      case _                    => false
     }
 
     assert(9 == allSides.size)
@@ -1822,6 +1860,7 @@ class SectionedCodeTest:
   end mergeSmokeTest
 
   @Test
+  @nowarn("cat=deprecation")
   def reproduceCrossedOverMatches(): Unit =
     val recipe = Source
       .fromResource("recipeForCrossedOverMatches.txt")

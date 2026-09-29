@@ -67,8 +67,8 @@ object SectionedCodeExtension extends StrictLogging:
         (baseBlocks ++ leftBlocks ++ rightBlocks).distinct.map { block =>
           if block.parallelMatchesGroupIds.nonEmpty then
             def laxMatchesFrom(
-                                groupId: ParallelMatchesGroupId
-                              ): SortedSet[Match[Section[Element]]] =
+                groupId: ParallelMatchesGroupId
+            ): SortedSet[Match[Section[Element]]] =
               val matchesGroup = groupsOfParallelMatches(groupId)
 
               val allSidesMatchesOnly =
@@ -78,7 +78,7 @@ object SectionedCodeExtension extends StrictLogging:
               else matchesGroup
               end if
             end laxMatchesFrom
-            
+
             val content = block.parallelMatchesGroupIds
               .map(laxMatchesFrom)
               .flatMap(
@@ -287,7 +287,7 @@ object SectionedCodeExtension extends StrictLogging:
           label = "Blocks merged:"
         )
 
-      val rawSectionClumps: Vector[ThreeSidedClump[Section[Element]]] =
+      val sectionClumps: Vector[ThreeSidedClump[Section[Element]]] =
         threeSidedClumps.map { clump =>
           ThreeSidedClump(
             base = clump.base.flatMap(_.sectionsCoveredByGroup).distinct,
@@ -296,8 +296,9 @@ object SectionedCodeExtension extends StrictLogging:
           )
         }
 
-      val sectionClumps: Vector[ThreeSidedClump[Section[Element]]] =
-        val coalescedWithMaxes = rawSectionClumps.foldLeft(
+      val nonOverlappingCoalescedSectionClumps
+          : Vector[ThreeSidedClump[Section[Element]]] =
+        val coalescedWithMaxes = sectionClumps.foldLeft(
           Vector.empty[(ThreeSidedClump[Section[Element]], Int, Int, Int)]
         ) { (coalescedClumps, successor) =>
           def overlaps(clump: ThreeSidedClump[Section[Element]]): Boolean =
@@ -412,7 +413,7 @@ object SectionedCodeExtension extends StrictLogging:
           end if
         }
         coalescedWithMaxes.map(_._1)
-      end sectionClumps
+      end nonOverlappingCoalescedSectionClumps
 
       type MatchSequence[X] = Vector[Match[X]]
 
@@ -526,7 +527,7 @@ object SectionedCodeExtension extends StrictLogging:
           )
         end matchSequenceOf
 
-        sectionClumps.flatMap(matchSequenceOf)
+        nonOverlappingCoalescedSectionClumps.flatMap(matchSequenceOf)
       end matchSequence
 
       // PLAN: put each match into its own disjoint set and use a mapping from
@@ -680,24 +681,95 @@ object SectionedCodeExtension extends StrictLogging:
         )
       end matchesCross
 
+      extension (m: Match[Section[Element]])
+        private def size: Int = m match
+          case Match.AllSides(baseSection, _, _)  => baseSection.size
+          case Match.BaseAndLeft(baseSection, _)  => baseSection.size
+          case Match.BaseAndRight(baseSection, _) => baseSection.size
+          case Match.LeftAndRight(leftSection, _) => leftSection.size
+      end extension
+
       val bestMatches =
-        val rawMatches = setsOfMatchesThatShareSectionsOnAtLeastOneSide.toList
-          .flatMap((_, matchesSharingASectionOnAtLeastOneSide) =>
-            representativeMatchesFrom(matchesSharingASectionOnAtLeastOneSide)
+        val initialMatches =
+          setsOfMatchesThatShareSectionsOnAtLeastOneSide.toList
+            .flatMap((_, matchesSharingASectionOnAtLeastOneSide) =>
+              representativeMatchesFrom(matchesSharingASectionOnAtLeastOneSide)
+            )
+
+        val canonicallyOrderedMatches = initialMatches.sortBy(m =>
+          (
+            m.baseContribution.map(_.startOffset),
+            m.leftContribution.map(_.startOffset),
+            m.rightContribution.map(_.startOffset)
           )
+        )
+
+        val baseMatches = canonicallyOrderedMatches
+          .filter(_.baseContribution.isDefined)
+          .sortBy(_.baseContribution.get.startOffset)
+          .toVector
+
+        val leftMatches = canonicallyOrderedMatches
+          .filter(_.leftContribution.isDefined)
+          .sortBy(_.leftContribution.get.startOffset)
+          .toVector
+
+        val rightMatches = canonicallyOrderedMatches
+          .filter(_.rightContribution.isDefined)
+          .sortBy(_.rightContribution.get.startOffset)
+          .toVector
+
+        given Sized[Match[Section[Element]]] = _.size
+
+        given Order[Match[Section[Element]]] = Order.by(aMatch =>
+          (
+            aMatch.baseContribution.map(_.startOffset),
+            aMatch.leftContribution.map(_.startOffset),
+            aMatch.rightContribution.map(_.startOffset)
+          )
+        )
+
+        val lcs = LongestCommonSubsequence.of(
+          baseMatches,
+          leftMatches,
+          rightMatches
+        )
+
+        val rawMatchesFromBase = lcs.base.collect {
+          case Contribution.Common(aMatch)                  => aMatch
+          case Contribution.CommonToBaseAndLeftOnly(aMatch) =>
+            Match.BaseAndLeft(
+              aMatch.baseContribution.get,
+              aMatch.leftContribution.get
+            )
+          case Contribution.CommonToBaseAndRightOnly(aMatch) =>
+            Match.BaseAndRight(
+              aMatch.baseContribution.get,
+              aMatch.rightContribution.get
+            )
+        }
+
+        val rawMatchesFromLeft = lcs.left.collect {
+          case Contribution.CommonToLeftAndRightOnly(aMatch) =>
+            Match.LeftAndRight(
+              aMatch.leftContribution.get,
+              aMatch.rightContribution.get
+            )
+        }
+
+        val rawMatches = rawMatchesFromBase ++ rawMatchesFromLeft
 
         rawMatches.combinations(2).foreach {
           case Seq(m1, m2) =>
             assert(
               !matchesCross(m1, m2),
-              s"Post-condition failed: matches cross!\n$m1\n$m2"
+              s"Post-condition failed: matches cross!\n\n"
             )
           case _ =>
         }
 
         rawMatches
       end bestMatches
-
       type Contributions = Map[Section[Element], Contribution[Section[Element]]]
 
       def recordContributionsFromMatch(
@@ -1084,10 +1156,10 @@ object SectionedCodeExtension extends StrictLogging:
         aMatch.baseContribution.exists { baseSection =>
           speculativeMigrationsBySource.get(baseSection).exists {
             case SpeculativeContentMigration.CoincidentEditOrDeletion(_) => true
-            case SpeculativeContentMigration.LeftEditOrDeletion(_, _)     => true
-            case SpeculativeContentMigration.RightEditOrDeletion(_, _)    => true
-            case SpeculativeContentMigration.Conflict(_, _, _)            => true
-            case _                                                        => false
+            case SpeculativeContentMigration.LeftEditOrDeletion(_, _)    => true
+            case SpeculativeContentMigration.RightEditOrDeletion(_, _)   => true
+            case SpeculativeContentMigration.Conflict(_, _, _)           => true
+            case _ => false
           }
         }
 
@@ -1132,14 +1204,16 @@ object SectionedCodeExtension extends StrictLogging:
         require(items.nonEmpty)
 
         val migratedChangesSortedByContent =
-          items.toSeq.sorted(itemOrdering)
+          items.toSeq.sorted(using itemOrdering)
 
         val result =
           migratedChangesSortedByContent.tail.foldLeft(
             List(migratedChangesSortedByContent.head)
-          ) { case (partialResult @ head :: _, change) =>
-            if 0 == itemOrdering.compare(head, change) then partialResult
-            else change :: partialResult
+          ) {
+            case (partialResult @ head :: _, change) =>
+              if 0 == itemOrdering.compare(head, change) then partialResult
+              else change :: partialResult
+            case (Nil, _) => Nil
           }
 
         assume(result.nonEmpty)
@@ -1192,11 +1266,15 @@ object SectionedCodeExtension extends StrictLogging:
           sectionedCode.parallelMatchesGroupIdsByMatch.get(aMatch)
         }
         val blocksOnSide = blocksFor(anchor)
-        blocksOnSide.collect {
-          case block
-              if block.parallelMatchesGroupIds.exists(groupIds.contains) =>
-            block.sectionsCoveredByGroup
-        }.flatten.toSet
+        blocksOnSide
+          .collect {
+            case block
+                if block.parallelMatchesGroupIds.exists(groupIds.contains) =>
+              block.sectionsCoveredByGroup
+          }
+          .flatten
+          .toSet
+      end parallelGroupSectionsFor
 
       def anchoredContentFromSource(
           sourceAnchor: Section[Element]
@@ -1213,20 +1291,21 @@ object SectionedCodeExtension extends StrictLogging:
         def selection(
             candidates: IndexedSeqView[Section[Element]]
         ): IndexedSeq[Section[Element]] =
-          candidates
-            .takeWhile { candidate =>
-              // Splices growing out from the start or end of the implied block are terminated
-              // by stationary preservations (or another anchor). Splices growing into the block
-              // hoover up the block's sections (including interior/filler sections of the same parallel move group).
-              val isNotStationaryPreservation =
-                !basePreservations.contains(candidate)
-              val isSectionWithinCurrentParallelMove =
-                baseGroupSections.contains(candidate)
-              val isNotAnchor =
-                !sourceAnchors.contains(candidate)
+          candidates.takeWhile { candidate =>
+            // Splices growing out from the start or end of the implied block
+            // are terminated by stationary preservations (or another anchor).
+            // Splices growing into the block hoover up the block's sections
+            // (including interior/filler sections of the same parallel move
+            // group).
+            val isNotStationaryPreservation =
+              !basePreservations.contains(candidate)
+            val isSectionWithinCurrentParallelMove =
+              baseGroupSections.contains(candidate)
+            val isNotAnchor =
+              !sourceAnchors.contains(candidate)
 
-              (isNotStationaryPreservation || isSectionWithinCurrentParallelMove) && isNotAnchor
-            }
+            (isNotStationaryPreservation || isSectionWithinCurrentParallelMove) && isNotAnchor
+          }
             // At this point, we only have a plain view rather than an indexed
             // one...
             .toIndexedSeq
@@ -1276,24 +1355,24 @@ object SectionedCodeExtension extends StrictLogging:
 
         def selection(
             candidates: IndexedSeqView[Section[Element]]
-        ): IndexedSeq[Section[Element]] = candidates
-          .takeWhile { candidate =>
-            // Splices growing out from the start or end of the implied block are terminated
-            // by stationary preservations (or another anchor). Splices growing into the block
-            // hoover up the block's sections (including interior/filler sections of the same parallel move group).
-            val isNotStationaryPreservation =
-              !preservations.contains(candidate)
-            val isSectionWithinCurrentParallelMove =
-              oppositeGroupSections.contains(candidate)
-            val isNotAnchor =
-              !oppositeSideAnchors.contains(candidate)
-            val isNotCoincidentInsertionOrEdit =
-              !coincidentInsertionsOrEdits.contains(candidate)
+        ): IndexedSeq[Section[Element]] = candidates.takeWhile { candidate =>
+          // Splices growing out from the start or end of the implied block are
+          // terminated by stationary preservations (or another anchor). Splices
+          // growing into the block hoover up the block's sections (including
+          // interior/filler sections of the same parallel move group).
+          val isNotStationaryPreservation =
+            !preservations.contains(candidate)
+          val isSectionWithinCurrentParallelMove =
+            oppositeGroupSections.contains(candidate)
+          val isNotAnchor =
+            !oppositeSideAnchors.contains(candidate)
+          val isNotCoincidentInsertionOrEdit =
+            !coincidentInsertionsOrEdits.contains(candidate)
 
-            (isNotStationaryPreservation || isSectionWithinCurrentParallelMove) &&
-            isNotAnchor &&
-            isNotCoincidentInsertionOrEdit
-          }
+          (isNotStationaryPreservation || isSectionWithinCurrentParallelMove) &&
+          isNotAnchor &&
+          isNotCoincidentInsertionOrEdit
+        }
           // At this point, we only have a plain view rather than an indexed
           // one...
           .toIndexedSeq
@@ -1381,24 +1460,24 @@ object SectionedCodeExtension extends StrictLogging:
 
         def selection(
             candidates: IndexedSeqView[Section[Element]]
-        ): IndexedSeq[Section[Element]] = candidates
-          .takeWhile { candidate =>
-            // Splices growing out from the start or end of the implied block are terminated
-            // by stationary preservations (or another anchor). Splices growing into the block
-            // hoover up the block's sections (including interior/filler sections of the same parallel move group).
-            val isNotStationaryPreservation =
-              !preservations.contains(candidate)
-            val isSectionWithinCurrentParallelMove =
-              destinationGroupSections.contains(candidate)
-            val isNotAnchor =
-              !moveDestinationAnchors.contains(candidate)
-            val isNotCoincidentInsertionOrEdit =
-              !coincidentInsertionsOrEdits.contains(candidate)
+        ): IndexedSeq[Section[Element]] = candidates.takeWhile { candidate =>
+          // Splices growing out from the start or end of the implied block are
+          // terminated by stationary preservations (or another anchor). Splices
+          // growing into the block hoover up the block's sections (including
+          // interior/filler sections of the same parallel move group).
+          val isNotStationaryPreservation =
+            !preservations.contains(candidate)
+          val isSectionWithinCurrentParallelMove =
+            destinationGroupSections.contains(candidate)
+          val isNotAnchor =
+            !moveDestinationAnchors.contains(candidate)
+          val isNotCoincidentInsertionOrEdit =
+            !coincidentInsertionsOrEdits.contains(candidate)
 
-            (isNotStationaryPreservation || isSectionWithinCurrentParallelMove) &&
-            isNotAnchor &&
-            isNotCoincidentInsertionOrEdit
-          }
+          (isNotStationaryPreservation || isSectionWithinCurrentParallelMove) &&
+          isNotAnchor &&
+          isNotCoincidentInsertionOrEdit
+        }
           // At this point, we only have a plain view rather than an indexed
           // one...
           .toIndexedSeq

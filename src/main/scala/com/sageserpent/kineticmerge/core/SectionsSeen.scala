@@ -175,7 +175,7 @@ object SectionsSeen:
     private def merge(
         l: Treap[Element] | Empty.type,
         r: Treap[Element] | Empty.type
-    ): Treap[Element] | Empty.type = (l, r) match
+    ): Treap[Element] | Empty.type = ((l, r): @unchecked) match
       case (Empty, _)                               => r
       case (_, Empty)                               => l
       case (lt: Treap[Element], rt: Treap[Element]) =>

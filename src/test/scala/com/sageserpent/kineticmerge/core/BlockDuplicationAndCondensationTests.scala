@@ -33,7 +33,7 @@ object BlockDuplicationAndCondensationTests:
   given Order[Section[Element]] =
     Order.by[Section[Element], Seq[Element]](_.content)
 
-  given Sized[Section[Element]] = defaultElementSize
+  given Sized[Section[Element]] = defaultElementSize(_)
 
   extension [X](longestCommonSubsequence: LongestCommonSubsequence[X])
     def adaptedForMirroring(mirrored: Boolean): LongestCommonSubsequence[X] =

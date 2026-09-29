@@ -55,7 +55,7 @@ object SectionedCode extends StrictLogging:
     *   A [[SectionedCode]] that contains a breakdown into [[File]] instances
     *   and thence into [[Section]] instances for each of the three sources.
     */
-  def of[Path, Element: Eq: Funnel](
+  def of[Path, Element: {Eq, Funnel}](
       baseSources: Sources[Path, Element],
       leftSources: Sources[Path, Element],
       rightSources: Sources[Path, Element]
