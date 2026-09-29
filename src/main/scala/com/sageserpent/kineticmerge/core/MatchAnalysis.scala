@@ -2268,7 +2268,7 @@ object MatchAnalysis extends StrictLogging:
             s"${configuration.label} - number of overlapping matches to reconcile:"
           else "Number of overlapping matches to reconcile:"
 
-        val reconciled =
+        val outcome =
           Using(
             progressRecording.newSession(
               label = sessionLabel,
@@ -2342,7 +2342,12 @@ object MatchAnalysis extends StrictLogging:
             end reconcileUsing
 
             reconcileUsing(this)
-          }.get // Allow an exception to propagate through, specifically an `AdmissibleException` thrown if reconciliation is disabled.
+          }
+
+        // NOTE: do this and not a refutable pattern match so that any exception
+        // can propagate through, specifically an `AdmissibleException` thrown
+        // if reconciliation is disabled.
+        val reconciled = outcome.get
 
         reconciled.checkInvariant()
 
