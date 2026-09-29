@@ -289,7 +289,7 @@ object MatchAnalysis extends StrictLogging:
           ) = (
             sources.pathFor(section).hashCode,
             section.startOffset,
-            -section.size
+            section.size
           )
 
           (
@@ -1943,14 +1943,14 @@ object MatchAnalysis extends StrictLogging:
         // ignores gaps, we have to guard against sections that would have
         // formed the sides of a suppressed outer match making a second attempt
         // at building a match.
-        val groupsOfBackTranslatedParallelMatches = metaMatches
-          .map {
+        val backTranslatedParallelMatches = metaMatches
+          .flatMap {
             case Match.AllSides(
                   baseMetaSection,
                   leftMetaSection,
                   rightMetaSection
                 ) =>
-              (baseMetaSection.content lazyZip leftMetaSection.content lazyZip rightMetaSection.content)
+              (baseMetaSection.content `lazyZip` leftMetaSection.content `lazyZip` rightMetaSection.content)
                 .collect {
                   case (baseSection, leftSection, rightSection)
                       if !isSubsumedNonTriviallyByAnAllSidesMatch(
@@ -1961,7 +1961,7 @@ object MatchAnalysis extends StrictLogging:
                     Match.AllSides(baseSection, leftSection, rightSection)
                 }
             case Match.BaseAndLeft(baseMetaSection, leftMetaSection) =>
-              (baseMetaSection.content lazyZip leftMetaSection.content)
+              (baseMetaSection.content `lazyZip` leftMetaSection.content)
                 .collect {
                   case (baseSection, leftSection)
                       if !isSubsumedNonTriviallyByAMatchOnTheBaseAndLeft(
@@ -1971,7 +1971,7 @@ object MatchAnalysis extends StrictLogging:
                     Match.BaseAndLeft(baseSection, leftSection)
                 }
             case Match.BaseAndRight(baseMetaSection, rightMetaSection) =>
-              (baseMetaSection.content lazyZip rightMetaSection.content)
+              (baseMetaSection.content `lazyZip` rightMetaSection.content)
                 .collect {
                   case (baseSection, rightSection)
                       if !isSubsumedNonTriviallyByAMatchOnTheBaseAndRight(
@@ -1981,7 +1981,7 @@ object MatchAnalysis extends StrictLogging:
                     Match.BaseAndRight(baseSection, rightSection)
                 }
             case Match.LeftAndRight(leftMetaSection, rightMetaSection) =>
-              (leftMetaSection.content lazyZip rightMetaSection.content)
+              (leftMetaSection.content `lazyZip` rightMetaSection.content)
                 .collect {
                   case (leftSection, rightSection)
                       if !isSubsumedNonTriviallyByAMatchOnTheLeftAndRight(
@@ -1991,12 +1991,6 @@ object MatchAnalysis extends StrictLogging:
                     Match.LeftAndRight(leftSection, rightSection)
                 }
           }
-          .filter(_.nonEmpty)
-          .toSeq
-
-        // 4. Build putative groups from the back-translated matches. These
-        // won't be perfectly accurate, but are refined later by
-        // `reconcileMatches`.
 
         // NOTE: need to build a new instance of `MatchesAndTheirSections` for
         // the back-translated matches, because the thinning out of ambiguous
@@ -2010,29 +2004,13 @@ object MatchAnalysis extends StrictLogging:
         val backTranslatedMatchesAndTheirSections =
           MatchesAndTheirSections.empty
             .withMatches(
-              groupsOfBackTranslatedParallelMatches.foldLeft(Set.empty)(_ ++ _),
+              backTranslatedParallelMatches,
               haveTrimmedMatches = false
             )
             .matchesAndTheirSections
 
-        val parallelMatchesGroupIdsByMatch =
-          Map.from(
-            groupsOfBackTranslatedParallelMatches
-              // NOTE: sort the matches so that the allocated group ids are
-              // repeatable between debugging sessions!
-              .sortBy(_.toSeq.map(_.stableOrderingKey))
-              .zipWithIndex
-              .flatMap((parallelMatches, groupId) =>
-                parallelMatches.map(_ -> groupId)
-              )
-          )
-        end parallelMatchesGroupIdsByMatch
-
-        val result = backTranslatedMatchesAndTheirSections
-          .copy(parallelMatchesGroupIdsByMatch = parallelMatchesGroupIdsByMatch)
-          .withoutRedundantPairwiseMatches
-
-        // result.checkParallelMatchesGroups(checksForSplitGroupsToo = false)
+        val result =
+          backTranslatedMatchesAndTheirSections.withoutRedundantPairwiseMatches
 
         result.checkInvariant()
 
