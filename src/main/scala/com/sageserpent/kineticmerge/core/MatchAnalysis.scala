@@ -2425,8 +2425,7 @@ object MatchAnalysis extends StrictLogging:
                 for
                   predecessor <- precedingMatchesFromPriorIteration
                   successor   <- succeedingMatches
-                  // if startOffsetFrom(predecessor) <
-                  // startOffsetFrom(successor)
+                  if startOffsetFrom(predecessor) < startOffsetFrom(successor)
                   isNotABridge =
                     // A bridge from an all-sides to a pairwise match or
                     // vice versa would allow malformed groups to be formed,
@@ -2545,6 +2544,8 @@ object MatchAnalysis extends StrictLogging:
         )
 
         result.checkInvariant()
+
+        result.checkParallelMatchesGroups(checksForSplitGroupsToo = false)
 
         result
       end withParallelMatchesGroupsAssigned
