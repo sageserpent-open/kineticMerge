@@ -2275,38 +2275,24 @@ object MatchAnalysis extends StrictLogging:
               maximumProgress = matches.size
             )(initialProgress = matches.size)
           ) { progressRecordingSession =>
+            @tailrec
             def reconcileUsing(
                 remainingMatchesAndTheirSections: MatchesAndTheirSections
-            ): ParallelMatchesGroupIdTracking[
-              Either[MatchesAndTheirSections, MatchesAndTheirSections]
-            ] =
+            ): MatchesAndTheirSections =
               val matches = remainingMatchesAndTheirSections.matches
 
-              val (unsplitMatchesWithoutOverlaps, splits) =
-                matches
-                  .map(
-                    remainingMatchesAndTheirSections.hiveOffNonOverlappedMatchFrom
-                  )
-                  .partitionMap(identity)
+              val (unsplitMatchesWithoutOverlaps, splits) = matches
+                .map(
+                  remainingMatchesAndTheirSections.hiveOffNonOverlappedMatchFrom
+                )
+                .partitionMap(identity)
 
               progressRecordingSession.upTo(splits.size)
 
               def overlappingMatches =
                 matches diff unsplitMatchesWithoutOverlaps
 
-              if splits.isEmpty then
-                for updatedParallelMatchesGroupIdsByMatch <- State.get
-                yield
-                  val parallelMatchesGroupIdsByMatch =
-                    updatedParallelMatchesGroupIdsByMatch
-                      .filter((key, _) => matches.contains(key))
-
-                  Right(
-                    remainingMatchesAndTheirSections
-                      .copy(parallelMatchesGroupIdsByMatch =
-                        parallelMatchesGroupIdsByMatch
-                      )
-                  )
+              if splits.isEmpty then remainingMatchesAndTheirSections
               else
                 if !enabled then
                   // NASTY HACK: throwing an exception right in the middle of
@@ -2329,43 +2315,34 @@ object MatchAnalysis extends StrictLogging:
                   )
                 end if
 
-                for splitResults <- splits.sequence
-                yield
-                  val hivedOffMatches =
-                    splitResults.flatMap(_.hivedOffNonOverlappedMatch)
-                  val remainingContestedMatches =
-                    splitResults.flatMap(_.remainingContestedMatches)
+                val hivedOffMatches =
+                  splits.flatMap(_.hivedOffNonOverlappedMatch)
+                val remainingContestedMatches =
+                  splits.flatMap(_.remainingContestedMatches)
 
-                  val withoutOverlaps =
-                    remainingMatchesAndTheirSections.withoutTheseMatches(
-                      overlappingMatches
+                val withoutOverlaps =
+                  remainingMatchesAndTheirSections.withoutTheseMatches(
+                    overlappingMatches
+                  )
+
+                val withSplitsReintroduced =
+                  (hivedOffMatches `union` remainingContestedMatches)
+                    .filterNot(
+                      withoutOverlaps.contains
+                    ) // TODO: is there any point in separating the hived off and contested matches in `HivedOffNonOverlappedMatchResult`?
+                    .foldLeft(withoutOverlaps)(
+                      _ `withMatch` _
                     )
 
-                  val withSplitsReintroduced =
-                    (hivedOffMatches union remainingContestedMatches)
-                      .filterNot(
-                        withoutOverlaps.contains
-                      ) // TODO: is there any point in separating the hived off and contested matches in `HivedOffNonOverlappedMatchResult`?
-                      .foldLeft(withoutOverlaps)(
-                        _ `withMatch` _
-                      )
+                val refined =
+                  withSplitsReintroduced.withoutRedundantPairwiseMatches
 
-                  val refined =
-                    withSplitsReintroduced.withoutRedundantPairwiseMatches
-
-                  Left(refined)
-                end for
+                reconcileUsing(refined)
               end if
             end reconcileUsing
 
-            FlatMap[ParallelMatchesGroupIdTracking]
-              .tailRecM(this)(reconcileUsing)
-              .runA(parallelMatchesGroupIdsByMatch)
-              .value
+            reconcileUsing(this)
           }.get // Allow an exception to propagate through, specifically an `AdmissibleException` thrown if reconciliation is disabled.
-
-        // reconciled.checkParallelMatchesGroups(checksForSplitGroupsToo =
-        // false)
 
         reconciled.checkInvariant()
 
@@ -3514,7 +3491,7 @@ object MatchAnalysis extends StrictLogging:
           aMatch: GenericMatch[Element]
       ): Either[
         GenericMatch[Element], /* Original match if not split. */
-        ParallelMatchesGroupIdTracking[HivedOffNonOverlappedMatchResult]
+        HivedOffNonOverlappedMatchResult
       ] =
         enum Encroachment:
           def startToLeftAndEndToRight: Either[Int, Int] =
@@ -3619,10 +3596,7 @@ object MatchAnalysis extends StrictLogging:
             )
 
             Right(
-              for
-                _ <- propagateGroupId(aMatch, remainingContestedMatch)
-                _ <- propagateGroupId(aMatch, hivedOffMatch)
-              yield new HivedOffNonOverlappedMatchResult:
+              new HivedOffNonOverlappedMatchResult:
                 def hivedOffNonOverlappedMatch: Option[GenericMatch[Element]] =
                   Some(hivedOffMatch)
                 def remainingContestedMatches: Seq[GenericMatch[Element]] =
@@ -3639,10 +3613,7 @@ object MatchAnalysis extends StrictLogging:
             )
 
             Right(
-              for
-                _ <- propagateGroupId(aMatch, hivedOffMatch)
-                _ <- propagateGroupId(aMatch, remainingContestedMatch)
-              yield new HivedOffNonOverlappedMatchResult:
+              new HivedOffNonOverlappedMatchResult:
                 def hivedOffNonOverlappedMatch: Option[GenericMatch[Element]] =
                   Some(hivedOffMatch)
                 def remainingContestedMatches: Seq[GenericMatch[Element]] =
@@ -3664,11 +3635,7 @@ object MatchAnalysis extends StrictLogging:
             )
 
             Right(
-              for
-                _ <- propagateGroupId(aMatch, leadingRemainingContestedMatch)
-                _ <- hivedOffMatch.traverse(propagateGroupId(aMatch, _))
-                _ <- propagateGroupId(aMatch, trailingRemainingContestedMatch)
-              yield new HivedOffNonOverlappedMatchResult:
+              new HivedOffNonOverlappedMatchResult:
                 def hivedOffNonOverlappedMatch: Option[GenericMatch[Element]] =
                   hivedOffMatch
                 def remainingContestedMatches: Seq[GenericMatch[Element]] =
