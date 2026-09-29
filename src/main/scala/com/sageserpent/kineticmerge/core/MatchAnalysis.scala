@@ -279,11 +279,18 @@ object MatchAnalysis extends StrictLogging:
                 )(relativeStartOffset, size)
               )
 
-        def stableOrderingKey
-            : (Option[(Int, Int)], Option[(Int, Int)], Option[(Int, Int)]) =
+        def stableOrderingKey: (
+            Option[(Int, Int, Int)],
+            Option[(Int, Int, Int)],
+            Option[(Int, Int, Int)]
+        ) =
           def stableOrderingKey(sources: Sources[Path, Element])(
               section: Section[Element]
-          ) = sources.pathFor(section).hashCode -> section.startOffset
+          ) = (
+            sources.pathFor(section).hashCode,
+            section.startOffset,
+            -section.size
+          )
 
           (
             aMatch.baseContribution.map(
