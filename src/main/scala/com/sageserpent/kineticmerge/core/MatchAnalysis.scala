@@ -1686,12 +1686,12 @@ object MatchAnalysis extends StrictLogging:
         val precedingAndSucceedingParallelMatchPairsAcrossAllThreeSides =
           precedingAndSucceedingMatchPairsAcrossBaseAndLeft `intersect` precedingAndSucceedingMatchPairsAcrossBaseAndRight
 
-        // Use this predicate to filter out pairs from two-sided intersections;
-        // such pairs are either genuine parallel match pairs, in which case
-        // they already belong to
-        // `precedingAndSucceedingParallelMatchPairsAcrossAllThreeSides`, or
-        // are incomplete across all-three sides and are thus invalid as
-        // parallel candidates.
+        // Use this predicate to filter out pairs of all-sides matches from
+        // two-sided intersections; such pairs are either genuine parallel match
+        // pairs, in which case they already belong to
+        // `precedingAndSucceedingParallelMatchPairsAcrossAllThreeSides`, or are
+        // incomplete across all three sides and are thus invalid as parallel
+        // candidates.
         def invalidAsParallelMatchesAcrossJustTwoSides(
             predecessor: GenericMatch[Element],
             successor: GenericMatch[Element]
