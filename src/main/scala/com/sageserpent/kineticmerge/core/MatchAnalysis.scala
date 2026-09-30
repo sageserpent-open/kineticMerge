@@ -2,12 +2,11 @@ package com.sageserpent.kineticmerge.core
 
 import alleycats.std.set.given
 import cats.collections.{Diet, DisjointSets, Range as CatsInclusiveRange}
-import cats.data.State
 import cats.implicits.catsKernelOrderingForOrder
 import cats.instances.seq.*
 import cats.kernel.Order
 import cats.syntax.all.*
-import cats.{Eq, FlatMap, Order}
+import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.hash.{Funnel, HashFunction, PrimitiveSink}
 import com.sageserpent.kineticmerge
@@ -201,8 +200,6 @@ object MatchAnalysis extends StrictLogging:
     val tiebreakContentSamplingLimit = 5
 
     object MatchesAndTheirSections:
-      type ParallelMatchesGroupIdTracking[X] =
-        State[ParallelMatchesGroupIdsByMatch[Element], X]
       lazy val empty: MatchesAndTheirSections = MatchesAndTheirSections(
         baseSectionsByPath = Map.empty,
         leftSectionsByPath = Map.empty,
@@ -834,33 +831,27 @@ object MatchAnalysis extends StrictLogging:
             MatchType,
             (Match[Section[Element]], BiteEdge, BiteEdge)
           ]
-      ): ParallelMatchesGroupIdTracking[Set[DependentMatchType[MatchType]]] =
-        matchesToBeEaten.sets.toSeq
-          .flatTraverse { case (matchBeingBittenInto, bites) =>
-            for
-              parallelMatchesGroupIdsByMatch <- State
-                .get[ParallelMatchesGroupIdsByMatch[Element]]
+      ): Set[DependentMatchType[MatchType]] =
+        matchesToBeEaten.sets.flatMap { case (matchBeingBittenInto, bites) =>
+          val matchesBySortedBiteEdge = SortedMultiDict.from(bites.flatMap {
+            case (bitingMatch, biteStart, biteEnd) =>
+              Seq(biteStart -> bitingMatch, biteEnd -> bitingMatch)
+          })
 
-              matchesBySortedBiteEdge = SortedMultiDict.from(bites.flatMap {
-                case (bitingMatch, biteStart, biteEnd) =>
-                  Seq(biteStart -> bitingMatch, biteEnd -> bitingMatch)
-              })
+          val sortedBiteEdges = matchesBySortedBiteEdge.keySet
 
-              sortedBiteEdges = matchesBySortedBiteEdge.keySet
+          val fragmentsFromMatch =
+            sortedBiteEdges.eatIntoMatch(
+              matchBeingBittenInto,
+              matchesBySortedBiteEdge
+            )
 
-              fragmentsFromMatch <-
-                sortedBiteEdges.eatIntoMatch(
-                  matchBeingBittenInto,
-                  matchesBySortedBiteEdge
-                )
-            yield
-              logger.debug(
-                s"Eating into match:\n${pprintCustomised(matchBeingBittenInto)} on behalf of matches:\n${pprintCustomised(bites)}, resulting in fragments:\n${pprintCustomised(fragmentsFromMatch)}"
-              )
+          logger.debug(
+            s"Eating into match:\n${pprintCustomised(matchBeingBittenInto)} on behalf of matches:\n${pprintCustomised(bites)}, resulting in fragments:\n${pprintCustomised(fragmentsFromMatch)}"
+          )
 
-              fragmentsFromMatch
-          }
-          .map(_.toSet)
+          fragmentsFromMatch
+        }.toSet
 
       // There are contracts buried in the implementation that require the bite
       // edges to be sorted in terms of their offsets and not exceed the
@@ -872,9 +863,7 @@ object MatchAnalysis extends StrictLogging:
               BiteEdge,
               GenericMatch[Element]
             ]
-        ): ParallelMatchesGroupIdTracking[
-          Vector[DependentMatchType[MatchType]]
-        ] =
+        ): Vector[DependentMatchType[MatchType]] =
           // NOTE: here we work with zero-relative offsets from the start of the
           // meal, thus we can work directly with the offsets from the bite
           // edges.
@@ -971,9 +960,8 @@ object MatchAnalysis extends StrictLogging:
               remainingBiteEdges: Seq[BiteEdge],
               fragments: Vector[DependentMatchType[MatchType]]
           ):
-            final def biteEdgeStep: ParallelMatchesGroupIdTracking[
-              Either[RecursionState, Vector[DependentMatchType[MatchType]]]
-            ] =
+            @tailrec
+            final def biteEdgeStep: Vector[DependentMatchType[MatchType]] =
               remainingBiteEdges match
                 case Seq() =>
                   require(0 == biteDepth)
@@ -984,15 +972,8 @@ object MatchAnalysis extends StrictLogging:
                     val fragment =
                       fragmentFactory(mealStartOffsetRelativeToMeal, size)
 
-                    for
-                      parallelMatchesGroupIdsByMatch <- State
-                        .get[ParallelMatchesGroupIdsByMatch[Element]]
-                      result <- assignUniqueGroupId(
-                        fragment
-                      ) as Right(fragments.appended(fragment))
-                    yield result
-                    end for
-                  else State.pure(Right(fragments))
+                    fragments.appended(fragment)
+                  else fragments
                   end if
 
                 case Seq(
@@ -1007,37 +988,31 @@ object MatchAnalysis extends StrictLogging:
                   val matchesFromSucceedingBite =
                     matchesByBiteEdge.get(biteEdge)
 
-                  for
-                    parallelMatchesGroupIdsByMatch <- State
-                      .get[ParallelMatchesGroupIdsByMatch[Element]]
-                    updatedFragments <-
-                      if 0 == biteDepth && startOffsetRelativeToMeal > mealStartOffsetRelativeToMeal
-                      then
-                        val size =
-                          startOffsetRelativeToMeal - mealStartOffsetRelativeToMeal
+                  val updatedFragments =
+                    if 0 == biteDepth && startOffsetRelativeToMeal > mealStartOffsetRelativeToMeal
+                    then
+                      val size =
+                        startOffsetRelativeToMeal - mealStartOffsetRelativeToMeal
 
-                        val fragment =
-                          fragmentFactory(mealStartOffsetRelativeToMeal, size)
+                      val fragment =
+                        fragmentFactory(mealStartOffsetRelativeToMeal, size)
 
-                        assignUniqueGroupId(fragment) as
-                          fragments.appended(fragment)
-                      else State.pure(fragments)
-                  yield Left(
-                    this
-                      .copy(
-                        mealStartOffsetRelativeToMeal =
-                          startOffsetRelativeToMeal,
-                        biteDepth =
-                          // NOTE: have to account for the bites originating
-                          // from a *set* of keys into a multi-dictionary. May
-                          // have starting bite edge colliding whereas the
-                          // balancing ending bite edges are distinct.
-                          matchesFromSucceedingBite.size + biteDepth,
-                        remainingBiteEdges = tail,
-                        fragments = updatedFragments
-                      )
-                  )
-                  end for
+                      fragments.appended(fragment)
+                    else fragments
+
+                  this
+                    .copy(
+                      mealStartOffsetRelativeToMeal = startOffsetRelativeToMeal,
+                      biteDepth =
+                        // NOTE: have to account for the bites originating
+                        // from a *set* of keys into a multi-dictionary. May
+                        // have starting bite edge colliding whereas the
+                        // balancing ending bite edges are distinct.
+                        matchesFromSucceedingBite.size + biteDepth,
+                      remainingBiteEdges = tail,
+                      fragments = updatedFragments
+                    )
+                    .biteEdgeStep
 
                 case Seq(
                       biteEdge @ BiteEdge.End(onePastEndOffsetRelativeToMeal),
@@ -1052,64 +1027,33 @@ object MatchAnalysis extends StrictLogging:
 
                   val matchesFromBite = matchesByBiteEdge.get(biteEdge)
 
-                  State.pure(
-                    Left(
-                      this
-                        .copy(
-                          mealStartOffsetRelativeToMeal =
-                            onePastEndOffsetRelativeToMeal,
-                          biteDepth =
-                            // NOTE: have to account for the bites originating
-                            // from a *set* of keys into a multi-dictionary. May
-                            // have starting bite edge distinct whereas the
-                            // balancing ending bite edges collide.
-                            biteDepth - matchesFromBite.size,
-                          remainingBiteEdges = tail,
-                          fragments = fragments
-                        )
+                  this
+                    .copy(
+                      mealStartOffsetRelativeToMeal =
+                        onePastEndOffsetRelativeToMeal,
+                      biteDepth =
+                        // NOTE: have to account for the bites originating
+                        // from a *set* of keys into a multi-dictionary. May
+                        // have starting bite edge distinct whereas the
+                        // balancing ending bite edges collide.
+                        biteDepth - matchesFromBite.size,
+                      remainingBiteEdges = tail,
+                      fragments = fragments
                     )
-                  )
+                    .biteEdgeStep
               end match
             end biteEdgeStep
           end RecursionState
 
-          FlatMap[ParallelMatchesGroupIdTracking].tailRecM(
-            RecursionState(
-              mealStartOffsetRelativeToMeal = 0,
-              biteDepth = 0,
-              remainingBiteEdges = biteEdges.toSeq,
-              fragments = Vector.empty
-            )
-          )(_.biteEdgeStep)
+          RecursionState(
+            mealStartOffsetRelativeToMeal = 0,
+            biteDepth = 0,
+            remainingBiteEdges = biteEdges.toSeq,
+            fragments = Vector.empty
+          ).biteEdgeStep
         end eatIntoMatch
 
       end extension
-
-      private def assignUniqueGroupId[MatchType <: GenericMatch[Element]](
-          fragment: MatchType
-      ): ParallelMatchesGroupIdTracking[Unit] =
-        State.modify[ParallelMatchesGroupIdsByMatch[Element]] {
-          groupIdsByMatch =>
-            val assignedGroupId =
-              // TODO: trawling linearly through the group ids to find the
-              // maximum isn't a great idea. Perhaps there should be a maximum
-              // group id too?
-              groupIdsByMatch.values.maxOption.fold(ifEmpty = 0)(1 + _)
-
-            groupIdsByMatch + (fragment -> assignedGroupId)
-        }
-
-      private def propagateGroupId(
-          original: GenericMatch[Element],
-          replacement: GenericMatch[Element]
-      ): ParallelMatchesGroupIdTracking[Unit] =
-        State.modify { groupIdsByMatch =>
-          groupIdsByMatch
-            .get(original)
-            .fold(ifEmpty = groupIdsByMatch)(groupId =>
-              groupIdsByMatch + (replacement -> groupId)
-            )
-        }
 
       trait PathInclusions:
         def isIncludedOnBase(basePath: Path): Boolean
@@ -1552,13 +1496,10 @@ object MatchAnalysis extends StrictLogging:
               maximumProgress = matches.size
             )(initialProgress = matches.size)
           ) { progressRecordingSession =>
+            @tailrec
             def reconcileUsing(
                 allSidesMatches: Set[Match.AllSides[Section[Element]]]
-            ): ParallelMatchesGroupIdTracking[
-              Either[Set[
-                Match.AllSides[Section[Element]]
-              ], MatchesAndTheirSections]
-            ] =
+            ): MatchesAndTheirSections =
               val pairwiseMatchesToBeEaten: MultiDict[
                 PairwiseMatch,
                 (GenericMatch[Element], BiteEdge, BiteEdge)
@@ -1572,82 +1513,71 @@ object MatchAnalysis extends StrictLogging:
                   )
                 )
 
-              for
-                fragments <- fragmentsOf(pairwiseMatchesToBeEaten).map(
-                  _.diff(matches)
+              val fragments =
+                fragmentsOf(pairwiseMatchesToBeEaten).diff(matches)
+
+              val takingFragmentationIntoAccount =
+                fragments.foldLeft(
+                  withoutTheseMatches(pairwiseMatchesToBeEaten.keySet)
+                )(_ `withMatch` _)
+
+              takingFragmentationIntoAccount.checkInvariant()
+
+              // NOTE: prefer `traverse` + `flatten` to `flatTraverse` as it
+              // manages flattening `Option` values into an enclosing `Set`
+              // nicely. The same holds a bit later on too.
+              val paredDownMatches = matches
+                .flatMap(
+                  takingFragmentationIntoAccount.pareDownOrSuppressCompletely
+                )
+                .diff(
+                  pairwiseMatchesToBeEaten.keySet
+                    .asInstanceOf[Set[GenericMatch[Element]]]
                 )
 
-                takingFragmentationIntoAccount =
-                  fragments.foldLeft(
-                    withoutTheseMatches(pairwiseMatchesToBeEaten.keySet)
-                  )(_ `withMatch` _)
+              val paredDownAllSidesMatches = paredDownMatches.collect {
+                case allSides: Match.AllSides[Section[Element]] => allSides
+              }
 
-                _ = takingFragmentationIntoAccount.checkInvariant()
+              // NOTE: `pareDownOrSuppressCompletely` does not create
+              // modified all-sides matches, it always pares down to either
+              // a pairwise match or nothing at all. Advantage is taken of
+              // this when the state is reset above for each recursion step
+              // - we don't have to enrol the group ids for any modified
+              // all-sides matches.
+              assume(paredDownAllSidesMatches.subsetOf(allSidesMatches))
 
-                // NOTE: prefer `traverse` + `flatten` to `flatTraverse` as it
-                // manages flattening `Option` values into an enclosing `Set`
-                // nicely. The same holds a bit later on too.
-                paredDownMatches <- matches
-                  .traverse(
-                    takingFragmentationIntoAccount.pareDownOrSuppressCompletely
-                  )
-                  .map(
-                    _.flatten diff pairwiseMatchesToBeEaten.keySet
-                      .asInstanceOf[Set[GenericMatch[Element]]]
-                  )
+              if paredDownAllSidesMatches == allSidesMatches then
+                // See note above.
+                val paredDownFragments = fragments.flatMap(
+                  takingFragmentationIntoAccount.pareDownOrSuppressCompletely
+                )
+                val rebuilt =
+                  (paredDownMatches union paredDownFragments)
+                    .foldLeft(MatchesAndTheirSections.empty)(
+                      _ `withMatch` _
+                    )
+                rebuilt.checkInvariant()
+                val reconciled = rebuilt.withoutRedundantPairwiseMatches
+                reconciled.checkInvariant()
+                progressRecordingSession.upTo(amount = 0)
 
-                paredDownAllSidesMatches = paredDownMatches.collect {
-                  case allSides: Match.AllSides[Section[Element]] => allSides
-                }
+                val fullyReconciledMatches = reconciled.matches
 
-                _ =
-                  // NOTE: `pareDownOrSuppressCompletely` does not create
-                  // modified all-sides matches, it always pares down to either
-                  // a pairwise match or nothing at all. Advantage is taken of
-                  // this when the state is reset above for each recursion step
-                  // - we don't have to enrol the group ids for any modified
-                  // all-sides matches.
-                  assume(paredDownAllSidesMatches.subsetOf(allSidesMatches))
+                reconciled
+                  .checkParallelMatchesGroups(checksForSplitGroupsToo = false)
 
-                stepResult <-
-                  if paredDownAllSidesMatches == allSidesMatches then
-                    for
-                      // See note above.
-                      paredDownFragments <- fragments.traverse(
-                        takingFragmentationIntoAccount.pareDownOrSuppressCompletely
-                      )
-                      rebuilt =
-                        (paredDownMatches union paredDownFragments.flatten)
-                          .foldLeft(MatchesAndTheirSections.empty)(
-                            _ `withMatch` _
-                          )
-                      _          = rebuilt.checkInvariant()
-                      reconciled = rebuilt.withoutRedundantPairwiseMatches
-                      _          = reconciled.checkInvariant()
-                      _          = progressRecordingSession.upTo(amount = 0)
-                    yield
-                      val fullyReconciledMatches = reconciled.matches
-
-                      reconciled
-                        .checkParallelMatchesGroups(checksForSplitGroupsToo =
-                          false
-                        )
-
-                      Right(reconciled)
-                  else
-                    progressRecordingSession.upTo(paredDownMatches.size)
-                    State.pure(Left(paredDownAllSidesMatches))
-              yield stepResult
-              end for
+                reconciled
+              else
+                progressRecordingSession.upTo(paredDownMatches.size)
+                reconcileUsing(paredDownAllSidesMatches)
+              end if
             end reconcileUsing
 
-            FlatMap[ParallelMatchesGroupIdTracking]
-              .tailRecM(matches.collect {
-                case allSides: Match.AllSides[Section[Element]] => allSides
-              })(reconcileUsing)
-              .runA(Map.empty)
-              .value
-          }: @unchecked
+            reconcileUsing(matches.collect {
+              case allSides: Match.AllSides[Section[Element]] => allSides
+            })
+          }
 
         // NOTE: do this and not a refutable pattern match so that any assertion
         // failures propagate out cleanly - it makes debugging a lot easier.
@@ -3034,7 +2964,7 @@ object MatchAnalysis extends StrictLogging:
         Element
       ]](
           aMatch: MatchType
-      ): ParallelMatchesGroupIdTracking[Option[DependentMatchType[MatchType]]] =
+      ): Option[DependentMatchType[MatchType]] =
         // NOTE: one thing to watch out is when fragments resulting from
         // larger pairwise matches being eaten into collide with equivalent
         // pairwise matches found by fingerprint matching. This can take the
@@ -3043,7 +2973,7 @@ object MatchAnalysis extends StrictLogging:
         // by fragmentation if the all-sides eating into the larger pairwise
         // matches also come from the same fingerprinting that yielded the
         // pairwise matching. Intercepting this here addresses both cases. {
-        val result: Option[DependentMatchType[MatchType]] = aMatch match
+        aMatch match
           case Match.AllSides(baseSection, leftSection, rightSection) =>
             val trivialSubsumptionSize = baseSection.size
 
@@ -3159,10 +3089,6 @@ object MatchAnalysis extends StrictLogging:
             )(aMatch)
 
           case _ => None
-
-        result.traverse(paredDownMatch =>
-          propagateGroupId(aMatch, paredDownMatch) as paredDownMatch
-        )
       end pareDownOrSuppressCompletely
 
       private def pairwiseMatchesSubsumingOnBothSidesWithBiteEdges(
