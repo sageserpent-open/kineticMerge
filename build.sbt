@@ -102,7 +102,7 @@ lazy val root = (project in file("."))
     libraryDependencies += "com.google.guava" % "guava" % "33.7.2-jre",
     libraryDependencies += "com.github.ben-manes.caffeine" % "caffeine" % "3.3.0",
     libraryDependencies += "me.tongfei"         % "progressbar"   % "0.10.2",
-    libraryDependencies += "org.apache.commons" % "commons-lang3" % "3.20.0",
+    libraryDependencies += "org.apache.commons" % "commons-lang3" % "3.21.0",
     libraryDependencies +=
       "org.scala-lang.modules" %% "scala-parallel-collections" % "1.2.0",
     libraryDependencies += "org.typelevel" %% "kittens" % "3.5.0",
