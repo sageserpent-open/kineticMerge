@@ -1704,7 +1704,7 @@ object MatchAnalysis extends StrictLogging:
         val initialParallelPairs =
           precedingAndSucceedingParallelMatchPairsAcrossAllThreeSides `union` sameKindPairwisePairs
 
-        val initialGroups = {
+        val initialGroups =
           val unificationWorkflow =
             initialParallelPairs.traverseVoid { case (predecessor, successor) =>
               DisjointSets.union(predecessor, successor)
@@ -1717,7 +1717,7 @@ object MatchAnalysis extends StrictLogging:
             .toList
             .map(_._2.toList.toSet)
             .toSet
-        }
+        end initialGroups
 
         val matchToInitialGroup = initialGroups.flatMap { group =>
           group.map(_ -> group)
@@ -1760,8 +1760,10 @@ object MatchAnalysis extends StrictLogging:
             aOutGroup: Set[GenericMatch[Element]],
             pairwiseSample: GenericMatch[Element]
         ): Boolean =
-          val lastAin = aInGroup.max(using unsafeOrderingValidOnlyForParallelMatches)
-          val firstAout = aOutGroup.min(using unsafeOrderingValidOnlyForParallelMatches)
+          val lastAin =
+            aInGroup.max(using unsafeOrderingValidOnlyForParallelMatches)
+          val firstAout =
+            aOutGroup.min(using unsafeOrderingValidOnlyForParallelMatches)
 
           def check(
               pathOf: GenericMatch[Element] => Option[Path],
@@ -1797,6 +1799,8 @@ object MatchAnalysis extends StrictLogging:
             case _: Match.LeftAndRight[Section[Element]] =>
               check(pathOnBase, startOffsetOnBase, baseSectionsByPath)
             case _: Match.AllSides[Section[Element]] => false
+          end match
+        end isMissingSideValid
 
         val legitimateBridgingPairs = pairwiseGroups.flatMap { pGroup =>
           val incomingBridgePairs = potentialBridgingPairs.filter {
@@ -1806,8 +1810,9 @@ object MatchAnalysis extends StrictLogging:
             case (predecessor, _) => pGroup.contains(predecessor)
           }
 
-          val incomingAGroups = incomingBridgePairs.map { case (predecessor, _) =>
-            matchToInitialGroup(predecessor)
+          val incomingAGroups = incomingBridgePairs.map {
+            case (predecessor, _) =>
+              matchToInitialGroup(predecessor)
           }
           val outgoingAGroups = outgoingBridgePairs.map { case (_, successor) =>
             matchToInitialGroup(successor)
@@ -1853,13 +1858,18 @@ object MatchAnalysis extends StrictLogging:
         val vettedBridgingPairs =
           legitimateBridgingPairs -- pairsWithCollidingPredecessors -- pairsWithCollidingSuccessors
 
-        val finalParallelPairs = initialParallelPairs `union` vettedBridgingPairs
+        // TODO: remove this.
+        println(
+          s"Legitimate bridging pairs: ${pprintCustomised(legitimateBridgingPairs)}"
+        )
+
+        val finalParallelPairs =
+          initialParallelPairs `union` vettedBridgingPairs
 
         val groups =
           val unificationWorkflow =
-            finalParallelPairs.traverseVoid {
-              case (predecessor, successor) =>
-                DisjointSets.union(predecessor, successor)
+            finalParallelPairs.traverseVoid { case (predecessor, successor) =>
+              DisjointSets.union(predecessor, successor)
             } >> DisjointSets.toSets
 
           given Order[GenericMatch[Element]] = Order.by(_.stableOrderingKey)
