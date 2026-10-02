@@ -1767,23 +1767,42 @@ object MatchAnalysis extends StrictLogging:
                         Some(sandwichFillingSuccessors)
                       )
                     ) =>
-                  // TODO: add the filtering out of inconsistent predecessor /
-                  // successor combinations.
                   sandwichFilling -> ((sandwichFilling: @unchecked) match
                     case _: Match.BaseAndLeft[?] =>
                       for
-                        predecessor <- sandwichFillingPredecessors
-                        successor   <- sandwichFillingSuccessors
+                        case predecessor: Match.AllSides[Section[Element]] <-
+                          sandwichFillingPredecessors
+                        case successor: Match.AllSides[Section[Element]] <-
+                          sandwichFillingSuccessors
+                        if rightSources.pathFor(
+                          predecessor.rightElement
+                        ) == rightSources.pathFor(
+                          successor.rightElement
+                        ) && predecessor.rightElement.startOffset < successor.rightElement.startOffset
                       yield (predecessor, successor)
                     case _: Match.BaseAndRight[?] =>
                       for
-                        predecessor <- sandwichFillingPredecessors
-                        successor   <- sandwichFillingSuccessors
+                        case predecessor: Match.AllSides[Section[Element]] <-
+                          sandwichFillingPredecessors
+                        case successor: Match.AllSides[Section[Element]] <-
+                          sandwichFillingSuccessors
+                        if leftSources.pathFor(
+                          predecessor.leftElement
+                        ) == leftSources.pathFor(
+                          successor.leftElement
+                        ) && predecessor.leftElement.startOffset < successor.leftElement.startOffset
                       yield (predecessor, successor)
                     case _: Match.LeftAndRight[?] =>
                       for
-                        predecessor <- sandwichFillingPredecessors
-                        successor   <- sandwichFillingSuccessors
+                        case predecessor: Match.AllSides[Section[Element]] <-
+                          sandwichFillingPredecessors
+                        case successor: Match.AllSides[Section[Element]] <-
+                          sandwichFillingSuccessors
+                        if baseSources.pathFor(
+                          predecessor.baseElement
+                        ) == baseSources.pathFor(
+                          successor.baseElement
+                        ) && predecessor.baseElement.startOffset < successor.baseElement.startOffset
                       yield (predecessor, successor))
               }
 
