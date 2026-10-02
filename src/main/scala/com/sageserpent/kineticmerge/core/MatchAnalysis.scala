@@ -1815,9 +1815,9 @@ object MatchAnalysis extends StrictLogging:
                   (source, successors.head)
               }
               vettedSandwiches = sandwiches.toSeq.collect {
-                case (sandwichFilling, predecessorAdSuccessorPairs)
-                    if 1 == predecessorAdSuccessorPairs.size =>
-                  predecessorAdSuccessorPairs.head match
+                case (sandwichFilling, predecessorAndSuccessorPairs)
+                    if 1 == predecessorAndSuccessorPairs.size =>
+                  predecessorAndSuccessorPairs.head match
                     case (predecessor, successor) =>
                       (predecessor, sandwichFilling, successor)
               }
