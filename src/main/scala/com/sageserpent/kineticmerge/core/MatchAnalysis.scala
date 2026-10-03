@@ -1806,9 +1806,22 @@ object MatchAnalysis extends StrictLogging:
 
       lazy val parallelMatchesGroupIdsByMatch
           : ParallelMatchesGroupIdsByMatch[Element] =
-        groupsOfParallelMatches.toSeq.flatMap { case (groupId, group) =>
-          group.toSeq.map(_ -> groupId)
-        }.toMap
+        val groupedByMatches = MultiDict.from(
+          groupsOfParallelMatches.toSeq.flatMap { case (groupId, group) =>
+            group.toSeq.map(_ -> groupId)
+          }
+        )
+
+        groupedByMatches.sets.foreach { case (aMatch, groupIds) =>
+          assume(groupIds.nonEmpty)
+          assert(
+            1 == groupIds.size,
+            s"Found a match: ${pprintCustomised(aMatch)} with more than one associated group id: ${pprintCustomised(groupIds)}."
+          )
+        }
+
+        groupedByMatches.toMap
+      end parallelMatchesGroupIdsByMatch
 
       def parallelMatchesOnly: MatchesAndTheirSections =
         // PLAN:
