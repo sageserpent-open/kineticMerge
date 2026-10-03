@@ -1884,7 +1884,7 @@ object MatchAnalysis extends StrictLogging:
 
           assume(
             matches == flattenedGroups,
-            s"""Mismatch between `groupsOfParallelMatches` and the underlying `parallelMatchesGroupIdsByMatch`.
+            s"""Mismatch between `groupsOfParallelMatches` and the underlying matches.
                |Flattened groups minus underlying matches: ${pprintCustomised(
                 flattenedGroups diff matches
               )}.
