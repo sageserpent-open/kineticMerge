@@ -1617,15 +1617,6 @@ object MatchAnalysis extends StrictLogging:
                   predecessor <- precedingMatchesFromPriorIteration
                   successor   <- succeedingMatches
                   if startOffsetFrom(predecessor) < startOffsetFrom(successor)
-                  isNotABridge =
-                    // A bridge from an all-sides to a pairwise match or
-                    // vice versa would allow malformed groups to be formed,
-                    // either via converging chains of parallel matches, or
-                    // diverging chains of parallel matches, or crossed-over
-                    // matches on one side, or matches distributed over multiple
-                    // paths on one side.
-                    predecessor.isAnAllSidesMatch == successor.isAnAllSidesMatch
-                  if isNotABridge
                 yield predecessor -> successor
 
               FollowingMatchDiscoveryState(
@@ -1704,49 +1695,33 @@ object MatchAnalysis extends StrictLogging:
             `union` precedingAndSucceedingMatchPairsAcrossLeftAndRight)
             .filterNot(invalidAsParallelMatchesAcrossJustTwoSides)
 
-        // Look for pairs that signify chains of parallel matches that would
-        // diverge from a common predecessor.
-        val pairsWithCollidingPredecessors =
-          precedingAndSucceedingParallelMatchPairsAcrossJustTwoSides
-            .groupBy(_._1)
-            .filter(1 < _._2.size)
-            .values
-            .flatten
+        val (potentialBridgingPairs, sameKindPairwisePairs) =
+          precedingAndSucceedingParallelMatchPairsAcrossJustTwoSides.partition {
+            case (predecessor, successor) =>
+              predecessor.isAnAllSidesMatch != successor.isAnAllSidesMatch
+          }
 
-        // Look for pairs that signify chains of parallel matches that would
-        // converge to a common successor.
-        val pairsWithCollidingSuccessors =
-          precedingAndSucceedingParallelMatchPairsAcrossJustTwoSides
-            .groupBy(_._2)
-            .filter(1 < _._2.size)
-            .values
-            .flatten
+        val initialParallelPairs =
+          precedingAndSucceedingParallelMatchPairsAcrossAllThreeSides `union` sameKindPairwisePairs
 
-        val vettedPrecedingAndSucceedingParallelMatchPairsAcrossJustTwoSides =
-          precedingAndSucceedingParallelMatchPairsAcrossJustTwoSides -- pairsWithCollidingPredecessors -- pairsWithCollidingSuccessors
-
-        val precedingAndSucceedingParallelMatchPairs =
-          precedingAndSucceedingParallelMatchPairsAcrossAllThreeSides `union` vettedPrecedingAndSucceedingParallelMatchPairsAcrossJustTwoSides
-
-        val groups =
+        val initialGroups = {
           val unificationWorkflow =
-            precedingAndSucceedingParallelMatchPairs.traverseVoid {
-              case (predecessor, successor) =>
-                DisjointSets.union(predecessor, successor)
+            initialParallelPairs.traverseVoid { case (predecessor, successor) =>
+              DisjointSets.union(predecessor, successor)
             } >> DisjointSets.toSets
 
-          // NOTE: keep this around and keep it local; refer to
-          // `unsafeOrderingValidOnlyForParallelMatches` a bit later on. This
-          // one is valid for all matches, regardless of parallel matches group
-          // membership, but is not the right thing for sorting an individual
-          // group.
           given Order[GenericMatch[Element]] = Order.by(_.stableOrderingKey)
           unificationWorkflow
             .runA(DisjointSets(matches.toSeq*))
             .value
             .toList
-            .map(_._2.toList)
-        end groups
+            .map(_._2.toList.toSet)
+            .toSet
+        }
+
+        val matchToInitialGroup = initialGroups.flatMap { group =>
+          group.map(_ -> group)
+        }.toMap
 
         given unsafeOrderingValidOnlyForParallelMatches
             : Ordering[GenericMatch[Element]] with
@@ -1775,6 +1750,125 @@ object MatchAnalysis extends StrictLogging:
                           yBaseStartOffset
                         )
         end unsafeOrderingValidOnlyForParallelMatches
+
+        val pairwiseGroups = initialGroups.filter { group =>
+          group.headOption.exists(!_.isAnAllSidesMatch)
+        }
+
+        def isMissingSideValid(
+            aInGroup: Set[GenericMatch[Element]],
+            aOutGroup: Set[GenericMatch[Element]],
+            pairwiseSample: GenericMatch[Element]
+        ): Boolean =
+          val lastAin = aInGroup.max(using unsafeOrderingValidOnlyForParallelMatches)
+          val firstAout = aOutGroup.min(using unsafeOrderingValidOnlyForParallelMatches)
+
+          def check(
+              pathOf: GenericMatch[Element] => Option[Path],
+              startOffsetOf: GenericMatch[Element] => Option[Int],
+              sectionsByPath: Map[Path, SectionsSeen]
+          ): Boolean =
+            (
+              pathOf(lastAin),
+              pathOf(firstAout),
+              startOffsetOf(lastAin),
+              startOffsetOf(firstAout)
+            ) match
+              case (Some(path1), Some(path2), Some(offset1), Some(offset2))
+                  if path1 == path2 && offset1 < offset2 =>
+                val sectionsSeen =
+                  sectionsByPath.getOrElse(path1, SectionsSeen.empty[Element])
+                val hasAlien = sectionsSeen.iterator.exists { section =>
+                  section.startOffset >= offset1 && section.startOffset < offset2 && {
+                    val matchesForSection = sectionsAndTheirMatches.get(section)
+                    !matchesForSection.exists(m =>
+                      aInGroup.contains(m) || aOutGroup.contains(m)
+                    )
+                  }
+                }
+                !hasAlien
+              case _ => false
+
+          pairwiseSample match
+            case _: Match.BaseAndLeft[Section[Element]] =>
+              check(pathOnRight, startOffsetOnRight, rightSectionsByPath)
+            case _: Match.BaseAndRight[Section[Element]] =>
+              check(pathOnLeft, startOffsetOnLeft, leftSectionsByPath)
+            case _: Match.LeftAndRight[Section[Element]] =>
+              check(pathOnBase, startOffsetOnBase, baseSectionsByPath)
+            case _: Match.AllSides[Section[Element]] => false
+
+        val legitimateBridgingPairs = pairwiseGroups.flatMap { pGroup =>
+          val incomingBridgePairs = potentialBridgingPairs.filter {
+            case (_, successor) => pGroup.contains(successor)
+          }
+          val outgoingBridgePairs = potentialBridgingPairs.filter {
+            case (predecessor, _) => pGroup.contains(predecessor)
+          }
+
+          val incomingAGroups = incomingBridgePairs.map { case (predecessor, _) =>
+            matchToInitialGroup(predecessor)
+          }
+          val outgoingAGroups = outgoingBridgePairs.map { case (_, successor) =>
+            matchToInitialGroup(successor)
+          }
+
+          val pSample = pGroup.head
+
+          val legitimateIncoming = incomingBridgePairs.filter {
+            case (predecessor, _) =>
+              val aInGroup = matchToInitialGroup(predecessor)
+              outgoingAGroups.forall { aOutGroup =>
+                isMissingSideValid(aInGroup, aOutGroup, pSample)
+              }
+          }
+
+          val legitimateOutgoing = outgoingBridgePairs.filter {
+            case (_, successor) =>
+              val aOutGroup = matchToInitialGroup(successor)
+              incomingAGroups.forall { aInGroup =>
+                isMissingSideValid(aInGroup, aOutGroup, pSample)
+              }
+          }
+
+          legitimateIncoming `union` legitimateOutgoing
+        }
+
+        val pairsWithCollidingPredecessors =
+          legitimateBridgingPairs
+            .groupBy(_._1)
+            .filter(1 < _._2.size)
+            .values
+            .flatten
+            .toSet
+
+        val pairsWithCollidingSuccessors =
+          legitimateBridgingPairs
+            .groupBy(_._2)
+            .filter(1 < _._2.size)
+            .values
+            .flatten
+            .toSet
+
+        val vettedBridgingPairs =
+          legitimateBridgingPairs -- pairsWithCollidingPredecessors -- pairsWithCollidingSuccessors
+
+        val finalParallelPairs = initialParallelPairs `union` vettedBridgingPairs
+
+        val groups =
+          val unificationWorkflow =
+            finalParallelPairs.traverseVoid {
+              case (predecessor, successor) =>
+                DisjointSets.union(predecessor, successor)
+            } >> DisjointSets.toSets
+
+          given Order[GenericMatch[Element]] = Order.by(_.stableOrderingKey)
+          unificationWorkflow
+            .runA(DisjointSets(matches.toSeq*))
+            .value
+            .toList
+            .map(_._2.toList)
+        end groups
 
         val result = groups.zipWithIndex.map { case (group, groupId) =>
           groupId -> SortedSet.from(group)
