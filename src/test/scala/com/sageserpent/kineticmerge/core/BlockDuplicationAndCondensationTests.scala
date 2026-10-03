@@ -400,8 +400,8 @@ class BlockDuplicationAndCondensationTests:
       assert(
         Vector(
           Contribution.Common(leadingContent),
-          Contribution.Difference(overlapContent),
           Contribution.Common(overlapContent),
+          Contribution.Difference(overlapContent),
           Contribution.Common(trailingContent)
         ) == contributionsOnSideWithSeparation.asElementContributions
       )
