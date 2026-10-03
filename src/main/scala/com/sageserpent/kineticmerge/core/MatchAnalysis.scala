@@ -2036,7 +2036,7 @@ object MatchAnalysis extends StrictLogging:
           groups == groupsViaOldWay, {
             val onlyViaNewWay    = groups `diff` groupsViaOldWay
             val onlyViaOldWay    = groupsViaOldWay `diff` groups
-            val commonToBothWays = groups `union` groupsViaOldWay
+            val commonToBothWays = groups `intersect` groupsViaOldWay
 
             s"""
              |*** DISCREPANCY! ***
