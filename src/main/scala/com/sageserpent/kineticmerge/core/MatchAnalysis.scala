@@ -1826,8 +1826,10 @@ object MatchAnalysis extends StrictLogging:
               _ <- vettedSources.traverseVoid(DisjointSets.union)
               _ <- vettedSandwiches.traverseVoid {
                 case (predecessor, sandwichFilling, successor) =>
-                  DisjointSets.union(predecessor, sandwichFilling)
-                  DisjointSets.union(sandwichFilling, successor)
+                  DisjointSets.union(
+                    predecessor,
+                    sandwichFilling
+                  ) >> DisjointSets.union(sandwichFilling, successor)
               }
 
               result <- DisjointSets.toSets
