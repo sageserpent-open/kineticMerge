@@ -1723,6 +1723,27 @@ object MatchAnalysis extends StrictLogging:
         val (sinkBridges, sourceBridges) =
           potentialParallelBridgingPairs.partition(_._1.isAnAllSidesMatch)
 
+        def isValidSandwich(
+            path1: Path,
+            path2: Path,
+            offset1: Int,
+            offset2: Int,
+            sectionsByPath: Map[Path, SectionsSeen],
+            predecessor: GenericMatch[Element],
+            successor: GenericMatch[Element]
+        ): Boolean =
+          if path1 == path2 && offset1 < offset2 then
+            val sectionsSeen =
+              sectionsByPath.getOrElse(path1, SectionsSeen.empty[Element])
+            val hasAlien = sectionsSeen.iterator.exists { section =>
+              section.startOffset >= offset1 && section.startOffset < offset2 && {
+                val matchesForSection = sectionsAndTheirMatches.get(section)
+                !matchesForSection.contains(predecessor) && !matchesForSection.contains(successor)
+              }
+            }
+            !hasAlien
+          else false
+
         val groups =
           val unificationWorkflow =
             for
@@ -1774,11 +1795,15 @@ object MatchAnalysis extends StrictLogging:
                           sandwichFillingPredecessors
                         case successor: Match.AllSides[Section[Element]] <-
                           sandwichFillingSuccessors
-                        if rightSources.pathFor(
-                          predecessor.rightElement
-                        ) == rightSources.pathFor(
-                          successor.rightElement
-                        ) && predecessor.rightElement.startOffset < successor.rightElement.startOffset
+                        if isValidSandwich(
+                          rightSources.pathFor(predecessor.rightElement),
+                          rightSources.pathFor(successor.rightElement),
+                          predecessor.rightElement.startOffset,
+                          successor.rightElement.startOffset,
+                          rightSectionsByPath,
+                          predecessor,
+                          successor
+                        )
                       yield (predecessor, successor)
                     case _: Match.BaseAndRight[?] =>
                       for
@@ -1786,11 +1811,15 @@ object MatchAnalysis extends StrictLogging:
                           sandwichFillingPredecessors
                         case successor: Match.AllSides[Section[Element]] <-
                           sandwichFillingSuccessors
-                        if leftSources.pathFor(
-                          predecessor.leftElement
-                        ) == leftSources.pathFor(
-                          successor.leftElement
-                        ) && predecessor.leftElement.startOffset < successor.leftElement.startOffset
+                        if isValidSandwich(
+                          leftSources.pathFor(predecessor.leftElement),
+                          leftSources.pathFor(successor.leftElement),
+                          predecessor.leftElement.startOffset,
+                          successor.leftElement.startOffset,
+                          leftSectionsByPath,
+                          predecessor,
+                          successor
+                        )
                       yield (predecessor, successor)
                     case _: Match.LeftAndRight[?] =>
                       for
@@ -1798,11 +1827,15 @@ object MatchAnalysis extends StrictLogging:
                           sandwichFillingPredecessors
                         case successor: Match.AllSides[Section[Element]] <-
                           sandwichFillingSuccessors
-                        if baseSources.pathFor(
-                          predecessor.baseElement
-                        ) == baseSources.pathFor(
-                          successor.baseElement
-                        ) && predecessor.baseElement.startOffset < successor.baseElement.startOffset
+                        if isValidSandwich(
+                          baseSources.pathFor(predecessor.baseElement),
+                          baseSources.pathFor(successor.baseElement),
+                          predecessor.baseElement.startOffset,
+                          successor.baseElement.startOffset,
+                          baseSectionsByPath,
+                          predecessor,
+                          successor
+                        )
                       yield (predecessor, successor))
               }
 
