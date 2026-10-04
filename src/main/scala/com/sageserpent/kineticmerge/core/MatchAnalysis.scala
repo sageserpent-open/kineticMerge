@@ -1767,6 +1767,9 @@ object MatchAnalysis extends StrictLogging:
                         Some(sandwichFillingSuccessors)
                       )
                     ) =>
+                  // A valid sandwich has the predecessor match directly leading
+                  // to the successor match on the side missing from the
+                  // pairwise sandwich filling match.
                   sandwichFilling -> ((sandwichFilling: @unchecked) match
                     case _: Match.BaseAndLeft[?] =>
                       for
@@ -1865,7 +1868,6 @@ object MatchAnalysis extends StrictLogging:
                           yBaseStartOffset
                         )
         end unsafeOrderingValidOnlyForParallelMatches
-
 
         val result = groups.zipWithIndex.map { case (group, groupId) =>
           groupId -> SortedSet.from(group)
