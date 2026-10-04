@@ -1735,12 +1735,20 @@ object MatchAnalysis extends StrictLogging:
           if path1 == path2 && offset1 < offset2 then
             val sectionsSeen =
               sectionsByPath.getOrElse(path1, SectionsSeen.empty[Element])
-            val hasAlien = sectionsSeen.iterator.exists { section =>
-              section.startOffset >= offset1 && section.startOffset < offset2 && {
-                val matchesForSection = sectionsAndTheirMatches.get(section)
-                !matchesForSection.contains(predecessor) && !matchesForSection.contains(successor)
+            val indexedSections = sectionsSeen.toIndexedSeq
+            val startOffsets    = indexedSections.view.map(_.startOffset)
+            val lowerIndex      = startOffsets.search(offset1).insertionPoint
+            val upperIndex      = startOffsets.search(offset2).insertionPoint
+
+            val hasAlien =
+              indexedSections.slice(lowerIndex, upperIndex).exists { section =>
+                section.startOffset >= offset1 && section.startOffset < offset2 && {
+                  val matchesForSection = sectionsAndTheirMatches.get(section)
+                  !matchesForSection.contains(
+                    predecessor
+                  ) && !matchesForSection.contains(successor)
+                }
               }
-            }
             !hasAlien
           else false
 
