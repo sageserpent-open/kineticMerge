@@ -1723,35 +1723,6 @@ object MatchAnalysis extends StrictLogging:
         val (sinkBridges, sourceBridges) =
           potentialParallelBridgingPairs.partition(_._1.isAnAllSidesMatch)
 
-        def isValidSandwich(
-            path1: Path,
-            path2: Path,
-            offset1: Int,
-            offset2: Int,
-            sectionsByPath: Map[Path, SectionsSeen],
-            predecessor: GenericMatch[Element],
-            successor: GenericMatch[Element]
-        ): Boolean =
-          if path1 == path2 && offset1 < offset2 then
-            val sectionsSeen =
-              sectionsByPath.getOrElse(path1, SectionsSeen.empty[Element])
-            val indexedSections = sectionsSeen.toIndexedSeq
-            val startOffsets    = indexedSections.view.map(_.startOffset)
-            val lowerIndex      = startOffsets.search(offset1).insertionPoint
-            val upperIndex      = startOffsets.search(offset2).insertionPoint
-
-            val hasAlien =
-              indexedSections.slice(lowerIndex, upperIndex).exists { section =>
-                section.startOffset >= offset1 && section.startOffset < offset2 && {
-                  val matchesForSection = sectionsAndTheirMatches.get(section)
-                  !matchesForSection.contains(
-                    predecessor
-                  ) && !matchesForSection.contains(successor)
-                }
-              }
-            !hasAlien
-          else false
-
         val groups =
           val unificationWorkflow =
             for
@@ -1803,14 +1774,8 @@ object MatchAnalysis extends StrictLogging:
                           sandwichFillingPredecessors
                         case successor: Match.AllSides[Section[Element]] <-
                           sandwichFillingSuccessors
-                        if isValidSandwich(
-                          rightSources.pathFor(predecessor.rightElement),
-                          rightSources.pathFor(successor.rightElement),
-                          predecessor.rightElement.startOffset,
-                          successor.rightElement.startOffset,
-                          rightSectionsByPath,
-                          predecessor,
-                          successor
+                        if rightPrecedingAndSucceedingMatchPairs.contains(
+                          predecessor -> successor
                         )
                       yield (predecessor, successor)
                     case _: Match.BaseAndRight[?] =>
@@ -1819,14 +1784,8 @@ object MatchAnalysis extends StrictLogging:
                           sandwichFillingPredecessors
                         case successor: Match.AllSides[Section[Element]] <-
                           sandwichFillingSuccessors
-                        if isValidSandwich(
-                          leftSources.pathFor(predecessor.leftElement),
-                          leftSources.pathFor(successor.leftElement),
-                          predecessor.leftElement.startOffset,
-                          successor.leftElement.startOffset,
-                          leftSectionsByPath,
-                          predecessor,
-                          successor
+                        if leftPrecedingAndSucceedingMatchPairs.contains(
+                          predecessor -> successor
                         )
                       yield (predecessor, successor)
                     case _: Match.LeftAndRight[?] =>
@@ -1835,14 +1794,8 @@ object MatchAnalysis extends StrictLogging:
                           sandwichFillingPredecessors
                         case successor: Match.AllSides[Section[Element]] <-
                           sandwichFillingSuccessors
-                        if isValidSandwich(
-                          baseSources.pathFor(predecessor.baseElement),
-                          baseSources.pathFor(successor.baseElement),
-                          predecessor.baseElement.startOffset,
-                          successor.baseElement.startOffset,
-                          baseSectionsByPath,
-                          predecessor,
-                          successor
+                        if basePrecedingAndSucceedingMatchPairs.contains(
+                          predecessor -> successor
                         )
                       yield (predecessor, successor))
               }
