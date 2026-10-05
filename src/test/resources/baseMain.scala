@@ -16,7 +16,7 @@ import com.sageserpent.kineticmerge.core.Token.tokens
 import com.softwaremill.tagging.*
 import com.typesafe.scalalogging.StrictLogging
 import fansi.Str
-import os.{Path, RelPath}
+import os.{FilePath, Path, RelPath}
 import scopt.{DefaultOEffectSetup, OParser}
 
 import scala.annotation.varargs
@@ -67,11 +67,15 @@ object Main extends StrictLogging:
         theirBranchHead: String @@ Tags.CommitOrBranchName,
         configuration: Configuration
     )(
-        mergeInputs: List[(Path, MergeInput)]
+        mergeInputs: List[(RelPath, MergeInput)]
     ): Workflow[Boolean] =
       given Order[Token]  = Token.comparison
       given Funnel[Token] = Token.funnel
       given HashFunction  = Hashing.murmur3_32_fixed()
+
+      // TODO: why bother to *reconstruct* the content maps when the calling
+      // context already has them, albeit in terms of raw content and not
+      // tokens?
 
       val (
         baseContentsByPath,
@@ -81,14 +85,7 @@ object Main extends StrictLogging:
       ) =
         mergeInputs.foldLeft(
           (
-            Map.empty[Path, IndexedSeq[Token]],
-            Map.empty[Path, IndexedSeq[Token]],
-            Map.empty[Path, IndexedSeq[Token]],
-            Set.empty[Path]
-          )
-        ) {
-          case (
-                passThrough @ (
+            Map.empty[                passThrough @ (
                   baseContentsByPath,
                   leftContentsByPath,
                   rightContentsByPath,
@@ -154,8 +151,7 @@ object Main extends StrictLogging:
         label = s"THEIRS: $theirBranchHead"
       )
 
-      for
-        codeMotionAnalysis: CodeMotionAnalysis[Path, Token] <- EitherT
+, Token] <- EitherT
           .fromEither[WorkflowLogWriter] {
             CodeMotionAnalysis.of(baseSources, leftSources, rightSources)(
               configuration
@@ -280,38 +276,11 @@ object Main extends StrictLogging:
                   val ourModificationWasTweakedByTheMerge =
                     mergedFileContent != ourContent
 
-                  if ourModificationWasTweakedByTheMerge then
-                    if mergedFileContent.nonEmpty then
-                      for
-                        _      <- prelude
-                        blobId <- storeBlobFor(path, mergedFileContent)
-                        _      <- restoreFileFromBlobId(
-                          path,
-                          blobId
-                        )
-                        _ <- recordConflictModificationInIndex(
-                          stageIndex = ourStageIndex
-                        )(
-                          ourBranchHead,
-                          path,
-                          ourModification.mode,
-                          blobId
-                        ).logOperation(
-                          s"Conflict - file ${underline(path)} was modified on our branch ${underline(ourBranchHead)} and deleted on their branch ${underline(theirBranchHead)}."
-                        )
-                      yield partialResult.copy(goodForAMergeCommit = false)
-                    else
-                      // If our content is modified to being empty, this is
                       // taken to mean that all of our original content has been
                       // migrated to one or more other files. We can therefore
                       // resolve this as a deletion.
                       for
-                        _                      <- recordDeletionInIndex(path)
-                        _                      <- deleteFile(path)
-                        decoratedPartialResult <-
-                          captureRenamesOfPathDeletedOnJustOneSide
-                      yield decoratedPartialResult
-                  else writeConflictingEntries
+                        _                      <- writeConflictingEntries
                   end if
               )
 
@@ -361,40 +330,11 @@ object Main extends StrictLogging:
                   val theirModificationWasTweakedByTheMerge =
                     mergedFileContent != theirContent
 
-                  // Git's merge updates the working directory tree with *their*
-                  // modified file which wouldn't have been present on our
-                  // branch prior to the merge. So that's what we do too.
-                  if theirModificationWasTweakedByTheMerge then
-                    if mergedFileContent.nonEmpty then
-                      for
-                        _      <- prelude
-                        blobId <- storeBlobFor(path, mergedFileContent)
-                        _      <- restoreFileFromBlobId(
-                          path,
-                          blobId
-                        )
-                        _ <- recordConflictModificationInIndex(
-                          stageIndex = theirStageIndex
-                        )(
-                          theirBranchHead,
-                          path,
-                          theirModification.mode,
-                          blobId
-                        ).logOperation(
-                          s"Conflict - file ${underline(path)} was deleted on our branch ${underline(ourBranchHead)} and modified on their branch ${underline(theirBranchHead)}."
-                        )
-                      yield partialResult.copy(goodForAMergeCommit = false)
-                    else
-                      // If their content is modified to being empty, this is
                       // taken to mean that all of our original content has been
                       // migrated to one or more other files. We can therefore
                       // resolve this as a deletion.
                       for
-                        _                      <- recordDeletionInIndex(path)
-                        decoratedPartialResult <-
-                          captureRenamesOfPathDeletedOnJustOneSide
-                      yield decoratedPartialResult
-                  else writeConflictingEntries
+                        _                      <- writeConflictingEntries
                   end if
               )
           end match

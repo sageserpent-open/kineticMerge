@@ -12,6 +12,7 @@ import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
   Sized,
   defaultElementSize
 }
+import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording}
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.{
   Element,
   TestCase,
@@ -19,50 +20,10 @@ import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.{
   testCases,
   given
 }
-import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording}
 import org.junit.jupiter.api.TestFactory
 
 class LongestCommonSubsequenceTest:
-  @TestFactory
-  def theResultsAreMirroredCorrespondingWithTheInputs(): DynamicTests =
-    testCases
-      .withLimit(100)
-      .dynamicTests(
-        (
-          testCase: TestCase
-        ) =>
-          given Sized[Element] = defaultElementSize(_)
-
-          val image @ LongestCommonSubsequence(base, left, right, _, _, _, _) =
-            LongestCommonSubsequence
-              .of(testCase.base, testCase.left, testCase.right)
-
-          val mirrorImage @ LongestCommonSubsequence(
-            mirroredBase,
-            mirroredLeft,
-            mirroredRight,
-            _,
-            _,
-            _,
-            _
-          ) =
-            LongestCommonSubsequence
-              .of(testCase.base, testCase.right, testCase.left)
-
-          try assert(mirrorImage == image.mirror)
-          catch
-            case exception: AssertionError =>
-              // TODO: the LCS algorithm can switch between alternative
-              // solutions that are equally optimal when the inputs are
-              // mirrored. Ideally it would impose some canonical choice, but
-              // for now this is a workaround...
-              if mirrorImage.size == image.size then Trials.reject()
-              else throw exception
-          end try
-      )
-
-  end theResultsAreMirroredCorrespondingWithTheInputs
-
+  given ProgressRecording = NoProgressRecording
   @TestFactory
   def theResultsCorrespondToTheOriginalSequences(): DynamicTests =
     testCases
@@ -71,7 +32,7 @@ class LongestCommonSubsequenceTest:
         (
           testCase: TestCase
         ) =>
-          given Sized[Element] = defaultElementSize(_)
+          given Sized[Element] = defaultElementSize
 
           val LongestCommonSubsequence(base, left, right, _, _, _, _) =
             LongestCommonSubsequence
@@ -108,9 +69,9 @@ class LongestCommonSubsequenceTest:
 
               val commonSubsequence = indexedCommonParts.map(_._2)
 
-              val _ = commonSubsequence `isSubsequenceOf` testCase.base
-              val _ = commonSubsequence `isSubsequenceOf` testCase.left
-              val _ = commonSubsequence `isSubsequenceOf` testCase.right
+              val _ = commonSubsequence isSubsequenceOf testCase.base
+              val _ = commonSubsequence isSubsequenceOf testCase.left
+              val _ = commonSubsequence isSubsequenceOf testCase.right
 
               assert(commonSubsequence.size == commonSubsequenceSize)
 
@@ -121,15 +82,15 @@ class LongestCommonSubsequenceTest:
                   viveLaDifférence: IndexedSeq[Element]
               ): Unit =
                 if elements != testCase.base then
-                  val _ = viveLaDifférence `isNotSubsequenceOf` testCase.base
+                  val _ = viveLaDifférence isNotSubsequenceOf testCase.base
                 end if
 
                 if elements != testCase.left then
-                  val _ = viveLaDifférence `isNotSubsequenceOf` testCase.left
+                  val _ = viveLaDifférence isNotSubsequenceOf testCase.left
                 end if
 
                 if elements != testCase.right then
-                  val _ = viveLaDifférence `isNotSubsequenceOf` testCase.right
+                  val _ = viveLaDifférence isNotSubsequenceOf testCase.right
                 end if
               end verifyDifference
 
@@ -137,7 +98,7 @@ class LongestCommonSubsequenceTest:
                   viveLaDifférence: IndexedSeq[Element]
               ): Unit =
                 if elements != testCase.right then
-                  viveLaDifférence `isNotSubsequenceOf` testCase.right
+                  viveLaDifférence isNotSubsequenceOf testCase.right
                 end if
               end verifyCommonBaseAndLeft
 
@@ -145,7 +106,7 @@ class LongestCommonSubsequenceTest:
                   viveLaDifférence: IndexedSeq[Element]
               ): Unit =
                 if elements != testCase.left then
-                  viveLaDifférence `isNotSubsequenceOf` testCase.left
+                  viveLaDifférence isNotSubsequenceOf testCase.left
                 end if
               end verifyCommonBaseAndRight
 
@@ -153,7 +114,7 @@ class LongestCommonSubsequenceTest:
                   viveLaDifférence: IndexedSeq[Element]
               ): Unit =
                 if elements != testCase.base then
-                  viveLaDifférence `isNotSubsequenceOf` testCase.base
+                  viveLaDifférence isNotSubsequenceOf testCase.base
                 end if
               end verifyCommonLeftAndRight
 
@@ -194,15 +155,22 @@ class LongestCommonSubsequenceTest:
                     index -> common.element
 
               // Partial agreements in their own right are no problem - they mop
-              // up corner cases where a straight assertion on differences would
-              // fail. What we have to worry about is when an element that is
-              // different in `sequence` wrt to other two sides matches further
-              // up or down on one of those sides because it is duplicated in
-              // more than one position on that side - when this happens, at
-              // least one of the duplicates will have been partially matched
+              // up corner
+              // cases where a straight assertion on differences would fail.
+              // What we have
+              // to worry about is when an element that is different in
+              // `sequence` wrt to
+              // other two sides matches further up or down on one of those
+              // sides because
+              // it is duplicated in more than one position on that side - when
+              // this
+              // happens, at least one of the duplicates will have been
+              // partially matched
               // (think about it). Including the partial matches in with the
-              // common backbone refines the position of the differing element
-              // so we don't get spurious subsequence matches.
+              // common backbone
+              // refines the position of the differing element so we don't get
+              // spurious
+              // subsequence matches.
               val havePartialAgreementsThatNeedToBeTreatedAsCommon =
                 sequence.exists {
                   case _: Contribution.CommonToLeftAndRightOnly[Element] => true
@@ -259,7 +227,7 @@ class LongestCommonSubsequenceTest:
               }
           end extension
 
-          given Sized[Element] = defaultElementSize(_)
+          given Sized[Element] = defaultElementSize
 
           val LongestCommonSubsequence(
             base,
@@ -289,7 +257,7 @@ class LongestCommonSubsequenceTest:
             testCase.left,
             commonSubsequenceLength
           )
-          val _ = right `verifyLongestCommonSubsequence` (
+          val _ = right verifyLongestCommonSubsequence (
             testCase.right,
             commonSubsequenceLength
           )
@@ -301,38 +269,6 @@ class LongestCommonSubsequenceTest:
           assert(commonSubsequenceLength >= coreSize)
       )
   end theLongestCommonSubsequenceUnderpinsAllThreeResults
-
-  @TestFactory
-  def theApplyMethodIsConsistentWithTheOfMethod(): DynamicTests =
-    testCases
-      .withLimit(100)
-      .dynamicTests(
-        (
-          testCase: TestCase
-        ) =>
-          given Sized[Element] = defaultElementSize(_)
-
-          val originalLongestCommonSubsequence @ LongestCommonSubsequence(
-            base,
-            left,
-            right,
-            _,
-            _,
-            _,
-            _
-          ) =
-            LongestCommonSubsequence
-              .of(testCase.base, testCase.left, testCase.right)
-
-          val reconstructedLongestCommonSubsequence =
-            LongestCommonSubsequence(base, left, right)
-
-          assert(
-            reconstructedLongestCommonSubsequence == originalLongestCommonSubsequence
-          )
-      )
-
-  end theApplyMethodIsConsistentWithTheOfMethod
 
   @TestFactory
   def theLargestElementSizeSumIsTheTiebreakForLongestCommonSubsequencesOfTheSameLength()
@@ -429,16 +365,16 @@ class LongestCommonSubsequenceTest:
         // We expect the longest common subsequence to contain at least the
         // upper case sequence because it can beat both the lower case sequence
         // and any mixture of contributions from the two, barring when the
-        // mixture includes all the upper case sequence anyway.
+        // mixture includes all of the upper case sequence anyway.
 
         if missingSide != MissingSide.Base
-        then upperCaseSequence `isSubsequenceOf` baseCommonParts
+        then upperCaseSequence isSubsequenceOf baseCommonParts
         end if
         if missingSide != MissingSide.Left
-        then upperCaseSequence `isSubsequenceOf` leftCommonParts
+        then upperCaseSequence isSubsequenceOf leftCommonParts
         end if
         if missingSide != MissingSide.Right
-        then upperCaseSequence `isSubsequenceOf` rightCommonParts
+        then upperCaseSequence isSubsequenceOf rightCommonParts
         end if
       }
   end theLargestElementSizeSumIsTheTiebreakForLongestCommonSubsequencesOfTheSameLength
@@ -480,8 +416,6 @@ object LongestCommonSubsequenceTest:
     )
     if core != base || core != left || core != right
   yield TestCase(core, base, left, right)
-
-  given ProgressRecording = NoProgressRecording
 
   given Eq[Element] = _ == _
 

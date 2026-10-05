@@ -16,7 +16,7 @@ import com.sageserpent.kineticmerge.core.Token.tokens
 import com.softwaremill.tagging.*
 import com.typesafe.scalalogging.StrictLogging
 import fansi.Str
-import os.{Path, RelPath}
+import os.{FilePath, Path, RelPath}
 import scopt.{DefaultOEffectSetup, OParser}
 
 import scala.annotation.varargs
@@ -154,8 +154,136 @@ object Main extends StrictLogging:
         label = s"THEIRS: $theirBranchHead"
       )
 
+  enum Change:
+    case Modification(
+        mode: String @@ Tags.Mode,
+        blobId: String @@ Tags.BlobId,
+        content: Option[String @@ Tags.Content]
+    )
+    case Addition(
+        mode: String @@ Tags.Mode,
+        blobId: String @@ Tags.BlobId,
+        content: Option[String @@ Tags.Content]
+    )
+    case Deletion(binaryContentDeleted: Boolean)
+  end Change
+
+  enum MergeInput:
+    case OurModificationAndTheirDeletion(
+        ourModification: Change.Modification,
+        bestAncestorCommitIdMode: String @@ Tags.Mode,
+        bestAncestorCommitIdBlobId: String @@ Tags.BlobId,
+        bestAncestorCommitIdContent: Option[String @@ Tags.Content]
+    )
+    case TheirModificationAndOurDeletion(
+        theirModification: Change.Modification,
+        bestAncestorCommitIdMode: String @@ Tags.Mode,
+        bestAncestorCommitIdBlobId: String @@ Tags.BlobId,
+        bestAncestorCommitIdContent: Option[String @@ Tags.Content]
+    )
+  end MergeInput
+
+  private case class EarlyTermination(exitCode: Int @@ Tags.ExitCode)
+      extends RuntimeException
+
+  private case class InWorkingDirectory(
+      workingDirectory: Path
+  ):
+    private def indexUpdates(
+        bestAncestorCommitId: String @@ Tags.CommitOrBranchName,
+        ourBranchHead: String @@ Tags.CommitOrBranchName,
+        theirBranchHead: String @@ Tags.CommitOrBranchName,
+        configuration: Configuration
+    )(
+        mergeInputs: List[(Path, MergeInput)]
+    ): Workflow[Boolean] =
+      given Order[Token]  = Token.comparison
+      given Funnel[Token] = Token.funnel
+      given HashFunction  = Hashing.murmur3_32_fixed()
+
+      val (
+        baseContentsByPath,
+        leftContentsByPath,
+        rightContentsByPath,
+        newOrModifiedPathsOnLeftOrRight
+      ) =
+        mergeInputs.foldLeft(
+          (
+            Map.empty[Path, IndexedSeq[Token]],
+            Map.empty[Path, IndexedSeq[Token]],
+            Map.empty[Path, IndexedSeq[Token]],
+            Map.empty[Path, Boolean]
+          )
+        ) {
+          case (
+                passThrough @ (
+                  baseContentsByPath,
+                  leftContentsByPath,
+                  rightContentsByPath,
+                  newOrModifiedPathsOnLeftOrRight
+                ),
+                (path, mergeInput)
+              ) =>
+            mergeInput match
+              case OurModificationAndTheirDeletion(
+                    ourModification,
+                    _,
+                    _,
+                    bestAncestorCommitIdContent
+                  ) =>
+                (
+                  bestAncestorCommitIdContent.fold(ifEmpty =
+                    baseContentsByPath
+                  )(baseContent =>
+                    baseContentsByPath + (path -> baseContent.asTokens)
+                  ),
+                  ourModification.content.fold(ifEmpty = leftContentsByPath)(
+                    ourContent =>
+                      leftContentsByPath + (path -> ourContent.asTokens)
+                  ),
+                  rightContentsByPath,
+                  newOrModifiedPathsOnLeftOrRight + (path -> false)
+                )
+
+              case TheirModificationAndOurDeletion(
+                    theirModification,
+                    _,
+                    _,
+                    bestAncestorCommitIdContent
+                  ) =>
+                (
+                  bestAncestorCommitIdContent.fold(ifEmpty =
+                    baseContentsByPath
+                  )(baseContent =>
+                    baseContentsByPath + (path -> baseContent.asTokens)
+                  ),
+                  leftContentsByPath,
+                  theirModification.content.fold(ifEmpty = rightContentsByPath)(
+                    theirContent =>
+                      rightContentsByPath + (path -> theirContent.asTokens)
+                  ),
+                  newOrModifiedPathsOnLeftOrRight + (path -> false)
+                )
+        }
+
+      val baseSources = MappedContentSourcesOfTokens(
+        baseContentsByPath,
+        label =
+          s"BASE: ${bestAncestorCommitId.take(numberOfDigitsForShortFormOfCommitId)}"
+      )
+
+      val leftSources = MappedContentSourcesOfTokens(
+        leftContentsByPath,
+        label = s"OURS: $ourBranchHead"
+      )
+
+      val rightSources = MappedContentSourcesOfTokens(
+        rightContentsByPath,
+        label = s"THEIRS: $theirBranchHead"
+      )
+
       for
-        codeMotionAnalysis: CodeMotionAnalysis[Path, Token] <- EitherT
+        codeMotionAnalysis: CodeMotionAnalysis[RelPath, Token] <- EitherT
           .fromEither[WorkflowLogWriter] {
             CodeMotionAnalysis.of(baseSources, leftSources, rightSources)(
               configuration
@@ -289,12 +417,7 @@ object Main extends StrictLogging:
                     // migrated to one or more other files. We can therefore
                     // resolve this as a deletion.
                     for
-                      _                      <- recordDeletionInIndex(path)
-                      _                      <- deleteFile(path)
-                      decoratedPartialResult <-
-                        captureRenamesOfPathDeletedOnJustOneSide
-                    yield decoratedPartialResult
-                  else if ourModificationWasTweakedByTheMerge then
+                      _                      <- if ourModificationWasTweakedByTheMerge then
                     for
                       _      <- prelude
                       blobId <- storeBlobFor(path, mergedFileContent)
@@ -376,11 +499,7 @@ object Main extends StrictLogging:
                     // content has been migrated to one or more other files. We
                     // can therefore resolve this as a deletion.
                     for
-                      _                      <- recordDeletionInIndex(path)
-                      decoratedPartialResult <-
-                        captureRenamesOfPathDeletedOnJustOneSide
-                    yield decoratedPartialResult
-                  else if theirModificationWasTweakedByTheMerge then
+                      _                      <- if theirModificationWasTweakedByTheMerge then
                     for
                       _      <- prelude
                       blobId <- storeBlobFor(path, mergedFileContent)

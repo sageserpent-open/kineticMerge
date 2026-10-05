@@ -99,6 +99,69 @@ object Main extends StrictLogging:
                 (
                   baseContentsByPath + (path -> tokens(
                     baseContent
+        baseContent: String @@ Tags.Content
+    )
+    case TheirModificationAndOurDeletion(
+        theirModification: Change.Modification,
+baseContent) =>
+                val unchangedContent = tokens(baseContent        baseContent: String @@ Tags.Content
+baseContent) =>
+                val unchangedContent = tokens(baseContent    )
+  end MergeInput
+
+  private case class EarlyTermination(exitCode: Int @@ Tags.ExitCode)
+      extends RuntimeException
+
+  private case class InWorkingDirectory(
+      workingDirectory: Path
+  ):
+    private def merge(
+        baseDirectory: Path,
+        ourDirectory: Path,
+        theirDirectory: Path,
+        configuration: Configuration
+    )(
+        mergeInputs: List[(RelPath, MergeInput)]
+    ): Workflow[Boolean] =
+      given Order[Token]  = Token.comparison
+      given Funnel[Token] = Token.funnel
+      given HashFunction  = Hashing.murmur3_32_fixed()
+
+      // TODO: why bother to *reconstruct* the content maps when the calling
+      // context already has them, albeit in terms of raw content and not
+      // tokens?
+
+      val (
+        baseContentsByPath,
+        leftContentsByPath,
+        rightContentsByPath,
+        newPathsOnLeftOrRight
+      ) =
+        mergeInputs.foldLeft(
+          (
+            Map.empty[RelPath, IndexedSeq[Token]],
+            Map.empty[RelPath, IndexedSeq[Token]],
+            Map.empty[RelPath, IndexedSeq[Token]],
+            Set.empty[RelPath]
+          )
+        ) {
+          case (
+                (
+                  baseContentsByPath,
+                  leftContentsByPath,
+                  rightContentsByPath,
+                  newPathsOnLeftOrRight
+                ),
+                (path, mergeInput)
+              ) =>
+            mergeInput match
+              case OurModificationAndTheirDeletion(
+                    ourModification,
+                    baseContent
+                  ) =>
+                (
+                  baseContentsByPath + (path -> tokens(
+                    baseContent
                   ).get),
                   leftContentsByPath + (path -> tokens(
                     ourModification.content
@@ -121,6 +184,9 @@ object Main extends StrictLogging:
                   ).get),
                   newPathsOnLeftOrRight
                 )
+              case BothContributeAnAddition(
+                    ourAddition,
+                    theirAddition
         }
 
       val baseSources = MappedContentSourcesOfTokens(
@@ -138,8 +204,17 @@ object Main extends StrictLogging:
         label = s"THEIRS: $theirDirectory"
       )
 
+                    baseContent
+                  ) =>
+                (
+                  baseContentsByPath + (path -> tokens(
+                    baseContent
       for
-        codeMotionAnalysis: CodeMotionAnalysis[RelPath, Token] <- EitherT
+        codeMotionAnalysis: CodeMotionAnalysis[RelPathbaseContent) =>
+                (
+                  baseContentsByPath + (path -> tokens(
+                    baseContent
+, Token] <- EitherT
           .fromEither[WorkflowLogWriter] {
             CodeMotionAnalysis.of(baseSources, leftSources, rightSources)(
               configuration
@@ -162,6 +237,38 @@ object Main extends StrictLogging:
           AccumulatedMergeState.initial
         ) { case (partialResult, (path, mergeInput)) =>
           mergeInput match
+                      baseDirectory,
+                      ourDirectory,
+                      theirDirectory
+                    )(
+                      partialResult,
+                      path,
+                      mergedFileContent
+                    )
+                  else
+                    for
+                      _ <- copyFileOver(ourDirectory, baseDirectory)(path)
+                      _ <- copyFileOver(ourDirectory, theirDirectory)(path)
+                    yield partialResult
+                  end if
+
+                case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
+                  val baseContent  = reconstituteTextFrom(baseTokens)
+                  val leftContent  = reconstituteTextFrom(leftTokens)
+                  val rightContent = reconstituteTextFrom(rightTokens)
+
+                  recordConflictedMergeOfModifiedFile(
+                    baseDirectory,
+                    ourDirectory,
+                    theirDirectory
+                  )(
+                    partialResult,
+                    path,
+                    baseContent,
+                    leftContent,
+                    rightContent
+                  )
+
             case JustTheirModification(
                   theirModification,
                   baseContent
@@ -209,6 +316,69 @@ object Main extends StrictLogging:
 
             case OurModificationAndTheirDeletion(
                   ourModification,
+                  baseContent
+<<<<<<< issue-136-jj-integration-spike-handover-DO-NOT-MERGE-TO-MAIN
+deleteFile(baseDirectory)(path)
+                _                      <- deleteFile(ourDirectory)(path)
+                decoratedPartialResult <-
+                  captureRenamesOfPathDeletedOnJustOneSide
+              yield decoratedPartialResult
+||||||| b04c5be210933fbb92cb9b871a94795253826c45
+recordDeletionInIndex(path)
+                _                      <- deleteFile(path)
+                decoratedPartialResult <-
+                  captureRenamesOfPathDeletedOnJustOneSide
+              yield decoratedPartialResult
+=======
+                  if theirModificationWasTweakedByTheMerge then
+                    recordCleanMergeOfFile(
+                      baseDirectory,
+                      ourDirectory,
+                      theirDirectory
+                    )(
+                      partialResult,
+                      path,
+                      mergedFileContent
+                    )
+                  else
+                    for
+                      _ <- copyFileOver(theirDirectory, baseDirectory)(path)
+                      _ <- copyFileOver(theirDirectory, ourDirectory)(path)
+                    yield partialResult
+                  end if
+
+                case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
+                  val baseContent  = reconstituteTextFrom(baseTokens)
+                  val leftContent  = reconstituteTextFrom(leftTokens)
+                  val rightContent = reconstituteTextFrom(rightTokens)
+
+                  recordConflictedMergeOfModifiedFile(
+                    baseDirectory,
+                    ourDirectory,
+                    theirDirectory
+                  )(
+                    partialResult,
+                    path,
+                    baseContent,
+                    leftContent,
+                    rightContent
+                  )
+>>>>>>> main
+
+<<<<<<< issue-136-jj-integration-spike-handover-DO-NOT-MERGE-TO-MAIN
+            case OurModificationAndTheirDeletion(
+                  ourModification,
+||||||| b04c5be210933fbb92cb9b871a94795253826c45
+            case OurModificationAndTheirDeletion(
+                  ourModification,
+                  bestAncestorCommitIdMode,
+                  bestAncestorCommitIdBlobId,
+            case OurModificationAndTheirDeletion(
+                  ourModification,
+=======
+            case OurModificationAndTheirDeletion(
+                  ourModification,
+>>>>>>> main
                   baseContent
                 ) =>
               val tokens = mergeResultsByPath(path) match
@@ -295,6 +465,7 @@ object Main extends StrictLogging:
                     s"Conflict - file ${underline(path)} was deleted from our directory ${underline(ourDirectory)} and modified in their directory ${underline(theirDirectory)}."
                   )
               end if
+
           end match
         }
 
@@ -307,5 +478,12 @@ object Main extends StrictLogging:
       yield withRenameVersusDeletionConflicts.cleanlyMerged
       end for
     end merge
+                    baseDirectory,
+                    ourDirectory,
+                    theirDirectory
+                  )(
+                    partialResult,
+                    path,
+                    mergedFileContent
   end InWorkingDirectory
 end Main
