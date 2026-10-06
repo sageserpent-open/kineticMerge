@@ -1,6 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
-import cats.Eq
+import cats.{Eq, Order}
 import com.sageserpent.kineticmerge.ProgressRecording
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
   Contribution,
@@ -83,7 +83,7 @@ object merge extends StrictLogging:
     *   [[Contribution.CommonToLeftAndRightOnly]] elements to make a long
     *   coincident edit.
     */
-  def of[Result[_], Element: Eq: Sized](
+  def of[Result[_], Element: {Order, Sized}](
       mergeAlgebra: MergeAlgebra[Result, Element]
   )(
       base: IndexedSeq[Element],
@@ -1235,7 +1235,7 @@ object merge extends StrictLogging:
             partialResult: Result[Element],
             coalescence: Coalescence
         ): Result[Element] =
-          (coalescence, base, left, right) match
+          ((coalescence, base, left, right): @unchecked) match
             // SYMMETRIC...
             case (
                   NoCoalescence,

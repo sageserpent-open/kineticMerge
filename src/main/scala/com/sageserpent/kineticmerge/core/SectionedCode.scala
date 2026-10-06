@@ -4,10 +4,11 @@ import cats.Eq
 import com.google.common.hash.{Funnel, HashFunction}
 import com.sageserpent.kineticmerge
 import com.sageserpent.kineticmerge.core
-import com.sageserpent.kineticmerge.core.MatchAnalysis.{AbstractConfiguration, AdmissibleFailure, GenericMatch, ParallelMatchesGroupId, ParallelMatchesGroupIdsByMatch}
+import com.sageserpent.kineticmerge.core.MatchAnalysis.*
 import com.sageserpent.kineticmerge.core.SectionedCode.Block
 import com.typesafe.scalalogging.StrictLogging
 
+import scala.annotation.tailrec
 import scala.collection.Searching
 import scala.collection.immutable.SortedSet
 
@@ -54,13 +55,13 @@ object SectionedCode extends StrictLogging:
     *   A [[SectionedCode]] that contains a breakdown into [[File]] instances
     *   and thence into [[Section]] instances for each of the three sources.
     */
-  def of[Path, Element: Eq: Funnel](
+  def of[Path, Element: {Eq, Funnel}](
       baseSources: Sources[Path, Element],
       leftSources: Sources[Path, Element],
       rightSources: Sources[Path, Element]
   )(
       configuration: AbstractConfiguration,
-      suppressMatchesInvolvingOverlappingSections: Boolean = true
+      reconcileMatchesInvolvingOverlappingSections: Boolean = true
   )(using
       hashFunction: HashFunction
   ): Either[Throwable, SectionedCode[Path, Element]] =
@@ -73,19 +74,19 @@ object SectionedCode extends StrictLogging:
     val withTinyMatchesIncluded =
       withAllMatchesOfAtLeastTheMinimumWindowSize.withTinyMatches
 
-    // TODO: this also precariously protects some downstream logic in
-    // `reconcileMatches` that assumes that all matches will have a
-    // parallel matches group id. Need to make this more robust.
-    val parallelMatchesOnly = withTinyMatchesIncluded.parallelMatchesOnly
-
-    val reconciled = parallelMatchesOnly.reconcileMatches
-
     try
+      val withOverlapsReconciled =
+        withTinyMatchesIncluded.reconcileOverlappingMatches(
+          reconcileMatchesInvolvingOverlappingSections
+        )
+
+      // TODO: this also precariously protects some downstream logic in
+      // `reconcileMatches` that assumes that all matches will have a
+      // parallel matches group id. Need to make this more robust.
+      val parallelMatchesOnly = withOverlapsReconciled.parallelMatchesOnly
+
       val matchesAndTheirSections =
-        reconciled
-          .purgedOfMatchesWithOverlappingSections(
-            suppressMatchesInvolvingOverlappingSections
-          )
+        parallelMatchesOnly.reconcileSubsumingMatches
 
       val sectionsAndTheirMatches =
         matchesAndTheirSections.sectionsAndTheirMatches
@@ -125,7 +126,6 @@ object SectionedCode extends StrictLogging:
           val relevantSections =
             parallelMatches.toIndexedSeq
               .flatMap(sectionExtractor)
-              .filter(sectionsAndTheirMatches.containsKey)
 
           Option
             .when(relevantSections.nonEmpty) {
@@ -149,25 +149,141 @@ object SectionedCode extends StrictLogging:
               )
 
               path -> Block(
-                parallelMatchesGroupId,
-                sectionsCoveredByBlock
+                parallelMatchesGroupIds = SortedSet(parallelMatchesGroupId),
+                sectionsCoveredByGroup = sectionsCoveredByBlock
               )
             }
         end blockFrom
 
-        groupsOfParallelMatches.toSeq
+        val matchedBlocksByPath = groupsOfParallelMatches.toSeq
           .map(blockFrom)
           .collect { case Some((path, block)) => path -> block }
           .groupMap(_._1)(_._2)
-          .map((path, blocks) =>
-            path -> blocks.toIndexedSeq.sortBy(block =>
+
+        filesByPath.map { (path, file) =>
+          val matchedBlocks =
+            matchedBlocksByPath.getOrElse(path, IndexedSeq.empty)
+
+          val sortedMatchedBlocks = matchedBlocks.sortBy(_.startOffset)
+
+          val allFillerBlocks =
+            val (onePastLastEndOffset, fillerBlocks) =
+              sortedMatchedBlocks.foldLeft(0 -> Vector.empty[Block[Element]]) {
+                case ((currentEnd, fillers), block) =>
+                  val nextFillers =
+                    if block.startOffset > currentEnd then
+                      val Searching.Found(startingSectionIndex) =
+                        file.searchByStartOffset(currentEnd): @unchecked
+                      val Searching.Found(endingSectionIndex) =
+                        file.searchByStartOffset(block.startOffset): @unchecked
+                      fillers :+ Block(
+                        parallelMatchesGroupIds = SortedSet.empty,
+                        sectionsCoveredByGroup = file.sections
+                          .slice(startingSectionIndex, endingSectionIndex)
+                      )
+                    else fillers
+                  (currentEnd max block.onePastEndOffset) -> nextFillers
+              }
+            end val
+
+            if onePastLastEndOffset < file.size then
+              val Searching.Found(startingSectionIndex) =
+                file.searchByStartOffset(onePastLastEndOffset): @unchecked
+              fillerBlocks :+ Block(
+                parallelMatchesGroupIds = SortedSet.empty,
+                sectionsCoveredByGroup =
+                  file.sections.drop(startingSectionIndex)
+              )
+            else fillerBlocks
+            end if
+          end allFillerBlocks
+
+          val blocksSortedInOrderOfAppearanceInTheFile =
+            (matchedBlocks ++ allFillerBlocks).toIndexedSeq.sortBy(block =>
               (
                 block.startOffset,
-                block.onePastEndOffset,
-                block.parallelMatchesGroupId
+                // NASTY HACK: using the negative of the one-past-end offset
+                // causes a nested block that aligns with the start of its
+                // nesting block to come *after* said nesting block: that in
+                // turn allows the simplistic logic in `eliminateNestedBlocks`
+                // to deal with this situation.
+                -block.onePastEndOffset
               )
             )
-          )
+
+          import com.sageserpent.americium.utilities.seqEnrichment.given
+
+          val condensedBlocks = blocksSortedInOrderOfAppearanceInTheFile
+            .groupWhile((lhs, rhs) =>
+              // NOTE: we have to strict about the two blocks having to cover
+              // the exact same part of the file as opposed to say, sharing the
+              // same matches. It's OK and required for splice migration for
+              // blocks on different sides to disagree about filler sections and
+              // indeed the file location, but on the same side we want the
+              // parallel matches groups to refer to the exact same part of the
+              // file.
+              lhs.startOffset == rhs.startOffset && lhs.onePastEndOffset == rhs.onePastEndOffset
+            ) // TODO: change `groupWhile` in Americium to preserve the container type on the outer collection rather than the inner one.
+            .map { blocksCoveringTheSamePartOfTheFile =>
+              val parallelMatchesGroupIds = blocksCoveringTheSamePartOfTheFile
+                .map(
+                  _.parallelMatchesGroupIds
+                )
+                .reduce(_ union _)
+
+              val sectionsCoveredByGroup =
+                blocksCoveringTheSamePartOfTheFile.head.sectionsCoveredByGroup
+
+              Block(parallelMatchesGroupIds, sectionsCoveredByGroup)
+            }
+            .toIndexedSeq
+
+          val withoutNestedBlocks =
+            // This only eliminates nested blocks that follow their nesting
+            // blocks; see the comment above regarding block sort order.
+            @tailrec
+            def eliminateFollowingNestedBlocks(
+                startOffset: ParallelMatchesGroupId,
+                onePastEndOffset: ParallelMatchesGroupId,
+                blocksToExamine: IndexedSeq[Block[Element]],
+                partialResult: IndexedSeq[Block[Element]]
+            ): IndexedSeq[Block[Element]] =
+              if blocksToExamine.isEmpty then partialResult
+              else
+                val head = blocksToExamine.head
+
+                // NOTE: strictly speaking, `head` might just cover the same
+                // content, but as we have condensed the blocks already, we
+                // don't have to worry about that possibility.
+                val headIsNested =
+                  startOffset <= head.startOffset && onePastEndOffset >= head.onePastEndOffset
+
+                if headIsNested then
+                  eliminateFollowingNestedBlocks(
+                    startOffset,
+                    onePastEndOffset,
+                    blocksToExamine.tail,
+                    partialResult
+                  )
+                else
+                  eliminateFollowingNestedBlocks(
+                    head.startOffset,
+                    head.onePastEndOffset,
+                    blocksToExamine.tail,
+                    partialResult.appended(head)
+                  )
+                end if
+
+            eliminateFollowingNestedBlocks(
+              startOffset = -1,
+              onePastEndOffset = 0,
+              blocksToExamine = condensedBlocks,
+              partialResult = Vector.empty
+            )
+          end withoutNestedBlocks
+
+          path -> withoutNestedBlocks
+        }
       end blocksForASide
 
       val baseBlocks = blocksForASide(
@@ -272,7 +388,7 @@ object SectionedCode extends StrictLogging:
   end of
 
   case class Block[Element](
-      parallelMatchesGroupId: ParallelMatchesGroupId,
+      parallelMatchesGroupIds: Set[ParallelMatchesGroupId],
       sectionsCoveredByGroup: IndexedSeq[Section[Element]]
   ):
     require(sectionsCoveredByGroup.nonEmpty)

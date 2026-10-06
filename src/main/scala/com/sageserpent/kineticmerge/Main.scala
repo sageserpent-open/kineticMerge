@@ -120,11 +120,11 @@ object Main extends StrictLogging:
                     impliedFraction,
                     explicitFraction
                   ) =>
-                (
+                ((
                   Option(percentage),
                   Option(impliedFraction),
                   Option(explicitFraction)
-                ).match
+                ): @unchecked) match
                   case (Some(percentage), None, None) =>
                     // Parse as an integer first.
                     percentage.toInt.toDouble / 100
@@ -511,6 +511,9 @@ object Main extends StrictLogging:
 
       outerJoin.toList
         .traverse {
+          case (path, (None, None)) =>
+            throw IllegalStateException(s"Neither side present for path $path")
+
           case (
                 path,
                 (
@@ -1060,7 +1063,10 @@ object Main extends StrictLogging:
               renamingDescription.nonEmpty || transplantationDescription.nonEmpty
             )
 
-            (renamingDescription, transplantationDescription) match
+            ((
+              renamingDescription,
+              transplantationDescription
+            ): @unchecked) match
               case (Some(renaming), Some(transplantation)) =>
                 s"File ${underline(path)} was $renaming; it was also $transplantation."
               case (Some(renaming), None) =>
@@ -1082,7 +1088,7 @@ object Main extends StrictLogging:
         sectionedCode: SectionedCode[RelPath, Token] <- EitherT
           .fromEither[WorkflowLogWriter] {
             SectionedCode.of(baseSources, leftSources, rightSources)(
-              configuration.copy(label = "Primary match analysis")
+              configuration.copy(label = "Match analysis")
             )
           }
           .leftMap(_.toString.taggedWith[Tags.ErrorMessage])
@@ -1093,7 +1099,7 @@ object Main extends StrictLogging:
           sectionedCode.merge
 
         _ <- moveDestinationsReport.summarizeInText.foldLeft(right(()))(
-          _ logOperation _
+          _ `logOperation` _
         )
 
         fileRenamingReport = fileRenamingReportUsing(
@@ -1197,12 +1203,12 @@ object Main extends StrictLogging:
               }
 
           def justOurSidesViewOfTheMergedContentAt(path: RelPath) =
-            mergeResultsByPath(path) match
+            (mergeResultsByPath(path): @unchecked) match
               case FullyMerged(mergedTokens)                  => mergedTokens
               case MergedWithConflicts(_, ourMergedTokens, _) => ourMergedTokens
 
           def justTheirSidesViewOfTheMergedContentAt(path: RelPath) =
-            mergeResultsByPath(path) match
+            (mergeResultsByPath(path): @unchecked) match
               case FullyMerged(mergedTokens)                    => mergedTokens
               case MergedWithConflicts(_, _, theirMergedTokens) =>
                 theirMergedTokens
@@ -1212,7 +1218,7 @@ object Main extends StrictLogging:
                   ourModification,
                   baseContent
                 ) =>
-              mergeResultsByPath(path) match
+              (mergeResultsByPath(path): @unchecked) match
                 case FullyMerged(tokens) =>
                   val mergedFileContent = reconstituteContentFrom(tokens)
 
@@ -1257,7 +1263,7 @@ object Main extends StrictLogging:
                   theirModification,
                   baseContent
                 ) =>
-              mergeResultsByPath(path) match
+              (mergeResultsByPath(path): @unchecked) match
                 case FullyMerged(tokens) =>
                   val mergedFileContent = reconstituteContentFrom(tokens)
 
@@ -1299,7 +1305,7 @@ object Main extends StrictLogging:
                   ).flatMap(captureRenamesOfPathModified)
 
             case JustOurAddition(ourAddition) =>
-              mergeResultsByPath(path) match
+              (mergeResultsByPath(path): @unchecked) match
                 case FullyMerged(tokens) =>
                   val mergedFileContent = reconstituteContentFrom(tokens)
 
@@ -1354,7 +1360,7 @@ object Main extends StrictLogging:
                   end if
 
             case JustTheirAddition(theirAddition) =>
-              mergeResultsByPath(path) match
+              (mergeResultsByPath(path): @unchecked) match
                 case FullyMerged(tokens) =>
                   val mergedFileContent = reconstituteContentFrom(tokens)
 
@@ -1517,7 +1523,7 @@ object Main extends StrictLogging:
               end if
 
             case BothContributeAnAddition(_, _) =>
-              mergeResultsByPath(path) match
+              (mergeResultsByPath(path): @unchecked) match
                 case FullyMerged(tokens) =>
                   val mergedFileContent = reconstituteContentFrom(tokens)
 
@@ -1566,7 +1572,7 @@ object Main extends StrictLogging:
                   _,
                   _
                 ) =>
-              mergeResultsByPath(path) match
+              (mergeResultsByPath(path): @unchecked) match
                 case FullyMerged(tokens) =>
                   val mergedFileContent = reconstituteContentFrom(tokens)
 

@@ -1,9 +1,10 @@
 package com.sageserpent.kineticmerge.core
 
+import cats.derived.*
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.syntax.all.{catsSyntaxApplyOps, catsSyntaxFlatMapOps}
-import cats.{Eq, Monad}
+import cats.{Eq, Functor, Monad, Order}
 import com.sageserpent.kineticmerge.ProgressRecording
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
   CommonSubsequenceSize,
@@ -12,6 +13,7 @@ import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
 import monocle.syntax.all.*
 
 import scala.annotation.tailrec
+import scala.collection.{IndexedSeqView, SortedSet}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.util.Using
@@ -126,7 +128,7 @@ case class LongestCommonSubsequence[Element] private (
       )
 
   def size: (CommonSubsequenceSize, CommonSubsequenceSize) =
-    commonSubsequenceSize -> (commonToLeftAndRightOnlySize plus commonToBaseAndLeftOnlySize plus commonToBaseAndRightOnlySize)
+    commonSubsequenceSize -> (commonToLeftAndRightOnlySize `plus` commonToBaseAndLeftOnlySize `plus` commonToBaseAndRightOnlySize)
 
   // TODO: this is for testing only, but attempting to define it in test code as
   // an extension runs afoul of the private constructor.
@@ -152,7 +154,7 @@ end LongestCommonSubsequence
 
 object LongestCommonSubsequence:
 
-  def apply[Element: Eq: Sized](
+  def apply[Element: {Eq, Sized}](
       base: IndexedSeq[Contribution[Element]],
       left: IndexedSeq[Contribution[Element]],
       right: IndexedSeq[Contribution[Element]]
@@ -356,7 +358,226 @@ object LongestCommonSubsequence:
 
   def defaultElementSize[Element](irrelevant: Element): Int = 1
 
-  def of[Element: Eq: Sized](
+  def of[Element: {Order, Sized}](
+      base: IndexedSeq[Element],
+      left: IndexedSeq[Element],
+      right: IndexedSeq[Element]
+  )(using
+      progressRecording: ProgressRecording
+  ): LongestCommonSubsequence[Element] =
+    val equality = summon[Eq[Element]]
+    val sized    = summon[Sized[Element]]
+
+    // PLAN: trim off any common prefix and common suffix to avoid burdening the
+    // core LCS calculation.
+
+    def commonAffixLength(maximumLength: Int)(
+        base: IndexedSeqView[Element],
+        left: IndexedSeqView[Element],
+        right: IndexedSeqView[Element]
+    ) =
+      var index = 0
+
+      while index < maximumLength &&
+        equality.eqv(base(index), left(index)) &&
+        equality.eqv(base(index), right(index))
+      do index += 1
+      end while
+
+      index
+    end commonAffixLength
+
+    val minimumSizeAcrossSides = base.size min left.size min right.size
+
+    val prefixLength: Int =
+      commonAffixLength(maximumLength = minimumSizeAcrossSides)(
+        base.view,
+        left.view,
+        right.view
+      )
+
+    val suffixLength = commonAffixLength(maximumLength =
+      minimumSizeAcrossSides - prefixLength
+    )(base.view.reverse, left.view.reverse, right.view.reverse)
+
+    if prefixLength == 0 && suffixLength == 0 then
+      assumingTrimmedInputs(base, left, right)
+    else
+      val trimmedBase  = base.slice(prefixLength, base.size - suffixLength)
+      val trimmedLeft  = left.slice(prefixLength, left.size - suffixLength)
+      val trimmedRight = right.slice(prefixLength, right.size - suffixLength)
+
+      val trimmedLcs =
+        assumingTrimmedInputs(trimmedBase, trimmedLeft, trimmedRight)
+
+      val prefixBaseContributions =
+        base.take(prefixLength).map(Contribution.Common.apply)
+      val prefixLeftContributions =
+        left.take(prefixLength).map(Contribution.Common.apply)
+      val prefixRightContributions =
+        right.take(prefixLength).map(Contribution.Common.apply)
+
+      val prefixSizeSum = base.take(prefixLength).map(sized.sizeOf).sum
+      val prefixSize    = CommonSubsequenceSize(prefixLength, prefixSizeSum)
+
+      val suffixBaseContributions =
+        base.takeRight(suffixLength).map(Contribution.Common.apply)
+      val suffixLeftContributions =
+        left.takeRight(suffixLength).map(Contribution.Common.apply)
+      val suffixRightContributions =
+        right.takeRight(suffixLength).map(Contribution.Common.apply)
+
+      val suffixSizeSum = base.takeRight(suffixLength).map(sized.sizeOf).sum
+      val suffixSize    = CommonSubsequenceSize(suffixLength, suffixSizeSum)
+
+      LongestCommonSubsequence(
+        base =
+          prefixBaseContributions ++ trimmedLcs.base ++ suffixBaseContributions,
+        left =
+          prefixLeftContributions ++ trimmedLcs.left ++ suffixLeftContributions,
+        right =
+          prefixRightContributions ++ trimmedLcs.right ++ suffixRightContributions,
+        commonSubsequenceSize =
+          prefixSize `plus` trimmedLcs.commonSubsequenceSize `plus` suffixSize,
+        commonToLeftAndRightOnlySize = trimmedLcs.commonToLeftAndRightOnlySize,
+        commonToBaseAndLeftOnlySize = trimmedLcs.commonToBaseAndLeftOnlySize,
+        commonToBaseAndRightOnlySize = trimmedLcs.commonToBaseAndRightOnlySize
+      )
+    end if
+  end of
+
+  private def assumingTrimmedInputs[Element: {Order, Sized}](
+      base: IndexedSeq[Element],
+      left: IndexedSeq[Element],
+      right: IndexedSeq[Element]
+  )(using
+      progressRecording: ProgressRecording
+  ): LongestCommonSubsequence[Element] =
+    given Ordering[Element] = summon[Order[Element]].toOrdering
+
+    // PLAN: filter out elements that can't be matched at all with any element
+    // on the other two sides - these will never align to make a common
+    // contribution, so we avoid burdening it with them. Once the filtered LCS
+    // is calculated, merge it with difference contributions from the leftover
+    // rejected elements.
+
+    object SetDiagnosingInconsistentOrderImplementation:
+      private val equality = summon[Eq[Element]]
+    end SetDiagnosingInconsistentOrderImplementation
+
+    // NOTE: the plan *was* to remove this diagnostic utility once the dust had
+    // settled on the ordering for `Block` used by `SectionedCodeExtension`, but
+    // this has proven to be invaluable. It also adds hardly any performance
+    // overhead in the tests or the manual benchmark, so this comment serves as
+    // a gentle reminder not to be too hasty in removing this class.
+    class SetDiagnosingInconsistentOrderImplementation(
+        elements: IndexedSeq[Element]
+    ):
+      private val elementSet = SortedSet.from(elements)
+
+      def contains(candidate: Element): Boolean =
+        val verdict = elementSet.contains(candidate)
+
+        val referenceVerdict = elements.exists(
+          SetDiagnosingInconsistentOrderImplementation.equality
+            .eqv(_, candidate)
+        )
+
+        assert(
+          referenceVerdict == verdict,
+          s"""Inconsistency between containment verdicts on ${pprintCustomised(
+              candidate
+            )},
+             |the reference verdict using equality is: $referenceVerdict,
+             |whereas the verdict using order is: $verdict.
+             |Using equality would find: ${pprintCustomised(
+              elements.find(
+                SetDiagnosingInconsistentOrderImplementation.equality
+                  .eqv(_, candidate)
+              )
+            )}
+             |The elements are: ${pprintCustomised(elements)}""".stripMargin
+        )
+
+        verdict
+      end contains
+    end SetDiagnosingInconsistentOrderImplementation
+
+    val baseSet  = SetDiagnosingInconsistentOrderImplementation(base)
+    val leftSet  = SetDiagnosingInconsistentOrderImplementation(left)
+    val rightSet = SetDiagnosingInconsistentOrderImplementation(right)
+
+    val matchableBaseIndices = base.zipWithIndex.collect {
+      case (baseElement, index)
+          if leftSet.contains(baseElement) || rightSet.contains(baseElement) =>
+        index
+    }
+    val matchableLeftIndices = left.zipWithIndex.collect {
+      case (leftElement, index)
+          if baseSet.contains(leftElement) || rightSet.contains(leftElement) =>
+        index
+    }
+    val matchableRightIndices = right.zipWithIndex.collect {
+      case (rightElement, index)
+          if baseSet.contains(rightElement) || leftSet.contains(rightElement) =>
+        index
+    }
+
+    if matchableBaseIndices.isEmpty && matchableLeftIndices.isEmpty && matchableRightIndices.isEmpty
+    then
+      LongestCommonSubsequence(
+        base = base.map(Contribution.Difference.apply),
+        left = left.map(Contribution.Difference.apply),
+        right = right.map(Contribution.Difference.apply),
+        commonSubsequenceSize = CommonSubsequenceSize.zero,
+        commonToLeftAndRightOnlySize = CommonSubsequenceSize.zero,
+        commonToBaseAndLeftOnlySize = CommonSubsequenceSize.zero,
+        commonToBaseAndRightOnlySize = CommonSubsequenceSize.zero
+      )
+    else
+      val filteredBase  = matchableBaseIndices.map(base)
+      val filteredLeft  = matchableLeftIndices.map(left)
+      val filteredRight = matchableRightIndices.map(right)
+
+      val filteredLcs =
+        assumingInputsYieldSomeCommonAlignments(
+          filteredBase,
+          filteredLeft,
+          filteredRight
+        )
+
+      def reconstruct(
+          original: IndexedSeq[Element],
+          matchableIndices: IndexedSeq[Int],
+          filteredContributions: IndexedSeq[Contribution[Element]]
+      ): IndexedSeq[Contribution[Element]] =
+        val builder = IndexedSeq.newBuilder[Contribution[Element]]
+        builder.sizeHint(original.size)
+        var filteredIdx  = 0
+        val numMatchable = matchableIndices.size
+        for i <- original.indices do
+          if filteredIdx < numMatchable && matchableIndices(filteredIdx) == i
+          then
+            builder += filteredContributions(filteredIdx)
+            filteredIdx += 1
+          else builder += Contribution.Difference(original(i))
+        end for
+        builder.result()
+      end reconstruct
+
+      LongestCommonSubsequence(
+        base = reconstruct(base, matchableBaseIndices, filteredLcs.base),
+        left = reconstruct(left, matchableLeftIndices, filteredLcs.left),
+        right = reconstruct(right, matchableRightIndices, filteredLcs.right),
+        commonSubsequenceSize = filteredLcs.commonSubsequenceSize,
+        commonToLeftAndRightOnlySize = filteredLcs.commonToLeftAndRightOnlySize,
+        commonToBaseAndLeftOnlySize = filteredLcs.commonToBaseAndLeftOnlySize,
+        commonToBaseAndRightOnlySize = filteredLcs.commonToBaseAndRightOnlySize
+      )
+    end if
+  end assumingTrimmedInputs
+
+  private def assumingInputsYieldSomeCommonAlignments[Element: {Eq, Sized}](
       base: IndexedSeq[Element],
       left: IndexedSeq[Element],
       right: IndexedSeq[Element]
@@ -367,7 +588,54 @@ object LongestCommonSubsequence:
       given Ordering[CommonSubsequenceSize] =
         Ordering.by(size => size.elementSizeSum)
 
-      Ordering.by(_.size)
+      val primary = Ordering.by[LongestCommonSubsequence[
+        Element
+      ], (CommonSubsequenceSize, CommonSubsequenceSize)](_.size)
+
+      (
+          x: LongestCommonSubsequence[Element],
+          y: LongestCommonSubsequence[Element]
+      ) =>
+        val primaryResult = primary.compare(x, y)
+        if primaryResult != 0 then primaryResult
+        else
+          def score(c: Contribution[Element]): Int = c match
+            case Contribution.Common(_)                   => 3
+            case Contribution.CommonToLeftAndRightOnly(_) => 2
+            case Contribution.Difference(_)               => 0
+            case _                                        => 1
+
+          def firstDiff(
+              pairs: IndexedSeq[
+                (Contribution[Element], Contribution[Element])
+              ]
+          ): Option[(Int, Int)] =
+            val index = pairs.indexWhere { case (cx, cy) =>
+              score(cx) != score(cy)
+            }
+
+            Option.when(index != -1) {
+              val (cx, cy) = pairs(index)
+              index -> (if score(cx) > score(cy) then 1 else -1)
+            }
+          end firstDiff
+
+          val baseDiff  = firstDiff(x.base.zip(y.base))
+          val leftDiff  = firstDiff(x.left.zip(y.left))
+          val rightDiff = firstDiff(x.right.zip(y.right))
+
+          // Sort by index ascending. If indices are equal, stably sort by
+          // base > left > right.
+          Seq(
+            baseDiff.map(d => (d._1, 0, d._2)),
+            leftDiff.map(d => (d._1, 1, d._2)),
+            rightDiff.map(d => (d._1, 2, d._2))
+          ).flatten
+            .sortBy(d => (d._1, d._2))
+            .headOption
+            .map(_._3)
+            .getOrElse(0)
+        end if
     end orderBySize
 
     val equality = summon[Eq[Element]]
@@ -435,10 +703,6 @@ object LongestCommonSubsequence:
           private def notYetReachedFinalSwathe =
             maximumSwatheIndex > _indexOfLeadingSwathe
 
-          inline private def storageLotForLeadingSwathe =
-            _indexOfLeadingSwathe % 2
-          end storageLotForLeadingSwathe
-
           def consultRelevantSwatheForSolution(
               onePastBaseIndex: Int,
               onePastLeftIndex: Int,
@@ -471,6 +735,10 @@ object LongestCommonSubsequence:
           end storageLotForPrecedingSwathe
 
           def indexOfLeadingSwathe: Int = _indexOfLeadingSwathe
+
+          inline private def storageLotForLeadingSwathe =
+            _indexOfLeadingSwathe % 2
+          end storageLotForLeadingSwathe
 
           def storeSolutionInLeadingSwathe(
               onePastBaseIndex: Int,
@@ -982,57 +1250,53 @@ object LongestCommonSubsequence:
 
           val baseEqualsLeft  = equality.eqv(baseElement, leftElement)
           val baseEqualsRight = equality.eqv(baseElement, rightElement)
+          val leftEqualsRight = equality.eqv(leftElement, rightElement)
 
-          if baseEqualsLeft && baseEqualsRight
-          then
+          val resultAligningAll =
+            if baseEqualsLeft && baseEqualsRight then
+              Some(
+                swathes
+                  .consultRelevantSwatheForSolution(
+                    baseIndex,
+                    leftIndex,
+                    rightIndex
+                  )
+                  .addCommon(baseElement, leftElement, rightElement)(
+                    sized.sizeOf
+                  )
+              )
+            else None
+
+          val resultDroppingTheEndOfTheBase =
             swathes
               .consultRelevantSwatheForSolution(
                 baseIndex,
+                onePastLeftIndex,
+                onePastRightIndex
+              )
+              .addBaseDifference(baseElement)
+
+          val resultDroppingTheEndOfTheLeft =
+            swathes
+              .consultRelevantSwatheForSolution(
+                onePastBaseIndex,
                 leftIndex,
+                onePastRightIndex
+              )
+              .addLeftDifference(leftElement)
+
+          val resultDroppingTheEndOfTheRight =
+            swathes
+              .consultRelevantSwatheForSolution(
+                onePastBaseIndex,
+                onePastLeftIndex,
                 rightIndex
               )
-              .addCommon(baseElement, leftElement, rightElement)(
-                sized.sizeOf
-              )
-          else
-            val leftEqualsRight = equality.eqv(leftElement, rightElement)
+              .addRightDifference(rightElement)
 
-            // NOTE: at this point, we can't have any two of
-            // `baseEqualsLeft`, `baseEqualsRight` or `leftEqualsRight`
-            // being true - because by transitive equality, that would imply
-            // all three sides are equal, and thus we should be following
-            // other branch. So we have to use all the next three bindings
-            // one way or the other...
-
-            val resultDroppingTheEndOfTheBase =
-              swathes
-                .consultRelevantSwatheForSolution(
-                  baseIndex,
-                  onePastLeftIndex,
-                  onePastRightIndex
-                )
-                .addBaseDifference(baseElement)
-
-            val resultDroppingTheEndOfTheLeft =
-              swathes
-                .consultRelevantSwatheForSolution(
-                  onePastBaseIndex,
-                  leftIndex,
-                  onePastRightIndex
-                )
-                .addLeftDifference(leftElement)
-
-            val resultDroppingTheEndOfTheRight =
-              swathes
-                .consultRelevantSwatheForSolution(
-                  onePastBaseIndex,
-                  onePastLeftIndex,
-                  rightIndex
-                )
-                .addRightDifference(rightElement)
-
-            val resultDroppingTheBaseAndLeft =
-              if baseEqualsLeft then
+          val resultDroppingTheBaseAndLeft =
+            if baseEqualsLeft then
+              Some(
                 swathes
                   .consultRelevantSwatheForSolution(
                     baseIndex,
@@ -1042,16 +1306,13 @@ object LongestCommonSubsequence:
                   .addCommonBaseAndLeft(baseElement, leftElement)(
                     sized.sizeOf
                   )
-              else
-                orderBySize.max(
-                  resultDroppingTheEndOfTheBase,
-                  resultDroppingTheEndOfTheLeft
-                )
-              end if
-            end resultDroppingTheBaseAndLeft
+              )
+            else None
+          end resultDroppingTheBaseAndLeft
 
-            val resultDroppingTheBaseAndRight =
-              if baseEqualsRight then
+          val resultDroppingTheBaseAndRight =
+            if baseEqualsRight then
+              Some(
                 swathes
                   .consultRelevantSwatheForSolution(
                     baseIndex,
@@ -1061,16 +1322,13 @@ object LongestCommonSubsequence:
                   .addCommonBaseAndRight(baseElement, rightElement)(
                     sized.sizeOf
                   )
-              else
-                orderBySize.max(
-                  resultDroppingTheEndOfTheBase,
-                  resultDroppingTheEndOfTheRight
-                )
-              end if
-            end resultDroppingTheBaseAndRight
+              )
+            else None
+          end resultDroppingTheBaseAndRight
 
-            val resultDroppingTheLeftAndRight =
-              if leftEqualsRight then
+          val resultDroppingTheLeftAndRight =
+            if leftEqualsRight then
+              Some(
                 swathes
                   .consultRelevantSwatheForSolution(
                     onePastBaseIndex,
@@ -1080,20 +1338,17 @@ object LongestCommonSubsequence:
                   .addCommonLeftAndRight(leftElement, rightElement)(
                     sized.sizeOf
                   )
-              else
-                orderBySize.max(
-                  resultDroppingTheEndOfTheLeft,
-                  resultDroppingTheEndOfTheRight
-                )
-              end if
-            end resultDroppingTheLeftAndRight
+              )
+            else None
+          end resultDroppingTheLeftAndRight
 
-            Iterator(
-              resultDroppingTheBaseAndLeft,
-              resultDroppingTheBaseAndRight,
-              resultDroppingTheLeftAndRight
-            ).max(orderBySize)
-          end if
+          val candidates = Iterator(
+            resultDroppingTheEndOfTheBase,
+            resultDroppingTheEndOfTheLeft,
+            resultDroppingTheEndOfTheRight
+          ) ++ resultAligningAll ++ resultDroppingTheBaseAndLeft ++ resultDroppingTheBaseAndRight ++ resultDroppingTheLeftAndRight
+
+          candidates.max(using orderBySize)
       end match
     end ofConsultingSwathesForSubProblems
 
@@ -1119,7 +1374,7 @@ object LongestCommonSubsequence:
           )
         )
     }
-  end of
+  end assumingInputsYieldSomeCommonAlignments
 
   trait Sized[Element]:
     def sizeOf(element: Element): Int
@@ -1152,7 +1407,7 @@ object LongestCommonSubsequence:
 
   // TODO: this definition seems a bit strange - why not hoist `element` up into
   // the core enum constructor?
-  enum Contribution[Element]:
+  enum Contribution[Element] derives Functor:
     case Common(
         element: Element
     )
@@ -1171,18 +1426,6 @@ object LongestCommonSubsequence:
 
     def element: Element
 
-    def constructLikeness[AnotherElement](
-        anotherElement: AnotherElement
-    ): Contribution[AnotherElement] =
-      this match
-        case Common(_)                  => Common(anotherElement)
-        case Difference(_)              => Difference(anotherElement)
-        case CommonToBaseAndLeftOnly(_) =>
-          CommonToBaseAndLeftOnly(anotherElement)
-        case CommonToBaseAndRightOnly(_) =>
-          CommonToBaseAndRightOnly(anotherElement)
-        case CommonToLeftAndRightOnly(_) =>
-          CommonToLeftAndRightOnly(anotherElement)
   end Contribution
 
   object CommonSubsequenceSize:
