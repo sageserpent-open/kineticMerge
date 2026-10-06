@@ -55,7 +55,7 @@ object SectionedCode extends StrictLogging:
     *   A [[SectionedCode]] that contains a breakdown into [[File]] instances
     *   and thence into [[Section]] instances for each of the three sources.
     */
-  def of[Path, Element: Eq: Funnel](
+  def of[Path, Element: {Eq, Funnel}](
       baseSources: Sources[Path, Element],
       leftSources: Sources[Path, Element],
       rightSources: Sources[Path, Element]
@@ -75,18 +75,18 @@ object SectionedCode extends StrictLogging:
       withAllMatchesOfAtLeastTheMinimumWindowSize.withTinyMatches
 
     try
-      val withOverlapsReconciled =
-        withTinyMatchesIncluded.reconcileOverlappingMatches(
-          reconcileMatchesInvolvingOverlappingSections
-        )
-
       // TODO: this also precariously protects some downstream logic in
       // `reconcileMatches` that assumes that all matches will have a
       // parallel matches group id. Need to make this more robust.
-      val parallelMatchesOnly = withOverlapsReconciled.parallelMatchesOnly
+      val parallelMatchesOnly = withTinyMatchesIncluded.parallelMatchesOnly
+
+      val withOverlapsReconciled =
+        parallelMatchesOnly.reconcileOverlappingMatches(
+          reconcileMatchesInvolvingOverlappingSections
+        )
 
       val matchesAndTheirSections =
-        parallelMatchesOnly.reconcileSubsumingMatches
+        withOverlapsReconciled.reconcileSubsumingMatches
 
       val sectionsAndTheirMatches =
         matchesAndTheirSections.sectionsAndTheirMatches

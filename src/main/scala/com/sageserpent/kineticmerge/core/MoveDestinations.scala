@@ -85,7 +85,7 @@ case class MoveDestinations[Element](
     end elementSetAsText
 
     def destinationsAsText: String =
-      (left.nonEmpty, right.nonEmpty, coincident.nonEmpty) match
+      (left.nonEmpty, right.nonEmpty, coincident.nonEmpty): @unchecked match
         // NOTE: there is no case for `(false, false, false)` as that would
         // violate the invariant.
         case (false, true, false) => s"${elementSetAsText(right)}"

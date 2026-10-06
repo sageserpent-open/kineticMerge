@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.{Order as _, *}
 
 import _root_.java.util.concurrent.TimeUnit
+import scala.annotation.nowarn
 import scala.concurrent.duration.Duration
 import scala.io.Source
 
@@ -104,6 +105,41 @@ class SectionedCodeTest:
   end sourcesCanBeReconstructedFromTheAnalysis
 
   @Test
+  def reproduceParallelMatchesGroupSplitting(): Unit =
+    val base =
+      FakeSources(contentsByPath = Map(1 -> Vector(1, 1)), label = "base")
+    val left = FakeSources(
+      contentsByPath = Map(1 -> Vector(1, 1, 1, 1, 3, 2, 1)),
+      label = "left"
+    )
+    val right = FakeSources(
+      contentsByPath = Map(3 -> Vector(1, 1, 1, 3, 1)),
+      label = "right"
+    )
+
+    val minimumSizeFraction = 0
+
+    pprintCustomised.pprintln((base, left, right, minimumSizeFraction))
+
+    val configuration = Configuration(
+      minimumMatchSize = 2,
+      thresholdSizeFractionForMatching = minimumSizeFraction,
+      minimumAmbiguousMatchSize = 0,
+      ambiguousMatchesThreshold = 10
+    )
+
+    SectionedCode.of(base, left, right)(
+      configuration
+    ) match
+      case Right(analysis) =>
+
+      case Left(unexpectedException) => throw unexpectedException
+    end match
+
+  end reproduceParallelMatchesGroupSplitting
+
+  @Test
+  @nowarn("cat=deprecation")
   def reproduceStackOverflow(): Unit =
     val recipe = Source
       .fromResource("recipeForStackOverflow.txt")
@@ -141,6 +177,7 @@ class SectionedCodeTest:
   end reproduceStackOverflow
 
   @Test
+  @nowarn("cat=deprecation")
   def reproduceIllegalArgument(): Unit =
     val recipe = Source
       .fromResource("recipeForIllegalArgument.txt")
@@ -178,6 +215,7 @@ class SectionedCodeTest:
   end reproduceIllegalArgument
 
   @Test
+  @nowarn("cat=deprecation")
   def reproduceAssertionFailure(): Unit =
     val recipe = Source
       .fromResource("recipeForAssertionFailure.txt")
@@ -881,11 +919,15 @@ class SectionedCodeTest:
         .map(analysis.matchesFor)
         .reduce(_ union _)
 
-    // There only be all-sides matches.
-    assert(matches.forall(_.isAnAllSidesMatch))
+    // There should be three all-sides matches and one base-left match.
+    assert(3 == matches.count(_.isAnAllSidesMatch))
+    assert(1 == matches.count {
+      case _: Match.BaseAndLeft[Section[Element]] => true
+      case _                                      => false
+    })
 
-    // There should be three matches.
-    assert(matches.size == 3)
+    // There should be four matches.
+    assert(matches.size == 4)
 
     // The contents should reflect the breakdown of the overlapping matches.
     assert(
@@ -1342,27 +1384,13 @@ class SectionedCodeTest:
         .map(analysis.matchesFor)
         .reduce(_ union _)
 
-    // There should be just all-sides and left-right matches.
-    assert(matches.map(_.ordinal).size == 2)
-
-    // There should be three left-right matches.
-    assert((matches count {
-      case _: Match.AllSides[Section[Element]] => true
-      case _                                   => false
-    }) == 3)
-
-    // There should be two left-right matches.
-    assert((matches count {
-      case _: Match.LeftAndRight[Section[Element]] => true
-      case _                                       => false
-    }) == 2)
-
     // The contents should be broken down.
     assert(
       matches.map(_.content) == Set(
-        Vector(alpha, delta),
+        Vector(alpha),
         Vector(beta),
-        Vector(gamma, delta),
+        Vector(delta),
+        Vector(gamma),
         Vector(epsilon)
       )
     )
@@ -1583,7 +1611,7 @@ class SectionedCodeTest:
         if 2 == numberOfSourcesWithPaths then
           assert(
             2 == matches.size && matches
-              .forall(!_.isInstanceOf[Match.AllSides[Int]])
+              .forall(!_.isInstanceOf[Match.AllSides[?]])
           )
         else assert(matches.isEmpty)
         end if
@@ -1703,8 +1731,8 @@ class SectionedCodeTest:
         .reduce(_ union _)
 
     val (allSides, pairwise) = matches.partition {
-      case _: Match.AllSides[Element] => true
-      case _                          => false
+      case _: Match.AllSides[?] => true
+      case _                    => false
     }
 
     assert(9 == allSides.size)
@@ -1753,6 +1781,7 @@ class SectionedCodeTest:
   end mergeSmokeTest
 
   @Test
+  @nowarn("cat=deprecation")
   def reproduceCrossedOverMatches(): Unit =
     val recipe = Source
       .fromResource("recipeForCrossedOverMatches.txt")

@@ -8,19 +8,11 @@ Merge a heavily refactored codebase and stay sane.
 
 **Requires JRE 17 LTS or later since release 1.3.0.**
 
-(**Release - 1.15.0**).
-
 YouTube:
 
 - [Kinetic Merge: Merging through a File Split](https://youtu.be/JHb9DKK0LIA)
 - [Kinetic Merge: Complex Merge Demonstration](https://youtu.be/6jry6NKxGJA)
 - [Kinetic merge: merging code embedded inside an if-statement.](https://www.youtube.com/watch?v=sm4Naq_zJU0&t=2s)
-
-<video src="https://github.com/sageserpent-open/kineticMerge/assets/1765601/2d676e20-dce0-441a-b4a2-fcbaa8aff35d"><video/>
-
-<video src="https://github.com/sageserpent-open/kineticMerge/assets/1765601/783172ef-7688-45ab-83ab-2e0aa633ce01"><video/>
-
-<video src="https://github.com/sageserpent-open/kineticMerge/assets/1765601/370ddbce-98c7-42d2-8c81-f5c2756d051d"><video/>
 
 ## Goals
 

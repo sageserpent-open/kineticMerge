@@ -6,14 +6,13 @@ import scala.language.postfixOps
 
 lazy val javaVersion = "17"
 
-scalaVersion := "3.3.8"
+ThisBuild / scalaVersion := "3.9.0"
 
 javacOptions ++= Seq("--release", javaVersion)
 
-scalacOptions ++= List(
-  "-java-output-version",
-  javaVersion,
-  "-source:future"
+ThisBuild / scalacOptions ++= List(
+  s"-java-output-version:$javaVersion",
+  "-deprecation"
 )
 
 lazy val packageExecutable =
@@ -95,8 +94,8 @@ lazy val root = (project in file("."))
     },
     packageExecutable := packageExecutable.dependsOn(publishLocal).value,
     libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.9.6",
-    libraryDependencies += "ch.qos.logback"    % "logback-core"    % "1.6.3",
-    libraryDependencies += "ch.qos.logback"    % "logback-classic" % "1.6.3",
+    libraryDependencies += "ch.qos.logback"    % "logback-core"    % "1.6.5",
+    libraryDependencies += "ch.qos.logback"    % "logback-classic" % "1.6.5",
     libraryDependencies += "org.typelevel"    %% "cats-core"       % "2.13.0",
     libraryDependencies += "com.github.scopt" %% "scopt"           % "4.1.0",
     libraryDependencies += "com.sageserpent" %% "americium-utilities" % "2.2.2",
@@ -109,17 +108,19 @@ lazy val root = (project in file("."))
       "dev.optics" %% "monocle-core"  % "3.3.0",
       "dev.optics" %% "monocle-macro" % "3.3.0"
     ),
-    libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "2.4.0",
+    libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "2.5.0",
     libraryDependencies += "com.lihaoyi"             %% "os-lib"  % "0.11.8",
     libraryDependencies += "com.lihaoyi"             %% "fansi"   % "0.5.1",
     libraryDependencies += "com.lihaoyi"             %% "pprint"  % "0.9.6",
     libraryDependencies += "com.softwaremill.common" %% "tagging" % "2.3.5",
-    libraryDependencies += "com.google.guava" % "guava" % "33.7.1-jre",
-    libraryDependencies += "com.github.ben-manes.caffeine" % "caffeine" % "3.2.4",
+    libraryDependencies += "com.google.guava" % "guava" % "33.7.2-jre",
+    libraryDependencies += "com.github.ben-manes.caffeine" % "caffeine" % "3.3.0",
     libraryDependencies += "me.tongfei"         % "progressbar"   % "0.10.2",
-    libraryDependencies += "org.apache.commons" % "commons-lang3" % "3.20.0",
+    libraryDependencies += "org.apache.commons" % "commons-lang3" % "3.21.0",
     libraryDependencies +=
       "org.scala-lang.modules" %% "scala-parallel-collections" % "1.2.0",
+    libraryDependencies += "org.typelevel" %% "kittens" % "3.5.0",
+    libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async" % "1.4.0",
 
     libraryDependencies += "de.sciss"        %% "fingertree" % "1.5.5" % Test,
     libraryDependencies += "com.sageserpent" %% "americium"  % "2.2.2" % Test,

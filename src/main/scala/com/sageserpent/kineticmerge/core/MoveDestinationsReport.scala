@@ -65,12 +65,15 @@ object MoveDestinationsReport:
       ]],
       speculativeMoveDestinations: Set[SpeculativeMoveDestination[Element]]
   )(
-      matchesFor: Element => collection.Set[Match[Element]]
+      matchesFor: Element => collection.Set[Match[Element]],
+      isFirstOrLastInParallelMatchesGroup: Match[Element] => Boolean =
+        (_: Match[Element]) => true
   ): MoveEvaluation[Element] =
     val destinationsBySource =
       MultiDict.from(speculativeMigrationsBySource.keys.flatMap {
         speculativeSource =>
           val destinations = matchesFor(speculativeSource)
+            .filter(isFirstOrLastInParallelMatchesGroup)
             .flatMap {
               case Match.AllSides(_, leftElement, rightElement) =>
                 Seq(
