@@ -269,7 +269,7 @@ object Main extends StrictLogging:
       val Seq(baseDirectory, leftDirectory, rightDirectory) =
         mergeSideDirectories
 
-      reify[Workflow] {
+      reify {
         val (baseContents, baseAbsolutePath) = inTopLevelWorkingDirectory
           .contentsOf(
             baseDirectory
@@ -374,7 +374,7 @@ object Main extends StrictLogging:
       suffix: String,
       content: String @@ Tags.Content
   ): Workflow[Path] =
-    reify[Workflow] {
+    reify {
       IO {
         os.temp(
           contents = content,
@@ -448,7 +448,7 @@ object Main extends StrictLogging:
     def contentsOf(
         directory: FilePath
     ): Workflow[(Map[RelPath, String @@ Tags.Content], Path)] =
-      reify[Workflow] {
+      reify {
         val absolutePathOfDirectory = IO { Path(directory, workingDirectory) }
           .labelExceptionWith(
             s"Directory ${underline(directory)} is not a valid path."
@@ -487,7 +487,7 @@ object Main extends StrictLogging:
               s"Could not read contents of file ${underline(path)}."
             )
 
-            reify[Workflow] {
+            reify {
               relativePathWorkflow.reflect -> contentWorkflow.reflect
             }
           }
@@ -673,7 +673,7 @@ object Main extends StrictLogging:
     )(
         mergeInputs: List[(RelPath, MergeInput)]
     ): Workflow[Int @@ Tags.ExitCode] =
-      reify[Workflow] {
+      reify {
         val cleanlyMerged = merge(
           baseDirectory,
           ourDirectory,
@@ -917,7 +917,7 @@ object Main extends StrictLogging:
           conflictingDeletedPathsByLeftRenamePath.toSeq
             .foldM(this) {
               case (partialResult, (leftRenamedPath, conflictingDeletedPath)) =>
-                reify[Workflow] {
+                reify {
                   right(()).logOperation(
                     s"Conflict - file ${underline(conflictingDeletedPath)} was renamed in our directory ${underline(ourDirectory)} to ${underline(leftRenamedPath)} and deleted in their directory ${underline(theirDirectory)}."
                   ).reflect
@@ -933,7 +933,7 @@ object Main extends StrictLogging:
                     partialResult,
                     (rightRenamedPath, conflictingDeletedPath)
                   ) =>
-                reify[Workflow] {
+                reify {
                   right(()).logOperation(
                     s"Conflict - file ${underline(conflictingDeletedPath)} was deleted in our directory ${underline(ourDirectory)} and renamed in their directory ${underline(theirDirectory)} to ${underline(rightRenamedPath)}."
                   ).reflect
@@ -1107,7 +1107,7 @@ object Main extends StrictLogging:
         }
       end fileRenamingReportUsing
 
-      reify[Workflow] {
+      reify {
         val sectionedCode: SectionedCode[RelPath, Token] = EitherT
           .fromEither[WorkflowLogWriter] {
             SectionedCode.of(baseSources, leftSources, rightSources)(
@@ -1143,7 +1143,7 @@ object Main extends StrictLogging:
               leftContent: String @@ Tags.Content,
               rightContent: String @@ Tags.Content
           ) =
-            reify[Workflow] {
+            reify {
               writeFileFor(ourDirectory)(path, leftContent).reflect
               writeFileFor(theirDirectory)(path, rightContent).reflect
               partialResult.copy(
@@ -1164,7 +1164,7 @@ object Main extends StrictLogging:
               leftContent: String @@ Tags.Content,
               rightContent: String @@ Tags.Content
           ) =
-            reify[Workflow] {
+            reify {
               writeFileFor(baseDirectory)(path, baseContent).reflect
               writeFileFor(ourDirectory)(path, leftContent).reflect
               writeFileFor(theirDirectory)(path, rightContent).logOperation(
@@ -1184,7 +1184,7 @@ object Main extends StrictLogging:
               path: RelPath,
               mergedFileContent: String @@ Tags.Content
           ) =
-            reify[Workflow] {
+            reify {
               writeFileFor(baseDirectory)(path, mergedFileContent).reflect
               writeFileFor(ourDirectory)(path, mergedFileContent).reflect
               writeFileFor(theirDirectory)(
@@ -1259,7 +1259,7 @@ object Main extends StrictLogging:
                       mergedFileContent
                     )
                   else
-                    reify[Workflow] {
+                    reify {
                       copyFileOver(ourDirectory, baseDirectory)(path).reflect
                       copyFileOver(ourDirectory, theirDirectory)(path).reflect
                       partialResult
@@ -1271,7 +1271,7 @@ object Main extends StrictLogging:
                   val leftContent  = reconstituteContentFrom(leftTokens)
                   val rightContent = reconstituteContentFrom(rightTokens)
 
-                  reify[Workflow] {
+                  reify {
                     val recordedState = recordConflictedMergeOfModifiedFile(
                       baseDirectory,
                       ourDirectory,
@@ -1309,7 +1309,7 @@ object Main extends StrictLogging:
                       mergedFileContent
                     )
                   else
-                    reify[Workflow] {
+                    reify {
                       copyFileOver(theirDirectory, baseDirectory)(path).reflect
                       copyFileOver(theirDirectory, ourDirectory)(path).reflect
                       partialResult
@@ -1321,7 +1321,7 @@ object Main extends StrictLogging:
                   val leftContent  = reconstituteContentFrom(leftTokens)
                   val rightContent = reconstituteContentFrom(rightTokens)
 
-                  reify[Workflow] {
+                  reify {
                     val recordedState = recordConflictedMergeOfModifiedFile(
                       baseDirectory,
                       ourDirectory,
@@ -1356,7 +1356,7 @@ object Main extends StrictLogging:
                       mergedFileContent
                     )
                   else
-                    reify[Workflow] {
+                    reify {
                       copyFileOver(ourDirectory, baseDirectory)(path).reflect
                       copyFileOver(ourDirectory, theirDirectory)(path).reflect
                       partialResult
@@ -1412,7 +1412,7 @@ object Main extends StrictLogging:
                       mergedFileContent
                     )
                   else
-                    reify[Workflow] {
+                    reify {
                       copyFileOver(theirDirectory, baseDirectory)(path).reflect
                       copyFileOver(theirDirectory, ourDirectory)(path).reflect
                       partialResult
@@ -1450,14 +1450,24 @@ object Main extends StrictLogging:
                   end if
 
             case JustOurDeletion(_) =>
-              reify[Workflow] {
+              // NOTE: we don't consult `mergeResultsByPath` because we know the
+              // outcome already. This is important, because deletion of an
+              // entire file on just one side is treated as a special case by
+              // `SectionedCode.mergeResultsByPath` and does not
+              // necessarily remove the content.
+              reify {
                 deleteFile(baseDirectory)(path).reflect
                 deleteFile(theirDirectory)(path).reflect
                 captureRenamesOfPathDeletedOnJustOneSide(partialResult).reflect
               }
 
             case JustTheirDeletion(_) =>
-              reify[Workflow] {
+              // NOTE: we don't consult `mergeResultsByPath` because we know the
+              // outcome already. This is important, because deletion of an
+              // entire file on just one side is treated as a special case by
+              // `SectionedCode.mergeResultsByPath` and does not
+              // necessarily remove the content.
+              reify {
                 deleteFile(baseDirectory)(path).reflect
                 deleteFile(ourDirectory)(path).reflect
                 captureRenamesOfPathDeletedOnJustOneSide(partialResult).reflect
@@ -1475,13 +1485,17 @@ object Main extends StrictLogging:
 
               if mergedFileContent.isEmpty && fileRenamingReport(path).isDefined
               then
-                reify[Workflow] {
+                // If our content was modified to being empty, this is
+                // taken to mean that all of our original content has been
+                // migrated to one or more other files. We can therefore
+                // resolve this as a deletion.
+                reify {
                   deleteFile(baseDirectory)(path).reflect
                   deleteFile(ourDirectory)(path).reflect
                   captureRenamesOfPathDeletedOnJustOneSide(partialResult).reflect
                 }
               else
-                reify[Workflow] {
+                reify {
                   val recordedState =
                     if ourModificationWasTweakedByTheMerge then
                       writeFileFor(ourDirectory)(path, mergedFileContent)
@@ -1491,6 +1505,8 @@ object Main extends StrictLogging:
                         .reflect
                       partialResult.copy(cleanlyMerged = false)
                     else
+                      // The modified file is already present in our directory; we
+                      // just leave it there.
                       right(partialResult.copy(cleanlyMerged = false))
                         .logOperation(
                           s"Conflict - file ${underline(path)} was modified in our directory ${underline(ourDirectory)} and deleted from their directory ${underline(theirDirectory)}."
@@ -1511,13 +1527,17 @@ object Main extends StrictLogging:
 
               if mergedFileContent.isEmpty && fileRenamingReport(path).isDefined
               then
-                reify[Workflow] {
+                // If their content was modified to being empty, this is taken
+                // to mean that all of their original content has been migrated
+                // to one or more other files. We can therefore resolve this as
+                // a deletion.
+                reify {
                   deleteFile(baseDirectory)(path).reflect
                   deleteFile(theirDirectory)(path).reflect
                   captureRenamesOfPathDeletedOnJustOneSide(partialResult).reflect
                 }
               else
-                reify[Workflow] {
+                reify {
                   val recordedState =
                     if theirModificationWasTweakedByTheMerge then
                       writeFileFor(theirDirectory)(path, mergedFileContent)
@@ -1527,6 +1547,9 @@ object Main extends StrictLogging:
                         .reflect
                       partialResult.copy(cleanlyMerged = false)
                     else
+                      // The modified file is already present in their directory;
+                      // we
+                      // just leave it there.
                       right(partialResult.copy(cleanlyMerged = false))
                         .logOperation(
                           s"Conflict - file ${underline(path)} was deleted from our directory ${underline(ourDirectory)} and modified in their directory ${underline(theirDirectory)}."
@@ -1621,7 +1644,7 @@ object Main extends StrictLogging:
 
             case BothContributeADeletion(_) =>
               fileRenamingReport(path).fold(ifEmpty =
-                reify[Workflow] {
+                reify {
                   deleteFile(baseDirectory)(path)
                     .logOperation(
                       s"Coincidental deletion of file ${underline(path)} from our directory ${underline(ourDirectory)} and from their directory ${underline(theirDirectory)}."
@@ -1655,7 +1678,7 @@ object Main extends StrictLogging:
                         )
                       ).logOperation(description)
                     case (true, true) | (false, false) =>
-                      reify[Workflow] {
+                      reify {
                         deleteFile(baseDirectory)(path)
                           .logOperation(
                             description
@@ -1679,7 +1702,7 @@ object Main extends StrictLogging:
     end merge
 
     private def deleteFile(directory: Path)(path: RelPath): Workflow[Unit] =
-      reify[Workflow] {
+      reify {
         IO {
           os.remove(directory / path): Unit
         }.labelExceptionWith(errorMessage =
@@ -1690,7 +1713,7 @@ object Main extends StrictLogging:
     private def copyFileOver(sourceDirectory: Path, targetDirectory: Path)(
         path: RelPath
     ): Workflow[Unit] =
-      reify[Workflow] {
+      reify {
         IO {
           os.copy.over(
             sourceDirectory / path,
@@ -1711,7 +1734,7 @@ object Main extends StrictLogging:
         path: RelPath,
         content: String @@ Tags.Content
     ): Workflow[Unit] =
-      reify[Workflow] {
+      reify {
         val absolutePath = IO { directory / path }
           .labelExceptionWith(
             s"Unexpected error: could not create absolute path for ${underline(path)} relative to directory ${underline(directory)}."
