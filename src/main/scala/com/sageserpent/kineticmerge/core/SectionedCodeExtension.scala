@@ -1147,10 +1147,9 @@ object SectionedCodeExtension extends StrictLogging:
 
       val firstAndLastMatchesInParallelMatchesGroups
           : Set[Match[Section[Element]]] =
-        sectionedCode.groupsOfParallelMatches.values.flatMap { matches =>
-          if matches.nonEmpty then Seq(matches.head, matches.last)
-          else Seq.empty
-        }.toSet
+        sectionedCode.groupsOfParallelMatches.values.flatMap(matches =>
+          Seq(matches.head, matches.last)
+        ).toSet
 
       def hasMigratedEditOrDeletion(aMatch: Match[Section[Element]]): Boolean =
         aMatch.baseContribution.exists { baseSection =>
