@@ -19,13 +19,18 @@ lazy val packageExecutable =
 lazy val versionResource =
   settingKey[File]("Location of generated version resource file.")
 
-lazy val root = (project in file("."))
+lazy val commonSettings = Seq(
+  organization     := "com.sageserpent",
+  organizationName := "sageserpent",
+  licenses += ("MIT", url("https://opensource.org/licenses/MIT")),
+  pomIncludeRepository := { _ => false },
+  publishMavenStyle    := true
+)
+
+lazy val kineticMerge = (project in file("kinetic-merge"))
   .settings(
-    pomIncludeRepository := { _ => false },
-    publishMavenStyle    := true,
-    licenses += ("MIT", url("https://opensource.org/licenses/MIT")),
-    organization     := "com.sageserpent",
-    organizationName := "sageserpent",
+    commonSettings,
+    name        := "kinetic-merge",
     description := "Merge branches in the presence of code motion within and between files.",
     releaseCrossBuild := false, // No cross-building here - just Scala 3.
     releaseProcess    := Seq[ReleaseStep](
@@ -42,7 +47,6 @@ lazy val root = (project in file("."))
       setNextVersion,
       commitNextVersion
     ),
-    name            := "kinetic-merge",
     versionResource := {
       val additionalResourcesDirectory = (Compile / resourceManaged).value
 
@@ -61,32 +65,12 @@ lazy val root = (project in file("."))
 
       Seq(location)
     }.taskValue,
-    packageExecutable := {
-      val packagingVersion = (ThisBuild / version).value
-
-      println(s"Packaging executable with version: $packagingVersion")
-
-      val localArtifactCoordinates =
-        s"${organization.value}:${name.value}_${scalaBinaryVersion.value}:$packagingVersion"
-
-      val executablePath = s"${target.value}${Path.sep}${name.value}"
-
-      coursier.cli.Coursier.main(
-        s"bootstrap --verbose --bat=true --scala-version ${scalaBinaryVersion.value} -f $localArtifactCoordinates -o $executablePath"
-          .split("\\s+")
-      )
-
-      name.value
-    },
-    packageExecutable := (packageExecutable dependsOn publishLocal).value,
     libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.9.6",
     libraryDependencies += "ch.qos.logback"    % "logback-core"    % "1.6.5",
     libraryDependencies += "ch.qos.logback"    % "logback-classic" % "1.6.5",
     libraryDependencies += "org.typelevel"    %% "cats-core"       % "2.13.0",
-    libraryDependencies += "com.github.scopt" %% "scopt"           % "4.2.0",
     libraryDependencies += "com.sageserpent" %% "americium-utilities" % "2.2.2",
     libraryDependencies += "org.typelevel" %% "cats-collections-core" % "0.9.10",
-    libraryDependencies += "org.typelevel" %% "cats-core"      % "2.13.0",
     libraryDependencies += "org.typelevel" %% "alleycats-core" % "2.13.0",
     libraryDependencies += "org.typelevel" %% "cats-effect"    % "3.7.1",
     libraryDependencies += "org.scala-lang.modules" %% "scala-collection-contrib" % "0.4.0",
@@ -118,4 +102,51 @@ lazy val root = (project in file("."))
     Test / fork               := true,
     Test / testForkedParallel := true,
     Test / javaOptions ++= Seq("-Xmx8G")
+  )
+
+lazy val gitCliApplication = (project in file("git-cli-application"))
+  .dependsOn(kineticMerge, kineticMerge % "test->test")
+  .settings(
+    commonSettings,
+    name             := "git-cli-application",
+    description      := "Git CLI application for Kinetic Merge.",
+    publish / skip   := true,
+    publishLocal / skip := false,
+    libraryDependencies += "com.github.scopt" %% "scopt" % "4.2.0",
+    libraryDependencies += "com.sageserpent" %% "americium" % "2.2.2" % Test,
+    libraryDependencies += "com.sageserpent" %% "americium-junit5" % "2.2.2" % Test,
+    libraryDependencies += "com.github.sbt.junit" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
+    packageExecutable := {
+      val libPublished  = (kineticMerge / Compile / publishLocal).value
+      val mainPublished = (Compile / publishLocal).value
+
+      val packagingVersion = (ThisBuild / version).value
+
+      println(s"Packaging executable with version: $packagingVersion")
+
+      // The executable application is named 'kinetic-merge'
+      val applicationName = "kinetic-merge"
+
+      val localArtifactCoordinates =
+        s"${organization.value}:${name.value}_${scalaBinaryVersion.value}:$packagingVersion"
+
+      val executablePath = s"${target.value}${Path.sep}$applicationName"
+
+      coursier.cli.Coursier.main(
+        s"bootstrap --verbose --bat=true -M com.sageserpent.kineticmerge.Main --scala-version ${scalaBinaryVersion.value} -f $localArtifactCoordinates -o $executablePath"
+          .split("\\s+")
+      )
+
+      applicationName
+    },
+    Test / test / logLevel    := Level.Error,
+    Test / fork               := true,
+    Test / testForkedParallel := true,
+    Test / javaOptions ++= Seq("-Xmx8G")
+  )
+
+lazy val root = (project in file("."))
+  .aggregate(kineticMerge, gitCliApplication)
+  .settings(
+    publish / skip := true
   )
