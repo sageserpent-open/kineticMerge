@@ -41,4 +41,4 @@ jobs:
         run: |
           sbt "gitCliApplication/packageExecutable"
           sbt "toolCliApplication/packageExecutable"
-          gh release upload "v${{ needs.release.outputs.RELEASE_VERSION }}" "${GITHUB_WORKSPACE}/git-cli-application/target/kinetic-merge" "${GITHUB_WORKSPACE}/git-cli-application/target/kinetic-merge.bat" "${GITHUB_WORKSPACE}/kinetic-merge-tool/target/kinetic-merge-tool" "${GITHUB_WORKSPACE}/kinetic-merge-tool/target/kinetic-merge-tool.bat"
+          gh release upload "v${{ needs.release.outputs.RELEASE_VERSION }}" "${GITHUB_WORKSPACE}/git-cli-application/target/kinetic-merge" "${GITHUB_WORKSPACE}/git-cli-application/target/kinetic-merge.bat" "${GITHUB_WORKSPACE}/tool-cli-application/target/kinetic-merge-tool" "${GITHUB_WORKSPACE}/tool-cli-application/target/kinetic-merge-tool.bat"
