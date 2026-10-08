@@ -247,9 +247,11 @@ object Main extends StrictLogging:
         note(
           s"Exits with code $error if Git porcelain or the filesystem experiences an error; any changes are rolled back."
         ),
-        note(
-          s"Logging is via Logback and is disabled by default - set the root logging level via the Java system property: ${underline(logbackRootLevelLoggingJavaPropertyName)}."
-        )
+        note {
+          val example =
+            underline(s"-J-D$logbackRootLevelLoggingJavaPropertyName=INFO")
+          s"Logging is via Logback and is disabled by default - set the root logging level via the Java system property: ${underline(logbackRootLevelLoggingJavaPropertyName)}, eg: $example."
+        }
       )
     end parser
 

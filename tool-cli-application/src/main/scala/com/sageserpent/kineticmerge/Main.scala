@@ -15,7 +15,6 @@ import com.sageserpent.kineticmerge.core.Token.tokens
 import com.softwaremill.tagging.*
 import com.typesafe.scalalogging.StrictLogging
 import cps.*
-import cps.monads.given
 import fansi.Str
 import os.{FilePath, Path, RelPath}
 import scopt.{DefaultOEffectSetup, OParser}
@@ -34,10 +33,16 @@ object Main extends StrictLogging:
   private type Workflow[Payload]          =
     EitherT[WorkflowLogWriter, String @@ Tags.ErrorMessage, Payload]
 
-  given workflowCpsMonad(using catsMonad: cats.Monad[Workflow]): CpsMonad[Workflow] with CpsPureMonadInstanceContext[Workflow] with
+  given workflowCpsMonad(using catsMonad: cats.Monad[Workflow]): CpsMonad[
+    Workflow
+  ] with CpsPureMonadInstanceContext[Workflow] with
     override def pure[T](t: T): Workflow[T] = catsMonad.pure(t)
-    override def map[A, B](fa: Workflow[A])(f: A => B): Workflow[B] = catsMonad.map(fa)(f)
-    override def flatMap[A, B](fa: Workflow[A])(f: A => Workflow[B]): Workflow[B] = catsMonad.flatMap(fa)(f)
+    override def map[A, B](fa: Workflow[A])(f: A => B): Workflow[B] =
+      catsMonad.map(fa)(f)
+    override def flatMap[A, B](fa: Workflow[A])(
+        f: A => Workflow[B]
+    ): Workflow[B] = catsMonad.flatMap(fa)(f)
+  end workflowCpsMonad
 
   private val whitespaceRun                         = "\\s+"
   private val successfulMerge: Int @@ Tags.ExitCode =
@@ -90,8 +95,8 @@ object Main extends StrictLogging:
         .getOrElse("Not a packaged build.")
 
       OParser.sequence(
-        programName("kinetic-merge"),
-        head("kinetic-merge", s"$kineticMergeVersion"),
+        programName("kinetic-merge-tool"),
+        head("kinetic-merge-tool", s"$kineticMergeVersion"),
         help(name = "help").text("Output this summary."),
         version(name = "version").text("Show the version of this command."),
         opt[Unit](name = "quiet")
@@ -178,7 +183,7 @@ object Main extends StrictLogging:
             s"Maximum number of matches of the same kind that can refer to the same matched content. Default of ${ApplicationRequest.default.ambiguousMatchesThreshold}."
           ),
         arg[String](name =
-          "<directory for the files on one of the three sides of the merge>"
+          "<directories for the files on each of the three sides of the merge in order: base, left and right>..."
         )
           .validate(directory =>
             Try { os.Path(directory): Unit }.toEither.left.map(_.getMessage)
@@ -214,9 +219,11 @@ object Main extends StrictLogging:
         note(
           s"Exits with code $error if the filesystem experiences an error; any changes are rolled back."
         ),
-        note(
-          s"Logging is via Logback and is disabled by default - set the root logging level via the Java system property: ${underline(logbackRootLevelLoggingJavaPropertyName)}."
-        )
+        note {
+          val example =
+            underline(s"-J-D$logbackRootLevelLoggingJavaPropertyName=INFO")
+          s"Logging is via Logback and is disabled by default - set the root logging level via the Java system property: ${underline(logbackRootLevelLoggingJavaPropertyName)}, eg: $example."
+        }
       )
     end parser
 
@@ -378,7 +385,7 @@ object Main extends StrictLogging:
       IO {
         os.temp(
           contents = content,
-          prefix = "kinetic-merge-",
+          prefix = "kinetic-merge-tool-",
           suffix = ".base",
           deleteOnExit = true
         )
@@ -473,25 +480,23 @@ object Main extends StrictLogging:
               s"Path ${underline(absolutePathOfDirectory)} is not a directory."
             ).reflect
 
-        val contents = containedFiles
-          .traverse { path =>
-            val relativePathWorkflow = IO {
-              path.relativeTo(absolutePathOfDirectory)
-            }.labelExceptionWith(
-              s"Unexpected error: could not determine relative path of ${underline(path)} in relation to ${underline(absolutePathOfDirectory)}."
-            )
+        val contents = containedFiles.traverse { path =>
+          val relativePathWorkflow = IO {
+            path.relativeTo(absolutePathOfDirectory)
+          }.labelExceptionWith(
+            s"Unexpected error: could not determine relative path of ${underline(path)} in relation to ${underline(absolutePathOfDirectory)}."
+          )
 
-            val contentWorkflow = IO {
-              os.read(path).taggedWith[Tags.Content]
-            }.labelExceptionWith(
-              s"Could not read contents of file ${underline(path)}."
-            )
+          val contentWorkflow = IO {
+            os.read(path).taggedWith[Tags.Content]
+          }.labelExceptionWith(
+            s"Could not read contents of file ${underline(path)}."
+          )
 
-            reify {
-              relativePathWorkflow.reflect -> contentWorkflow.reflect
-            }
+          reify {
+            relativePathWorkflow.reflect -> contentWorkflow.reflect
           }
-          .reflect
+        }.reflect
 
         Map.from(contents) -> absolutePathOfDirectory
       }
@@ -682,15 +687,20 @@ object Main extends StrictLogging:
         )(mergeInputs).reflect
 
         if cleanlyMerged then
-          right(()).logOperation(
-            "Successful merge."
-          ).reflect
+          right(())
+            .logOperation(
+              "Successful merge."
+            )
+            .reflect
           successfulMerge
         else
-          right(()).logOperation(
-            "Merge conflicts found, handing over for further resolution..."
-          ).reflect
+          right(())
+            .logOperation(
+              "Merge conflicts found, handing over for further resolution..."
+            )
+            .reflect
           conflictedMerge
+        end if
       }
     end mergeAndLogOutcome
 
@@ -918,9 +928,11 @@ object Main extends StrictLogging:
             .foldM(this) {
               case (partialResult, (leftRenamedPath, conflictingDeletedPath)) =>
                 reify {
-                  right(()).logOperation(
-                    s"Conflict - file ${underline(conflictingDeletedPath)} was renamed in our directory ${underline(ourDirectory)} to ${underline(leftRenamedPath)} and deleted in their directory ${underline(theirDirectory)}."
-                  ).reflect
+                  right(())
+                    .logOperation(
+                      s"Conflict - file ${underline(conflictingDeletedPath)} was renamed in our directory ${underline(ourDirectory)} to ${underline(leftRenamedPath)} and deleted in their directory ${underline(theirDirectory)}."
+                    )
+                    .reflect
                   partialResult.copy(cleanlyMerged = false)
                 }
             }
@@ -934,9 +946,11 @@ object Main extends StrictLogging:
                     (rightRenamedPath, conflictingDeletedPath)
                   ) =>
                 reify {
-                  right(()).logOperation(
-                    s"Conflict - file ${underline(conflictingDeletedPath)} was deleted in our directory ${underline(ourDirectory)} and renamed in their directory ${underline(theirDirectory)} to ${underline(rightRenamedPath)}."
-                  ).reflect
+                  right(())
+                    .logOperation(
+                      s"Conflict - file ${underline(conflictingDeletedPath)} was deleted in our directory ${underline(ourDirectory)} and renamed in their directory ${underline(theirDirectory)} to ${underline(rightRenamedPath)}."
+                    )
+                    .reflect
                   partialResult.copy(cleanlyMerged = false)
                 }
             }
@@ -1121,467 +1135,562 @@ object Main extends StrictLogging:
           given ProgressRecording = configuration.progressRecording
 
           sectionedCode.merge
+        end val
 
-        moveDestinationsReport.summarizeInText.foldLeft(right(()))(
-          _ `logOperation` _
-        ).reflect
+        moveDestinationsReport.summarizeInText
+          .foldLeft(right(()))(
+            _ `logOperation` _
+          )
+          .reflect
 
         val fileRenamingReport = fileRenamingReportUsing(
           sectionedCode,
           moveDestinationsReport
         )
 
-        val accumulatedMergeState = mergeInputs.foldM(
-          AccumulatedMergeState.initial
-        ) { case (partialResult, (path, mergeInput)) =>
-          def recordConflictedMergeOfAddedFile(
-              ourDirectory: Path,
-              theirDirectory: Path
-          )(
-              partialResult: AccumulatedMergeState,
-              path: RelPath,
-              leftContent: String @@ Tags.Content,
-              rightContent: String @@ Tags.Content
-          ) =
-            reify {
-              writeFileFor(ourDirectory)(path, leftContent).reflect
-              writeFileFor(theirDirectory)(path, rightContent).reflect
-              partialResult.copy(
-                cleanlyMerged = false,
-                conflictingAdditionPaths =
-                  partialResult.conflictingAdditionPaths + path
-              )
-            }
-
-          def recordConflictedMergeOfModifiedFile(
-              baseDirectory: Path,
-              ourDirectory: Path,
-              theirDirectory: Path
-          )(
-              partialResult: AccumulatedMergeState,
-              path: RelPath,
-              baseContent: String @@ Tags.Content,
-              leftContent: String @@ Tags.Content,
-              rightContent: String @@ Tags.Content
-          ) =
-            reify {
-              writeFileFor(baseDirectory)(path, baseContent).reflect
-              writeFileFor(ourDirectory)(path, leftContent).reflect
-              writeFileFor(theirDirectory)(path, rightContent).logOperation(
-                s"Conflict - file ${underline(path)} was modified in our directory ${underline(
-                    ourDirectory
-                  )} and modified in their directory ${underline(theirDirectory)}."
-              ).reflect
-              partialResult.copy(cleanlyMerged = false)
-            }
-
-          def recordCleanMergeOfFile(
-              baseDirectory: Path,
-              ourDirectory: Path,
-              theirDirectory: Path
-          )(
-              accumulatedMergeState: AccumulatedMergeState,
-              path: RelPath,
-              mergedFileContent: String @@ Tags.Content
-          ) =
-            reify {
-              writeFileFor(baseDirectory)(path, mergedFileContent).reflect
-              writeFileFor(ourDirectory)(path, mergedFileContent).reflect
-              writeFileFor(theirDirectory)(
-                path,
-                mergedFileContent
-              ).reflect
-              accumulatedMergeState
-            }
-
-          def captureRenamesOfPathModified(
-              accumulatedMergeState: AccumulatedMergeState
-          ) =
-            fileRenamingReport(path)
-              .map(_.description)
-              .fold(ifEmpty = right(accumulatedMergeState))(
-                right(accumulatedMergeState).logOperation
-              )
-
-          def captureRenamesOfPathDeletedOnJustOneSide(
-              accumulatedMergeState: AccumulatedMergeState
-          ) =
-            fileRenamingReport(path)
-              .fold(ifEmpty = right(accumulatedMergeState)) {
-                case FileRelocationReport(
-                      description,
-                      leftRenamePaths,
-                      rightRenamePaths
-                    ) =>
-                  right(
-                    accumulatedMergeState.copy(
-                      deletedPathsByLeftRenamePath =
-                        accumulatedMergeState.deletedPathsByLeftRenamePath ++ leftRenamePaths
-                          .map(_ -> path),
-                      deletedPathsByRightRenamePath =
-                        accumulatedMergeState.deletedPathsByRightRenamePath ++ rightRenamePaths
-                          .map(_ -> path)
-                    )
-                  ).logOperation(description)
-              }
-
-          def justOurSidesViewOfTheMergedContentAt(path: RelPath) =
-            (mergeResultsByPath(path): @unchecked) match
-              case FullyMerged(mergedTokens)                  => mergedTokens
-              case MergedWithConflicts(_, ourMergedTokens, _) => ourMergedTokens
-
-          def justTheirSidesViewOfTheMergedContentAt(path: RelPath) =
-            (mergeResultsByPath(path): @unchecked) match
-              case FullyMerged(mergedTokens)                    => mergedTokens
-              case MergedWithConflicts(_, _, theirMergedTokens) =>
-                theirMergedTokens
-
-          mergeInput match
-            case JustOurModification(
-                  ourModification,
-                  baseContent
-                ) =>
-              (mergeResultsByPath(path): @unchecked) match
-                case FullyMerged(tokens) =>
-                  val mergedFileContent = reconstituteContentFrom(tokens)
-
-                  val ourModificationWasTweakedByTheMerge =
-                    mergedFileContent != ourModification.content
-
-                  if ourModificationWasTweakedByTheMerge then
-                    recordCleanMergeOfFile(
-                      baseDirectory,
-                      ourDirectory,
-                      theirDirectory
-                    )(
-                      partialResult,
-                      path,
-                      mergedFileContent
-                    )
-                  else
-                    reify {
-                      copyFileOver(ourDirectory, baseDirectory)(path).reflect
-                      copyFileOver(ourDirectory, theirDirectory)(path).reflect
-                      partialResult
-                    }
-                  end if
-
-                case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
-                  val baseContent  = reconstituteContentFrom(baseTokens)
-                  val leftContent  = reconstituteContentFrom(leftTokens)
-                  val rightContent = reconstituteContentFrom(rightTokens)
-
-                  reify {
-                    val recordedState = recordConflictedMergeOfModifiedFile(
-                      baseDirectory,
-                      ourDirectory,
-                      theirDirectory
-                    )(
-                      partialResult,
-                      path,
-                      baseContent,
-                      leftContent,
-                      rightContent
-                    ).reflect
-
-                    captureRenamesOfPathModified(recordedState).reflect
-                  }
-
-            case JustTheirModification(
-                  theirModification,
-                  baseContent
-                ) =>
-              (mergeResultsByPath(path): @unchecked) match
-                case FullyMerged(tokens) =>
-                  val mergedFileContent = reconstituteContentFrom(tokens)
-
-                  val theirModificationWasTweakedByTheMerge =
-                    mergedFileContent != theirModification.content
-
-                  if theirModificationWasTweakedByTheMerge then
-                    recordCleanMergeOfFile(
-                      baseDirectory,
-                      ourDirectory,
-                      theirDirectory
-                    )(
-                      partialResult,
-                      path,
-                      mergedFileContent
-                    )
-                  else
-                    reify {
-                      copyFileOver(theirDirectory, baseDirectory)(path).reflect
-                      copyFileOver(theirDirectory, ourDirectory)(path).reflect
-                      partialResult
-                    }
-                  end if
-
-                case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
-                  val baseContent  = reconstituteContentFrom(baseTokens)
-                  val leftContent  = reconstituteContentFrom(leftTokens)
-                  val rightContent = reconstituteContentFrom(rightTokens)
-
-                  reify {
-                    val recordedState = recordConflictedMergeOfModifiedFile(
-                      baseDirectory,
-                      ourDirectory,
-                      theirDirectory
-                    )(
-                      partialResult,
-                      path,
-                      baseContent,
-                      leftContent,
-                      rightContent
-                    ).reflect
-
-                    captureRenamesOfPathModified(recordedState).reflect
-                  }
-
-            case JustOurAddition(ourAddition) =>
-              (mergeResultsByPath(path): @unchecked) match
-                case FullyMerged(tokens) =>
-                  val mergedFileContent = reconstituteContentFrom(tokens)
-
-                  val ourAdditionWasTweakedByTheMerge =
-                    mergedFileContent != ourAddition.content
-
-                  if ourAdditionWasTweakedByTheMerge then
-                    recordCleanMergeOfFile(
-                      baseDirectory,
-                      ourDirectory,
-                      theirDirectory
-                    )(
-                      partialResult,
-                      path,
-                      mergedFileContent
-                    )
-                  else
-                    reify {
-                      copyFileOver(ourDirectory, baseDirectory)(path).reflect
-                      copyFileOver(ourDirectory, theirDirectory)(path).reflect
-                      partialResult
-                    }
-                  end if
-
-                case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
-                  val leftContent  = reconstituteContentFrom(leftTokens)
-                  val rightContent = reconstituteContentFrom(rightTokens)
-
-                  if baseTokens.nonEmpty then
-                    val baseContent = reconstituteContentFrom(baseTokens)
-
-                    recordConflictedMergeOfModifiedFile(
-                      baseDirectory,
-                      ourDirectory,
-                      theirDirectory
-                    )(
-                      partialResult,
-                      path,
-                      baseContent,
-                      leftContent,
-                      rightContent
-                    )
-                  else
-                    recordConflictedMergeOfAddedFile(
-                      ourDirectory,
-                      theirDirectory
-                    )(
-                      partialResult,
-                      path,
-                      leftContent,
-                      rightContent
-                    )
-                  end if
-
-            case JustTheirAddition(theirAddition) =>
-              (mergeResultsByPath(path): @unchecked) match
-                case FullyMerged(tokens) =>
-                  val mergedFileContent = reconstituteContentFrom(tokens)
-
-                  val theirAdditionWasTweakedByTheMerge =
-                    mergedFileContent != theirAddition.content
-
-                  if theirAdditionWasTweakedByTheMerge then
-                    recordCleanMergeOfFile(
-                      baseDirectory,
-                      ourDirectory,
-                      theirDirectory
-                    )(
-                      partialResult,
-                      path,
-                      mergedFileContent
-                    )
-                  else
-                    reify {
-                      copyFileOver(theirDirectory, baseDirectory)(path).reflect
-                      copyFileOver(theirDirectory, ourDirectory)(path).reflect
-                      partialResult
-                    }
-                  end if
-
-                case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
-                  val leftContent  = reconstituteContentFrom(leftTokens)
-                  val rightContent = reconstituteContentFrom(rightTokens)
-
-                  if baseTokens.nonEmpty then
-                    val baseContent = reconstituteContentFrom(baseTokens)
-
-                    recordConflictedMergeOfModifiedFile(
-                      baseDirectory,
-                      ourDirectory,
-                      theirDirectory
-                    )(
-                      partialResult,
-                      path,
-                      baseContent,
-                      leftContent,
-                      rightContent
-                    )
-                  else
-                    recordConflictedMergeOfAddedFile(
-                      ourDirectory,
-                      theirDirectory
-                    )(
-                      partialResult,
-                      path,
-                      leftContent,
-                      rightContent
-                    )
-                  end if
-
-            case JustOurDeletion(_) =>
-              // NOTE: we don't consult `mergeResultsByPath` because we know the
-              // outcome already. This is important, because deletion of an
-              // entire file on just one side is treated as a special case by
-              // `SectionedCode.mergeResultsByPath` and does not
-              // necessarily remove the content.
+        val accumulatedMergeState = mergeInputs
+          .foldM(
+            AccumulatedMergeState.initial
+          ) { case (partialResult, (path, mergeInput)) =>
+            def recordConflictedMergeOfAddedFile(
+                ourDirectory: Path,
+                theirDirectory: Path
+            )(
+                partialResult: AccumulatedMergeState,
+                path: RelPath,
+                leftContent: String @@ Tags.Content,
+                rightContent: String @@ Tags.Content
+            ) =
               reify {
-                deleteFile(baseDirectory)(path).reflect
-                deleteFile(theirDirectory)(path).reflect
-                captureRenamesOfPathDeletedOnJustOneSide(partialResult).reflect
+                writeFileFor(ourDirectory)(path, leftContent).reflect
+                writeFileFor(theirDirectory)(path, rightContent).reflect
+                partialResult.copy(
+                  cleanlyMerged = false,
+                  conflictingAdditionPaths =
+                    partialResult.conflictingAdditionPaths + path
+                )
               }
 
-            case JustTheirDeletion(_) =>
-              // NOTE: we don't consult `mergeResultsByPath` because we know the
-              // outcome already. This is important, because deletion of an
-              // entire file on just one side is treated as a special case by
-              // `SectionedCode.mergeResultsByPath` and does not
-              // necessarily remove the content.
+            def recordConflictedMergeOfModifiedFile(
+                baseDirectory: Path,
+                ourDirectory: Path,
+                theirDirectory: Path
+            )(
+                partialResult: AccumulatedMergeState,
+                path: RelPath,
+                baseContent: String @@ Tags.Content,
+                leftContent: String @@ Tags.Content,
+                rightContent: String @@ Tags.Content
+            ) =
               reify {
-                deleteFile(baseDirectory)(path).reflect
-                deleteFile(ourDirectory)(path).reflect
-                captureRenamesOfPathDeletedOnJustOneSide(partialResult).reflect
+                writeFileFor(baseDirectory)(path, baseContent).reflect
+                writeFileFor(ourDirectory)(path, leftContent).reflect
+                writeFileFor(theirDirectory)(path, rightContent)
+                  .logOperation(
+                    s"Conflict - file ${underline(path)} was modified in our directory ${underline(
+                        ourDirectory
+                      )} and modified in their directory ${underline(theirDirectory)}."
+                  )
+                  .reflect
+                partialResult.copy(cleanlyMerged = false)
               }
 
-            case OurModificationAndTheirDeletion(
-                  ourModification,
-                  baseContent
-                ) =>
-              val tokens = justOurSidesViewOfTheMergedContentAt(path)
+            def recordCleanMergeOfFile(
+                baseDirectory: Path,
+                ourDirectory: Path,
+                theirDirectory: Path
+            )(
+                accumulatedMergeState: AccumulatedMergeState,
+                path: RelPath,
+                mergedFileContent: String @@ Tags.Content
+            ) =
+              reify {
+                writeFileFor(baseDirectory)(path, mergedFileContent).reflect
+                writeFileFor(ourDirectory)(path, mergedFileContent).reflect
+                writeFileFor(theirDirectory)(
+                  path,
+                  mergedFileContent
+                ).reflect
+                accumulatedMergeState
+              }
 
-              val mergedFileContent = reconstituteContentFrom(tokens)
-              val ourModificationWasTweakedByTheMerge =
-                mergedFileContent != ourModification.content
+            def captureRenamesOfPathModified(
+                accumulatedMergeState: AccumulatedMergeState
+            ) =
+              fileRenamingReport(path)
+                .map(_.description)
+                .fold(ifEmpty = right(accumulatedMergeState))(
+                  right(accumulatedMergeState).logOperation
+                )
 
-              if mergedFileContent.isEmpty && fileRenamingReport(path).isDefined
-              then
-                // If our content was modified to being empty, this is
-                // taken to mean that all of our original content has been
-                // migrated to one or more other files. We can therefore
-                // resolve this as a deletion.
-                reify {
-                  deleteFile(baseDirectory)(path).reflect
-                  deleteFile(ourDirectory)(path).reflect
-                  captureRenamesOfPathDeletedOnJustOneSide(partialResult).reflect
+            def captureRenamesOfPathDeletedOnJustOneSide(
+                accumulatedMergeState: AccumulatedMergeState
+            ) =
+              fileRenamingReport(path)
+                .fold(ifEmpty = right(accumulatedMergeState)) {
+                  case FileRelocationReport(
+                        description,
+                        leftRenamePaths,
+                        rightRenamePaths
+                      ) =>
+                    right(
+                      accumulatedMergeState.copy(
+                        deletedPathsByLeftRenamePath =
+                          accumulatedMergeState.deletedPathsByLeftRenamePath ++ leftRenamePaths
+                            .map(_ -> path),
+                        deletedPathsByRightRenamePath =
+                          accumulatedMergeState.deletedPathsByRightRenamePath ++ rightRenamePaths
+                            .map(_ -> path)
+                      )
+                    ).logOperation(description)
                 }
-              else
-                reify {
-                  val recordedState =
+
+            def justOurSidesViewOfTheMergedContentAt(path: RelPath) =
+              (mergeResultsByPath(path): @unchecked) match
+                case FullyMerged(mergedTokens)                  => mergedTokens
+                case MergedWithConflicts(_, ourMergedTokens, _) =>
+                  ourMergedTokens
+
+            def justTheirSidesViewOfTheMergedContentAt(path: RelPath) =
+              (mergeResultsByPath(path): @unchecked) match
+                case FullyMerged(mergedTokens) => mergedTokens
+                case MergedWithConflicts(_, _, theirMergedTokens) =>
+                  theirMergedTokens
+
+            mergeInput match
+              case JustOurModification(
+                    ourModification,
+                    baseContent
+                  ) =>
+                (mergeResultsByPath(path): @unchecked) match
+                  case FullyMerged(tokens) =>
+                    val mergedFileContent = reconstituteContentFrom(tokens)
+
+                    val ourModificationWasTweakedByTheMerge =
+                      mergedFileContent != ourModification.content
+
                     if ourModificationWasTweakedByTheMerge then
-                      writeFileFor(ourDirectory)(path, mergedFileContent)
-                        .logOperation(
-                          s"Conflict - file ${underline(path)} was modified in our directory ${underline(ourDirectory)} and deleted from their directory ${underline(theirDirectory)}."
-                        )
-                        .reflect
-                      partialResult.copy(cleanlyMerged = false)
+                      recordCleanMergeOfFile(
+                        baseDirectory,
+                        ourDirectory,
+                        theirDirectory
+                      )(
+                        partialResult,
+                        path,
+                        mergedFileContent
+                      )
                     else
-                      // The modified file is already present in our directory; we
-                      // just leave it there.
-                      right(partialResult.copy(cleanlyMerged = false))
-                        .logOperation(
-                          s"Conflict - file ${underline(path)} was modified in our directory ${underline(ourDirectory)} and deleted from their directory ${underline(theirDirectory)}."
-                        )
-                        .reflect
+                      reify {
+                        copyFileOver(ourDirectory, baseDirectory)(path).reflect
+                        copyFileOver(ourDirectory, theirDirectory)(path).reflect
+                        partialResult
+                      }
                     end if
 
-                  captureRenamesOfPathModified(recordedState).reflect
-                }
-              end if
+                  case MergedWithConflicts(
+                        baseTokens,
+                        leftTokens,
+                        rightTokens
+                      ) =>
+                    val baseContent  = reconstituteContentFrom(baseTokens)
+                    val leftContent  = reconstituteContentFrom(leftTokens)
+                    val rightContent = reconstituteContentFrom(rightTokens)
 
-            case TheirModificationAndOurDeletion(theirModification, _) =>
-              val tokens = justTheirSidesViewOfTheMergedContentAt(path)
+                    reify {
+                      val recordedState = recordConflictedMergeOfModifiedFile(
+                        baseDirectory,
+                        ourDirectory,
+                        theirDirectory
+                      )(
+                        partialResult,
+                        path,
+                        baseContent,
+                        leftContent,
+                        rightContent
+                      ).reflect
 
-              val mergedFileContent = reconstituteContentFrom(tokens)
-              val theirModificationWasTweakedByTheMerge =
-                mergedFileContent != theirModification.content
+                      captureRenamesOfPathModified(recordedState).reflect
+                    }
 
-              if mergedFileContent.isEmpty && fileRenamingReport(path).isDefined
-              then
-                // If their content was modified to being empty, this is taken
-                // to mean that all of their original content has been migrated
-                // to one or more other files. We can therefore resolve this as
-                // a deletion.
+              case JustTheirModification(
+                    theirModification,
+                    baseContent
+                  ) =>
+                (mergeResultsByPath(path): @unchecked) match
+                  case FullyMerged(tokens) =>
+                    val mergedFileContent = reconstituteContentFrom(tokens)
+
+                    val theirModificationWasTweakedByTheMerge =
+                      mergedFileContent != theirModification.content
+
+                    if theirModificationWasTweakedByTheMerge then
+                      recordCleanMergeOfFile(
+                        baseDirectory,
+                        ourDirectory,
+                        theirDirectory
+                      )(
+                        partialResult,
+                        path,
+                        mergedFileContent
+                      )
+                    else
+                      reify {
+                        copyFileOver(theirDirectory, baseDirectory)(
+                          path
+                        ).reflect
+                        copyFileOver(theirDirectory, ourDirectory)(path).reflect
+                        partialResult
+                      }
+                    end if
+
+                  case MergedWithConflicts(
+                        baseTokens,
+                        leftTokens,
+                        rightTokens
+                      ) =>
+                    val baseContent  = reconstituteContentFrom(baseTokens)
+                    val leftContent  = reconstituteContentFrom(leftTokens)
+                    val rightContent = reconstituteContentFrom(rightTokens)
+
+                    reify {
+                      val recordedState = recordConflictedMergeOfModifiedFile(
+                        baseDirectory,
+                        ourDirectory,
+                        theirDirectory
+                      )(
+                        partialResult,
+                        path,
+                        baseContent,
+                        leftContent,
+                        rightContent
+                      ).reflect
+
+                      captureRenamesOfPathModified(recordedState).reflect
+                    }
+
+              case JustOurAddition(ourAddition) =>
+                (mergeResultsByPath(path): @unchecked) match
+                  case FullyMerged(tokens) =>
+                    val mergedFileContent = reconstituteContentFrom(tokens)
+
+                    val ourAdditionWasTweakedByTheMerge =
+                      mergedFileContent != ourAddition.content
+
+                    if ourAdditionWasTweakedByTheMerge then
+                      recordCleanMergeOfFile(
+                        baseDirectory,
+                        ourDirectory,
+                        theirDirectory
+                      )(
+                        partialResult,
+                        path,
+                        mergedFileContent
+                      )
+                    else
+                      reify {
+                        copyFileOver(ourDirectory, baseDirectory)(path).reflect
+                        copyFileOver(ourDirectory, theirDirectory)(path).reflect
+                        partialResult
+                      }
+                    end if
+
+                  case MergedWithConflicts(
+                        baseTokens,
+                        leftTokens,
+                        rightTokens
+                      ) =>
+                    val leftContent  = reconstituteContentFrom(leftTokens)
+                    val rightContent = reconstituteContentFrom(rightTokens)
+
+                    if baseTokens.nonEmpty then
+                      val baseContent = reconstituteContentFrom(baseTokens)
+
+                      recordConflictedMergeOfModifiedFile(
+                        baseDirectory,
+                        ourDirectory,
+                        theirDirectory
+                      )(
+                        partialResult,
+                        path,
+                        baseContent,
+                        leftContent,
+                        rightContent
+                      )
+                    else
+                      recordConflictedMergeOfAddedFile(
+                        ourDirectory,
+                        theirDirectory
+                      )(
+                        partialResult,
+                        path,
+                        leftContent,
+                        rightContent
+                      )
+                    end if
+
+              case JustTheirAddition(theirAddition) =>
+                (mergeResultsByPath(path): @unchecked) match
+                  case FullyMerged(tokens) =>
+                    val mergedFileContent = reconstituteContentFrom(tokens)
+
+                    val theirAdditionWasTweakedByTheMerge =
+                      mergedFileContent != theirAddition.content
+
+                    if theirAdditionWasTweakedByTheMerge then
+                      recordCleanMergeOfFile(
+                        baseDirectory,
+                        ourDirectory,
+                        theirDirectory
+                      )(
+                        partialResult,
+                        path,
+                        mergedFileContent
+                      )
+                    else
+                      reify {
+                        copyFileOver(theirDirectory, baseDirectory)(
+                          path
+                        ).reflect
+                        copyFileOver(theirDirectory, ourDirectory)(path).reflect
+                        partialResult
+                      }
+                    end if
+
+                  case MergedWithConflicts(
+                        baseTokens,
+                        leftTokens,
+                        rightTokens
+                      ) =>
+                    val leftContent  = reconstituteContentFrom(leftTokens)
+                    val rightContent = reconstituteContentFrom(rightTokens)
+
+                    if baseTokens.nonEmpty then
+                      val baseContent = reconstituteContentFrom(baseTokens)
+
+                      recordConflictedMergeOfModifiedFile(
+                        baseDirectory,
+                        ourDirectory,
+                        theirDirectory
+                      )(
+                        partialResult,
+                        path,
+                        baseContent,
+                        leftContent,
+                        rightContent
+                      )
+                    else
+                      recordConflictedMergeOfAddedFile(
+                        ourDirectory,
+                        theirDirectory
+                      )(
+                        partialResult,
+                        path,
+                        leftContent,
+                        rightContent
+                      )
+                    end if
+
+              case JustOurDeletion(_) =>
+                // NOTE: we don't consult `mergeResultsByPath` because we know
+                // the outcome already. This is important, because deletion of
+                // an entire file on just one side is treated as a special case
+                // by `SectionedCode.mergeResultsByPath` and does not
+                // necessarily remove the content.
                 reify {
                   deleteFile(baseDirectory)(path).reflect
                   deleteFile(theirDirectory)(path).reflect
-                  captureRenamesOfPathDeletedOnJustOneSide(partialResult).reflect
+                  captureRenamesOfPathDeletedOnJustOneSide(
+                    partialResult
+                  ).reflect
                 }
-              else
+
+              case JustTheirDeletion(_) =>
+                // NOTE: we don't consult `mergeResultsByPath` because we know
+                // the outcome already. This is important, because deletion of
+                // an entire file on just one side is treated as a special case
+                // by `SectionedCode.mergeResultsByPath` and does not
+                // necessarily remove the content.
                 reify {
-                  val recordedState =
-                    if theirModificationWasTweakedByTheMerge then
-                      writeFileFor(theirDirectory)(path, mergedFileContent)
-                        .logOperation(
-                          s"Conflict - file ${underline(path)} was deleted from our directory ${underline(ourDirectory)} and modified in their directory ${underline(theirDirectory)}."
-                        )
-                        .reflect
-                      partialResult.copy(cleanlyMerged = false)
+                  deleteFile(baseDirectory)(path).reflect
+                  deleteFile(ourDirectory)(path).reflect
+                  captureRenamesOfPathDeletedOnJustOneSide(
+                    partialResult
+                  ).reflect
+                }
+
+              case OurModificationAndTheirDeletion(
+                    ourModification,
+                    baseContent
+                  ) =>
+                val tokens = justOurSidesViewOfTheMergedContentAt(path)
+
+                val mergedFileContent = reconstituteContentFrom(tokens)
+                val ourModificationWasTweakedByTheMerge =
+                  mergedFileContent != ourModification.content
+
+                if mergedFileContent.isEmpty && fileRenamingReport(
+                    path
+                  ).isDefined
+                then
+                  // If our content was modified to being empty, this is
+                  // taken to mean that all of our original content has been
+                  // migrated to one or more other files. We can therefore
+                  // resolve this as a deletion.
+                  reify {
+                    deleteFile(baseDirectory)(path).reflect
+                    deleteFile(ourDirectory)(path).reflect
+                    captureRenamesOfPathDeletedOnJustOneSide(
+                      partialResult
+                    ).reflect
+                  }
+                else
+                  reify {
+                    val recordedState =
+                      if ourModificationWasTweakedByTheMerge then
+                        writeFileFor(ourDirectory)(path, mergedFileContent)
+                          .logOperation(
+                            s"Conflict - file ${underline(path)} was modified in our directory ${underline(ourDirectory)} and deleted from their directory ${underline(theirDirectory)}."
+                          )
+                          .reflect
+                        partialResult.copy(cleanlyMerged = false)
+                      else
+                        // The modified file is already present in our
+                        // directory; we just leave it there.
+                        right(partialResult.copy(cleanlyMerged = false))
+                          .logOperation(
+                            s"Conflict - file ${underline(path)} was modified in our directory ${underline(ourDirectory)} and deleted from their directory ${underline(theirDirectory)}."
+                          )
+                          .reflect
+                      end if
+                    end recordedState
+
+                    captureRenamesOfPathModified(recordedState).reflect
+                  }
+                end if
+
+              case TheirModificationAndOurDeletion(theirModification, _) =>
+                val tokens = justTheirSidesViewOfTheMergedContentAt(path)
+
+                val mergedFileContent = reconstituteContentFrom(tokens)
+                val theirModificationWasTweakedByTheMerge =
+                  mergedFileContent != theirModification.content
+
+                if mergedFileContent.isEmpty && fileRenamingReport(
+                    path
+                  ).isDefined
+                then
+                  // If their content was modified to being empty, this is taken
+                  // to mean that all of their original content has been
+                  // migrated to one or more other files. We can therefore
+                  // resolve this as a deletion.
+                  reify {
+                    deleteFile(baseDirectory)(path).reflect
+                    deleteFile(theirDirectory)(path).reflect
+                    captureRenamesOfPathDeletedOnJustOneSide(
+                      partialResult
+                    ).reflect
+                  }
+                else
+                  reify {
+                    val recordedState =
+                      if theirModificationWasTweakedByTheMerge then
+                        writeFileFor(theirDirectory)(path, mergedFileContent)
+                          .logOperation(
+                            s"Conflict - file ${underline(path)} was deleted from our directory ${underline(ourDirectory)} and modified in their directory ${underline(theirDirectory)}."
+                          )
+                          .reflect
+                        partialResult.copy(cleanlyMerged = false)
+                      else
+                        // The modified file is already present in their
+                        // directory; we just leave it there.
+                        right(partialResult.copy(cleanlyMerged = false))
+                          .logOperation(
+                            s"Conflict - file ${underline(path)} was deleted from our directory ${underline(ourDirectory)} and modified in their directory ${underline(theirDirectory)}."
+                          )
+                          .reflect
+                      end if
+                    end recordedState
+
+                    captureRenamesOfPathModified(recordedState).reflect
+                  }
+                end if
+
+              case BothContributeAnAddition(_, _) =>
+                (mergeResultsByPath(path): @unchecked) match
+                  case FullyMerged(tokens) =>
+                    val mergedFileContent = reconstituteContentFrom(tokens)
+
+                    recordCleanMergeOfFile(
+                      baseDirectory,
+                      ourDirectory,
+                      theirDirectory
+                    )(
+                      partialResult,
+                      path,
+                      mergedFileContent
+                    )
+
+                  case MergedWithConflicts(
+                        baseTokens,
+                        leftTokens,
+                        rightTokens
+                      ) =>
+                    val leftContent  = reconstituteContentFrom(leftTokens)
+                    val rightContent = reconstituteContentFrom(rightTokens)
+
+                    if baseTokens.nonEmpty then
+                      val baseContent = reconstituteContentFrom(baseTokens)
+
+                      recordConflictedMergeOfModifiedFile(
+                        baseDirectory,
+                        ourDirectory,
+                        theirDirectory
+                      )(
+                        partialResult,
+                        path,
+                        baseContent,
+                        leftContent,
+                        rightContent
+                      )
                     else
-                      // The modified file is already present in their directory;
-                      // we
-                      // just leave it there.
-                      right(partialResult.copy(cleanlyMerged = false))
-                        .logOperation(
-                          s"Conflict - file ${underline(path)} was deleted from our directory ${underline(ourDirectory)} and modified in their directory ${underline(theirDirectory)}."
-                        )
-                        .reflect
+                      recordConflictedMergeOfAddedFile(
+                        ourDirectory,
+                        theirDirectory
+                      )(
+                        partialResult,
+                        path,
+                        leftContent,
+                        rightContent
+                      )
                     end if
 
-                  captureRenamesOfPathModified(recordedState).reflect
-                }
-              end if
+              case BothContributeAModification(
+                    _,
+                    _,
+                    _
+                  ) =>
+                (mergeResultsByPath(path): @unchecked) match
+                  case FullyMerged(tokens) =>
+                    val mergedFileContent = reconstituteContentFrom(tokens)
 
-            case BothContributeAnAddition(_, _) =>
-              (mergeResultsByPath(path): @unchecked) match
-                case FullyMerged(tokens) =>
-                  val mergedFileContent = reconstituteContentFrom(tokens)
+                    recordCleanMergeOfFile(
+                      baseDirectory,
+                      ourDirectory,
+                      theirDirectory
+                    )(
+                      partialResult,
+                      path,
+                      mergedFileContent
+                    )
 
-                  recordCleanMergeOfFile(
-                    baseDirectory,
-                    ourDirectory,
-                    theirDirectory
-                  )(
-                    partialResult,
-                    path,
-                    mergedFileContent
-                  )
-
-                case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
-                  val leftContent  = reconstituteContentFrom(leftTokens)
-                  val rightContent = reconstituteContentFrom(rightTokens)
-
-                  if baseTokens.nonEmpty then
-                    val baseContent = reconstituteContentFrom(baseTokens)
+                  case MergedWithConflicts(
+                        baseTokens,
+                        leftTokens,
+                        rightTokens
+                      ) =>
+                    val baseContent  = reconstituteContentFrom(baseTokens)
+                    val leftContent  = reconstituteContentFrom(leftTokens)
+                    val rightContent = reconstituteContentFrom(rightTokens)
 
                     recordConflictedMergeOfModifiedFile(
                       baseDirectory,
@@ -1594,101 +1703,53 @@ object Main extends StrictLogging:
                       leftContent,
                       rightContent
                     )
-                  else
-                    recordConflictedMergeOfAddedFile(
-                      ourDirectory,
-                      theirDirectory
-                    )(
-                      partialResult,
-                      path,
-                      leftContent,
-                      rightContent
-                    )
-                  end if
 
-            case BothContributeAModification(
-                  _,
-                  _,
-                  _
-                ) =>
-              (mergeResultsByPath(path): @unchecked) match
-                case FullyMerged(tokens) =>
-                  val mergedFileContent = reconstituteContentFrom(tokens)
-
-                  recordCleanMergeOfFile(
-                    baseDirectory,
-                    ourDirectory,
-                    theirDirectory
-                  )(
-                    partialResult,
-                    path,
-                    mergedFileContent
-                  )
-
-                case MergedWithConflicts(baseTokens, leftTokens, rightTokens) =>
-                  val baseContent  = reconstituteContentFrom(baseTokens)
-                  val leftContent  = reconstituteContentFrom(leftTokens)
-                  val rightContent = reconstituteContentFrom(rightTokens)
-
-                  recordConflictedMergeOfModifiedFile(
-                    baseDirectory,
-                    ourDirectory,
-                    theirDirectory
-                  )(
-                    partialResult,
-                    path,
-                    baseContent,
-                    leftContent,
-                    rightContent
-                  )
-
-            case BothContributeADeletion(_) =>
-              fileRenamingReport(path).fold(ifEmpty =
-                reify {
+              case BothContributeADeletion(_) =>
+                fileRenamingReport(path).fold(ifEmpty = reify {
                   deleteFile(baseDirectory)(path)
                     .logOperation(
                       s"Coincidental deletion of file ${underline(path)} from our directory ${underline(ourDirectory)} and from their directory ${underline(theirDirectory)}."
                     )
                     .reflect
                   partialResult
-                }
-              ) {
-                case FileRelocationReport(
-                      description,
-                      leftRenamePaths,
-                      rightRenamePaths
-                    ) =>
-                  (
-                    leftRenamePaths.nonEmpty,
-                    rightRenamePaths.nonEmpty
-                  ) match
-                    case (true, false) | (false, true) =>
-                      // If all the moved content from `path` going into new
-                      // files ends up on just one side, then this is a
-                      // conflict because it implies an isolated deletion on
-                      // the other side.
-                      right(
-                        partialResult.copy(
-                          conflictingDeletedPathsByLeftRenamePath =
-                            partialResult.conflictingDeletedPathsByLeftRenamePath ++ leftRenamePaths
-                              .map(_ -> path),
-                          conflictingDeletedPathsByRightRenamePath =
-                            partialResult.conflictingDeletedPathsByRightRenamePath ++ rightRenamePaths
-                              .map(_ -> path)
-                        )
-                      ).logOperation(description)
-                    case (true, true) | (false, false) =>
-                      reify {
-                        deleteFile(baseDirectory)(path)
-                          .logOperation(
-                            description
+                }) {
+                  case FileRelocationReport(
+                        description,
+                        leftRenamePaths,
+                        rightRenamePaths
+                      ) =>
+                    (
+                      leftRenamePaths.nonEmpty,
+                      rightRenamePaths.nonEmpty
+                    ) match
+                      case (true, false) | (false, true) =>
+                        // If all the moved content from `path` going into new
+                        // files ends up on just one side, then this is a
+                        // conflict because it implies an isolated deletion on
+                        // the other side.
+                        right(
+                          partialResult.copy(
+                            conflictingDeletedPathsByLeftRenamePath =
+                              partialResult.conflictingDeletedPathsByLeftRenamePath ++ leftRenamePaths
+                                .map(_ -> path),
+                            conflictingDeletedPathsByRightRenamePath =
+                              partialResult.conflictingDeletedPathsByRightRenamePath ++ rightRenamePaths
+                                .map(_ -> path)
                           )
-                          .reflect
-                        partialResult
-                      }
-              }
-          end match
-        }.reflect
+                        ).logOperation(description)
+                      case (true, true) | (false, false) =>
+                        reify {
+                          deleteFile(baseDirectory)(path)
+                            .logOperation(
+                              description
+                            )
+                            .reflect
+                          partialResult
+                        }
+                }
+            end match
+          }
+          .reflect
 
         accumulatedMergeState.reportConflictingAdditionsTakingRenamesIntoAccount.reflect
 
