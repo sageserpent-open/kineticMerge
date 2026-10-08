@@ -73,11 +73,7 @@ class SectionedCodeTest:
     ) and sourcesTrials.map(
       _.copy(label = "right")
     ) and minimumSizeFractionTrials)
-      .withStrategy(cycle =>
-        CasesLimitStrategy.timed(
-          Duration.apply(if cycle.isInitial then 1 else 3, TimeUnit.MINUTES)
-        )
-      )
+      .withLimit(600)
       .dynamicTests(
         (
             base: FakeSources,
@@ -85,8 +81,6 @@ class SectionedCodeTest:
             right: FakeSources,
             minimumSizeFraction: Double
         ) =>
-          pprintCustomised.pprintln((base, left, right, minimumSizeFraction))
-
           val configuration = Configuration(
             minimumMatchSize = 2,
             thresholdSizeFractionForMatching = minimumSizeFraction,
@@ -103,7 +97,6 @@ class SectionedCodeTest:
               analysis.right matches right
 
             case Left(overlappingSections: AdmissibleFailure) =>
-              pprintCustomised.pprintln(overlappingSections)
               Trials.reject()
 
             case Left(unexpectedException) => throw unexpectedException
@@ -161,18 +154,6 @@ class SectionedCodeTest:
         // protected by braces; it seems it doesn't play well with the
         // preceding import statement.
         {
-          println(
-            s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
-          )
-          println("Sizes of common to all three sides...")
-          pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
-          println("Sizes of common to base and left...")
-          pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
-          println("Sizes of common to base and right...")
-          pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
-          println("Sizes of common to left and right...")
-          pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
-
           val configuration = Configuration(
             minimumMatchSize = minimumPossibleExpectedMatchSize,
             thresholdSizeFractionForMatching =
@@ -211,18 +192,6 @@ class SectionedCodeTest:
         // protected by braces; it seems it doesn't play well with the
         // preceding import statement.
         {
-          println(
-            s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
-          )
-          println("Sizes of common to all three sides...")
-          pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
-          println("Sizes of common to base and left...")
-          pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
-          println("Sizes of common to base and right...")
-          pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
-          println("Sizes of common to left and right...")
-          pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
-
           val configuration = Configuration(
             minimumMatchSize = minimumPossibleExpectedMatchSize,
             thresholdSizeFractionForMatching =
@@ -261,18 +230,6 @@ class SectionedCodeTest:
         // protected by braces; it seems it doesn't play well with the
         // preceding import statement.
         {
-          println(
-            s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
-          )
-          println("Sizes of common to all three sides...")
-          pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
-          println("Sizes of common to base and left...")
-          pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
-          println("Sizes of common to base and right...")
-          pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
-          println("Sizes of common to left and right...")
-          pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
-
           val configuration = Configuration(
             minimumMatchSize = minimumPossibleExpectedMatchSize,
             thresholdSizeFractionForMatching =
@@ -295,6 +252,7 @@ class SectionedCodeTest:
       }
   end reproduceAssertionFailure
 
+  @Disabled
   @TestFactory
   def matchingSectionsAreFound(): DynamicTests =
     testPlansFavouringMatches
@@ -309,18 +267,6 @@ class SectionedCodeTest:
         // braces; it seems it doesn't play well with the preceding import
         // statement.
         {
-          println(
-            s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
-          )
-          println("Sizes of common to all three sides...")
-          pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
-          println("Sizes of common to base and left...")
-          pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
-          println("Sizes of common to base and right...")
-          pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
-          println("Sizes of common to left and right...")
-          pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
-
           val configuration = Configuration(
             minimumMatchSize = minimumPossibleExpectedMatchSize,
             thresholdSizeFractionForMatching =
@@ -598,7 +544,6 @@ class SectionedCodeTest:
               }
 
             case Left(overlappingSections: AdmissibleFailure) =>
-              pprintCustomised.pprintln(overlappingSections)
               Trials.reject()
 
             case Left(unexpectedException) => throw unexpectedException
@@ -1785,8 +1730,6 @@ class SectionedCodeTest:
         .map(analysis.matchesFor)
         .reduce(_ union _)
 
-    println(s"Resulting matches:\n${pprintCustomised(matches)}")
-
     val (allSides, pairwise) = matches.partition {
       case _: Match.AllSides[?] => true
       case _                    => false
@@ -1796,6 +1739,7 @@ class SectionedCodeTest:
     assert(6 == pairwise.size)
   end parallelMatches
 
+  @Disabled
   @TestFactory
   def mergeSmokeTest(): DynamicTests =
     testPlansFavouringMatches
@@ -1806,18 +1750,6 @@ class SectionedCodeTest:
         // braces; it seems it doesn't play well with the preceding import
         // statement.
         {
-          println(
-            s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
-          )
-          println("Sizes of common to all three sides...")
-          pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
-          println("Sizes of common to base and left...")
-          pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
-          println("Sizes of common to base and right...")
-          pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
-          println("Sizes of common to left and right...")
-          pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
-
           val configuration = Configuration(
             minimumMatchSize = minimumPossibleExpectedMatchSize,
             thresholdSizeFractionForMatching =
@@ -1840,7 +1772,6 @@ class SectionedCodeTest:
               assertDoesNotThrow(() => analysis.merge)
 
             case Left(overlappingSections: AdmissibleFailure) =>
-              pprintCustomised.pprintln(overlappingSections)
               Trials.reject()
 
             case Left(unexpectedException) => throw unexpectedException

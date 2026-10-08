@@ -29,7 +29,7 @@ trait ProgressRecordingSessionWithSummary(
   override def close(): Unit =
     val duration = JavaDuration.between(startTime, Instant.now())
     println(
-      s"$label $maximumProgress (Completed in: ${DurationFormatUtils.formatDurationHMS(duration.toMillis)})"
+      s"$label $maximumProgress (Completed in: ${DurationFormatUtils.formatDurationHMS(duration.toMillis max 0L)})"
     )
   end close
 end ProgressRecordingSessionWithSummary
