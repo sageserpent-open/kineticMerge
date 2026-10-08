@@ -68,6 +68,7 @@ lazy val commonLibraryDependencies = Seq(
 
 lazy val cliApplicationSettings = commonSettings ++ commonLibraryDependencies ++ Seq(
   publish / skip   := true,
+  publishLocal / skip := false,
   libraryDependencies += "com.github.scopt" %% "scopt" % "4.2.0",
   packageExecutable := {
     val libPublished: Unit = (kineticMerge / Compile / publishLocal).value
