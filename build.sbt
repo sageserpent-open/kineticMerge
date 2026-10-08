@@ -71,8 +71,8 @@ lazy val cliApplicationSettings = commonSettings ++ commonLibraryDependencies ++
   publishLocal / skip := false,
   libraryDependencies += "com.github.scopt" %% "scopt" % "4.2.0",
   packageExecutable := {
-    val libPublished  = (kineticMerge / Compile / publishLocal).value
-    val mainPublished = (Compile / publishLocal).value
+    val libPublished: Unit = (kineticMerge / Compile / publishLocal).value
+    val mainPublished: Unit = (Compile / publishLocal).value
 
     val packagingVersion = (ThisBuild / version).value
 
@@ -152,11 +152,11 @@ lazy val gitCliApplication = (project in file("git-cli-application"))
     description               := "Git CLI application for Kinetic Merge."
   )
 
-lazy val toolCliApplication = (project in file("kinetic-merge-tool"))
+lazy val toolCliApplication = (project in file("tool-cli-application"))
   .dependsOn(kineticMerge, kineticMerge % "test->test")
   .settings(
     cliApplicationSettings,
-    name                      := "kinetic-merge-tool",
+    name                      := "tool-cli-application",
     applicationExecutableName := "kinetic-merge-tool",
     description               := "Merge tool CLI application for Kinetic Merge."
   )
