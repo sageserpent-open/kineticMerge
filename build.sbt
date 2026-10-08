@@ -68,7 +68,6 @@ lazy val commonLibraryDependencies = Seq(
 
 lazy val cliApplicationSettings = commonSettings ++ commonLibraryDependencies ++ Seq(
   publish / skip   := true,
-  publishLocal / skip := false,
   libraryDependencies += "com.github.scopt" %% "scopt" % "4.2.0",
   packageExecutable := {
     val libPublished: Unit = (kineticMerge / Compile / publishLocal).value
@@ -104,21 +103,6 @@ lazy val kineticMerge = (project in file("kinetic-merge"))
     commonLibraryDependencies,
     name        := "kinetic-merge",
     description := "Merge branches in the presence of code motion within and between files.",
-    releaseCrossBuild := false, // No cross-building here - just Scala 3.
-    releaseProcess    := Seq[ReleaseStep](
-      checkSnapshotDependencies,
-      inquireVersions,
-      runClean,
-      runTest,
-      setReleaseVersion,
-      commitReleaseVersion,
-      tagRelease,
-      // *DO NOT* run `publishSigned`, `sonatypeBundleRelease` and
-      // `pushChanges` - the equivalent is done on GitHub by
-      // `gha-scala-library-release-workflow`.
-      setNextVersion,
-      commitNextVersion
-    ),
     versionResource := {
       val additionalResourcesDirectory = (Compile / resourceManaged).value
 
@@ -164,5 +148,20 @@ lazy val toolCliApplication = (project in file("tool-cli-application"))
 lazy val root = (project in file("."))
   .aggregate(kineticMerge, gitCliApplication, toolCliApplication)
   .settings(
-    publish / skip := true
+    publish / skip := true,
+    releaseCrossBuild := false, // No cross-building here - just Scala 3.
+    releaseProcess    := Seq[ReleaseStep](
+      checkSnapshotDependencies,
+      inquireVersions,
+      runClean,
+      runTest,
+      setReleaseVersion,
+      commitReleaseVersion,
+      tagRelease,
+      // *DO NOT* run `publishSigned`, `sonatypeBundleRelease` and
+      // `pushChanges` - the equivalent is done on GitHub by
+      // `gha-scala-library-release-workflow`.
+      setNextVersion,
+      commitNextVersion
+    )
   )
