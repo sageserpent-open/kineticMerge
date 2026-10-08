@@ -53,16 +53,20 @@ lazy val commonLibraryDependencies = Seq(
   libraryDependencies +=
     "org.scala-lang.modules" %% "scala-parallel-collections" % "1.2.0",
   libraryDependencies += "org.typelevel" %% "kittens" % "3.5.0",
-  libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async" % "1.4.0"
+  libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async" % "1.4.0",
+
+  libraryDependencies += "de.sciss"        %% "fingertree" % "1.5.5" % Test,
+  libraryDependencies += "com.sageserpent" %% "americium"  % "2.2.2" % Test,
+  libraryDependencies += "com.sageserpent" %% "americium-junit5" % "2.2.2" % Test,
+  libraryDependencies += "com.eed3si9n.expecty" %% "expecty" % "0.17.1" % Test,
+  libraryDependencies += "org.apache.commons" % "commons-text" % "1.15.0" % Test,
+  libraryDependencies += "com.github.sbt.junit" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test
 )
 
 lazy val cliApplicationSettings = commonSettings ++ commonLibraryDependencies ++ Seq(
   publish / skip   := true,
   publishLocal / skip := false,
   libraryDependencies += "com.github.scopt" %% "scopt" % "4.2.0",
-  libraryDependencies += "com.sageserpent"   %% "americium"      % "2.2.2" % Test,
-  libraryDependencies += "com.sageserpent"   %% "americium-junit5" % "2.2.2" % Test,
-  libraryDependencies += "com.github.sbt.junit" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
   packageExecutable := {
     val libPublished  = (kineticMerge / Compile / publishLocal).value
     val mainPublished = (Compile / publishLocal).value
@@ -130,12 +134,6 @@ lazy val kineticMerge = (project in file("kinetic-merge"))
 
       Seq(location)
     }.taskValue,
-    libraryDependencies += "de.sciss"        %% "fingertree" % "1.5.5" % Test,
-    libraryDependencies += "com.sageserpent" %% "americium"  % "2.2.2" % Test,
-    libraryDependencies += "com.sageserpent" %% "americium-junit5" % "2.2.2" % Test,
-    libraryDependencies += "com.eed3si9n.expecty" %% "expecty" % "0.17.1" % Test,
-    libraryDependencies += "org.apache.commons" % "commons-text" % "1.15.0" % Test,
-    libraryDependencies += "com.github.sbt.junit" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
     Test / test / logLevel    := Level.Error,
     Test / fork               := true,
     Test / testForkedParallel := true,
