@@ -9,7 +9,8 @@ ThisBuild / scalaVersion := "3.9.0"
 ThisBuild / javacOptions ++= Seq("-source", javaVersion, "-target", javaVersion)
 
 ThisBuild / scalacOptions ++= List(
-  s"-java-output-version:$javaVersion", "-deprecation"
+  s"-java-output-version:$javaVersion",
+  "-deprecation"
 )
 
 lazy val packageExecutable =
@@ -79,10 +80,10 @@ lazy val root = (project in file("."))
     },
     packageExecutable := (packageExecutable dependsOn publishLocal).value,
     libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.9.6",
-    libraryDependencies += "ch.qos.logback"    % "logback-core"    % "1.6.3",
-    libraryDependencies += "ch.qos.logback"    % "logback-classic" % "1.6.3",
+    libraryDependencies += "ch.qos.logback"    % "logback-core"    % "1.6.5",
+    libraryDependencies += "ch.qos.logback"    % "logback-classic" % "1.6.5",
     libraryDependencies += "org.typelevel"    %% "cats-core"       % "2.13.0",
-    libraryDependencies += "com.github.scopt" %% "scopt"           % "4.1.0",
+    libraryDependencies += "com.github.scopt" %% "scopt"           % "4.2.0",
     libraryDependencies += "com.sageserpent" %% "americium-utilities" % "2.2.2",
     libraryDependencies += "org.typelevel" %% "cats-collections-core" % "0.9.10",
     libraryDependencies += "org.typelevel" %% "cats-core"      % "2.13.0",
@@ -98,10 +99,10 @@ lazy val root = (project in file("."))
     libraryDependencies += "com.lihaoyi"             %% "fansi"   % "0.5.1",
     libraryDependencies += "com.lihaoyi"             %% "pprint"  % "0.9.6",
     libraryDependencies += "com.softwaremill.common" %% "tagging" % "2.3.5",
-    libraryDependencies += "com.google.guava" % "guava" % "33.7.1-jre",
-    libraryDependencies += "com.github.ben-manes.caffeine" % "caffeine" % "3.2.4",
+    libraryDependencies += "com.google.guava" % "guava" % "33.7.2-jre",
+    libraryDependencies += "com.github.ben-manes.caffeine" % "caffeine" % "3.3.0",
     libraryDependencies += "me.tongfei"         % "progressbar"   % "0.10.2",
-    libraryDependencies += "org.apache.commons" % "commons-lang3" % "3.20.0",
+    libraryDependencies += "org.apache.commons" % "commons-lang3" % "3.21.0",
     libraryDependencies +=
       "org.scala-lang.modules" %% "scala-parallel-collections" % "1.2.0",
     libraryDependencies += "org.typelevel" %% "kittens" % "3.5.0",
@@ -113,8 +114,8 @@ lazy val root = (project in file("."))
     libraryDependencies += "com.eed3si9n.expecty" %% "expecty" % "0.17.1" % Test,
     libraryDependencies += "org.apache.commons" % "commons-text" % "1.15.0" % Test,
     libraryDependencies += "com.github.sbt.junit" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
-      Test / test / logLevel                 := Level.Error,
-    Test / fork                            := true,
-    Test / testForkedParallel              := true,
+    Test / test / logLevel    := Level.Error,
+    Test / fork               := true,
+    Test / testForkedParallel := true,
     Test / javaOptions ++= Seq("-Xmx8G")
   )

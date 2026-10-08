@@ -287,7 +287,7 @@ object SectionedCodeExtension extends StrictLogging:
           label = "Blocks merged:"
         )
 
-      val rawSectionClumps: Vector[ThreeSidedClump[Section[Element]]] =
+      val sectionClumps: Vector[ThreeSidedClump[Section[Element]]] =
         threeSidedClumps.map { clump =>
           ThreeSidedClump(
             base = clump.base.flatMap(_.sectionsCoveredByGroup).distinct,
@@ -296,8 +296,9 @@ object SectionedCodeExtension extends StrictLogging:
           )
         }
 
-      val sectionClumps: Vector[ThreeSidedClump[Section[Element]]] =
-        val coalescedWithMaxes = rawSectionClumps.foldLeft(
+      val nonOverlappingCoalescedSectionClumps
+          : Vector[ThreeSidedClump[Section[Element]]] =
+        val coalescedWithMaxes = sectionClumps.foldLeft(
           Vector.empty[(ThreeSidedClump[Section[Element]], Int, Int, Int)]
         ) { (coalescedClumps, successor) =>
           def overlaps(clump: ThreeSidedClump[Section[Element]]): Boolean =
@@ -412,7 +413,7 @@ object SectionedCodeExtension extends StrictLogging:
           end if
         }
         coalescedWithMaxes.map(_._1)
-      end sectionClumps
+      end nonOverlappingCoalescedSectionClumps
 
       type MatchSequence[X] = Vector[Match[X]]
 
@@ -526,7 +527,7 @@ object SectionedCodeExtension extends StrictLogging:
           )
         end matchSequenceOf
 
-        sectionClumps.flatMap(matchSequenceOf)
+        nonOverlappingCoalescedSectionClumps.flatMap(matchSequenceOf)
       end matchSequence
 
       // PLAN: put each match into its own disjoint set and use a mapping from
@@ -704,17 +705,17 @@ object SectionedCodeExtension extends StrictLogging:
         )
 
         val baseMatches = canonicallyOrderedMatches
-          .flatMap(m => m.baseContribution.map(_ => m))
+          .filter(_.baseContribution.isDefined)
           .sortBy(_.baseContribution.get.startOffset)
           .toVector
 
         val leftMatches = canonicallyOrderedMatches
-          .flatMap(m => m.leftContribution.map(_ => m))
+          .filter(_.leftContribution.isDefined)
           .sortBy(_.leftContribution.get.startOffset)
           .toVector
 
         val rightMatches = canonicallyOrderedMatches
-          .flatMap(m => m.rightContribution.map(_ => m))
+          .filter(_.rightContribution.isDefined)
           .sortBy(_.rightContribution.get.startOffset)
           .toVector
 
@@ -735,7 +736,7 @@ object SectionedCodeExtension extends StrictLogging:
         )
 
         val rawMatchesFromBase = lcs.base.collect {
-          case Contribution.Common(aMatch) => aMatch
+          case Contribution.Common(aMatch)                  => aMatch
           case Contribution.CommonToBaseAndLeftOnly(aMatch) =>
             Match.BaseAndLeft(
               aMatch.baseContribution.get,
@@ -1146,10 +1147,9 @@ object SectionedCodeExtension extends StrictLogging:
 
       val firstAndLastMatchesInParallelMatchesGroups
           : Set[Match[Section[Element]]] =
-        sectionedCode.groupsOfParallelMatches.values.flatMap { matches =>
-          if matches.nonEmpty then Seq(matches.head, matches.last)
-          else Seq.empty
-        }.toSet
+        sectionedCode.groupsOfParallelMatches.values.flatMap(matches =>
+          Seq(matches.head, matches.last)
+        ).toSet
 
       def hasMigratedEditOrDeletion(aMatch: Match[Section[Element]]): Boolean =
         aMatch.baseContribution.exists { baseSection =>

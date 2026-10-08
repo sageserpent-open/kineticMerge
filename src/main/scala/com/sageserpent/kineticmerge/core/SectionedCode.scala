@@ -75,18 +75,18 @@ object SectionedCode extends StrictLogging:
       withAllMatchesOfAtLeastTheMinimumWindowSize.withTinyMatches
 
     try
-      val withOverlapsReconciled =
-        withTinyMatchesIncluded.reconcileOverlappingMatches(
-          reconcileMatchesInvolvingOverlappingSections
-        )
-
       // TODO: this also precariously protects some downstream logic in
       // `reconcileMatches` that assumes that all matches will have a
       // parallel matches group id. Need to make this more robust.
-      val parallelMatchesOnly = withOverlapsReconciled.parallelMatchesOnly
+      val parallelMatchesOnly = withTinyMatchesIncluded.parallelMatchesOnly
+
+      val withOverlapsReconciled =
+        parallelMatchesOnly.reconcileOverlappingMatches(
+          reconcileMatchesInvolvingOverlappingSections
+        )
 
       val matchesAndTheirSections =
-        parallelMatchesOnly.reconcileSubsumingMatches
+        withOverlapsReconciled.reconcileSubsumingMatches
 
       val sectionsAndTheirMatches =
         matchesAndTheirSections.sectionsAndTheirMatches
