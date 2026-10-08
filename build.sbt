@@ -114,8 +114,9 @@ lazy val root = (project in file("."))
     libraryDependencies += "com.eed3si9n.expecty" %% "expecty" % "0.17.1" % Test,
     libraryDependencies += "org.apache.commons" % "commons-text" % "1.15.0" % Test,
     libraryDependencies += "com.github.sbt.junit" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
-    Test / test / logLevel    := Level.Error,
-    Test / fork               := true,
-    Test / testForkedParallel := true,
+    libraryDependencies += "org.typelevel" %% "kittens" % "3.5.0",
+    Test / test / logLevel                 := Level.Error,
+    Test / fork                            := true,
+    Test / testForkedParallel              := true,
     Test / javaOptions ++= Seq("-Xmx8G")
   )
