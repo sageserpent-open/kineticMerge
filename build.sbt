@@ -16,6 +16,9 @@ ThisBuild / scalacOptions ++= List(
 lazy val packageExecutable =
   taskKey[String]("Package an executable with Coursier")
 
+lazy val applicationExecutableName =
+  settingKey[String]("Executable name produced by Coursier packaging")
+
 lazy val versionResource =
   settingKey[File]("Location of generated version resource file.")
 
@@ -75,7 +78,7 @@ lazy val cliApplicationSettings = commonSettings ++ commonLibraryDependencies ++
 
     println(s"Packaging executable with version: $packagingVersion")
 
-    val applicationName = name.value
+    val applicationName = applicationExecutableName.value
 
     val localArtifactCoordinates =
       s"${organization.value}:${name.value}_${scalaBinaryVersion.value}:$packagingVersion"
@@ -144,16 +147,18 @@ lazy val gitCliApplication = (project in file("git-cli-application"))
   .dependsOn(kineticMerge, kineticMerge % "test->test")
   .settings(
     cliApplicationSettings,
-    name        := "kinetic-merge",
-    description := "Git CLI application for Kinetic Merge."
+    name                      := "git-cli-application",
+    applicationExecutableName := "kinetic-merge",
+    description               := "Git CLI application for Kinetic Merge."
   )
 
 lazy val toolCliApplication = (project in file("kinetic-merge-tool"))
   .dependsOn(kineticMerge, kineticMerge % "test->test")
   .settings(
     cliApplicationSettings,
-    name        := "kinetic-merge-tool",
-    description := "Merge tool CLI application for Kinetic Merge."
+    name                      := "kinetic-merge-tool",
+    applicationExecutableName := "kinetic-merge-tool",
+    description               := "Merge tool CLI application for Kinetic Merge."
   )
 
 lazy val root = (project in file("."))
