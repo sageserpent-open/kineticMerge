@@ -145,8 +145,48 @@ lazy val gitCliApplication = (project in file("git-cli-application"))
     Test / javaOptions ++= Seq("-Xmx8G")
   )
 
+lazy val toolCliApplication = (project in file("kinetic-merge-tool"))
+  .dependsOn(kineticMerge, kineticMerge % "test->test")
+  .settings(
+    commonSettings,
+    name             := "kinetic-merge-tool",
+    description      := "Merge tool CLI application for Kinetic Merge.",
+    publish / skip   := true,
+    publishLocal / skip := false,
+    libraryDependencies += "com.github.scopt" %% "scopt" % "4.2.0",
+    libraryDependencies += "com.sageserpent" %% "americium" % "2.2.2" % Test,
+    libraryDependencies += "com.sageserpent" %% "americium-junit5" % "2.2.2" % Test,
+    libraryDependencies += "com.github.sbt.junit" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
+    packageExecutable := {
+      val libPublished  = (kineticMerge / Compile / publishLocal).value
+      val mainPublished = (Compile / publishLocal).value
+
+      val packagingVersion = (ThisBuild / version).value
+
+      println(s"Packaging executable with version: $packagingVersion")
+
+      val applicationName = "kinetic-merge-tool"
+
+      val localArtifactCoordinates =
+        s"${organization.value}:${name.value}_${scalaBinaryVersion.value}:$packagingVersion"
+
+      val executablePath = s"${target.value}${Path.sep}$applicationName"
+
+      coursier.cli.Coursier.main(
+        s"bootstrap --verbose --bat=true -M com.sageserpent.kineticmerge.Main --scala-version ${scalaBinaryVersion.value} -f $localArtifactCoordinates -o $executablePath"
+          .split("\\s+")
+      )
+
+      applicationName
+    },
+    Test / test / logLevel    := Level.Error,
+    Test / fork               := true,
+    Test / testForkedParallel := true,
+    Test / javaOptions ++= Seq("-Xmx8G")
+  )
+
 lazy val root = (project in file("."))
-  .aggregate(kineticMerge, gitCliApplication)
+  .aggregate(kineticMerge, gitCliApplication, toolCliApplication)
   .settings(
     publish / skip := true
   )
