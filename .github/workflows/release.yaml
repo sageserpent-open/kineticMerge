@@ -43,12 +43,3 @@ jobs:
           sbt "gitCliApplication/packageExecutable"
           sbt "toolCliApplication/packageExecutable"
           gh release upload "v${{ needs.release.outputs.RELEASE_VERSION }}" "${GITHUB_WORKSPACE}/git-cli-application/target/kinetic-merge" "${GITHUB_WORKSPACE}/git-cli-application/target/kinetic-merge.bat" "${GITHUB_WORKSPACE}/tool-cli-application/target/kinetic-merge-tool" "${GITHUB_WORKSPACE}/tool-cli-application/target/kinetic-merge-tool.bat"
-      - name: Publish the executables via JReleaser
-        uses: jreleaser/release-action@v2
-        with:
-          arguments: full-release
-        env:
-          JRELEASER_GITHUB_TOKEN: ${{ steps.generate-github-app-token.outputs.token }}
-          JRELEASER_HOMEBREW_GITHUB_TOKEN: ${{ steps.generate-github-app-token.outputs.token }}
-          JRELEASER_SCOOP_GITHUB_TOKEN: ${{ steps.generate-github-app-token.outputs.token }}
-          JRELEASER_PROJECT_VERSION: ${{ needs.release.outputs.RELEASE_VERSION }}
