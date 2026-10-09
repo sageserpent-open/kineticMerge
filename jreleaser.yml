@@ -11,10 +11,11 @@ project:
     - A simple command line tool that tries to do as much as it can without supervision, and with minimal supervision when complexities are encountered.
   authors:
     - Gerard Murphy (sageserpent-open)
-  license: MIT License
+  license: MIT
   links:
     homepage: https://github.com/sageserpent-open/kineticMerge
   stereotype: CLI
+  inceptionYear: 2023
 
 release:
   github:
@@ -32,6 +33,7 @@ distributions:
     type: BINARY
     executable:
       name: kinetic-merge
+      windowsExtension: bat
     artifacts:
       # Cross-platform / Unix script-preamble standalone binary
       - path: git-cli-application/target/kinetic-merge
@@ -46,6 +48,7 @@ distributions:
     type: BINARY
     executable:
       name: kinetic-merge-tool
+      windowsExtension: bat
     artifacts:
       # Cross-platform / Unix script-preamble standalone binary
       - path: tool-cli-application/target/kinetic-merge-tool
@@ -55,16 +58,16 @@ distributions:
       - path: tool-cli-application/target/kinetic-merge-tool.bat
         platform: windows-x86_64
 
-  packagers:
-    brew:
-      active: ALWAYS
-      repoTap:
-        owner: sageserpent-open
-        name: homebrew-tap
-      multiPlatform: true
+packagers:
+  brew:
+    active: ALWAYS
+    repository:
+      owner: sageserpent-open
+      name: homebrew-tap
+    multiPlatform: true
 
-    scoop:
-      active: ALWAYS
-      bucket:
-        owner: sageserpent-open
-        name: scoop-bucket
+  scoop:
+    active: ALWAYS
+    repository:
+      owner: sageserpent-open
+      name: scoop-bucket
