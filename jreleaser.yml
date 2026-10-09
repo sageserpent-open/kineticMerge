@@ -12,7 +12,8 @@ project:
   authors:
     - Gerard Murphy (sageserpent-open)
   license: MIT License
-  homepage: https://github.com/sageserpent-open/kineticMerge
+  links:
+    homepage: https://github.com/sageserpent-open/kineticMerge
   stereotype: CLI
 
 release:
@@ -23,7 +24,7 @@ release:
     sign: false
     changelog:
       formatted: ALWAYS
-      preset: convention
+      preset: conventional-commits
 
 distributions:
   # --- Core Git CLI Application ---
