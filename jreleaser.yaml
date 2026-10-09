@@ -1,0 +1,69 @@
+# jreleaser.yml
+project:
+  name: kinetic-merge
+  description: "Merge a heavily refactored codebase and stay sane."
+  longDescription: |
+    - Merge two branches of a Git repository holistically across the entire codebase.
+    - Take into account the motion of code in either branch due to refactoring.
+    - Handle file renames, file splits, file concatenation.
+    - Handle code being excised from one place in a file and moved elsewhere in that file or to somewhere within another file, or hived off all by itself in its own new file.
+    - Work alongside the usual Git workflows, allowing ordinary Git merge to take over at the end if necessary.
+    - A simple command line tool that tries to do as much as it can without supervision, and with minimal supervision when complexities are encountered.
+  authors:
+    - Gerard Murphy (sageserpent-open)
+  license: MIT License
+  homepage: https://github.com/sageserpent-open/kineticMerge
+  stereotype: CLI
+
+release:
+  github:
+    owner: sageserpent-open
+    name: kineticMerge
+    overwrite: true
+    sign: false
+    changelog:
+      formatted: ALWAYS
+      preset: convention
+
+distributions:
+  # --- Core Git CLI Application ---
+  kinetic-merge:
+    type: BINARY
+    executable:
+      name: kinetic-merge
+    artifacts:
+      # Cross-platform / Unix script-preamble standalone binary
+      - path: git-cli-application/target/kinetic-merge
+        extraProperties:
+          universal: true
+      # Additional Windows batch file to invoke the cross-platform binary as a JAR.
+      - path: git-cli-application/target/kinetic-merge.bat
+        platform: windows-x86_64
+
+  # --- Tool CLI Application ---
+  kinetic-merge-tool:
+    type: BINARY
+    executable:
+      name: kinetic-merge-tool
+    artifacts:
+      # Cross-platform / Unix script-preamble standalone binary
+      - path: tool-cli-application/target/kinetic-merge-tool
+        extraProperties:
+          universal: true
+      # Additional Windows batch file to invoke the cross-platform binary as a JAR.
+      - path: tool-cli-application/target/kinetic-merge-tool.bat
+        platform: windows-x86_64
+
+  packagers:
+    brew:
+      active: ALWAYS
+      repoTap:
+        owner: sageserpent-open
+        name: homebrew-tap
+      multiPlatform: true
+
+    scoop:
+      active: ALWAYS
+      bucket:
+        owner: sageserpent-open
+        name: scoop-bucket
