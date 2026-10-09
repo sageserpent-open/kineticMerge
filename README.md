@@ -29,8 +29,6 @@ YouTube:
 
 ### Download it. ###
 
-Then download a release for yourself:
-
 ```bash
 curl -LJO --verbose http://github.com/sageserpent-open/kineticMerge/releases/download/v<RELEASE VERSION FROM GITHUB>/kinetic-merge
 
