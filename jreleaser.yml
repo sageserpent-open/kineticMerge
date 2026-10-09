@@ -38,10 +38,23 @@ distributions:
       # Cross-platform / Unix script-preamble standalone binary
       - path: git-cli-application/target/kinetic-merge
         extraProperties:
-          universal: true
+          universal: "true"
       # Additional Windows batch file to invoke the cross-platform binary as a JAR.
       - path: git-cli-application/target/kinetic-merge.bat
         platform: windows-x86_64
+    brew:
+      active: ALWAYS
+      formulaName: kinetic-merge
+      repository:
+        owner: sageserpent-open
+        name: homebrew-tap
+      multiPlatform: true
+    scoop:
+      active: ALWAYS
+      packageName: kinetic-merge
+      repository:
+        owner: sageserpent-open
+        name: scoop-bucket
 
   # --- Tool CLI Application ---
   kinetic-merge-tool:
@@ -53,21 +66,20 @@ distributions:
       # Cross-platform / Unix script-preamble standalone binary
       - path: tool-cli-application/target/kinetic-merge-tool
         extraProperties:
-          universal: true
+          universal: "true"
       # Additional Windows batch file to invoke the cross-platform binary as a JAR.
       - path: tool-cli-application/target/kinetic-merge-tool.bat
         platform: windows-x86_64
-
-packagers:
-  brew:
-    active: ALWAYS
-    repository:
-      owner: sageserpent-open
-      name: homebrew-tap
-    multiPlatform: true
-
-  scoop:
-    active: ALWAYS
-    repository:
-      owner: sageserpent-open
-      name: scoop-bucket
+    brew:
+      active: ALWAYS
+      formulaName: kinetic-merge-tool
+      repository:
+        owner: sageserpent-open
+        name: homebrew-tap
+      multiPlatform: true
+    scoop:
+      active: ALWAYS
+      packageName: kinetic-merge-tool
+      repository:
+        owner: sageserpent-open
+        name: scoop-bucket
