@@ -46,7 +46,7 @@ jobs:
       - name: Publish the executables via JReleaser
         uses: jreleaser/release-action@v2
         with:
-          arguments: publish
+          arguments: full-release
         env:
           JRELEASER_GITHUB_TOKEN: ${{ steps.generate-github-app-token.outputs.token }}
           JRELEASER_HOMEBREW_GITHUB_TOKEN: ${{ steps.generate-github-app-token.outputs.token }}
