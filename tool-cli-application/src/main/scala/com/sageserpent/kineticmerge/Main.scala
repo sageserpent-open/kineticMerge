@@ -23,7 +23,7 @@ import scala.annotation.varargs
 import scala.collection.BuildFrom
 import scala.collection.decorators.mapDecorator
 import scala.io.Source
-import scala.util.Try
+import scala.util.{Try, Using}
 
 object Main extends StrictLogging:
   private type ErrorOrOperationMessage =
@@ -88,11 +88,14 @@ object Main extends StrictLogging:
       val builder = OParser.builder[ApplicationRequest]
       import builder.*
 
-      val kineticMergeVersion = Source
-        .fromResource("version.txt")
-        .getLines()
-        .nextOption()
-        .getOrElse("Not a packaged build.")
+      val kineticMergeVersion = Using(
+        Source
+          .fromResource("version.txt")
+      )(
+        _.getLines()
+          .nextOption()
+          .getOrElse("Not a packaged build.")
+      ).get
 
       OParser.sequence(
         programName("kinetic-merge-tool"),

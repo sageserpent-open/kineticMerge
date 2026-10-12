@@ -115,11 +115,14 @@ object Main extends StrictLogging:
       val builder = OParser.builder[ApplicationRequest]
       import builder.*
 
-      val kineticMergeVersion = Source
-        .fromResource("version.txt")
-        .getLines()
-        .nextOption()
-        .getOrElse("Not a packaged build.")
+      val kineticMergeVersion = Using(
+        Source
+          .fromResource("version.txt")
+      )(
+        _.getLines()
+          .nextOption()
+          .getOrElse("Not a packaged build.")
+      ).get
 
       OParser.sequence(
         programName("kinetic-merge"),
