@@ -24,7 +24,7 @@ import scala.annotation.varargs
 import scala.collection.BuildFrom
 import scala.collection.decorators.mapDecorator
 import scala.io.Source
-import scala.util.Try
+import scala.util.{Try, Using}
 
 object Main extends StrictLogging:
   object Tags:
