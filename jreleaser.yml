@@ -15,7 +15,10 @@ project:
   links:
     homepage: https://github.com/sageserpent-open/kineticMerge
   stereotype: CLI
-  inceptionYear: 2023
+  inceptionYear: "2023"
+  languages:
+    java:
+      groupId: com.sageserpent
 
 release:
   github:
@@ -28,20 +31,14 @@ release:
       preset: conventional-commits
 
 distributions:
-  # --- Core Git CLI Application ---
+  # --- Git CLI Application ---
   kinetic-merge:
-    type: BINARY
+    type: JAVA_BINARY
     executable:
       name: kinetic-merge
       windowsExtension: bat
     artifacts:
-      # Cross-platform / Unix script-preamble standalone binary
-      - path: git-cli-application/target/kinetic-merge
-        extraProperties:
-          universal: "true"
-      # Additional Windows batch file to invoke the cross-platform binary as a JAR.
-      - path: git-cli-application/target/kinetic-merge.bat
-        platform: windows-x86_64
+      - path: git-cli-application/target/git-cli-application-{{projectVersion}}.zip
     brew:
       active: ALWAYS
       formulaName: kinetic-merge
@@ -52,24 +49,20 @@ distributions:
     scoop:
       active: ALWAYS
       packageName: kinetic-merge
+      extraProperties:
+        scoopAutoupdateExtractDir: "git-cli-application-$version"
       repository:
         owner: sageserpent-open
         name: scoop-bucket
 
   # --- Tool CLI Application ---
   kinetic-merge-tool:
-    type: BINARY
+    type: JAVA_BINARY
     executable:
       name: kinetic-merge-tool
       windowsExtension: bat
     artifacts:
-      # Cross-platform / Unix script-preamble standalone binary
-      - path: tool-cli-application/target/kinetic-merge-tool
-        extraProperties:
-          universal: "true"
-      # Additional Windows batch file to invoke the cross-platform binary as a JAR.
-      - path: tool-cli-application/target/kinetic-merge-tool.bat
-        platform: windows-x86_64
+      - path: tool-cli-application/target/tool-cli-application-{{projectVersion}}.zip
     brew:
       active: ALWAYS
       formulaName: kinetic-merge-tool
@@ -80,6 +73,8 @@ distributions:
     scoop:
       active: ALWAYS
       packageName: kinetic-merge-tool
+      extraProperties:
+        scoopAutoupdateExtractDir: "tool-cli-application-$version"
       repository:
         owner: sageserpent-open
         name: scoop-bucket

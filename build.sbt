@@ -13,9 +13,6 @@ ThisBuild / scalacOptions ++= List(
   "-deprecation"
 )
 
-lazy val packageExecutable =
-  taskKey[String]("Package an executable with Coursier")
-
 lazy val applicationExecutableName =
   settingKey[String]("Executable name produced by Coursier packaging")
 
@@ -71,31 +68,9 @@ lazy val cliApplicationSettings =
     publish / skip                            := true,
     publishLocal / skip                       := false,
     libraryDependencies += "com.github.scopt" %% "scopt" % "4.2.0",
-    packageExecutable                         := {
-      val libPublished: Unit  = (kineticMerge / Compile / publishLocal).value
-      val mainPublished: Unit = (Compile / publishLocal).value
-
-      val packagingVersion = (ThisBuild / version).value
-
-      println(s"Packaging executable with version: $packagingVersion")
-
-      val applicationName = applicationExecutableName.value
-
-      val localArtifactCoordinates =
-        s"${organization.value}:${name.value}_${scalaBinaryVersion.value}:$packagingVersion"
-
-      val executablePath = s"${target.value}${Path.sep}$applicationName"
-
-      coursier.cli.Coursier.main(
-        s"bootstrap --verbose --bat=true -M com.sageserpent.kineticmerge.Main --scala-version ${scalaBinaryVersion.value} -f $localArtifactCoordinates -o $executablePath"
-          .split("\\s+")
-      )
-
-      applicationName
-    },
-    Test / test / logLevel    := Level.Error,
-    Test / fork               := true,
-    Test / testForkedParallel := true,
+    Test / test / logLevel                    := Level.Error,
+    Test / fork                               := true,
+    Test / testForkedParallel                 := true,
     Test / javaOptions ++= Seq("-Xmx8G")
   )
 
@@ -130,21 +105,23 @@ lazy val kineticMerge = (project in file("kinetic-merge"))
   )
 
 lazy val gitCliApplication = (project in file("git-cli-application"))
+  .enablePlugins(PackPlugin)
   .dependsOn(kineticMerge, kineticMerge % "test->test")
   .settings(
     cliApplicationSettings,
-    name                      := "git-cli-application",
-    applicationExecutableName := "kinetic-merge",
-    description               := "Git CLI application for Kinetic Merge."
+    name        := "git-cli-application",
+    description := "Git CLI application for Kinetic Merge.",
+    packMain    := Map("kinetic-merge" -> "com.sageserpent.kineticmerge.Main")
   )
 
 lazy val toolCliApplication = (project in file("tool-cli-application"))
+  .enablePlugins(PackPlugin)
   .dependsOn(kineticMerge, kineticMerge % "test->test")
   .settings(
     cliApplicationSettings,
-    name                      := "tool-cli-application",
-    applicationExecutableName := "kinetic-merge-tool",
-    description               := "Merge tool CLI application for Kinetic Merge."
+    name        := "tool-cli-application",
+    description := "Merge tool CLI application for Kinetic Merge.",
+    packMain    := Map("kinetic-merge-tool" -> "com.sageserpent.kineticmerge.Main")
   )
 
 lazy val root = (project in file("."))
