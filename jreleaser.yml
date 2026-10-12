@@ -25,10 +25,13 @@ release:
     owner: sageserpent-open
     name: kineticMerge
     overwrite: true
+    update:
+      enabled: true
+      sections:
+        - ASSETS
     sign: false
     changelog:
-      formatted: ALWAYS
-      preset: conventional-commits
+      enabled: false
 
 distributions:
   # --- Git CLI Application ---
