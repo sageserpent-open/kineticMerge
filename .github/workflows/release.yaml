@@ -39,8 +39,8 @@ jobs:
       - uses: sbt/setup-sbt@v1
       - name: Build zip archives for the two deliverable executables.
         run: |
-          sbt "gitCliApplication/packageZip"
-          sbt "toolCliApplication/packageZip"
+          sbt "gitCliApplication/packArchiveZip"
+          sbt "toolCliApplication/packArchiveZip"
       - name: Add executables to release, package and publish to distribution channels such as Brew and Scoop.
         uses: jreleaser/release-action@v2
         with:
