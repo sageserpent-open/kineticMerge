@@ -27,26 +27,7 @@ YouTube:
 
 ## Installation ##
 
-### Got [Coursier](https://get-coursier.io/) installed? ###
-
-Then run `cs install --contrib kinetic-merge`, and you're all set to go, it will put the latest release of
-`kinetic-merge` on your path.
-
-Run `cs update kinetic-merge` to check for and install any updated latest release.
-
-You can also invoke Kinetic Merge via Coursier without actually installing it:
-
-```
-cs launch com.sageserpent::kinetic-merge:<RELEASE VERSION FROM GITHUB> -- <command line arguments>
-```
-
-### Not got Coursier installed? ###
-
-Install it, then: https://get-coursier.io/docs/cli-installation.
-
-### Don't want to install Coursier? ###
-
-Then download a release for yourself:
+### Download it. ###
 
 ```bash
 curl -LJO --verbose http://github.com/sageserpent-open/kineticMerge/releases/download/v<RELEASE VERSION FROM GITHUB>/kinetic-merge
