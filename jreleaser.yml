@@ -37,6 +37,8 @@ distributions:
   # --- Git CLI Application ---
   kinetic-merge:
     type: JAVA_BINARY
+    java:
+      version: "17"
     executable:
       name: kinetic-merge
       windowsExtension: bat
@@ -63,6 +65,8 @@ distributions:
   # --- Tool CLI Application ---
   kinetic-merge-tool:
     type: JAVA_BINARY
+    java:
+      version: "17"
     executable:
       name: kinetic-merge-tool
       windowsExtension: bat
