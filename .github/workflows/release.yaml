@@ -22,9 +22,9 @@ jobs:
 
     steps:
       - id: generate-github-app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3
         with:
-          app-id: 983631
+          client-id: 983631
           private-key: ${{ secrets.AUTOMATED_MAVEN_RELEASE_GITHUB_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
       - uses: actions/checkout@v4
