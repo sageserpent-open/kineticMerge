@@ -224,8 +224,8 @@ so long is a testament to the collision resistance of Rabin fingerprinting!
 For an even longer time, this project used the [fingertree implementation](https://codeberg.org/sciss/FingerTree) as a
 vital part of `MatchesAndTheirSections`. It was a performant and robust way of dealing with interval testing, as well as
 a nice example of a pure-functional core fingertree implementation with various front-end APIs. At time of writing, the
-APIs are a bit rough-and-ready, but it did the job well. It was eventually swapped put for an LLM-rolled treap
-implementation, but it still pulled in as a test dependency so that the treap implementation can be validated against it
+APIs were a bit rough-and-ready, but it did the job well. It was eventually swapped out for an LLM-rolled treap
+implementation, but it is still pulled in as a test dependency so that the treap implementation can be validated against it
 as a reference.
 
 ## Design Documents
