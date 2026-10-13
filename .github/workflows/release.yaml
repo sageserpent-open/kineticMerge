@@ -46,5 +46,5 @@ jobs:
         with:
           arguments: full-release
         env:
-          JRELEASER_PROJECT_VERSION: ${{ needs.release.outputs.RELEASE_VERSION }}
+          JRELEASER_PROJECT_VERSION: 1.21.6
           JRELEASER_GITHUB_TOKEN: ${{ steps.generate-github-app-token.outputs.token }}
