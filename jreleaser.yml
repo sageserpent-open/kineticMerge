@@ -49,6 +49,8 @@ distributions:
         owner: sageserpent-open
         name: homebrew-tap
       multiPlatform: true
+      extraProperties:
+        useVersionedJava: "true"
     scoop:
       active: ALWAYS
       packageName: kinetic-merge
@@ -73,6 +75,8 @@ distributions:
         owner: sageserpent-open
         name: homebrew-tap
       multiPlatform: true
+      extraProperties:
+        useVersionedJava: "true"
     scoop:
       active: ALWAYS
       packageName: kinetic-merge-tool
