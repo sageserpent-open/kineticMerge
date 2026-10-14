@@ -22,7 +22,7 @@ jobs:
     strategy:
       matrix:
         # Cross-compiling for Windows, Linux, and modern/Intel Mac frameworks
-        os: [ windows-latest, macos-13, macos-15, ubuntu-latest ]
+        os: [ windows-latest, macos-15-intel, macos-15, ubuntu-latest ]
 
     steps:
       - uses: actions/checkout@v4
@@ -58,11 +58,7 @@ jobs:
 
   uploadExecutables:
     needs: assemble-applications
-
-    strategy:
-      matrix:
-        os: [ windows-latest, macos-15-intel, macos-15, ubuntu-latest ]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
 
     steps:
       - id: generate-github-app-token
@@ -82,8 +78,6 @@ jobs:
         with:
           java-version: 17
           distribution: corretto
-
-      - uses: sbt/setup-sbt@v1
 
       - name: Download assembled applications from cache.
         uses: actions/download-artifact@v4
