@@ -18,7 +18,7 @@ jobs:
 
   assemble-applications:
     runs-on: ${{ matrix.os }}
-    needs: release
+    # needs: release
     strategy:
       matrix:
         # Cross-compiling for Windows, Linux, and modern/Intel Mac frameworks
@@ -57,7 +57,7 @@ jobs:
           path: out/jreleaser/assemble/**/*.zip
 
   uploadExecutables:
-    # needs: release
+    needs: assemble-applications
 
     strategy:
       matrix:
