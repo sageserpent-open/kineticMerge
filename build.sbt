@@ -13,18 +13,19 @@ ThisBuild / scalacOptions ++= List(
   "-deprecation"
 )
 
-lazy val applicationExecutableName =
-  settingKey[String]("Executable name produced by Coursier packaging")
-
 lazy val versionResource =
   settingKey[File]("Location of generated version resource file.")
+
+lazy val stagedJarsForJReleaserDirectory =
+  taskKey[File]("Directory containing JARS for consumption by JReleaser.")
 
 lazy val commonSettings = Seq(
   organization     := "com.sageserpent",
   organizationName := "sageserpent",
   licenses += ("MIT", url("https://opensource.org/licenses/MIT")),
   pomIncludeRepository := { _ => false },
-  publishMavenStyle    := true
+  publishMavenStyle    := true,
+  exportJars           := true
 )
 
 lazy val commonLibraryDependencies = Seq(
@@ -70,14 +71,30 @@ lazy val cliApplicationSettings =
     Test / test / logLevel                    := Level.Error,
     Test / fork                               := true,
     Test / testForkedParallel                 := true,
-    Test / javaOptions ++= Seq("-Xmx8G")
+    Test / javaOptions ++= Seq("-Xmx8G"),
+    stagedJarsForJReleaserDirectory := {
+      val location =
+        (Compile / target).value.toPath.resolve("stagedJarsForJReleaser")
+
+      (Compile / fullClasspath).value.files.foreach { jarFile =>
+        val jarPath = jarFile.toPath
+        IO.copyFile(
+          sourceFile = jarFile,
+          targetFile = location.resolve(jarPath.getFileName).toFile
+        )
+      }
+
+      println(s"Staged JAR files from build for: ${name.value} into directory: $location")
+
+      location.toFile
+    }
   )
 
 lazy val kineticMerge = (project in file("kinetic-merge"))
   .settings(
     commonSettings,
     commonLibraryDependencies,
-    publish / skip    := true,  // Temporary suppression of publishing to Sonatype while this project is on th naughty step.
+    publish / skip := true, // Temporary suppression of publishing to Sonatype while this project is on th naughty step.
     name := "kinetic-merge",
     description := "Merge branches in the presence of code motion within and between files.",
     versionResource := {
@@ -105,23 +122,19 @@ lazy val kineticMerge = (project in file("kinetic-merge"))
   )
 
 lazy val gitCliApplication = (project in file("git-cli-application"))
-  .enablePlugins(PackPlugin)
   .dependsOn(kineticMerge, kineticMerge % "test->test")
   .settings(
     cliApplicationSettings,
     name        := "git-cli-application",
-    description := "Git CLI application for Kinetic Merge.",
-    packMain    := Map("kinetic-merge" -> "com.sageserpent.kineticmerge.Main")
+    description := "Git CLI application for Kinetic Merge."
   )
 
 lazy val toolCliApplication = (project in file("tool-cli-application"))
-  .enablePlugins(PackPlugin)
   .dependsOn(kineticMerge, kineticMerge % "test->test")
   .settings(
     cliApplicationSettings,
     name        := "tool-cli-application",
-    description := "Merge tool CLI application for Kinetic Merge.",
-    packMain    := Map("kinetic-merge-tool" -> "com.sageserpent.kineticmerge.Main")
+    description := "Merge tool CLI application for Kinetic Merge."
   )
 
 lazy val root = (project in file("."))

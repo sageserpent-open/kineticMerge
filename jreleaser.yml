@@ -33,17 +33,59 @@ release:
     changelog:
       enabled: false
 
+assemble:
+  jlink:
+    kinetic-merge:
+      active: ALWAYS
+
+      jars:
+        - pattern: "git-cli-application/target/stagedJarsForJReleaser/*.jar"
+
+      mainJar:
+        path: "git-cli-application/target/stagedJarsForJReleaser/git-cli-application_3-{{projectVersion}}.jar"
+
+      java:
+        mainClass: "com.sageserpent.kineticmerge.gitCliApplication.Main"
+
+      jdeps:
+        enabled: false
+
+      additionalModuleNames:
+        - java.base
+        - java.xml
+        - java.logging
+        - jdk.unsupported
+
+    kinetic-merge-tool:
+      active: ALWAYS
+
+      jars:
+        - pattern: "tool-cli-application/target/stagedJarsForJReleaser/*.jar"
+
+      mainJar:
+        path: "tool-cli-application/target/stagedJarsForJReleaser/tool-cli-application_3-{{projectVersion}}.jar"
+
+      java:
+        mainClass: "com.sageserpent.kineticmerge.toolCliApplication.Main"
+
+      jdeps:
+        enabled: false
+
+      additionalModuleNames:
+        - java.base
+        - java.xml
+        - java.logging
+        - jdk.unsupported
+
 distributions:
   # --- Git CLI Application ---
   kinetic-merge:
-    type: JAVA_BINARY
+    type: JLINK
     java:
       version: "17"
     executable:
       name: kinetic-merge
       windowsExtension: bat
-    artifacts:
-      - path: git-cli-application/target/git-cli-application-{{projectVersion}}.zip
     brew:
       active: ALWAYS
       formulaName: kinetic-merge
@@ -64,14 +106,12 @@ distributions:
 
   # --- Tool CLI Application ---
   kinetic-merge-tool:
-    type: JAVA_BINARY
+    type: JLINK
     java:
       version: "17"
     executable:
       name: kinetic-merge-tool
       windowsExtension: bat
-    artifacts:
-      - path: tool-cli-application/target/tool-cli-application-{{projectVersion}}.zip
     brew:
       active: ALWAYS
       formulaName: kinetic-merge-tool
