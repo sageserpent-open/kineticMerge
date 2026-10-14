@@ -94,7 +94,6 @@ lazy val kineticMerge = (project in file("kinetic-merge"))
   .settings(
     commonSettings,
     commonLibraryDependencies,
-    publish / skip := true, // Temporary suppression of publishing to Sonatype while this project is on th naughty step.
     name := "kinetic-merge",
     description := "Merge branches in the presence of code motion within and between files.",
     versionResource := {
