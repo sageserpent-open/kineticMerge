@@ -5,7 +5,6 @@ import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.syntax.all.{catsSyntaxApplyOps, catsSyntaxFlatMapOps}
 import cats.{Eq, Functor, Monad, Order}
-import com.sageserpent.kineticmerge.ProgressRecording
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
   CommonSubsequenceSize,
   Contribution

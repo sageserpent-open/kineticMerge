@@ -19,7 +19,6 @@ import com.sageserpent.kineticmerge.core.LongestCommonSubsequenceTest.{
   testCases,
   given
 }
-import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording}
 import org.junit.jupiter.api.TestFactory
 
 class LongestCommonSubsequenceTest:

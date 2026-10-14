@@ -1,4 +1,4 @@
-package com.sageserpent.kineticmerge
+package com.sageserpent.kineticmerge.core
 
 import me.tongfei.progressbar.{ConsoleProgressBarConsumer, ProgressBarBuilder}
 import org.apache.commons.lang3.time.DurationFormatUtils

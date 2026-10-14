@@ -1,18 +1,22 @@
-package com.sageserpent.kineticmerge
+package com.sageserpent.kineticmerge.gitCliApplication
 
 import cats.effect.unsafe.implicits.global
 import cats.effect.{IO, Resource}
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
-import com.sageserpent.kineticmerge.Main.{ApplicationRequest, Tags}
-import com.sageserpent.kineticmerge.MainTest.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.ProseExamples
 import com.sageserpent.kineticmerge.core.Token.{
   tokens,
   equality as tokenEquality
 }
+import com.sageserpent.kineticmerge.gitCliApplication.Main
+import com.sageserpent.kineticmerge.gitCliApplication.Main.{
+  ApplicationRequest,
+  Tags
+}
+import com.sageserpent.kineticmerge.gitCliApplication.MainTest.*
 import com.softwaremill.tagging.*
 import org.junit.jupiter.api.TestFactory
 import os.{Path, RelPath}

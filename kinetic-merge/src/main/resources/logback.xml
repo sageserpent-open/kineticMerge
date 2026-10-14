@@ -5,9 +5,6 @@
     <import class="ch.qos.logback.classic.encoder.PatternLayoutEncoder"/>
     <import class="ch.qos.logback.core.ConsoleAppender"/>
 
-    <!-- Suppress Logback startup status/configuration noise -->
-    <statusListener class="ch.qos.logback.core.status.NopStatusListener"/>
-
     <appender name="STDOUT" class="ConsoleAppender">
         <encoder class="PatternLayoutEncoder">
             <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} -%kvp- %msg%n</pattern>

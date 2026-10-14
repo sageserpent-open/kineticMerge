@@ -13,7 +13,6 @@ import com.sageserpent.kineticmerge.core.SectionedCodeExtensionTest.{
   given
 }
 import com.sageserpent.kineticmerge.core.Token.tokens
-import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording}
 import org.junit.jupiter.api.Assertions.{assertDoesNotThrow, fail}
 import org.junit.jupiter.api.{Test, TestFactory}
 

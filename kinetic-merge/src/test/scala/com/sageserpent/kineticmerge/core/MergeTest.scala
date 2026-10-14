@@ -16,7 +16,6 @@ import com.sageserpent.kineticmerge.core.MergeTest.DelegatingMergeAlgebraWithCon
 }
 import com.sageserpent.kineticmerge.core.MergeTest.Move.*
 import com.sageserpent.kineticmerge.core.MergeTest.{*, given}
-import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording}
 import monocle.syntax.all.*
 import org.junit.jupiter.api.{Assertions, Test, TestFactory}
 import pprintCustomised.*

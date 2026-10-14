@@ -1,18 +1,19 @@
-package com.sageserpent.kineticmerge
+package com.sageserpent.kineticmerge.toolCliApplication
 
 import cats.effect.unsafe.implicits.global
 import cats.effect.{IO, Resource}
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
-import com.sageserpent.kineticmerge.Main.ApplicationRequest
-import com.sageserpent.kineticmerge.MainTest.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.ProseExamples
 import com.sageserpent.kineticmerge.core.Token.{
   tokens,
   equality as tokenEquality
 }
+import com.sageserpent.kineticmerge.toolCliApplication.Main
+import com.sageserpent.kineticmerge.toolCliApplication.Main.ApplicationRequest
+import com.sageserpent.kineticmerge.toolCliApplication.MainTest.*
 import com.softwaremill.tagging.*
 import org.junit.jupiter.api.TestFactory
 import os.{Path, RelPath}
@@ -445,10 +446,8 @@ class MainTest:
 
                 introducingArthur(baseDirectory, leftDirectory, rightDirectory)
 
-                if ourBranchIsBehindTheirs then
-                  arthurContinues(rightDirectory)
-                else
-                  arthurContinues(leftDirectory)
+                if ourBranchIsBehindTheirs then arthurContinues(rightDirectory)
+                else arthurContinues(leftDirectory)
                 end if
 
                 mergeWrapper(
@@ -619,7 +618,11 @@ class MainTest:
                 minimumAmbiguousMatchSize = 0
               )
 
-              verifyConflictedMerge(baseDirectory, leftDirectory, rightDirectory)
+              verifyConflictedMerge(
+                baseDirectory,
+                leftDirectory,
+                rightDirectory
+              )
             }
           }
           .unsafeRunSync()
@@ -663,7 +666,11 @@ class MainTest:
                 minimumAmbiguousMatchSize = 0
               )
 
-              verifyConflictedMerge(baseDirectory, leftDirectory, rightDirectory)
+              verifyConflictedMerge(
+                baseDirectory,
+                leftDirectory,
+                rightDirectory
+              )
 
               assert(
                 contentMatches(expected = arthurOnTheRecord)(
@@ -713,7 +720,11 @@ class MainTest:
                 minimumAmbiguousMatchSize = 0
               )
 
-              verifyConflictedMerge(baseDirectory, leftDirectory, rightDirectory)
+              verifyConflictedMerge(
+                baseDirectory,
+                leftDirectory,
+                rightDirectory
+              )
 
               assert(
                 contentMatches(expected = arthurOnTheRecord)(
@@ -762,7 +773,11 @@ class MainTest:
                 minimumAmbiguousMatchSize = 0
               )
 
-              verifyConflictedMerge(baseDirectory, leftDirectory, rightDirectory)
+              verifyConflictedMerge(
+                baseDirectory,
+                leftDirectory,
+                rightDirectory
+              )
             }
           }
           .unsafeRunSync()
@@ -804,7 +819,11 @@ class MainTest:
                 minimumAmbiguousMatchSize = 0
               )
 
-              verifyConflictedMerge(baseDirectory, leftDirectory, rightDirectory)
+              verifyConflictedMerge(
+                baseDirectory,
+                leftDirectory,
+                rightDirectory
+              )
             }
           }
           .unsafeRunSync()
@@ -1287,7 +1306,11 @@ class MainTest:
                 minimumAmbiguousMatchSize = 5
               )
 
-              verifyConflictedMerge(baseDirectory, leftDirectory, rightDirectory)
+              verifyConflictedMerge(
+                baseDirectory,
+                leftDirectory,
+                rightDirectory
+              )
 
               assert(
                 contentMatches(expected = baseCasesLimitStrategyContent)(
@@ -1337,7 +1360,11 @@ class MainTest:
                 minimumAmbiguousMatchSize = 5
               )
 
-              verifyConflictedMerge(baseDirectory, leftDirectory, rightDirectory)
+              verifyConflictedMerge(
+                baseDirectory,
+                leftDirectory,
+                rightDirectory
+              )
 
               assert(
                 contentMatches(expected = editedCasesLimitStrategyContent)(
@@ -1434,7 +1461,11 @@ class MainTest:
                 minimumAmbiguousMatchSize = 5
               )
 
-              verifyConflictedMerge(baseDirectory, leftDirectory, rightDirectory)
+              verifyConflictedMerge(
+                baseDirectory,
+                leftDirectory,
+                rightDirectory
+              )
 
               assert(
                 contentMatches(expected = replacementCasesLimitStrategyContent)(
@@ -1492,7 +1523,11 @@ class MainTest:
                 minimumAmbiguousMatchSize = 5
               )
 
-              verifyConflictedMerge(baseDirectory, leftDirectory, rightDirectory)
+              verifyConflictedMerge(
+                baseDirectory,
+                leftDirectory,
+                rightDirectory
+              )
 
               assert(
                 contentMatches(expected = replacementCasesLimitStrategyContent)(
@@ -1552,7 +1587,11 @@ class MainTest:
                 minimumAmbiguousMatchSize = 5
               )
 
-              verifyConflictedMerge(baseDirectory, leftDirectory, rightDirectory)
+              verifyConflictedMerge(
+                baseDirectory,
+                leftDirectory,
+                rightDirectory
+              )
             }
           }
           .unsafeRunSync()

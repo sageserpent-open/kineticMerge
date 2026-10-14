@@ -1,7 +1,6 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.{Eq, Order}
-import com.sageserpent.kineticmerge.ProgressRecording
 import com.sageserpent.kineticmerge.core.LongestCommonSubsequence.{
   Contribution,
   Sized

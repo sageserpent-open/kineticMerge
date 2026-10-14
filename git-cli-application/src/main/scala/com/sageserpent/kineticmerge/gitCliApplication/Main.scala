@@ -1,4 +1,4 @@
-package com.sageserpent.kineticmerge
+package com.sageserpent.kineticmerge.gitCliApplication
 
 import cats.data.{EitherT, WriterT}
 import cats.effect.IO
@@ -8,11 +8,11 @@ import cats.syntax.functor.toFunctorOps
 import cats.syntax.traverse.toTraverseOps
 import cats.{Monad, Order}
 import com.google.common.hash.{Funnel, HashFunction, Hashing}
-import com.sageserpent.kineticmerge.Main.MergeInput.*
 import com.sageserpent.kineticmerge.core.*
 import com.sageserpent.kineticmerge.core.MatchAnalysis.Configuration
 import com.sageserpent.kineticmerge.core.SectionedCodeExtension.*
 import com.sageserpent.kineticmerge.core.Token.tokens
+import com.sageserpent.kineticmerge.gitCliApplication.Main.MergeInput.*
 import com.softwaremill.tagging.*
 import com.typesafe.scalalogging.StrictLogging
 import cps.*

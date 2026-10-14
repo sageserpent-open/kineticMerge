@@ -5,6 +5,7 @@ import cats.data.State
 import cats.syntax.flatMap.catsSyntaxFlatMapOps
 import cats.{Eq, Foldable, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
+import com.sageserpent.kineticmerge.core
 import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSidedMergeResult
 import com.sageserpent.kineticmerge.core.FirstPassMergeResult.{
   FileDeletionContext,
@@ -26,12 +27,6 @@ import com.sageserpent.kineticmerge.core.merge.{
   MergeAlgebra,
   mergeUsing,
   of as mergeOf
-}
-import com.sageserpent.kineticmerge.{
-  ProgressRecording,
-  ProgressRecordingSession,
-  SilentProgressRecording,
-  core
 }
 import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
@@ -1147,9 +1142,9 @@ object SectionedCodeExtension extends StrictLogging:
 
       val firstAndLastMatchesInParallelMatchesGroups
           : Set[Match[Section[Element]]] =
-        sectionedCode.groupsOfParallelMatches.values.flatMap(matches =>
-          Seq(matches.head, matches.last)
-        ).toSet
+        sectionedCode.groupsOfParallelMatches.values
+          .flatMap(matches => Seq(matches.head, matches.last))
+          .toSet
 
       def hasMigratedEditOrDeletion(aMatch: Match[Section[Element]]): Boolean =
         aMatch.baseContribution.exists { baseSection =>

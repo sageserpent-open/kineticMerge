@@ -23,7 +23,6 @@ import com.sageserpent.kineticmerge.core.SectionedCodeTest.{
   Path,
   given_Funnel_Element
 }
-import com.sageserpent.kineticmerge.{NoProgressRecording, ProgressRecording}
 import org.junit.jupiter.api.TestFactory
 
 object BlockDuplicationAndCondensationTests:
