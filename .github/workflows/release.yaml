@@ -40,8 +40,8 @@ jobs:
 
       - name: Stage application JAR files for JReleaser.
         run: |
-          sbt "gitCliApplication/stagedJarsForJReleaser"
-          sbt "toolCliApplication/stagedJarsForJReleaser"
+          sbt "gitCliApplication/stagedJarsForJReleaserDirectory"
+          sbt "toolCliApplication/stagedJarsForJReleaserDirectory"
 
       - name: Assemble platform-specific application.
         uses: jreleaser/release-action@v2
