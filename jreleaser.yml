@@ -100,6 +100,8 @@ distributions:
     applyDefaultMatrix: true
     artifactPattern:
       path: '{{outputDirectory}}/assemble/{{distributionName}}/jlink/{{distributionName}}-{{projectVersion}}-{{matrix.platform}}.zip'
+      extraProperties:
+        optional: "true"
     brew:
       active: ALWAYS
       formulaName: kinetic-merge
@@ -129,6 +131,8 @@ distributions:
     applyDefaultMatrix: true
     artifactPattern:
       path: '{{outputDirectory}}/assemble/{{distributionName}}/jlink/{{distributionName}}-{{projectVersion}}-{{matrix.platform}}.zip'
+      extraProperties:
+        optional: "true"
     brew:
       active: ALWAYS
       formulaName: kinetic-merge-tool
