@@ -99,7 +99,7 @@ distributions:
       windowsExtension: bat
     applyDefaultMatrix: true
     artifactPattern:
-      path: 'out/jreleaser/assemble/kinetic-merge/jlink/{{distributionName}}-{{projectVersion}}-{{matrix.platform}}.zip'
+      path: '{{outputDirectory}}/assemble/{{distributionName}}/jlink/{{distributionName}}-{{projectVersion}}-{{matrix.platform}}.zip'
     brew:
       active: ALWAYS
       formulaName: kinetic-merge
@@ -128,7 +128,7 @@ distributions:
       windowsExtension: bat
     applyDefaultMatrix: true
     artifactPattern:
-      path: 'out/jreleaser/assemble/kinetic-merge-tool/jlink/{{distributionName}}-{{projectVersion}}-{{matrix.platform}}.zip'
+      path: '{{outputDirectory}}/assemble/{{distributionName}}/jlink/{{distributionName}}-{{projectVersion}}-{{matrix.platform}}.zip'
     brew:
       active: ALWAYS
       formulaName: kinetic-merge-tool
