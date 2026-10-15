@@ -53,7 +53,7 @@ jobs:
       - name: Upload assembled applications to cache.
         uses: actions/upload-artifact@v4
         with:
-          name: jlink-packages
+          name: jlink-packages-${{ matrix.os }}
           path: out/jreleaser/assemble/
 
   uploadExecutables:
@@ -82,8 +82,9 @@ jobs:
       - name: Download assembled applications from cache.
         uses: actions/download-artifact@v4
         with:
-          path: .
-          name: jlink-packages
+          pattern: jlink-packages-*
+          path: out/jreleaser/assemble
+          merge-multiple: true
 
       - name: Add executables to release, package and publish to distribution channels such as Brew and Scoop.
         uses: jreleaser/release-action@v2
