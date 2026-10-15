@@ -84,7 +84,7 @@ assemble:
 distributions:
   # --- Git CLI Application ---
   kinetic-merge:
-    type: BINARY
+    type: JLINK
     java:
       version: "17"
     executable:
@@ -92,7 +92,7 @@ distributions:
       windowsExtension: bat
     applyDefaultMatrix: true
     artifactPattern:
-      path: '{{artifactsDir}}/{{distributionName}}-{{projectVersion}}-{{matrix.platform}}.zip'
+      path: 'out/jreleaser/assemble/kinetic-merge/jlink/{{distributionName}}-{{projectVersion}}-{{matrix.platform}}.zip'
     brew:
       active: ALWAYS
       formulaName: kinetic-merge
@@ -113,7 +113,7 @@ distributions:
 
   # --- Tool CLI Application ---
   kinetic-merge-tool:
-    type: BINARY
+    type: JLINK
     java:
       version: "17"
     executable:
@@ -121,7 +121,7 @@ distributions:
       windowsExtension: bat
     applyDefaultMatrix: true
     artifactPattern:
-      path: '{{artifactsDir}}/{{distributionName}}-{{projectVersion}}-{{matrix.platform}}.zip'
+      path: 'out/jreleaser/assemble/kinetic-merge-tool/jlink/{{distributionName}}-{{projectVersion}}-{{matrix.platform}}.zip'
     brew:
       active: ALWAYS
       formulaName: kinetic-merge-tool
