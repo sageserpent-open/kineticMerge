@@ -84,7 +84,7 @@ assemble:
 distributions:
   # --- Git CLI Application ---
   kinetic-merge:
-    type: JLINK
+    type: BINARY
     java:
       version: "17"
     executable:
@@ -113,7 +113,7 @@ distributions:
 
   # --- Tool CLI Application ---
   kinetic-merge-tool:
-    type: JLINK
+    type: BINARY
     java:
       version: "17"
     executable:
