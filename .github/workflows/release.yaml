@@ -86,9 +86,6 @@ jobs:
           path: out/jreleaser/assemble
           merge-multiple: true
 
-      - name: What's going on in `out/jreleaser/assemble`?
-        run: ls -R out/jreleaser/assemble
-
       - name: Add executables to release, package and publish to distribution channels such as Brew and Scoop.
         uses: jreleaser/release-action@v2
         with:
