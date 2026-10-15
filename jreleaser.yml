@@ -81,10 +81,17 @@ assemble:
         - java.logging
         - jdk.unsupported
 
+matrix:
+  rows:
+    - { platform: osx-aarch_64 }
+    - { platform: osx-x86_64 }
+    - { platform: linux-x86_64 }
+    - { platform: windows-x86_64 }
+
 distributions:
   # --- Git CLI Application ---
   kinetic-merge:
-    type: BINARY
+    type: JLINK
     java:
       version: "17"
     executable:
@@ -113,7 +120,7 @@ distributions:
 
   # --- Tool CLI Application ---
   kinetic-merge-tool:
-    type: BINARY
+    type: JLINK
     java:
       version: "17"
     executable:
