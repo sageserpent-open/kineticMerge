@@ -38,6 +38,8 @@ assemble:
     kinetic-merge:
       active: ALWAYS
 
+      imageName: 'kinetic-merge-{{projectVersion}}'
+
       jars:
         - pattern: "git-cli-application/target/stagedJarsForJReleaser/*.jar"
 
@@ -58,6 +60,8 @@ assemble:
 
     kinetic-merge-tool:
       active: ALWAYS
+
+      imageName: 'kinetic-merge-tool-{{projectVersion}}'
 
       jars:
         - pattern: "tool-cli-application/target/stagedJarsForJReleaser/*.jar"
@@ -99,7 +103,7 @@ distributions:
       active: ALWAYS
       packageName: kinetic-merge
       extraProperties:
-        scoopAutoupdateExtractDir: "git-cli-application-$version"
+        scoopAutoupdateExtractDir: "kinetic-merge-$version"
       repository:
         owner: sageserpent-open
         name: scoop-bucket
@@ -125,7 +129,7 @@ distributions:
       active: ALWAYS
       packageName: kinetic-merge-tool
       extraProperties:
-        scoopAutoupdateExtractDir: "tool-cli-application-$version"
+        scoopAutoupdateExtractDir: "kinetic-merge-tool-$version"
       repository:
         owner: sageserpent-open
         name: scoop-bucket
