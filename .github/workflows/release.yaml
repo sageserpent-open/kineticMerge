@@ -28,7 +28,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: "main" # TODO: "v${{ needs.release.outputs.RELEASE_VERSION }}"
+          ref: "v${{ needs.release.outputs.RELEASE_VERSION }}"
 
       - name: Set up JDK.
         uses: actions/setup-java@v5
