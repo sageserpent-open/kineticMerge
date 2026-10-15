@@ -90,6 +90,9 @@ distributions:
     executable:
       name: kinetic-merge
       windowsExtension: bat
+    applyDefaultMatrix: true
+    artifactPattern:
+      path: '{{artifactsDir}}/{{distributionName}}-{{projectVersion}}-{{matrix.platform}}.zip'
     brew:
       active: ALWAYS
       formulaName: kinetic-merge
@@ -116,6 +119,9 @@ distributions:
     executable:
       name: kinetic-merge-tool
       windowsExtension: bat
+    applyDefaultMatrix: true
+    artifactPattern:
+      path: '{{artifactsDir}}/{{distributionName}}-{{projectVersion}}-{{matrix.platform}}.zip'
     brew:
       active: ALWAYS
       formulaName: kinetic-merge-tool
