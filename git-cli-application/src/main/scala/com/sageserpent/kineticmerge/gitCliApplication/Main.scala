@@ -143,6 +143,13 @@ object Main extends StrictLogging:
           .text(
             "Prevent fast-forward merge - make a merge commit instead. Off by default."
           ),
+        opt[Unit](name = "no-progressbar")
+          .action((_, commandLineArguments) =>
+            commandLineArguments.copy(noProgressBar = true)
+          )
+          .text(
+            "Suppress the displayed progress bar as the application runs, but still print a timing summary once a task is finished. Off by default."
+          ),
         opt[Int](name = "minimum-match-size")
           .validate(minimumMatchSize =>
             if 0 < minimumMatchSize then success
@@ -298,7 +305,8 @@ object Main extends StrictLogging:
       thresholdSizeFractionForMatching,
       minimumAmbiguousMatchSize,
       ambiguousMatchesThreshold,
-      progressRecording = progressRecording
+      progressRecording =
+        if noProgressBar then NoProgressRecording else progressRecording
     )
 
     val workflow = reify {
@@ -465,7 +473,7 @@ object Main extends StrictLogging:
     */
   @varargs
   def apply(commandLineArguments: String*): Int = apply(
-    progressRecording = NoProgressRecording,
+    progressRecording = ConsoleProgressRecording,
     commandLineArguments = commandLineArguments*
   )
 
@@ -493,6 +501,7 @@ object Main extends StrictLogging:
       theirBranchHead: String @@ Main.Tags.CommitOrBranchName,
       noCommit: Boolean,
       noFastForward: Boolean,
+      noProgressBar: Boolean,
       minimumMatchSize: Int,
       thresholdSizeFractionForMatching: Double,
       minimumAmbiguousMatchSize: Int,
@@ -2925,6 +2934,7 @@ object Main extends StrictLogging:
       theirBranchHead = noBranchProvided,
       noCommit = false,
       noFastForward = false,
+      noProgressBar = false,
       minimumMatchSize =
         // Don't allow monograph matches - these would bombard the merge with
         // useless all-sides matches that create a *lot* of overhead.
