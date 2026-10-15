@@ -51,7 +51,7 @@ jobs:
           JRELEASER_PROJECT_VERSION: 1.21.6 # TODO: this is jemmied: should use `${{ needs.release.outputs.RELEASE_VERSION }}`.
 
       - name: Upload assembled applications to cache.
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: jlink-packages-${{ matrix.os }}
           path: out/jreleaser/assemble/
@@ -80,11 +80,14 @@ jobs:
           distribution: corretto
 
       - name: Download assembled applications from cache.
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: jlink-packages-*
           path: out/jreleaser/assemble
           merge-multiple: true
+
+      - name: What's going on in `out/jreleaser/assemble`?
+        run: ls -R out/jreleaser/assemble
 
       - name: Add executables to release, package and publish to distribution channels such as Brew and Scoop.
         uses: jreleaser/release-action@v2
