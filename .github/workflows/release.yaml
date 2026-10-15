@@ -54,7 +54,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: jlink-packages-${{ matrix.os }}
-          path: out/jreleaser/assemble/**/*.zip
+          path: out/jreleaser/assemble/
 
   uploadExecutables:
     needs: assemble-applications
@@ -82,7 +82,7 @@ jobs:
       - name: Download assembled applications from cache.
         uses: actions/download-artifact@v4
         with:
-          path: out/jreleaser/assemble
+          path: .
           pattern: jlink-packages-*
           merge-multiple: true
 
