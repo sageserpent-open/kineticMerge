@@ -22,14 +22,15 @@ end ProgressRecordingSession
 
 trait ProgressRecordingSessionWithSummary(
     val label: String,
-    val maximumProgress: Int
+    val maximumProgress: Int,
+    val finalLabel: Option[String]
 ) extends ProgressRecordingSession:
   private val startTime = Instant.now()
 
   override def close(): Unit =
     val duration = JavaDuration.between(startTime, Instant.now())
     println(
-      s"$label $maximumProgress (Completed in: ${DurationFormatUtils.formatDurationHMS(duration.toMillis)})"
+      s"${finalLabel.getOrElse(label)} $maximumProgress (Completed in: ${DurationFormatUtils.formatDurationHMS(duration.toMillis)})"
     )
   end close
 end ProgressRecordingSessionWithSummary
@@ -48,25 +49,31 @@ trait ProgressRecording:
     *   An instance of [[ProgressRecordingSession]] with {@code initialProgress}
     *   recorded.
     */
-  def newSession(label: String, maximumProgress: Int)(
-      initialProgress: Int
-  ): ProgressRecordingSession
+  def newSession(
+      label: String,
+      maximumProgress: Int,
+      finalLabel: Option[String] = None
+  )(initialProgress: Int): ProgressRecordingSession
 end ProgressRecording
 
 object NoProgressRecording extends ProgressRecording:
-  override def newSession(label: String, maximumProgress: Int)(
-      initialProgress: Int
-  ): ProgressRecordingSession =
-    new ProgressRecordingSessionWithSummary(label, maximumProgress):
+  override def newSession(
+      label: String,
+      maximumProgress: Int,
+      finalLabel: Option[String] = None
+  )(initialProgress: Int): ProgressRecordingSession =
+    new ProgressRecordingSessionWithSummary(label, maximumProgress, finalLabel):
       override def upTo(amount: Int): Unit = {}
     end new
   end newSession
 end NoProgressRecording
 
 object SilentProgressRecording extends ProgressRecording:
-  override def newSession(label: String, maximumProgress: Int)(
-      initialProgress: Int
-  ): ProgressRecordingSession =
+  override def newSession(
+      label: String,
+      maximumProgress: Int,
+      finalLabel: Option[String] = None
+  )(initialProgress: Int): ProgressRecordingSession =
     new ProgressRecordingSession:
       override def upTo(amount: Int): Unit = {}
 
@@ -81,10 +88,12 @@ end SilentProgressRecording
   * removes the progress bar.
   */
 object ConsoleProgressRecording extends ProgressRecording:
-  override def newSession(label: String, maximumProgress: Int)(
-      initialProgress: Int
-  ): ProgressRecordingSession =
-    new ProgressRecordingSessionWithSummary(label, maximumProgress):
+  override def newSession(
+      label: String,
+      maximumProgress: Int,
+      finalLabel: Option[String] = None
+  )(initialProgress: Int): ProgressRecordingSession =
+    new ProgressRecordingSessionWithSummary(label, maximumProgress, finalLabel):
       private val progressBar = Option(System.console()).map(console =>
         val progressBarConsumer = new ConsoleProgressBarConsumer(
           new PrintStream(

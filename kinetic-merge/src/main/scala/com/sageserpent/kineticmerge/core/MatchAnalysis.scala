@@ -313,14 +313,20 @@ object MatchAnalysis extends StrictLogging:
           : MatchesAndTheirSections =
         val sessionLabel =
           if configuration.label.nonEmpty then
-            s"${configuration.label} - minimum sure-fire match size considered:"
-          else "Minimum sure-fire match size considered:"
+            s"${configuration.label} - all sure-fire matches found so far down to size:"
+          else "All sure-fire matches found so far down to size:"
+
+        val finalSessionLabel =
+          if configuration.label.nonEmpty then
+            s"${configuration.label} - all sure-fire matches found working down from size:"
+          else "All sure-fire matches found working down from size:"
 
         if 0 < maximumPossibleMatchSize then
           Using(
             progressRecording.newSession(
               label = sessionLabel,
-              maximumProgress = maximumPossibleMatchSize
+              maximumProgress = maximumPossibleMatchSize,
+              finalLabel = Some(finalSessionLabel)
             )(initialProgress = maximumPossibleMatchSize)
           ) { progressRecordingSession =>
             given MatchSearchingContext =
@@ -1182,13 +1188,19 @@ object MatchAnalysis extends StrictLogging:
 
           val sessionLabel =
             if configuration.label.nonEmpty then
-              s"${configuration.label} - minimum small-fry match size considered:"
-            else "Minimum small-fry match size considered:"
+              s"${configuration.label} - all small-fry matches found so far down to size:"
+            else "All small-fry matches found so far down to size:"
+
+          val finalSessionLabel =
+            if configuration.label.nonEmpty then
+              s"${configuration.label} - all small-fry matches found working down from size:"
+            else "All small-fry matches found working down from size:"
 
           Using(
             progressRecording.newSession(
               label = sessionLabel,
-              maximumProgress = maximumSmallFryWindowSize
+              maximumProgress = maximumSmallFryWindowSize,
+              finalLabel = Some(finalSessionLabel)
             )(initialProgress = maximumSmallFryWindowSize)
           ) { progressRecordingSession =>
             withAllSmallFryMatches(maximumSmallFryWindowSize)(using
@@ -1281,13 +1293,19 @@ object MatchAnalysis extends StrictLogging:
 
         val sessionLabel =
           if configuration.label.nonEmpty then
-            s"${configuration.label} - minimum tiny match size considered:"
-          else "Minimum tiny match size considered:"
+            s"${configuration.label} - all tiny matches found so far down to size:"
+          else "All tiny matches found so far down to size:"
+
+        val finalSessionLabel =
+          if configuration.label.nonEmpty then
+            s"${configuration.label} - all tiny matches found working down from size:"
+          else "All tiny matches found working down from size:"
 
         val tinyMatches = Using(
           progressRecording.newSession(
             label = sessionLabel,
-            maximumProgress = minimumWindowSizeAcrossAllFilesOverAllSides
+            maximumProgress = minimumWindowSizeAcrossAllFilesOverAllSides,
+            finalLabel = Some(finalSessionLabel)
           )(initialProgress = minimumWindowSizeAcrossAllFilesOverAllSides)
         ) { progressRecordingSession =>
           given MatchSearchingContext =
@@ -1482,14 +1500,20 @@ object MatchAnalysis extends StrictLogging:
 
         val sessionLabel =
           if configuration.label.nonEmpty then
-            s"${configuration.label} - number of matches to reconcile:"
-          else "Number of matches to reconcile:"
+            s"${configuration.label} - checking for subsumption, number of matches remaining:"
+          else "Checking for subsumption, number of matches remaining:"
+
+        val finalSessionLabel =
+          if configuration.label.nonEmpty then
+            s"${configuration.label} - number of matches reconciled to eliminate subsumption:"
+          else "Number of matches reconciled to eliminate subsumption:"
 
         val outcome =
           Using(
             progressRecording.newSession(
               label = sessionLabel,
-              maximumProgress = matches.size
+              maximumProgress = matches.size,
+              finalLabel = Some(finalSessionLabel)
             )(initialProgress = matches.size)
           ) { progressRecordingSession =>
             @tailrec
@@ -2376,14 +2400,20 @@ object MatchAnalysis extends StrictLogging:
 
         val sessionLabel =
           if configuration.label.nonEmpty then
-            s"${configuration.label} - number of overlapping matches to reconcile:"
-          else "Number of overlapping matches to reconcile:"
+            s"${configuration.label} - checking for overlaps, number of matches remaining:"
+          else "Checking for overlaps, number of matches remaining:"
+
+        val finalSessionLabel =
+          if configuration.label.nonEmpty then
+            s"${configuration.label} - number of matches reconciled to eliminate overlaps:"
+          else "Number of matches reconciled to eliminate overlaps:"
 
         val outcome =
           Using(
             progressRecording.newSession(
               label = sessionLabel,
-              maximumProgress = matches.size
+              maximumProgress = matches.size,
+              finalLabel = Some(finalSessionLabel)
             )(initialProgress = matches.size)
           ) { progressRecordingSession =>
             @tailrec

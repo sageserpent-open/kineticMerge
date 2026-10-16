@@ -1012,7 +1012,11 @@ object SectionedCodeExtension extends StrictLogging:
         paths.foldLeft(AggregatedInitialMergeResult.empty) {
           case (partialMergeResult, path) =>
             given ProgressRecording with
-              override def newSession(label: String, maximumProgress: Int)(
+              override def newSession(
+                  label: String,
+                  maximumProgress: Int,
+                  finalLabel: Option[String] = None
+              )(
                   initialProgress: Int
               ): ProgressRecordingSession =
                 progressRecording.newSession(
