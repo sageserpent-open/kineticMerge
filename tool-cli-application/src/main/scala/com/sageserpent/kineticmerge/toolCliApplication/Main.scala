@@ -260,8 +260,12 @@ object Main extends StrictLogging:
           exception.printStackTrace()
           error
       },
-      _.fold(ifEmpty = incorrectCommandLine)(
-        mergeSides(_)(workingDirectory = os.pwd, progressRecording)
+      _.fold(ifEmpty = incorrectCommandLine)(request =>
+        mergeSides(request)(
+          workingDirectory = os.pwd,
+          if request.noProgressBar then NoProgressRecording
+          else progressRecording
+        )
       )
     )
   end apply
@@ -277,8 +281,7 @@ object Main extends StrictLogging:
       thresholdSizeFractionForMatching,
       minimumAmbiguousMatchSize,
       ambiguousMatchesThreshold,
-      progressRecording =
-        if noProgressBar then NoProgressRecording else progressRecording
+      progressRecording = progressRecording
     )
 
     val workflow =
@@ -353,18 +356,6 @@ object Main extends StrictLogging:
 
     exitCode
   end mergeSides
-
-  /** @param commandLineArguments
-    *   Command line arguments as varargs.
-    * @return
-    *   The exit code as a plain integer, suitable for consumption by both Scala
-    *   and Java client code.
-    */
-  @varargs
-  def apply(commandLineArguments: String*): Int = apply(
-    progressRecording = ConsoleProgressRecording,
-    commandLineArguments = commandLineArguments*
-  )
 
   extension [Payload](fallible: IO[Payload])
     private def labelExceptionWith(errorMessage: String): Workflow[Payload] =
