@@ -143,6 +143,13 @@ object Main extends StrictLogging:
           .text(
             "Prevent fast-forward merge - make a merge commit instead. Off by default."
           ),
+        opt[Unit](name = "no-progressbar")
+          .action((_, commandLineArguments) =>
+            commandLineArguments.copy(noProgressBar = true)
+          )
+          .text(
+            "Suppress the displayed progress bar as the application runs, but still print a timing summary once a task is finished. Off by default."
+          ),
         opt[Int](name = "minimum-match-size")
           .validate(minimumMatchSize =>
             if 0 < minimumMatchSize then success
@@ -281,8 +288,12 @@ object Main extends StrictLogging:
           exception.printStackTrace()
           error
       },
-      _.fold(ifEmpty = incorrectCommandLine)(
-        mergeTheirBranch(_)(workingDirectory = os.pwd, progressRecording)
+      _.fold(ifEmpty = incorrectCommandLine)(request =>
+        mergeTheirBranch(request)(
+          workingDirectory = os.pwd,
+          if request.noProgressBar then NoProgressRecording
+          else progressRecording
+        )
       )
     )
   end apply
@@ -457,18 +468,6 @@ object Main extends StrictLogging:
     private def asTokens: Vector[Token] = tokens(content).get
   end extension
 
-  /** @param commandLineArguments
-    *   Command line arguments as varargs.
-    * @return
-    *   The exit code as a plain integer, suitable for consumption by both Scala
-    *   and Java client code.
-    */
-  @varargs
-  def apply(commandLineArguments: String*): Int = apply(
-    progressRecording = NoProgressRecording,
-    commandLineArguments = commandLineArguments*
-  )
-
   private def left[Payload](errorMessage: String): Workflow[Payload] =
     EitherT.leftT[WorkflowLogWriter, Payload](
       errorMessage.taggedWith[Tags.ErrorMessage]
@@ -493,6 +492,7 @@ object Main extends StrictLogging:
       theirBranchHead: String @@ Main.Tags.CommitOrBranchName,
       noCommit: Boolean,
       noFastForward: Boolean,
+      noProgressBar: Boolean,
       minimumMatchSize: Int,
       thresholdSizeFractionForMatching: Double,
       minimumAmbiguousMatchSize: Int,
@@ -2925,6 +2925,7 @@ object Main extends StrictLogging:
       theirBranchHead = noBranchProvided,
       noCommit = false,
       noFastForward = false,
+      noProgressBar = false,
       minimumMatchSize =
         // Don't allow monograph matches - these would bombard the merge with
         // useless all-sides matches that create a *lot* of overhead.

@@ -66,7 +66,7 @@ object Main extends StrictLogging:
     */
   def main(commandLineArguments: Array[String]): Unit =
     System.exit(
-      apply(progressRecording = NoProgressRecording, commandLineArguments*)
+      apply(progressRecording = ConsoleProgressRecording, commandLineArguments*)
     )
   end main
 
@@ -108,6 +108,13 @@ object Main extends StrictLogging:
           )
           .text(
             "Do not report anything on standard output; just write the final output into the directories."
+          ),
+        opt[Unit](name = "no-progressbar")
+          .action((_, commandLineArguments) =>
+            commandLineArguments.copy(noProgressBar = true)
+          )
+          .text(
+            "Suppress the displayed progress bar as the application runs, but still print a timing summary once a task is finished. Off by default."
           ),
         opt[Int](name = "minimum-match-size")
           .validate(minimumMatchSize =>
@@ -253,8 +260,12 @@ object Main extends StrictLogging:
           exception.printStackTrace()
           error
       },
-      _.fold(ifEmpty = incorrectCommandLine)(
-        mergeSides(_)(workingDirectory = os.pwd, progressRecording)
+      _.fold(ifEmpty = incorrectCommandLine)(request =>
+        mergeSides(request)(
+          workingDirectory = os.pwd,
+          if request.noProgressBar then NoProgressRecording
+          else progressRecording
+        )
       )
     )
   end apply
@@ -400,6 +411,7 @@ object Main extends StrictLogging:
   case class ApplicationRequest(
       mergeSideDirectories: Seq[FilePath],
       quiet: Boolean,
+      noProgressBar: Boolean,
       minimumMatchSize: Int,
       thresholdSizeFractionForMatching: Double,
       minimumAmbiguousMatchSize: Int,
@@ -1818,6 +1830,7 @@ object Main extends StrictLogging:
     val default: ApplicationRequest = ApplicationRequest(
       mergeSideDirectories = Seq.empty,
       quiet = true,
+      noProgressBar = false,
       minimumMatchSize =
         // Don't allow monograph matches - these would bombard the merge with
         // useless all-sides matches that create a *lot* of overhead.
