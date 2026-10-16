@@ -195,6 +195,13 @@ object MatchAnalysis extends StrictLogging:
 
     val tiebreakContentSamplingLimit = 5
 
+    extension (message: String)
+      def labelled: String =
+        if configuration.label.nonEmpty then
+          s"${configuration.label} - ${message.headOption.fold(ifEmpty = message)(_.toLower +: message.tail)}"
+        else message
+    end extension
+
     object MatchesAndTheirSections:
       lazy val empty: MatchesAndTheirSections = MatchesAndTheirSections(
         baseSectionsByPath = Map.empty,
@@ -312,14 +319,10 @@ object MatchAnalysis extends StrictLogging:
       def withAllMatchesOfAtLeastTheSureFireWindowSize()
           : MatchesAndTheirSections =
         val sessionLabel =
-          if configuration.label.nonEmpty then
-            s"${configuration.label} - all sure-fire matches found so far down to size:"
-          else "All sure-fire matches found so far down to size:"
+          "All sure-fire matches found so far down to size:".labelled
 
         val finalSessionLabel =
-          if configuration.label.nonEmpty then
-            s"${configuration.label} - all sure-fire matches found working down from size:"
-          else "All sure-fire matches found working down from size:"
+          "All sure-fire matches found working down from size:".labelled
 
         if 0 < maximumPossibleMatchSize then
           Using(
@@ -1187,14 +1190,10 @@ object MatchAnalysis extends StrictLogging:
             minimumSureFireWindowSizeAcrossAllFilesOverAllSides - 1
 
           val sessionLabel =
-            if configuration.label.nonEmpty then
-              s"${configuration.label} - all small-fry matches found so far down to size:"
-            else "All small-fry matches found so far down to size:"
+            "All small-fry matches found so far down to size:".labelled
 
           val finalSessionLabel =
-            if configuration.label.nonEmpty then
-              s"${configuration.label} - all small-fry matches found working down from size:"
-            else "All small-fry matches found working down from size:"
+            "All small-fry matches found working down from size:".labelled
 
           Using(
             progressRecording.newSession(
@@ -1292,14 +1291,10 @@ object MatchAnalysis extends StrictLogging:
         end withContentCoveredByNonTinyMatchesKnockedOut
 
         val sessionLabel =
-          if configuration.label.nonEmpty then
-            s"${configuration.label} - all tiny matches found so far down to size:"
-          else "All tiny matches found so far down to size:"
+          "All tiny matches found so far down to size:".labelled
 
         val finalSessionLabel =
-          if configuration.label.nonEmpty then
-            s"${configuration.label} - all tiny matches found working down from size:"
-          else "All tiny matches found working down from size:"
+          "All tiny matches found working down from size:".labelled
 
         val tinyMatches = Using(
           progressRecording.newSession(
@@ -1499,14 +1494,10 @@ object MatchAnalysis extends StrictLogging:
         val matches = this.matches
 
         val sessionLabel =
-          if configuration.label.nonEmpty then
-            s"${configuration.label} - checking for subsumption, number of matches remaining:"
-          else "Checking for subsumption, number of matches remaining:"
+          "Checking for subsumption, number of matches remaining:".labelled
 
         val finalSessionLabel =
-          if configuration.label.nonEmpty then
-            s"${configuration.label} - number of matches reconciled to eliminate subsumption:"
-          else "Number of matches reconciled to eliminate subsumption:"
+          "Number of matches reconciled to eliminate subsumption:".labelled
 
         val outcome =
           Using(
@@ -2399,14 +2390,10 @@ object MatchAnalysis extends StrictLogging:
         )
 
         val sessionLabel =
-          if configuration.label.nonEmpty then
-            s"${configuration.label} - checking for overlaps, number of matches remaining:"
-          else "Checking for overlaps, number of matches remaining:"
+          "Checking for overlaps, number of matches remaining:".labelled
 
         val finalSessionLabel =
-          if configuration.label.nonEmpty then
-            s"${configuration.label} - number of matches reconciled to eliminate overlaps:"
-          else "Number of matches reconciled to eliminate overlaps:"
+          "Number of matches reconciled to eliminate overlaps:".labelled
 
         val outcome =
           Using(
