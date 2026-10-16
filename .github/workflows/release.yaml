@@ -13,8 +13,6 @@ jobs:
       GITHUB_APP_PRIVATE_KEY: ${{ secrets.AUTOMATED_MAVEN_RELEASE_GITHUB_APP_PRIVATE_KEY }}
     with:
       GITHUB_APP_ID: 983631
-      SONATYPE_PROFILE_NAME: "com.sageserpent"
-      SONATYPE_CREDENTIAL_HOST: "central.sonatype.com"
 
   assemble-applications:
     needs: release
