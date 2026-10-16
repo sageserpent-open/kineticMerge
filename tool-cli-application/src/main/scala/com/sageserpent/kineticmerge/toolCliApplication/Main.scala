@@ -109,12 +109,13 @@ object Main extends StrictLogging:
           .text(
             "Do not report anything on standard output; just write the final output into the directories."
           ),
-        opt[Unit](name = "no-progressbar")
+        opt[Unit](name = "no-progress")
           .action((_, commandLineArguments) =>
             commandLineArguments.copy(noProgressBar = true)
           )
           .text(
-            "Suppress the displayed progress bar as the application runs, but still print a timing summary once a task is finished. Off by default."
+            """Suppress the displayed progress bar as the application runs, but still print a timing summary once a task is finished.
+              |Default is to display the progress bar, unless standard output is redirected.""".stripMargin
           ),
         opt[Int](name = "minimum-match-size")
           .validate(minimumMatchSize =>

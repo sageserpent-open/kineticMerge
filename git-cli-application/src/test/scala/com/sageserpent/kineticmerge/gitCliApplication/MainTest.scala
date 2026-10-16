@@ -5,9 +5,11 @@ import cats.effect.{IO, Resource}
 import com.sageserpent.americium.Trials
 import com.sageserpent.americium.Trials.api as trialsApi
 import com.sageserpent.americium.junit5.*
-import com.sageserpent.kineticmerge.core.ConsoleProgressRecording
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
-import com.sageserpent.kineticmerge.core.ProseExamples
+import com.sageserpent.kineticmerge.core.{
+  ConsoleProgressRecording,
+  ProseExamples
+}
 import com.sageserpent.kineticmerge.core.Token.{
   tokens,
   equality as tokenEquality
