@@ -22,8 +22,7 @@ import scopt.{DefaultOEffectSetup, OParser}
 import scala.annotation.varargs
 import scala.collection.BuildFrom
 import scala.collection.decorators.mapDecorator
-import scala.io.Source
-import scala.util.{Try, Using}
+import scala.util.Try
 
 object Main extends StrictLogging:
   private type ErrorOrOperationMessage =
@@ -88,14 +87,7 @@ object Main extends StrictLogging:
       val builder = OParser.builder[ApplicationRequest]
       import builder.*
 
-      val kineticMergeVersion = Using(
-        Source
-          .fromResource("version.txt")
-      )(
-        _.getLines()
-          .nextOption()
-          .getOrElse("Not a packaged build.")
-      ).get
+      val kineticMergeVersion = AboutKineticMerge.version
 
       OParser.sequence(
         programName("kinetic-merge-tool"),
