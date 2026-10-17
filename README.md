@@ -25,34 +25,60 @@ YouTube:
 - A simple command line tool that tries to do as much as it can without supervision, and with minimal supervision when
   complexities are encountered.
 
+## What's on offer? ##
+
+There are three deliverables from this project:
+
+- `kinetic-merge`. This is a command-line application that runs on Linux, macOS and Windows. It integrates with Git, so
+  if you work on a Git repository, this is for you.
+- `kinetic-merge-tool`. This is a command-line application that runs on Linux, OSX and Windows. It works with
+  directories of files that require merging and knows nothing about version control. Think of it as being analogous to
+  `git merge-file`, only working on entire directories instead of files.
+- The Kinetic Merge library. This is published to Sonatype
+  here: [![Maven Central](https://index.scala-lang.org/sageserpent-open/kineticmerge/kinetic-merge/latest-by-scala-version.svg?color=2465cd&style=flat)](https://index.scala-lang.org/sageserpent-open/kineticmerge/kinetic-merge).
+  It contains the core logic shared by both applications.
+
 ## Installation ##
 
-### Download it. ###
+Both `kinetic-merge` and `kinetic-merge-tool` are distributed via Homebrew for Linux and OSX and via Scoop for Windows.
+
+### Linux / macOS ###
+
+You'll need [Homebrew to be installed](https://docs.brew.sh/Installation).
+
+You can install either or both applications, skip as appropriate:
 
 ```bash
-curl -LJO --verbose http://github.com/sageserpent-open/kineticMerge/releases/download/v<RELEASE VERSION FROM GITHUB>/kinetic-merge
+$ brew install sageserpent-open/tap/kinetic-merge
 
-chmod a+x kinetic-merge
+$ brew install sageserpent-open/tap/kinetic-merge-tool
 ```
 
-Put it on your path.
+Alternatively:
 
-Alternatively, go to the [releases](https://github.com/sageserpent-open/kineticMerge/releases) and manually
-download `kinetic-merge`. You'll still have to execute `chmod a+x kineticMerge` so you can run it.
+```bash
+$ brew tap sageserpent-open/tap
 
-If you're on Windows, instead of `kinetic-merge` use the companion download *`kinetic-merge.bat`*.
+$ brew install kinetic-merge
 
-### Stuck in a firewalled corporate environment and can't just download anything you feel like, but can clone this repository? ###
+$ brew install kinetic-merge-tool
+```
 
-If so, clone this repository locally (or just download it as a source drop), install SBT and run `sbt packageExecutable`
-in the top level of the directory you've cloned / downloaded - that will place a freshly baked executable and companion
-Windows batch file in the `target` subdirectory.
+### Windows ###
 
-### Want to test-drive the programmatic API from JShell and have access to Maven Central or Sonatype? ###
+You'll need [Scoop to be installed](https://github.com/ScoopInstaller/Install).
 
-Try the instructions [here](https://github.com/sageserpent-open/kineticMerge/issues/21#issuecomment-1932619838).
+You can install either or both applications, skip as appropriate:
 
-## Running it ##
+```bash
+$ scoop bucket add sageserpent-open https://github.com/sageserpent-open/scoop-bucket.git
+
+$ scoop install kinetic-merge
+
+$ scoop install kinetic-merge-tool
+```
+
+## Running `kinetic-merge` ##
 
 Go to your Git repository. Check your repository has a branch checked out (so not a *bare* repository) and that it
 doesn't have uncommitted work; decide what branch you want to merge from and off you go:
@@ -83,7 +109,7 @@ It supports fast-forwarding, plus the `--no-ff` and `--no-commit` options too. U
 ## Why?
 
 Meet Noah Shortcut and Seymour Checks, two likely software engineers
-from [ThreePhantasticTales](http://www.octopull.co.uk/sw-dev/ThreePhantasticTails.html), and their manager, Mr Deadline.
+from [ThreePhantasticTales](https://accu.org/journals/overload/11/56/griffiths_347/), and their manager, Mr Deadline.
 
 Some time has passed since that those tales were told, and Messrs Shortcut and Checks work with Java in some giant
 corporate blob these days. Noah likes to work lean and mean with Emacs or vi, or is it Atom or Sublime now? He's pumping
@@ -116,6 +142,10 @@ a conflicted merge; it then hands over to Git and you, the user, to resolve the 
 the code motion pain out of the process before it hands over, so that the final manual merge should feel like a simple
 one.
 
+**UPDATE:** *since I wrote this copy, Mr Deadline has retired, Noah has been promoted and Seymour has left and joined a
+retreat; Noah now manages a small team of developers who wrangle Gemini Code Assist, Claude Code and Codex. That code
+still needs merging, though!*
+
 ## Status
 
 Well, it works; there are stable releases. Code motion is tracked both intra-file and inter-file. You can split a file
@@ -128,33 +158,38 @@ that's why GitHub provides an issue tracker.
 
 The author uses it regularly on his own projects.
 
-Give it a spin, do raise bug tickets,
-see [https://github.com/sageserpent-open/kineticMerge/issues/21](https://github.com/sageserpent-open/kineticMerge/issues/21)
-for guidance.
-
-Bear in mind you can use either `--no-commit` or rollback with `git merge --abort` or `git reset --hard`, but know what
-you're doing before you use the third technique.
-
 ## What do the command-line options do?
 
 ```text
   --help                   Output this summary.
   --version                Show the version of this command.
-  --no-commit              Do not commit a successful merge - leave merged changes staged in the index for review. Off by default.
-  --no-ff                  Prevent fast-forward merge - make a merge commit instead. Off by default.
+  --no-commit              Do not commit a successful merge - leave merged changes staged in the index for review.
+                           Off by default.
+  --no-ff                  Prevent fast-forward merge - make a merge commit instead.
+                           Off by default.
+  --no-progress            Suppress the displayed progress bar as the application runs, but still print a timing summary once a task is finished.
+                           Default is to display the progress bar, unless standard output is redirected.
   --minimum-match-size <value>
-                           Minimum number of tokens for a match to be considered. Default of 2.
+                           Minimum number of tokens for a match to be considered.
+                           Default of 2.
   --match-threshold <value>
-                           Minimum fraction of a containing file's size for a section of text to qualify for matching; zero implying no restriction. Default of 0.0.
+                           Minimum fraction of a containing file's size for a section of text to qualify for matching; zero implying no restriction.
+                           Default of 0.0.
   --minimum-ambiguous-match-size <value>
-                           Minimum number of tokens for an ambiguous match to be considered. Default of 10.
+                           Minimum number of tokens for an ambiguous match to be considered.
+                           Default of 10.
   --ambiguous-matches-threshold <value>
-                           Maximum number of matches of the same kind that can refer to the same matched content. Default of 20.
+                           Maximum number of matches of the same kind that can refer to the same matched content.
+                           Default of 20.
 ```
 
 Hopefully `--help` and `--version` are self-explanatory.
 
 As for `--no-commit` and `--no-ff`, these are for feature parity with plain Git merge and do the same thing.
+
+The `--no-progress` option is handy if you've enabled logging (see below) and don't want the progress bar redrawing to
+interfere with the log output. If you are piping or redirecting the output, the progress bar will be suppressed anyway,
+so you shouldn't need this option for *that* situation.
 
 Where it gets interesting is:
 
@@ -163,8 +198,6 @@ sides of the merge to be eligible for discovery. Making this larger means that p
 undiscovered. However, setting this right down to one token can lead to a bombardment of useless matches because it is
 likely for a single token to be repeated many times across the codebase.
 
-The default is set to 2; this seems to work well enough in practice.
-
 `--match-threshold`: this is a looser alternative to `--minimum-match-size` where content in a file is only eligible for
 match discovery if its size in tokens is at least a fraction of that file's size *as measured in content tokens*. This
 means that a potential match may be deemed unsuitable even if just one of its sides fails to meet the threshold.
@@ -172,8 +205,6 @@ means that a potential match may be deemed unsuitable even if just one of its si
 The match threshold fraction is specified as either an explicit percentage - eg `10%`, the digits following the decimal
 point for a non-negative fraction less than one - eg `05` (meaning 0.05, or 5%) or an explicit non-negative fraction at
 most one - eg `0.0`, `0.34`, `1.0`.
-
-The default is set to zero, thus this has no effect if not specified.
 
 **NOTE:**
 
@@ -193,12 +224,8 @@ The default is set to zero, thus this has no effect if not specified.
 allows important small matches of some special content that occurs only in one place to be picked up, while blocking the
 usual noise that results from single and double-token ambiguous matches.
 
-The default is set to 10.
-
 `--ambiguous-matches-threshold`: this permits case-by-case vetting of ambiguous matches; if the number of ambiguous
 matches *for some specific content* exceeds the threshold, than that content will not be matched.
-
-The default is set to 20.
 
 **TIP:**
 
@@ -225,7 +252,8 @@ For an even longer time, this project used the [fingertree implementation](https
 vital part of `MatchesAndTheirSections`. It was a performant and robust way of dealing with interval testing, as well as
 a nice example of a pure-functional core fingertree implementation with various front-end APIs. At time of writing, the
 APIs were a bit rough-and-ready, but it did the job well. It was eventually swapped out for an LLM-rolled treap
-implementation, but it is still pulled in as a test dependency so that the treap implementation can be validated against it
+implementation, but it is still pulled in as a test dependency so that the treap implementation can be validated against
+it
 as a reference.
 
 ## Design Documents
@@ -234,7 +262,7 @@ as a reference.
 - [Problem Space](./documents/designNotes/problemSpace.md)
 - [Code Motion](./documents/designNotes/codeMotion.md)
 - [Component Breakdown](./documents/designNotes/componentBreakdown.md)
-- [`CodeMotionAnalysis.of`](./documents/designNotes/sectionedCode.md)
+- [`SectionedCode.of`](./documents/designNotes/sectionedCode.md)
 - [Blind Alleys](./documents/designNotes/blindAlleys.md)
 - [Skeletons in the Cupboard](./documents/designNotes/skeletonsInTheCupboard.md)
 

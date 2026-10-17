@@ -6,7 +6,7 @@ Kinetic Merge has as of version 1.2.1 (Git commit SHA: 58e598) just two packages
    here.
 2. `com.sageserpent.kineticmerge.core` - The core code motion detection and merging logic, abstracted away from Git.
 
-## `com.sageserpent.kineticmerge` ##
+## `com.sageserpent.kineticmerge.gitCliApplication` ##
 
 ### `Main` ###
 
@@ -54,6 +54,13 @@ their branch, or a new file has been added by our branch, or a file in the base 
 Each path considered by Kinetic Merge, is given a `Main.Change` to classify what happened to it from the point of view
 or our and / or their branch. If both branches changed the same file, this is represented as two change instances.
 
+## `com.sageserpent.kineticmerge.core` ##
+
+**NOTE:** except `ProgressRecording` and `Token`, all the following components below are parameterised with types
+representing paths, content elements and elements being merged. This makes it easier to test them in isolation by using,
+say simple integers for paths, or makes it easier to view failing test outputs by using integer content elements or
+single-character upper and lowercase merge input elements.
+
 ### `ProgressRecording` ###
 
 These are passed down from the entry points of `Main` to the core merge machinery. They allow the end user or third
@@ -61,13 +68,6 @@ party tools to get feedback of the merge machinery's progress at various long-ru
 
 For each phase, the `ProgressRecording` instance is used as a factory to build a mutable `ProgressRecordingSession`;
 that in turn serves as a callback trait, so the merge machinery can notify interested parties of its progress.
-
-## `com.sageserpent.kineticmerge.core` ##
-
-**NOTE:** except `Token`, all of the components below are parameterised with types representing paths, content elements
-and elements being merged. This makes it easier to test them in isolation by using, say simple integers for paths, or
-makes it easier to view failing test outputs by using integer content elements or single-character upper and lowercase
-merge input elements.
 
 ### `Token` ###
 
@@ -181,7 +181,7 @@ the byte sequence.
 **NOTE:** the expected number of fingerprints is merely a hint to help avoid collisions between fingerprints computed
 from differing byte window content.
 
-### `CodeMotionAnalysisExtension` ###
+### `SectionedCodeExtension` (formerly `CodeMotionAnalysisExtension`) ###
 
 To avoid bloating `SectionedCode`, an extension is provided that adds a global merge to it. In effect the analysis
 is treated as a parameter object to the merge.
