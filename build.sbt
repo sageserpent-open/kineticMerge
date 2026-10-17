@@ -25,7 +25,8 @@ lazy val commonSettings = Seq(
   licenses += ("MIT", url("https://opensource.org/licenses/MIT")),
   pomIncludeRepository := { _ => false },
   publishMavenStyle    := true,
-  exportJars           := true
+  exportJars           := true,
+  Compile / compile    := (Compile / compile).dependsOn(Compile / copyResources).value
 )
 
 lazy val commonLibraryDependencies = Seq(
