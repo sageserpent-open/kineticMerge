@@ -127,7 +127,8 @@ object Main extends StrictLogging:
               .copy(minimumMatchSize = minimumMatchSize)
           )
           .text(
-            s"Minimum number of tokens for a match to be considered. Default of ${ApplicationRequest.default.minimumMatchSize}."
+            s"""Minimum number of tokens for a match to be considered.
+               |Default of ${ApplicationRequest.default.minimumMatchSize}.""".stripMargin
           ),
         opt[String](name = "match-threshold")
           .validate(matchThreshold =>
@@ -164,7 +165,8 @@ object Main extends StrictLogging:
             )
           }
           .text(
-            s"Minimum fraction of a containing file's size for a section of text to qualify for matching; zero implying no restriction. Default of ${ApplicationRequest.default.thresholdSizeFractionForMatching}."
+            s"""Minimum fraction of a containing file's size for a section of text to qualify for matching; zero implying no restriction.
+               |Default of ${ApplicationRequest.default.thresholdSizeFractionForMatching}.""".stripMargin
           ),
         opt[Int](name = "minimum-ambiguous-match-size")
           .validate(minimumAmbiguousMatchSize =>
@@ -179,7 +181,8 @@ object Main extends StrictLogging:
               .copy(minimumAmbiguousMatchSize = minimumAmbiguousMatchSize)
           )
           .text(
-            s"Minimum number of tokens for an ambiguous match to be considered. Default of ${ApplicationRequest.default.minimumAmbiguousMatchSize}."
+            s"""Minimum number of tokens for an ambiguous match to be considered.
+               |Default of ${ApplicationRequest.default.minimumAmbiguousMatchSize}.""".stripMargin
           ),
         opt[Int](name = "ambiguous-matches-threshold")
           .validate(ambiguousMatchesThreshold =>
@@ -191,7 +194,8 @@ object Main extends StrictLogging:
               .copy(ambiguousMatchesThreshold = ambiguousMatchesThreshold)
           )
           .text(
-            s"Maximum number of matches of the same kind that can refer to the same matched content. Default of ${ApplicationRequest.default.ambiguousMatchesThreshold}."
+            s"""Maximum number of matches of the same kind that can refer to the same matched content.
+               |Default of ${ApplicationRequest.default.ambiguousMatchesThreshold}.""".stripMargin
           ),
         arg[String](name =
           "<directories for the files on each of the three sides of the merge in order: base, left and right>..."
