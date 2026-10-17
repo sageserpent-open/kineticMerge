@@ -228,7 +228,9 @@ object Main extends StrictLogging:
         ),
         note {
           val example =
-            underline(s"-J-D$logbackRootLevelLoggingJavaPropertyName=INFO")
+            underline(
+              s"JAVA_OPTS=-D$logbackRootLevelLoggingJavaPropertyName=INFO kinetic-merge-tool --no-progress ..."
+            )
           s"Logging is via Logback and is disabled by default - set the root logging level via the Java system property: ${underline(logbackRootLevelLoggingJavaPropertyName)}, eg: $example."
         }
       )
