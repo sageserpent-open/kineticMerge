@@ -270,7 +270,10 @@ as a reference.
 - [Blind Alleys](./documents/designNotes/blindAlleys.md)
 - [Skeletons in the Cupboard](./documents/designNotes/skeletonsInTheCupboard.md)
 
-## Do you use these libraries yet?
+## Do you use these yet?
+
+- [GHA Scala Library Release Workflow](https://github.com/guardian/gha-scala-library-release-workflow) - a professional release process.
+- [JReleaser](https://jreleaser.org) - this project's deployment maven. Tricky to set up, but once it's running, deployment is a breeze.
 
 Direct dependencies in `build.sbt` and why they are used...
 
