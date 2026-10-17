@@ -2,6 +2,10 @@
 
 Merge a heavily refactored codebase and stay sane.
 
+[Homebrew tap](https://github.com/sageserpent-open/homebrew-tap)
+
+[Scoop bucket](https://github.com/sageserpent-open/scoop-bucket)
+
 [![Maven Central](https://index.scala-lang.org/sageserpent-open/kineticmerge/kinetic-merge/latest-by-scala-version.svg?color=2465cd&style=flat)](https://index.scala-lang.org/sageserpent-open/kineticmerge/kinetic-merge)
 
 [![Scala Steward badge](https://img.shields.io/badge/Scala_Steward-helping-blue.svg?style=flat&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAQCAMAAAARSr4IAAAAVFBMVEUAAACHjojlOy5NWlrKzcYRKjGFjIbp293YycuLa3pYY2LSqql4f3pCUFTgSjNodYRmcXUsPD/NTTbjRS+2jomhgnzNc223cGvZS0HaSD0XLjbaSjElhIr+AAAAAXRSTlMAQObYZgAAAHlJREFUCNdNyosOwyAIhWHAQS1Vt7a77/3fcxxdmv0xwmckutAR1nkm4ggbyEcg/wWmlGLDAA3oL50xi6fk5ffZ3E2E3QfZDCcCN2YtbEWZt+Drc6u6rlqv7Uk0LdKqqr5rk2UCRXOk0vmQKGfc94nOJyQjouF9H/wCc9gECEYfONoAAAAASUVORK5CYII=)](https://scala-steward.org)
@@ -31,7 +35,7 @@ There are three deliverables from this project:
 
 - `kinetic-merge`. This is a command-line application that runs on Linux, macOS and Windows. It integrates with Git, so
   if you work on a Git repository, this is for you.
-- `kinetic-merge-tool`. This is a command-line application that runs on Linux, OSX and Windows. It works with
+- `kinetic-merge-tool`. This is a command-line application that runs on Linux, macOS and Windows. It works with
   directories of files that require merging and knows nothing about version control. Think of it as being analogous to
   `git merge-file`, only working on entire directories instead of files.
 - The Kinetic Merge library. This is published to Sonatype
