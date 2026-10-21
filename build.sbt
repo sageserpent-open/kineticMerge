@@ -31,7 +31,11 @@ lazy val commonSettings = Seq(
     (Compile / compile)
       .dependsOn(Compile / copyResources)
       .value
-  }
+  },
+  Test / logLevel           := Level.Error,
+  Test / fork               := true,
+  Test / testForkedParallel := true,
+  Test / javaOptions ++= Seq("-Xmx8G")
 )
 
 lazy val commonLibraryDependencies = Seq(
@@ -74,11 +78,7 @@ lazy val cliApplicationSettings =
   commonSettings ++ commonLibraryDependencies ++ Seq(
     publish / skip                            := true,
     libraryDependencies += "com.github.scopt" %% "scopt" % "4.2.0",
-    Test / logLevel                           := Level.Error,
-    Test / fork                               := true,
-    Test / testForkedParallel                 := true,
-    Test / javaOptions ++= Seq("-Xmx8G"),
-    stagedJarsForJReleaserDirectory := Def.uncached {
+    stagedJarsForJReleaserDirectory           := Def.uncached {
       val location =
         (Compile / target).value.toPath.resolve("stagedJarsForJReleaser")
 
@@ -123,11 +123,7 @@ lazy val kineticMerge = (project in file("kinetic-merge"))
       IO.write(location, packagingVersion)
 
       Seq(location)
-    }.taskValue,
-    Test / logLevel           := Level.Error,
-    Test / fork               := true,
-    Test / testForkedParallel := true,
-    Test / javaOptions ++= Seq("-Xmx8G")
+    }.taskValue
   )
 lazy val gitCliApplication = (project in file("git-cli-application"))
   .dependsOn(kineticMerge, kineticMerge % "test->test")
