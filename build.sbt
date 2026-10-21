@@ -29,7 +29,7 @@ lazy val commonSettings = Seq(
   Compile / compile    := (Compile / compile)
     .dependsOn(Compile / copyResources)
     .value,
-  Test / logLevel           := Level.Error,
+  Test / test / logLevel    := Level.Error,
   Test / fork               := true,
   Test / testForkedParallel := true,
   Test / javaOptions ++= Seq("-Xmx8G")
