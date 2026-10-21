@@ -1,3 +1,4 @@
+import sbtcompat.PluginCompat.*
 import sbtrelease.ReleaseStateTransformations.*
 
 import scala.language.postfixOps
@@ -26,9 +27,11 @@ lazy val commonSettings = Seq(
   pomIncludeRepository := { _ => false },
   publishMavenStyle    := true,
   exportJars           := true,
-  Compile / compile    := (Compile / compile)
-    .dependsOn(Compile / copyResources)
-    .value,
+  Compile / compile    := Def.uncached {
+    (Compile / compile)
+      .dependsOn(Compile / copyResources)
+      .value
+  },
   Test / logLevel           := Level.Error,
   Test / fork               := true,
   Test / testForkedParallel := true,
@@ -75,11 +78,13 @@ lazy val cliApplicationSettings =
   commonSettings ++ commonLibraryDependencies ++ Seq(
     publish / skip                            := true,
     libraryDependencies += "com.github.scopt" %% "scopt" % "4.2.0",
-    stagedJarsForJReleaserDirectory           := {
+    stagedJarsForJReleaserDirectory           := Def.uncached {
       val location =
         (Compile / target).value.toPath.resolve("stagedJarsForJReleaser")
 
-      (Compile / fullClasspath).value.files.foreach { jarFile =>
+      implicit val conv: FileConverter = fileConverter.value
+
+      toFiles((Compile / fullClasspath).value).foreach { jarFile =>
         val jarPath = jarFile.toPath
         IO.copyFile(
           sourceFile = jarFile,
