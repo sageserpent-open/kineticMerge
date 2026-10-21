@@ -1,3 +1,4 @@
+import sbtcompat.PluginCompat.*
 import sbtrelease.ReleaseStateTransformations.*
 
 import scala.language.postfixOps
@@ -26,7 +27,11 @@ lazy val commonSettings = Seq(
   pomIncludeRepository := { _ => false },
   publishMavenStyle    := true,
   exportJars           := true,
-  Compile / compile    := (Compile / compile).dependsOn(Compile / copyResources).value
+  Compile / compile    := Def.uncached {
+    (Compile / compile)
+      .dependsOn(Compile / copyResources)
+      .value
+  }
 )
 
 lazy val commonLibraryDependencies = Seq(
@@ -49,7 +54,7 @@ lazy val commonLibraryDependencies = Seq(
   libraryDependencies += "com.lihaoyi"             %% "pprint"  % "0.9.6",
   libraryDependencies += "com.softwaremill.common" %% "tagging" % "2.3.5",
   libraryDependencies += "com.google.guava"         % "guava"   % "33.7.2-jre",
-  libraryDependencies += "com.github.ben-manes.caffeine" % "caffeine" % "3.3.0",
+  libraryDependencies += "com.github.ben-manes.caffeine" % "caffeine" % "3.3.1",
   libraryDependencies += "me.tongfei"         % "progressbar"   % "0.10.2",
   libraryDependencies += "org.apache.commons" % "commons-lang3" % "3.21.0",
   libraryDependencies +=
@@ -69,15 +74,17 @@ lazy val cliApplicationSettings =
   commonSettings ++ commonLibraryDependencies ++ Seq(
     publish / skip                            := true,
     libraryDependencies += "com.github.scopt" %% "scopt" % "4.2.0",
-    Test / test / logLevel                    := Level.Error,
+    Test / logLevel                           := Level.Error,
     Test / fork                               := true,
     Test / testForkedParallel                 := true,
     Test / javaOptions ++= Seq("-Xmx8G"),
-    stagedJarsForJReleaserDirectory := {
+    stagedJarsForJReleaserDirectory := Def.uncached {
       val location =
         (Compile / target).value.toPath.resolve("stagedJarsForJReleaser")
 
-      (Compile / fullClasspath).value.files.foreach { jarFile =>
+      implicit val conv: FileConverter = fileConverter.value
+
+      toFiles((Compile / fullClasspath).value).foreach { jarFile =>
         val jarPath = jarFile.toPath
         IO.copyFile(
           sourceFile = jarFile,
@@ -85,7 +92,9 @@ lazy val cliApplicationSettings =
         )
       }
 
-      println(s"Staged JAR files from build for: ${name.value} into directory: $location")
+      println(
+        s"Staged JAR files from build for: ${name.value} into directory: $location"
+      )
 
       location.toFile
     }
@@ -115,12 +124,11 @@ lazy val kineticMerge = (project in file("kinetic-merge"))
 
       Seq(location)
     }.taskValue,
-    Test / test / logLevel    := Level.Error,
+    Test / logLevel           := Level.Error,
     Test / fork               := true,
     Test / testForkedParallel := true,
     Test / javaOptions ++= Seq("-Xmx8G")
   )
-
 lazy val gitCliApplication = (project in file("git-cli-application"))
   .dependsOn(kineticMerge, kineticMerge % "test->test")
   .settings(
