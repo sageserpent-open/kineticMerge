@@ -49,7 +49,7 @@ lazy val commonLibraryDependencies = Seq(
   libraryDependencies += "com.lihaoyi"             %% "pprint"  % "0.9.6",
   libraryDependencies += "com.softwaremill.common" %% "tagging" % "2.3.5",
   libraryDependencies += "com.google.guava"         % "guava"   % "33.7.2-jre",
-  libraryDependencies += "com.github.ben-manes.caffeine" % "caffeine" % "3.3.0",
+  libraryDependencies += "com.github.ben-manes.caffeine" % "caffeine" % "3.3.1",
   libraryDependencies += "me.tongfei"         % "progressbar"   % "0.10.2",
   libraryDependencies += "org.apache.commons" % "commons-lang3" % "3.21.0",
   libraryDependencies +=
@@ -85,7 +85,9 @@ lazy val cliApplicationSettings =
         )
       }
 
-      println(s"Staged JAR files from build for: ${name.value} into directory: $location")
+      println(
+        s"Staged JAR files from build for: ${name.value} into directory: $location"
+      )
 
       location.toFile
     }
