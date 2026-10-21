@@ -14,6 +14,16 @@ ThisBuild / scalacOptions ++= List(
   "-deprecation"
 )
 
+Global / concurrentRestrictions := Seq(
+  Tags.limit(
+    Tags.ForkedTestGroup,
+    math.max(1, java.lang.Runtime.getRuntime.availableProcessors())
+  ),
+  Tags.limitAll(
+    math.max(1, java.lang.Runtime.getRuntime.availableProcessors())
+  )
+)
+
 lazy val versionResource =
   settingKey[File]("Location of generated version resource file.")
 
