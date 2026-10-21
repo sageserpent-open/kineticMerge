@@ -5,7 +5,7 @@ on:
 
 jobs:
   release:
-    uses: guardian/gha-scala-library-release-workflow/.github/workflows/reusable-release.yml@v1
+    uses: guardian/gha-scala-library-release-workflow/.github/workflows/reusable-release.yml@v2
     permissions: { contents: write, pull-requests: write }
     secrets:
       SONATYPE_TOKEN: ${{ secrets.AUTOMATED_MAVEN_RELEASE_SONATYPE_TOKEN }}
@@ -13,31 +13,82 @@ jobs:
       GITHUB_APP_PRIVATE_KEY: ${{ secrets.AUTOMATED_MAVEN_RELEASE_GITHUB_APP_PRIVATE_KEY }}
     with:
       GITHUB_APP_ID: 983631
-      SONATYPE_PROFILE_NAME: "com.sageserpent"
-      SONATYPE_CREDENTIAL_HOST: "central.sonatype.com"
+
+  assemble-applications:
+    needs: release
+    strategy:
+      matrix:
+        # Cross-compiling for Windows, Linux, and modern/Intel Mac frameworks
+        os: [ windows-latest, macos-15-intel, macos-15, ubuntu-latest ]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: "v${{ needs.release.outputs.RELEASE_VERSION }}"
+
+      - name: Set up JDK.
+        uses: actions/setup-java@v5
+        with:
+          java-version: 17 # TODO: suppose I want to compile against JDK 17 but bundle the JDK 26 JVM?
+          distribution: corretto
+
+      - uses: sbt/setup-sbt@v1
+
+      - name: Stage application JAR files for JReleaser.
+        run: |
+          sbt "gitCliApplication/stagedJarsForJReleaserDirectory"
+          sbt "toolCliApplication/stagedJarsForJReleaserDirectory"
+
+      - name: Assemble platform-specific application.
+        uses: jreleaser/release-action@v2
+        with:
+          arguments: assemble
+        env:
+          JRELEASER_PROJECT_VERSION: ${{ needs.release.outputs.RELEASE_VERSION }}
+
+      - name: Upload assembled applications to cache.
+        uses: actions/upload-artifact@v7
+        with:
+          name: jlink-packages-${{ matrix.os }}
+          path: out/jreleaser/assemble/
 
   uploadExecutables:
+    needs:
+      - release
+      - assemble-applications
     runs-on: ubuntu-latest
-    needs: release
 
     steps:
       - id: generate-github-app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3
         with:
-          app-id: 983631
+          client-id: 983631
           private-key: ${{ secrets.AUTOMATED_MAVEN_RELEASE_GITHUB_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           ref: "v${{ needs.release.outputs.RELEASE_VERSION }}"
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: 17
           distribution: corretto
-      - uses: sbt/setup-sbt@v1
-      - name: Add executable to release
+
+      - name: Download assembled applications from cache.
+        uses: actions/download-artifact@v8
+        with:
+          pattern: jlink-packages-*
+          path: out/jreleaser/assemble
+          merge-multiple: true
+
+      - name: Add executables to release, package and publish to distribution channels such as Brew and Scoop.
+        uses: jreleaser/release-action@v2
+        with:
+          arguments: full-release
         env:
-          GH_TOKEN: ${{ steps.generate-github-app-token.outputs.token }}
-        run: |
-          sbt packageExecutable
-          gh release upload "v${{ needs.release.outputs.RELEASE_VERSION }}" "${GITHUB_WORKSPACE}/target/kinetic-merge" "${GITHUB_WORKSPACE}/target/kinetic-merge.bat"
+          JRELEASER_PROJECT_VERSION: ${{ needs.release.outputs.RELEASE_VERSION }}
+          JRELEASER_GITHUB_TOKEN: ${{ steps.generate-github-app-token.outputs.token }}

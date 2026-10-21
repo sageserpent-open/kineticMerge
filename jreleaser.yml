@@ -1,0 +1,152 @@
+# jreleaser.yml
+project:
+  name: kinetic-merge
+  description: "Merge a heavily refactored codebase and stay sane."
+  longDescription: |
+    - Merge two branches of a Git repository holistically across the entire codebase.
+    - Take into account the motion of code in either branch due to refactoring.
+    - Handle file renames, file splits, file concatenation.
+    - Handle code being excised from one place in a file and moved elsewhere in that file or to somewhere within another file, or hived off all by itself in its own new file.
+    - Work alongside the usual Git workflows, allowing ordinary Git merge to take over at the end if necessary.
+    - A simple command line tool that tries to do as much as it can without supervision, and with minimal supervision when complexities are encountered.
+  authors:
+    - Gerard Murphy (sageserpent-open)
+  license: MIT
+  links:
+    homepage: https://github.com/sageserpent-open/kineticMerge
+  stereotype: CLI
+  inceptionYear: "2023"
+  languages:
+    java:
+      groupId: com.sageserpent
+
+release:
+  github:
+    owner: sageserpent-open
+    name: kineticMerge
+    overwrite: true
+    update:
+      enabled: true
+      sections:
+        - ASSETS
+    sign: false
+    changelog:
+      enabled: false
+
+assemble:
+  jlink:
+    kinetic-merge:
+      active: ALWAYS
+
+      imageName: 'kinetic-merge-{{projectVersion}}'
+
+      jars:
+        - pattern: "git-cli-application/target/stagedJarsForJReleaser/*.jar"
+
+      mainJar:
+        path: "git-cli-application/target/stagedJarsForJReleaser/git-cli-application_3-{{projectVersion}}.jar"
+
+      java:
+        mainClass: "com.sageserpent.kineticmerge.gitCliApplication.Main"
+
+      jdeps:
+        enabled: false
+
+      additionalModuleNames:
+        - java.base
+        - java.xml
+        - java.logging
+        - jdk.unsupported
+
+    kinetic-merge-tool:
+      active: ALWAYS
+
+      imageName: 'kinetic-merge-tool-{{projectVersion}}'
+
+      jars:
+        - pattern: "tool-cli-application/target/stagedJarsForJReleaser/*.jar"
+
+      mainJar:
+        path: "tool-cli-application/target/stagedJarsForJReleaser/tool-cli-application_3-{{projectVersion}}.jar"
+
+      java:
+        mainClass: "com.sageserpent.kineticmerge.toolCliApplication.Main"
+
+      jdeps:
+        enabled: false
+
+      additionalModuleNames:
+        - java.base
+        - java.xml
+        - java.logging
+        - jdk.unsupported
+
+matrix:
+  rows:
+    - { platform: osx-aarch_64 }
+    - { platform: osx-x86_64 }
+    - { platform: linux-x86_64 }
+    - { platform: windows-x86_64 }
+
+distributions:
+  # --- Git CLI Application ---
+  kinetic-merge:
+    type: JLINK
+    java:
+      version: "17"
+    executable:
+      name: kinetic-merge
+      windowsExtension: bat
+    applyDefaultMatrix: true
+    artifactPattern:
+      path: '{{outputDirectory}}/assemble/{{distributionName}}/jlink/{{distributionName}}-{{projectVersion}}-{{matrix.platform}}.zip'
+      extraProperties:
+        optional: "true"
+    brew:
+      active: ALWAYS
+      formulaName: kinetic-merge
+      repository:
+        owner: sageserpent-open
+        name: homebrew-tap
+      multiPlatform: true
+      extraProperties:
+        useVersionedJava: "true"
+    scoop:
+      active: ALWAYS
+      packageName: kinetic-merge
+      extraProperties:
+        scoopAutoupdateExtractDir: "kinetic-merge-$version"
+      repository:
+        owner: sageserpent-open
+        name: scoop-bucket
+
+  # --- Tool CLI Application ---
+  kinetic-merge-tool:
+    type: JLINK
+    java:
+      version: "17"
+    executable:
+      name: kinetic-merge-tool
+      windowsExtension: bat
+    applyDefaultMatrix: true
+    artifactPattern:
+      path: '{{outputDirectory}}/assemble/{{distributionName}}/jlink/{{distributionName}}-{{projectVersion}}-{{matrix.platform}}.zip'
+      extraProperties:
+        optional: "true"
+    brew:
+      active: ALWAYS
+      formulaName: kinetic-merge-tool
+      repository:
+        owner: sageserpent-open
+        name: homebrew-tap
+      multiPlatform: true
+      extraProperties:
+        useVersionedJava: "true"
+    scoop:
+      active: ALWAYS
+      packageName: kinetic-merge-tool
+      extraProperties:
+        scoopAutoupdateExtractDir: "kinetic-merge-tool-$version"
+      repository:
+        owner: sageserpent-open
+        name: scoop-bucket
