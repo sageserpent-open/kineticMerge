@@ -26,7 +26,9 @@ lazy val commonSettings = Seq(
   pomIncludeRepository := { _ => false },
   publishMavenStyle    := true,
   exportJars           := true,
-  Compile / compile    := (Compile / compile).dependsOn(Compile / copyResources).value
+  Compile / compile    := (Compile / compile)
+    .dependsOn(Compile / copyResources)
+    .value
 )
 
 lazy val commonLibraryDependencies = Seq(
@@ -122,7 +124,6 @@ lazy val kineticMerge = (project in file("kinetic-merge"))
     Test / testForkedParallel := true,
     Test / javaOptions ++= Seq("-Xmx8G")
   )
-
 lazy val gitCliApplication = (project in file("git-cli-application"))
   .dependsOn(kineticMerge, kineticMerge % "test->test")
   .settings(
