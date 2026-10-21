@@ -45,7 +45,8 @@ lazy val commonSettings = Seq(
   Test / logLevel           := Level.Error,
   Test / fork               := true,
   Test / testForkedParallel := true,
-  Test / javaOptions ++= Seq("-Xmx8G")
+  Test / javaOptions ++= Seq("-Xmx8G"),
+  Test / testOptions += Tests.Argument(jupiterTestFramework, "-q")
 )
 
 lazy val commonLibraryDependencies = Seq(
