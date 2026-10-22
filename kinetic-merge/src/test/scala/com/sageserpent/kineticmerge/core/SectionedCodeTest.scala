@@ -13,6 +13,7 @@ import com.sageserpent.kineticmerge.core.MatchAnalysis.{
 }
 import com.sageserpent.kineticmerge.core.SectionedCodeExtension.merge
 import com.sageserpent.kineticmerge.core.SectionedCodeTest.{*, given}
+import com.typesafe.scalalogging.StrictLogging
 import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.{Order as _, *}
 
@@ -21,7 +22,7 @@ import scala.annotation.nowarn
 import scala.concurrent.duration.Duration
 import scala.io.Source
 
-class SectionedCodeTest:
+class SectionedCodeTest extends StrictLogging:
   import SectionedCodeTest.*
   @TestFactory
   def sourcesCanBeReconstructedFromTheAnalysis: DynamicTests =
@@ -84,7 +85,7 @@ class SectionedCodeTest:
             right: FakeSources,
             minimumSizeFraction: Double
         ) =>
-          pprintCustomised.pprintln((base, left, right, minimumSizeFraction))
+          logger.info(pprintCustomised((base, left, right, minimumSizeFraction)).toString)
 
           val configuration = Configuration(
             minimumMatchSize = 2,
@@ -102,7 +103,7 @@ class SectionedCodeTest:
               analysis.right matches right
 
             case Left(overlappingSections: AdmissibleFailure) =>
-              pprintCustomised.pprintln(overlappingSections)
+              logger.info(pprintCustomised(overlappingSections).toString)
               Trials.reject()
 
             case Left(unexpectedException) => throw unexpectedException
@@ -125,7 +126,7 @@ class SectionedCodeTest:
 
     val minimumSizeFraction = 0
 
-    pprintCustomised.pprintln((base, left, right, minimumSizeFraction))
+    logger.info(pprintCustomised((base, left, right, minimumSizeFraction)).toString)
 
     val configuration = Configuration(
       minimumMatchSize = 2,
@@ -160,17 +161,17 @@ class SectionedCodeTest:
         // protected by braces; it seems it doesn't play well with the
         // preceding import statement.
         {
-          println(
+          logger.info(
             s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
           )
-          println("Sizes of common to all three sides...")
-          pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
-          println("Sizes of common to base and left...")
-          pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
-          println("Sizes of common to base and right...")
-          pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
-          println("Sizes of common to left and right...")
-          pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
+          logger.info("Sizes of common to all three sides...")
+          logger.info(pprintCustomised(commonToAllThreeSides.map(_.size)).toString)
+          logger.info("Sizes of common to base and left...")
+          logger.info(pprintCustomised(commonToBaseAndLeft.map(_.size)).toString)
+          logger.info("Sizes of common to base and right...")
+          logger.info(pprintCustomised(commonToBaseAndRight.map(_.size)).toString)
+          logger.info("Sizes of common to left and right...")
+          logger.info(pprintCustomised(commonToLeftAndRight.map(_.size)).toString)
 
           val configuration = Configuration(
             minimumMatchSize = minimumPossibleExpectedMatchSize,
@@ -210,17 +211,17 @@ class SectionedCodeTest:
         // protected by braces; it seems it doesn't play well with the
         // preceding import statement.
         {
-          println(
+          logger.info(
             s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
           )
-          println("Sizes of common to all three sides...")
-          pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
-          println("Sizes of common to base and left...")
-          pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
-          println("Sizes of common to base and right...")
-          pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
-          println("Sizes of common to left and right...")
-          pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
+          logger.info("Sizes of common to all three sides...")
+          logger.info(pprintCustomised(commonToAllThreeSides.map(_.size)).toString)
+          logger.info("Sizes of common to base and left...")
+          logger.info(pprintCustomised(commonToBaseAndLeft.map(_.size)).toString)
+          logger.info("Sizes of common to base and right...")
+          logger.info(pprintCustomised(commonToBaseAndRight.map(_.size)).toString)
+          logger.info("Sizes of common to left and right...")
+          logger.info(pprintCustomised(commonToLeftAndRight.map(_.size)).toString)
 
           val configuration = Configuration(
             minimumMatchSize = minimumPossibleExpectedMatchSize,
@@ -260,17 +261,17 @@ class SectionedCodeTest:
         // protected by braces; it seems it doesn't play well with the
         // preceding import statement.
         {
-          println(
+          logger.info(
             s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
           )
-          println("Sizes of common to all three sides...")
-          pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
-          println("Sizes of common to base and left...")
-          pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
-          println("Sizes of common to base and right...")
-          pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
-          println("Sizes of common to left and right...")
-          pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
+          logger.info("Sizes of common to all three sides...")
+          logger.info(pprintCustomised(commonToAllThreeSides.map(_.size)).toString)
+          logger.info("Sizes of common to base and left...")
+          logger.info(pprintCustomised(commonToBaseAndLeft.map(_.size)).toString)
+          logger.info("Sizes of common to base and right...")
+          logger.info(pprintCustomised(commonToBaseAndRight.map(_.size)).toString)
+          logger.info("Sizes of common to left and right...")
+          logger.info(pprintCustomised(commonToLeftAndRight.map(_.size)).toString)
 
           val configuration = Configuration(
             minimumMatchSize = minimumPossibleExpectedMatchSize,
@@ -308,17 +309,17 @@ class SectionedCodeTest:
         // braces; it seems it doesn't play well with the preceding import
         // statement.
         {
-          println(
+          logger.info(
             s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
           )
-          println("Sizes of common to all three sides...")
-          pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
-          println("Sizes of common to base and left...")
-          pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
-          println("Sizes of common to base and right...")
-          pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
-          println("Sizes of common to left and right...")
-          pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
+          logger.info("Sizes of common to all three sides...")
+          logger.info(pprintCustomised(commonToAllThreeSides.map(_.size)).toString)
+          logger.info("Sizes of common to base and left...")
+          logger.info(pprintCustomised(commonToBaseAndLeft.map(_.size)).toString)
+          logger.info("Sizes of common to base and right...")
+          logger.info(pprintCustomised(commonToBaseAndRight.map(_.size)).toString)
+          logger.info("Sizes of common to left and right...")
+          logger.info(pprintCustomised(commonToLeftAndRight.map(_.size)).toString)
 
           val configuration = Configuration(
             minimumMatchSize = minimumPossibleExpectedMatchSize,
@@ -597,7 +598,7 @@ class SectionedCodeTest:
               }
 
             case Left(overlappingSections: AdmissibleFailure) =>
-              pprintCustomised.pprintln(overlappingSections)
+              logger.info(pprintCustomised(overlappingSections).toString)
               Trials.reject()
 
             case Left(unexpectedException) => throw unexpectedException
@@ -1784,7 +1785,7 @@ class SectionedCodeTest:
         .map(analysis.matchesFor)
         .reduce(_ union _)
 
-    println(s"Resulting matches:\n${pprintCustomised(matches)}")
+    logger.info(s"Resulting matches:\n${pprintCustomised(matches)}")
 
     val (allSides, pairwise) = matches.partition {
       case _: Match.AllSides[?] => true
@@ -1805,17 +1806,17 @@ class SectionedCodeTest:
         // braces; it seems it doesn't play well with the preceding import
         // statement.
         {
-          println(
+          logger.info(
             s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
           )
-          println("Sizes of common to all three sides...")
-          pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
-          println("Sizes of common to base and left...")
-          pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
-          println("Sizes of common to base and right...")
-          pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
-          println("Sizes of common to left and right...")
-          pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
+          logger.info("Sizes of common to all three sides...")
+          logger.info(pprintCustomised(commonToAllThreeSides.map(_.size)).toString)
+          logger.info("Sizes of common to base and left...")
+          logger.info(pprintCustomised(commonToBaseAndLeft.map(_.size)).toString)
+          logger.info("Sizes of common to base and right...")
+          logger.info(pprintCustomised(commonToBaseAndRight.map(_.size)).toString)
+          logger.info("Sizes of common to left and right...")
+          logger.info(pprintCustomised(commonToLeftAndRight.map(_.size)).toString)
 
           val configuration = Configuration(
             minimumMatchSize = minimumPossibleExpectedMatchSize,
@@ -1839,7 +1840,7 @@ class SectionedCodeTest:
               assertDoesNotThrow(() => analysis.merge)
 
             case Left(overlappingSections: AdmissibleFailure) =>
-              pprintCustomised.pprintln(overlappingSections)
+              logger.info(pprintCustomised(overlappingSections).toString)
               Trials.reject()
 
             case Left(unexpectedException) => throw unexpectedException
@@ -1864,17 +1865,17 @@ class SectionedCodeTest:
         // braces; it seems it doesn't play well with the preceding import
         // statement.
         {
-          println(
+          logger.info(
             s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
           )
-          println("Sizes of common to all three sides...")
-          pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
-          println("Sizes of common to base and left...")
-          pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
-          println("Sizes of common to base and right...")
-          pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
-          println("Sizes of common to left and right...")
-          pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
+          logger.info("Sizes of common to all three sides...")
+          logger.info(pprintCustomised(commonToAllThreeSides.map(_.size)).toString)
+          logger.info("Sizes of common to base and left...")
+          logger.info(pprintCustomised(commonToBaseAndLeft.map(_.size)).toString)
+          logger.info("Sizes of common to base and right...")
+          logger.info(pprintCustomised(commonToBaseAndRight.map(_.size)).toString)
+          logger.info("Sizes of common to left and right...")
+          logger.info(pprintCustomised(commonToLeftAndRight.map(_.size)).toString)
 
           val configuration = Configuration(
             minimumMatchSize = minimumPossibleExpectedMatchSize,
@@ -1898,7 +1899,7 @@ class SectionedCodeTest:
               assertDoesNotThrow(() => analysis.merge)
 
             case Left(overlappingSections: AdmissibleFailure) =>
-              pprintCustomised.pprintln(overlappingSections)
+              logger.info(pprintCustomised(overlappingSections).toString)
               Trials.reject()
 
             case Left(unexpectedException) => throw unexpectedException
