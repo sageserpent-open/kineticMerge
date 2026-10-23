@@ -29,7 +29,7 @@ lazy val commonSettings = Seq(
   Compile / compile    := (Compile / compile)
     .dependsOn(Compile / copyResources)
     .value,
-  Test / javaOptions += "-Dlogback-test-root-level=ERROR",
+  Test / javaOptions += "-Dlogback-test-root-level=OFF",
   Test / logLevel           := Level.Error,
   Test / fork               := true,
   Test / testForkedParallel := true,
