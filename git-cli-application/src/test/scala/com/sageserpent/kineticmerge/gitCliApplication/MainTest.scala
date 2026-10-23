@@ -77,13 +77,18 @@ object MainTest extends ProseExamples, StrictLogging:
   private val arthurIsMarkedWithConflictingUpdateAndDeletionInTheIndex =
     pathIsMarkedWithConflictingUpdateAndDeletionInTheIndex(arthur)
 
+  private def executeAndLogResult(command: => String): Unit =
+    val result = command
+    logger.info(s"$result")
+  end executeAndLogResult
+
   private def introduceBinaryFileFromSeed(path: Path)(seed: Int): Array[Byte] =
     val content = byteArrayFromSeed(seed)
 
     os.write(path / binary, content, createFolders = true)
 
-    logger.info(os.proc("git", "add", binary).call(path).out.text())
-    logger.info(
+    executeAndLogResult(os.proc("git", "add", binary).call(path).out.text())
+    executeAndLogResult(
       os.proc(
         "git",
         "commit",
@@ -102,7 +107,7 @@ object MainTest extends ProseExamples, StrictLogging:
 
     os.write.over(path / binary, content, createFolders = true)
 
-    logger.info(
+    executeAndLogResult(
       os.proc(
         "git",
         "commit",
@@ -128,8 +133,8 @@ object MainTest extends ProseExamples, StrictLogging:
   end byteArrayFromSeed
 
   private def removeBinaryFile(path: Path): Unit =
-    logger.info(os.proc("git", "rm", binary).call(path).out.text())
-    logger.info(
+    executeAndLogResult(os.proc("git", "rm", binary).call(path).out.text())
+    executeAndLogResult(
       os.proc(s"git", "commit", "-m", "'Removing the binary file.'")
         .call(path)
         .out
@@ -139,8 +144,8 @@ object MainTest extends ProseExamples, StrictLogging:
 
   private def introducingArthur(path: Path): Unit =
     os.write(path / arthur, "Hello, my old mucker!\n", createFolders = true)
-    logger.info(os.proc("git", "add", arthur).call(path).out.text())
-    logger.info(
+    executeAndLogResult(os.proc("git", "add", arthur).call(path).out.text())
+    executeAndLogResult(
       os.proc("git", "commit", "-m", "'Introducing Arthur.'")
         .call(path)
         .out
@@ -153,7 +158,7 @@ object MainTest extends ProseExamples, StrictLogging:
       path / arthur,
       s"Pleased to see you, old $arthurSecondVariation.\n"
     )
-    logger.info(
+    executeAndLogResult(
       os.proc("git", "commit", "-am", "'Arthur continues...'")
         .call(path)
         .out
@@ -166,7 +171,7 @@ object MainTest extends ProseExamples, StrictLogging:
       path / arthur,
       s"Pleased to see you, old $arthurFirstVariation.\n"
     )
-    logger.info(
+    executeAndLogResult(
       os.proc("git", "commit", "-am", "'Arthur elaborates.'")
         .call(path)
         .out
@@ -179,7 +184,7 @@ object MainTest extends ProseExamples, StrictLogging:
       path / arthur,
       "Hello, all and sundry!\n"
     )
-    logger.info(
+    executeAndLogResult(
       os.proc("git", "commit", "-am", "'Arthur corrects himself.'")
         .call(path)
         .out
@@ -192,7 +197,7 @@ object MainTest extends ProseExamples, StrictLogging:
       path / arthur,
       "\n"
     )
-    logger.info(
+    executeAndLogResult(
       os.proc("git", "commit", "-am", "'Arthur clears his throat.'")
         .call(path)
         .out
@@ -201,15 +206,15 @@ object MainTest extends ProseExamples, StrictLogging:
   end arthurClearsHisThroat
 
   private def exeuntArthur(path: Path): Unit =
-    logger.info(os.proc("git", "rm", arthur).call(path).out.text())
-    logger.info(
+    executeAndLogResult(os.proc("git", "rm", arthur).call(path).out.text())
+    executeAndLogResult(
       os.proc(s"git", "commit", "-m", "'Exeunt Arthur.'").call(path).out.text()
     )
   end exeuntArthur
 
   private def arthurExcusesHimself(path: Path): Unit =
-    logger.info(os.proc("git", "rm", arthur).call(path).out.text())
-    logger.info(
+    executeAndLogResult(os.proc("git", "rm", arthur).call(path).out.text())
+    executeAndLogResult(
       os.proc("git", "commit", "-m", "'Arthur excuses himself.'")
         .call(path)
         .out
@@ -219,7 +224,7 @@ object MainTest extends ProseExamples, StrictLogging:
 
   private def arthurDeniesHavingSaidAnything(path: Path): Unit =
     os.write.over(path / arthur, "")
-    logger.info(
+    executeAndLogResult(
       os.proc("git", "commit", "-am", "'Arthur denies having said anything.'")
         .call(path)
         .out
@@ -229,16 +234,16 @@ object MainTest extends ProseExamples, StrictLogging:
 
   private def enterTysonStageLeft(path: Path): Unit =
     os.write(path / tyson, s"$tysonResponse\n", createFolders = true)
-    logger.info(os.proc("git", "add", tyson).call(path).out.text())
-    logger.info(
+    executeAndLogResult(os.proc("git", "add", tyson).call(path).out.text())
+    executeAndLogResult(
       os.proc("git", "commit", "-m", "'Tyson responds.'").call(path).out.text()
     )
   end enterTysonStageLeft
 
   private def evilTysonMakesDramaticEntranceExulting(path: Path): Unit =
     os.write(path / tyson, s"$evilTysonExultation\n", createFolders = true)
-    logger.info(os.proc("git", "add", tyson).call(path).out.text())
-    logger.info(
+    executeAndLogResult(os.proc("git", "add", tyson).call(path).out.text())
+    executeAndLogResult(
       os.proc("git", "commit", "-m", "'Evil Tyson exults.'")
         .call(path)
         .out
@@ -247,8 +252,8 @@ object MainTest extends ProseExamples, StrictLogging:
   end evilTysonMakesDramaticEntranceExulting
 
   private def sandraHeadsOffHome(path: Path): Unit =
-    logger.info(os.proc("git", "rm", sandra).call(path).out.text())
-    logger.info(
+    executeAndLogResult(os.proc("git", "rm", sandra).call(path).out.text())
+    executeAndLogResult(
       os.proc("git", "commit", "-m", "'Sandra heads off home.'")
         .call(path)
         .out
@@ -262,8 +267,8 @@ object MainTest extends ProseExamples, StrictLogging:
       "Hiya - just gan yam now...\n",
       createFolders = true
     )
-    logger.info(os.proc("git", "add", sandra).call(path).out.text())
-    logger.info(
+    executeAndLogResult(os.proc("git", "add", sandra).call(path).out.text())
+    executeAndLogResult(
       os.proc("git", "commit", "-m", "'Sandra stops by briefly...'")
         .call(path)
         .out
@@ -311,11 +316,11 @@ object MainTest extends ProseExamples, StrictLogging:
       createFolders = true
     )
 
-    logger.info(os.proc("git", "rm", arthur).call(path).out.text())
-    logger.info(
+    executeAndLogResult(os.proc("git", "rm", arthur).call(path).out.text())
+    executeAndLogResult(
       os.proc("git", "add", movedCasesLimitStrategy).call(path).out.text()
     )
-    logger.info(
+    executeAndLogResult(
       os.proc("git", "commit", "-m", "'Moving `arthur`.'")
         .call(path)
         .out
@@ -382,8 +387,10 @@ object MainTest extends ProseExamples, StrictLogging:
       baseCasesLimitStrategyContent,
       createFolders = true
     )
-    logger.info(os.proc("git", "add", casesLimitStrategy).call(path).out.text())
-    logger.info(
+    executeAndLogResult(
+      os.proc("git", "add", casesLimitStrategy).call(path).out.text()
+    )
+    executeAndLogResult(
       os.proc("git", "commit", "-m", "'Introducing `CasesLimitStrategy`.'")
         .call(path)
         .out
@@ -397,8 +404,10 @@ object MainTest extends ProseExamples, StrictLogging:
       justTheInterfaceForCasesLimitStrategyExpectedContent,
       createFolders = true
     )
-    logger.info(os.proc("git", "add", casesLimitStrategy).call(path).out.text())
-    logger.info(
+    executeAndLogResult(
+      os.proc("git", "add", casesLimitStrategy).call(path).out.text()
+    )
+    executeAndLogResult(
       os.proc("git", "commit", "-m", "'Introducing `CasesLimitStrategy`.'")
         .call(path)
         .out
@@ -412,10 +421,10 @@ object MainTest extends ProseExamples, StrictLogging:
       excisedCasesLimitStrategiesExpectedContent,
       createFolders = true
     )
-    logger.info(
+    executeAndLogResult(
       os.proc("git", "add", excisedCasesLimitStrategies).call(path).out.text()
     )
-    logger.info(
+    executeAndLogResult(
       os.proc("git", "commit", "-m", "'Introducing `CasesLimitStrategies`.'")
         .call(path)
         .out
@@ -429,7 +438,7 @@ object MainTest extends ProseExamples, StrictLogging:
       justTheInterfaceForCasesLimitStrategyContent,
       createFolders = true
     )
-    logger.info(
+    executeAndLogResult(
       os.proc("git", "commit", "-am", "'Editing `CasesLimitStrategy`.'")
         .call(path)
         .out
@@ -443,7 +452,7 @@ object MainTest extends ProseExamples, StrictLogging:
       excisedCasesLimitStrategiesContent,
       createFolders = true
     )
-    logger.info(
+    executeAndLogResult(
       os.proc("git", "commit", "-am", "'Editing `CasesLimitStrategies`.'")
         .call(path)
         .out
@@ -457,7 +466,7 @@ object MainTest extends ProseExamples, StrictLogging:
       editedCasesLimitStrategyContent,
       createFolders = true
     )
-    logger.info(
+    executeAndLogResult(
       os.proc("git", "commit", "-am", "'Editing `CasesLimitStrategy`.'")
         .call(path)
         .out
@@ -467,8 +476,10 @@ object MainTest extends ProseExamples, StrictLogging:
 
   private def removingCasesLimitStrategy(path: Path): Unit =
     os.remove(path / casesLimitStrategy)
-    logger.info(os.proc("git", "rm", casesLimitStrategy).call(path).out.text())
-    logger.info(
+    executeAndLogResult(
+      os.proc("git", "rm", casesLimitStrategy).call(path).out.text()
+    )
+    executeAndLogResult(
       os.proc(s"git", "commit", "-m", "'Removing `CasesLimitStrategy`.'")
         .call(path)
         .out
@@ -478,7 +489,7 @@ object MainTest extends ProseExamples, StrictLogging:
 
   private def emptyingCasesLimitStrategy(path: Path): Unit =
     os.write.over(path / casesLimitStrategy, "")
-    logger.info(
+    executeAndLogResult(
       os.proc("git", "commit", "-am", "'Emptying `CasesLimitStrategy`.")
         .call(path)
         .out
@@ -497,10 +508,10 @@ object MainTest extends ProseExamples, StrictLogging:
       excisedCasesLimitStrategiesContent,
       createFolders = true
     )
-    logger.info(
+    executeAndLogResult(
       os.proc("git", "add", excisedCasesLimitStrategies).call(path).out.text()
     )
-    logger.info(
+    executeAndLogResult(
       os.proc(
         "git",
         "commit",
@@ -521,10 +532,10 @@ object MainTest extends ProseExamples, StrictLogging:
     os.remove(
       path / excisedCasesLimitStrategies
     )
-    logger.info(
+    executeAndLogResult(
       os.proc("git", "rm", excisedCasesLimitStrategies).call(path).out.text()
     )
-    logger.info(
+    executeAndLogResult(
       os.proc(
         "git",
         "commit",
@@ -543,11 +554,13 @@ object MainTest extends ProseExamples, StrictLogging:
       createFolders = true
     )
 
-    logger.info(os.proc("git", "rm", casesLimitStrategy).call(path).out.text())
-    logger.info(
+    executeAndLogResult(
+      os.proc("git", "rm", casesLimitStrategy).call(path).out.text()
+    )
+    executeAndLogResult(
       os.proc("git", "add", movedCasesLimitStrategy).call(path).out.text()
     )
-    logger.info(
+    executeAndLogResult(
       os.proc("git", "commit", "-m", "'Moving `CasesLimitStrategy`.'")
         .call(path)
         .out
@@ -561,8 +574,10 @@ object MainTest extends ProseExamples, StrictLogging:
       replacementCasesLimitStrategyContent,
       createFolders = true
     )
-    logger.info(os.proc("git", "add", casesLimitStrategy).call(path).out.text())
-    logger.info(
+    executeAndLogResult(
+      os.proc("git", "add", casesLimitStrategy).call(path).out.text()
+    )
+    executeAndLogResult(
       os.proc("git", "commit", "-m", "'Reintroducing `CasesLimitStrategy`.'")
         .call(path)
         .out
@@ -575,7 +590,7 @@ object MainTest extends ProseExamples, StrictLogging:
       path / arthur,
       baseCasesLimitStrategyContent
     )
-    logger.info(
+    executeAndLogResult(
       os.proc("git", "commit", "-am", "'Arthur declaims on software.'")
         .call(path)
         .out
@@ -589,8 +604,10 @@ object MainTest extends ProseExamples, StrictLogging:
     val content = byteArrayFromSeed("Inspired by Andrew Koenig...".hashCode)
 
     os.write(path / casesLimitStrategy, content, createFolders = true)
-    logger.info(os.proc("git", "add", casesLimitStrategy).call(path).out.text())
-    logger.info(
+    executeAndLogResult(
+      os.proc("git", "add", casesLimitStrategy).call(path).out.text()
+    )
+    executeAndLogResult(
       os.proc(
         "git",
         "commit",
@@ -610,10 +627,10 @@ object MainTest extends ProseExamples, StrictLogging:
     val content = byteArrayFromSeed("Inspired by Andrew Koenig...".hashCode)
 
     os.write(path / movedCasesLimitStrategy, content, createFolders = true)
-    logger.info(
+    executeAndLogResult(
       os.proc("git", "add", movedCasesLimitStrategy).call(path).out.text()
     )
-    logger.info(
+    executeAndLogResult(
       os.proc(
         "git",
         "commit",
@@ -633,10 +650,10 @@ object MainTest extends ProseExamples, StrictLogging:
       baseExpectyFlavouredAssertContent,
       createFolders = true
     )
-    logger.info(
+    executeAndLogResult(
       os.proc("git", "add", expectyFlavouredAssert).call(path).out.text()
     )
-    logger.info(
+    executeAndLogResult(
       os.proc("git", "commit", "-m", "'Introducing `ExpectyFlavouredAssert`.'")
         .call(path)
         .out
@@ -650,7 +667,7 @@ object MainTest extends ProseExamples, StrictLogging:
       editedExpectyFlavouredAssertContent,
       createFolders = true
     )
-    logger.info(
+    executeAndLogResult(
       os.proc("git", "commit", "-am", "'Editing `ExpectyFlavouredAssert`.'")
         .call(path)
         .out
@@ -669,7 +686,7 @@ object MainTest extends ProseExamples, StrictLogging:
       baseCasesLimitStrategyContent,
       createFolders = true
     )
-    logger.info(
+    executeAndLogResult(
       os.proc(
         "git",
         "commit",
@@ -893,7 +910,7 @@ object MainTest extends ProseExamples, StrictLogging:
   end gitRepository
 
   private def makeNewBranch(path: Path)(evilTwinBranch: String): Unit =
-    logger.info(
+    executeAndLogResult(
       os.proc("git", "checkout", "-b", evilTwinBranch)
         .call(path)
         .out
@@ -901,7 +918,7 @@ object MainTest extends ProseExamples, StrictLogging:
     )
 
   private def checkoutBranch(path: Path)(evilTwinBranch: String): Unit =
-    logger.info(
+    executeAndLogResult(
       os.proc("git", "checkout", evilTwinBranch)
         .call(path)
         .out
@@ -916,7 +933,7 @@ object MainTest extends ProseExamples, StrictLogging:
     )(tokenEquality)
 end MainTest
 
-class MainTest extends StrictLogging:
+class MainTest:
   @TestFactory
   def trivialMerge(): DynamicTests =
     (optionalSubdirectories and trialsApi.booleans and trialsApi.booleans and trialsApi.booleans)
@@ -984,7 +1001,7 @@ class MainTest extends StrictLogging:
                       exitCode
                     )
 
-                    logger.info(
+                    executeAndLogResult(
                       os.proc("git", "commit", "-m", "'Completing merge.'")
                         .call(path)
                         .out
@@ -2269,18 +2286,18 @@ class MainTest extends StrictLogging:
                     |THE END.
                     |""".stripMargin
                 )
-                logger.info(
+                executeAndLogResult(
                   os.proc("git", "add", originalFilename).call(path).out.text()
                 )
 
                 if emptyRenamedFileInBase then
                   os.write(path / renamedFilename, "")
-                  logger.info(
+                  executeAndLogResult(
                     os.proc("git", "add", renamedFilename).call(path).out.text()
                   )
                 end if
 
-                logger.info(
+                executeAndLogResult(
                   os.proc(
                     "git",
                     "commit",
@@ -2326,13 +2343,13 @@ class MainTest extends StrictLogging:
                   )
                 end if
 
-                logger.info(
+                executeAndLogResult(
                   os.proc("git", "rm", originalFilename).call(path).out.text()
                 )
-                logger.info(
+                executeAndLogResult(
                   os.proc("git", "add", renamedFilename).call(path).out.text()
                 )
-                logger.info(
+                executeAndLogResult(
                   os.proc(
                     "git",
                     "commit",
@@ -2362,7 +2379,7 @@ class MainTest extends StrictLogging:
                     |""".stripMargin,
                   createFolders = true
                 )
-                logger.info(
+                executeAndLogResult(
                   os.proc(
                     "git",
                     "commit",
