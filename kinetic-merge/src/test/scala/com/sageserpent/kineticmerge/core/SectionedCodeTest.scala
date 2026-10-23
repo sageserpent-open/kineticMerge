@@ -20,8 +20,9 @@ import _root_.java.util.concurrent.TimeUnit
 import scala.annotation.nowarn
 import scala.concurrent.duration.Duration
 import scala.io.Source
+import com.typesafe.scalalogging.StrictLogging
 
-class SectionedCodeTest:
+class SectionedCodeTest extends StrictLogging:
   import SectionedCodeTest.*
   @TestFactory
   def sourcesCanBeReconstructedFromTheAnalysis: DynamicTests =
@@ -160,16 +161,16 @@ class SectionedCodeTest:
         // protected by braces; it seems it doesn't play well with the
         // preceding import statement.
         {
-          println(
+          logger.info(
             s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
           )
-          println("Sizes of common to all three sides...")
+          logger.info("Sizes of common to all three sides...")
           pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
-          println("Sizes of common to base and left...")
+          logger.info("Sizes of common to base and left...")
           pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
-          println("Sizes of common to base and right...")
+          logger.info("Sizes of common to base and right...")
           pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
-          println("Sizes of common to left and right...")
+          logger.info("Sizes of common to left and right...")
           pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
 
           val configuration = Configuration(
@@ -210,16 +211,16 @@ class SectionedCodeTest:
         // protected by braces; it seems it doesn't play well with the
         // preceding import statement.
         {
-          println(
+          logger.info(
             s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
           )
-          println("Sizes of common to all three sides...")
+          logger.info("Sizes of common to all three sides...")
           pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
-          println("Sizes of common to base and left...")
+          logger.info("Sizes of common to base and left...")
           pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
-          println("Sizes of common to base and right...")
+          logger.info("Sizes of common to base and right...")
           pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
-          println("Sizes of common to left and right...")
+          logger.info("Sizes of common to left and right...")
           pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
 
           val configuration = Configuration(
@@ -260,16 +261,16 @@ class SectionedCodeTest:
         // protected by braces; it seems it doesn't play well with the
         // preceding import statement.
         {
-          println(
+          logger.info(
             s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
           )
-          println("Sizes of common to all three sides...")
+          logger.info("Sizes of common to all three sides...")
           pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
-          println("Sizes of common to base and left...")
+          logger.info("Sizes of common to base and left...")
           pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
-          println("Sizes of common to base and right...")
+          logger.info("Sizes of common to base and right...")
           pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
-          println("Sizes of common to left and right...")
+          logger.info("Sizes of common to left and right...")
           pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
 
           val configuration = Configuration(
@@ -308,16 +309,16 @@ class SectionedCodeTest:
         // braces; it seems it doesn't play well with the preceding import
         // statement.
         {
-          println(
+          logger.info(
             s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
           )
-          println("Sizes of common to all three sides...")
+          logger.info("Sizes of common to all three sides...")
           pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
-          println("Sizes of common to base and left...")
+          logger.info("Sizes of common to base and left...")
           pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
-          println("Sizes of common to base and right...")
+          logger.info("Sizes of common to base and right...")
           pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
-          println("Sizes of common to left and right...")
+          logger.info("Sizes of common to left and right...")
           pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
 
           val configuration = Configuration(
@@ -1784,7 +1785,7 @@ class SectionedCodeTest:
         .map(analysis.matchesFor)
         .reduce(_ union _)
 
-    println(s"Resulting matches:\n${pprintCustomised(matches)}")
+    logger.info(s"Resulting matches:\n${pprintCustomised(matches)}")
 
     val (allSides, pairwise) = matches.partition {
       case _: Match.AllSides[?] => true
@@ -1805,16 +1806,16 @@ class SectionedCodeTest:
         // braces; it seems it doesn't play well with the preceding import
         // statement.
         {
-          println(
+          logger.info(
             s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
           )
-          println("Sizes of common to all three sides...")
+          logger.info("Sizes of common to all three sides...")
           pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
-          println("Sizes of common to base and left...")
+          logger.info("Sizes of common to base and left...")
           pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
-          println("Sizes of common to base and right...")
+          logger.info("Sizes of common to base and right...")
           pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
-          println("Sizes of common to left and right...")
+          logger.info("Sizes of common to left and right...")
           pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
 
           val configuration = Configuration(
@@ -1864,16 +1865,16 @@ class SectionedCodeTest:
         // braces; it seems it doesn't play well with the preceding import
         // statement.
         {
-          println(
+          logger.info(
             s"Minimum size fraction for motion detection: $minimumSizeFractionForMotionDetection"
           )
-          println("Sizes of common to all three sides...")
+          logger.info("Sizes of common to all three sides...")
           pprintCustomised.pprintln(commonToAllThreeSides.map(_.size))
-          println("Sizes of common to base and left...")
+          logger.info("Sizes of common to base and left...")
           pprintCustomised.pprintln(commonToBaseAndLeft.map(_.size))
-          println("Sizes of common to base and right...")
+          logger.info("Sizes of common to base and right...")
           pprintCustomised.pprintln(commonToBaseAndRight.map(_.size))
-          println("Sizes of common to left and right...")
+          logger.info("Sizes of common to left and right...")
           pprintCustomised.pprintln(commonToLeftAndRight.map(_.size))
 
           val configuration = Configuration(
