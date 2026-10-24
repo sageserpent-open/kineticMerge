@@ -1813,14 +1813,41 @@ object MatchAnalysis extends StrictLogging:
                       yield (predecessor, successor))
               }
 
-              vettedSinks = isolatedSinks.toSeq.collect {
-                case (sink, predecessors) if 1 == predecessors.size =>
-                  (predecessors.head, sink)
-              }
-              vettedSources = isolatedSources.toSeq.collect {
-                case (source, successors) if 1 == successors.size =>
-                  (source, successors.head)
-              }
+              vettedSinks =
+                val initialSinks = isolatedSinks.toSeq.collect {
+                  case (sink, predecessors) if 1 == predecessors.size =>
+                    (predecessors.head, sink)
+                }
+                def hasCollidingOffsets(matches: Seq[GenericMatch[Element]]): Boolean =
+                  val baseOffsets = matches.flatMap(startOffsetOnBase)
+                  val leftOffsets = matches.flatMap(startOffsetOnLeft)
+                  val rightOffsets = matches.flatMap(startOffsetOnRight)
+                  baseOffsets.size != baseOffsets.toSet.size ||
+                  leftOffsets.size != leftOffsets.toSet.size ||
+                  rightOffsets.size != rightOffsets.toSet.size
+
+                initialSinks.groupBy(_._1).values.flatMap { bridges =>
+                  if hasCollidingOffsets(bridges.map(_._2)) then Seq.empty
+                  else bridges
+                }.toSeq
+
+              vettedSources =
+                val initialSources = isolatedSources.toSeq.collect {
+                  case (source, successors) if 1 == successors.size =>
+                    (source, successors.head)
+                }
+                def hasCollidingOffsets(matches: Seq[GenericMatch[Element]]): Boolean =
+                  val baseOffsets = matches.flatMap(startOffsetOnBase)
+                  val leftOffsets = matches.flatMap(startOffsetOnLeft)
+                  val rightOffsets = matches.flatMap(startOffsetOnRight)
+                  baseOffsets.size != baseOffsets.toSet.size ||
+                  leftOffsets.size != leftOffsets.toSet.size ||
+                  rightOffsets.size != rightOffsets.toSet.size
+
+                initialSources.groupBy(_._2).values.flatMap { bridges =>
+                  if hasCollidingOffsets(bridges.map(_._1)) then Seq.empty
+                  else bridges
+                }.toSeq
               vettedSandwiches = sandwiches.toSeq.collect {
                 case (sandwichFilling, predecessorAndSuccessorPairs)
                     if 1 == predecessorAndSuccessorPairs.size =>
