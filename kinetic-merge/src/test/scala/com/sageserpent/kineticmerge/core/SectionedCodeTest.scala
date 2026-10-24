@@ -75,7 +75,7 @@ class SectionedCodeTest extends StrictLogging:
     ) and minimumSizeFractionTrials)
       .withStrategy(cycle =>
         CasesLimitStrategy.timed(
-          Duration.apply(if cycle.isInitial then 4 else 3, TimeUnit.MINUTES)
+          Duration.apply(10, TimeUnit.MINUTES)
         )
       )
       .dynamicTests(
