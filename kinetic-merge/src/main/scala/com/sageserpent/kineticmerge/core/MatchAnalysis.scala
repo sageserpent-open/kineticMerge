@@ -1813,20 +1813,185 @@ object MatchAnalysis extends StrictLogging:
                       yield (predecessor, successor))
               }
 
-              vettedSinks = isolatedSinks.toSeq.collect {
-                case (sink, predecessors) if 1 == predecessors.size =>
-                  (predecessors.head, sink)
-              }
-              vettedSources = isolatedSources.toSeq.collect {
-                case (source, successors) if 1 == successors.size =>
-                  (source, successors.head)
-              }
-              vettedSandwiches = sandwiches.toSeq.collect {
-                case (sandwichFilling, predecessorAndSuccessorPairs)
-                    if 1 == predecessorAndSuccessorPairs.size =>
-                  predecessorAndSuccessorPairs.head match
-                    case (predecessor, successor) =>
-                      (predecessor, sandwichFilling, successor)
+              disjointSetsMap <- DisjointSets.toSets
+
+              (vettedSinks, vettedSources, vettedSandwiches) = {
+                val initialSinks = isolatedSinks.toSeq.collect {
+                  case (sink, predecessors)
+                      if 1 == predecessors.size && predecessors.head.isAnAllSidesMatch =>
+                    (
+                      predecessors.head
+                        .asInstanceOf[Match.AllSides[Section[Element]]],
+                      sink
+                    )
+                }
+                val initialSources = isolatedSources.toSeq.collect {
+                  case (source, successors)
+                      if 1 == successors.size && successors.head.isAnAllSidesMatch =>
+                    (
+                      source,
+                      successors.head
+                        .asInstanceOf[Match.AllSides[Section[Element]]]
+                    )
+                }
+                val initialSandwiches = sandwiches.toSeq.collect {
+                  case (sandwichFilling, predecessorAndSuccessorPairs)
+                      if 1 == predecessorAndSuccessorPairs.size &&
+                        predecessorAndSuccessorPairs.head._1.isAnAllSidesMatch &&
+                        predecessorAndSuccessorPairs.head._2.isAnAllSidesMatch =>
+                    (
+                      predecessorAndSuccessorPairs.head._1
+                        .asInstanceOf[Match.AllSides[Section[Element]]],
+                      sandwichFilling,
+                      predecessorAndSuccessorPairs.head._2
+                        .asInstanceOf[Match.AllSides[Section[Element]]]
+                    )
+                }
+
+                def pairwiseMatchesInClass(
+                    rep: GenericMatch[Element]
+                ): Set[GenericMatch[Element]] =
+                  given Order[GenericMatch[Element]] =
+                    Order.by(_.stableOrderingKey)
+                  disjointSetsMap
+                    .get(rep)
+                    .fold(Set(rep))(
+                      _.foldLeft(Set.empty[GenericMatch[Element]])(_ + _)
+                    )
+
+                def sectionsOverlap(
+                    s1: Section[Element],
+                    s2: Section[Element]
+                ): Boolean =
+                  s1.startOffset < s2.onePastEndOffset && s2.startOffset < s1.onePastEndOffset
+
+                def matchesOverlapOnSamePath(
+                    m1: GenericMatch[Element],
+                    m2: GenericMatch[Element]
+                ): Boolean =
+                  (for
+                    p1 <- pathOnBase(m1)
+                    p2 <- pathOnBase(m2)
+                    if p1 == p2
+                    s1 <- m1.baseContribution
+                    s2 <- m2.baseContribution
+                  yield sectionsOverlap(s1, s2)).getOrElse(false) ||
+                    (for
+                      p1 <- pathOnLeft(m1)
+                      p2 <- pathOnLeft(m2)
+                      if p1 == p2
+                      s1 <- m1.leftContribution
+                      s2 <- m2.leftContribution
+                    yield sectionsOverlap(s1, s2)).getOrElse(false) ||
+                    (for
+                      p1 <- pathOnRight(m1)
+                      p2 <- pathOnRight(m2)
+                      if p1 == p2
+                      s1 <- m1.rightContribution
+                      s2 <- m2.rightContribution
+                    yield sectionsOverlap(s1, s2)).getOrElse(false)
+
+                def classesOverlap(
+                    matches1: Set[GenericMatch[Element]],
+                    matches2: Set[GenericMatch[Element]]
+                ): Boolean =
+                  matches1.exists(m1 =>
+                    matches2.exists(m2 => matchesOverlapOnSamePath(m1, m2))
+                  )
+
+                def nonConflictingBridges(
+                    candidateReps: Seq[GenericMatch[Element]]
+                ): Set[GenericMatch[Element]] =
+                  candidateReps.filterNot { rep =>
+                    val repMatches = pairwiseMatchesInClass(rep)
+                    candidateReps.exists { otherRep =>
+                      otherRep != rep &&
+                      pairwiseMatchesInClass(otherRep) != repMatches &&
+                      classesOverlap(
+                        repMatches,
+                        pairwiseMatchesInClass(otherRep)
+                      )
+                    }
+                  }.toSet
+
+                val sinksByPredecessor: Map[Match.AllSides[Section[Element]], Seq[(Match.AllSides[Section[Element]], GenericMatch[Element])]] = initialSinks.groupBy(_._1)
+                val sourcesBySuccessor: Map[Match.AllSides[Section[Element]], Seq[(GenericMatch[Element], Match.AllSides[Section[Element]])]] = initialSources.groupBy(_._2)
+
+                val sandwichesByPredecessor: Map[Match.AllSides[Section[Element]], Seq[(Match.AllSides[Section[Element]], GenericMatch[Element], Match.AllSides[Section[Element]])]] = initialSandwiches.groupBy(_._1)
+                val sandwichesBySuccessor: Map[Match.AllSides[Section[Element]], Seq[(Match.AllSides[Section[Element]], GenericMatch[Element], Match.AllSides[Section[Element]])]]   = initialSandwiches.groupBy(_._3)
+
+                val allPredecessors: Set[Match.AllSides[Section[Element]]] =
+                  sinksByPredecessor.keySet ++ sandwichesByPredecessor.keySet
+                val allSuccessors: Set[Match.AllSides[Section[Element]]] =
+                  sourcesBySuccessor.keySet ++ sandwichesBySuccessor.keySet
+
+                val validSinksByPredecessor = allPredecessors.map { pred =>
+                  val sinks =
+                    sinksByPredecessor.getOrElse(pred, Seq.empty).map(_._2)
+                  val sws = sandwichesByPredecessor
+                    .getOrElse(pred, Seq.empty)
+                    .map(_._2)
+                  val candidateReps = (sinks ++ sws).distinct
+                  val validReps     = nonConflictingBridges(candidateReps)
+                  pred -> sinks.filter(validReps.contains).toSet
+                }.toMap
+
+                val validSourcesBySuccessor = allSuccessors.map { succ =>
+                  val sources =
+                    sourcesBySuccessor.getOrElse(succ, Seq.empty).map(_._1)
+                  val sws = sandwichesBySuccessor
+                    .getOrElse(succ, Seq.empty)
+                    .map(_._2)
+                  val candidateReps = (sources ++ sws).distinct
+                  val validReps     = nonConflictingBridges(candidateReps)
+                  succ -> sources.filter(validReps.contains).toSet
+                }.toMap
+
+                val validSandwichesByPredecessor = allPredecessors.map { pred =>
+                  val sinks =
+                    sinksByPredecessor.getOrElse(pred, Seq.empty).map(_._2)
+                  val sws = sandwichesByPredecessor
+                    .getOrElse(pred, Seq.empty)
+                    .map(_._2)
+                  val candidateReps = (sinks ++ sws).distinct
+                  val validReps     = nonConflictingBridges(candidateReps)
+                  pred -> sws.filter(validReps.contains).toSet
+                }.toMap
+
+                val validSandwichesBySuccessor = allSuccessors.map { succ =>
+                  val sources =
+                    sourcesBySuccessor.getOrElse(succ, Seq.empty).map(_._1)
+                  val sws = sandwichesBySuccessor
+                    .getOrElse(succ, Seq.empty)
+                    .map(_._2)
+                  val candidateReps = (sources ++ sws).distinct
+                  val validReps     = nonConflictingBridges(candidateReps)
+                  succ -> sws.filter(validReps.contains).toSet
+                }.toMap
+
+                val vettedSinksResult = initialSinks.filter { case (pred, sink) =>
+                  validSinksByPredecessor
+                    .getOrElse(pred, Set.empty)
+                    .contains(sink)
+                }
+
+                val vettedSourcesResult = initialSources.filter { case (source, succ) =>
+                  validSourcesBySuccessor
+                    .getOrElse(succ, Set.empty)
+                    .contains(source)
+                }
+
+                val vettedSandwichesResult = initialSandwiches.filter {
+                  case (pred, filling, succ) =>
+                    validSandwichesByPredecessor
+                      .getOrElse(pred, Set.empty)
+                      .contains(filling) &&
+                    validSandwichesBySuccessor
+                      .getOrElse(succ, Set.empty)
+                      .contains(filling)
+                }
+
+                (vettedSinksResult, vettedSourcesResult, vettedSandwichesResult)
               }
 
               _ <- vettedSinks.traverseVoid(DisjointSets.union)
