@@ -2931,6 +2931,10 @@ object MatchAnalysis extends StrictLogging:
         val multiplicityScaleDividedIntoAHalfForEachSideOfAPairwiseMatch =
           multiplicityScaleSubdivisibleByTwoOrThree / 2
 
+        // NOTE: we have to take into account the duplication of sections due to
+        // ambiguous matches sharing the same section on a given side, so we
+        // group the duplicates.
+
         val baseSectionMultiplicities = baseSectionsByPath.values
           .flatMap(_.iterator)
           .groupBy(identity)
@@ -2982,6 +2986,12 @@ object MatchAnalysis extends StrictLogging:
             Some(-multiplicityScaleDividedIntoAHalfForEachSideOfAPairwiseMatch)
         }
 
+        // Here, we go through all the sections, not knowing what side they
+        // belong to and tally the multiplicity contributions across the
+        // relevant sides for the corresponding matches. This is why we scale
+        // the multiplicities - we expect to revisit the same match from the POV
+        // of each of its sides' sections; this has to be taken into account in
+        // the tally.
         val (
           unbalancedBaseSectionMultiplicities,
           unbalancedLeftSectionMultiplicities,
