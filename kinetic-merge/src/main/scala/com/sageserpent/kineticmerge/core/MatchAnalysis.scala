@@ -2920,6 +2920,9 @@ object MatchAnalysis extends StrictLogging:
           case _ => None
 
       private def checkInvariant(): Unit =
+        // Check that the breakdown of sections by path on each side is
+        // consistent with `sectionsAndTheirMatches`...
+
         // We expect to tally either two lots of a given pairwise match or three
         // lots of a given all-sides match; we therefore scale the
         // raw multiplicities of the section to take this into account.
@@ -2933,7 +2936,7 @@ object MatchAnalysis extends StrictLogging:
 
         // NOTE: we have to take into account the duplication of sections due to
         // ambiguous matches sharing the same section on a given side, so we
-        // group the duplicates.
+        // count the duplicates.
 
         val baseSectionMultiplicities = baseSectionsByPath.values
           .flatMap(_.iterator)
@@ -3081,6 +3084,20 @@ object MatchAnalysis extends StrictLogging:
           unbalancedRightSectionMultiplicities.isEmpty,
           s"Found unbalanced right section multiplicities, these are:\n${pprintCustomised(unbalancedRightSectionMultiplicities)}"
         )
+
+        // Make sure that we don't have combinations of different kinds of
+        // pairwise matches that would be equivalent to all-sides matches...
+
+        sectionsAndTheirMatches.sets.foreach {
+          case (section, ambiguousMatchesSharingTheSameSection) =>
+            val pairwiseMatches =
+              ambiguousMatchesSharingTheSameSection.filter(!_.isAnAllSidesMatch)
+            val pairwiseMatchKinds = pairwiseMatches.map(_.ordinal)
+            assert(
+              2 > pairwiseMatchKinds.size,
+              s"Found at least two pairwise ambiguous matches of different kinds sharing the same section: ${pprintCustomised(section)} amongst: ${pprintCustomised(pairwiseMatches)}"
+            )
+        }
       end checkInvariant
 
       private def pareDownOrSuppressCompletely[MatchType <: GenericMatch[
