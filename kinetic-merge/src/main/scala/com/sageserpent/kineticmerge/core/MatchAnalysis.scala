@@ -1471,7 +1471,7 @@ object MatchAnalysis extends StrictLogging:
             case baseAndLeft @ Match.BaseAndLeft(baseSection, leftSection) =>
               if coalescePairwiseMatches then
                 val obsoletePairwiseMatchesByReplacementAllSidesMatches =
-                  MultiDict.from(
+                  Map.from(
                     (sectionsAndTheirMatches.get(baseSection).iterator collect {
                       case pairwiseMatch @ Match
                             .BaseAndRight(_, rightSection) =>
@@ -1513,7 +1513,7 @@ object MatchAnalysis extends StrictLogging:
             case baseAndRight @ Match.BaseAndRight(baseSection, rightSection) =>
               if coalescePairwiseMatches then
                 val obsoletePairwiseMatchesByReplacementAllSidesMatches =
-                  MultiDict.from(
+                  Map.from(
                     (sectionsAndTheirMatches.get(baseSection).iterator collect {
                       case pairwiseMatch @ Match.BaseAndLeft(_, leftSection) =>
                         Match.AllSides(
@@ -1553,7 +1553,7 @@ object MatchAnalysis extends StrictLogging:
             case leftAndRight @ Match.LeftAndRight(leftSection, rightSection) =>
               if coalescePairwiseMatches then
                 val obsoletePairwiseMatchesByReplacementAllSidesMatches =
-                  MultiDict.from(
+                  Map.from(
                     (sectionsAndTheirMatches.get(leftSection).iterator collect {
                       case pairwiseMatch @ Match.BaseAndLeft(baseSection, _) =>
                         Match.AllSides(
@@ -2464,7 +2464,7 @@ object MatchAnalysis extends StrictLogging:
 
         withoutTheseMatches(redundantMatches)
       end withoutRedundantPairwiseMatches
-      
+
       private def isRedundantPairwiseMatch(aMatch: GenericMatch[Element]) =
         aMatch match
           case Match.BaseAndLeft(baseSection, leftSection) =>
