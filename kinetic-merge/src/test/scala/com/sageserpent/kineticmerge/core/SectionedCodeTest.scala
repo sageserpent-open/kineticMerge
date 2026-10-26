@@ -1446,7 +1446,7 @@ class SectionedCodeTest extends StrictLogging:
     // There should be just all-sides, left-right and base-right matches.
     assert(matches.map(_.ordinal).size == 3)
 
-    // There should be two left-right matches.
+    // There should be two all-sides matches.
     assert(2 == (matches count {
       case _: Match.AllSides[Section[Element]] => true
       case _                                   => false
