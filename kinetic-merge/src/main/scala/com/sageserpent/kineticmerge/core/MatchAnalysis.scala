@@ -301,7 +301,7 @@ object MatchAnalysis extends StrictLogging:
           )
         end stableOrderingKey
       end extension
-      private val rollingHashFactoryCache: Cache[(Int, Int), RollingHash.Factory] =
+      private val rollingHashFactoryCache: Cache[Int, RollingHash.Factory] =
         Caffeine.newBuilder().build()
 
       def sectionSlice(
@@ -3691,8 +3691,8 @@ object MatchAnalysis extends StrictLogging:
           require(elements.size >= windowSize)
 
           val rollingHashFactory = rollingHashFactoryCache.get(
-            (windowSize, totalContentSize),
-            { case (windowSize: Int, totalContentSize: Int) =>
+            windowSize,
+            { (windowSize: Int) =>
               val fixedNumberOfBytesInElementHash =
                 hashFunction.bits / JavaByte.SIZE
 
