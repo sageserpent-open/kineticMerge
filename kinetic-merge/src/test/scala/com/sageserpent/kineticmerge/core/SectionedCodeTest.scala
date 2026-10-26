@@ -1443,11 +1443,11 @@ class SectionedCodeTest extends StrictLogging:
         .map(analysis.matchesFor)
         .reduce(_ union _)
 
-    // There should be just all-sides, left-right and base-right matches.
-    assert(matches.map(_.ordinal).size == 3)
+    // There should be just all-sides and left-right matches.
+    assert(matches.map(_.ordinal).size == 2)
 
-    // There should be two left-right matches.
-    assert(2 == (matches count {
+    // There should be three all-sides matches.
+    assert(3 == (matches count {
       case _: Match.AllSides[Section[Element]] => true
       case _                                   => false
     }))
@@ -1458,8 +1458,8 @@ class SectionedCodeTest extends StrictLogging:
       case _                                       => false
     }))
 
-    // There should be one base-right match.
-    assert(1 == (matches count {
+    // There should be no base-right matches.
+    assert(0 == (matches count {
       case _: Match.BaseAndRight[Section[Element]] => true
       case _                                       => false
     }))
