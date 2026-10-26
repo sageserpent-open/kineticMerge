@@ -16,11 +16,12 @@ import com.sageserpent.kineticmerge.core.MergeTest.DelegatingMergeAlgebraWithCon
 }
 import com.sageserpent.kineticmerge.core.MergeTest.Move.*
 import com.sageserpent.kineticmerge.core.MergeTest.{*, given}
+import com.typesafe.scalalogging.StrictLogging
 import monocle.syntax.all.*
 import org.junit.jupiter.api.{Assertions, Test, TestFactory}
 import pprintCustomised.*
 
-class MergeTest:
+class MergeTest extends StrictLogging:
   private val fullyMergedTestCases: Trials[MergeTestCase] =
     simpleMergeTestCases(MoveConstraints.empty(allowConflicts = false))(
       partialResult = emptyMergeTestCase(allowConflicts = false)
@@ -1685,8 +1686,9 @@ class MergeTest:
     fullyMergedTestCases
       .withLimit(20000)
       .dynamicTests: testCase =>
-        println("*************")
-        pprintln(testCase)
+        logger.info(
+          s"Expecting full merge using: ${pprintCustomised(testCase)}"
+        )
 
         given Order[Element] = testCase.matchesByElement.compare(_, _)
         given Sized[Element] = defaultElementSize(_)
@@ -1725,8 +1727,9 @@ class MergeTest:
 
         (result: @unchecked) match
           case MergedWithConflicts(_, _, _) =>
-            println("*************")
-            pprintln(testCase)
+            logger.info(
+              s"Expecting conflicted merge using: ${pprintCustomised(testCase)}"
+            )
 
             testCase.validate(result)
           case FullyMerged(_) => Trials.reject()

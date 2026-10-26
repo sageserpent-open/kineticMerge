@@ -7,12 +7,13 @@ import com.sageserpent.kineticmerge.core.MoveDestinationsTest.newUniqueFakeLocat
 import org.junit.jupiter.api.{Test, TestFactory}
 
 import java.util.UUID
+import com.typesafe.scalalogging.StrictLogging
 
 object MoveDestinationsTest:
   def newUniqueFakeLocation(): UUID = UUID.randomUUID()
 end MoveDestinationsTest
 
-class MoveDestinationsTest:
+class MoveDestinationsTest extends StrictLogging:
   @TestFactory
   def aSingleMoveOnOneSideIsNeitherAmbiguousNorDivergent: DynamicTests =
     // NOTE: need to define at least one source, because the invariant for
@@ -38,7 +39,7 @@ class MoveDestinationsTest:
         assert(!sut.isAmbiguous)
         assert(!sut.isDivergent)
 
-        println(sut.description)
+        logger.info(s"Move destinations: ${sut.description}")
       }
   end aSingleMoveOnOneSideIsNeitherAmbiguousNorDivergent
 
@@ -64,7 +65,7 @@ class MoveDestinationsTest:
       assert(sut.isAmbiguous)
       assert(!sut.isDivergent)
 
-      println(sut.description)
+      logger.info(s"Move destinations: ${sut.description}")
     }
   end multipleMovesOnOneSideAreAmbiguousButNotDivergent
 
@@ -79,7 +80,7 @@ class MoveDestinationsTest:
     assert(!sut.isAmbiguous)
     assert(!sut.isDivergent)
 
-    println(sut.description)
+    logger.info(s"Move destinations: ${sut.description}")
   end aSingleCoincidentMoveIsNeitherAmbiguousNorDivergent
 
   @Test
@@ -96,7 +97,7 @@ class MoveDestinationsTest:
     assert(sut.isAmbiguous)
     assert(!sut.isDivergent)
 
-    println(sut.description)
+    logger.info(s"Move destinations: ${sut.description}")
   end multipleCoincidentMovesAreAmbiguousButNotDivergent
 
   @TestFactory
@@ -161,7 +162,7 @@ class MoveDestinationsTest:
       assert(sut.isAmbiguous)
       assert(!sut.isDivergent)
 
-      println(sut.description)
+      logger.info(s"Move destinations: ${sut.description}")
     }
   end mixturesOfMovesOnOneSideAndCoincidentMovesAreAmbiguousButNotDivergent
 
@@ -176,7 +177,7 @@ class MoveDestinationsTest:
     assert(!sut.isAmbiguous)
     assert(sut.isDivergent)
 
-    println(sut.description)
+    logger.info(s"Move destinations: ${sut.description}")
   end aSingleLeftMoveWithASingleRightMoveIsDivergentButNotAmbiguous
 
   @TestFactory
@@ -256,7 +257,7 @@ class MoveDestinationsTest:
       assert(sut.isAmbiguous)
       assert(sut.isDivergent)
 
-      println(sut.description)
+      logger.info(s"Move destinations: ${sut.description}")
     }
   end anythingElseInvolvingLeftMovesAndRightMovesIsBothAmbiguousAndDivergent
 end MoveDestinationsTest

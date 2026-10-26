@@ -24,6 +24,7 @@ import com.sageserpent.kineticmerge.core.SectionedCodeTest.{
   given_Funnel_Element
 }
 import org.junit.jupiter.api.TestFactory
+import com.typesafe.scalalogging.StrictLogging
 
 object BlockDuplicationAndCondensationTests:
   given HashFunction = Hashing.murmur3_32_fixed()
@@ -46,7 +47,7 @@ object BlockDuplicationAndCondensationTests:
   end extension
 end BlockDuplicationAndCondensationTests
 
-class BlockDuplicationAndCondensationTests:
+class BlockDuplicationAndCondensationTests extends StrictLogging:
   @TestFactory
   def aBlockIsDuplicatedOnOneSide(): DynamicTests =
     val configuration = Configuration(
@@ -106,11 +107,11 @@ class BlockDuplicationAndCondensationTests:
         .longestCommonSubsequenceOf(path = placeholderPath)
         .adaptedForMirroring(mirrorImage)
 
-      println(s"Base contributions: ${pprintCustomised(baseContributions)}")
-      println(
+      logger.info(s"Base contributions: ${pprintCustomised(baseContributions)}")
+      logger.info(
         s"Side without changes contributions: ${pprintCustomised(contributionsOnSideWithoutChanges)}"
       )
-      println(
+      logger.info(
         s"Side with duplication contributions: ${pprintCustomised(contributionsOnSideWithDuplication)}"
       )
 
@@ -189,11 +190,11 @@ class BlockDuplicationAndCondensationTests:
         .longestCommonSubsequenceOf(path = placeholderPath)
         .adaptedForMirroring(mirrorImage)
 
-      println(s"Base contributions: ${pprintCustomised(baseContributions)}")
-      println(
+      logger.info(s"Base contributions: ${pprintCustomised(baseContributions)}")
+      logger.info(
         s"One side with duplication contributions: ${pprintCustomised(contributionsOnOneSideWithDuplication)}"
       )
-      println(
+      logger.info(
         s"The other side with duplication contributions: ${pprintCustomised(contributionsOnTheOtherSideWithDuplication)}"
       )
 
@@ -280,13 +281,13 @@ class BlockDuplicationAndCondensationTests:
         .longestCommonSubsequenceOf(path = placeholderPath)
         .adaptedForMirroring(mirrorImage)
 
-      println(
+      logger.info(
         s"Base contributions: ${pprintCustomised(baseContributionsWithDuplication)}"
       )
-      println(
+      logger.info(
         s"Side without changes contributions: ${pprintCustomised(contributionsOnSideWithoutChanges)}"
       )
-      println(
+      logger.info(
         s"The other side with merged contributions: ${pprintCustomised(contributionsOnTheOtherSideWithoutDuplication)}"
       )
 
@@ -372,13 +373,13 @@ class BlockDuplicationAndCondensationTests:
         .longestCommonSubsequenceOf(path = placeholderPath)
         .adaptedForMirroring(mirrorImage)
 
-      println(
+      logger.info(
         s"Base overlapped contributions: ${pprintCustomised(baseContributions)}"
       )
-      println(
+      logger.info(
         s"Side without changes contributions: ${pprintCustomised(contributionsOnSideWithoutChanges)}"
       )
-      println(
+      logger.info(
         s"Side with separated contributions: ${pprintCustomised(contributionsOnSideWithSeparation)}"
       )
 
@@ -470,13 +471,13 @@ class BlockDuplicationAndCondensationTests:
         .longestCommonSubsequenceOf(path = placeholderPath)
         .adaptedForMirroring(mirrorImage)
 
-      println(
+      logger.info(
         s"Base overlapped contributions: ${pprintCustomised(baseContributions)}"
       )
-      println(
+      logger.info(
         s"Side without changes contributions: ${pprintCustomised(contributionsOnSideWithoutChanges)}"
       )
-      println(
+      logger.info(
         s"Side with separated contributions: ${pprintCustomised(contributionsOnSideWithSeparationAndSwapping)}"
       )
 
@@ -587,11 +588,11 @@ class BlockDuplicationAndCondensationTests:
         .longestCommonSubsequenceOf(path = placeholderPath)
         .adaptedForMirroring(mirrorImage)
 
-      println(s"Base contributions: ${pprintCustomised(baseContributions)}")
-      println(
+      logger.info(s"Base contributions: ${pprintCustomised(baseContributions)}")
+      logger.info(
         s"One side with triplication contributions: ${pprintCustomised(contributionsOnOneSideWithTriplication)}"
       )
-      println(
+      logger.info(
         s"The other side with triplication contributions: ${pprintCustomised(contributionsOnTheOtherSideWithTriplication)}"
       )
 
@@ -678,20 +679,22 @@ class BlockDuplicationAndCondensationTests:
         .longestCommonSubsequenceOf(path = placeholderPath)
         .adaptedForMirroring(mirrorImage)
 
-      println(s"Base contributions: ${pprintCustomised(baseContributions)}")
-      println(s"Left contributions: ${pprintCustomised(leftContributions)}")
-      println(s"Right contributions: ${pprintCustomised(rightContributions)}")
+      logger.info(s"Base contributions: ${pprintCustomised(baseContributions)}")
+      logger.info(s"Left contributions: ${pprintCustomised(leftContributions)}")
+      logger.info(
+        s"Right contributions: ${pprintCustomised(rightContributions)}"
+      )
 
-      println(
+      logger.info(
         s"Groups of parallel matches: ${pprintCustomised(sectionedCode.groupsOfParallelMatches)}"
       )
-      println(
+      logger.info(
         s"Base blocks: ${pprintCustomised(sectionedCode.baseBlocksFor(placeholderPath))}"
       )
-      println(
+      logger.info(
         s"Left blocks: ${pprintCustomised(sectionedCode.leftBlocksFor(placeholderPath))}"
       )
-      println(
+      logger.info(
         s"Right blocks: ${pprintCustomised(sectionedCode.rightBlocksFor(placeholderPath))}"
       )
 

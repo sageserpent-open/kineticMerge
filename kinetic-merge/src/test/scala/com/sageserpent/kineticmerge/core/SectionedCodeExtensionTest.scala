@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Assertions.{assertDoesNotThrow, fail}
 import org.junit.jupiter.api.{Test, TestFactory}
 
 import scala.util.Right
+import com.typesafe.scalalogging.StrictLogging
 
 object SectionedCodeExtensionTest:
   type FakePath = String
@@ -31,7 +32,7 @@ object SectionedCodeExtensionTest:
   given ProgressRecording = NoProgressRecording
 end SectionedCodeExtensionTest
 
-class SectionedCodeExtensionTest extends ProseExamples:
+class SectionedCodeExtensionTest extends ProseExamples, StrictLogging:
   @TestFactory
   def migrationScenariosFromExcalidrawDocuments(): DynamicTests =
     val configuration = Configuration(
@@ -114,7 +115,7 @@ class SectionedCodeExtensionTest extends ProseExamples:
               (baseText, leftText, rightText, expectedMergeText, link),
               mirrorImage
             ) =>
-          println(s"See: $link")
+          logger.info(s"See: $link")
 
           val placeholderPath: FakePath = "*** STUNT DOUBLE ***"
 
@@ -161,10 +162,13 @@ class SectionedCodeExtensionTest extends ProseExamples:
           val (mergeResultsByPath, moveDestinationsReport) =
             sectionedCode.merge
 
-          println(fansi.Color.Yellow(s"Final move destinations report...\n"))
-          println(
-            fansi.Color
-              .Green(moveDestinationsReport.summarizeInText.mkString("\n"))
+          logger.info(
+            s"""
+               |${fansi.Color.Yellow(s"Final move destinations report...")}
+               |
+               |${fansi.Color
+                .Green(moveDestinationsReport.summarizeInText.mkString("\n"))}
+               |""".stripMargin
           )
 
           verifyContent(placeholderPath, mergeResultsByPath)(
@@ -548,17 +552,28 @@ class SectionedCodeExtensionTest extends ProseExamples:
       val (mergeResultsByPath, _) = sectionedCode.merge
 
       def merge(path: FakePath): Unit =
+        val prelude =
+          s"""
+             |${fansi.Color.Yellow(s"Results for $path...")}
+             |
+             |""".stripMargin
+
         (mergeResultsByPath(path): @unchecked) match
           case FullyMerged(result) =>
-            println(fansi.Color.Yellow("Fully merged result..."))
-            println(fansi.Color.Green(reconstituteTextFrom(result)))
+            logger.info(
+              prelude ++ s"""${fansi.Color.Yellow("Fully merged result:")}
+                 |${fansi.Color.Green(reconstituteTextFrom(result))}
+                 |""".stripMargin
+            )
           case MergedWithConflicts(baseResult, leftResult, rightResult) =>
-            println(fansi.Color.Red(s"Base result..."))
-            println(fansi.Color.Green(reconstituteTextFrom(baseResult)))
-            println(fansi.Color.Red(s"Left result..."))
-            println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
-            println(fansi.Color.Red(s"Right result..."))
-            println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+            logger.info(prelude ++ s"""${fansi.Color.Red(s"Base result:")}
+                 |${fansi.Color.Green(reconstituteTextFrom(baseResult))}
+                 |${fansi.Color.Red(s"Left result:")}
+                 |${fansi.Color.Green(reconstituteTextFrom(leftResult))}
+                 |${fansi.Color.Red(s"Right result:")}
+                 |${fansi.Color.Green(reconstituteTextFrom(rightResult))}
+                 |""".stripMargin)
+        end match
       end merge
 
       merge(prosePath)
@@ -785,7 +800,7 @@ class SectionedCodeExtensionTest extends ProseExamples:
               // captures instead.
               mirrorImage
             ) =>
-          println(fansi.Color.Yellow(s"*** $label ***"))
+          logger.info(s"${fansi.Color.Yellow(s"*** $label ***")}")
 
           val baseSources = MappedContentSourcesOfTokens(
             contentsByPath = Map(
@@ -821,10 +836,13 @@ class SectionedCodeExtensionTest extends ProseExamples:
           val (mergeResultsByPath, moveDestinationsReport) =
             sectionedCode.merge
 
-          println(fansi.Color.Yellow(s"Final move destinations report...\n"))
-          println(
-            fansi.Color
-              .Green(moveDestinationsReport.summarizeInText.mkString("\n"))
+          logger.info(
+            s"""
+               |${fansi.Color.Yellow(s"Final move destinations report...")}
+               |
+               |${fansi.Color
+                .Green(moveDestinationsReport.summarizeInText.mkString("\n"))}
+               |""".stripMargin
           )
 
           verifyContent(renamedPath, mergeResultsByPath)(
@@ -900,7 +918,7 @@ class SectionedCodeExtensionTest extends ProseExamples:
               ),
               mirrorImage
             ) =>
-          println(fansi.Color.Yellow(s"*** $label ***"))
+          logger.info(s"${fansi.Color.Yellow(s"*** $label ***")}")
 
           val baseSources = MappedContentSourcesOfTokens(
             contentsByPath = Map(
@@ -957,10 +975,13 @@ class SectionedCodeExtensionTest extends ProseExamples:
           val (mergeResultsByPath, moveDestinationsReport) =
             sectionedCode.merge
 
-          println(fansi.Color.Yellow(s"Final move destinations report...\n"))
-          println(
-            fansi.Color
-              .Green(moveDestinationsReport.summarizeInText.mkString("\n"))
+          logger.info(
+            s"""
+               |${fansi.Color.Yellow(s"Final move destinations report...")}
+               |
+               |${fansi.Color
+                .Green(moveDestinationsReport.summarizeInText.mkString("\n"))}
+               |""".stripMargin
           )
 
           verifyContent(combinedPath, mergeResultsByPath)(
@@ -1016,10 +1037,13 @@ class SectionedCodeExtensionTest extends ProseExamples:
     val (mergeResultsByPath, moveDestinationsReport) =
       sectionedCode.merge
 
-    println(fansi.Color.Yellow(s"Final move destinations report...\n"))
-    println(
-      fansi.Color
-        .Green(moveDestinationsReport.summarizeInText.mkString("\n"))
+    logger.info(
+      s"""
+         |${fansi.Color.Yellow(s"Final move destinations report...")}
+         |
+         |${fansi.Color
+          .Green(moveDestinationsReport.summarizeInText.mkString("\n"))}
+         |""".stripMargin
     )
 
     verifyContent(excisedProverbsPath, mergeResultsByPath)(
@@ -1111,10 +1135,14 @@ class SectionedCodeExtensionTest extends ProseExamples:
     val (mergeResultsByPath, moveDestinationsReport) =
       sectionedCode.merge
 
-    println(fansi.Color.Yellow(s"Final move destinations report...\n"))
-    println(
-      fansi.Color
-        .Green(moveDestinationsReport.summarizeInText.mkString("\n"))
+    logger.info(
+      s"""
+         |${fansi.Color.Yellow(s"Final move destinations report...")}
+         |
+         |${fansi.Color.Green(
+          moveDestinationsReport.summarizeInText.mkString("\n")
+        )}
+         |""".stripMargin
     )
 
     verifyContent(placeholderPath, mergeResultsByPath)(
@@ -1353,7 +1381,7 @@ class SectionedCodeExtensionTest extends ProseExamples:
               ),
               mirrorImage
             ) =>
-          println(fansi.Color.Yellow(s"*** $label ***"))
+          logger.info(s"${fansi.Color.Yellow(s"*** $label ***")}")
 
           val baseSources = MappedContentSourcesOfTokens(
             contentsByPath = Map(
@@ -1403,10 +1431,13 @@ class SectionedCodeExtensionTest extends ProseExamples:
           val (mergeResultsByPath, moveDestinationsReport) =
             sectionedCode.merge
 
-          println(fansi.Color.Yellow(s"Final move destinations report...\n"))
-          println(
-            fansi.Color
-              .Green(moveDestinationsReport.summarizeInText.mkString("\n"))
+          logger.info(
+            s"""
+               |${fansi.Color.Yellow(s"Final move destinations report...")}
+               |
+               |${fansi.Color
+                .Green(moveDestinationsReport.summarizeInText.mkString("\n"))}
+               |""".stripMargin
           )
 
           verifyContent(renamedPath, mergeResultsByPath)(
@@ -1424,22 +1455,31 @@ class SectionedCodeExtensionTest extends ProseExamples:
       expectedTokens: IndexedSeq[Token],
       equality: (Token, Token) => Boolean = Token.equality
   ): Unit =
-    println(fansi.Color.Yellow(s"Checking $path...\n"))
-    println(fansi.Color.Yellow("Expected..."))
-    println(fansi.Color.Green(reconstituteTextFrom(expectedTokens)))
+    val prelude =
+      s"""
+         |${fansi.Color.Yellow(s"Checking $path...")}
+         |
+         |${fansi.Color.Yellow("Expected:")}
+         |${fansi.Color.Green(reconstituteTextFrom(expectedTokens))}
+         |""".stripMargin
 
     (mergeResultsByPath(path): @unchecked) match
       case FullyMerged(result) =>
-        println(fansi.Color.Yellow("Fully merged result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(result)))
+        logger.info(prelude ++ s"""
+             |${fansi.Color.Yellow("Fully merged result:")}
+             |${fansi.Color.Green(reconstituteTextFrom(result))}
+             |""".stripMargin)
+
         assert(result.corresponds(expectedTokens)(equality))
       case MergedWithConflicts(baseResult, leftResult, rightResult) =>
-        println(fansi.Color.Red(s"Base result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(baseResult)))
-        println(fansi.Color.Red(s"Left result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(leftResult)))
-        println(fansi.Color.Red(s"Right result..."))
-        println(fansi.Color.Green(reconstituteTextFrom(rightResult)))
+        logger.info(prelude ++ s"""
+             |${fansi.Color.Red(s"Base result:")}
+             |${fansi.Color.Green(reconstituteTextFrom(baseResult))}
+             |${fansi.Color.Red(s"Left result:")}
+             |${fansi.Color.Green(reconstituteTextFrom(leftResult))}
+             |${fansi.Color.Red(s"Right result:")}
+             |${fansi.Color.Green(reconstituteTextFrom(rightResult))}
+             |""".stripMargin)
 
         fail("Should have seen a clean merge.")
     end match
@@ -1675,7 +1715,7 @@ class SectionedCodeExtensionTest extends ProseExamples:
               ),
               mirrorImage
             ) =>
-          println(fansi.Color.Yellow(s"*** $label ***"))
+          logger.info(s"${fansi.Color.Yellow(s"*** $label ***")}")
 
           val baseSources = MappedContentSourcesOfTokens(
             contentsByPath = Map(
@@ -1732,10 +1772,13 @@ class SectionedCodeExtensionTest extends ProseExamples:
           val (mergeResultsByPath, moveDestinationsReport) =
             sectionedCode.merge
 
-          println(fansi.Color.Yellow(s"Final move destinations report...\n"))
-          println(
-            fansi.Color
-              .Green(moveDestinationsReport.summarizeInText.mkString("\n"))
+          logger.info(
+            s"""
+               |${fansi.Color.Yellow(s"Final move destinations report...")}
+               |
+               |${fansi.Color
+                .Green(moveDestinationsReport.summarizeInText.mkString("\n"))}
+               |""".stripMargin
           )
 
           verifyContent(renamedPath, mergeResultsByPath)(
@@ -1812,10 +1855,13 @@ class SectionedCodeExtensionTest extends ProseExamples:
     val (mergeResultsByPath, moveDestinationsReport) =
       sectionedCode.merge
 
-    println(fansi.Color.Yellow(s"Final move destinations report...\n"))
-    println(
-      fansi.Color
-        .Green(moveDestinationsReport.summarizeInText.mkString("\n"))
+    logger.info(
+      s"""
+         |${fansi.Color.Yellow(s"Final move destinations report...")}
+         |
+         |${fansi.Color
+          .Green(moveDestinationsReport.summarizeInText.mkString("\n"))}
+         |""".stripMargin
     )
 
     hoppingPaths.foreach(hoppingPath =>
