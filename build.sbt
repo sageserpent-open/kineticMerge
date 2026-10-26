@@ -51,7 +51,7 @@ lazy val commonLibraryDependencies = Seq(
     "dev.optics" %% "monocle-macro" % "3.3.0"
   ),
   libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "2.5.0",
-  libraryDependencies += "com.lihaoyi"             %% "os-lib"  % "0.11.8",
+  libraryDependencies += "com.lihaoyi"             %% "os-lib"  % "0.11.9",
   libraryDependencies += "com.lihaoyi"             %% "fansi"   % "0.5.1",
   libraryDependencies += "com.lihaoyi"             %% "pprint"  % "0.9.6",
   libraryDependencies += "com.softwaremill.common" %% "tagging" % "2.3.5",
