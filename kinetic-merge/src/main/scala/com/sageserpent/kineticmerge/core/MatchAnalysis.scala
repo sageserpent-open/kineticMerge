@@ -1458,27 +1458,12 @@ object MatchAnalysis extends StrictLogging:
           case Match.AllSides(baseSection, leftSection, rightSection) =>
             def inspect(s: Section[Element]): Unit =
               sectionsAndTheirMatches.get(s).foreach {
-                case p @ Match.BaseAndLeft(b, l) =>
-                  if b == baseSection then
-                    replacements += Match.AllSides(baseSection, l, rightSection)
-                    obsoletes += p
-                  if l == leftSection then
-                    replacements += Match.AllSides(baseSection, leftSection, rightSection)
-                    obsoletes += p
-                case p @ Match.BaseAndRight(b, r) =>
-                  if b == baseSection then
-                    replacements += Match.AllSides(baseSection, leftSection, r)
-                    obsoletes += p
-                  if r == rightSection then
-                    replacements += Match.AllSides(b, leftSection, rightSection)
-                    obsoletes += p
-                case p @ Match.LeftAndRight(l, r) =>
-                  if l == leftSection then
-                    replacements += Match.AllSides(baseSection, leftSection, r)
-                    obsoletes += p
-                  if r == rightSection then
-                    replacements += Match.AllSides(baseSection, l, rightSection)
-                    obsoletes += p
+                case p @ Match.BaseAndLeft(b, l) if b == baseSection && l == leftSection =>
+                  obsoletes += p
+                case p @ Match.BaseAndRight(b, r) if b == baseSection && r == rightSection =>
+                  obsoletes += p
+                case p @ Match.LeftAndRight(l, r) if l == leftSection && r == rightSection =>
+                  obsoletes += p
                 case _ =>
               }
 
@@ -1495,10 +1480,6 @@ object MatchAnalysis extends StrictLogging:
                 case p @ Match.LeftAndRight(l, r) if l == leftSection =>
                   replacements += Match.AllSides(baseSection, leftSection, r)
                   obsoletes += p
-                case Match.AllSides(b, _, r) if b == baseSection =>
-                  replacements += Match.AllSides(baseSection, leftSection, r)
-                case Match.AllSides(_, l, r) if l == leftSection =>
-                  replacements += Match.AllSides(baseSection, leftSection, r)
                 case _ =>
               }
 
@@ -1514,10 +1495,6 @@ object MatchAnalysis extends StrictLogging:
                 case p @ Match.LeftAndRight(l, r) if r == rightSection =>
                   replacements += Match.AllSides(baseSection, l, rightSection)
                   obsoletes += p
-                case Match.AllSides(b, l, _) if b == baseSection =>
-                  replacements += Match.AllSides(baseSection, l, rightSection)
-                case Match.AllSides(_, l, r) if r == rightSection =>
-                  replacements += Match.AllSides(baseSection, l, rightSection)
                 case _ =>
               }
 
@@ -1533,10 +1510,6 @@ object MatchAnalysis extends StrictLogging:
                 case p @ Match.BaseAndRight(b, r) if r == rightSection =>
                   replacements += Match.AllSides(b, leftSection, rightSection)
                   obsoletes += p
-                case Match.AllSides(b, l, _) if l == leftSection =>
-                  replacements += Match.AllSides(b, leftSection, rightSection)
-                case Match.AllSides(b, _, r) if r == rightSection =>
-                  replacements += Match.AllSides(b, leftSection, rightSection)
                 case _ =>
               }
 
