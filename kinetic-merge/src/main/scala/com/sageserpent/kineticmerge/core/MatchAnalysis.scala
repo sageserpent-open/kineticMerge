@@ -301,7 +301,7 @@ object MatchAnalysis extends StrictLogging:
           )
         end stableOrderingKey
       end extension
-      private val rollingHashFactoryCache: Cache[Int, RollingHash.Factory] =
+      private val rollingHashFactoryCache: Cache[(Int, Int), RollingHash.Factory] =
         Caffeine.newBuilder().build()
 
       def sectionSlice(
@@ -1448,152 +1448,167 @@ object MatchAnalysis extends StrictLogging:
         matches.contains(aMatch)
       end contains
 
-      private def withMatch(
+      private def findCoalescedMatchesAndObsoletes(
+          aMatch: GenericMatch[Element]
+      ): (Set[Match.AllSides[Section[Element]]], Set[GenericMatch[Element]]) =
+        val replacements = mutable.Set.empty[Match.AllSides[Section[Element]]]
+        val obsoletes    = mutable.Set.empty[GenericMatch[Element]]
+
+        aMatch match
+          case Match.AllSides(baseSection, leftSection, rightSection) =>
+            def inspect(s: Section[Element]): Unit =
+              sectionsAndTheirMatches.get(s).foreach {
+                case p @ Match.BaseAndLeft(b, l) =>
+                  if b == baseSection then
+                    replacements += Match.AllSides(baseSection, l, rightSection)
+                    obsoletes += p
+                  if l == leftSection then
+                    replacements += Match.AllSides(baseSection, leftSection, rightSection)
+                    obsoletes += p
+                case p @ Match.BaseAndRight(b, r) =>
+                  if b == baseSection then
+                    replacements += Match.AllSides(baseSection, leftSection, r)
+                    obsoletes += p
+                  if r == rightSection then
+                    replacements += Match.AllSides(b, leftSection, rightSection)
+                    obsoletes += p
+                case p @ Match.LeftAndRight(l, r) =>
+                  if l == leftSection then
+                    replacements += Match.AllSides(baseSection, leftSection, r)
+                    obsoletes += p
+                  if r == rightSection then
+                    replacements += Match.AllSides(baseSection, l, rightSection)
+                    obsoletes += p
+                case _ =>
+              }
+
+            inspect(baseSection)
+            inspect(leftSection)
+            inspect(rightSection)
+
+          case Match.BaseAndLeft(baseSection, leftSection) =>
+            def inspect(s: Section[Element]): Unit =
+              sectionsAndTheirMatches.get(s).foreach {
+                case p @ Match.BaseAndRight(b, r) if b == baseSection =>
+                  replacements += Match.AllSides(baseSection, leftSection, r)
+                  obsoletes += p
+                case p @ Match.LeftAndRight(l, r) if l == leftSection =>
+                  replacements += Match.AllSides(baseSection, leftSection, r)
+                  obsoletes += p
+                case Match.AllSides(b, _, r) if b == baseSection =>
+                  replacements += Match.AllSides(baseSection, leftSection, r)
+                case Match.AllSides(_, l, r) if l == leftSection =>
+                  replacements += Match.AllSides(baseSection, leftSection, r)
+                case _ =>
+              }
+
+            inspect(baseSection)
+            inspect(leftSection)
+
+          case Match.BaseAndRight(baseSection, rightSection) =>
+            def inspect(s: Section[Element]): Unit =
+              sectionsAndTheirMatches.get(s).foreach {
+                case p @ Match.BaseAndLeft(b, l) if b == baseSection =>
+                  replacements += Match.AllSides(baseSection, l, rightSection)
+                  obsoletes += p
+                case p @ Match.LeftAndRight(l, r) if r == rightSection =>
+                  replacements += Match.AllSides(baseSection, l, rightSection)
+                  obsoletes += p
+                case Match.AllSides(b, l, _) if b == baseSection =>
+                  replacements += Match.AllSides(baseSection, l, rightSection)
+                case Match.AllSides(_, l, r) if r == rightSection =>
+                  replacements += Match.AllSides(baseSection, l, rightSection)
+                case _ =>
+              }
+
+            inspect(baseSection)
+            inspect(rightSection)
+
+          case Match.LeftAndRight(leftSection, rightSection) =>
+            def inspect(s: Section[Element]): Unit =
+              sectionsAndTheirMatches.get(s).foreach {
+                case p @ Match.BaseAndLeft(b, l) if l == leftSection =>
+                  replacements += Match.AllSides(b, leftSection, rightSection)
+                  obsoletes += p
+                case p @ Match.BaseAndRight(b, r) if r == rightSection =>
+                  replacements += Match.AllSides(b, leftSection, rightSection)
+                  obsoletes += p
+                case Match.AllSides(b, l, _) if l == leftSection =>
+                  replacements += Match.AllSides(b, leftSection, rightSection)
+                case Match.AllSides(b, _, r) if r == rightSection =>
+                  replacements += Match.AllSides(b, leftSection, rightSection)
+                case _ =>
+              }
+
+            inspect(leftSection)
+            inspect(rightSection)
+
+        (replacements.toSet, obsoletes.toSet)
+      end findCoalescedMatchesAndObsoletes
+
+      private def addMatchDirectly(
           aMatch: GenericMatch[Element]
       ): MatchesAndTheirSections =
         if !contains(aMatch) then
           aMatch match
             case allSides @ Match.AllSides(baseSection, leftSection, rightSection) =>
-              val redundantPairwiseMatches = Set.newBuilder[GenericMatch[Element]]
-              sectionsAndTheirMatches.get(baseSection).foreach {
-                case p @ Match.BaseAndLeft(_, `leftSection`)   => redundantPairwiseMatches += p
-                case p @ Match.BaseAndRight(_, `rightSection`) => redundantPairwiseMatches += p
-                case _ =>
-              }
-              sectionsAndTheirMatches.get(leftSection).foreach {
-                case p @ Match.LeftAndRight(_, `rightSection`) => redundantPairwiseMatches += p
-                case p @ Match.BaseAndLeft(`baseSection`, _)   => redundantPairwiseMatches += p
-                case _ =>
-              }
-              sectionsAndTheirMatches.get(rightSection).foreach {
-                case p @ Match.BaseAndRight(`baseSection`, _)  => redundantPairwiseMatches += p
-                case p @ Match.LeftAndRight(`leftSection`, _)  => redundantPairwiseMatches += p
-                case _ =>
-              }
-              val cleaned =
-                if redundantPairwiseMatches.result().nonEmpty then
-                  withoutTheseMatches(redundantPairwiseMatches.result())
-                else this
-
-              cleaned.copy(
-                baseSectionsByPath = cleaned.baseIncluding(baseSection),
-                leftSectionsByPath = cleaned.leftIncluding(leftSection),
-                rightSectionsByPath = cleaned.rightIncluding(rightSection),
+              copy(
+                baseSectionsByPath = baseIncluding(baseSection),
+                leftSectionsByPath = leftIncluding(leftSection),
+                rightSectionsByPath = rightIncluding(rightSection),
                 sectionsAndTheirMatches =
-                  cleaned.sectionsAndTheirMatches + (baseSection -> allSides) + (leftSection -> allSides) + (rightSection -> allSides),
+                  sectionsAndTheirMatches + (baseSection -> allSides) + (leftSection -> allSides) + (rightSection -> allSides),
                 baseFingerprintedInclusionsByPath =
-                  cleaned.knockOutFromBaseFingerprintedInclusions(baseSection),
+                  knockOutFromBaseFingerprintedInclusions(baseSection),
                 leftFingerprintedInclusionsByPath =
-                  cleaned.knockOutFromLeftFingerprintedInclusions(leftSection),
+                  knockOutFromLeftFingerprintedInclusions(leftSection),
                 rightFingerprintedInclusionsByPath =
-                  cleaned.knockOutFromRightFingerprintedInclusions(rightSection)
+                  knockOutFromRightFingerprintedInclusions(rightSection)
               )
-
             case baseAndLeft @ Match.BaseAndLeft(baseSection, leftSection) =>
-              val replacementMatches = mutable.Set.empty[Match.AllSides[Section[Element]]]
-              val obsoleteMatches = mutable.Set.empty[GenericMatch[Element]]
-
-              sectionsAndTheirMatches.get(baseSection).foreach {
-                case p @ Match.BaseAndRight(_, rightSection) =>
-                  replacementMatches += Match.AllSides(baseSection, leftSection, rightSection)
-                  obsoleteMatches += p
-                case Match.AllSides(_, _, rightSection) =>
-                  replacementMatches += Match.AllSides(baseSection, leftSection, rightSection)
-                case _ =>
-              }
-
-              sectionsAndTheirMatches.get(leftSection).foreach {
-                case p @ Match.LeftAndRight(_, rightSection) =>
-                  replacementMatches += Match.AllSides(baseSection, leftSection, rightSection)
-                  obsoleteMatches += p
-                case Match.AllSides(_, _, rightSection) =>
-                  replacementMatches += Match.AllSides(baseSection, leftSection, rightSection)
-                case _ =>
-              }
-
-              if replacementMatches.nonEmpty then
-                val withoutObsolete =
-                  if obsoleteMatches.nonEmpty then withoutTheseMatches(obsoleteMatches)
-                  else this
-                replacementMatches.foldLeft(withoutObsolete)(_ `withMatch` _)
-              else
-                copy(
-                  baseSectionsByPath = baseIncluding(baseSection),
-                  leftSectionsByPath = leftIncluding(leftSection),
-                  sectionsAndTheirMatches =
-                    sectionsAndTheirMatches + (baseSection -> baseAndLeft) + (leftSection -> baseAndLeft)
-                )
-
+              copy(
+                baseSectionsByPath = baseIncluding(baseSection),
+                leftSectionsByPath = leftIncluding(leftSection),
+                sectionsAndTheirMatches =
+                  sectionsAndTheirMatches + (baseSection -> baseAndLeft) + (leftSection -> baseAndLeft)
+              )
             case baseAndRight @ Match.BaseAndRight(baseSection, rightSection) =>
-              val replacementMatches = mutable.Set.empty[Match.AllSides[Section[Element]]]
-              val obsoleteMatches = mutable.Set.empty[GenericMatch[Element]]
-
-              sectionsAndTheirMatches.get(baseSection).foreach {
-                case p @ Match.BaseAndLeft(_, leftSection) =>
-                  replacementMatches += Match.AllSides(baseSection, leftSection, rightSection)
-                  obsoleteMatches += p
-                case Match.AllSides(_, leftSection, _) =>
-                  replacementMatches += Match.AllSides(baseSection, leftSection, rightSection)
-                case _ =>
-              }
-
-              sectionsAndTheirMatches.get(rightSection).foreach {
-                case p @ Match.LeftAndRight(leftSection, _) =>
-                  replacementMatches += Match.AllSides(baseSection, leftSection, rightSection)
-                  obsoleteMatches += p
-                case Match.AllSides(_, leftSection, _) =>
-                  replacementMatches += Match.AllSides(baseSection, leftSection, rightSection)
-                case _ =>
-              }
-
-              if replacementMatches.nonEmpty then
-                val withoutObsolete =
-                  if obsoleteMatches.nonEmpty then withoutTheseMatches(obsoleteMatches)
-                  else this
-                replacementMatches.foldLeft(withoutObsolete)(_ `withMatch` _)
-              else
-                copy(
-                  baseSectionsByPath = baseIncluding(baseSection),
-                  rightSectionsByPath = rightIncluding(rightSection),
-                  sectionsAndTheirMatches =
-                    sectionsAndTheirMatches + (baseSection -> baseAndRight) + (rightSection -> baseAndRight)
-                )
-
+              copy(
+                baseSectionsByPath = baseIncluding(baseSection),
+                rightSectionsByPath = rightIncluding(rightSection),
+                sectionsAndTheirMatches =
+                  sectionsAndTheirMatches + (baseSection -> baseAndRight) + (rightSection -> baseAndRight)
+              )
             case leftAndRight @ Match.LeftAndRight(leftSection, rightSection) =>
-              val replacementMatches = mutable.Set.empty[Match.AllSides[Section[Element]]]
-              val obsoleteMatches = mutable.Set.empty[GenericMatch[Element]]
+              copy(
+                leftSectionsByPath = leftIncluding(leftSection),
+                rightSectionsByPath = rightIncluding(rightSection),
+                sectionsAndTheirMatches =
+                  sectionsAndTheirMatches + (leftSection -> leftAndRight) + (rightSection -> leftAndRight)
+              )
+        else this
+      end addMatchDirectly
 
-              sectionsAndTheirMatches.get(leftSection).foreach {
-                case p @ Match.BaseAndLeft(baseSection, _) =>
-                  replacementMatches += Match.AllSides(baseSection, leftSection, rightSection)
-                  obsoleteMatches += p
-                case Match.AllSides(baseSection, _, _) =>
-                  replacementMatches += Match.AllSides(baseSection, leftSection, rightSection)
-                case _ =>
-              }
+      private def withMatch(
+          aMatch: GenericMatch[Element]
+      ): MatchesAndTheirSections =
+        if !contains(aMatch) then
+          val (replacementMatches, obsoleteMatches) =
+            findCoalescedMatchesAndObsoletes(aMatch)
 
-              sectionsAndTheirMatches.get(rightSection).foreach {
-                case p @ Match.BaseAndRight(baseSection, _) =>
-                  replacementMatches += Match.AllSides(baseSection, leftSection, rightSection)
-                  obsoleteMatches += p
-                case Match.AllSides(baseSection, _, _) =>
-                  replacementMatches += Match.AllSides(baseSection, leftSection, rightSection)
-                case _ =>
-              }
+          val stateWithoutObsolete =
+            if obsoleteMatches.nonEmpty then withoutTheseMatches(obsoleteMatches)
+            else this
 
-              if replacementMatches.nonEmpty then
-                val withoutObsolete =
-                  if obsoleteMatches.nonEmpty then withoutTheseMatches(obsoleteMatches)
-                  else this
-                replacementMatches.foldLeft(withoutObsolete)(_ `withMatch` _)
-              else
-                copy(
-                  leftSectionsByPath = leftIncluding(leftSection),
-                  rightSectionsByPath = rightIncluding(rightSection),
-                  sectionsAndTheirMatches =
-                    sectionsAndTheirMatches + (leftSection -> leftAndRight) + (rightSection -> leftAndRight)
-                )
-          end match
+          if replacementMatches.nonEmpty then
+            val withReplacements =
+              replacementMatches.foldLeft(stateWithoutObsolete)(_ `withMatch` _)
+            if aMatch.isAnAllSidesMatch then
+              withReplacements.addMatchDirectly(aMatch)
+            else
+              withReplacements
+          else
+            stateWithoutObsolete.addMatchDirectly(aMatch)
         else this
       end withMatch
 
@@ -3703,8 +3718,8 @@ object MatchAnalysis extends StrictLogging:
           require(elements.size >= windowSize)
 
           val rollingHashFactory = rollingHashFactoryCache.get(
-            windowSize,
-            { (windowSize: Int) =>
+            (windowSize, totalContentSize),
+            { case (windowSize: Int, totalContentSize: Int) =>
               val fixedNumberOfBytesInElementHash =
                 hashFunction.bits / JavaByte.SIZE
 
