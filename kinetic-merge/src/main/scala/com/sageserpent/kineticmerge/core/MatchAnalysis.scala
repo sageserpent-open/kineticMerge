@@ -1456,15 +1456,18 @@ object MatchAnalysis extends StrictLogging:
             case allSides @ Match.AllSides(baseSection, leftSection, rightSection) =>
               val redundantPairwiseMatches = Set.newBuilder[GenericMatch[Element]]
               sectionsAndTheirMatches.get(baseSection).foreach {
-                case p @ Match.BaseAndLeft(_, `leftSection`) =>
-                  redundantPairwiseMatches += p
-                case p @ Match.BaseAndRight(_, `rightSection`) =>
-                  redundantPairwiseMatches += p
+                case p @ Match.BaseAndLeft(_, `leftSection`)   => redundantPairwiseMatches += p
+                case p @ Match.BaseAndRight(_, `rightSection`) => redundantPairwiseMatches += p
                 case _ =>
               }
               sectionsAndTheirMatches.get(leftSection).foreach {
-                case p @ Match.LeftAndRight(_, `rightSection`) =>
-                  redundantPairwiseMatches += p
+                case p @ Match.LeftAndRight(_, `rightSection`) => redundantPairwiseMatches += p
+                case p @ Match.BaseAndLeft(`baseSection`, _)   => redundantPairwiseMatches += p
+                case _ =>
+              }
+              sectionsAndTheirMatches.get(rightSection).foreach {
+                case p @ Match.BaseAndRight(`baseSection`, _)  => redundantPairwiseMatches += p
+                case p @ Match.LeftAndRight(`leftSection`, _)  => redundantPairwiseMatches += p
                 case _ =>
               }
               val cleaned =
@@ -1594,6 +1597,15 @@ object MatchAnalysis extends StrictLogging:
         else this
       end withMatch
 
+      /** Reconciles subsuming matches across the analysis.
+        *
+        * Note: Pairwise match coalescence and redundancy cleanup are performed
+        * eagerly on every match addition in [[withMatch]]. Invariant violations
+        * previously observed in this stage or in [[parallelMatchesOnly]] were
+        * knock-on effects from uncoalesced pairwise match fragments created
+        * during overlap reconciliation or initial match insertion. Consequentially,
+        * coalescence and redundancy cleanup concerns are confined to match addition.
+        */
       def reconcileSubsumingMatches: MatchesAndTheirSections =
         val matches = this.matches
 
@@ -2030,6 +2042,12 @@ object MatchAnalysis extends StrictLogging:
         groupedByMatches.toMap
       end parallelMatchesGroupIdsByMatch
 
+      /** Filters and reconstructs parallel matches only.
+        *
+        * Note: Pairwise match coalescence and redundancy cleanup are maintained eagerly
+        * by [[withMatch]]. Any invariant checks performed here operate on matches that
+        * already satisfy pairwise non-duplication invariants.
+        */
       def parallelMatchesOnly: MatchesAndTheirSections =
         // PLAN:
 
@@ -2484,6 +2502,12 @@ object MatchAnalysis extends StrictLogging:
               .exists(_.isAnAllSidesMatch)
           case _: Match.AllSides[Section[Element]] => false
 
+      /** Reconciles overlapping matches across the analysis by hiving off non-overlapped
+        * sub-matches and re-introducing contested match fragments via [[withMatch]].
+        *
+        * Coalescence of new pairwise fragments with existing pairwise or AllSides matches
+        * is handled on the fly within [[withMatch]].
+        */
       def reconcileOverlappingMatches(
           enabled: Boolean
       ): MatchesAndTheirSections =
