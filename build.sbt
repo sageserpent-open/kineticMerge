@@ -23,7 +23,7 @@ lazy val stagedJarsForJReleaserDirectory =
 lazy val commonSettings = Seq(
   organization     := "com.sageserpent",
   organizationName := "sageserpent",
-  licenses += ("MIT", url("https://opensource.org/licenses/MIT")),
+  licenses += ("MIT", uri("https://opensource.org/licenses/MIT")),
   pomIncludeRepository := { _ => false },
   publishMavenStyle    := true,
   exportJars           := true,
