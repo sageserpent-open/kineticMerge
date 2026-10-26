@@ -1443,13 +1443,33 @@ class SectionedCodeTest extends StrictLogging:
         .map(analysis.matchesFor)
         .reduce(_ union _)
 
+    // There should be just all-sides, left-right and base-right matches.
+    assert(matches.map(_.ordinal).size == 3)
+
+    // There should be two left-right matches.
+    assert(2 == (matches count {
+      case _: Match.AllSides[Section[Element]] => true
+      case _                                   => false
+    }))
+
+    // There should be two left-right matches.
+    assert(2 == (matches count {
+      case _: Match.LeftAndRight[Section[Element]] => true
+      case _                                       => false
+    }))
+
+    // There should be one base-right match.
+    assert(1 == (matches count {
+      case _: Match.BaseAndRight[Section[Element]] => true
+      case _                                       => false
+    }))
+
     // The contents should be broken down.
     assert(
       matches.map(_.content) == Set(
-        Vector(alpha),
+        Vector(alpha, delta),
         Vector(beta),
-        Vector(delta),
-        Vector(gamma),
+        Vector(gamma, delta),
         Vector(epsilon)
       )
     )
