@@ -1316,7 +1316,9 @@ object MatchAnalysis extends StrictLogging:
           )(using progressRecordingSession)
         }.get.purgedOfOverlappingOrSubsumedMatches.matches
 
-        tinyMatches.foldLeft(this)(_ `withMatch` _)
+        tinyMatches.foldLeft(this)(
+          _.withMatch(_, coalescePairwiseMatches = false)
+        )
       end withTinyMatches
 
       private def purgedOfOverlappingOrSubsumedMatches
@@ -2232,12 +2234,9 @@ object MatchAnalysis extends StrictLogging:
         // `SectionedCodeExtensionTest.codeMotionAmbiguousWithAPreservation` has
         // an example of this.
         val backTranslatedMatchesAndTheirSections =
-          MatchesAndTheirSections.empty
-            .withMatches(
-              backTranslatedParallelMatches,
-              haveTrimmedMatches = false
-            )
-            .matchesAndTheirSections
+          backTranslatedParallelMatches.foldLeft(MatchesAndTheirSections.empty)(
+            _ `withMatch` _
+          )
 
         val result =
           backTranslatedMatchesAndTheirSections.withoutRedundantPairwiseMatches
@@ -2380,7 +2379,9 @@ object MatchAnalysis extends StrictLogging:
           haveTrimmedMatches: Boolean
       ): MatchingResult =
         val updatedMatchesAndTheirSections =
-          matches.foldLeft(this)(_ `withMatch` _)
+          matches.foldLeft(this)(
+            _.withMatch(_, coalescePairwiseMatches = false)
+          )
 
         val pathInclusions =
           if !haveTrimmedMatches then
