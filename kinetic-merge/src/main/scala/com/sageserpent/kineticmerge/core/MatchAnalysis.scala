@@ -41,8 +41,6 @@ trait MatchAnalysis[Path, Element]:
   def groupsOfParallelMatches
       : Map[ParallelMatchesGroupId, SortedSet[GenericMatch[Element]]]
 
-  def withoutRedundantPairwiseMatches: MatchAnalysis[Path, Element]
-
   def withTinyMatches: MatchAnalysis[Path, Element]
 
   def baseSections: Set[Section[Element]]
@@ -2453,7 +2451,7 @@ object MatchAnalysis extends StrictLogging:
       // suppressed by a larger pairwise match. This situation results in a
       // pairwise match that shares its sections on both sides with the other
       // all-sides match; remove any such redundant pairwise matches.
-      def withoutRedundantPairwiseMatches: MatchesAndTheirSections =
+      private def withoutRedundantPairwiseMatches: MatchesAndTheirSections =
         val redundantMatches =
           sectionsAndTheirMatches.values.toSet.filter(isRedundantPairwiseMatch)
 
