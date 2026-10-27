@@ -129,18 +129,8 @@ object MatchAnalysis extends StrictLogging:
 
     val totalContentSize = fileSizes.sum
 
-    val minimumFileSizeAcrossAllFilesOverAllSides =
-      fileSizes.headOption.getOrElse(0)
-
-    def thresholdSizeForMatching(fileSize: Int) =
-      (thresholdSizeFractionForMatching * fileSize).floor.toInt
-
-    // This is the minimum window size that would be allowed in *some* file
-    // across the sources.
-    val minimumWindowSizeAcrossAllFilesOverAllSides =
-      minimumMatchSize max thresholdSizeForMatching(
-        minimumFileSizeAcrossAllFilesOverAllSides
-      )
+    val minimumNonEmptyFileSizeAcrossAllFilesOverAllSides =
+      fileSizes.dropWhile(0 == _).headOption.getOrElse(0)
 
     // The penultimate largest file size from the three sides is the largest
     // potential match size - because a match has to span at least two sides.
@@ -154,6 +144,16 @@ object MatchAnalysis extends StrictLogging:
         .take(2)
         .lastOption
         .getOrElse(0)
+
+    def thresholdSizeForMatching(fileSize: Int) =
+      (thresholdSizeFractionForMatching * fileSize).floor.toInt
+
+    // This is the minimum window size that would be allowed in *some* file
+    // across the sources.
+    val minimumWindowSizeAcrossAllFilesOverAllSides =
+      maximumPossibleMatchSize min (minimumMatchSize max thresholdSizeForMatching(
+        minimumNonEmptyFileSizeAcrossAllFilesOverAllSides
+      ))
 
     val maximumFileSizeAcrossAllFilesOverAllSides =
       fileSizes.lastOption.getOrElse(0)
@@ -176,6 +176,13 @@ object MatchAnalysis extends StrictLogging:
     )
     logger.debug(
       s"File sizes across all files over all sides: $fileSizes."
+    )
+
+    assume(
+      minimumWindowSizeAcrossAllFilesOverAllSides <= minimumSureFireWindowSizeAcrossAllFilesOverAllSides
+    )
+    assume(
+      minimumSureFireWindowSizeAcrossAllFilesOverAllSides <= maximumPossibleMatchSize
     )
 
     type PairwiseMatch = Match.BaseAndLeft[Section[Element]] |
@@ -1208,113 +1215,121 @@ object MatchAnalysis extends StrictLogging:
       end withAllSmallFryMatches
 
       def withTinyMatches: MatchesAndTheirSections =
-        val withContentCoveredByNonTinyMatchesKnockedOut =
-          val nonTinyMatches = sectionsAndTheirMatches.values.filter {
-            case Match.AllSides(baseSection, _, _) =>
-              minimumWindowSizeAcrossAllFilesOverAllSides <= baseSection.size
-            case Match.BaseAndLeft(baseSection, _) =>
-              minimumWindowSizeAcrossAllFilesOverAllSides <= baseSection.size
-            case Match.BaseAndRight(baseSection, _) =>
-              minimumWindowSizeAcrossAllFilesOverAllSides <= baseSection.size
-            case Match.LeftAndRight(leftSection, _) =>
-              minimumWindowSizeAcrossAllFilesOverAllSides <= leftSection.size
-          }
+        val minimumTinyMatchSize = 1
 
-          // NASTY HACK: we're knocking out both the all-sides *and* the
-          // pairwise matches here, but keeping the matches in the rest of the
-          // state. The idea isn't to remove them, rather to prevent further
-          // matching from rediscovering them.
-          nonTinyMatches.foldLeft(MatchesAndTheirSections.empty) {
-            case (
-                  partialResult,
-                  Match.AllSides(baseSection, leftSection, rightSection)
-                ) =>
-              partialResult.copy(
-                baseFingerprintedInclusionsByPath =
-                  partialResult.knockOutFromBaseFingerprintedInclusions(
-                    baseSection
-                  ),
-                leftFingerprintedInclusionsByPath =
-                  partialResult.knockOutFromLeftFingerprintedInclusions(
-                    leftSection
-                  ),
-                rightFingerprintedInclusionsByPath =
-                  partialResult.knockOutFromRightFingerprintedInclusions(
-                    rightSection
-                  )
-              )
-            case (
-                  partialResult,
-                  Match.BaseAndLeft(baseSection, leftSection)
-                ) =>
-              partialResult.copy(
-                baseFingerprintedInclusionsByPath =
-                  partialResult.knockOutFromBaseFingerprintedInclusions(
-                    baseSection
-                  ),
-                leftFingerprintedInclusionsByPath =
-                  partialResult.knockOutFromLeftFingerprintedInclusions(
-                    leftSection
-                  )
-              )
-            case (
-                  partialResult,
-                  Match.BaseAndRight(baseSection, rightSection)
-                ) =>
-              partialResult.copy(
-                baseFingerprintedInclusionsByPath =
-                  partialResult.knockOutFromBaseFingerprintedInclusions(
-                    baseSection
-                  ),
-                rightFingerprintedInclusionsByPath =
-                  partialResult.knockOutFromRightFingerprintedInclusions(
-                    rightSection
-                  )
-              )
-            case (
-                  partialResult,
-                  Match.LeftAndRight(leftSection, rightSection)
-                ) =>
-              partialResult.copy(
-                leftFingerprintedInclusionsByPath =
-                  partialResult.knockOutFromLeftFingerprintedInclusions(
-                    leftSection
-                  ),
-                rightFingerprintedInclusionsByPath =
-                  partialResult.knockOutFromRightFingerprintedInclusions(
-                    rightSection
-                  )
-              )
-          }
-        end withContentCoveredByNonTinyMatchesKnockedOut
+        if minimumTinyMatchSize < minimumWindowSizeAcrossAllFilesOverAllSides
+        then
+          val withContentCoveredByNonTinyMatchesKnockedOut =
+            val nonTinyMatches = sectionsAndTheirMatches.values.filter {
+              case Match.AllSides(baseSection, _, _) =>
+                minimumWindowSizeAcrossAllFilesOverAllSides <= baseSection.size
+              case Match.BaseAndLeft(baseSection, _) =>
+                minimumWindowSizeAcrossAllFilesOverAllSides <= baseSection.size
+              case Match.BaseAndRight(baseSection, _) =>
+                minimumWindowSizeAcrossAllFilesOverAllSides <= baseSection.size
+              case Match.LeftAndRight(leftSection, _) =>
+                minimumWindowSizeAcrossAllFilesOverAllSides <= leftSection.size
+            }
 
-        val sessionLabel =
-          "All tiny matches found so far down to size:".labelled
+            // NASTY HACK: we're knocking out both the all-sides *and* the
+            // pairwise matches here, but keeping the matches in the rest of the
+            // state. The idea isn't to remove them, rather to prevent further
+            // matching from rediscovering them.
+            nonTinyMatches.foldLeft(MatchesAndTheirSections.empty) {
+              case (
+                    partialResult,
+                    Match.AllSides(baseSection, leftSection, rightSection)
+                  ) =>
+                partialResult.copy(
+                  baseFingerprintedInclusionsByPath =
+                    partialResult.knockOutFromBaseFingerprintedInclusions(
+                      baseSection
+                    ),
+                  leftFingerprintedInclusionsByPath =
+                    partialResult.knockOutFromLeftFingerprintedInclusions(
+                      leftSection
+                    ),
+                  rightFingerprintedInclusionsByPath =
+                    partialResult.knockOutFromRightFingerprintedInclusions(
+                      rightSection
+                    )
+                )
+              case (
+                    partialResult,
+                    Match.BaseAndLeft(baseSection, leftSection)
+                  ) =>
+                partialResult.copy(
+                  baseFingerprintedInclusionsByPath =
+                    partialResult.knockOutFromBaseFingerprintedInclusions(
+                      baseSection
+                    ),
+                  leftFingerprintedInclusionsByPath =
+                    partialResult.knockOutFromLeftFingerprintedInclusions(
+                      leftSection
+                    )
+                )
+              case (
+                    partialResult,
+                    Match.BaseAndRight(baseSection, rightSection)
+                  ) =>
+                partialResult.copy(
+                  baseFingerprintedInclusionsByPath =
+                    partialResult.knockOutFromBaseFingerprintedInclusions(
+                      baseSection
+                    ),
+                  rightFingerprintedInclusionsByPath =
+                    partialResult.knockOutFromRightFingerprintedInclusions(
+                      rightSection
+                    )
+                )
+              case (
+                    partialResult,
+                    Match.LeftAndRight(leftSection, rightSection)
+                  ) =>
+                partialResult.copy(
+                  leftFingerprintedInclusionsByPath =
+                    partialResult.knockOutFromLeftFingerprintedInclusions(
+                      leftSection
+                    ),
+                  rightFingerprintedInclusionsByPath =
+                    partialResult.knockOutFromRightFingerprintedInclusions(
+                      rightSection
+                    )
+                )
+            }
+          end withContentCoveredByNonTinyMatchesKnockedOut
 
-        val finalSessionLabel =
-          "All tiny matches found working down from size:".labelled
+          val sessionLabel =
+            "All tiny matches found so far down to size:".labelled
 
-        val tinyMatches = Using(
-          progressRecording.newSession(
-            label = sessionLabel,
-            maximumProgress = minimumWindowSizeAcrossAllFilesOverAllSides,
-            finalLabel = Some(finalSessionLabel)
-          )(initialProgress = minimumWindowSizeAcrossAllFilesOverAllSides)
-        ) { progressRecordingSession =>
-          given MatchSearchingContext =
-            new MatchSearchingContext:
-              override val minimumMatchSizeConsidered: Int   = 1
-              override def thresholdSize(fileSize: Int): Int = 1
+          val finalSessionLabel =
+            "All tiny matches found working down from size:".labelled
 
-          withAllMatches(
-            matchesAndTheirSections =
-              withContentCoveredByNonTinyMatchesKnockedOut,
-            looseExclusiveUpperBoundOnMaximumMatchSize =
-              minimumWindowSizeAcrossAllFilesOverAllSides
-          )(using progressRecordingSession)
-        }.get.purgedOfOverlappingOrSubsumedMatches.matches
+          val tinyMatches = Using(
+            progressRecording.newSession(
+              label = sessionLabel,
+              maximumProgress = minimumWindowSizeAcrossAllFilesOverAllSides,
+              finalLabel = Some(finalSessionLabel)
+            )(initialProgress = minimumWindowSizeAcrossAllFilesOverAllSides)
+          ) { progressRecordingSession =>
+            given MatchSearchingContext =
+              new MatchSearchingContext:
+                override val minimumMatchSizeConsidered: Int =
+                  minimumTinyMatchSize
+                override def thresholdSize(fileSize: Int): Int =
+                  minimumTinyMatchSize
 
-        tinyMatches.foldLeft(this)(_ `withMatch` _)
+            withAllMatches(
+              matchesAndTheirSections =
+                withContentCoveredByNonTinyMatchesKnockedOut,
+              looseExclusiveUpperBoundOnMaximumMatchSize =
+                minimumWindowSizeAcrossAllFilesOverAllSides
+            )(using progressRecordingSession)
+          }.get.purgedOfOverlappingOrSubsumedMatches.matches
+
+          tinyMatches.foldLeft(this)(_ `withMatch` _)
+        else this
+        end if
       end withTinyMatches
 
       private def purgedOfOverlappingOrSubsumedMatches
