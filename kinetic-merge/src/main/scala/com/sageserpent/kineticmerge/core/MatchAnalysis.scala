@@ -1636,6 +1636,7 @@ object MatchAnalysis extends StrictLogging:
                   withoutTheseMatches(pairwiseMatchesToBeEaten.keySet)
                 )(_ `withMatch` _)
 
+              // TODO: might need to remove this...
               takingFragmentationIntoAccount.checkInvariant()
 
               // NOTE: prefer `traverse` + `flatten` to `flatTraverse` as it
@@ -1672,15 +1673,15 @@ object MatchAnalysis extends StrictLogging:
                     .foldLeft(MatchesAndTheirSections.empty)(
                       _ `withMatch` _
                     )
+                // TODO: might need to remove this...
                 rebuilt.checkInvariant()
+
                 val reconciled = rebuilt.withoutRedundantPairwiseMatches
+
                 reconciled.checkInvariant()
+                reconciled.reconciliationPostcondition()
+
                 progressRecordingSession.upTo(amount = 0)
-
-                val fullyReconciledMatches = reconciled.matches
-
-                reconciled
-                  .checkParallelMatchesGroups()
 
                 reconciled
               else
@@ -1697,8 +1698,6 @@ object MatchAnalysis extends StrictLogging:
         // NOTE: do this and not a refutable pattern match so that any assertion
         // failures propagate out cleanly - it makes debugging a lot easier.
         val reconciled = outcome.get
-
-        reconciled.reconciliationPostcondition()
 
         logger.debug(
           s"Groups of parallel matches after reconciliation:\n${pprintCustomised(reconciled.groupsOfParallelMatches)}"
@@ -2523,7 +2522,10 @@ object MatchAnalysis extends StrictLogging:
               def overlappingMatches =
                 matches diff unsplitMatchesWithoutOverlaps
 
-              if splits.isEmpty then remainingMatchesAndTheirSections
+              if splits.isEmpty then
+                remainingMatchesAndTheirSections.checkInvariant()
+
+                remainingMatchesAndTheirSections
               else
                 if !enabled then
                   // NASTY HACK: throwing an exception right in the middle of
@@ -2579,8 +2581,6 @@ object MatchAnalysis extends StrictLogging:
         // can propagate through, specifically an `AdmissibleException` thrown
         // if reconciliation is disabled.
         val reconciled = outcome.get
-
-        reconciled.checkInvariant()
 
         reconciled
 
