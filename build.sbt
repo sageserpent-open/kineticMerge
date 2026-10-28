@@ -96,11 +96,11 @@ lazy val cliApplicationSettings =
     }
   )
 
-lazy val kineticMerge = (project in file("kinetic-merge"))
+lazy val coreLibrary = (project in file("core-library"))
   .settings(
     commonSettings,
     commonLibraryDependencies,
-    name := "kinetic-merge",
+    name := "kinetic-merge-core",
     description := "Merge branches in the presence of code motion within and between files.",
     versionResource := {
       val additionalResourcesDirectory = (Compile / resourceManaged).value
@@ -122,7 +122,7 @@ lazy val kineticMerge = (project in file("kinetic-merge"))
     }.taskValue
   )
 lazy val gitCliApplication = (project in file("git-cli-application"))
-  .dependsOn(kineticMerge, kineticMerge % "test->test")
+  .dependsOn(coreLibrary, coreLibrary % "test->test")
   .settings(
     cliApplicationSettings,
     name        := "git-cli-application",
@@ -130,7 +130,7 @@ lazy val gitCliApplication = (project in file("git-cli-application"))
   )
 
 lazy val toolCliApplication = (project in file("tool-cli-application"))
-  .dependsOn(kineticMerge, kineticMerge % "test->test")
+  .dependsOn(coreLibrary, coreLibrary % "test->test")
   .settings(
     cliApplicationSettings,
     name        := "tool-cli-application",
@@ -138,7 +138,7 @@ lazy val toolCliApplication = (project in file("tool-cli-application"))
   )
 
 lazy val root = (project in file("."))
-  .aggregate(kineticMerge, gitCliApplication, toolCliApplication)
+  .aggregate(coreLibrary, gitCliApplication, toolCliApplication)
   .settings(
     publish / skip    := true,
     releaseCrossBuild := false, // No cross-building here - just Scala 3.
