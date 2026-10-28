@@ -28,10 +28,10 @@ jobs:
           fetch-depth: 0
           ref: "1.22.2" # TODO: this has been jemmied!
 
-      - name: Set up JDK.
+      - name: Set up JDK for compilation.
         uses: actions/setup-java@v5
         with:
-          java-version: 17 # TODO: suppose I want to compile against JDK 17 but bundle the JDK 26 JVM?
+          java-version: 17
           distribution: corretto
 
       - uses: sbt/setup-sbt@v1
@@ -40,6 +40,12 @@ jobs:
         run: |
           sbt "gitCliApplication/stagedJarsForJReleaserDirectory"
           sbt "toolCliApplication/stagedJarsForJReleaserDirectory"
+
+      - name: Set up JDK for JLink assembly.
+        uses: actions/setup-java@v5
+        with:
+          java-version: 26 # Use the latest JDK supported across the matrix, as JLink bundles a private reduced JVM into the application package.
+          distribution: corretto
 
       - name: Assemble platform-specific application.
         uses: jreleaser/release-action@v2
