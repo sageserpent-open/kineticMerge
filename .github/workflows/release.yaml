@@ -4,18 +4,18 @@ on:
   workflow_dispatch:
 
 jobs:
-  #  release:
-  #    uses: guardian/gha-scala-library-release-workflow/.github/workflows/reusable-release.yml@v2
-  #    permissions: { contents: write, pull-requests: write }
-  #    secrets:
-  #      SONATYPE_TOKEN: ${{ secrets.AUTOMATED_MAVEN_RELEASE_SONATYPE_TOKEN }}
-  #      PGP_PRIVATE_KEY: ${{ secrets.AUTOMATED_MAVEN_RELEASE_PGP_SECRET }}
-  #      GITHUB_APP_PRIVATE_KEY: ${{ secrets.AUTOMATED_MAVEN_RELEASE_GITHUB_APP_PRIVATE_KEY }}
-  #    with:
-  #      GITHUB_APP_ID: 983631
+  release:
+    uses: guardian/gha-scala-library-release-workflow/.github/workflows/reusable-release.yml@v2
+    permissions: { contents: write, pull-requests: write }
+    secrets:
+      SONATYPE_TOKEN: ${{ secrets.AUTOMATED_MAVEN_RELEASE_SONATYPE_TOKEN }}
+      PGP_PRIVATE_KEY: ${{ secrets.AUTOMATED_MAVEN_RELEASE_PGP_SECRET }}
+      GITHUB_APP_PRIVATE_KEY: ${{ secrets.AUTOMATED_MAVEN_RELEASE_GITHUB_APP_PRIVATE_KEY }}
+    with:
+      GITHUB_APP_ID: 983631
 
   assemble-applications:
-    #    needs: release
+    needs: release
     strategy:
       matrix:
         # Cross-compiling for Windows, Linux, and modern/Intel Mac frameworks
@@ -26,7 +26,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: "v1.22.2" # TODO: this has been jemmied!
+          ref: "v${{ needs.release.outputs.RELEASE_VERSION }}"
 
       - name: Set up JDK for compilation.
         uses: actions/setup-java@v5
@@ -53,7 +53,7 @@ jobs:
           setup-java: false
           arguments: assemble
         env:
-          JRELEASER_PROJECT_VERSION: "1.22.2" # TODO: this has been jemmied!
+          JRELEASER_PROJECT_VERSION: ${{ needs.release.outputs.RELEASE_VERSION }}
 
       - name: Upload assembled applications to cache.
         uses: actions/upload-artifact@v7
@@ -63,7 +63,7 @@ jobs:
 
   uploadExecutables:
     needs:
-      #      - release
+      - release
       - assemble-applications
     runs-on: ubuntu-latest
 
@@ -78,7 +78,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: "v1.22.2" # TODO: this has been jemmied!
+          ref: "v${{ needs.release.outputs.RELEASE_VERSION }}"
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
@@ -98,5 +98,5 @@ jobs:
           setup-java: false
           arguments: full-release
         env:
-          JRELEASER_PROJECT_VERSION: "1.22.2" # TODO: this has been jemmied!
+          JRELEASER_PROJECT_VERSION: ${{ needs.release.outputs.RELEASE_VERSION }}
           JRELEASER_GITHUB_TOKEN: ${{ steps.generate-github-app-token.outputs.token }}
