@@ -50,6 +50,7 @@ jobs:
       - name: Assemble platform-specific application.
         uses: jreleaser/release-action@v2
         with:
+          setup-java: false
           arguments: assemble
         env:
           JRELEASER_PROJECT_VERSION: "1.22.2" # TODO: this has been jemmied!
@@ -94,6 +95,7 @@ jobs:
       - name: Add executables to release, package and publish to distribution channels such as Brew and Scoop.
         uses: jreleaser/release-action@v2
         with:
+          setup-java: false
           arguments: full-release
         env:
           JRELEASER_PROJECT_VERSION: "1.22.2" # TODO: this has been jemmied!
