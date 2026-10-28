@@ -60,7 +60,7 @@ lazy val commonLibraryDependencies = Seq(
   libraryDependencies += "me.tongfei"         % "progressbar"   % "0.10.2",
   libraryDependencies += "org.apache.commons" % "commons-lang3" % "3.21.0",
   libraryDependencies +=
-    "org.scala-lang.modules" %% "scala-parallel-collections" % "1.2.0",
+    "org.scala-lang.modules" %% "scala-parallel-collections" % "1.3.0",
   libraryDependencies += "org.typelevel" %% "kittens" % "3.5.0",
   libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async" % "1.4.0",
 
