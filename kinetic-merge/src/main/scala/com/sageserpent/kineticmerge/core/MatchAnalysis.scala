@@ -1327,7 +1327,7 @@ object MatchAnalysis extends StrictLogging:
             )(using progressRecordingSession)
           }.get.purgedOfOverlappingOrSubsumedMatches.matches
 
-          tinyMatches.foldLeft(this)(_ `withMatch` _)
+          this.withMatches(tinyMatches)
         else this
         end if
       end withTinyMatches
@@ -1543,9 +1543,8 @@ object MatchAnalysis extends StrictLogging:
                 fragmentsOf(pairwiseMatchesToBeEaten).diff(matches)
 
               val takingFragmentationIntoAccount =
-                fragments.foldLeft(
-                  withoutTheseMatches(pairwiseMatchesToBeEaten.keySet)
-                )(_ `withMatch` _)
+                withoutTheseMatches(pairwiseMatchesToBeEaten.keySet)
+                  .withMatches(fragments)
 
               // NOTE: prefer `traverse` + `flatten` to `flatTraverse` as it
               // manages flattening `Option` values into an enclosing `Set`
@@ -1577,10 +1576,9 @@ object MatchAnalysis extends StrictLogging:
                   takingFragmentationIntoAccount.pareDownOrSuppressCompletely
                 )
                 val rebuilt =
-                  (paredDownMatches union paredDownFragments)
-                    .foldLeft(MatchesAndTheirSections.empty)(
-                      _ `withMatch` _
-                    )
+                  MatchesAndTheirSections.empty.withMatches(
+                    paredDownMatches union paredDownFragments
+                  )
 
                 val reconciled = rebuilt.cleanUpPairwiseMatches
 
@@ -2137,8 +2135,8 @@ object MatchAnalysis extends StrictLogging:
         // `SectionedCodeExtensionTest.codeMotionAmbiguousWithAPreservation` has
         // an example of this.
         val backTranslatedMatchesAndTheirSections =
-          backTranslatedParallelMatches.foldLeft(MatchesAndTheirSections.empty)(
-            _ `withMatch` _
+          MatchesAndTheirSections.empty.withMatches(
+            backTranslatedParallelMatches
           )
 
         val result =
@@ -2278,11 +2276,16 @@ object MatchAnalysis extends StrictLogging:
       end isSubsumedNonTriviallyByAMatchOnTheBaseAndLeft
 
       private def withMatches(
+          matches: Iterable[GenericMatch[Element]]
+      ): MatchesAndTheirSections =
+        matches.foldLeft(this)(_ `withMatch` _)
+
+      private def withMatches(
           matches: Set[GenericMatch[Element]],
           haveTrimmedMatches: Boolean
       ): MatchingResult =
         val updatedMatchesAndTheirSections =
-          matches.foldLeft(this)(_ `withMatch` _)
+          withMatches(matches)
 
         val pathInclusions =
           if !haveTrimmedMatches then
@@ -2519,9 +2522,9 @@ object MatchAnalysis extends StrictLogging:
           )
         end if
 
-        allSidesMatchesForAddition.foldLeft(
-          withoutTheseMatches(redundantMatches)
-        )(_ `withMatch` _)
+        withoutTheseMatches(redundantMatches).withMatches(
+          allSidesMatchesForAddition
+        )
       end cleanUpPairwiseMatches
 
       def reconcileOverlappingMatches(
@@ -2601,13 +2604,12 @@ object MatchAnalysis extends StrictLogging:
                   )
 
                 val withSplitsReintroduced =
-                  (hivedOffMatches `union` remainingContestedMatches)
-                    .filterNot(
-                      withoutOverlaps.contains
-                    ) // TODO: is there any point in separating the hived off and contested matches in `HivedOffNonOverlappedMatchResult`?
-                    .foldLeft(withoutOverlaps)(
-                      _ `withMatch` _
-                    )
+                  withoutOverlaps.withMatches(
+                    (hivedOffMatches `union` remainingContestedMatches)
+                      .filterNot(
+                        withoutOverlaps.contains
+                      ) // TODO: is there any point in separating the hived off and contested matches in `HivedOffNonOverlappedMatchResult`?
+                  )
 
                 val refined =
                   withSplitsReintroduced.cleanUpPairwiseMatches
