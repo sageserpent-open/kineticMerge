@@ -54,7 +54,6 @@ lazy val commonLibraryDependencies = Seq(
   libraryDependencies += "com.lihaoyi"             %% "os-lib"  % "0.11.10",
   libraryDependencies += "com.lihaoyi"             %% "fansi"   % "0.5.1",
   libraryDependencies += "com.lihaoyi"             %% "pprint"  % "0.9.6",
-  libraryDependencies += "com.softwaremill.common" %% "tagging" % "2.3.5",
   libraryDependencies += "com.google.guava"         % "guava"   % "33.7.2-jre",
   libraryDependencies += "com.github.ben-manes.caffeine" % "caffeine" % "3.3.1",
   libraryDependencies += "me.tongfei"         % "progressbar"   % "0.10.2",
@@ -62,7 +61,6 @@ lazy val commonLibraryDependencies = Seq(
   libraryDependencies +=
     "org.scala-lang.modules" %% "scala-parallel-collections" % "1.3.0",
   libraryDependencies += "org.typelevel" %% "kittens" % "3.5.0",
-  libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async" % "1.4.0",
 
   libraryDependencies += "de.sciss"        %% "fingertree" % "1.5.5" % Test,
   libraryDependencies += "com.sageserpent" %% "americium"  % "2.2.2" % Test,
@@ -76,6 +74,8 @@ lazy val cliApplicationSettings =
   commonSettings ++ commonLibraryDependencies ++ Seq(
     publish / skip                            := true,
     libraryDependencies += "com.github.scopt" %% "scopt" % "4.2.0",
+    libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async" % "1.4.0",
+    libraryDependencies += "com.softwaremill.common" %% "tagging" % "2.3.5",
     stagedJarsForJReleaserDirectory           := {
       val location =
         (Compile / target).value.toPath.resolve("stagedJarsForJReleaser")
