@@ -44,7 +44,7 @@ assemble:
         - pattern: "git-cli-application/target/stagedJarsForJReleaser/*.jar"
 
       mainJar:
-        path: "git-cli-application/target/stagedJarsForJReleaser/git-cli-application_3-{{projectVersion}}.jar"
+        path: "git-cli-application/target/stagedJarsForJReleaser/kinetic-merge_3-{{projectVersion}}.jar"
 
       java:
         mainClass: "com.sageserpent.kineticmerge.gitCliApplication.Main"
@@ -67,7 +67,7 @@ assemble:
         - pattern: "tool-cli-application/target/stagedJarsForJReleaser/*.jar"
 
       mainJar:
-        path: "tool-cli-application/target/stagedJarsForJReleaser/tool-cli-application_3-{{projectVersion}}.jar"
+        path: "tool-cli-application/target/stagedJarsForJReleaser/kinetic-merge-tool_3-{{projectVersion}}.jar"
 
       java:
         mainClass: "com.sageserpent.kineticmerge.toolCliApplication.Main"
