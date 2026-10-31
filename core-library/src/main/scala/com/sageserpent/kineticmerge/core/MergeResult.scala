@@ -184,20 +184,85 @@ case class MergeResult[Element: Eq] private (
   def onEachSide[Transformed: Eq](
       transform: MergeResult.Side[Element] => MergeResult.Side[Transformed]
   ): MergeResult[Transformed] =
-    onEachSideItems[Transformed] { side =>
-      def transformItem(item: Item[Element]): Seq[Item[Transformed]] = (item: Any) match
-        case nested: MergeResult[Element] @unchecked =>
-          Seq(nested.onEachSide(transform))
-        case elem: Element @unchecked =>
-          val singleSide = MergeResult.Side(Seq(elem -> 0))
-          val MergeResult.Side(transformed) = transform(singleSide)
-          transformed.map(_._1)
-
-      val ((), transformedSide) = side.innerFlatMapAccumulate(()) { case ((), item) =>
-        () -> transformItem(item)
-      }
-      transformedSide
+    // If there are nested MergeResults, flatten them first or delegate directly across all elements on each side.
+    // Notice that when applying substitutions across an entire file side, the transformation expects the whole side sequence!
+    val flattened = this.flattenRecursively
+    val plainSegments = flattened.segments.map {
+      case Segment.Resolved(items) =>
+        Segment.Resolved[Transformed](items.collect { case elem: Element @unchecked if !elem.isInstanceOf[MergeResult[?]] => elem }.asInstanceOf[Seq[Transformed]])
+      case Segment.Conflicted(base, left, right) =>
+        Segment.Conflicted[Transformed](
+          base.collect { case elem: Element @unchecked if !elem.isInstanceOf[MergeResult[?]] => elem }.asInstanceOf[Seq[Transformed]],
+          left.collect { case elem: Element @unchecked if !elem.isInstanceOf[MergeResult[?]] => elem }.asInstanceOf[Seq[Transformed]],
+          right.collect { case elem: Element @unchecked if !elem.isInstanceOf[MergeResult[?]] => elem }.asInstanceOf[Seq[Transformed]]
+        )
     }
+
+    flattened.segments match
+      case Seq(Segment.Resolved(items)) =>
+        val elements = items.collect { case elem: Element @unchecked if !elem.isInstanceOf[MergeResult[?]] => elem }
+        val singleSide = MergeResult.Side(elements.map(_ -> 0))
+        val MergeResult.Side(transformed) = transform(singleSide)
+        coalescingItems[Transformed](segmentForItems[Transformed](transformed.map(_._1)).toSeq)
+      case _ =>
+        val baseSide = MergeResult.Side(flattened.segments.zipWithIndex.flatMap {
+          case (Segment.Resolved(items), label) =>
+            items.collect { case elem: Element @unchecked if !elem.isInstanceOf[MergeResult[?]] => elem -> label }
+          case (Segment.Conflicted(baseItems, _, _), label) =>
+            baseItems.collect { case elem: Element @unchecked if !elem.isInstanceOf[MergeResult[?]] => elem -> label }
+        })
+
+        val leftSide = MergeResult.Side(flattened.segments.zipWithIndex.flatMap {
+          case (Segment.Resolved(items), label) =>
+            items.collect { case elem: Element @unchecked if !elem.isInstanceOf[MergeResult[?]] => elem -> label }
+          case (Segment.Conflicted(_, leftItems, _), label) =>
+            leftItems.collect { case elem: Element @unchecked if !elem.isInstanceOf[MergeResult[?]] => elem -> label }
+        })
+
+        val rightSide = MergeResult.Side(flattened.segments.zipWithIndex.flatMap {
+          case (Segment.Resolved(items), label) =>
+            items.collect { case elem: Element @unchecked if !elem.isInstanceOf[MergeResult[?]] => elem -> label }
+          case (Segment.Conflicted(_, _, rightItems), label) =>
+            rightItems.collect { case elem: Element @unchecked if !elem.isInstanceOf[MergeResult[?]] => elem -> label }
+        })
+
+        val MergeResult.Side(baseTransformed) = transform(baseSide)
+        val MergeResult.Side(leftTransformed) = transform(leftSide)
+        val MergeResult.Side(rightTransformed) = transform(rightSide)
+
+        val baseSegmentGroups = baseTransformed.groupMap(_._2)(_._1)
+        val leftSegmentGroups = leftTransformed.groupMap(_._2)(_._1)
+        val rightSegmentGroups = rightTransformed.groupMap(_._2)(_._1)
+
+        val tuples: Seq[
+          (
+              Int,
+              (
+                  Option[Seq[Transformed]],
+                  Option[(Option[Seq[Transformed]], Option[Seq[Transformed]])]
+              )
+          )
+        ] = baseSegmentGroups
+          .mergeByKey(
+            leftSegmentGroups
+              .mergeByKey(rightSegmentGroups)
+          )
+          .toSeq
+          .sortBy(_._1)
+
+        coalescingItems[Transformed](
+          tuples
+            .map(_._2)
+            .flatMap((_: @unchecked) match
+              case (base, Some((left, right))) =>
+                segmentForItems[Transformed](
+                  base.getOrElse(Seq.empty),
+                  left.getOrElse(Seq.empty),
+                  right.getOrElse(Seq.empty)
+                )
+              case (base, None) =>
+                segmentForItems[Transformed](base.getOrElse(Seq.empty), Seq.empty, Seq.empty))
+        )
 
   def onEachSideItems[Transformed: Eq](
       transform: MergeResult.Side[Item[Element]] => MergeResult.Side[Item[Transformed]]
