@@ -1912,8 +1912,8 @@ object SectionedCodeExtension extends StrictLogging:
         end attemptLastMinuteResolutionViaContextOfContributions
 
         def insertAnchoredSplices(
-            side: MergeResult.Side[MultiSided[Section[Element]]]
-        ): MergeResult.Side[MergeResult[MultiSided[Section[Element]]]] =
+            side: MergeResult.Side[MergeResult.Item[MultiSided[Section[Element]]]]
+        ): MergeResult.Side[MergeResult.Item[MultiSided[Section[Element]]]] =
           case class Deferral(
               deferredSplice: MergeResult[MultiSided[Section[Element]]],
               anchorPrecedingDeferredSpliceIsAmbiguous: Boolean
@@ -1933,7 +1933,7 @@ object SectionedCodeExtension extends StrictLogging:
                     precedingSectionForLoggingContext,
                     deferral
                   ),
-                  section @ MultiSided.Unique(candidateAnchorDestination)
+                  sectionItem @ (section @ MultiSided.Unique(candidateAnchorDestination))
                 ) =>
               // TODO: shouldn't the helper `deduplicateWhenPossible` from
               // further down be used here to thin out the splice
@@ -2037,7 +2037,7 @@ object SectionedCodeExtension extends StrictLogging:
                     Some(section),
                     succeedingSplice.map(Deferral(_, anchorIsAmbiguous))
                   ) -> deferral.fold(ifEmpty =
-                    Seq(MergeResult.of[MultiSided[Section[Element]]](section))
+                    Seq(section: MergeResult.Item[MultiSided[Section[Element]]])
                   ) { case Deferral(deferredSplice, _) =>
                     Seq(
                       precedingSectionForLoggingContext.notingMigratedSplice(
@@ -2045,8 +2045,8 @@ object SectionedCodeExtension extends StrictLogging:
                           deferredSplice,
                           AnchoringSense.Predecessor
                         )
-                      ),
-                      MergeResult.of[MultiSided[Section[Element]]](section)
+                      ): MergeResult.Item[MultiSided[Section[Element]]],
+                      section
                     )
                   }
 
@@ -2063,8 +2063,8 @@ object SectionedCodeExtension extends StrictLogging:
                             precedingMigrationSplice,
                             AnchoringSense.Successor
                           )
-                        ),
-                      MergeResult.of[MultiSided[Section[Element]]](section)
+                        ): MergeResult.Item[MultiSided[Section[Element]]],
+                      section
                     )
                   ) {
                     case Deferral(
@@ -2150,8 +2150,8 @@ object SectionedCodeExtension extends StrictLogging:
                           precedingSectionForLoggingContext
                             .notingMigratedSplice(
                               deduplicated
-                            ),
-                          MergeResult.of[MultiSided[Section[Element]]](section)
+                            ): MergeResult.Item[MultiSided[Section[Element]]],
+                          section
                         )
 
                       // The previous preceding anchor from the deferred
@@ -2168,15 +2168,15 @@ object SectionedCodeExtension extends StrictLogging:
                                 deferredSplice,
                                 AnchoringSense.Predecessor
                               )
-                            ),
+                            ): MergeResult.Item[MultiSided[Section[Element]]],
                           precedingSectionForLoggingContext
                             .notingMigratedSplice(
                               attemptLastMinuteResolutionViaContextOfContributions(
                                 precedingMigrationSplice,
                                 AnchoringSense.Successor
                               )
-                            ),
-                          MergeResult.of[MultiSided[Section[Element]]](section)
+                            ): MergeResult.Item[MultiSided[Section[Element]]],
+                          section
                         )
 
                       potentiallyDeduplicated.fold(ifEmpty =
@@ -2194,16 +2194,21 @@ object SectionedCodeExtension extends StrictLogging:
               end match
             case (
                   (precedingSectionForLoggingContext, deferral),
-                  section
+                  sectionItem
                 ) =>
-              // If this matches, then `section` is definitely not an anchor,
+              // If this matches, then `sectionItem` is definitely not an anchor,
               // so we can splice in the deferred migration from the previous
               // preceding anchor.
+              val maybeSection = (sectionItem: Any) match
+                case _: MergeResult[?] => None
+                case s: MultiSided[Section[Element]] @unchecked => Some(s)
+                case _ => None
+
               (
-                Some(section),
+                maybeSection,
                 None
               ) -> deferral.fold(ifEmpty =
-                Seq(MergeResult.of[MultiSided[Section[Element]]](section))
+                Seq(sectionItem)
               ) { case Deferral(deferredSplice, _) =>
                 Seq(
                   precedingSectionForLoggingContext.notingMigratedSplice(
@@ -2211,8 +2216,8 @@ object SectionedCodeExtension extends StrictLogging:
                       deferredSplice,
                       AnchoringSense.Predecessor
                     )
-                  ),
-                  MergeResult.of[MultiSided[Section[Element]]](section)
+                  ): MergeResult.Item[MultiSided[Section[Element]]],
+                  sectionItem
                 )
               }
           }
@@ -2228,13 +2233,13 @@ object SectionedCodeExtension extends StrictLogging:
                       deferredSplice,
                       AnchoringSense.Predecessor
                     )
-                  )
+                  ): MergeResult.Item[MultiSided[Section[Element]]]
                 )
               )
           }
         end insertAnchoredSplices
 
-        path -> withSuppressions.onEachSide(insertAnchoredSplices).flatten
+        path -> withSuppressions.onEachSideItems(insertAnchoredSplices)
       end applySplices
 
       def applySubstitutions(
@@ -2361,7 +2366,7 @@ object SectionedCodeExtension extends StrictLogging:
           path: Path,
           mergeResult: MultiSidedMergeResult[Section[Element]]
       ): (Path, MergeResult[Element]) =
-        path -> mergeResult.innerFlatMap(resolution)
+        path -> mergeResult.innerFlatMap(resolution).flattenRecursively
       end resolveSections
 
       val secondPassMergeResultsByPath

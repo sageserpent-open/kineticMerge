@@ -3,9 +3,10 @@ package com.sageserpent.kineticmerge.core
 import cats.{Eq, Traverse}
 import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSidedMergeResult
 import com.sageserpent.kineticmerge.core.MergeResult.{
+  Item,
   Segment,
-  coalescing,
-  segmentFor
+  coalescingItems,
+  segmentForItems
 }
 import com.sageserpent.kineticmerge.core.merge.MergeAlgebra
 
@@ -28,7 +29,10 @@ import scala.math.Ordering.Implicits.seqOrdering
   * @param segments
   * @tparam Element
   */
-case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
+case class MergeResult[Element: Eq] private (
+    segments: Seq[Segment[Item[Element]]]
+):
+  import MergeResult.given
   // Resolved and conflicting segments should be coalesced.
   require(segments.isEmpty || segments.zip(segments.tail).forall {
     case (Segment.Resolved(_), Segment.Conflicted(_, _, _)) => true
@@ -45,27 +49,41 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
   def fuseWith(another: MergeResult[Element])(
       elementFusion: (Element, Element) => Option[Element]
   ): Option[MergeResult[Element]] =
+    def itemFusion(
+        item1: Item[Element],
+        item2: Item[Element]
+    ): Option[Item[Element]] = (item1: Any, item2: Any) match
+      case (e1: Element @unchecked, e2: Element @unchecked)
+          if !e1.isInstanceOf[MergeResult[?]] && !e2.isInstanceOf[MergeResult[?]] =>
+        elementFusion(e1, e2)
+      case (
+            m1: MergeResult[Element] @unchecked,
+            m2: MergeResult[Element] @unchecked
+          ) =>
+        m1.fuseWith(m2)(elementFusion)
+      case _ => None
+
     if segments.size != another.segments.size then None
     else
       Traverse[Seq]
-        .traverse(segments.zip(another.segments))(_.fuseWith(_)(elementFusion))
+        .traverse(segments.zip(another.segments))(_.fuseWith(_)(itemFusion))
         .map(MergeResult.apply[Element])
 
-  def addResolved(element: Element): MergeResult[Element] = segments.lastOption
-    .fold(ifEmpty = MergeResult(Seq(Segment.Resolved(Seq(element))))) {
-      case Segment.Resolved(segmentElements) =>
+  def addResolved(element: Item[Element]): MergeResult[Element] = segments.lastOption
+    .fold(ifEmpty = MergeResult(Seq(Segment.Resolved[Item[Element]](Seq(element))))) {
+      case Segment.Resolved(segmentItems) =>
         MergeResult(
-          segments.init :+ Segment.Resolved(segmentElements :+ element)
+          segments.init :+ Segment.Resolved[Item[Element]](segmentItems :+ element)
         )
       case Segment.Conflicted(_, _, _) =>
-        MergeResult(segments :+ Segment.Resolved(Seq(element)))
+        MergeResult(segments :+ Segment.Resolved[Item[Element]](Seq(element)))
     }
 
   def addConflicted(
-      baseElements: Seq[Element],
-      leftElements: Seq[Element],
-      rightElements: Seq[Element]
-  ): MergeResult[Element] = segmentFor(
+      baseElements: Seq[Item[Element]],
+      leftElements: Seq[Item[Element]],
+      rightElements: Seq[Item[Element]]
+  ): MergeResult[Element] = segmentForItems(
     baseElements,
     leftElements,
     rightElements
@@ -73,7 +91,7 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
     case segment @ Segment.Conflicted(base, left, right) =>
       segments.lastOption match
         case Some(Segment.Conflicted(sb, sl, sr)) =>
-          val Some(coalesced) = segmentFor(
+          val Some(coalesced) = segmentForItems(
             sb ++ base,
             sl ++ left,
             sr ++ right
@@ -81,61 +99,84 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
           MergeResult(segments.init :+ coalesced)
         case _ =>
           MergeResult(segments :+ segment)
-    case Segment.Resolved(elements) =>
-      addResolved(elements)
+    case Segment.Resolved(items) =>
+      addResolved(elements = items)
   }
 
-  def addResolved(elements: Seq[Element]): MergeResult[Element] =
-    segments.lastOption
-      .fold(ifEmpty = MergeResult(Seq(Segment.Resolved(elements)))) {
-        case Segment.Resolved(segmentElements) =>
-          MergeResult(
-            segments.init :+ Segment.Resolved(segmentElements ++ elements)
-          )
-        case Segment.Conflicted(_, _, _) =>
-          MergeResult(segments :+ Segment.Resolved(elements))
-      }
+  def addResolved(elements: Seq[Item[Element]]): MergeResult[Element] =
+    if elements.isEmpty then this
+    else
+      segments.lastOption
+        .fold(ifEmpty = MergeResult(Seq(Segment.Resolved[Item[Element]](elements)))) {
+          case Segment.Resolved(segmentItems) =>
+            MergeResult(
+              segments.init :+ Segment.Resolved[Item[Element]](segmentItems ++ elements)
+            )
+          case Segment.Conflicted(_, _, _) =>
+            MergeResult(segments :+ Segment.Resolved[Item[Element]](elements))
+        }
 
   def map[Transformed: Eq](
       transform: Element => Transformed
-  ): MergeResult[Transformed] = MergeResult.coalescing(segments.flatMap {
-    case Segment.Resolved(elements) =>
-      segmentFor(elements.map(transform))
-    case Segment.Conflicted(baseElements, leftElements, rightElements) =>
-      segmentFor(
-        baseElements.map(transform),
-        leftElements.map(transform),
-        rightElements.map(transform)
-      )
-  })
+  ): MergeResult[Transformed] =
+    def transformItem(item: Item[Element]): Item[Transformed] = (item: Any) match
+      case nested: MergeResult[Element] @unchecked =>
+        nested.map(transform)
+      case element: Element @unchecked =>
+        transform(element)
+
+    MergeResult.coalescingItems(segments.flatMap {
+      case Segment.Resolved(items) =>
+        segmentForItems(items.map(transformItem))
+      case Segment.Conflicted(baseItems, leftItems, rightItems) =>
+        segmentForItems(
+          baseItems.map(transformItem),
+          leftItems.map(transformItem),
+          rightItems.map(transformItem)
+        )
+    })
 
   def innerFlatMap[Transformed: Eq](
       transform: Element => Seq[Transformed]
-  ): MergeResult[Transformed] = MergeResult.coalescing(segments.flatMap {
-    case Segment.Resolved(elements) =>
-      segmentFor(elements.flatMap(transform))
-    case Segment.Conflicted(baseElements, leftElements, rightElements) =>
-      segmentFor(
-        baseElements.flatMap(transform),
-        leftElements.flatMap(transform),
-        rightElements.flatMap(transform)
-      )
-  })
+  ): MergeResult[Transformed] =
+    def transformItem(item: Item[Element]): Seq[Item[Transformed]] = (item: Any) match
+      case nested: MergeResult[Element] @unchecked =>
+        Seq(nested.innerFlatMap(transform))
+      case element: Element @unchecked =>
+        transform(element)
+
+    MergeResult.coalescingItems(segments.flatMap {
+      case Segment.Resolved(items) =>
+        segmentForItems(items.flatMap(transformItem))
+      case Segment.Conflicted(baseItems, leftItems, rightItems) =>
+        segmentForItems(
+          baseItems.flatMap(transformItem),
+          leftItems.flatMap(transformItem),
+          rightItems.flatMap(transformItem)
+        )
+    })
 
   def filterNot(predicate: Element => Boolean): MergeResult[Element] = filter(
     predicate.andThen(!_)
   )
 
   def filter(predicate: Element => Boolean): MergeResult[Element] =
-    MergeResult.coalescing(
+    def filterItem(item: Item[Element]): Option[Item[Element]] = (item: Any) match
+      case nested: MergeResult[Element] @unchecked =>
+        val filtered = nested.filter(predicate)
+        Option.unless(filtered.isEmpty)(filtered)
+      case element: Element @unchecked =>
+        Option.when(predicate(element))(element)
+
+    MergeResult.coalescingItems(
       segments.flatMap {
-        case Segment.Resolved(elements) =>
-          segmentFor(elements.filter(predicate))
-        case Segment.Conflicted(baseElements, leftElements, rightElements) =>
-          segmentFor(
-            baseElements.filter(predicate),
-            leftElements.filter(predicate),
-            rightElements.filter(predicate)
+        case Segment.Resolved(items) =>
+          segmentForItems(items.flatMap(filterItem))
+        case Segment.Conflicted(baseItems, leftItems, rightItems) =>
+          segmentForItems(
+            baseItems.flatMap(filterItem),
+            leftItems.flatMap(filterItem),
+            rightItems.flatMap(filterItem)
           )
       }
     )
@@ -143,30 +184,48 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
   def onEachSide[Transformed: Eq](
       transform: MergeResult.Side[Element] => MergeResult.Side[Transformed]
   ): MergeResult[Transformed] =
+    onEachSideItems[Transformed] { side =>
+      def transformItem(item: Item[Element]): Seq[Item[Transformed]] = (item: Any) match
+        case nested: MergeResult[Element] @unchecked =>
+          Seq(nested.onEachSide(transform))
+        case elem: Element @unchecked =>
+          val singleSide = MergeResult.Side(Seq(elem -> 0))
+          val MergeResult.Side(transformed) = transform(singleSide)
+          transformed.map(_._1)
+
+      val ((), transformedSide) = side.innerFlatMapAccumulate(()) { case ((), item) =>
+        () -> transformItem(item)
+      }
+      transformedSide
+    }
+
+  def onEachSideItems[Transformed: Eq](
+      transform: MergeResult.Side[Item[Element]] => MergeResult.Side[Item[Transformed]]
+  ): MergeResult[Transformed] =
     segments match
-      case Seq(Segment.Resolved(elements)) =>
-        val singleSide = MergeResult.Side(elements.map(_ -> 0))
+      case Seq(Segment.Resolved(items)) =>
+        val singleSide = MergeResult.Side(items.map(_ -> 0))
 
         val MergeResult.Side(transformed) = transform(singleSide)
 
-        MergeResult(segmentFor(transformed.map(_._1)).toSeq)
+        coalescingItems[Transformed](segmentForItems[Transformed](transformed.map(_._1)).toSeq)
       case _ =>
         val baseSide = MergeResult.Side(segments.zipWithIndex.flatMap {
-          case (Segment.Resolved(elements), label) => elements.map(_ -> label)
-          case (Segment.Conflicted(baseElements, _, _), label) =>
-            baseElements.map(_ -> label)
+          case (Segment.Resolved(items), label) => items.map(_ -> label)
+          case (Segment.Conflicted(baseItems, _, _), label) =>
+            baseItems.map(_ -> label)
         })
 
         val leftSide = MergeResult.Side(segments.zipWithIndex.flatMap {
-          case (Segment.Resolved(elements), label) => elements.map(_ -> label)
-          case (Segment.Conflicted(_, leftElements, _), label) =>
-            leftElements.map(_ -> label)
+          case (Segment.Resolved(items), label) => items.map(_ -> label)
+          case (Segment.Conflicted(_, leftItems, _), label) =>
+            leftItems.map(_ -> label)
         })
 
         val rightSide = MergeResult.Side(segments.zipWithIndex.flatMap {
-          case (Segment.Resolved(elements), label) => elements.map(_ -> label)
-          case (Segment.Conflicted(_, _, rightElements), label) =>
-            rightElements.map(_ -> label)
+          case (Segment.Resolved(items), label) => items.map(_ -> label)
+          case (Segment.Conflicted(_, _, rightItems), label) =>
+            rightItems.map(_ -> label)
         })
 
         val MergeResult.Side(baseTransformed) = transform(baseSide)
@@ -185,8 +244,8 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
           (
               Int,
               (
-                  Option[Seq[Transformed]],
-                  Option[(Option[Seq[Transformed]], Option[Seq[Transformed]])]
+                  Option[Seq[Item[Transformed]]],
+                  Option[(Option[Seq[Item[Transformed]]], Option[Seq[Item[Transformed]]])]
               )
           )
         ] = baseSegmentGroups
@@ -197,35 +256,61 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
           .toSeq
           .sortBy(_._1)
 
-        coalescing(
+        coalescingItems(
           tuples
             .map(_._2)
             .flatMap((_: @unchecked) match
               case (base, Some((left, right))) =>
-                segmentFor(
+                segmentForItems(
                   base.getOrElse(Seq.empty),
                   left.getOrElse(Seq.empty),
                   right.getOrElse(Seq.empty)
                 )
               case (base, None) =>
-                segmentFor(base.getOrElse(Seq.empty), Seq.empty, Seq.empty))
+                segmentForItems(base.getOrElse(Seq.empty), Seq.empty, Seq.empty))
         )
-  end onEachSide
+  end onEachSideItems
 
   inline def tail: MergeResult[Element] = MergeResult(segments.tail)
 
   inline def init: MergeResult[Element] = MergeResult(segments.init)
 
-  inline def :+(segment: Segment[Element]): MergeResult[Element] = coalescing(
+  inline def :+(segment: Segment[Item[Element]]): MergeResult[Element] = coalescingItems(
     segments :+ segment
   )
 
-  inline def +:(segment: Segment[Element]): MergeResult[Element] = coalescing(
+  inline def +:(segment: Segment[Item[Element]]): MergeResult[Element] = coalescingItems(
     segment +: segments
   )
 end MergeResult
 
 object MergeResult:
+  type Item[Element] = Element | MergeResult[Element]
+
+  given itemEquality[Element](using elementEq: Eq[Element]): Eq[Item[Element]] =
+    new Eq[Item[Element]]:
+      override def eqv(x: Item[Element], y: Item[Element]): Boolean =
+        (x: Any, y: Any) match
+          case (xRes: MergeResult[Element] @unchecked, yRes: MergeResult[Element] @unchecked) =>
+            mergeResultEquality[Element].eqv(xRes, yRes)
+          case (xElem: Element @unchecked, yElem: Element @unchecked)
+              if !xElem.isInstanceOf[MergeResult[?]] && !yElem.isInstanceOf[MergeResult[?]] =>
+            elementEq.eqv(xElem, yElem)
+          case _ => false
+
+  given itemOrdering[Element](using elementOrdering: Ordering[Element]): Ordering[Item[Element]] =
+    new Ordering[Item[Element]]:
+      override def compare(x: Item[Element], y: Item[Element]): Int =
+        (x: Any, y: Any) match
+          case (xRes: MergeResult[Element] @unchecked, yRes: MergeResult[Element] @unchecked) =>
+            mergeResultOrdering[Element].compare(xRes, yRes)
+          case (xElem: Element @unchecked, yElem: Element @unchecked)
+              if !xElem.isInstanceOf[MergeResult[?]] && !yElem.isInstanceOf[MergeResult[?]] =>
+            elementOrdering.compare(xElem, yElem)
+          case (_: MergeResult[?] @unchecked, _) => 1
+          case (_, _: MergeResult[?] @unchecked) => -1
+          case _                                 => 0
+
   given mergeResultOrdering[Element: Ordering]: Ordering[MergeResult[Element]] =
     Ordering.by(_.segments)
 
@@ -233,88 +318,129 @@ object MergeResult:
     Eq.by(_.segments)
 
   def of[Element: Eq](elements: Element*): MergeResult[Element] =
-    empty.addResolved(elements)
+    empty.addResolved(elements = elements)
+
+  def ofItems[Element: Eq](items: Item[Element]*): MergeResult[Element] =
+    empty.addResolved(elements = items)
+
+  extension [Element: Eq](result: MergeResult[Element])
+    def flattenRecursively: MergeResult[Element] =
+      def flattenWithinEnclosingConflict(
+          segment: MergeResult.Segment[Item[Element]]
+      ): Seq[Item[Element]] =
+        segment match
+          case Segment.Resolved(items) =>
+            flattenItems(items)
+          case Segment.Conflicted(_, leftItems, rightItems) =>
+            flattenItems(leftItems) ++ flattenItems(rightItems)
+
+      def flattenItems(items: Seq[Item[Element]]): Seq[Item[Element]] =
+        items.flatMap {
+          case nested: MergeResult[Element] @unchecked if nested.isInstanceOf[MergeResult[?]] =>
+            val flattenedNested = nested.flattenRecursively
+            flattenedNested.segments.flatMap {
+              case Segment.Resolved(resItems) =>
+                flattenItems(resItems)
+              case Segment.Conflicted(_, leftItems, rightItems) =>
+                flattenItems(leftItems) ++ flattenItems(rightItems)
+            }
+          case elem =>
+            Seq(elem)
+        }
+
+      coalescingItems(result.segments.flatMap {
+        case Segment.Resolved(items) =>
+          items.flatMap {
+            case nested: MergeResult[Element] @unchecked if nested.isInstanceOf[MergeResult[?]] =>
+              nested.flattenRecursively.segments
+            case elem =>
+              segmentForItems(Seq(elem))
+          }
+        case Segment.Conflicted(baseItems, leftItems, rightItems) =>
+          def flattenItemsInConflictSide(items: Seq[Item[Element]]): Seq[Item[Element]] =
+            items.flatMap {
+              case nested: MergeResult[Element] @unchecked if nested.isInstanceOf[MergeResult[?]] =>
+                val flattened = nested.flattenRecursively
+                flattened.segments.flatMap(flattenWithinEnclosingConflict)
+              case elem =>
+                Seq(elem)
+            }
+
+          segmentForItems(
+            flattenItemsInConflictSide(baseItems),
+            flattenItemsInConflictSide(leftItems),
+            flattenItemsInConflictSide(rightItems)
+          )
+      })
+  end extension
 
   def flatten[Element: Eq](
       nestedMergeResults: MergeResult[MergeResult[Element]]
   ): MergeResult[Element] =
-    MergeResult.coalescing(nestedMergeResults.segments.flatMap {
-      case Segment.Resolved(mergeResults) =>
-        mergeResults.flatMap(_.segments)
-      case Segment.Conflicted(
-            baseMergeResults,
-            leftMergeResults,
-            rightMergeResults
-          ) =>
-        def flattenWithinEnclosingConflict(
-            segment: MergeResult.Segment[Element]
-        ) =
-          segment match
-            case Segment.Resolved(elements)                         => elements
-            case Segment.Conflicted(_, leftElements, rightElements) =>
-              leftElements ++ rightElements
+    def toItemSeq(items: Seq[Item[MergeResult[Element]]]): Seq[Item[Element]] =
+      items.flatMap {
+        case r: MergeResult[Element] @unchecked => Seq(r)
+      }
 
-        MergeResult.segmentFor(
-          // TODO: this is probably nonsense - what should the base contribution
-          // really be?
-          baseMergeResults
-            .flatMap(_.segments)
-            .flatMap(flattenWithinEnclosingConflict),
-          leftMergeResults
-            .flatMap(_.segments)
-            .flatMap(flattenWithinEnclosingConflict),
-          rightMergeResults
-            .flatMap(_.segments)
-            .flatMap(flattenWithinEnclosingConflict)
-        )
-    })
+    val asMergeResultOfElement: MergeResult[Element] =
+      MergeResult(nestedMergeResults.segments.map {
+        case Segment.Resolved(results) =>
+          Segment.Resolved(toItemSeq(results))
+        case Segment.Conflicted(base, left, right) =>
+          Segment.Conflicted(
+            toItemSeq(base),
+            toItemSeq(left),
+            toItemSeq(right)
+          )
+      })
+    asMergeResultOfElement.flattenRecursively
 
-  private def coalescing[Element: Eq](
-      segments: Seq[Segment[Element]]
+  private def coalescingItems[Element: Eq](
+      segments: Seq[Segment[Item[Element]]]
   ): MergeResult[Element] =
     segments.foldLeft(empty) {
-      case (partialResult, Segment.Resolved(elements)) =>
-        partialResult.addResolved(elements)
+      case (partialResult, Segment.Resolved(items)) =>
+        partialResult.addResolved(elements = items)
       case (
             partialResult,
-            Segment.Conflicted(baseElements, leftElements, rightElements)
+            Segment.Conflicted(baseItems, leftItems, rightItems)
           ) =>
-        partialResult.addConflicted(baseElements, leftElements, rightElements)
+        partialResult.addConflicted(baseElements = baseItems, leftElements = leftItems, rightElements = rightItems)
     }
 
   def empty[Element: Eq]: MergeResult[Element] = MergeResult(
     IndexedSeq.empty
   )
 
-  private def segmentFor[Element: Eq](
-      baseElements: Seq[Element],
-      leftElements: Seq[Element],
-      rightElements: Seq[Element]
-  ): Option[Segment[Element]] =
+  private def segmentForItems[Element: Eq](
+      baseItems: Seq[Item[Element]],
+      leftItems: Seq[Item[Element]],
+      rightItems: Seq[Item[Element]]
+  ): Option[Segment[Item[Element]]] =
     // NOTE: bear in mind that these successive checks rely on the overall order
     // to draw their conclusions...
-    if baseElements.corresponds(leftElements)(Eq.eqv) then
+    if baseItems.corresponds(leftItems)(Eq.eqv) then
       // This turned out to be either a right-edit or a preservation.
-      Option.unless(rightElements.isEmpty)(Segment.Resolved(rightElements))
-    else if baseElements.corresponds(rightElements)(Eq.eqv) then
+      Option.unless(rightItems.isEmpty)(Segment.Resolved(rightItems))
+    else if baseItems.corresponds(rightItems)(Eq.eqv) then
       // This turned out to be a left-edit.
-      Option.unless(leftElements.isEmpty)(Segment.Resolved(leftElements))
-    else if leftElements.corresponds(rightElements)(Eq.eqv) then
+      Option.unless(leftItems.isEmpty)(Segment.Resolved(leftItems))
+    else if leftItems.corresponds(rightItems)(Eq.eqv) then
       // This turned out to be either a coincident edit or a coincident
       // insertion.
-      Option.unless(leftElements.isEmpty)(Segment.Resolved(leftElements))
-    else Some(Segment.Conflicted(baseElements, leftElements, rightElements))
+      Option.unless(leftItems.isEmpty)(Segment.Resolved(leftItems))
+    else Some(Segment.Conflicted(baseItems, leftItems, rightItems))
 
-  private def segmentFor[Element: Eq](
-      elements: Seq[Element]
-  ): Option[Segment[Element]] =
-    Option.unless(elements.isEmpty)(Segment.Resolved(elements))
+  private def segmentForItems[Element: Eq](
+      items: Seq[Item[Element]]
+  ): Option[Segment[Item[Element]]] =
+    Option.unless(items.isEmpty)(Segment.Resolved(items))
 
-  case class Side[Element: Eq](
-      elementsWithSegmentLabels: Seq[(Element, Int)]
+  case class Side[ItemType: Eq](
+      elementsWithSegmentLabels: Seq[(ItemType, Int)]
   ):
     def innerFlatMapAccumulate[State, Transformed: Eq](initialState: State)(
-        statefulTransform: (State, Element) => (State, Seq[Transformed])
+        statefulTransform: (State, ItemType) => (State, Seq[Transformed])
     ): (State, Side[Transformed]) =
       val (finalState, clumps) =
         Traverse[Seq].mapAccumulate(initialState, elementsWithSegmentLabels) {
@@ -328,13 +454,13 @@ object MergeResult:
       finalState -> Side(elementsWithSegmentLabels = clumps.flatten)
     end innerFlatMapAccumulate
 
-    def append(elements: Seq[Element]): Side[Element] =
+    def append(elements: Seq[ItemType]): Side[ItemType] =
       Side(elementsWithSegmentLabels =
         this.elementsWithSegmentLabels ++ elements.map(_ -> Int.MaxValue)
       )
   end Side
 
-  enum Segment[Element: Eq]:
+  enum Segment[Item: Eq]:
     this match
       case Resolved(elements) => require(elements.nonEmpty)
       case Conflicted(baseElements, leftElements, rightElements) =>
@@ -347,9 +473,9 @@ object MergeResult:
         )
     end match
 
-    def fuseWith(another: Segment[Element])(
-        elementFusion: (Element, Element) => Option[Element]
-    ): Option[Segment[Element]] = (this, another) match
+    def fuseWith(another: Segment[Item])(
+        elementFusion: (Item, Item) => Option[Item]
+    ): Option[Segment[Item]] = (this, another) match
       case (Resolved(elementsOfThis), Resolved(elementsOfAnother)) =>
         for fusedElements <- Traverse[Seq]
             .traverse(elementsOfThis.zip(elementsOfAnother))(
@@ -378,7 +504,7 @@ object MergeResult:
 
       case _ => None
 
-    case Resolved(elements: Seq[Element])(using eq: Eq[Element])
+    case Resolved(elements: Seq[Item])(using eq: Eq[Item])
     // Don't bother representing different flavours of conflicts, namely left
     // edit / right edit, left deletion / right edit, left edit / right deletion
     // or left insertion / right insertion. These aren't modelled separately in
@@ -386,53 +512,53 @@ object MergeResult:
     case Conflicted(
         // If this is empty, it represents a left insertion versus right
         // insertion conflict.
-        baseElements: Seq[Element],
+        baseElements: Seq[Item],
         // If this is empty, it represents a left deletion versus right edit
         // conflict.
-        leftElements: Seq[Element],
+        leftElements: Seq[Item],
         // If this is empty, it represents a left edit versus right deletion
         // conflict.
-        rightElements: Seq[Element]
+        rightElements: Seq[Item]
         // Otherwise, if all sides are populated, it represents a left edit
         // versus right edit conflict.
-    )(using eq: Eq[Element])
+    )(using eq: Eq[Item])
   end Segment
 
-  given segmentOrdering[Element](using
-      elementOrdering: Ordering[Element]
-  ): Ordering[Segment[Element]] with
-    override def compare(x: Segment[Element], y: Segment[Element]): Int =
+  given segmentOrdering[Item](using
+      itemOrdering: Ordering[Item]
+  ): Ordering[Segment[Item]] with
+    override def compare(x: Segment[Item], y: Segment[Item]): Int =
       (x, y) match
         case (
               Segment.Resolved(elementsFromX),
               Segment.Resolved(elementFromY)
             ) =>
-          Ordering[Seq[Element]].compare(elementsFromX, elementFromY)
+          Ordering[Seq[Item]].compare(elementsFromX, elementFromY)
         case (
               Segment.Conflicted(baseX, leftX, rightX),
               Segment.Conflicted(baseY, leftY, rightY)
             ) =>
-          Ordering[(Seq[Element], Seq[Element], Seq[Element])]
+          Ordering[(Seq[Item], Seq[Item], Seq[Item])]
             .compare((baseX, leftX, rightX), (baseY, leftY, rightY))
         case (Segment.Resolved(_), Segment.Conflicted(_, _, _)) => -1
         case (Segment.Conflicted(_, _, _), Segment.Resolved(_)) => 1
   end segmentOrdering
 
-  given segmentEquality[Element](using
-      elementEquality: Eq[Element]
-  ): Eq[Segment[Element]] with
-    override def eqv(x: Segment[Element], y: Segment[Element]): Boolean =
+  given segmentEquality[Item](using
+      itemEquality: Eq[Item]
+  ): Eq[Segment[Item]] with
+    override def eqv(x: Segment[Item], y: Segment[Item]): Boolean =
       (x, y) match
         case (
               Segment.Resolved(elementsFromX),
               Segment.Resolved(elementFromY)
             ) =>
-          Eq[Seq[Element]].eqv(elementsFromX, elementFromY)
+          Eq[Seq[Item]].eqv(elementsFromX, elementFromY)
         case (
               Segment.Conflicted(baseX, leftX, rightX),
               Segment.Conflicted(baseY, leftY, rightY)
             ) =>
-          Eq[(Seq[Element], Seq[Element], Seq[Element])]
+          Eq[(Seq[Item], Seq[Item], Seq[Item])]
             .eqv((baseX, leftX, rightX), (baseY, leftY, rightY))
         case _ => false
   end segmentEquality
@@ -452,37 +578,44 @@ extension [Element: Eq](nestedMergeResults: MergeResult[MergeResult[Element]])
 end extension
 
 object FullyMerged:
-  def unapply[Element](
+  def unapply[Element: Eq](
       result: MergeResult[Element]
-  ): Option[Seq[Element]] = Traverse[Seq].flatTraverse(result.segments) {
-    case MergeResult.Segment.Resolved(elements)  => Some(elements)
-    case MergeResult.Segment.Conflicted(_, _, _) => None
-  }
+  ): Option[Seq[Element]] =
+    val flattened = result.flattenRecursively
+    Traverse[Seq].flatTraverse(flattened.segments) {
+      case MergeResult.Segment.Resolved(items)  =>
+        Some(items.collect { case elem: Element @unchecked if !elem.isInstanceOf[MergeResult[?]] => elem })
+      case MergeResult.Segment.Conflicted(_, _, _) => None
+    }
 end FullyMerged
 
 object MergedWithConflicts:
-  def unapply[Element](
+  def unapply[Element: Eq](
       result: MergeResult[Element]
   ): Option[(Seq[Element], Seq[Element], Seq[Element])] =
-    Option.when(result.segments.exists {
+    val flattened = result.flattenRecursively
+    Option.when(flattened.segments.exists {
       case MergeResult.Segment.Conflicted(_, _, _) => true
       case MergeResult.Segment.Resolved(_)         => false
     })(
       (
-        result.segments.flatMap {
-          case MergeResult.Segment.Resolved(elements)             => elements
-          case MergeResult.Segment.Conflicted(baseElements, _, _) =>
-            baseElements
+        flattened.segments.flatMap {
+          case MergeResult.Segment.Resolved(items)             =>
+            items.collect { case elem: Element @unchecked if !elem.isInstanceOf[MergeResult[?]] => elem }
+          case MergeResult.Segment.Conflicted(baseItems, _, _) =>
+            baseItems.collect { case elem: Element @unchecked if !elem.isInstanceOf[MergeResult[?]] => elem }
         },
-        result.segments.flatMap {
-          case MergeResult.Segment.Resolved(elements)             => elements
-          case MergeResult.Segment.Conflicted(_, leftElements, _) =>
-            leftElements
+        flattened.segments.flatMap {
+          case MergeResult.Segment.Resolved(items)             =>
+            items.collect { case elem: Element @unchecked if !elem.isInstanceOf[MergeResult[?]] => elem }
+          case MergeResult.Segment.Conflicted(_, leftItems, _) =>
+            leftItems.collect { case elem: Element @unchecked if !elem.isInstanceOf[MergeResult[?]] => elem }
         },
-        result.segments.flatMap {
-          case MergeResult.Segment.Resolved(elements)              => elements
-          case MergeResult.Segment.Conflicted(_, _, rightElements) =>
-            rightElements
+        flattened.segments.flatMap {
+          case MergeResult.Segment.Resolved(items)              =>
+            items.collect { case elem: Element @unchecked if !elem.isInstanceOf[MergeResult[?]] => elem }
+          case MergeResult.Segment.Conflicted(_, _, rightItems) =>
+            rightItems.collect { case elem: Element @unchecked if !elem.isInstanceOf[MergeResult[?]] => elem }
         }
       )
     )
