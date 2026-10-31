@@ -284,6 +284,46 @@ class MergeResultTest:
           )
         }
       }
+
+  @TestFactory
+  def nestedMergeResultsCanBeRecursivelyFlattened(): DynamicTests =
+    trialsApi
+      .integers(0, 100)
+      .lists
+      .withLimit(100)
+      .dynamicTests { elements =>
+        // Construct nested merge results
+        val sub1 = MergeResult.of[Int](elements.take(elements.size / 2)*)
+        val sub2 = MergeResult.of[Int](elements.drop(elements.size / 2)*)
+        val outer = MergeResult.empty[Int].addResolved(element = sub1).addResolved(element = sub2)
+
+        val FullyMerged(recovered) = outer: @unchecked
+        assert(recovered == elements)
+      }
+
+  @TestFactory
+  def nestedConflictedMergeResultsFlattenWithinOuterConflicts(): DynamicTests =
+    trialsApi
+      .integers(0, 100)
+      .lists
+      .withLimit(100)
+      .dynamicTests { elements =>
+        val subConflict = MergeResult.empty[Int].addConflicted(
+          baseElements = Seq(100),
+          leftElements = Seq(200),
+          rightElements = Seq(300)
+        )
+        val outer = MergeResult.empty[Int].addConflicted(
+          baseElements = Seq(1),
+          leftElements = Seq(subConflict, 2),
+          rightElements = Seq(3)
+        )
+
+        val MergedWithConflicts(base, left, right) = outer: @unchecked
+        assert(base == Seq(1))
+        assert(left == Seq(200, 300, 2))
+        assert(right == Seq(3))
+      }
 end MergeResultTest
 
 object MergeResultTest:
