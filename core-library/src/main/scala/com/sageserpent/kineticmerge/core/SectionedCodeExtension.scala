@@ -1491,8 +1491,8 @@ object SectionedCodeExtension extends StrictLogging:
       end anchoredContentFromModeDestinationSide
 
       case class MigrationSplices(
-          precedingSplice: MergeResult[MultiSided[Section[Element]]],
-          succeedingSplice: MergeResult[MultiSided[Section[Element]]],
+          precedingSplice: MultiSidedMergeResult[Section[Element]],
+          succeedingSplice: MultiSidedMergeResult[Section[Element]],
           spliceMigrationSuppressions: Set[Section[Element]]
       )
 
@@ -1664,7 +1664,7 @@ object SectionedCodeExtension extends StrictLogging:
       val (
         splicesByAnchoredMoveDestination: MultiDict[
           (Section[Element], AnchoringSense),
-          MergeResult[MultiSided[Section[Element]]]
+          MultiSidedMergeResult[Section[Element]]
         ],
         spliceMigrationSuppressions: Set[Section[Element]]
       ) = anchoredMoves.foldLeft(
@@ -1744,8 +1744,8 @@ object SectionedCodeExtension extends StrictLogging:
 
         extension (precedingSection: Option[MultiSided[Section[Element]]])
           private def notingMigratedSplice(
-              migratedSplice: MergeResult[MultiSided[Section[Element]]]
-          ): MergeResult[MultiSided[Section[Element]]] =
+              migratedSplice: MultiSidedMergeResult[Section[Element]]
+          ): MultiSidedMergeResult[Section[Element]] =
             if migratedSplice.nonEmpty then
               precedingSection.fold(ifEmpty =
                 logger.debug(
@@ -1762,9 +1762,9 @@ object SectionedCodeExtension extends StrictLogging:
         end extension
 
         def attemptLastMinuteResolutionViaContextOfContributions(
-            mergeResult: MergeResult[MultiSided[Section[Element]]],
+            mergeResult: MultiSidedMergeResult[Section[Element]],
             anchoringSense: AnchoringSense
-        ): MergeResult[MultiSided[Section[Element]]] =
+        ): MultiSidedMergeResult[Section[Element]] =
           // Look for a conflict at the other end of a conflicted merge result
           // (this will be a splice) away from its *single* anchor; this may be
           // the entire splice. Then see if either side of the conflict turns
@@ -1913,9 +1913,9 @@ object SectionedCodeExtension extends StrictLogging:
 
         def insertAnchoredSplices(
             side: MergeResult.Side[MultiSided[Section[Element]]]
-        ): MergeResult.Side[MergeResult[MultiSided[Section[Element]]]] =
+        ): MergeResult.Side[MultiSidedMergeResult[Section[Element]]] =
           case class Deferral(
-              deferredSplice: MergeResult[MultiSided[Section[Element]]],
+              deferredSplice: MultiSidedMergeResult[Section[Element]],
               anchorPrecedingDeferredSpliceIsAmbiguous: Boolean
           )
 
