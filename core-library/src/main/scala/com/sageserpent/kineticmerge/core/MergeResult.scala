@@ -46,10 +46,8 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
   def fuseWith(another: MergeResult[Element])(
       elementFusion: (Element, Element) => Option[Element]
   ): Option[MergeResult[Element]] =
-    if segments.size != another.segments.size then None
-    else
-      fuseItems(segments, another.segments)(_.fuseWith(_)(elementFusion))
-        .map(MergeResult.apply[Element])
+    fuseItems(segments, another.segments)(_.fuseWith(_)(elementFusion))
+      .map(MergeResult.apply[Element])
 
   def addResolved(element: Element): MergeResult[Element] = segments.lastOption
     .fold(ifEmpty = MergeResult(Seq(Segment.Resolved(Seq(element))))) {
@@ -229,8 +227,10 @@ object MergeResult:
   private def fuseItems[Item](first: Seq[Item], second: Seq[Item])(
       itemFusion: (Item, Item) => Option[Item]
   ): Option[Seq[Item]] =
-    Traverse[Seq]
-      .traverse(first.zip(second))(itemFusion(_, _))
+    if first.size == second.size then
+      Traverse[Seq]
+        .traverse(first.zip(second))(itemFusion(_, _))
+    else None
 
   given mergeResultOrdering[Element: Ordering]: Ordering[MergeResult[Element]] =
     Ordering.by(_.segments)
@@ -365,8 +365,7 @@ object MergeResult:
       case (
             Conflicted(baseThis, leftThis, rightThis),
             Conflicted(baseAnother, leftAnother, rightAnother)
-          )
-          if baseThis.size == baseAnother.size && leftThis.size == leftAnother.size && rightThis.size == rightAnother.size =>
+          ) =>
         for
           baseFusion  <- fuseItems(baseThis, baseAnother)(elementFusion)
           leftFusion  <- fuseItems(leftThis, leftAnother)(elementFusion)
