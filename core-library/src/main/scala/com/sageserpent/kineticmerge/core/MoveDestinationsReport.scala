@@ -92,7 +92,7 @@ object MoveDestinationsReport:
             }
             .intersect(speculativeMoveDestinations)
           if destinations.nonEmpty
-          
+
         yield speculativeSource -> new MoveDestinations(destinations)
       )
 
@@ -180,8 +180,8 @@ object MoveDestinationsReport:
                       rightContent.map(MultiSided.Unique.apply)
                   )
                 case SpeculativeContentMigration.CoincidentEditOrDeletion(
-                      FileDeletionContext.None | FileDeletionContext.Left
-                    ) =>
+                      fileDeletionContext
+                    ) if fileDeletionContext != FileDeletionContext.Right =>
                   moveDestinations.left.map(destinationElement =>
                     MultiSided.Unique(destinationElement) ->
                       // The move destination is on the left, so migrate the
@@ -217,8 +217,8 @@ object MoveDestinationsReport:
                       leftContent.map(MultiSided.Unique.apply)
                   )
                 case SpeculativeContentMigration.CoincidentEditOrDeletion(
-                      FileDeletionContext.None | FileDeletionContext.Right
-                    ) =>
+                      fileDeletionContext
+                    ) if fileDeletionContext != FileDeletionContext.Left =>
                   moveDestinations.right.map(destinationElement =>
                     MultiSided.Unique(destinationElement) ->
                       // The move destination is on the right, so migrate the
