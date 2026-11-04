@@ -69,10 +69,12 @@ object MoveDestinationsReport:
       isFirstOrLastInParallelMatchesGroup: Match[Element] => Boolean =
         (_: Match[Element]) => true
   ): MoveEvaluation[Element] =
-    val destinationsBySource =
-      MultiDict.from(speculativeMigrationsBySource.keys.flatMap {
-        speculativeSource =>
-          val destinations = matchesFor(speculativeSource)
+    val moveDestinationsBySource =
+      Map.from(
+        for
+          speculativeSource <- speculativeMigrationsBySource.keys
+
+          destinations = matchesFor(speculativeSource)
             .filter(isFirstOrLastInParallelMatchesGroup)
             .flatMap {
               case Match.AllSides(_, leftElement, rightElement) =>
@@ -89,13 +91,9 @@ object MoveDestinationsReport:
               case _: Match.LeftAndRight[Element] => Seq.empty
             }
             .intersect(speculativeMoveDestinations)
-
-          destinations.map(speculativeSource -> _)
-      })
-
-    val moveDestinationsBySource =
-      destinationsBySource.sets.map((source, destinations) =>
-        source -> new MoveDestinations(destinations)
+          if destinations.nonEmpty
+          
+        yield speculativeSource -> new MoveDestinations(destinations)
       )
 
     val migratedEditSuppressions: Set[Element] =

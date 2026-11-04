@@ -32,7 +32,11 @@ case class MoveDestinations[Element](
 
   require(all.size == left.size + 2 * coincident.size + right.size)
 
-  def this(isolatedMoveDestinations: Set[SpeculativeMoveDestination[Element]]) =
+  def this(
+      isolatedMoveDestinations: collection.Set[SpeculativeMoveDestination[
+        Element
+      ]]
+  ) =
     this(
       isolatedMoveDestinations.collect {
         case SpeculativeMoveDestination.Left(leftElement) => leftElement
