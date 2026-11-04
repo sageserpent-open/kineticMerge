@@ -65,9 +65,7 @@ object MoveDestinationsReport:
       ]],
       speculativeMoveDestinations: Set[SpeculativeMoveDestination[Element]]
   )(
-      matchesFor: Element => collection.Set[Match[Element]],
-      isFirstOrLastInParallelMatchesGroup: Match[Element] => Boolean =
-        (_: Match[Element]) => true
+      matchesFor: Element => collection.Set[Match[Element]]
   ): MoveEvaluation[Element] =
     val moveDestinationsBySource =
       Map.from(
@@ -75,7 +73,6 @@ object MoveDestinationsReport:
           speculativeSource <- speculativeMigrationsBySource.keys
 
           destinations = matchesFor(speculativeSource)
-            .filter(isFirstOrLastInParallelMatchesGroup)
             .flatMap {
               case Match.AllSides(_, leftElement, rightElement) =>
                 Seq(
