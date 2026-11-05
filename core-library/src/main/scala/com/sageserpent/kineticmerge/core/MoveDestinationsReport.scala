@@ -65,37 +65,32 @@ object MoveDestinationsReport:
       ]],
       speculativeMoveDestinations: Set[SpeculativeMoveDestination[Element]]
   )(
-      matchesFor: Element => collection.Set[Match[Element]],
-      isFirstOrLastInParallelMatchesGroup: Match[Element] => Boolean =
-        (_: Match[Element]) => true
+      matchesFor: Element => collection.Set[Match[Element]]
   ): MoveEvaluation[Element] =
-    val destinationsBySource =
-      MultiDict.from(speculativeMigrationsBySource.keys.flatMap {
-        speculativeSource =>
-          val destinations = matchesFor(speculativeSource)
-            .filter(isFirstOrLastInParallelMatchesGroup)
-            .flatMap {
-              case Match.AllSides(_, leftElement, rightElement) =>
-                Seq(
-                  SpeculativeMoveDestination.Left(leftElement),
-                  SpeculativeMoveDestination.Right(rightElement),
-                  SpeculativeMoveDestination
-                    .Coincident(leftElement, rightElement)
-                )
-              case Match.BaseAndLeft(_, leftElement) =>
-                Seq(SpeculativeMoveDestination.Left(leftElement))
-              case Match.BaseAndRight(_, rightElement) =>
-                Seq(SpeculativeMoveDestination.Right(rightElement))
-              case _: Match.LeftAndRight[Element] => Seq.empty
-            }
-            .intersect(speculativeMoveDestinations)
-
-          destinations.map(speculativeSource -> _)
-      })
-
     val moveDestinationsBySource =
-      destinationsBySource.sets.map((source, destinations) =>
-        source -> new MoveDestinations(destinations)
+      Map.from(
+        for
+          speculativeSource <- speculativeMigrationsBySource.keys
+
+          destinations = matchesFor(speculativeSource)
+            .flatMap(mustIncludeTheBaseSide =>
+              (mustIncludeTheBaseSide: @unchecked) match
+                case Match.AllSides(_, leftElement, rightElement) =>
+                  Seq(
+                    SpeculativeMoveDestination.Left(leftElement),
+                    SpeculativeMoveDestination.Right(rightElement),
+                    SpeculativeMoveDestination
+                      .Coincident(leftElement, rightElement)
+                  )
+                case Match.BaseAndLeft(_, leftElement) =>
+                  Seq(SpeculativeMoveDestination.Left(leftElement))
+                case Match.BaseAndRight(_, rightElement) =>
+                  Seq(SpeculativeMoveDestination.Right(rightElement))
+            )
+            .intersect(speculativeMoveDestinations)
+          if destinations.nonEmpty
+
+        yield speculativeSource -> new MoveDestinations(destinations)
       )
 
     val migratedEditSuppressions: Set[Element] =
@@ -182,8 +177,8 @@ object MoveDestinationsReport:
                       rightContent.map(MultiSided.Unique.apply)
                   )
                 case SpeculativeContentMigration.CoincidentEditOrDeletion(
-                      FileDeletionContext.None | FileDeletionContext.Left
-                    ) =>
+                      fileDeletionContext
+                    ) if fileDeletionContext != FileDeletionContext.Right =>
                   moveDestinations.left.map(destinationElement =>
                     MultiSided.Unique(destinationElement) ->
                       // The move destination is on the left, so migrate the
@@ -219,8 +214,8 @@ object MoveDestinationsReport:
                       leftContent.map(MultiSided.Unique.apply)
                   )
                 case SpeculativeContentMigration.CoincidentEditOrDeletion(
-                      FileDeletionContext.None | FileDeletionContext.Right
-                    ) =>
+                      fileDeletionContext
+                    ) if fileDeletionContext != FileDeletionContext.Left =>
                   moveDestinations.right.map(destinationElement =>
                     MultiSided.Unique(destinationElement) ->
                       // The move destination is on the right, so migrate the

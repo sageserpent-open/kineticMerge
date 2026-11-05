@@ -19,7 +19,7 @@ class MoveDestinationsReportTest:
   given [Element]: Eq[Section[Element]] = Eq.fromUniversalEquals
 
   @Test
-  def interiorMatchesInParallelMatchesGroupAreExcludedFromMoveEvaluation(): Unit =
+  def evaluation(): Unit =
     val baseSection1 = FakeSection(0, 10, Vector("m1"))
     val leftSection1 = FakeSection(0, 10, Vector("m1"))
 
@@ -62,28 +62,30 @@ class MoveDestinationsReportTest:
       SpeculativeMoveDestination.Left(leftSection3)
     )
 
-    // Only match1 and match3 are vetted (first and last in parallel matches group)
+    // Only match1 and match3 are vetted (first and last in parallel matches
+    // group)
     val firstOrLastMatches: Set[Match[Section[String]]] = Set(match1, match3)
 
     val evaluation =
-      MoveDestinationsReport.evaluateSpeculativeSourcesAndDestinations[Section[String]](
-        speculativeMigrationsBySource,
-        speculativeMoveDestinations
-      )(
-        section => matchesBySection.getOrElse(section, Set.empty),
-        firstOrLastMatches.contains
-      )
+      MoveDestinationsReport
+        .evaluateSpeculativeSourcesAndDestinations[Section[String]](
+          speculativeMigrationsBySource,
+          speculativeMoveDestinations
+        )(section => matchesBySection.getOrElse(section, Set.empty))
 
     assert(
       evaluation.moveDestinationsReport.sources == Set(
         baseSection1,
+        baseSection2,
         baseSection3
       )
     )
     assert(
-      evaluation.moveDestinationsReport.all == Set(leftSection1, leftSection3)
+      evaluation.moveDestinationsReport.all == Set(
+        leftSection1,
+        leftSection2,
+        leftSection3
+      )
     )
-    assert(!evaluation.moveDestinationsReport.sources.contains(baseSection2))
-    assert(!evaluation.moveDestinationsReport.all.contains(leftSection2))
-  end interiorMatchesInParallelMatchesGroupAreExcludedFromMoveEvaluation
+  end evaluation
 end MoveDestinationsReportTest

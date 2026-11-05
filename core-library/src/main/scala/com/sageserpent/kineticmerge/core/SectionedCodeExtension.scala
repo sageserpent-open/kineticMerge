@@ -1144,29 +1144,6 @@ object SectionedCodeExtension extends StrictLogging:
         s"Coincident insertions or edits on right: ${pprintCustomised(coincidentInsertionsOrEditsOnRight)}."
       )
 
-      val firstAndLastMatchesInParallelMatchesGroups
-          : Set[Match[Section[Element]]] =
-        sectionedCode.groupsOfParallelMatches.values
-          .flatMap(matches => Seq(matches.head, matches.last))
-          .toSet
-
-      def hasMigratedEditOrDeletion(aMatch: Match[Section[Element]]): Boolean =
-        aMatch.baseContribution.exists { baseSection =>
-          speculativeMigrationsBySource.get(baseSection).exists {
-            case SpeculativeContentMigration.CoincidentEditOrDeletion(_) => true
-            case SpeculativeContentMigration.LeftEditOrDeletion(_, _)    => true
-            case SpeculativeContentMigration.RightEditOrDeletion(_, _)   => true
-            case SpeculativeContentMigration.Conflict(_, _, _)           => true
-            case _ => false
-          }
-        }
-
-      val isFirstOrLastInParallelMatchesGroup
-          : Match[Section[Element]] => Boolean =
-        aMatch =>
-          firstAndLastMatchesInParallelMatchesGroups.contains(aMatch) ||
-            hasMigratedEditOrDeletion(aMatch)
-
       val moveEvaluation @ MoveEvaluation(
         moveDestinationsReport,
         migratedEditSuppressions,
@@ -1176,11 +1153,7 @@ object SectionedCodeExtension extends StrictLogging:
         MoveDestinationsReport.evaluateSpeculativeSourcesAndDestinations(
           speculativeMigrationsBySource,
           speculativeMoveDestinations
-        )(
-          matchesFor = matchesFor,
-          isFirstOrLastInParallelMatchesGroup =
-            isFirstOrLastInParallelMatchesGroup
-        )
+        )(matchesFor)
 
       logger.debug(s"Move evaluation: ${pprintCustomised(moveEvaluation)}.")
 

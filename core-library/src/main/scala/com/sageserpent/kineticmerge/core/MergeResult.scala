@@ -5,6 +5,7 @@ import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSidedMergeResult
 import com.sageserpent.kineticmerge.core.MergeResult.{
   Segment,
   coalescing,
+  fuseItems,
   segmentFor
 }
 import com.sageserpent.kineticmerge.core.merge.MergeAlgebra
@@ -45,11 +46,8 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
   def fuseWith(another: MergeResult[Element])(
       elementFusion: (Element, Element) => Option[Element]
   ): Option[MergeResult[Element]] =
-    if segments.size != another.segments.size then None
-    else
-      Traverse[Seq]
-        .traverse(segments.zip(another.segments))(_.fuseWith(_)(elementFusion))
-        .map(MergeResult.apply[Element])
+    fuseItems(segments, another.segments)(_.fuseWith(_)(elementFusion))
+      .map(MergeResult.apply[Element])
 
   def addResolved(element: Element): MergeResult[Element] = segments.lastOption
     .fold(ifEmpty = MergeResult(Seq(Segment.Resolved(Seq(element))))) {
@@ -226,6 +224,14 @@ case class MergeResult[Element: Eq] private (segments: Seq[Segment[Element]]):
 end MergeResult
 
 object MergeResult:
+  private def fuseItems[Item](first: Seq[Item], second: Seq[Item])(
+      itemFusion: (Item, Item) => Option[Item]
+  ): Option[Seq[Item]] =
+    if first.size == second.size then
+      Traverse[Seq]
+        .traverse(first.zip(second))(itemFusion(_, _))
+    else None
+
   given mergeResultOrdering[Element: Ordering]: Ordering[MergeResult[Element]] =
     Ordering.by(_.segments)
 
@@ -351,10 +357,9 @@ object MergeResult:
         elementFusion: (Element, Element) => Option[Element]
     ): Option[Segment[Element]] = (this, another) match
       case (Resolved(elementsOfThis), Resolved(elementsOfAnother)) =>
-        for fusedElements <- Traverse[Seq]
-            .traverse(elementsOfThis.zip(elementsOfAnother))(
-              elementFusion(_, _)
-            )
+        for fusedElements <- fuseItems(elementsOfThis, elementsOfAnother)(
+            elementFusion
+          )
         yield Resolved(fusedElements)
 
       case (
@@ -362,18 +367,9 @@ object MergeResult:
             Conflicted(baseAnother, leftAnother, rightAnother)
           ) =>
         for
-          baseFusion <- Traverse[Seq]
-            .traverse(baseThis.zip(baseAnother))(
-              elementFusion(_, _)
-            )
-          leftFusion <- Traverse[Seq]
-            .traverse(leftThis.zip(leftAnother))(
-              elementFusion(_, _)
-            )
-          rightFusion <- Traverse[Seq]
-            .traverse(rightThis.zip(rightAnother))(
-              elementFusion(_, _)
-            )
+          baseFusion  <- fuseItems(baseThis, baseAnother)(elementFusion)
+          leftFusion  <- fuseItems(leftThis, leftAnother)(elementFusion)
+          rightFusion <- fuseItems(rightThis, rightAnother)(elementFusion)
         yield Conflicted(baseFusion, leftFusion, rightFusion)
 
       case _ => None
