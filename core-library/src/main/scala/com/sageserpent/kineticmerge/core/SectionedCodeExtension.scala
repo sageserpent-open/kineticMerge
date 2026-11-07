@@ -1227,35 +1227,51 @@ object SectionedCodeExtension extends StrictLogging:
         selection(file.sections.view.drop(1 + indexOfSection))
       end succeedingAnchoredContentUsingSelection
 
-      def parallelGroupSectionsFor(
-          anchor: Section[Element],
+      def blockSectionsThatInclude(
+          section: Section[Element],
           blocksFor: Section[Element] => IndexedSeq[Block[Element]]
       ): Set[Section[Element]] =
-        // TODO: this implementation is deficient - if the anchor section comes
-        // from an opposite side anchor that is not plain, then there won't be
-        // any associated matches and thus this helper will fail to find any
-        // sections. Really, this helper should be called `blockSectionsFor` and
-        // should search directly in the blocks.
         // TODO: another issue is that one could have overlapping or nested
         // blocks that include the anchor section - should they all contribute
         // to the result? Given that scanning for splice inputs also looks for
         // exclusion boundaries, then it's probably safe to do this, but it
         // needs review.
-        val matches: Set[Match[Section[Element]]] =
-          sectionedCode.matchesFor(anchor).toSet
-        val groupIds: Set[ParallelMatchesGroupId] = matches.flatMap { aMatch =>
-          sectionedCode.parallelMatchesGroupIdsByMatch.get(aMatch)
-        }
-        val blocksOnSide = blocksFor(anchor)
-        blocksOnSide
-          .collect {
-            case block
-                if block.parallelMatchesGroupIds.exists(groupIds.contains) =>
-              block.sectionsCoveredByGroup
-          }
-          .flatten
-          .toSet
-      end parallelGroupSectionsFor
+        val blocksOnSide = blocksFor(section)
+
+        val blockStartOffsets = blocksOnSide.view.map(_.startOffset)
+
+        val blocks = blockStartOffsets.search(section.startOffset) match
+          case Searching.Found(matchingOffsetIndex) =>
+            // Blocks are condensed and nested blocks are removed, so only one
+            // block can have a start offset that matches the query start
+            // offset.
+            blocksOnSide.slice(
+              matchingOffsetIndex,
+              1 + matchingOffsetIndex
+            )
+          case Searching.InsertionPoint(
+                leastNonMatchingUpperBoundOffsetIndex
+              ) =>
+            // The query start offset lands somewhere in the block preceding the
+            // insertion point, but because of overlaps it is possible for other
+            // blocks to include it too. Scan through the preceding blocks to
+            // pick them up.
+
+            val minimumEnclosingBlockIndex = blocksOnSide
+              .take(leastNonMatchingUpperBoundOffsetIndex)
+              .reverseIterator
+              .indexWhere(_.onePastEndOffset <= section.startOffset) match
+              case -1                                                    => 0
+              case numberOfPrecedingBlocksThatEncloseTheQueryStartOffset =>
+                leastNonMatchingUpperBoundOffsetIndex - numberOfPrecedingBlocksThatEncloseTheQueryStartOffset
+
+            blocksOnSide.slice(
+              minimumEnclosingBlockIndex,
+              leastNonMatchingUpperBoundOffsetIndex
+            )
+
+        blocks.flatMap(_.sectionsCoveredByGroup).toSet
+      end blockSectionsThatInclude
 
       def anchoredContentFromSource(
           sourceAnchor: Section[Element]
@@ -1263,8 +1279,8 @@ object SectionedCodeExtension extends StrictLogging:
         val file =
           sectionedCode.base(sectionedCode.basePathFor(sourceAnchor))
 
-        val baseGroupSections =
-          parallelGroupSectionsFor(
+        val baseBlockSections =
+          blockSectionsThatInclude(
             sourceAnchor,
             s => sectionedCode.baseBlocksFor(sectionedCode.basePathFor(s))
           )
@@ -1281,7 +1297,7 @@ object SectionedCodeExtension extends StrictLogging:
             val isNotStationaryPreservation =
               !basePreservations.contains(candidate)
             val isSectionWithinCurrentParallelMove =
-              baseGroupSections.contains(candidate)
+              baseBlockSections.contains(candidate)
             val isNotAnchor =
               !sourceAnchors.contains(candidate)
 
@@ -1332,8 +1348,8 @@ object SectionedCodeExtension extends StrictLogging:
                   sectionedCode.leftBlocksFor(sectionedCode.leftPathFor(s))
               )
 
-        val oppositeGroupSections =
-          parallelGroupSectionsFor(
+        val oppositeBlockSections =
+          blockSectionsThatInclude(
             oppositeSideAnchor.boundaryElements.head,
             blocksFor
           )
@@ -1348,7 +1364,7 @@ object SectionedCodeExtension extends StrictLogging:
           val isNotStationaryPreservation =
             !preservations.contains(candidate)
           val isSectionWithinCurrentParallelMove =
-            oppositeGroupSections.contains(candidate)
+            oppositeBlockSections.contains(candidate)
           val isNotAnchor =
             !oppositeSideAnchors.contains(candidate)
           val isNotCoincidentInsertionOrEdit =
@@ -1438,8 +1454,8 @@ object SectionedCodeExtension extends StrictLogging:
                   sectionedCode.rightBlocksFor(sectionedCode.rightPathFor(s))
               )
 
-        val destinationGroupSections =
-          parallelGroupSectionsFor(
+        val destinationBlockSections =
+          blockSectionsThatInclude(
             moveDestinationAnchor,
             blocksFor
           )
@@ -1454,7 +1470,7 @@ object SectionedCodeExtension extends StrictLogging:
           val isNotStationaryPreservation =
             !preservations.contains(candidate)
           val isSectionWithinCurrentParallelMove =
-            destinationGroupSections.contains(candidate)
+            destinationBlockSections.contains(candidate)
           val isNotAnchor =
             !moveDestinationAnchors.contains(candidate)
           val isNotCoincidentInsertionOrEdit =
