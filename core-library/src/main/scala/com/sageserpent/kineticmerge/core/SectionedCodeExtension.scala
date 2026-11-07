@@ -1159,7 +1159,7 @@ object SectionedCodeExtension extends StrictLogging:
 
       val sourceAnchors       = anchoredMoves.map(_.sourceAnchor)
       val oppositeSideAnchors =
-        anchoredMoves.map(_.oppositeSideAnchor.element)
+        anchoredMoves.flatMap(_.oppositeSideAnchor.boundaryElements)
       val moveDestinationAnchors = anchoredMoves.map(_.moveDestinationAnchor)
 
       given sectionOrdering: Ordering[Section[Element]] =
@@ -1231,6 +1231,16 @@ object SectionedCodeExtension extends StrictLogging:
           anchor: Section[Element],
           blocksFor: Section[Element] => IndexedSeq[Block[Element]]
       ): Set[Section[Element]] =
+        // TODO: this implementation is deficient - if the anchor section comes
+        // from an opposite side anchor that is not plain, then there won't be
+        // any associated matches and thus this helper will fail to find any
+        // sections. Really, this helper should be called `blockSectionsFor` and
+        // should search directly in the blocks.
+        // TODO: another issue is that one could have overlapping or nested
+        // blocks that include the anchor section - should they all contribute
+        // to the result? Given that scanning for splice inputs also looks for
+        // exclusion boundaries, then it's probably safe to do this, but it
+        // needs review.
         val matches: Set[Match[Section[Element]]] =
           sectionedCode.matchesFor(anchor).toSet
         val groupIds: Set[ParallelMatchesGroupId] = matches.flatMap { aMatch =>
@@ -1300,7 +1310,9 @@ object SectionedCodeExtension extends StrictLogging:
             case MoveDestinationSide.Left =>
               (
                 sectionedCode.right(
-                  sectionedCode.rightPathFor(oppositeSideAnchor.element)
+                  sectionedCode.rightPathFor(
+                    oppositeSideAnchor.boundaryElements.head
+                  )
                 ),
                 rightPreservations,
                 coincidentInsertionsOrEditsOnRight,
@@ -1310,7 +1322,9 @@ object SectionedCodeExtension extends StrictLogging:
             case MoveDestinationSide.Right =>
               (
                 sectionedCode.left(
-                  sectionedCode.leftPathFor(oppositeSideAnchor.element)
+                  sectionedCode.leftPathFor(
+                    oppositeSideAnchor.boundaryElements.head
+                  )
                 ),
                 leftPreservations,
                 coincidentInsertionsOrEditsOnLeft,
@@ -1320,7 +1334,7 @@ object SectionedCodeExtension extends StrictLogging:
 
         val oppositeGroupSections =
           parallelGroupSectionsFor(
-            oppositeSideAnchor.element,
+            oppositeSideAnchor.boundaryElements.head,
             blocksFor
           )
 
@@ -1377,20 +1391,21 @@ object SectionedCodeExtension extends StrictLogging:
                 element
               )(selection)
             )
-          case OppositeSideAnchor.FirstInMigratedEdit(element) =>
+          case OppositeSideAnchor.AtLeastTwoInMigratedEdit(
+                firstElement,
+                lastElement
+              ) =>
             Some(
               precedingAnchoredContentUsingSelection(
                 file,
-                element
+                firstElement
               )(
                 selection
               )
-            ) -> None
-          case OppositeSideAnchor.LastInMigratedEdit(element) =>
-            None -> Some(
+            ) -> Some(
               succeedingAnchoredContentUsingSelection(
                 file,
-                element
+                lastElement
               )(selection)
             )
         end match
