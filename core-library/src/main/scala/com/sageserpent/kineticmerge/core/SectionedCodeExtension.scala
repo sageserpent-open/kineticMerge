@@ -1227,101 +1227,42 @@ object SectionedCodeExtension extends StrictLogging:
         selection(file.sections.view.drop(1 + indexOfSection))
       end succeedingAnchoredContentUsingSelection
 
-      def blockSectionsThatInclude(
-          section: Section[Element],
-          blocksFor: Section[Element] => IndexedSeq[Block[Element]]
-      ): Set[Section[Element]] =
-        // TODO: another issue is that one could have overlapping or nested
-        // blocks that include the anchor section - should they all contribute
-        // to the result? Given that scanning for splice inputs also looks for
-        // exclusion boundaries, then it's probably safe to do this, but it
-        // needs review.
-        val blocksOnSide = blocksFor(section)
-
-        val blockStartOffsets = blocksOnSide.view.map(_.startOffset)
-
-        val blocks = blockStartOffsets.search(section.startOffset) match
-          case Searching.Found(matchingOffsetIndex) =>
-            // Blocks are condensed and nested blocks are removed, so only one
-            // block can have a start offset that matches the query start
-            // offset.
-            blocksOnSide.slice(
-              matchingOffsetIndex,
-              1 + matchingOffsetIndex
-            )
-          case Searching.InsertionPoint(
-                leastNonMatchingUpperBoundOffsetIndex
-              ) =>
-            // The query start offset lands somewhere in the block preceding the
-            // insertion point, but because of overlaps it is possible for other
-            // blocks to include it too. Scan through the preceding blocks to
-            // pick them up.
-
-            val minimumEnclosingBlockIndex = blocksOnSide
-              .take(leastNonMatchingUpperBoundOffsetIndex)
-              .reverseIterator
-              .indexWhere(_.onePastEndOffset <= section.startOffset) match
-              case -1                                                    => 0
-              case numberOfPrecedingBlocksThatEncloseTheQueryStartOffset =>
-                leastNonMatchingUpperBoundOffsetIndex - numberOfPrecedingBlocksThatEncloseTheQueryStartOffset
-
-            blocksOnSide.slice(
-              minimumEnclosingBlockIndex,
-              leastNonMatchingUpperBoundOffsetIndex
-            )
-
-        blocks.flatMap(_.sectionsCoveredByGroup).toSet
-      end blockSectionsThatInclude
-
       def anchoredContentFromSource(
-          sourceAnchor: Section[Element]
-      ): (IndexedSeq[Section[Element]], IndexedSeq[Section[Element]]) =
+          sourceAnchor: Section[Element],
+          anchoringSense: AnchoringSense
+      ): IndexedSeq[Section[Element]] =
         val file =
           sectionedCode.base(sectionedCode.basePathFor(sourceAnchor))
-
-        val baseBlockSections =
-          blockSectionsThatInclude(
-            sourceAnchor,
-            s => sectionedCode.baseBlocksFor(sectionedCode.basePathFor(s))
-          )
 
         def selection(
             candidates: IndexedSeqView[Section[Element]]
         ): IndexedSeq[Section[Element]] =
           candidates.takeWhile { candidate =>
-            // Splices growing out from the start or end of the implied block
-            // are terminated by stationary preservations (or another anchor).
-            // Splices growing into the block hoover up the block's sections
-            // (including interior/filler sections of the same parallel move
-            // group).
             val isNotStationaryPreservation =
               !basePreservations.contains(candidate)
-            val isSectionWithinCurrentParallelMove =
-              baseBlockSections.contains(candidate)
             val isNotAnchor =
               !sourceAnchors.contains(candidate)
 
-            (isNotStationaryPreservation || isSectionWithinCurrentParallelMove) && isNotAnchor
-          }
-            // At this point, we only have a plain view rather than an indexed
-            // one...
-            .toIndexedSeq
+            isNotStationaryPreservation && isNotAnchor
+          }.toIndexedSeq
 
-        precedingAnchoredContentUsingSelection(file, sourceAnchor)(
-          selection
-        ) -> succeedingAnchoredContentUsingSelection(file, sourceAnchor)(
-          selection
-        )
+        anchoringSense match
+          case AnchoringSense.Predecessor =>
+            precedingAnchoredContentUsingSelection(file, sourceAnchor)(
+              selection
+            )
+          case AnchoringSense.Successor =>
+            succeedingAnchoredContentUsingSelection(file, sourceAnchor)(
+              selection
+            )
       end anchoredContentFromSource
 
       def anchoredContentFromOppositeSide(
           moveDestinationSide: MoveDestinationSide,
-          oppositeSideAnchor: OppositeSideAnchor[Section[Element]]
-      ): (
-          Option[IndexedSeq[Section[Element]]],
-          Option[IndexedSeq[Section[Element]]]
-      ) =
-        val (file, preservations, coincidentInsertionsOrEdits, blocksFor) =
+          oppositeSideAnchor: OppositeSideAnchor[Section[Element]],
+          anchoringSense: AnchoringSense
+      ): Option[IndexedSeq[Section[Element]]] =
+        val (file, preservations, coincidentInsertionsOrEdits) =
           moveDestinationSide match
             case MoveDestinationSide.Left =>
               (
@@ -1331,9 +1272,7 @@ object SectionedCodeExtension extends StrictLogging:
                   )
                 ),
                 rightPreservations,
-                coincidentInsertionsOrEditsOnRight,
-                (s: Section[Element]) =>
-                  sectionedCode.rightBlocksFor(sectionedCode.rightPathFor(s))
+                coincidentInsertionsOrEditsOnRight
               )
             case MoveDestinationSide.Right =>
               (
@@ -1343,95 +1282,79 @@ object SectionedCodeExtension extends StrictLogging:
                   )
                 ),
                 leftPreservations,
-                coincidentInsertionsOrEditsOnLeft,
-                (s: Section[Element]) =>
-                  sectionedCode.leftBlocksFor(sectionedCode.leftPathFor(s))
+                coincidentInsertionsOrEditsOnLeft
               )
-
-        val oppositeBlockSections =
-          blockSectionsThatInclude(
-            oppositeSideAnchor.boundaryElements.head,
-            blocksFor
-          )
 
         def selection(
             candidates: IndexedSeqView[Section[Element]]
         ): IndexedSeq[Section[Element]] = candidates.takeWhile { candidate =>
-          // Splices growing out from the start or end of the implied block are
-          // terminated by stationary preservations (or another anchor). Splices
-          // growing into the block hoover up the block's sections (including
-          // interior/filler sections of the same parallel move group).
           val isNotStationaryPreservation =
             !preservations.contains(candidate)
-          val isSectionWithinCurrentParallelMove =
-            oppositeBlockSections.contains(candidate)
           val isNotAnchor =
             !oppositeSideAnchors.contains(candidate)
           val isNotCoincidentInsertionOrEdit =
             !coincidentInsertionsOrEdits.contains(candidate)
 
-          (isNotStationaryPreservation || isSectionWithinCurrentParallelMove) &&
+          isNotStationaryPreservation &&
           isNotAnchor &&
           isNotCoincidentInsertionOrEdit
-        }
-          // At this point, we only have a plain view rather than an indexed
-          // one...
-          .toIndexedSeq
+        }.toIndexedSeq
 
         oppositeSideAnchor match
           case OppositeSideAnchor.Plain(element) =>
             Some(
-              precedingAnchoredContentUsingSelection(
-                file,
-                element
-              )(
-                selection
-              )
-            ) -> Some(
-              succeedingAnchoredContentUsingSelection(
-                file,
-                element
-              )(selection)
+              anchoringSense match
+                case AnchoringSense.Predecessor =>
+                  precedingAnchoredContentUsingSelection(
+                    file,
+                    element
+                  )(selection)
+                case AnchoringSense.Successor =>
+                  succeedingAnchoredContentUsingSelection(
+                    file,
+                    element
+                  )(selection)
             )
           case OppositeSideAnchor.OnlyOneInMigratedEdit(element) =>
             Some(
-              precedingAnchoredContentUsingSelection(
-                file,
-                element
-              )(
-                selection
-              )
-            ) -> Some(
-              succeedingAnchoredContentUsingSelection(
-                file,
-                element
-              )(selection)
+              anchoringSense match
+                case AnchoringSense.Predecessor =>
+                  precedingAnchoredContentUsingSelection(
+                    file,
+                    element
+                  )(selection)
+                case AnchoringSense.Successor =>
+                  succeedingAnchoredContentUsingSelection(
+                    file,
+                    element
+                  )(selection)
             )
           case OppositeSideAnchor.AtLeastTwoInMigratedEdit(
                 firstElement,
                 lastElement
               ) =>
             Some(
-              precedingAnchoredContentUsingSelection(
-                file,
-                firstElement
-              )(
-                selection
-              )
-            ) -> Some(
-              succeedingAnchoredContentUsingSelection(
-                file,
-                lastElement
-              )(selection)
+              anchoringSense match
+                case AnchoringSense.Predecessor =>
+                  precedingAnchoredContentUsingSelection(
+                    file,
+                    firstElement
+                  )(selection)
+                case AnchoringSense.Successor =>
+                  succeedingAnchoredContentUsingSelection(
+                    file,
+                    lastElement
+                  )(selection)
             )
         end match
       end anchoredContentFromOppositeSide
 
       def anchoredContentFromModeDestinationSide(
           moveDestinationSide: MoveDestinationSide,
-          moveDestinationAnchor: Section[Element]
-      ): (IndexedSeq[Section[Element]], IndexedSeq[Section[Element]]) =
-        val (file, preservations, coincidentInsertionsOrEdits, blocksFor) =
+          moveDestinationAnchor: Section[Element],
+          anchoringSense: AnchoringSense
+      ): IndexedSeq[Section[Element]] =
+        val (file, preservations, coincidentInsertionsOrEdits) =
           moveDestinationSide match
             case MoveDestinationSide.Left =>
               (
@@ -1439,9 +1362,7 @@ object SectionedCodeExtension extends StrictLogging:
                   sectionedCode.leftPathFor(moveDestinationAnchor)
                 ),
                 leftPreservations,
-                coincidentInsertionsOrEditsOnLeft,
-                (s: Section[Element]) =>
-                  sectionedCode.leftBlocksFor(sectionedCode.leftPathFor(s))
+                coincidentInsertionsOrEditsOnLeft
               )
             case MoveDestinationSide.Right =>
               (
@@ -1449,56 +1370,35 @@ object SectionedCodeExtension extends StrictLogging:
                   sectionedCode.rightPathFor(moveDestinationAnchor)
                 ),
                 rightPreservations,
-                coincidentInsertionsOrEditsOnRight,
-                (s: Section[Element]) =>
-                  sectionedCode.rightBlocksFor(sectionedCode.rightPathFor(s))
+                coincidentInsertionsOrEditsOnRight
               )
-
-        val destinationBlockSections =
-          blockSectionsThatInclude(
-            moveDestinationAnchor,
-            blocksFor
-          )
 
         def selection(
             candidates: IndexedSeqView[Section[Element]]
         ): IndexedSeq[Section[Element]] = candidates.takeWhile { candidate =>
-          // Splices growing out from the start or end of the implied block are
-          // terminated by stationary preservations (or another anchor). Splices
-          // growing into the block hoover up the block's sections (including
-          // interior/filler sections of the same parallel move group).
           val isNotStationaryPreservation =
             !preservations.contains(candidate)
-          val isSectionWithinCurrentParallelMove =
-            destinationBlockSections.contains(candidate)
           val isNotAnchor =
             !moveDestinationAnchors.contains(candidate)
           val isNotCoincidentInsertionOrEdit =
             !coincidentInsertionsOrEdits.contains(candidate)
 
-          (isNotStationaryPreservation || isSectionWithinCurrentParallelMove) &&
+          isNotStationaryPreservation &&
           isNotAnchor &&
           isNotCoincidentInsertionOrEdit
-        }
-          // At this point, we only have a plain view rather than an indexed
-          // one...
-          .toIndexedSeq
+        }.toIndexedSeq
 
-        precedingAnchoredContentUsingSelection(file, moveDestinationAnchor)(
-          selection
-        ) -> succeedingAnchoredContentUsingSelection(
-          file,
-          moveDestinationAnchor
-        )(
-          selection
-        )
+        anchoringSense match
+          case AnchoringSense.Predecessor =>
+            precedingAnchoredContentUsingSelection(file, moveDestinationAnchor)(
+              selection
+            )
+          case AnchoringSense.Successor =>
+            succeedingAnchoredContentUsingSelection(
+              file,
+              moveDestinationAnchor
+            )(selection)
       end anchoredContentFromModeDestinationSide
-
-      case class MigrationSplices(
-          precedingSplice: MultiSidedMergeResult[Section[Element]],
-          succeedingSplice: MultiSidedMergeResult[Section[Element]],
-          spliceMigrationSuppressions: Set[Section[Element]]
-      )
 
       val conflictResolvingMergeAlgebra =
         new ConflictResolvingMergeAlgebra(migratedEditSuppressions)
@@ -1690,17 +1590,22 @@ object SectionedCodeExtension extends StrictLogging:
           val lastMove  = groupMoves.last
 
           // 1. Boundary splice preceding the first move in the group
-          val (precedingSourceForFirst, _) =
-            anchoredContentFromSource(firstMove.sourceAnchor)
-          val (precedingOppositeForFirst, _) =
+          val precedingSourceForFirst =
+            anchoredContentFromSource(
+              firstMove.sourceAnchor,
+              AnchoringSense.Predecessor
+            )
+          val precedingOppositeForFirst =
             anchoredContentFromOppositeSide(
               firstMove.moveDestinationSide,
-              firstMove.oppositeSideAnchor
+              firstMove.oppositeSideAnchor,
+              AnchoringSense.Predecessor
             )
-          val (precedingDestinationForFirst, _) =
+          val precedingDestinationForFirst =
             anchoredContentFromModeDestinationSide(
               firstMove.moveDestinationSide,
-              firstMove.moveDestinationAnchor
+              firstMove.moveDestinationAnchor,
+              AnchoringSense.Predecessor
             )
 
           val precedingSpliceForFirst =
@@ -1821,17 +1726,22 @@ object SectionedCodeExtension extends StrictLogging:
             }
 
           // 3. Boundary splice succeeding the last move in the group
-          val (_, succeedingSourceForLast) =
-            anchoredContentFromSource(lastMove.sourceAnchor)
-          val (_, succeedingOppositeForLast) =
+          val succeedingSourceForLast =
+            anchoredContentFromSource(
+              lastMove.sourceAnchor,
+              AnchoringSense.Successor
+            )
+          val succeedingOppositeForLast =
             anchoredContentFromOppositeSide(
               lastMove.moveDestinationSide,
-              lastMove.oppositeSideAnchor
+              lastMove.oppositeSideAnchor,
+              AnchoringSense.Successor
             )
-          val (_, succeedingDestinationForLast) =
+          val succeedingDestinationForLast =
             anchoredContentFromModeDestinationSide(
               lastMove.moveDestinationSide,
-              lastMove.moveDestinationAnchor
+              lastMove.moveDestinationAnchor,
+              AnchoringSense.Successor
             )
 
           val succeedingSpliceForLast =
