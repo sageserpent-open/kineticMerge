@@ -1683,10 +1683,6 @@ object SectionedCodeExtension extends StrictLogging:
                     else
                       partialSplices
                         .add(
-                          predecessorMove.moveDestinationAnchor -> AnchoringSense.Predecessor,
-                          intermediateSplice
-                        )
-                        .add(
                           successorMove.moveDestinationAnchor -> AnchoringSense.Successor,
                           intermediateSplice
                         )
