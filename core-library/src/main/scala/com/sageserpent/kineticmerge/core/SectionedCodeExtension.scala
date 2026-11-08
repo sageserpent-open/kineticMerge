@@ -4,7 +4,6 @@ import cats.collections.{AvlSet, DisjointSets}
 import cats.data.State
 import cats.syntax.flatMap.catsSyntaxFlatMapOps
 import cats.{Eq, Foldable, Order}
-import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.sageserpent.kineticmerge.core
 import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSidedMergeResult
 import com.sageserpent.kineticmerge.core.FirstPassMergeResult.{
@@ -1255,6 +1254,7 @@ object SectionedCodeExtension extends StrictLogging:
             succeedingAnchoredContentUsingSelection(file, sourceAnchor)(
               selection
             )
+        end match
       end anchoredContentFromSource
 
       def anchoredContentFromOppositeSide(
@@ -1398,98 +1398,65 @@ object SectionedCodeExtension extends StrictLogging:
               file,
               moveDestinationAnchor
             )(selection)
+        end match
       end anchoredContentFromModeDestinationSide
 
       val conflictResolvingMergeAlgebra =
         new ConflictResolvingMergeAlgebra(migratedEditSuppressions)
 
-      object CachedAnchoredContentMerges:
-        private case class MergeInput(
-            moveDestinationSide: MoveDestinationSide,
-            anchoredContentFromSource: IndexedSeq[Section[Element]],
-            anchoredContentFromOppositeSide: IndexedSeq[
-              Section[Element]
-            ],
-            anchoredContentFromMoveDestinationSide: IndexedSeq[Section[Element]]
-        )
+      def spliceMerge(
+          moveDestinationSide: MoveDestinationSide,
+          anchoredContentFromSource: IndexedSeq[Section[Element]],
+          anchoredContentFromOppositeSide: IndexedSeq[Section[Element]],
+          anchoredContentFromMoveDestinationSide: IndexedSeq[Section[Element]]
+      ): MultiSidedMergeResult[Section[Element]] =
+        moveDestinationSide match
+          case MoveDestinationSide.Left =>
+            logger.debug(
+              s"""Requesting merge of anchored content,\nsource:\n${pprintCustomised(
+                  anchoredContentFromSource
+                )}, 
+                 |left is the anchored move destination side:\n${pprintCustomised(
+                  anchoredContentFromMoveDestinationSide
+                )}, 
+                 |right side:\n${pprintCustomised(
+                  anchoredContentFromOppositeSide
+                )}""".stripMargin
+            )
+          case MoveDestinationSide.Right =>
+            logger.debug(
+              s"""Requesting merge of anchored content,\nsource:\n${pprintCustomised(
+                  anchoredContentFromSource
+                )}, 
+                 |left side:\n${pprintCustomised(
+                  anchoredContentFromOppositeSide
+                )}, 
+                 |right is the anchored move destination side:\n${pprintCustomised(
+                  anchoredContentFromMoveDestinationSide
+                )}""".stripMargin
+            )
 
-        private val resultsCache: Cache[MergeInput, MultiSidedMergeResult[
-          Section[Element]
-        ]] = Caffeine.newBuilder().build()
+        end match
 
-        def of(
-            moveDestinationSide: MoveDestinationSide,
-            anchoredContentFromSource: IndexedSeq[Section[Element]],
-            anchoredContentFromOppositeSide: IndexedSeq[Section[Element]],
-            anchoredContentFromMoveDestinationSide: IndexedSeq[Section[Element]]
-        ): MultiSidedMergeResult[Section[Element]] =
-          moveDestinationSide match
-            case MoveDestinationSide.Left =>
-              logger.debug(
-                s"""Requesting merge of anchored content,\nsource:\n${pprintCustomised(
-                    anchoredContentFromSource
-                  )}, 
-                   |left is the anchored move destination side:\n${pprintCustomised(
-                    anchoredContentFromMoveDestinationSide
-                  )}, 
-                   |right side:\n${pprintCustomised(
-                    anchoredContentFromOppositeSide
-                  )}""".stripMargin
-              )
-            case MoveDestinationSide.Right =>
-              logger.debug(
-                s"""Requesting merge of anchored content,\nsource:\n${pprintCustomised(
-                    anchoredContentFromSource
-                  )}, 
-                   |left side:\n${pprintCustomised(
-                    anchoredContentFromOppositeSide
-                  )}, 
-                   |right is the anchored move destination side:\n${pprintCustomised(
-                    anchoredContentFromMoveDestinationSide
-                  )}""".stripMargin
-              )
+        given ProgressRecording = SilentProgressRecording
 
-          end match
-          // NASTY HACK: how would you do it better?
-          var updatedCache = false
-
-          val cached = resultsCache.get(
-            MergeInput(
-              moveDestinationSide,
-              anchoredContentFromSource,
-              anchoredContentFromOppositeSide,
-              anchoredContentFromMoveDestinationSide
-            ),
-            _ =>
-              updatedCache = true
-
-              given ProgressRecording = SilentProgressRecording
-
-              moveDestinationSide match
-                case MoveDestinationSide.Left =>
-                  mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
-                    base = anchoredContentFromSource,
-                    left = anchoredContentFromMoveDestinationSide,
-                    right = anchoredContentFromOppositeSide,
-                    label = "Splice merge to left destination:"
-                  )
-                case MoveDestinationSide.Right =>
-                  mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
-                    base = anchoredContentFromSource,
-                    left = anchoredContentFromOppositeSide,
-                    right = anchoredContentFromMoveDestinationSide,
-                    label = "Splice merge to right destination:"
-                  )
-              end match
-          )
-
-          if !updatedCache then
-            logger.debug(s"Retrieved cached merge: ${pprintCustomised(cached)}")
-          end if
-
-          cached
-        end of
-      end CachedAnchoredContentMerges
+        moveDestinationSide match
+          case MoveDestinationSide.Left =>
+            mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
+              base = anchoredContentFromSource,
+              left = anchoredContentFromMoveDestinationSide,
+              right = anchoredContentFromOppositeSide,
+              label = "Splice merge to left destination:"
+            )
+          case MoveDestinationSide.Right =>
+            mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
+              base = anchoredContentFromSource,
+              left = anchoredContentFromOppositeSide,
+              right = anchoredContentFromMoveDestinationSide,
+              label = "Splice merge to right destination:"
+            )
+        end match
+      end spliceMerge
 
       def matchFrom(
           anchoredMove: AnchoredMove[Section[Element]]
@@ -1612,7 +1579,7 @@ object SectionedCodeExtension extends StrictLogging:
             precedingOppositeForFirst.fold(
               ifEmpty = MergeResult.empty[MultiSided[Section[Element]]]
             )(
-              CachedAnchoredContentMerges.of(
+              spliceMerge(
                 firstMove.moveDestinationSide,
                 precedingSourceForFirst,
                 _,
@@ -1639,91 +1606,93 @@ object SectionedCodeExtension extends StrictLogging:
 
           // 2. Intermediate splices between adjacent moves in the group
           val (splicesWithIntermediates, suppressionsWithIntermediates) =
-            groupMoves.zip(groupMoves.tail).foldLeft(
-              splicesWithFirst -> suppressionsWithFirst
-            ) {
-              case (
-                    (partialSplices, partialSuppressions),
-                    (predecessorMove, successorMove)
-                  ) =>
-                val baseFile = sectionedCode.base(
-                  sectionedCode.basePathFor(predecessorMove.sourceAnchor)
-                )
-                val intermediateBase =
-                  intermediateSectionsBetween(
-                    baseFile,
-                    predecessorMove.sourceAnchor,
-                    successorMove.sourceAnchor
+            groupMoves
+              .zip(groupMoves.tail)
+              .foldLeft(
+                splicesWithFirst -> suppressionsWithFirst
+              ) {
+                case (
+                      (partialSplices, partialSuppressions),
+                      (predecessorMove, successorMove)
+                    ) =>
+                  val baseFile = sectionedCode.base(
+                    sectionedCode.basePathFor(predecessorMove.sourceAnchor)
                   )
+                  val intermediateBase =
+                    intermediateSectionsBetween(
+                      baseFile,
+                      predecessorMove.sourceAnchor,
+                      successorMove.sourceAnchor
+                    )
 
-                val (destinationFile, oppositeFile) =
-                  predecessorMove.moveDestinationSide match
-                    case MoveDestinationSide.Left =>
-                      sectionedCode.left(
-                        sectionedCode.leftPathFor(
-                          predecessorMove.moveDestinationAnchor
+                  val (destinationFile, oppositeFile) =
+                    predecessorMove.moveDestinationSide match
+                      case MoveDestinationSide.Left =>
+                        sectionedCode.left(
+                          sectionedCode.leftPathFor(
+                            predecessorMove.moveDestinationAnchor
+                          )
+                        ) -> sectionedCode.right(
+                          sectionedCode.rightPathFor(
+                            predecessorMove.oppositeSideAnchor.boundaryElements.head
+                          )
                         )
-                      ) -> sectionedCode.right(
-                        sectionedCode.rightPathFor(
-                          predecessorMove.oppositeSideAnchor.boundaryElements.head
+                      case MoveDestinationSide.Right =>
+                        sectionedCode.right(
+                          sectionedCode.rightPathFor(
+                            predecessorMove.moveDestinationAnchor
+                          )
+                        ) -> sectionedCode.left(
+                          sectionedCode.leftPathFor(
+                            predecessorMove.oppositeSideAnchor.boundaryElements.head
+                          )
                         )
-                      )
-                    case MoveDestinationSide.Right =>
-                      sectionedCode.right(
-                        sectionedCode.rightPathFor(
-                          predecessorMove.moveDestinationAnchor
+
+                  val intermediateDestination =
+                    intermediateSectionsBetween(
+                      destinationFile,
+                      predecessorMove.moveDestinationAnchor,
+                      successorMove.moveDestinationAnchor
+                    )
+
+                  val precedingOppositeBoundary =
+                    predecessorMove.oppositeSideAnchor.boundaryElements.last
+                  val succeedingOppositeBoundary =
+                    successorMove.oppositeSideAnchor.boundaryElements.head
+
+                  val intermediateOpposite =
+                    intermediateSectionsBetween(
+                      oppositeFile,
+                      precedingOppositeBoundary,
+                      succeedingOppositeBoundary
+                    )
+
+                  val intermediateSplice =
+                    spliceMerge(
+                      predecessorMove.moveDestinationSide,
+                      intermediateBase,
+                      intermediateOpposite,
+                      intermediateDestination
+                    )
+
+                  val intermediateSuppressions =
+                    (intermediateOpposite ++ intermediateDestination).toSet
+
+                  val nextSplices =
+                    if intermediateSplice.isEmpty then partialSplices
+                    else
+                      partialSplices
+                        .add(
+                          predecessorMove.moveDestinationAnchor -> AnchoringSense.Predecessor,
+                          intermediateSplice
                         )
-                      ) -> sectionedCode.left(
-                        sectionedCode.leftPathFor(
-                          predecessorMove.oppositeSideAnchor.boundaryElements.head
+                        .add(
+                          successorMove.moveDestinationAnchor -> AnchoringSense.Successor,
+                          intermediateSplice
                         )
-                      )
 
-                val intermediateDestination =
-                  intermediateSectionsBetween(
-                    destinationFile,
-                    predecessorMove.moveDestinationAnchor,
-                    successorMove.moveDestinationAnchor
-                  )
-
-                val precedingOppositeBoundary =
-                  predecessorMove.oppositeSideAnchor.boundaryElements.last
-                val succeedingOppositeBoundary =
-                  successorMove.oppositeSideAnchor.boundaryElements.head
-
-                val intermediateOpposite =
-                  intermediateSectionsBetween(
-                    oppositeFile,
-                    precedingOppositeBoundary,
-                    succeedingOppositeBoundary
-                  )
-
-                val intermediateSplice =
-                  CachedAnchoredContentMerges.of(
-                    predecessorMove.moveDestinationSide,
-                    intermediateBase,
-                    intermediateOpposite,
-                    intermediateDestination
-                  )
-
-                val intermediateSuppressions =
-                  (intermediateOpposite ++ intermediateDestination).toSet
-
-                val nextSplices =
-                  if intermediateSplice.isEmpty then partialSplices
-                  else
-                    partialSplices
-                      .add(
-                        predecessorMove.moveDestinationAnchor -> AnchoringSense.Predecessor,
-                        intermediateSplice
-                      )
-                      .add(
-                        successorMove.moveDestinationAnchor -> AnchoringSense.Successor,
-                        intermediateSplice
-                      )
-
-                nextSplices -> (partialSuppressions union intermediateSuppressions)
-            }
+                  nextSplices -> (partialSuppressions union intermediateSuppressions)
+              }
 
           // 3. Boundary splice succeeding the last move in the group
           val succeedingSourceForLast =
@@ -1748,7 +1717,7 @@ object SectionedCodeExtension extends StrictLogging:
             succeedingOppositeForLast.fold(
               ifEmpty = MergeResult.empty[MultiSided[Section[Element]]]
             )(
-              CachedAnchoredContentMerges.of(
+              spliceMerge(
                 lastMove.moveDestinationSide,
                 succeedingSourceForLast,
                 _,
