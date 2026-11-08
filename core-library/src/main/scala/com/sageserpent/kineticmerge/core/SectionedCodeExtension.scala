@@ -1627,9 +1627,34 @@ object SectionedCodeExtension extends StrictLogging:
         ParallelMatchesGroupId,
         IndexedSeq[AnchoredMove[Section[Element]]]
       ] = anchoredMoves
-        .groupBy(anchoredMove =>
-          sectionedCode.parallelMatchesGroupIdsByMatch(matchFrom(anchoredMove))
-        )
+        .groupBy { anchoredMove =>
+          val directMatch = matchFrom(anchoredMove)
+          sectionedCode.parallelMatchesGroupIdsByMatch
+            .get(directMatch)
+            .orElse {
+              val candidateMatches =
+                sectionedCode.matchesFor(anchoredMove.sourceAnchor)
+              candidateMatches.collectFirst {
+                case aMatch
+                    if sectionedCode.parallelMatchesGroupIdsByMatch
+                      .contains(aMatch) && (
+                      anchoredMove.moveDestinationSide match
+                        case MoveDestinationSide.Left =>
+                          aMatch.leftContribution.contains(
+                            anchoredMove.moveDestinationAnchor
+                          )
+                        case MoveDestinationSide.Right =>
+                          aMatch.rightContribution.contains(
+                            anchoredMove.moveDestinationAnchor
+                          )
+                    ) =>
+                  sectionedCode.parallelMatchesGroupIdsByMatch(aMatch)
+              }
+            }
+            .getOrElse {
+              sectionedCode.parallelMatchesGroupIdsByMatch(directMatch)
+            }
+        }
         .map { (groupId, moves) =>
           groupId -> moves.toIndexedSeq.sortBy(_.sourceAnchor.startOffset)
         }
