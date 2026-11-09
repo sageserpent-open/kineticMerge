@@ -86,25 +86,12 @@ case class MergeResult[Element: Eq] private[core] (
       baseElements: Seq[Element],
       leftElements: Seq[Element],
       rightElements: Seq[Element]
-  ): MergeResult[Element] = segmentFor(
-    baseElements,
-    leftElements,
-    rightElements
-  ).fold(ifEmpty = this) {
-    case segment @ Segment.Conflicted(base, left, right) =>
-      segments.lastOption match
-        case Some(Segment.Conflicted(sb, sl, sr)) =>
-          val Some(coalesced) = segmentForItems(
-            sb ++ base,
-            sl ++ left,
-            sr ++ right
-          ): @unchecked
-          MergeResult(segments.init :+ coalesced)
-        case _ =>
-          MergeResult(segments :+ segment)
-    case Segment.Resolved(elements) =>
-      addResolvedItems(elements)
-  }
+  ): MergeResult[Element] =
+    addConflictedItems(
+      baseElements.map(SegmentItem.Leaf.apply),
+      leftElements.map(SegmentItem.Leaf.apply),
+      rightElements.map(SegmentItem.Leaf.apply)
+    )
 
   def addResolved(elements: Seq[Element]): MergeResult[Element] =
     addResolvedItems(elements.map(SegmentItem.Leaf.apply))
@@ -572,10 +559,22 @@ object MergeResult:
           yield Resolved(fusedItems)
         case _ => None
 
+    // Don't bother representing different flavours of conflicts, namely left
+    // edit / right edit, left deletion / right edit, left edit / right deletion
+    // or left insertion / right insertion. These aren't modelled separately in
+    // `MergeAlgebra`, and that is fine as it is for now.
     case class Conflicted[Element: Eq](
+        // If this is empty, it represents a left insertion versus right
+        // insertion conflict.
         baseItems: Seq[SegmentItem[Element]],
+        // If this is empty, it represents a left deletion versus right edit
+        // conflict.
         leftItems: Seq[SegmentItem[Element]],
+        // If this is empty, it represents a left edit versus right deletion
+        // conflict.
         rightItems: Seq[SegmentItem[Element]]
+        // Otherwise, if all sides are populated, it represents a left edit
+        // versus right edit conflict.
     ) extends Segment[Element]:
       require(
         !baseItems.corresponds(leftItems)(Eq.eqv) && !baseItems
