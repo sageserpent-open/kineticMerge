@@ -1812,9 +1812,16 @@ object SectionedCodeExtension extends StrictLogging:
             .collect {
               case MergeResult.Segment.Conflicted(
                     _,
-                    leftSections,
-                    rightSections
+                    leftItems,
+                    rightItems
                   ) =>
+                val leftSections = leftItems.collect {
+                  case MergeResult.SegmentItem.Leaf(section) => section
+                }
+                val rightSections = rightItems.collect {
+                  case MergeResult.SegmentItem.Leaf(section) => section
+                }
+
                 val leftAffixSize = (anchoringSense match
                   case AnchoringSense.Predecessor => rightSections.lastOption
                   case AnchoringSense.Successor   => rightSections.headOption
@@ -1911,11 +1918,11 @@ object SectionedCodeExtension extends StrictLogging:
                   anchoringSense match
                     case AnchoringSense.Predecessor =>
                       mergeResult.tail :+ MergeResult.Segment.Resolved(
-                        rightSections ++ leftSections
+                        rightItems ++ leftItems
                       )
                     case AnchoringSense.Successor =>
                       MergeResult.Segment.Resolved(
-                        leftSections ++ rightSections
+                        leftItems ++ rightItems
                       ) +: mergeResult.init
                   end match
                 else if leftAffixSize < rightAffixSize then
@@ -1924,11 +1931,11 @@ object SectionedCodeExtension extends StrictLogging:
                   anchoringSense match
                     case AnchoringSense.Predecessor =>
                       mergeResult.tail :+ MergeResult.Segment.Resolved(
-                        leftSections ++ rightSections
+                        leftItems ++ rightItems
                       )
                     case AnchoringSense.Successor =>
                       MergeResult.Segment.Resolved(
-                        rightSections ++ leftSections
+                        rightItems ++ leftItems
                       ) +: mergeResult.init
                   end match
                 else
