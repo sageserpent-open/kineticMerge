@@ -50,21 +50,7 @@ of content across all three sides (`PartitionedThreeWayTransform`).
 
 ---
 
-## 4. Concurrent Futures and Cats Effect IO in Dynamic Programming
-
-Earlier versions of `LongestCommonSubsequence.of` parallelized the 3D dynamic programming grid using Scala `Future`s and
-Cats Effect `IO` to compute sub-problems concurrently within wavefront swathes.
-
-### Why it was discarded:
-- **Allocation and Scheduling Overhead**: Allocating thousands of `Future` / `IO` instances, thread context switches,
-  and monadic binds vastly outweighed the microsecond cost of cell comparisons in the DP table.
-- **GC Pressure**: The high rate of task allocations triggered frequent garbage collection pauses.
-- **Replacement**: A purely sequential, swathe-based dynamic programming loop using direct zero-allocation comparisons,
-  three-index affix trimming (`commonPrefixContributions` / `commonSuffixContributions`), and matchability filtering.
-
----
-
-## 5. Direct 3D LCS Over Whole Files
+## 4. Direct 3D LCS Over Whole Files
 
 An early approach ran exact 3-way longest common subsequence dynamic programming directly across all sections of a file.
 
@@ -78,7 +64,7 @@ An early approach ran exact 3-way longest common subsequence dynamic programming
 
 ---
 
-## 6. Whole-File Slices for Splices
+## 5. Whole-File Slices for Splices
 
 Earlier iterations of splice migration attempted to scan preceding and succeeding sections across the entire file
 around every moved anchor, using binary search and slicing over file sections.

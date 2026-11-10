@@ -43,10 +43,10 @@ moved on both branches, neither side deleted it.
 Change migration applies when a section of code in the base moves to a destination on one side (say, the right), while
 the opposite side (the left) either edits or deletes that content at its original location:
 
-- **Source Anchor**: The base section $\text{section}_{\text{base}}$.
-- **Move Destination Anchor**: The section on the move side $\text{section}_{\text{move}}$.
-- **Opposite Side Anchor**: The corresponding section on the opposite side $\text{section}_{\text{opposite}}$ (or a
-  composite edit sequence).
+- **Source Anchor**: The base section `sourceAnchor`.
+- **Move Destination Anchor**: The section on the move side `moveDestinationAnchor`.
+- **Opposite Side Anchor**: The corresponding section on the opposite side `oppositeSideAnchor` (or a composite edit
+  sequence).
 
 ### Mechanism
 1. **Speculative Detection**: In the first merge pass, `FirstPassMergeResult` records speculative move destinations and
@@ -54,11 +54,13 @@ the opposite side (the left) either edits or deletes that content at its origina
 2. **Global Evaluation**: `MoveDestinationsReport.evaluateSpeculativeSourcesAndDestinations` inspects all speculative
    moves globally. If a base section was moved to one side and edited/deleted on the opposite side, it produces a
    `Substitution`:
-   $$\text{section}_{\text{move}} \mapsto \text{replacement\_sections}$$
+
+   `moveDestinationAnchor -> replacementSections`
+
 3. **Suppression at Origin**: During the second merge pass, `ConflictResolvingMergeAlgebra` suppresses the edit or
    deletion at its original source location so it does not remain marooned in the old file.
-4. **Substitution Application**: `applySubstitutions` replaces $\text{section}_{\text{move}}$ at the destination with
-   the migrated replacement sections.
+4. **Substitution Application**: `applySubstitutions` replaces `moveDestinationAnchor` at the destination with the
+   migrated replacement sections.
 
 ### Change Migration Diagrams
 
@@ -107,8 +109,8 @@ Each move is characterized by an `AnchoredMove`:
 Rather than evaluating splices independently for every moved section, Kinetic Merge groups anchored moves using their
 `ParallelMatchesGroupId` (`anchoredMovesByParallelMatchesGroupId`):
 - Successive anchored moves that belong to the same parallel matches group are ordered by their base start offsets:
-  $$M_1, M_2, \dots, M_k$$
-- **Intermediate Splices**: For adjacent moves $M_i$ and $M_{i+1}$ in the group, the intermediate sections sitting
+  `M_1, M_2, ..., M_k`.
+- **Intermediate Splices**: For adjacent moves `M_i` and `M_{i+1}` in the group, the intermediate sections sitting
   between them are extracted directly on the base, move destination, and opposite sides:
   ```scala
   val intermediateBase = intermediateSectionsBetween(baseFile, M_i.sourceAnchor, M_{i+1}.sourceAnchor)
@@ -116,17 +118,17 @@ Rather than evaluating splices independently for every moved section, Kinetic Me
   val intermediateOpp  = intermediateSectionsBetween(oppFile, M_i.oppositeAnchor, M_{i+1}.oppositeAnchor)
   ```
   A 3-way merge is executed on these intermediate sections (`spliceMerge`), and the resulting splice is associated with
-  the succeeding anchor $M_{i+1}$.
-- **Boundary Splices**: For the first move $M_1$ and last move $M_k$ of the group, outward directional scanning finds
+  the succeeding anchor `M_{i+1}`.
+- **Boundary Splices**: For the first move `M_1` and last move `M_k` of the group, outward directional scanning finds
   preceding and succeeding content up to the nearest stationary preservations or boundary anchors. 3-way splice merges
   are performed for these outer boundaries.
 
-### Nested Results and Deferred Recursive Flattening
+### Nested Results and Deferred Resolution
 When splices are applied (`applySplices`), they are not flattened immediately into a linear sequence of elements.
 Instead:
 1. Splice merges are embedded as nested merge results (`SegmentItem.Nested(spliceMergeResult)`) directly into the outer
    `MergeResult.Side`.
 2. This nesting ensures that if the splice merge itself contains conflicts, the conflict markers and boundaries remain
    strictly localized to the spliced segment without polluting the outer file's alignment.
-3. In `resolveSections`, final unpicking performs a bottom-up recursive flattening (`flattenRecursively`), cleanly
+3. In `resolveSections`, final unpicking transforms sections to content via `innerFlatMap(resolution)`, cleanly
    unifying nested merge results into the final output.

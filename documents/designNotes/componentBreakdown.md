@@ -40,7 +40,7 @@ error messages. Direct-style syntax is enabled via `dotty-cps-async`:
 - Drives `SectionedCode.of` and `SectionedCodeExtension.merge`.
 - Translates the resulting `MergeResult` instances back into Git index entries (stages 1, 2, and 3 for conflicts) and
   working tree files with conflict markers, or creates a merge commit if clean.
-- Supports `--no-commit`, `--no-ff`, and `--no-progressbar`.
+- Supports `--no-commit`, `--no-ff`, and `--no-progress`.
 
 ### `toolCliApplication.Main`
 - Entry point for the `kinetic-merge-tool` executable.
@@ -59,9 +59,9 @@ algorithms using lightweight primitive types (e.g. integer offsets, characters) 
 
 ### `Token`
 - Represents a discrete token of source content (word, number, punctuation, or string literal).
-- Folds trailing whitespace into the token as an addendum.
-- Equality and ordering ignore trailing whitespace addenda, providing built-in whitespace insensitivity across all
-  matching and diffing operations.
+- Folds trailing whitespace into the token as a suffix, while leading line indentation is folded in as a prefix.
+- Equality and ordering ignore trailing whitespace suffixes and leading line indentation, providing built-in
+  whitespace insensitivity across all matching and diffing operations.
 
 ### `Sources` & `MappedContentSources`
 - Abstract representation of a codebase for a given side (`base`, `left`, `right`).
@@ -73,7 +73,7 @@ algorithms using lightweight primitive types (e.g. integer offsets, characters) 
 ### `Section`
 - An immutable closed-open interval `[startOffset, onePastEndOffset)` of token offsets within a specific file on a
   specific side.
-- Compared by identity and geometric location (`path`, `startOffset`, `size`), *not* by content equality.
+- Compared by its defining attributes (`path`, `startOffset`, `size`), *not* by object identity or content equality.
 - Provides access to its slice of tokens via `.content`.
 
 ### `SectionsSeen`
@@ -94,8 +94,8 @@ algorithms using lightweight primitive types (e.g. integer offsets, characters) 
 
 ### `RollingHash`
 - Fast rolling polynomial hash (Rabin-Karp style) used to compute token window fingerprints.
-- Factory instances (`RollingHash.Factory`) precompute window coefficients and are cached by
-  `(windowSize, totalContentSize)` to avoid cross-test cache pollution.
+- Factory instances (`RollingHash.Factory`) precompute window coefficients; session-local caches within
+  `MatchAnalysis.of` cache factories by window size (`Cache[Int, RollingHash.Factory]`).
 
 ### `MatchAnalysis`
 - The core engine for match discovery and reconciliation.
@@ -116,29 +116,29 @@ algorithms using lightweight primitive types (e.g. integer offsets, characters) 
 - `SectionedCode.Block`: Represents a contiguous sequence of sections in a file covered by a parallel matches group or
   filler.
 - Companion factory `SectionedCode.of` coordinates match analysis, builds `baseFilesByPath`, `leftFilesByPath`, and
-  `rightFilesByPath`, and constructs condensed, non-overlapping `baseBlocks`, `leftBlocks`, and `rightBlocks`.
+  `rightFilesByPath`, and constructs condensed `baseBlocks`, `leftBlocks`, and `rightBlocks`.
 
 ### `LongestCommonSubsequence`
 - Computes three-way and pairwise alignments between sequences of elements.
 - Optimized with:
-  - Three-index affix trimming (`commonPrefixContributions`, `commonSuffixContributions`) to eagerly peel off common
-    prefixes and suffixes without DP overhead.
+  - Common affix trimming (`commonAffix`) to eagerly peel off common prefixes and suffixes taking into account pairwise
+    and 3-way matches without dynamic programming overhead.
   - Matchability filtering to strip elements that do not occur on other sides.
-  - Purely sequential swathe-based dynamic programming that eliminates memory and concurrency overhead.
-- Used in `merge.scala` for standard sequence merges and in `SectionedCodeExtension` for crossover resolution.
+  - Wavefront swathe-based dynamic programming evaluating subproblems concurrently via `Future` and Cats Effect `IO`.
+- Used in `merge.scala` for standard sequence merges and in `SectionedCodeExtension` for local clump-level merges.
 
 ### `SectionedCodeExtension`
 - Extension method `merge` on `SectionedCode`:
-  1. `longestCommonSubsequenceOf(path)`: Constructs the two-tier approximate LCS per file path using block-level merges,
-     clump coalescence, local section merges, and crossover filtering (`matchesCross`).
+  1. `longestCommonSubsequenceOf(path)`: Extension method on `SectionedCode` that constructs the two-tier approximate
+     LCS per file path using block-level merges, clump coalescence, local section merges, and crossover filtering
+     (`matchesCross`).
   2. Initial per-path merge pass using `FirstPassMergeResult.mergeAlgebra`, recording merge operations and identifying
      speculative move sources and destinations.
   3. Evaluates global moves via `MoveDestinationsReport.evaluateSpeculativeSourcesAndDestinations`.
   4. Plays back operations into `secondPassMergeResultsByPath` using `ConflictResolvingMergeAlgebra`.
   5. Generates and applies substitutions (change migrations) and splices (splice migrations grouped by
      `ParallelMatchesGroupId`).
-  6. Unpicks and recursively flattens nested merge results bottom-up (`flattenRecursively`), preserving local conflict
-     boundaries.
+  6. In `resolveSections`, final unpicking transforms sections to content via `innerFlatMap(resolution)`.
 
 ### `MergeAlgebra` & `ConflictResolvingMergeAlgebra`
 - An object algebra defining how the three-way merge algorithm handles preservation, insertions, deletions, edits, and
@@ -152,8 +152,7 @@ algorithms using lightweight primitive types (e.g. integer offsets, characters) 
   - `FullyMerged[Element]`: Cleanly merged sequence of elements.
   - `MergedWithConflicts[Element]`: Conflicted result with distinct `leftElements` and `rightElements` (and optional
     `baseElements`).
-- Supports nested results (`SegmentItem.Nested`) allowing intermediate splices and substitutions to be embedded and
-  flattened to one level (`flattenToOneLevel` / `flattenRecursively`).
+- Supports nested results, allowing intermediate splices and substitutions to be embedded and resolved.
 
 ### `MoveDestinationsReport`
 - Analyzes speculative move sources and destinations across all paths.

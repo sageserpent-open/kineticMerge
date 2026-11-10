@@ -30,13 +30,14 @@ In `MatchAnalysis.groupsOfParallelMatches`, matches are unified into groups usin
 
 ### In-Order Match Pairs
 For each side and path, `precedingAndSucceedingMatchPairsFrom` scans the sorted sections of `SectionsSeen`. Whenever a
-section from match $M_1$ is immediately followed by a section from match $M_2$ on that side (with
-$\text{startOffset}(M_1) < \text{startOffset}(M_2)$), the pair $(M_1, M_2)$ is recorded.
+section from match `M1` is immediately followed by a section from match `M2` on that side (with
+`M1.startOffset < M2.startOffset`), the pair `(M1, M2)` is recorded.
 
 Intersections of these pairs across sides establish parallel continuity:
 1. **Parallel All-Sides Pairs**:
-   $\text{Pairs}_{\text{base}\cap\text{left}\cap\text{right}}$. Both $M_1$ and $M_2$ are all-sides matches and succeed
-   each other in the same order across base, left, and right. These are unified directly via `DisjointSets.union`.
+   Pairs present across base, left, and right (`basePairs intersect leftPairs intersect rightPairs`). Both `M1` and `M2`
+   are all-sides matches and succeed each other in the same order across base, left, and right. These are unified
+   directly via `DisjointSets.union`.
 2. **Parallel Pairwise Pairs**:
    Pairs that succeed each other across their shared sides (e.g. base and left, base and right, or left and right)
    between two pairwise matches of the same kind. These are also unified directly.
@@ -50,9 +51,11 @@ Kinetic Merge evaluates candidate **bridging pairs** between all-sides matches a
 - **Sink Bridge**: An all-sides match leading into a pairwise match.
 - **Source Bridge**: A pairwise match leading into an all-sides match.
 - **Sandwich Structure**: A pairwise match sandwiched between an all-sides predecessor and an all-sides successor:
-  $$M_{\text{all\_sides}}^{(1)} \longrightarrow M_{\text{pairwise}} \longrightarrow M_{\text{all\_sides}}^{(2)}$$
-  A sandwich is valid if and only if $M_{\text{all\_sides}}^{(1)}$ directly leads to $M_{\text{all\_sides}}^{(2)}$ on
-  the side missing from $M_{\text{pairwise}}$. This is verified via an $O(1)$ set lookup:
+
+  `AllSidesMatch_1 -> PairwiseMatch -> AllSidesMatch_2`
+
+  A sandwich is valid if and only if `AllSidesMatch_1` directly leads to `AllSidesMatch_2` on the side missing from the
+  pairwise match. This is verified via an O(1) set lookup:
   `missingSidePrecedingAndSucceedingMatchPairs.contains(predecessor -> successor)`.
 - Valid bridges are filtered to ensure missing-side path agreement, strict monotonic start offsets, and absence of
   overlapping section intervals. Surviving bridges are unified into the parallel matches groups.
@@ -69,8 +72,8 @@ Every group of parallel matches must satisfy:
 
 ## 3. Constructing Blocks (`SectionedCode.Block`)
 
-Once parallel match groups are formed, `SectionedCode.of` condenses each file into an indexed sequence of contiguous,
-non-overlapping **blocks**:
+Once parallel match groups are formed, `SectionedCode.of` condenses each file into an indexed sequence of contiguous
+blocks:
 
 ```scala
 case class Block[Element](
@@ -103,16 +106,16 @@ Adjacent blocks covering the exact same token interval `[startOffset, onePastEnd
 - Their `parallelMatchesGroupIds` sets are united.
 - Their underlying section sequence is retained.
 
-### Step 4: Eliminating Nested Blocks
-If a smaller block is entirely nested within a larger enclosing block
-($\text{outer.startOffset} \le \text{inner.startOffset}$ and $\text{outer.onePastEndOffset} \ge \text{inner.onePastEndOffset}$),
-the inner nested block is eliminated via a tail-recursive pass (`eliminateFollowingNestedBlocks`).
+### Step 4: Eliminating Following Nested Blocks
+If a smaller block is entirely nested within an earlier enclosing block (`outer.startOffset <= inner.startOffset` and
+`outer.onePastEndOffset >= inner.onePastEndOffset`), the inner nested block is eliminated via a tail-recursive pass
+(`eliminateFollowingNestedBlocks`). Overlapping blocks spanning different ranges are permitted.
 
 ---
 
 ## 4. Outcome
 
 The resulting sequences (`baseBlocksFor(path)`, `leftBlocksFor(path)`, `rightBlocksFor(path)`):
-- Form an exact, non-overlapping, contiguous partition of each file.
+- Form an exact, contiguous partition of each file.
 - Compress thousands of individual tokens and sections into a modest number of coherent blocks.
 - Enable the **Two-Tier Approximate LCS** algorithm to align files rapidly and accurately.
