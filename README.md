@@ -145,7 +145,7 @@ the code motion pain out of the process before it hands over, so that the final 
 one.
 
 **UPDATE:** *since I wrote this copy, Mr Deadline has retired, Noah has been promoted and Seymour has left and joined a
-retreat; Noah now manages a small team of developers who wrangle Gemini Code Assist, Claude Code and Codex. That code
+retreat; Noah now manages a small team of developers who wrangle Antigravity, Claude Code and Codex. That code
 still needs merging, though!*
 
 ## Status
