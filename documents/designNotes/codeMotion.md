@@ -1,149 +1,132 @@
-# Code Motion #
+# Code Motion & Migration
 
-Code motion may be:
+## 1. What is Code Motion?
 
-1. A move of some content from one place in a file to another in the same file that can't form part of the longest
-   common subsequence for that file's three-way merge. This is *intra-file* code motion.
-2. A move of some content from within one file to somewhere within another file with a different path (the filename
-   itself may or may not change). As degenerate cases, the moved content may occupy all of either the source or
-   destination file.
+Code motion occurs when a piece of code present in the base commit moves to a new location in either the left branch,
+the right branch, or both:
+1. **Intra-file code motion**: The code moves to a different location within the same file (and does not form part of the
+   longest common subsequence for that file's three-way merge).
+2. **Inter-file code motion**: The code moves from one file to another file with a different path (including file splits,
+   joins, and extractions).
 
-In both cases, the move is said to have a *source* and a *destination*, the source being the location of the content in
-the base side and the destination being the location of the content on either the left or the right side.
+In both cases, the move has:
+- A **source**: The original location in the base version.
+- A **destination**: The new location on the left or right side.
 
-A single move has precisely one source and one destination, but it is expected that the same content may be matched
-ambiguously in the base and on either the left or right, so it is possible to have multiple moves sharing the same
-content; we may have multiple sources converging on a single destination, or a single source fanning out to multiple
-destinations, or a mixture of multiple sources and destinations. In that third situation, these *might* represent
-parallel moves of the same snippet of code, but could also have either convergence or fan-out for some moves. Kinetic
-Merge doesn't try to resolve such moves - it works with the totality of sources and destinations involving a given piece
-of content.
+Kinetic Merge detects moves across all paths modified, added, or deleted in either branch. When a move is identified,
+modifications made to the moved code on the opposite branch must follow the move to its destination. This process is
+termed **migration**.
 
-# Moves to both Sides
+Migration divides into two distinct mechanisms:
+- **Change Migration** (substitutions): Migrating edits or outright deletions of the moved content.
+- **Splice Migration**: Migrating content inserted adjacent to the moved code (or local boundary edits).
 
-It is also possible for content from even just a single source to move to a destination on the left **and** a
-destination on the right.
+---
 
-If both such destinations are aligned from the point of view of the three-way merge of a file containing both
-destinations, then the move is termed *coincident*: this represents a situation where the same moves have been made on
-both the left and right histories since the base ancestor commit, typically due to cherry-picking of changes, or less
-formal sharing of patches via email (or indeed just plain eyeballing changes and manually duplicating them).
+## 2. Coincident and Divergent Moves
 
-If the destinations either go to distinct file paths or land in the same file path without being aligned by the
-three-way merge, then the move is termed *divergent*. Kinetic Merge does **not** attempt to resolve divergent moves,
-considering both the left and right moves as equally valid choices; rather it honours both, allowing the content to be
-duplicated in the final results. As we will see, this is important when considering migration.
+When code from a single base source moves on *both* the left and right sides:
+- **Coincident Move**: The code moves to the same relative position on both sides (in the same file, aligned by the
+  three-way merge). Kinetic Merge treats this as a shared refactoring; no conflicts are generated, and the content is
+  preserved at its new location.
+- **Divergent Move**: The code moves to different files or to non-aligned locations within the same file. Kinetic Merge
+  honours both destinations equally, allowing the content to appear in both locations (unless one side deleted the
+  containing file).
 
-# Migration #
+When code moves to both sides, changes (edits/deletions) on the base are not migrated: because the original code was
+moved on both branches, neither side deleted it.
 
-Work on code on one side of a merge needs to follow code motion of the original code on the other side; this is referred
-to as *migration*. This breaks down into two forms, *change migration* and *splice migration*.
+---
 
-# Change Migration #
+## 3. Change Migration (Substitutions)
 
-This pertains to migrating an edit or an outright deletion of some content that already exists in the base side and
-which moves elsewhere on either the left or right side; the edit or deletion takes place on the opposite side to the
-move.
+Change migration applies when a section of code in the base moves to a destination on one side (say, the right), while
+the opposite side (the left) either edits or deletes that content at its original location:
 
-Thinking in terms of sections, we have a source section in the base that moves to a destination section on the left or
-the right, and an associated *substitution* from the opposite side that is either an edit (thus a non-empty sequence of
-sections that replaces the destination section in the final merged output) or a deletion (an empty sequence of
-sections).
+- **Source Anchor**: The base section $\text{section}_{\text{base}}$.
+- **Move Destination Anchor**: The section on the move side $\text{section}_{\text{move}}$.
+- **Opposite Side Anchor**: The corresponding section on the opposite side $\text{section}_{\text{opposite}}$ (or a
+  composite edit sequence).
 
-The job of change migration is to associate a substitution with a move, remove any **edit** sequence from its original
-location in the merged output (because it is being migrated, so the original location becomes the wrong place) and to
-apply the substitution to the destination section.
+### Mechanism
+1. **Speculative Detection**: In the first merge pass, `FirstPassMergeResult` records speculative move destinations and
+   speculative substitutions (edits or deletions) for each base section.
+2. **Global Evaluation**: `MoveDestinationsReport.evaluateSpeculativeSourcesAndDestinations` inspects all speculative
+   moves globally. If a base section was moved to one side and edited/deleted on the opposite side, it produces a
+   `Substitution`:
+   $$\text{section}_{\text{move}} \mapsto \text{replacement\_sections}$$
+3. **Suppression at Origin**: During the second merge pass, `ConflictResolvingMergeAlgebra` suppresses the edit or
+   deletion at its original source location so it does not remain marooned in the old file.
+4. **Substitution Application**: `applySubstitutions` replaces $\text{section}_{\text{move}}$ at the destination with
+   the migrated replacement sections.
 
-A subtlety here is the interplay between detecting moves and producing the final merged output. Moves are detected by
-collecting information from across all the per-file three-way merges and then evaluating the moves using a global
-picture; that takes place in [
-`MoveDestinationsReport.evaluateSpeculativeSourcesAndDestinations`](https://github.com/sageserpent-open/kineticMerge/blob/acfd8239370d6a0d8fa9a235801af47aed77d868/src/main/scala/com/sageserpent/kineticmerge/core/MoveDestinationsReport.scala#L57)
+### Change Migration Diagrams
 
-Once this has built up the picture of moves and their associated substitutions, the per-file merges have to replayed
-because the sources of moves need to be reinterpreted to take the moves into account; this is done
-via [
-`ConflictResolvingMergeAlgebra`](https://github.com/sageserpent-open/kineticMerge/blob/acfd8239370d6a0d8fa9a235801af47aed77d868/src/main/scala/com/sageserpent/kineticmerge/core/ConflictResolvingMergeAlgebra.scala#L12)
-which is responsible for suppressing the edit sequences in their original locations; that has the effect of changing the
-merge outcome.
-
-## Migrating a deletion:
-
+#### Migrating a Deletion:
 ![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/migratingADeletion.excalidraw.svg)
 
-## Migrating an edit:
-
+#### Migrating an Edit:
 ![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/migratingAnEdit.excalidraw.svg)
 
-## Simple move with a deletion on the move side:
-
-![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/simpleMoveWithADeletionOnTheMoveSide.excalidraw.svg)
-
-## Simple move with an edit on the move side:
-
+#### Simple Move with an Edit on the Move Side:
 ![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/simpleMoveWithAnEditOnTheMoveSide.excalidraw.svg)
 
-## Migrating a deletion with an edit on the move side:
+#### Simple Move with a Deletion on the Move Side:
+![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/simpleMoveWithADeletionOnTheMoveSide.excalidraw.svg)
 
-![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/migratingADeletionWithAnEditOnTheMoveSide.excalidraw.svg)
-
-## Migrating an edit with an edit on the move side:
-
+#### Migrating an Edit with an Edit on the Move Side:
 ![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/migratingAnEditWithAnEditOnTheMoveSide.excalidraw.svg)
 
-## Migrating a deletion with a coincident edit:
+#### Migrating a Deletion with an Edit on the Move Side:
+![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/migratingADeletionWithAnEditOnTheMoveSide.excalidraw.svg)
 
+#### Migrating a Deletion with a Coincident Edit:
 ![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/migratingADeletionWithACoincidentEdit.excalidraw.svg)
 
-When there are moves from the same source to both sides, be they coincident or divergent, then Kinetic Merge takes the
-view that there is no change associated with either side's move: because the original content has turned up on both
-sides, it cannot be considered as being deleted or edited on the other side; any such change is simply left as-is in the
-final merge without being migrated.
-
-## Coincident move:
-
+#### Coincident Move:
 ![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/coincidentMove.excalidraw.svg)
 
-## Divergent moves:
-
+#### Divergent Moves:
 ![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/divergentMoves.excalidraw.svg)
 
-# Splice Migration #
+---
 
-This is motivated by having to migrate an insertion of new content adjacent to some content that already exists in the
-base side and which moves elsewhere on either the left or right side; the insertion takes place on the opposite side to
-the move.
+## 4. Splice Migration
 
-In contrast with change migration, the destination section should *not* be substituted; rather the inserted content
-should migrate to land adjacent to the destination section, either preceding or succeeding it depending on how it was
-originally inserted.
+Splice migration addresses content **inserted adjacent to moved code** on the opposite side (or local edits touching
+the boundaries between moved code and surrounding context).
 
-Again, the inserted code has to be suppressed at its original location, because it has migrated.
+### The Anchors of a Move
+Each move is characterized by an `AnchoredMove`:
+- `sourceAnchor`: The base section.
+- `moveDestinationAnchor`: The section at the move destination.
+- `oppositeSideAnchor`: The unmoved anchor on the opposite side (either `Plain` for an exact match, or an edit
+  boundary).
 
-In practice, it is not enough to simply transplant the inserted sections, because there may be content adjacent to the
-destination section that is sitting in exactly the place that the migrated insertion needs to go.
+### Grouping Anchored Moves by Parallel Matches Groups
+Rather than evaluating splices independently for every moved section, Kinetic Merge groups anchored moves using their
+`ParallelMatchesGroupId` (`anchoredMovesByParallelMatchesGroupId`):
+- Successive anchored moves that belong to the same parallel matches group are ordered by their base start offsets:
+  $$M_1, M_2, \dots, M_k$$
+- **Intermediate Splices**: For adjacent moves $M_i$ and $M_{i+1}$ in the group, the intermediate sections sitting
+  between them are extracted directly on the base, move destination, and opposite sides:
+  ```scala
+  val intermediateBase = intermediateSectionsBetween(baseFile, M_i.sourceAnchor, M_{i+1}.sourceAnchor)
+  val intermediateDest = intermediateSectionsBetween(destFile, M_i.destinationAnchor, M_{i+1}.destinationAnchor)
+  val intermediateOpp  = intermediateSectionsBetween(oppFile, M_i.oppositeAnchor, M_{i+1}.oppositeAnchor)
+  ```
+  A 3-way merge is executed on these intermediate sections (`spliceMerge`), and the resulting splice is associated with
+  the succeeding anchor $M_{i+1}$.
+- **Boundary Splices**: For the first move $M_1$ and last move $M_k$ of the group, outward directional scanning finds
+  preceding and succeeding content up to the nearest stationary preservations or boundary anchors. 3-way splice merges
+  are performed for these outer boundaries.
 
-There is also the wrinkle that if we have a move, not only can content be *inserted* adjacent to source of the move, but
-there may be *deletions or edits to existing content in the base side* adjacent to the source of the move; these are not
-applied to the moved section, because that section still exists adjacent to them. So it is potentially a mixture of
-insertions, deletions and edits that require such migration.
-
-At this point some terminology is useful - for a move, we speak of it as having *anchors*, these are the sections
-involved in a move, namely the base section at the source of the move, the unmoved section on the opposite side of the
-move (with the insertions, deletions and edits adjacent to it) and the destination section on the side of the move.
-
-The three anchors are used to set up three-way merges between the adjacent content on the base side, the side opposite
-to the move and the move destination side. This is done for both content preceding the anchors and succeeding the
-anchors, so there are two merged outcomes; these are referred to as *splices*, and it is these that are actually
-migrated.
-
-The content adjacent to the base anchor disappears naturally from the merge output, and both the opposite side's
-adjacent content **and** the move destination side's adjacent content are suppressed. Once this is done, the splices are
-simply inserted, preceding or succeeding the move destination anchor.
-
-There is a subtlety in that a splice may succeed one anchor and precede a later anchor, being bracketed by the two. If
-the corresponding moves are in parallel, the splice must be inserted only once, being shared between the bracketing move
-destination anchors.
-
-Another subtlety is that a migrated edit implies a special anchor where the edit sequence acts as a stand-in for the
-anchor opposite to the move: this is handy because it prevents migrated edits from blurring into splices and thus being
-migrated twice by both the change and the splice migration mechanisms.
+### Nested Results and Deferred Recursive Flattening
+When splices are applied (`applySplices`), they are not flattened immediately into a linear sequence of elements.
+Instead:
+1. Splice merges are embedded as nested merge results (`SegmentItem.Nested(spliceMergeResult)`) directly into the outer
+   `MergeResult.Side`.
+2. This nesting ensures that if the splice merge itself contains conflicts, the conflict markers and boundaries remain
+   strictly localized to the spliced segment without polluting the outer file's alignment.
+3. In `resolveSections`, final unpicking performs a bottom-up recursive flattening (`flattenRecursively`), cleanly
+   unifying nested merge results into the final output.

@@ -1,201 +1,143 @@
-# `SectionedCode.of` (formerly `CodeMotionAnalysis`)
+# Match Analysis & Sectioned Code Construction
 
-**DISCLAIMER:** this is out of date, but the basics are still covered.
+In earlier versions of Kinetic Merge, match analysis and code breakdown were combined in a single monolith
+(`CodeMotionAnalysis`). In the current codebase, the responsibility is split into:
+1. `MatchAnalysis`: The iterative discovery, thinning, overlap fragmentation, and subsumption reconciliation of
+   matches across three sides.
+2. `SectionedCode`: The final synthetic breakdown of files into contiguous sections, grouping of parallel matches,
+   and construction of blocks for alignment.
 
-This method takes three sources representing the base, left and right side of the merge, yielding a `SectionedCode`
-instance containing a breakdown of files by path for each of the three sides, together with a set of all the matches
-gleaned from the analysis.
+---
 
-This is a big method with its own world of local abstractions useful only to its internals.
+## The End-to-End Pipeline in `SectionedCode.of`
 
-## The Big Picture ##
+The factory method `SectionedCode.of` executes the following sequence of transformations:
 
-The overall plan followed by the implementation is to:
+```scala
+val withAllMatchesOfAtLeastTheSureFireWindowSize =
+  MatchAnalysis.of(baseSources, leftSources, rightSources)(configuration)
 
-1. Systematically look for matches across the sides, gathering matches for a given window size en-masse across all the
-   files in all the sources. The aim of the enclosing method is to match as much content as possible across the sources,
-   without using any more matches than is necessary. The search for matches does that in a loose fashion, allowing a
-   certain amount of conflicting matches for reasons explained below.
-2. Reconcile conflicts by a mixture of fragmenting pairwise matches and paring down or outright elimination of matches
-   that are in conflict, along with a removal of pairwise matches that are redundant in the face of all-sides matches
-   that cover the same content.
-3. Purging of any overlapping matches, because the content needs to be covered uniquely by sections.
-4. Filling of gaps where content has not been covered by a matched section with unmatched sections.
-5. The final matches are packed into the resulting `SectionedCode`, and their sections on each side are used
-   to formulate a breakdown of the corresponding `Sources` instance - these breakdowns go into the resulting
-   `SectionedCode` too.
+val withAllMatchesOfAtLeastTheMinimumWindowSize =
+  withAllMatchesOfAtLeastTheSureFireWindowSize.withAllSmallFryMatches()
 
-## Matches ##
+val withTinyMatchesIncluded =
+  withAllMatchesOfAtLeastTheMinimumWindowSize.withTinyMatches
 
-Breaking down the first step, the idea is to work downwards in match sizes - once matches at a given larger match size
-have been found, these should block smaller matches that either overlap with or are subsumed by them - we prefer a
-smaller number of larger matches to lots of smaller ones, we do not want to have overlapping matches contesting for the
-same piece of content, and we do not want redundant small matches covering parts of larger ones.
+val parallelMatchesOnly =
+  withTinyMatchesIncluded.parallelMatchesOnly
 
-Now, at first glance, given a possible large pairwise match, it seems like a good idea to go with it because longer
-matches are good, even if it subsumes smaller all-sides matches. Things can get tricky, though - in essence, while it is
-fine to prefer a single long pairwise match over a mixture of smaller pairwise matches and all-sides matches covering
-the same content, this only holds when that long pairwise match is **isolated**. What can happen is that there may be
-multiple overlapping pairwise matches involving different combinations of sides vying for the same content, and in this
-situation it is better to take all of these into account and then break them down into fragments, using all-sides
-matches to pick out the overlaps.
+val withOverlapsReconciled =
+  parallelMatchesOnly.reconcileOverlappingMatches(
+    reconcileMatchesInvolvingOverlappingSections
+  )
 
-See [this ticket here](https://github.com/sageserpent-open/kineticMerge/issues/23) for a full discussion.
+val matchesAndTheirSections =
+  withOverlapsReconciled.reconcileSubsumingMatches
+```
 
-The consequence is that while we should go with the long pairwise match, we still have to look for smaller all-sides
-matches subsumed in it to guide a finer-grained merge. If we don't find any such all-sides matches, we keep the long
-pairwise match, but if we do, said long pairwise match has to be fragmented by the smaller all-sides matches. Any
-content left over from the long pairwise match is expressed as one or more small pairwise matches that abut the
-all-sides matches.
+Let's examine each phase in detail.
 
-It is for this reason that the search for matches is a little loose, requiring following reconciliation.
+---
 
-## Search Strategy for Matches ##
+## 1. Match Discovery: Binary Search and Linear Scan
 
-Matches are found working down in match size - this is done in two different ways, one is an iterated binary search
-performed
-within [
-`withAllMatchesOfAtLeastTheSureFireWindowSize`](https://github.com/sageserpent-open/kineticMerge/blob/63ea2b5cf44d553bf9d49412cc321fc219874d9a/src/main/scala/com/sageserpent/kineticmerge/core/CodeMotionAnalysis.scala#L176)
-and the other is an exhaustive linear scan down candidate window sizes performed
-within [
-`withAllSmallFryMatches`](https://github.com/sageserpent-open/kineticMerge/blob/63ea2b5cf44d553bf9d49412cc321fc219874d9a/src/main/scala/com/sageserpent/kineticmerge/core/CodeMotionAnalysis.scala#L1042).
+Match discovery identifies identical token sequences across sides using rolling polynomial hashes (`RollingHash`).
+To prevent match explosions and maintain efficiency, discovery progresses downwards from larger window sizes to
+smaller ones:
 
-### Iterated Binary Search ###
+### The Sure-Fire Threshold
+A configuration parameter, `thresholdSizeFractionForMatching`, specifies a minimum fraction of a file's size that a
+match must cover. This implies a *minimum sure-fire window size*—the smallest window size that is guaranteed not to be
+rejected by the threshold in *any* file across the codebase.
 
-The binary search approach tries various candidate window sizes between an inclusive lower bound and an exclusive upper
-bound. If there is at least one match found at a candidate window size, an estimate of the window size of the optimal
-match (if there is just one) is also yielded.
+### Iterated Binary Search (`MatchAnalysis.of`)
+For window sizes above the minimum sure-fire window size, candidate window sizes can be searched safely using binary
+search without risking partial threshold rejections:
+- The binary search evaluates a candidate window size $W \in [W_{low}, W_{high})$.
+- For that window size, `matchesForWindowSize` fingerprints all files and identifies matching token sequences across
+  sides. It returns discovered matches along with an estimate of the maximum attainable match size.
+- If no matches are found, the search tightens the upper bound ($W_{high} \leftarrow W$).
+- If optimal matches are found at $W$, the matches are stored, and the binary search restarts with $W_{high} \leftarrow W$
+  and $W_{low}$ reset to the initial sure-fire minimum.
+- If matches are found but the estimate indicates larger potential matches exist, the lower bound is raised.
+- This continues until all surefire matches are extracted.
 
-If no match is found, this is taken to mean the binary search should go low and tighten the upper bound (if it can go
-any
-lower - otherwise we're done).
+### Linear Scan for Small-Fry Matches (`withAllSmallFryMatches`)
+Below the sure-fire window size, files may independently accept or reject candidate matches based on their individual
+sizes. Binary search cannot be used here because missing a match at size $W$ does not guarantee that a valid match does
+not exist at $W+1$ in a smaller file.
 
-If a single match is found, we have an optimal match and note it.
+Therefore, `withAllSmallFryMatches` linearly steps downward through all integer window sizes from the sure-fire size down
+to `configuration.minimumMatchSize`. Because all larger matches have already been registered, any match found during this
+downward scan is immediately maximal.
 
-If more than one match is found and the estimate comes out to be the same as the current candidate window size, we have
-found multiple optimal matches.
+### Tiny Matches (`withTinyMatches`)
+Even below `minimumMatchSize`, tiny matches (down to window size 1) can occur. `withTinyMatches` identifies these small
+matches. They are not used as standalone merge anchors; rather, they are used to fragment gap-filling sections in
+`filesByPathUtilising`, preventing small unchanged code snippets inside edits from being misaligned.
 
-Otherwise, there is more than one match and the estimate is higher than the current candidate window size, so the binary
-search should go high and tighten the lower bound.
+---
 
-Each time the search finds an optimal match (or several optimal matches) at a given candidate window size, the binary
-search is restarted with the lower bound relaxed to its initial value, and the exclusive upper bound set to the window
-size of the latest match(es). There is a subtlety here in that the binary search may terminate because there are
-multiple optimal matches, but the estimate is higher than their candidate window size, so the binary search keeps on
-looking, ultimately failing to improve on those matches. This situation can happen when the optimal matches refer to
-differing content, but have overlaps on one but not all the relevant sides; thus they can't be replaced by a single
-larger match.
+## 2. Meta-Matching: `parallelMatchesOnly`
 
-The solution is to preserve any matches that are not conclusively optimal as a fallback
-solution, and to use these when the binary search terminates unsuccessfully.
+Raw match discovery produces many accidental or coincidental matches (e.g. repeated keywords, common boilerplate, or
+isolated lines). Furthermore, ambiguity limits can produce spurious partial matches.
 
-**NOTE:** we may have to revisit candidate window sizes as the binary search keeps restarting, because once we have
-larger matches in the bag, these influence whether smaller matches are permitted or not as mentioned above. So a
-candidate window size that led to multiple undersized matches in a previous binary search may yield an optimal match or
-matches next time around.
+To filter out noise and retain only coherent runs of code motion, Kinetic Merge applies **meta-matching**:
+1. All matched sections on each side are collected and sorted in order of appearance in their containing files.
+2. These sequences of sections are treated as synthetic "files" where each "element" is an entire `Section`.
+3. `MatchAnalysis.of` is executed over these synthetic sources (`meta-base`, `meta-left`, `meta-right`).
+4. Because the elements are sections, this meta-match pass finds sequences of sections that appear in the exact same
+   relative order across sides.
+5. The resulting meta-matches are back-translated into original matches (`backTranslatedParallelMatches`).
+6. Isolated coincidental matches that do not form part of any parallel sequence are discarded. Redundant pairwise
+   matches are cleaned up via `cleanUpPairwiseMatches`.
 
-### Linear Scan ###
+---
 
-The reason for using two approaches is down to the optional use of a match threshold - this is a fraction of a file's
-size that must be achieved or exceeded for a section to be considered as part of a match.
+## 3. Reconciling Overlapping Matches (`reconcileOverlappingMatches`)
 
-Using a match threshold leads to a *minimum sure-fire window size* - this is the smallest window size that couldn't be
-rejected by the match threshold in any of the files across all three sides.
+A fundamental invariant of `SectionedCode` is that on any given side and path, all sections must be disjoint and
+non-overlapping. However, rolling hash discovery may produce overlapping matches where rival matches contest the same
+token span.
 
-When candidate window sizes go below the minimum sure-fire window size, there is a possibility that potential matches
-can fizzle out because their window size falls short of what the match threshold would allow at least one side of the
-match. That in turn means that if a match exists at a larger window size below the minimum sure-fire window size, and we
-are searching slightly under that size, we may not see the partial matches that would lead us back up to the optimal
-match size, because they fail to meet the threshold criterion.
+`reconcileOverlappingMatches` resolves overlaps using a tail-recursive fragmentation strategy:
+- An accumulator loop separates disjoint matches from overlapping ones using `SectionsSeen.findOverlapping`.
+- When an overlap occurs between an incumbent match and a contested match, the contested match is sliced into
+  non-overlapping sub-match fragments using a `GenericMatch.slice` extension method.
+- Contested fragments are assigned fresh unique parallel match group IDs via `assignUniqueGroupId` rather than
+  inheriting the original group ID, preventing start offset collisions.
+- This guarantees that all surviving matches cover mutually disjoint section intervals on every side.
 
-Therefore, the iterated binary search is only good down to the minimum sure-fire window size.
+---
 
-Rather than jumping around candidate window sizes and missing partial matches, the exhaustive linear scan plods down
-through all the candidate window sizes below the minimum sure-fire window size, recording any successful matches as it
-finds them.
+## 4. Reconciling Subsuming Matches (`reconcileSubsumingMatches`)
 
-We don't have to worry about underestimating the candidate window sizes - we already have all the larger
-matches in the bag that might exclude whatever is being looked for at the current window size, so as soon as we see
-matches, we know they are optimal.
+Often, a large pairwise match (e.g. between base and left) covers a swath of code that contains smaller, more specific
+all-sides matches within its interior.
 
-## Checking Sections for Overlaps and Subsumption ##
+If the large pairwise match were kept intact, it would prevent the inner all-sides matches from aligning the right side,
+obscuring shared ancestry and creating false conflicts.
 
-`MatchesAndTheirSections` does what it says on the tin, accumulating matches and allowing a match to be found from any
-of its participating sections. It breaks down into three maps from paths to instances of `SectionsSeen`, one map for
-each side, as well as a multi-dictionary implementing the mapping from sections back to their matches -
-a `MatchedSections`.
+`reconcileSubsumingMatches` resolves this:
+1. It identifies pairwise matches that subsume one or more all-sides matches.
+2. It iteratively "eats into" or fragments the larger pairwise match around the embedded all-sides matches.
+3. The pairwise match is replaced by smaller pairwise fragments that abut the all-sides matches before and after.
+4. Redundant pairwise matches that are completely shadowed across all sides by all-sides matches are removed
+   (`cleanUpPairwiseMatches`).
+5. The reconciliation iterates until the set of matches stabilizes.
 
-`SectionsSeen` is a range-search data structure layered over a fingertree provided
-by [this implementation](https://codeberg.org/sciss/FingerTree). It stores sections belonging to the same side and path
-by the range defined by a section's start offset and one-past-end offset. It supports efficient searches for overlapping
-and subsuming sections, underpinning several helper methods in the companion object for `MatchesAndTheirSections`.
+---
 
-While it is efficient, it is hammered by `SectionedCode.of`; anything that can yield more optimal performance is
-likely to provide a good performance boost.
+## 5. Groups of Parallel Matches & Block Construction
 
-## Finding the Matches for a candidate Window Size ##
+Once all matches are reconciled, `matchesAndTheirSections` satisfies the strong postcondition:
+- Every participating section is unique and non-overlapping.
+- Pairwise and all-sides matches are cleanly partitioned.
 
-This is the job
-of [
-`MatchesAndTheirSections.matchesForWindowSize`](https://github.com/sageserpent-open/kineticMerge/blob/a9c639c98c78af9ba848243471f51c364845f5d1/src/main/scala/com/sageserpent/kineticmerge/core/CodeMotionAnalysis.scala#L1152).
-It packages the matches found together with their count and the estimated window size for an optimal match in
-a `MatchingResult`.
-
-It delegates to three helper functions:
-
-1. [
-   `fingerprintStartIndices`](https://github.com/sageserpent-open/kineticMerge/blob/a9c639c98c78af9ba848243471f51c364845f5d1/src/main/scala/com/sageserpent/kineticmerge/core/CodeMotionAnalysis.scala#L1167)
-   collects fingerprints from the content of each file, along with the start offset of the piece of content that the
-   fingerprint refers to. It is expected that fingerprints can collide (and they do occasionally).
-2. [
-   `sectionsByPotentialMatchKey`](https://github.com/sageserpent-open/kineticMerge/blob/a9c639c98c78af9ba848243471f51c364845f5d1/src/main/scala/com/sageserpent/kineticmerge/core/CodeMotionAnalysis.scala#L1225)
-   drives `fingerprintStartIndices` to gather instances of `PotentialMatchKey` on a given side. That class aggregates
-   the raw fingerprint, supporting an ordering that a) respects the fingerprint and b) uses the referenced piece of
-   content as a tiebreaker if two fingerprints with differing content collide. The content is implied via a section to
-   avoid memory bloat from copied content. These keys map to their associated sections via a multi-dictionary instance,
-   spanning all the files in that side's sources. We use a multi-dictionary because it is entirely possible for the same
-   key to refer to equivalent pieces of content repeated both in the same file and across files. A subtlety is that when
-   this happens, we may have a *section* with a single specific location referring to several sections that all differ
-   in location - the one in the `PotentialMatchKey` is really an exemplar that refers to the piece of content in common
-   to the mapped sections. Bear this in mind when debugging!
-3. [
-   `matchKeysAcrossSides`](https://github.com/sageserpent-open/kineticMerge/blob/a9c639c98c78af9ba848243471f51c364845f5d1/src/main/scala/com/sageserpent/kineticmerge/core/CodeMotionAnalysis.scala#L1294)
-   drives the creation of matches; it combines sets of `PotentialMatchKeys` by intersection across the sides to make
-   four sets of keys for pairwise and all-sides matches. It can then work through the sets, using the keys to retrieve
-   the associated sections from the relevant sides' multi-dictionaries to build matches. Once the matches are found, it
-   calls the helper [
-   `withMatches`](https://github.com/sageserpent-open/kineticMerge/blob/a9c639c98c78af9ba848243471f51c364845f5d1/src/main/scala/com/sageserpent/kineticmerge/core/CodeMotionAnalysis.scala#L1645)
-   to build the final `MatchingResult` for the candidate window size out of those matches. It is here that the estimate
-   for the optimal match size is requested.
-
-## Reconciling Matches ##
-
-This has gone through a *lot* of changes, and code has shuttled back and forth between the reconciliation and the
-initial production of matches. Names have changed several times too, and there was a time when `MatchesAndTheirSections`
-had a much tighter invariant with match fragmentation happening on the fly as matches were found by the searches;
-although prior to that there was a fairly hokey mixture of on-the-fly fragmentation followed by a final cleanup.
-
-Put it this way - think twice before rewriting this, because a lot of alternatives have been tried - and bugs uncovered!
-That said, there are lots of weird one-off scenario tests in `CodeMotionAnalysisTest` that were added to reproduce these
-bugs, so there is a safety net if you want to get hacking. **Just don't casually delete those weird tests!**
-
-`CodeMotionAnalysisTest.sourcesCanBeReconstructedFromTheAnalysis` is also a surprisingly powerful test these days in
-this regard, despite the fact that it looks a lot simpler than the more weighty
-`CodeMotionAnalysisTest.matchingSectionsAreFound`.
-
-Because `MatchesAndTheirSections` has loosened the invariant to allow reconciliation to take place at the end, there is
-a [weak invariant](https://github.com/sageserpent-open/kineticMerge/blob/5404bdf9b4ebf1178f24dfa29f420e586b0fe01b/src/main/scala/com/sageserpent/kineticmerge/core/CodeMotionAnalysis.scala#L847)
-that holds in general and
-a [stronger post-condition that holds after reconciliation](https://github.com/sageserpent-open/kineticMerge/blob/5404bdf9b4ebf1178f24dfa29f420e586b0fe01b/src/main/scala/com/sageserpent/kineticmerge/core/CodeMotionAnalysis.scala#L1001).
-
-Reconciliation takes place
-in [
-`MatchesAndTheirSections.reconcileMatches`](https://github.com/sageserpent-open/kineticMerge/blob/5404bdf9b4ebf1178f24dfa29f420e586b0fe01b/src/main/scala/com/sageserpent/kineticmerge/core/CodeMotionAnalysis.scala#L1807).
-
-This uses an iterative approach, working with a set of all-sides matches to fragment larger subsuming pairwise matches.
-After each iteration discovers new fragments and pares down the matches, this affects the set of all-sides matches
-available to cause more fragmentation, so the reconciliation is iterated with each change in the pared down all-sides
-matches until it stabilizes.
-
-This iterative approach is vital, see [this ticket](https://github.com/sageserpent-open/kineticMerge/issues/144)
-and [this ticket](https://github.com/sageserpent-open/kineticMerge/issues/146) for background.
+From here, `SectionedCode.of`:
+1. Constructs `baseFilesByPath`, `leftFilesByPath`, and `rightFilesByPath` by calling `filesByPathUtilising(mandatorySections)`.
+   Any remaining token gaps between matched sections are filled with contiguous filler sections.
+2. Computes `groupsOfParallelMatches` by unifying parallel all-sides matches, pairwise matches, and bridging pairs.
+3. Groups the sections for each file into `Block`s (`baseBlocksFor`, `leftBlocksFor`, `rightBlocksFor`), condensing
+   coincident blocks and eliminating nested blocks to form the foundation of the 2-tier approximate LCS.
