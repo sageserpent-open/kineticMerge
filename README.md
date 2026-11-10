@@ -10,8 +10,6 @@ Merge a heavily refactored codebase and stay sane.
 
 [![Scala Steward badge](https://img.shields.io/badge/Scala_Steward-helping-blue.svg?style=flat&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAQCAMAAAARSr4IAAAAVFBMVEUAAACHjojlOy5NWlrKzcYRKjGFjIbp293YycuLa3pYY2LSqql4f3pCUFTgSjNodYRmcXUsPD/NTTbjRS+2jomhgnzNc223cGvZS0HaSD0XLjbaSjElhIr+AAAAAXRSTlMAQObYZgAAAHlJREFUCNdNyosOwyAIhWHAQS1Vt7a77/3fcxxdmv0xwmckutAR1nkm4ggbyEcg/wWmlGLDAA3oL50xi6fk5ffZ3E2E3QfZDCcCN2YtbEWZt+Drc6u6rlqv7Uk0LdKqqr5rk2UCRXOk0vmQKGfc94nOJyQjouF9H/wCc9gECEYfONoAAAAASUVORK5CYII=)](https://scala-steward.org)
 
-**Requires JRE 17 LTS or later since release 1.3.0.**
-
 YouTube:
 
 - [Kinetic Merge: Merging through a File Split](https://youtu.be/JHb9DKK0LIA)
@@ -102,8 +100,8 @@ usual workflow to resolve the conflicts. You can open up an editor directly on t
 hand - mark them as resolved in the usual way with `git add <resolved file>` and the commit with `git commit`, or
 just `git merge --continue` - or use your usual IDE to resolve the conflicts; I use IntelliJ, that works nicely.
 
-Unlike a conventional Git merge, if you use an IDE that reads the staged conflicting files, you will see that the *left*
-and *right* versions are already partially merged for you.
+Unlike a conventional Git merge, if you use an IDE that reads the staged conflicting files, you will see that the *base*, *left*
+and *right* versions are already partially merged for you. This lets you concentrate on the conflicting parts by bringing all three sides closer together, sharing the resolved parts of the merge.
 
 What's more, the staged files and the conflicts already have any code motion applied to them, so they are less
 confusing; the conflicts are shown in the right place.
@@ -147,7 +145,7 @@ the code motion pain out of the process before it hands over, so that the final 
 one.
 
 **UPDATE:** *since I wrote this copy, Mr Deadline has retired, Noah has been promoted and Seymour has left and joined a
-retreat; Noah now manages a small team of developers who wrangle Gemini Code Assist, Claude Code and Codex. That code
+retreat; Noah now manages a small team of developers who wrangle Antigravity, Claude Code and Codex. That code
 still needs merging, though!*
 
 ## Status
