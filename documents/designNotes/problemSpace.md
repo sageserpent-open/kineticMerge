@@ -149,13 +149,12 @@ Kinetic Merge unifies such correlated matches into *parallel matches groups*, id
    collisions.
 
 The matches discovered by match analysis are thinned out into parallel matches groups to prevent a combinatoric
-explosion of matches, while
-capturing the essence of code motion.
+explosion of matches, while keeping the code motion modelling intact.
 
 ### Blocks ###
 
 In large codebases, running a full LCS algorithm over individual sections across all three versions of a file is
-computationally not feasible except for quite small files.
+computationally not feasible, except for quite small files.
 
 To make alignment fast and scalable, Kinetic Merge groups sections into higher-level *blocks* (`SectionedCode.Block`):
 
