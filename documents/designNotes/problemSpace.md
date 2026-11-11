@@ -97,6 +97,8 @@ a left file for `example.txt` that breaks down into sections *A*, *B*, *C*, **F*
 a right file for `example.txt` that breaks down into sections *A*, **E**, *B*, *C*, *D*,
 this then yields the longest common subsequence of *A*, *B*, *C*.
 
+![](./diagrams/threeWayMergeAndLCS.excalidraw.svg)
+
 *D* is not present on the left - it has been edited into *F*, and *E* has moved forwards on the right to come in between
 *A* and *B*.
 
