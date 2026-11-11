@@ -123,18 +123,15 @@ merge, it is considered to have 'jumped around' on the right.
 
 The combination of global match analysis and per-file LCS alignment cleanly separates stationary code from moved code:
 
-- **Stationary Preservations**: Sections that appear in the base and align with their corresponding sections in the
-  same file's LCS on both left and right are stationary.
-- **Code Motion (Moves)**: When a section in the base has matched content on the left or right, but does *not* align in
-  the per-file LCS (or appears at a completely different file path), it has **moved**.
-    - **Intra-file move**: Moved to a different offset within the same file.
-    - **Inter-file move**: Moved to a file at a different path.
-- **Change Migration**: If code moves from the base to a destination on one side, and the opposite side edits or deletes
+- **Preservations**: sections on the LCS backbone across all three sides are stationary.
+- **Code Motion (Moves)**: when a section in the base has matched content on the left or right, but does *not* align on
+  all three sides of the LCS backbone, it has **moved**.
+    - **Intra-file move**: moved to a different offset within the same file.
+    - **Inter-file move**: moved to a file at a different path.
+- **Change Migration**: if code moves from the base to a destination on one side, and the opposite side edits or deletes
   that code at its original location, Kinetic Merge migrates the edit or deletion to the move destination.
-- **Splice Migration**: If new content is inserted or edited adjacent to the source of a move, Kinetic Merge performs a
-  three-way splice merge and migrates the resulting splice adjacent to the moved section at its destination.
-- **Recursive Unpicking**: Migrated edits and splices are nested into the merge result and resolved via bottom-up
-  recursive flattening, preserving local conflict boundaries.
+- **Splice Migration**: if new content is inserted, deleted or edited adjacent to the source of a move, Kinetic Merge
+  migrates the change adjacent to the moved section at its destination, using a special *splice merge*.
 
 ### Parallel Matches Groups ###
 
