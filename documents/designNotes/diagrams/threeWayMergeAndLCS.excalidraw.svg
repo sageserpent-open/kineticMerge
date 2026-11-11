@@ -23,8 +23,7 @@
     <rect x="0" y="0" width="1240" height="655" fill="#ffffff"></rect>
     <g transform="translate(380 10) rotate(0 375 12.5)">
         <text x="0" y="0" font-family="Helvetica, Segoe UI Emoji" font-size="32px" fill="#1e1e1e" text-anchor="start"
-              style="white-space: pre;" direction="ltr" dominant-baseline="text-before-edge">Three-Way Merging and
-            Longest Common Subsequence
+              style="white-space: pre;" direction="ltr" dominant-baseline="text-before-edge">LCS for `example.txt`
         </text>
     </g>
     <g transform="translate(610 55) rotate(0 125 12.5)">
