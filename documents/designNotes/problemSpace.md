@@ -99,8 +99,8 @@ this then yields the longest common subsequence of *A*, *B*, *C*.
 
 ![](./diagrams/threeWayMergeAndLCS.excalidraw.svg)
 
-*D* is not present on the left - it has been edited into *F*, and *E* has moved forwards on the right to come in between
-*A* and *B*.
+*D* is not present on the left - it has been edited into *F*, and *E* has moved backwards on the right to come in
+between *A* and *B*.
 
 In fact, we can extend this by considering *D* to be part of the longest common subsequence, but in a weaker role - it
 only aligns on the base and right side.
