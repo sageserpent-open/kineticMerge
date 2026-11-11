@@ -26,11 +26,6 @@
               style="white-space: pre;" direction="ltr" dominant-baseline="text-before-edge">LCS for `example.txt`
         </text>
     </g>
-    <g transform="translate(610 55) rotate(0 125 12.5)">
-        <text x="0" y="0" font-family="Virgil, Segoe UI Emoji" font-size="20px" fill="#868e96" text-anchor="start"
-              style="white-space: pre;" direction="ltr" dominant-baseline="text-before-edge">Example for `example.txt`
-        </text>
-    </g>
     <g stroke-linecap="round" transform="translate(298 165) rotate(0 46 187.5)">
         <path d="M23 0 C37.22 1.6, 57.02 0.75, 69 0 M69 0 C85.87 -1.87, 90.84 8.67, 92 23 M92 23 C91.2 120.51, 91.15 217.16, 92 352 M92 352 C90.43 368.37, 82.8 375.56, 69 375 M69 375 C49.24 376.16, 32.5 373.51, 23 375 M23 375 C8.6 373.94, -1.33 365.64, 0 352 M0 352 C2.36 241.17, 2.41 131.16, 0 23 M0 23 C-0.57 9.56, 8.66 0.46, 23 0"
               stroke="#ced4da" stroke-width="1.5" fill="none" stroke-dasharray="8 9"></path>
