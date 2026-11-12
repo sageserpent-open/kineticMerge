@@ -3,8 +3,8 @@
 ## Sources, Sides, Sections, and Tokens ##
 
 Kinetic Merge abstracts merging away from version control systems - it uses a *sources* instance to represent the
-version of the codebase as seen from a commit or directory tree. A sources instance breaks down into *files*, each of
-which is associated with a *path*.
+codebase as seen from a commit or directory tree. A sources instance breaks down into *files*, each of which is
+associated with a *path*.
 
 There are three *sides* to a merge:
 
