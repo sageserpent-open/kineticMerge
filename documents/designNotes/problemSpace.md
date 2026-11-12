@@ -25,10 +25,11 @@ symbols, punctuation, or string literals. Whitespace is folded into adjacent tok
 as a suffix of the preceding token, but leading indentation on a line is attached as a prefix to make reading through
 tokens more natural.
 
-When comparing tokens for equality (e.g. during hashing or dynamic programming), the attached whitespace is ignored,
-delivering **whitespace insensitivity**. Only standalone leading whitespace at the very start of a file is compared
-explicitly against other whitespace tokens. String literals are treated as atomic tokens (preserving internal formatting
-and whitespace).
+Only whitespace-only lines at the very start of a file are treated as standalone whitespace tokens.
+
+When comparing tokens for equality or hashing, the attached whitespace is ignored, delivering **whitespace
+insensitivity**. This insensitivity also applies to standalone whitespace tokens. String literals are treated as atomic
+tokens (preserving internal formatting and whitespace).
 
 ### Sections and Files
 
