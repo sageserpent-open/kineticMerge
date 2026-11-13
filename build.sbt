@@ -57,7 +57,7 @@ lazy val commonLibraryDependencies = Seq(
   libraryDependencies += "com.google.guava" % "guava"  % "33.8.0-jre",
   libraryDependencies += "com.github.ben-manes.caffeine" % "caffeine" % "3.3.1",
   libraryDependencies += "me.tongfei"         % "progressbar"   % "0.10.2",
-  libraryDependencies += "org.apache.commons" % "commons-lang3" % "3.21.0",
+  libraryDependencies += "org.apache.commons" % "commons-lang3" % "3.22.0",
   libraryDependencies +=
     "org.scala-lang.modules" %% "scala-parallel-collections" % "1.3.0",
   libraryDependencies += "org.typelevel" %% "kittens" % "3.5.0",
