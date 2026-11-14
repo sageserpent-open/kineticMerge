@@ -262,9 +262,11 @@ as a reference.
 
 - [Job Description](./documents/designNotes/jobDescription.md)
 - [Problem Space](./documents/designNotes/problemSpace.md)
-- [Code Motion](./documents/designNotes/codeMotion.md)
 - [Component Breakdown](./documents/designNotes/componentBreakdown.md)
-- [`SectionedCode.of`](./documents/designNotes/sectionedCode.md)
+- [Match Analysis & Sectioned Code Construction](./documents/designNotes/sectionedCode.md)
+- [Parallel Matches Groups & Block Construction](./documents/designNotes/parallelMatchesAndBlocks.md)
+- [Two-Tier Approximate Longest Common Subsequence](./documents/designNotes/approximateLCS.md)
+- [Code Motion & Migration](./documents/designNotes/codeMotion.md)
 - [Blind Alleys](./documents/designNotes/blindAlleys.md)
 - [Skeletons in the Cupboard](./documents/designNotes/skeletonsInTheCupboard.md)
 
