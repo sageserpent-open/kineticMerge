@@ -44,7 +44,7 @@ Let's examine each phase in detail.
 
 Match discovery identifies identical token sequences across sides using rolling polynomial hashes (`RollingHash`).
 To prevent match explosions and maintain efficiency, discovery progresses downwards from larger window sizes to
-smaller ones:
+smaller ones.
 
 ### The Sure-Fire Threshold
 
@@ -54,8 +54,8 @@ rejected by the threshold in *any* file across the codebase.
 
 ### Iterated Binary Search (`MatchAnalysis.of`)
 
-For window sizes above the minimum sure-fire window size, candidate window sizes can be searched safely using binary
-search without risking partial threshold rejections:
+For window sizes clearing the sure fire threshold, candidate window sizes can be searched safely using binary search
+without risking threshold rejections:
 
 - The binary search evaluates a candidate window size $W \in [W_{low}, W_{high})$, starting with $W_{low}$ set to the
   initial sure-fire minimum.
@@ -72,19 +72,24 @@ search without risking partial threshold rejections:
 
 ### Linear Scan for Small-Fry Matches (`withAllSmallFryMatches`)
 
-Below the sure-fire window size, files may independently accept or reject candidate matches based on their individual
+Below the sure-fire threshold, files may independently accept or reject candidate matches based on their individual
 sizes. Binary search cannot be used here because missing a match at size $W$ does not guarantee that a valid match does
 not exist at $W^{'} > W$ in a smaller file.
 
-Therefore, `withAllSmallFryMatches` linearly steps downward through all integer window sizes from the sure-fire size
-down to `configuration.minimumMatchSize`. Because all larger matches have already been registered, any match found
-during this downward scan is immediately maximal.
+Therefore, `withAllSmallFryMatches` steps downward in an exhaustive linear search through window sizes from the
+sure-fire size down to `configuration.minimumMatchSize`. Because all larger matches have already been registered, any
+match found during this downward scan is immediately maximal.
 
 ### Tiny Matches (`withTinyMatches`)
 
-Even below `minimumMatchSize`, tiny matches (down to window size 1) can occur. `withTinyMatches` identifies these small
-matches. They are not used as standalone merge anchors; rather, they are used to fragment gap-filling sections in
-`filesByPathUtilising`, preventing small unchanged code snippets inside edits from being misaligned.
+Even below `minimumMatchSize`, tiny matches (down to window size 1) can occur; these are identified by
+`withTinyMatches`. Although they are used just like the larger matches downstream, their main purpose is merely to spot
+last-chance alignment opportunities when merging amongst what would otherwise be unbroken gaps between the matches
+previously found.
+
+Unlike matches above the sure-fire window size and small-fry matches, tiny matches are subject to much stricter
+discovery limitations: they cannot be subsumed by any match from either of the larger categories, reflecting their role
+in breaking up gaps.
 
 ---
 
@@ -128,8 +133,8 @@ This a valid situation (unlike having a larger match subsuming a smaller match o
 during match discovery) - but in order to preserve the invariant, reconciliation has to take place. Dropping the larger
 pairwise match leads to a poorer merge where only the localised all-sides matches feature, and dropping the all-sides
 matches can lead to poor merges where, say, a base and left match overlaps a base and right match with the common ground
-being covered by an all-sides match subsumed by both pairwise matches. What we want is to cover all of that content with
-matches, but keep them disjoint.
+being covered by a smaller all-sides match subsumed by both pairwise matches. What we want is to cover all of that
+content with matches, but keep them disjoint.
 
 `reconcileSubsumingMatches` resolves this:
 
