@@ -58,16 +58,16 @@ For window sizes clearing the sure fire threshold, candidate window sizes can be
 without risking threshold rejections:
 
 - The binary search evaluates a candidate window size $W \in [W_{low}, W_{high})$, starting with $W_{low}$ set to the
-  initial sure-fire minimum.
+  sure-fire minimum.
 - For that window size, `matchesForWindowSize` fingerprints all files and identifies matching token sequences across
   sides. It returns discovered matches along with an estimate of the maximum attainable match size based on the latest
   discovered matches.
 - If no matches are found, the search lowers the upper bound $W_{high} \leftarrow W$.
 - If matches are found but the estimate indicates larger potential matches exist, the search raises the lower bound $W_
-  {low} \leftarrow 1 + W$.
+  {low} \leftarrow W$.
 - If optimal matches are found at $W$, the matches are stored, and the binary search restarts
   with $W_{high} \leftarrow W$
-  and $W_{low}$ reset to the initial sure-fire minimum.
+  and $W_{low}$ reset to the sure-fire minimum.
 - This continues until all surefire matches are extracted.
 
 ### Linear Scan for Small-Fry Matches (`withAllSmallFryMatches`)
@@ -76,7 +76,7 @@ Below the sure-fire threshold, files may independently accept or reject candidat
 sizes. Binary search cannot be used here because missing a match at size $W$ does not guarantee that a valid match does
 not exist at $W^{*} > W$ in a smaller file.
 
-Therefore, `withAllSmallFryMatches` steps downward in an exhaustive linear search through window sizes from the
+Therefore, `withAllSmallFryMatches` proceeds with an exhaustive linear search through window sizes less than the
 sure-fire size down to `configuration.minimumMatchSize`. Because all larger matches have already been registered, any
 match found during this downward scan is immediately maximal.
 
