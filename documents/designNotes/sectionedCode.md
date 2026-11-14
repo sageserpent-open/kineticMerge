@@ -98,7 +98,7 @@ in breaking up gaps.
 Raw match discovery produces many trivial ambiguous matches (e.g. repeated keywords, common boilerplate, or
 isolated lines). These would overwhelm subsequent processing without contributing any value; they are noise.
 
-To filter out this noise and retain only coherent runs of code motion, Kinetic Merge applies **meta-matching**:
+To filter out this noise and retain only coherent runs of code motion, Kinetic Merge applies *meta-matching*:
 
 1. All matched sections on each side are collected and sorted in order of appearance in their containing files.
 2. These sequences of sections are treated as synthetic 'files' where each element is an entire `Section`. The content
