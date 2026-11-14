@@ -74,7 +74,7 @@ without risking threshold rejections:
 
 Below the sure-fire threshold, files may independently accept or reject candidate matches based on their individual
 sizes. Binary search cannot be used here because missing a match at size $W$ does not guarantee that a valid match does
-not exist at $W^{'} > W$ in a smaller file.
+not exist at $W^{*} > W$ in a smaller file.
 
 Therefore, `withAllSmallFryMatches` steps downward in an exhaustive linear search through window sizes from the
 sure-fire size down to `configuration.minimumMatchSize`. Because all larger matches have already been registered, any
