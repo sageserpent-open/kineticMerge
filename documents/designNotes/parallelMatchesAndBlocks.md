@@ -1,7 +1,7 @@
 # Parallel Matches Groups & Block Construction
 
-A central innovation in Kinetic Merge is the representation of code motion via **Parallel Matches Groups** and the
-construction of **Blocks**. This document details how parallel matches groups are formed, how bridging between
+A central innovation in Kinetic Merge is the representation of code motion via *parallel matches groups* and the
+construction of *blocks*. This document details how parallel matches groups are formed, how bridging between
 all-sides and pairwise matches is validated, and how files are partitioned into contiguous blocks for scalable
 alignment.
 
@@ -20,8 +20,8 @@ Treating every match independently loses the collective context of the move. Mor
 directly on fine-grained sections when large swathes have moved in parallel suffers from a combinatorial explosion of
 effort.
 
-A **Parallel Matches Group** (`ParallelMatchesGroupId`) binds together a sequence of matches that move together in the
-same direction and order across participating sides.
+A parallel matches group (identified by a `ParallelMatchesGroupId`) binds together a sequence of matches that move
+together in the same direction and order across participating sides.
 
 ---
 
@@ -49,7 +49,7 @@ Real-world code motion frequently alternates between all-sides matches and pairw
 method contains an edit on the left, an all-sides match is followed by a base-and-right pairwise match (the unedited
 original) and then another all-sides match.
 
-Kinetic Merge evaluates candidate **bridging pairs** between all-sides matches and pairwise matches:
+Kinetic Merge evaluates candidate *bridging pairs* between all-sides matches and pairwise matches:
 
 - **Sink Bridge**: an all-sides match leading into a pairwise match.
 - **Source Bridge**: a pairwise match leading into an all-sides match.
@@ -88,7 +88,7 @@ case class Block[Element](
                          )
 ```
 
-For each side (`base`, `left`, `right`) and file path:
+For each side and file path:
 
 ### Step 1: Spanning Matched Blocks
 
@@ -104,25 +104,20 @@ Any gaps in the file not covered by matched blocks are identified. For each gap 
 and end of the file), a **filler block** is created:
 
 - Its `sectionsCoveredByGroup` contains the contiguous sequence of gap sections.
-- Its `parallelMatchesGroupIds` is empty (`SortedSet.empty`).
+- Its `parallelMatchesGroupIds` is empty.
 
 ### Step 3: Sorting and Condensing Coincident Blocks
 
-All matched blocks and filler blocks for the file are sorted primarily by `startOffset`. For blocks sharing the same
-start offset, a descending order on `onePastEndOffset` is used:
-
-```scala
-blocks.sortBy(block => (block.startOffset, -block.onePastEndOffset))
-```
+All matched blocks and filler blocks for the file are sorted by `startOffset`.
 
 Adjacent blocks covering the exact same token interval `[startOffset, onePastEndOffset)` are condensed together:
 
 - Their `parallelMatchesGroupIds` sets are united.
-- Their underlying section sequence is retained.
+- Their shared section sequence is retained.
 
-### Step 4: Eliminating Following Nested Blocks
+### Step 4: Eliminating Nested Blocks
 
-If a smaller block is entirely nested within an earlier enclosing block (`outer.startOffset <= inner.startOffset` and
+If a smaller block is entirely nested within an enclosing block (`outer.startOffset <= inner.startOffset` and
 `outer.onePastEndOffset >= inner.onePastEndOffset`), the inner nested block is eliminated via a tail-recursive pass
 (`eliminateFollowingNestedBlocks`). Overlapping blocks spanning different ranges are permitted.
 
@@ -132,6 +127,6 @@ If a smaller block is entirely nested within an earlier enclosing block (`outer.
 
 The resulting sequences (`baseBlocksFor(path)`, `leftBlocksFor(path)`, `rightBlocksFor(path)`):
 
-- Form an exact, contiguous partition of each file.
-- Compress thousands of individual tokens and sections into a modest number of coherent blocks.
-- Enable the **Two-Tier Approximate LCS** algorithm to align files rapidly and accurately.
+- Partition each file without gaps, reflecting the important parallel matches groups.
+- Compress thousands of individual tokens / hundreds of sections into a modest number of blocks.
+- Enable the approximate LCS algorithm to align files rapidly and accurately.
