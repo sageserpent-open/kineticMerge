@@ -95,10 +95,22 @@ in breaking up gaps.
 
 ## 2. Meta-Matching: `parallelMatchesOnly`
 
-Raw match discovery produces many trivial ambiguous matches (e.g. repeated keywords, common boilerplate, or
-isolated lines). These would overwhelm subsequent processing without contributing any value; they are noise.
+Raw match discovery produces many trivial ambiguous matches, e.g. repeated keywords, semicolon statement delimiters or
+common boilerplate. These would overwhelm subsequent processing without contributing any value; by and large, they are
+noise.
 
-To filter out this noise and retain only coherent runs of code motion, Kinetic Merge applies *meta-matching*:
+They also mask genuinely interesting ambiguous moves, say when a block of code is copied into a new destination, but
+leaving the old block in place. We want to model both matches in this situation.
+
+What we really want from matching is to identify code that stays in place, and code that moves. We can use the insight
+that in both situations, matches will tend to be correlated so that they are *parallel* - in a run of matches, the
+matched code fragments are often coordinated from one match to the next, either all staying in place or all moving
+together.
+
+The ambiguous match noise doesn't do this - the matches simply jump around all over the place due to the Cartesian
+product of matches between the repeated content across the sides.
+
+To filter out this noise, retaining only parallel matches, Kinetic Merge applies *meta-matching*:
 
 1. All matched sections on each side are collected and sorted in order of appearance in their containing files.
 2. These sequences of sections are treated as synthetic 'files' where each element is an entire `Section`. The content
