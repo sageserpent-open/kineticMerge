@@ -1,58 +1,81 @@
 # Modelling of the Problem Space #
 
-## Sources, Sides, Sections and Matching ##
+## Sources, Sides, Sections, and Tokens ##
 
-Kinetic Merge abstracts merging away from Git - it works in terms of three *sources*, one of which represents the
-codebase as seen from the base commit, one as seen from our branch head commit and one as seen from their branch head
-commit. The sources break down into *files*, each of which is associated with a *path*.
+Kinetic Merge abstracts merging away from version control systems - it uses a *sources* instance to represent the
+codebase as seen from a commit or directory tree. A sources instance breaks down into *files*, each of which is
+associated with a *path*.
 
-The terminology is blurred a little - thinking of the breakdown of the codebase content, we say 'sources', but when we
-think of the contribution to the merge, we say *'side'* - ie, the base side, our side or their side.
+There are three *sides* to a merge:
 
-There is no knowledge of Git concepts such as commits, merge parents or the index in the core of Kinetic Merge. Here,
-*left* is used as synonym for our side and *right* for their side (base remains as it is).
+1. `base`: the common ancestor version.
+2. `left`: the version from our branch or directory tree.
+3. `right`: the version from their branch or directory tree.
 
-In order to model both merging and code motion, a file in turn breaks down into an indexed sequence of *sections*. Each
-section covers a continuous piece of content in a file that is demarcated by a start offset and one past the end
+Each side contributes its own sources.
+
+In the core library, path types and content element types are generalised (`Path`, `Element`), allowing thorough unit
+testing with simple types for paths and elements, while the CLI applications work with filesystem paths and `Token`
+instances.
+
+### Tokens and Whitespace Insensitivity
+
+Source files are tokenized upfront into sequences of `Token`s. Tokens demarcate identifiers, numbers, keywords, operator
+symbols, punctuation, or string literals. Whitespace is folded into adjacent tokens: in general, whitespace is attached
+as a suffix of the preceding token, but leading indentation on a line is attached as a prefix to make reading through
+tokens more natural.
+
+Only whitespace-only lines at the very start of a file are treated as standalone whitespace tokens.
+
+When comparing tokens for equality or hashing, the attached whitespace is ignored, delivering **whitespace
+insensitivity**. This insensitivity also applies to standalone whitespace tokens. String literals are treated as atomic
+tokens (preserving internal formatting and whitespace).
+
+### Sections and Files
+
+A file in a source is covered by an indexed sequence of non-overlapping, contiguous *sections* (`Section[Element]`).
+Each section covers a continuous piece of content in a file that is demarcated by a start offset and one past the end
 offset - so a closed-open interval of offsets into the file content. A section does not have to align with line
 boundaries - it may refer to just a part of a single line, or span several lines with the start and / or end being
 ragged, i.e. not spanning an entire line.
 
-The idea is to cover each file in each of the three sources with contiguous sections, so that all the content belonging
-to each of the three sources is covered by one, and only one section. A sources instance does not mandate any particular
-breakdown of its content into sections - as a starting point, it simply assigns each file with its own section that
-covers all the file's content.
+Crucially:
 
-The code is analysed to refine this breakdown - *matches* are sought between candidate sections across sides, so that
-the content is considered equivalent. The matches are optimised so that:
-a) the matched content in each match is as long as possible and
-b) as many matches as is practical are found.
+- A `Sources` instance is a factory for sections and maps sections back to their file paths.
+- Sections are compared by their defining attributes (`path`, `startOffset`, `size`), *not* by object identity or
+  content equality. Two sections with identical text on different sides are distinct objects.
+- A `File[Element]` is a synthetic container whose total content is formed by the concatenation of its contiguous
+  constituent sections.
 
-The end goal is to cover as much of the content of all three sides as possible with sections that belong to matches
-while keeping the number of matches down and avoiding overlapping matches; sections from the same side are not intended
-to share content.
+## Matches and Merging ##
 
-The sections referred to by a match may be across all three sides, or may involve just the base and the left, or the
-base and the right - or the left and the right. Matched sections do not have to share exactly the same content - some
-allowance is made for whitespace insensitivity.
+Match analysis (`MatchAnalysis`) discovers matches of equivalent swathes of content across sides:
 
-**NOTE:** the sections in a match *don't* have to belong to files at the same path in each of their respective sources -
-while this is valid, we should also expect matches to involve files with differing paths across the sides.
+- **All-Sides Match (`Match.AllSides`)**: a three-way match comprising a section in `base`, a section in `left`, and a
+  section in `right`.
+- **Pairwise Match (`Match.BaseAndLeft`, `Match.BaseAndRight`, or `Match.LeftAndRight`)**: a two-way match comprising
+  sections on two sides.
 
-Once an optimal set of matches has been found, each side's sources instance is broken down using a mixture of the
-matched sections and 'filler' sections that cover any content gaps in each file - possibly even the entire file if none
-of its content was matched. Once we have this breakdown, merging can proceed...
+Note the subtlety - a match consists of sections covering equivalent content (i.e. the same elements), but the sections
+in a match cannot be equal because they come from different sides.
 
-## Merging, Longest Common Subsequence, Code Motion ##
+The matches are optimised so that:
+
+- The matched content in each match is as long as possible.
+- As many matches as is practical are found. Once discovered, matches are reconciled to resolve overlaps and eliminate
+  redundancies.
+
+### Three-Way Merging and Longest Common Subsequence ###
 
 Merging takes place both at a global level, looking at all the paths and taking code motion into account, and also at a
-file-by-file level, performing an augmented *three-way merge* on each file path. What is merged is not the raw content
+file-by-file level, performing an augmented three-way merge on each file path. What is merged is not the raw content
 of the sources' files, rather it is the sections that are rearranged by the merge at both global and file-by-file level.
 While a section belongs to a sources instance for one of the three sides, it can be queried for the content it covers -
 so rearranging sections is tantamount to rearranging the underlying content.
 
 The file-by-file three-way merge itself depends on a more fundamental notion, that of finding the *longest common
-subsequence*. The longest common subsequence, in concert with matching, contributes in two ways to the big picture of
+subsequence* (LCS). The longest common subsequence, in concert with matching, contributes in two ways to the big picture
+of
 merging:
 
 1. it provides a skeleton to hang the three-way merge around for each file path and
@@ -75,8 +98,10 @@ a left file for `example.txt` that breaks down into sections *A*, *B*, *C*, **F*
 a right file for `example.txt` that breaks down into sections *A*, **E**, *B*, *C*, *D*,
 this then yields the longest common subsequence of *A*, *B*, *C*.
 
-*D* is not present on the left - it has been edited into *F*, and *E* has moved forwards on the right to come in between
-*A* and *B*.
+![](./diagrams/threeWayMergeAndLCS.excalidraw.svg)
+
+*D* is not present on the left - it has been edited into *F*, and *E* has moved backwards on the right to come in
+between *A* and *B*.
 
 In fact, we can extend this by considering *D* to be part of the longest common subsequence, but in a weaker role - it
 only aligns on the base and right side.
@@ -92,29 +117,50 @@ What happens if the sections are matched across three or two sides, but can't be
 common subsequence algorithm? This is the case for section *E* - it is present on all three sides, but attempting to
 align it would throw *B* and *C* out of kilter, thus resulting in a suboptimal common subsequence.
 
-In this situation, we take this as precisely the definition of intra-file code motion - because *E* can't join the
-backbone of the merge, it is considered to have 'jumped around'. This can be generalised to include inter-file code
-motion - when a matched section isn't part of the longest common subsequence (or is only weakly aligned in it), we look
-for a section participating in the same match that belongs to a file at a different path on another side. This indicates
-that the current file path is either the source or the destination of a move.
+In this situation, we take this as evidence of intra-file code motion - because *E* can't join the backbone of the
+merge, it is considered to have 'jumped around' on the right.
 
-So if in the example above, *D* was part of a match involving a section in yet another file `destination.txt`, we would
-interpret it is moving out from `example.txt` into `destination.txt` - **not** being edited into *F*. Conversely, if *F*
-was part of a match involving two sections in `source.txt`, we would interpret it as moving in to `example.txt` - **not
-** being an edit of *D*.
+### Identifying Code Motion and Performing Migrations ###
 
-Changes and insertions can be migrated through code motion by using the three-way merge to associate changes or
-insertions with sections that are deemed to have moved. Once all the three-way merges have been performed, a
-post-processing phase migrates the associated changes / insertions to the code motion destinations as a last-minute
-edit.
+The combination of global match analysis and per-file LCS alignment cleanly separates stationary code from moved code:
 
-Like `git-merge`, Kinetic Merge has a degree of whitespace insensitivity (and may in the future generalise this). The
-file content is tokenized upfront, folding whitespace trailing a token into the token itself as an addendum that does
-not count when comparing two tokens for equality. There is a subtlety in that string constants of the Java/C#/C/C++ ilk
-are treated as one big token - although where there are alternate representations of the same string content (for
-example Scala's raw strings versus one with escapes), these are treated as distinct.
+- **Preservations**: sections on the LCS backbone across all three sides are stationary.
+- **Code Motion (Moves)**: when a section in the base has matched content on the left or right, but does *not* align on
+  all three sides of the LCS backbone, it has **moved**.
+    - **Intra-file move**: moved to a different offset within the same file.
+    - **Inter-file move**: moved to a file at a different path.
+- **Change Migration**: if code moves from the base to a destination on one side, and the opposite side edits or deletes
+  that code at its original location, Kinetic Merge migrates the edit or deletion to the move destination.
+- **Splice Migration**: if new content is inserted, deleted or edited adjacent to the source of a move, Kinetic Merge
+  migrates the change adjacent to the moved section at its destination, using a special *splice merge*.
 
-Because file content that is tokenised can match with whitespace insensitivity, we have to pick a winner when copying
-aligned sections into the merged results - do we choose the base, the left or the right? Kinetic Merge departs slightly
-from what `git-merge` does; the merge code favours the side that made whitespace changes if the other remains exactly
-the same as the base. If both sides have whitespace changes, the left is chosen as a tiebreaker.
+### Parallel Matches Groups ###
+
+Individual matches are not isolated; they frequently occur in sequences where successive matches move together in
+parallel (for example, several functions moved together from one file to another, interspersed with minor local edits).
+
+Kinetic Merge unifies such correlated matches into *parallel matches groups*, identified by a unique
+`ParallelMatchesGroupId`.
+
+1. Parallel sequences of all-sides matches are unified across all three sides.
+2. Parallel sequences of pairwise matches are unified across their participating sides.
+3. Bridges between all-sides groups and pairwise groups are established when they align continuously, including
+   "sandwich" structures where a pairwise match accompanies an edit or deletion lying between two all-sides matches.
+4. Matches within each parallel matches group must strictly march upward in start offsets on all shared sides without
+   collisions.
+
+The matches discovered by match analysis are thinned out into parallel matches groups to prevent a combinatoric
+explosion of matches, while keeping the code motion modelling intact.
+
+### Blocks ###
+
+In large codebases, running a full LCS algorithm over individual sections across all three versions of a file is
+computationally not feasible, except for quite small files.
+
+To make alignment fast and scalable, Kinetic Merge groups sections into higher-level *blocks* (`SectionedCode.Block`):
+
+- A block covers a contiguous sequence of sections in a file spanned by a parallel matches group on a given side; gaps
+  between the matches are included.
+- Intervening gaps between group-originated blocks are covered by *filler blocks*.
+- Blocks covering the same file content due to colliding parallel matches groups are coalesced together.
+- All nested blocks are suppressed, while overlapping blocks spanning different ranges are permitted.

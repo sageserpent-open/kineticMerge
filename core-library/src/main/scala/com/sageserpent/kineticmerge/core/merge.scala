@@ -98,7 +98,7 @@ object merge extends StrictLogging:
     longestCommonSubsequence.mergeUsing(mergeAlgebra, label)
   end of
 
-  extension [Element: Eq: Sized](
+  extension [Element: {Eq, Sized}](
       longestCommonSubsequence: LongestCommonSubsequence[Element]
   )
     def mergeUsing[Result[_]](
