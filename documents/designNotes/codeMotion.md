@@ -166,11 +166,12 @@ Rather than evaluating splices independently for every moved section, Kinetic Me
   val intermediateDestination = intermediateSectionsBetween(destFile, M_i.destinationAnchor, M_{i+1}.destinationAnchor)
   val intermediateOpposite  = intermediateSectionsBetween(oppFile, M_i.oppositeAnchor, M_{i+1}.oppositeAnchor)
   ```
-  A 3-way merge is executed on these intermediate sections (`spliceMerge`), and the resulting splice is associated with
+  A three-way merge is executed on these intermediate sections (`spliceMerge`), and the resulting splice is associated
+  with
   the succeeding anchor `M_{i+1}`.
 - **Boundary Splices**: For the first move `M_1` and last move `M_k` of the group, outward directional scanning finds
   preceding and succeeding content up to the nearest stationary preservations, boundary anchors from other groups or
-  beginning/end of file. 3-way splice merges are performed for these outer boundaries.
+  beginning/end of file. three-way splice merges are performed for these outer boundaries.
 
 ### Splice Merge Flattening
 

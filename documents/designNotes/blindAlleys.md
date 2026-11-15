@@ -13,6 +13,7 @@ genetic algorithm framework was implemented and tested (now excised into the sta
 [actinium](https://github.com/sageserpent-open/actinium)).
 
 ### Why it was discarded:
+
 - **Hamming Walls**: In practice, small mutations to window sizes or candidate match lists repeatedly hit Hamming Walls,
   getting trapped in local optima where no single-gene mutation could reach the globally optimal match configuration.
 - **Unpredictable Latency**: Run times varied wildly across runs, requiring excessive generations to converge even on
@@ -28,6 +29,7 @@ The initial rolling hash implementation used algebraic Rabin fingerprinting over
 ([rabinfingerprint](https://github.com/themadcreator/rabinfingerprint)).
 
 ### Why it was discarded:
+
 - **Initialization Cost**: Generating and calculating operations over irreducible polynomials incurred significant
   startup and CPU overhead.
 - **False Sense of Security**: Rabin fingerprinting's near-zero collision rate masked bugs in downstream code that
@@ -43,6 +45,7 @@ An interim release attempted three-way merging without code motion by recursivel
 of content across all three sides (`PartitionedThreeWayTransform`).
 
 ### Why it was discarded:
+
 - **Fragility**: Local edits on either side immediately broke the alignment of surrounding common swathes, causing
   cascading recursive splits and poor merge decisions.
 - **Replacement**: The core architecture reinstated full sectioned match analysis, blocks, and longest common
@@ -52,9 +55,11 @@ of content across all three sides (`PartitionedThreeWayTransform`).
 
 ## 4. Direct 3D LCS Over Whole Files
 
-An early approach ran exact 3-way longest common subsequence dynamic programming directly across all sections of a file.
+An early approach ran exact three-way longest common subsequence dynamic programming directly across all sections of a
+file.
 
 ### Why it was discarded:
+
 - **Complexity Explosion**: For files with hundreds of sections, a 3D table ($O(N^3)$) consumed hundreds of megabytes of
   RAM and several minutes of CPU time per file.
 - **Misaligned Crossovers**: Minor ambiguous token repeats caused the global DP to jump across moved code blocks,
@@ -70,6 +75,7 @@ Earlier iterations of splice migration attempted to scan preceding and succeedin
 around every moved anchor, using binary search and slicing over file sections.
 
 ### Why it was discarded:
+
 - **Collision & Overlap**: Scanning outward without boundaries caused splices from different moves to overlap or
   duplicate content.
 - **Replacement**: Grouping anchored moves by `ParallelMatchesGroupId`. Intermediate splices are extracted cleanly

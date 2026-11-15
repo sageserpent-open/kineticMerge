@@ -25,9 +25,10 @@ To solve this, Kinetic Merge employs a *two-tier approximate LCS* algorithm in
 
 The two-tier construction works through:
 
-1. **Tier 1 merging (Block Level)**: coarse alignment within files using `Block`s (which represent entire parallel matches groups or filler gaps).
+1. **Tier 1 merging (Block Level)**: coarse alignment within files using `Block`s (which represent entire parallel
+   matches groups or filler gaps).
 2. **Clump coalescence**: expanding blocks into section clumps and coalescing overlapping intervals.
-3. **Tier 2 merging (Section Level)**: localized, exact 3-way merges inside each individual clump.
+3. **Tier 2 merging (Section Level)**: localized, exact three-way merges inside each individual clump.
 4. **Disjoint sets unification & crossover resolution**: unifying section matches across clumps and eliminating any
    crossing matches.
 6. **Backbone contribution assignment**: classifying sections into `Common`, `CommonToBaseAndLeftOnly`,
@@ -40,13 +41,13 @@ File Sections (base, left, right)
 Partition into Blocks (matched & filler)
                │
                ▼
-[Tier 1] 3-Way Merge of Blocks  ──>  Three-Sided Clumps of Blocks
+[Tier 1] three-way Merge of Blocks  ──>  Three-Sided Clumps of Blocks
                │
                ▼
 Expand & Coalesce Overlapping Clumps  ──>  Non-Overlapping Coalesced Section Clumps
                │
                ▼
-[Tier 2] Local 3-Way Merges of Sections within Clumps  ──>  Raw Match Sequence
+[Tier 2] Local three-way Merges of Sections within Clumps  ──>  Raw Match Sequence
                │
                ▼
 Disjoint Sets Unification & Crossover Resolution
