@@ -23,15 +23,14 @@ To solve this, Kinetic Merge employs a *two-tier approximate LCS* algorithm in
 
 ## 2. Overview of the Two-Tier Architecture
 
-The two-tier construction works by:
+The two-tier construction works through:
 
-1. **Tier 1 (Block Level)**: coarsely aligning files using `Block`s (which represent entire parallel matches groups or
-   filler gaps).
+1. **Tier 1 merging (Block Level)**: coarse alignment within files using `Block`s (which represent entire parallel matches groups or filler gaps).
 2. **Clump coalescence**: expanding blocks into section clumps and coalescing overlapping intervals.
-3. **Tier 2 (Section Level)**: performing localized, exact 3-way merges only within each individual clump.
+3. **Tier 2 merging (Section Level)**: localized, exact 3-way merges inside each individual clump.
 4. **Disjoint sets unification & crossover resolution**: unifying section matches across clumps and eliminating any
-   crossing matches (`matchesCross`).
-5. **Backbone contribution assignment**: classifying sections into `Common`, `CommonToBaseAndLeftOnly`,
+   crossing matches.
+6. **Backbone contribution assignment**: classifying sections into `Common`, `CommonToBaseAndLeftOnly`,
    `CommonToBaseAndRightOnly`, `CommonToLeftAndRightOnly`, and `Difference`.
 
 ```
@@ -50,7 +49,7 @@ Expand & Coalesce Overlapping Clumps  ──>  Non-Overlapping Coalesced Section
 [Tier 2] Local 3-Way Merges of Sections within Clumps  ──>  Raw Match Sequence
                │
                ▼
-Disjoint Sets Unification & Crossover Resolution (`matchesCross`)
+Disjoint Sets Unification & Crossover Resolution
                │
                ▼
 Assign Backbone Contributions  ──>  Final LongestCommonSubsequence
@@ -112,7 +111,7 @@ Because each clump is small and localized, running `mergeOf` is fast, avoiding w
 
 ---
 
-## 6. Unification and Crossover Filtering
+## 6. Unification and Crossover Resolution
 
 The matches produced across all clumps are concatenated into a candidate `matchSequence`; they are section-level
 alignments that will lead to the final LCS.
@@ -130,7 +129,7 @@ Matches that share a section on at least one side are grouped into equivalence c
     - If an all-sides match has sections that conflict with earlier selections, it is demoted to the surviving pairwise
       components.
 
-### Crossover Detection (`matchesCross`)
+### Crossover Resolution
 
 For the matches to be true alignments, they must not cross over: if match $M_1$ appears before $M_2$ on one side, it
 must not appear *after* $M_2$ on the other sides.
