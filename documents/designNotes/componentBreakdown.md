@@ -143,8 +143,9 @@ algorithms using lightweight simple types, while production applications use `Pa
       matches without dynamic programming overhead.
     - Matchability filtering to strip elements that do not occur on other sides.
     - Swathe-based dynamic programming evaluating subproblems concurrently via `Future` and Cats Effect `IO`.
-- Used in `merge.scala` for three-way merging and in `SectionedCodeExtension` to eliminate crossed-over alignment
-  matches.
+- Used as an input by `merge.scala` for three-way merging and in `SectionedCodeExtension` to eliminate crossed-over
+  alignment matches. In addition to the alignments, it also holds the differences that cannot be aligned, so the merge
+  has all the data to work with in one place.
 
 ### `SectionedCodeExtension`
 
