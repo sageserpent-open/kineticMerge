@@ -69,39 +69,39 @@ the opposite side (the right) either edits or deletes that content at its origin
 
 #### Simple Move with a Deletion on the Move Side:
 
-![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/simpleMoveWithADeletionOnTheMoveSide.excalidraw.svg)
+![](diagrams/simpleMoveWithADeletionOnTheMoveSide.excalidraw.svg)
 
 #### Simple Move with an Edit on the Move Side:
 
-![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/simpleMoveWithAnEditOnTheMoveSide.excalidraw.svg)
+![](diagrams/simpleMoveWithAnEditOnTheMoveSide.excalidraw.svg)
 
 #### Migrating a Deletion:
 
-![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/migratingADeletion.excalidraw.svg)
+![](diagrams/migratingADeletion.excalidraw.svg)
 
 #### Migrating an Edit:
 
-![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/migratingAnEdit.excalidraw.svg)
+![](diagrams/migratingAnEdit.excalidraw.svg)
 
 #### Migrating an Edit with an Edit on the Move Side:
 
-![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/migratingAnEditWithAnEditOnTheMoveSide.excalidraw.svg)
+![](diagrams/migratingAnEditWithAnEditOnTheMoveSide.excalidraw.svg)
 
 #### Migrating a Deletion with an Edit on the Move Side:
 
-![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/migratingADeletionWithAnEditOnTheMoveSide.excalidraw.svg)
+![](diagrams/migratingADeletionWithAnEditOnTheMoveSide.excalidraw.svg)
 
 #### Migrating a Deletion with a Coincident Edit:
 
-![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/migratingADeletionWithACoincidentEdit.excalidraw.svg)
+![](diagrams/migratingADeletionWithACoincidentEdit.excalidraw.svg)
 
 #### Coincident Move:
 
-![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/coincidentMove.excalidraw.svg)
+![](diagrams/coincidentMove.excalidraw.svg)
 
 #### Divergent Moves:
 
-![](https://github.com/sageserpent-open/kineticMerge/blob/main/documents/designNotes/diagrams/divergentMoves.excalidraw.svg)
+![](diagrams/divergentMoves.excalidraw.svg)
 
 ---
 
