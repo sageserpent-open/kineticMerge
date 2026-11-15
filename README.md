@@ -267,8 +267,6 @@ as a reference.
 - [Parallel Matches Groups & Block Construction](./documents/designNotes/parallelMatchesAndBlocks.md)
 - [Two-Tier Approximate Longest Common Subsequence](./documents/designNotes/approximateLCS.md)
 - [Code Motion & Migration](./documents/designNotes/codeMotion.md)
-- [Blind Alleys](./documents/designNotes/blindAlleys.md)
-- [Skeletons in the Cupboard](./documents/designNotes/skeletonsInTheCupboard.md)
 
 ## Do you use these yet?
 
