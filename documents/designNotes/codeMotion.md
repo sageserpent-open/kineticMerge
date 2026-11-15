@@ -21,10 +21,10 @@ In both cases, the move has:
 
 When code from a single base source moves on *both* the left and right sides:
 
-- **Coincident Move**: the code moves to the place on both sides (in the same file, aligned by the three-way merge).
-  This is typically due to prior cherry-picking of changes as a preview from our branch to their branch, or less formal
-  sharing of patches via email (or indeed just plain eyeballing changes and manually duplicating them). Kinetic Merge
-  treats this as a shared refactoring; no conflicts are generated; any subtle whitespace variations are merged.
+- **Coincident Move**: the code moves to the same place on both sides (in the same file, aligned by the three-way
+  merge). This is typically due to prior cherry-picking of changes as a preview from our branch to their branch, or less
+  formal sharing of patches via email (or indeed just plain eyeballing changes and manually duplicating them). Kinetic
+  Merge treats this as a shared refactoring; no conflicts are generated; any subtle whitespace variations are merged.
 - **Divergent Move**: the code moves to different files or to non-aligned locations within the same file. Kinetic Merge
   honours both destinations equally, allowing the content to appear in both locations (unless one side deleted the
   containing file). Variations in whitespace are left as is on either side.
@@ -60,8 +60,8 @@ the opposite side (the right) either edits or deletes that content at its origin
    moves and substitutions globally, putting the actual moves together in `moveDestinationsBySource` and building a
    `MoveEvaluation` from them.
 3. **Suppression at Origin**: during the second merge pass for each file, `ConflictResolvingMergeAlgebra` suppresses the
-   edit or deletion at its original source location so it does not remain marooned in the old file; this resolves fake
-   conflicts.
+   migrated edit or deletion at its original source location so it does not remain marooned in the old file; this
+   resolves fake conflicts.
 4. **Substitution Application**: within `SectionedCodeExtension.merge`, `applySubstitutions` replaces
    `moveDestinationAnchor` at the destination with the migrated replacement sections.
 
@@ -107,19 +107,44 @@ the opposite side (the right) either edits or deletes that content at its origin
 
 ## 5. Splice Migration
 
-Splice migration addresses content **inserted adjacent to moved code** on the opposite side (or local edits touching
-the boundaries between moved code and surrounding context). <<<------- TODO!
+This is motivated by having to migrate new content **inserted adjacent to moved code**; the insertion takes place on the
+opposite side to the move.
+
+In contrast with change migration, the destination section should *not* be substituted; rather the inserted content
+should migrate to land adjacent to the destination section, either preceding or succeeding it depending on how it was
+originally inserted.
+
+Again, the inserted code has to be suppressed at its original location, because it has migrated.
+
+In practice, it is not enough to simply transplant the inserted sections, because there may be content adjacent to the
+destination section that is sitting in exactly the place that the migrated insertion needs to go.
+
+There is also the wrinkle that if we have a move, not only can content be *inserted* adjacent to source of the move, but
+there may be *deletions or edits to existing content* that is also adjacent. So it is potentially a mixture of
+insertions, deletions and edits that require such migration.
 
 ### The Anchors of a Move ###
 
-An `AnchoredMove` represents a move on one side only that acts a boundary for splice migration
+An `AnchoredMove` represents a move on one side only that acts a boundary for splice migration:
 
 - **Mode destination side**: the side where the move took place - either `MoveDestination.Left` or
   `MoveDestination.Right`.
 - **Source Anchor**: the base section.
 - **Move Destination Anchor**: the section on the move destination side.
 - **Opposite Side Anchor**: the corresponding section on the opposite side that didn't move (or a composite edit
-  sequence that needs to migrate).
+  sequence if the move involves an edit migration).
+
+Anchored moves fit into a hierarchy of moves:
+
+- $AllMoves = OneSidedMoves \sqcup TwoSidedMoves$
+- $OneSidedMoves = AnchoredMoves \sqcup MigratedDeletions$
+- $AnchoredMoves = PlainMoves \sqcup MigratedEdits$
+- $TwoSidedMoves = CoincidentMoves \sqcup DivergentMoves$
+
+Note how change migration uses an alternative breakdown:
+
+- $OneSidedMoves = PlainMoves \sqcup MigratedChanges$
+- $MigratedChanges = MigratedDeletions \sqcup MigratedEdits$
 
 ---
 
@@ -133,15 +158,16 @@ Rather than evaluating splices independently for every moved section, Kinetic Me
 - **Intermediate Splices**: For adjacent moves `M_i` and `M_{i+1}` in the group, the intermediate sections sitting
   between them are extracted directly on the base, move destination, and opposite sides:
   ```scala
+  // Not exactly the actual code, but gives the idea.
   val intermediateBase = intermediateSectionsBetween(baseFile, M_i.sourceAnchor, M_{i+1}.sourceAnchor)
-  val intermediateDest = intermediateSectionsBetween(destFile, M_i.destinationAnchor, M_{i+1}.destinationAnchor)
-  val intermediateOpp  = intermediateSectionsBetween(oppFile, M_i.oppositeAnchor, M_{i+1}.oppositeAnchor)
+  val intermediateDestination = intermediateSectionsBetween(destFile, M_i.destinationAnchor, M_{i+1}.destinationAnchor)
+  val intermediateOpposite  = intermediateSectionsBetween(oppFile, M_i.oppositeAnchor, M_{i+1}.oppositeAnchor)
   ```
   A 3-way merge is executed on these intermediate sections (`spliceMerge`), and the resulting splice is associated with
   the succeeding anchor `M_{i+1}`.
 - **Boundary Splices**: For the first move `M_1` and last move `M_k` of the group, outward directional scanning finds
-  preceding and succeeding content up to the nearest stationary preservations or boundary anchors. 3-way splice merges
-  are performed for these outer boundaries.
+  preceding and succeeding content up to the nearest stationary preservations, boundary anchors from other groups or
+  beginning/end of file. 3-way splice merges are performed for these outer boundaries.
 
 ### Splice Merge Flattening
 
