@@ -146,6 +146,9 @@ Note how change migration uses an alternative breakdown:
 - $OneSidedMoves = PlainMoves \sqcup MigratedChanges$
 - $MigratedChanges = MigratedDeletions \sqcup MigratedEdits$
 
+Migrated deletions are not anchored moves, because anchoring requires boundaries for splices on all three side - there
+is no section present on the opposite side to the merge!
+
 ---
 
 ### Grouping Anchored Moves by Parallel Matches Groups
@@ -171,4 +174,16 @@ Rather than evaluating splices independently for every moved section, Kinetic Me
 
 ### Splice Merge Flattening
 
-TODO!
+A splice merge replaces the content that was adjacent to the move destination anchor, but there is a wrinkle - the
+splice merge may be conflicted. Now if that adjacent content made its way cleanly into file's overall three-way merge,
+then it is straightforward to replace it with a conflicted splice merge; the outcome is just a localised conflict, this
+is nothing special.
+
+Likewise, if the adjacent content itself ends up inside a conflict and the splice merge is resolved, then we just
+replace something inside a conflict with the cleanly resolved result. It's still just a conflict, so no problems there.
+
+Where it gets tricky is when a splice merge conflict ends up inside a conflict - good luck with showing this using
+standard conflict markers!
+
+The solution is to flatten such nested merges - it is done in a rather rough-and-ready, arbitrary fashion, but allows
+ordinary tools to read the results.
