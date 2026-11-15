@@ -158,7 +158,7 @@ Rather than evaluating splices independently for every moved section, Kinetic Me
 
 - Successive anchored moves that belong to the same parallel matches group are ordered by their base start offsets:
   `M_1, M_2, ..., M_k`.
-- **Intermediate Splices**: For adjacent moves `M_i` and `M_{i+1}` in the group, the intermediate sections sitting
+- **Intermediate Splices**: for adjacent moves `M_i` and `M_{i+1}` in the group, the intermediate sections sitting
   between them are extracted directly on the base, move destination, and opposite sides:
   ```scala
   // Not exactly the actual code, but gives the idea.
@@ -169,7 +169,7 @@ Rather than evaluating splices independently for every moved section, Kinetic Me
   A three-way merge is executed on these intermediate sections (`spliceMerge`), and the resulting splice is associated
   with
   the succeeding anchor `M_{i+1}`.
-- **Boundary Splices**: For the first move `M_1` and last move `M_k` of the group, outward directional scanning finds
+- **Boundary Splices**: for the first move `M_1` and last move `M_k` of the group, outward directional scanning finds
   preceding and succeeding content up to the nearest stationary preservations, boundary anchors from other groups or
   beginning/end of file. three-way splice merges are performed for these outer boundaries.
 
