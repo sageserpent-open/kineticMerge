@@ -1,9 +1,7 @@
 # Parallel Matches Groups & Block Construction
 
 A central innovation in Kinetic Merge is the representation of code motion via *parallel matches groups* and the
-construction of *blocks*. This document details how parallel matches groups are formed, how bridging between
-all-sides and pairwise matches is validated, and how files are partitioned into contiguous blocks for scalable
-alignment.
+construction of *blocks*.
 
 ---
 
@@ -16,12 +14,16 @@ Code refactoring rarely moves a single isolated token or expression. Typically:
 - A block of code is moved, and a comment or statement within it was modified on one branch.
 - Multiple related methods are rearranged together.
 
-Treating every match independently loses the collective context of the move. More seriously, calculating the LCS
-directly on fine-grained sections when large swathes have moved in parallel suffers from a combinatorial explosion of
-effort.
+Where a moved block of code has multiple small matches that refer to the same content, eg. `if` in a series of if-statements, or `;` at the end of each line, then we get ambiguous matches that explore the Cartesian product of matching content across the sides. Most of these ambiguous matches are misleading - they don't reflect the genuine correspondence of the sequence of `if` or `;` tokens through the moved block.
+
+These ambiguous matches would generate a huge amount of noise, resulting in an explosion of effort in downstream processing.
 
 A parallel matches group (identified by a `ParallelMatchesGroupId`) binds together a sequence of matches that move
 together in the same direction and order across participating sides.
+
+Building these groups winnows out the misleading ambiguous matches, while keeping those matches that reflect genuine ambiguities in code motion, eg. when a block is copied on one side to an additional moved location.
+
+This results in a huge saving in effort downstream; it also captures the overall code motion that is used to guide splice migration.
 
 ---
 
