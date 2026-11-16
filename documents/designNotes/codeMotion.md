@@ -62,7 +62,7 @@ the opposite side (the right) either edits or deletes that content at its origin
    migrated edit or deletion at its original source location so it does not remain marooned in the old file; this
    resolves fake conflicts.
 4. **Substitution Application**: within `SectionedCodeExtension.merge`, `applySubstitutions` replaces
-   `moveDestinationAnchor` at the destination with the migrated replacement sections.
+   a move destination with the migrated replacement sections.
 
 ### Move Diagrams
 
