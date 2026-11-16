@@ -110,7 +110,6 @@ just two of them for the weaker situation). The resulting longest common subsequ
 three-way merge, the shared content for a full alignment across all three sides making it through directly into the
 output of the three-way merge. Weaker alignments across just two sides could denote either an edit or a deletion (if
 between the base and either the left or the right), or a coincident edit or insertion (if between the left and right).
-Where there is no alignment at all indicates a conflict.
 
 What happens if the sections are matched across three or two sides, but can't be brought into alignment by the longest
 common subsequence algorithm? This is the case for section *E* - it is present on all three sides, but attempting to
