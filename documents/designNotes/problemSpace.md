@@ -29,7 +29,7 @@ Only whitespace-only lines at the very start of a file are treated as standalone
 
 When comparing tokens for equality or hashing, the attached whitespace is ignored, delivering **whitespace
 insensitivity**. This insensitivity also applies to standalone whitespace tokens. String literals are treated as atomic
-tokens (preserving internal formatting and whitespace).
+tokens (sensitive to internal formatting and whitespace).
 
 ### Sections and Files
 
