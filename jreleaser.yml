@@ -33,7 +33,7 @@ release:
     changelog:
       enabled: true
     releaseNotes:
-      enabled: true
+      enabled: false
 
 assemble:
   jlink:
