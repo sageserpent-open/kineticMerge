@@ -54,7 +54,7 @@ the opposite side (the right) either edits or deletes that content at its origin
 ### Mechanism
 
 1. **Speculative Detection**: in the first merge pass for each file, `FirstPassMergeResult` records speculative move
-   destinations and speculative substitutions (for plain moves, migrated edits or migrated deletions) for each base section.
+   destinations and substitutions (applicable to plain moves, migrated edits or migrated deletions) for speculative move sources.
 2. **Global Evaluation**: `MoveDestinationsReport.evaluateSpeculativeSourcesAndDestinations` inspects all speculative
    moves and substitutions globally, putting the actual moves together in `moveDestinationsBySource` and building a
    `MoveEvaluation` from them.
