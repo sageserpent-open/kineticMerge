@@ -54,9 +54,9 @@ the opposite side (the right) either edits or deletes that content at its origin
 ### Mechanism
 
 1. **Speculative Detection**: in the first merge pass for each file, `FirstPassMergeResult` records speculative move
-   destinations and substitutions (applicable to plain moves, migrated edits or migrated deletions) for speculative move sources.
+   destinations and content migrations (applicable to plain moves, migrated edits or migrated deletions) for speculative move sources.
 2. **Global Evaluation**: `MoveDestinationsReport.evaluateSpeculativeSourcesAndDestinations` inspects all speculative
-   moves and substitutions globally, putting the actual moves together in `moveDestinationsBySource` and building a
+   moves and content migrations globally, putting the actual moves together in `moveDestinationsBySource` and building a
    `MoveEvaluation` from them.
 3. **Suppression at Origin**: during the second merge pass for each file, `ConflictResolvingMergeAlgebra` suppresses the
    migrated edit or deletion at its original source location so it does not remain marooned in the old file; this
