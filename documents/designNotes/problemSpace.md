@@ -123,7 +123,7 @@ merge, it is considered to have 'jumped around' on the right.
 The combination of global match analysis and per-file LCS alignment cleanly separates stationary code from moved code:
 
 - **Preservations**: sections on the LCS backbone across all three sides are stationary.
-- **Code Motion (Moves)**: when a section in the base has matched content on the left or right, but does *not* align on
+- **Code Motion**: when a section in the base has matched content on the left or right, but does *not* align on
   all three sides of the LCS backbone, it has **moved**.
     - **Intra-file move**: moved to a different offset within the same file.
     - **Inter-file move**: moved to a file at a different path.
