@@ -99,7 +99,7 @@ Raw match discovery produces many trivial ambiguous matches, e.g. repeated keywo
 common boilerplate. These would overwhelm subsequent processing without contributing any value; by and large, they are
 noise.
 
-They also mask genuinely interesting ambiguous moves, say when a block of code is copied into a new destination, but
+The noise masks genuinely interesting ambiguous moves, say when a block of code is copied into a new destination, but
 leaving the old block in place. We want to model both matches in this situation.
 
 What we really want from matching is to identify code that stays in place, and code that moves. We can use the insight
