@@ -49,10 +49,9 @@ Crucially:
 
 ## Matches and Merging ##
 
-Match analysis (`MatchAnalysis`) discovers matches of equivalent swathes of content across sides:
+`MatchAnalysis` discovers matches of equivalent swathes of content across sides:
 
-- **All-Sides Match (`Match.AllSides`)**: a three-way match comprising a section in `base`, a section in `left`, and a
-  section in `right`.
+- **All-Sides Match (`Match.AllSides`)**: a three-way match comprising a section in the base, a section on the left, and a section on the right.
 - **Pairwise Match (`Match.BaseAndLeft`, `Match.BaseAndRight`, or `Match.LeftAndRight`)**: a two-way match comprising
   sections on two sides.
 
