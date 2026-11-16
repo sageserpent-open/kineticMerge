@@ -5,7 +5,7 @@ construction of *blocks*.
 
 ---
 
-## 1. Motivation: Why Parallel Matches?
+## 1. Motivation: Why Parallel Matches Groups?
 
 Code refactoring rarely moves a single isolated token or expression. Typically:
 
