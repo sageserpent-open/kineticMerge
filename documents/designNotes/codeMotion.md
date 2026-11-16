@@ -140,11 +140,6 @@ Anchored moves fit into a hierarchy of moves:
 - $AnchoredMoves = PlainMoves \sqcup MigratedEdits$
 - $TwoSidedMoves = CoincidentMoves \sqcup DivergentMoves$
 
-Note how change migration uses an alternative breakdown:
-
-- $OneSidedMoves = PlainMoves \sqcup MigratedChanges$
-- $MigratedChanges = MigratedDeletions \sqcup MigratedEdits$
-
 Migrated deletions are not anchored moves, because anchoring requires boundaries for splices on all three side - there
 is no section present on the opposite side to the merge!
 
