@@ -38,8 +38,8 @@ lazy val commonSettings = Seq(
 
 lazy val commonLibraryDependencies = Seq(
   libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.9.6",
-  libraryDependencies += "ch.qos.logback"   % "logback-core"        % "1.6.6",
-  libraryDependencies += "ch.qos.logback"   % "logback-classic"     % "1.6.6",
+  libraryDependencies += "ch.qos.logback"   % "logback-core"        % "1.6.7",
+  libraryDependencies += "ch.qos.logback"   % "logback-classic"     % "1.6.7",
   libraryDependencies += "org.typelevel"   %% "cats-core"           % "2.13.0",
   libraryDependencies += "com.sageserpent" %% "americium-utilities" % "2.3.0",
   libraryDependencies += "org.typelevel" %% "cats-collections-core" % "0.9.10",
@@ -57,7 +57,7 @@ lazy val commonLibraryDependencies = Seq(
   libraryDependencies += "com.google.guava" % "guava"  % "33.8.0-jre",
   libraryDependencies += "com.github.ben-manes.caffeine" % "caffeine" % "3.3.1",
   libraryDependencies += "me.tongfei"         % "progressbar"   % "0.10.2",
-  libraryDependencies += "org.apache.commons" % "commons-lang3" % "3.21.0",
+  libraryDependencies += "org.apache.commons" % "commons-lang3" % "3.22.0",
   libraryDependencies +=
     "org.scala-lang.modules" %% "scala-parallel-collections" % "1.3.0",
   libraryDependencies += "org.typelevel" %% "kittens" % "3.5.0",
