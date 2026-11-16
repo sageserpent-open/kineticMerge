@@ -77,7 +77,7 @@ sizes. Binary search cannot be used here because missing a match at size $W$ doe
 not exist at $W^{*} > W$ in a smaller file.
 
 Therefore, `withAllSmallFryMatches` proceeds with an exhaustive linear search through window sizes less than the
-sure-fire size down to `configuration.minimumMatchSize`. Because all larger matches have already been registered, any
+sure-fire minimum down to `configuration.minimumMatchSize`. Because all larger matches have already been registered, any
 match found during this downward scan is immediately maximal.
 
 ### Tiny Matches (`withTinyMatches`)
