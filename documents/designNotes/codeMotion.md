@@ -26,7 +26,8 @@ When code from a single base source moves on *both* the left and right sides:
   formal sharing of patches via email (or indeed just plain eyeballing changes and manually duplicating them). Kinetic
   Merge treats this as a shared refactoring; no conflicts are generated; any subtle whitespace variations are merged.
 - **Divergent Move**: the code moves to different files or to non-aligned locations within the same file. Kinetic Merge
-  honours both destinations equally, allowing the content to appear in both locations. Variations in whitespace are left as is on either side.
+  honours both destinations equally, allowing the content to appear in both locations. Variations in whitespace are left
+  as is on either side.
 
 ---
 
@@ -54,7 +55,7 @@ the opposite side (the right) either edits or deletes that content at its origin
 ### Mechanism
 
 1. **Speculative Detection**: in the first merge pass for each file, `FirstPassMergeResult` records speculative move
-   destinations and content migrations (applicable to plain moves, migrated edits or migrated deletions) for speculative move sources.
+   destinations and content migrations for speculative move sources.
 2. **Global Evaluation**: `MoveDestinationsReport.evaluateSpeculativeSourcesAndDestinations` inspects all speculative
    moves and content migrations globally, putting the actual moves together in `moveDestinationsBySource` and building a
    `MoveEvaluation` from them.
@@ -140,8 +141,8 @@ Anchored moves fit into a hierarchy of moves:
 - $AnchoredMoves = PlainMoves \sqcup MigratedEdits$
 - $TwoSidedMoves = CoincidentMoves \sqcup DivergentMoves$
 
-Migrated deletions are not anchored moves, because anchoring requires boundaries for splices on all three side - there
-is no section present on the opposite side to the merge!
+Migrated deletions are not anchored moves, because anchoring requires boundaries for splices on all three sides - there
+would be no section present on the opposite side to the merge!
 
 ---
 
@@ -165,7 +166,7 @@ Rather than evaluating splices independently for every moved section, Kinetic Me
   the succeeding anchor `M_{i+1}`.
 - **Boundary Splices**: for the first move `M_1` and last move `M_k` of the group, outward directional scanning finds
   preceding and succeeding content up to the nearest stationary preservations, boundary anchors from other groups or
-  beginning/end of file. three-way splice merges are performed for these outer boundaries.
+  beginning/end of file. Three-way splice merges are performed for these outer boundaries.
 
 ### Splice Merge Flattening
 
