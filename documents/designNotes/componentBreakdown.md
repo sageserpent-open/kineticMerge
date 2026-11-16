@@ -118,7 +118,7 @@ algorithms using lightweight simple types, while production applications use `Pa
 - Implements:
     1. Iterated binary search for surefire matches above the sure-fire window size.
     2. Linear scan downward through window sizes for small-fry matches.
-    3. Discovery of tiny matches (down to window size 1) used strictly to break up gap fills.
+    3. Discovery of tiny matches (down to window size 1) intended to break up gap fills.
     4. `parallelMatchesOnly`: uses meta-matching over matched section sequences to thin out ambiguous matches, retaining
        parallel matches.
     5. `reconcileOverlappingMatches`: resolves overlapping matches by biting contested sections into
