@@ -77,7 +77,7 @@ The project provides three primary deliverables:
 3. **`kinetic-merge-core` (Core Library)**:
    A standalone Scala library published to Maven Central (`com.sageserpent.kineticmerge:kinetic-merge-core_3`),
    containing all core abstractions: tokenization, match analysis, parallel match groups, blocks, 2-tier approximate
-   longest common subsequence, and code motion migration algebras. This is shared between the two CLI applications.
+   longest common subsequence and code motion migration algebras. This is shared between the two CLI applications.
 
 ## Merge Outcomes
 
