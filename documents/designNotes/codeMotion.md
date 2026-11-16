@@ -59,7 +59,7 @@ the opposite side (the right) either edits or deletes that content at its origin
    moves and content migrations globally, putting the actual moves together in `moveDestinationsBySource` and building a
    `MoveEvaluation` from them.
 3. **Suppression at Origin**: during the second merge pass for each file, `ConflictResolvingMergeAlgebra` suppresses the
-   migrated edit or deletion at its original source location so it does not remain marooned in the old file; this
+   migrated edit at its original source location so it does not remain marooned in the old file; this
    resolves fake conflicts.
 4. **Substitution Application**: within `SectionedCodeExtension.merge`, `applySubstitutions` replaces
    a move destination with the migrated replacement sections.
