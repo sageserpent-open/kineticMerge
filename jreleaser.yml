@@ -31,7 +31,9 @@ release:
         - ASSETS
     sign: false
     changelog:
-      enabled: false
+      enabled: true
+    releaseNotes:
+      enabled: true
 
 assemble:
   jlink:
