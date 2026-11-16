@@ -26,8 +26,7 @@ When code from a single base source moves on *both* the left and right sides:
   formal sharing of patches via email (or indeed just plain eyeballing changes and manually duplicating them). Kinetic
   Merge treats this as a shared refactoring; no conflicts are generated; any subtle whitespace variations are merged.
 - **Divergent Move**: the code moves to different files or to non-aligned locations within the same file. Kinetic Merge
-  honours both destinations equally, allowing the content to appear in both locations (unless one side deleted the
-  containing file). Variations in whitespace are left as is on either side.
+  honours both destinations equally, allowing the content to appear in both locations. Variations in whitespace are left as is on either side.
 
 ---
 
