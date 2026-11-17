@@ -2,7 +2,7 @@
 
 # Orientation
 
-The project has a README.md, describing its goals. There are three subprojects:
+The project is split into three subprojects:
 
 1. A core library.
 2. A CLI application that works with a Git repository.
