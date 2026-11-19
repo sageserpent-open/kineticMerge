@@ -836,8 +836,6 @@ object SectionedCodeExtension extends StrictLogging:
         Map[Path, MergeResult[Element]],
         MoveDestinationsReport[Section[Element]]
     ) =
-      import sectionedCode.matchesFor
-
       given sectionSized[X]: Sized[Section[X]] = _.size
 
       given Order[Section[Element]] with
@@ -852,7 +850,10 @@ object SectionedCodeExtension extends StrictLogging:
             rhs: Section[Element]
         ): Int =
           val bothBelongToTheSameMatches =
-            matchesFor(lhs).intersect(matchesFor(rhs)).nonEmpty
+            sectionedCode
+              .matchesFor(lhs)
+              .intersect(sectionedCode.matchesFor(rhs))
+              .nonEmpty
 
           if bothBelongToTheSameMatches then 0
           else Order[Seq[Element]].compare(lhs.content, rhs.content)
@@ -1143,6 +1144,18 @@ object SectionedCodeExtension extends StrictLogging:
         s"Coincident insertions or edits on right: ${pprintCustomised(coincidentInsertionsOrEditsOnRight)}."
       )
 
+      val potentialMoveMatchesFor = sectionedCode.matchesFor.andThen(
+        _.filter(aMatch =>
+          !sectionedCode.isTiny(aMatch) || {
+            // Tiny matches are only considered valid as moves if they are
+            // accompanied by *other* matches in the same parallel matches group
+            // - regardless of the size of the other matches.
+            val groupId = sectionedCode.parallelMatchesGroupIdsByMatch(aMatch)
+            1 < sectionedCode.groupsOfParallelMatches(groupId).size
+          }
+        )
+      )
+
       val moveEvaluation @ MoveEvaluation(
         moveDestinationsReport,
         migratedEditSuppressions,
@@ -1152,7 +1165,7 @@ object SectionedCodeExtension extends StrictLogging:
         MoveDestinationsReport.evaluateSpeculativeSourcesAndDestinations(
           speculativeMigrationsBySource,
           speculativeMoveDestinations
-        )(matchesFor)
+        )(potentialMoveMatchesFor)
 
       logger.debug(s"Move evaluation: ${pprintCustomised(moveEvaluation)}.")
 

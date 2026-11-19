@@ -21,6 +21,8 @@ trait SectionedCode[Path, Element]:
       section: Section[Element]
   ): collection.Set[Match[Section[Element]]]
 
+  def isTiny(aMatch: GenericMatch[Element]): Boolean
+
   def basePathFor(baseSection: Section[Element]): Path
   def leftPathFor(leftSection: Section[Element]): Path
   def rightPathFor(rightSection: Section[Element]): Path
@@ -311,12 +313,13 @@ object SectionedCode extends StrictLogging:
         ): collection.Set[Match[Section[Element]]] =
           sectionsAndTheirMatches.get(section)
 
+        export matchesAndTheirSections.isTiny
+
         export baseSources.pathFor as basePathFor
         export leftSources.pathFor as leftPathFor
         export rightSources.pathFor as rightPathFor
 
         export matchesAndTheirSections.parallelMatchesGroupIdsByMatch
-
         export matchesAndTheirSections.groupsOfParallelMatches
 
         override def baseBlocksFor(path: Path): IndexedSeq[Block[Element]] =

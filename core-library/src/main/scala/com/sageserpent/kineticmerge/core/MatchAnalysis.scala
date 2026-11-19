@@ -8,7 +8,7 @@ import cats.kernel.Order
 import cats.syntax.all.*
 import cats.{Eq, Order}
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
-import com.google.common.hash.{Funnel, HashFunction, PrimitiveSink}
+import com.google.common.hash.{BloomFilter, Funnel, HashFunction, PrimitiveSink}
 import com.sageserpent.kineticmerge
 import com.sageserpent.kineticmerge.core
 import com.sageserpent.kineticmerge.core.MatchAnalysis.*
@@ -42,6 +42,8 @@ trait MatchAnalysis[Path, Element]:
       : Map[ParallelMatchesGroupId, SortedSet[GenericMatch[Element]]]
 
   def withTinyMatches: MatchAnalysis[Path, Element]
+
+  def isTiny(aMatch: GenericMatch[Element]): Boolean
 
   def baseSections: Set[Section[Element]]
 
@@ -200,6 +202,37 @@ object MatchAnalysis extends StrictLogging:
 
     val tiebreakContentSamplingLimit = 5
 
+    given Eq[Section[Element]] = Eq.by(_.content: Seq[Element])
+
+    given Funnel[Section[Element]] with
+      override def funnel(
+          from: Section[Element],
+          into: PrimitiveSink
+      ): Unit =
+        from.content.foreach(summon[Funnel[Element]].funnel(_, into))
+
+    end given
+
+    val matchFunnel = new Funnel[GenericMatch[Element]]:
+      override def funnel(
+          from: GenericMatch[Element],
+          into: PrimitiveSink
+      ): Unit =
+        from match
+          case Match.AllSides(baseElement, leftElement, rightElement) =>
+            summon[Funnel[Section[Element]]].funnel(baseElement, into)
+            summon[Funnel[Section[Element]]].funnel(leftElement, into)
+            summon[Funnel[Section[Element]]].funnel(rightElement, into)
+          case Match.BaseAndLeft(baseElement, leftElement) =>
+            summon[Funnel[Section[Element]]].funnel(baseElement, into)
+            summon[Funnel[Section[Element]]].funnel(leftElement, into)
+          case Match.BaseAndRight(baseElement, rightElement) =>
+            summon[Funnel[Section[Element]]].funnel(baseElement, into)
+            summon[Funnel[Section[Element]]].funnel(rightElement, into)
+          case Match.LeftAndRight(leftElement, rightElement) =>
+            summon[Funnel[Section[Element]]].funnel(leftElement, into)
+            summon[Funnel[Section[Element]]].funnel(rightElement, into)
+
     extension (message: String)
       def labelled: String =
         if configuration.label.nonEmpty then
@@ -218,7 +251,8 @@ object MatchAnalysis extends StrictLogging:
         leftFingerprintedInclusionsByPath =
           fingerprintedInclusionsByPath(leftSources),
         rightFingerprintedInclusionsByPath =
-          fingerprintedInclusionsByPath(rightSources)
+          fingerprintedInclusionsByPath(rightSources),
+        tinyMatchBloomFilter = None
       )
 
       extension (aMatch: GenericMatch[Element])
@@ -1114,7 +1148,8 @@ object MatchAnalysis extends StrictLogging:
         sectionsAndTheirMatches: MatchedSections[Element],
         baseFingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions],
         leftFingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions],
-        rightFingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions]
+        rightFingerprintedInclusionsByPath: Map[Path, FingerprintedInclusions],
+        tinyMatchBloomFilter: Option[BloomFilter[GenericMatch[Element]]]
     ) extends MatchAnalysis[Path, Element]:
       import MatchesAndTheirSections.*
 
@@ -1327,10 +1362,31 @@ object MatchAnalysis extends StrictLogging:
             )(using progressRecordingSession)
           }.get.purgedOfOverlappingOrSubsumedMatches.matches
 
-          this.withMatches(tinyMatches)
+          val freshTinyMatchBloomFilter =
+            val falsePositiveProbability = 0.01
+            BloomFilter.create[GenericMatch[Element]](
+              matchFunnel,
+              tinyMatches.size,
+              falsePositiveProbability
+            )
+          end freshTinyMatchBloomFilter
+
+          tinyMatches.foreach(freshTinyMatchBloomFilter.put)
+
+          this
+            .withMatches(tinyMatches)
+            // NASTY HACK: we play fast and loose here, because:
+            // 1. `MatchAnalysis` only permits new matches to be added,
+            // 2. `MatchesAndTheirSections.withoutTheseMatches` is only called
+            // for non-tiny matches and
+            // 3. it's a Bloom filer, so we expect false positives anyway.
+            .copy(tinyMatchBloomFilter = Some(freshTinyMatchBloomFilter))
         else this
         end if
       end withTinyMatches
+
+      override def isTiny(aMatch: GenericMatch[Element]): Boolean =
+        tinyMatchBloomFilter.fold(ifEmpty = false)(_.mightContain(aMatch))
 
       private def purgedOfOverlappingOrSubsumedMatches
           : MatchesAndTheirSections =
@@ -1576,9 +1632,15 @@ object MatchAnalysis extends StrictLogging:
                   takingFragmentationIntoAccount.pareDownOrSuppressCompletely
                 )
                 val rebuilt =
-                  MatchesAndTheirSections.empty.withMatches(
-                    paredDownMatches union paredDownFragments
-                  )
+                  MatchesAndTheirSections.empty
+                    // NASTY HACK: assume that we haven't somehow invented new
+                    // tiny reconciled matches, so we can reuse the original
+                    // Bloom filter as long as `isTinyMatch` is presented with
+                    // matches from the resulting instance.
+                    .copy(tinyMatchBloomFilter = this.tinyMatchBloomFilter)
+                    .withMatches(
+                      paredDownMatches union paredDownFragments
+                    )
 
                 val reconciled = rebuilt.cleanUpPairwiseMatches
 
@@ -2049,17 +2111,6 @@ object MatchAnalysis extends StrictLogging:
           override val label: String = "Meta-match analysis"
         end metaMatchConfiguration
 
-        given Eq[Section[Element]] = Eq.by(_.content: Seq[Element])
-
-        given Funnel[Section[Element]] with
-          override def funnel(
-              from: Section[Element],
-              into: PrimitiveSink
-          ): Unit =
-            from.content.foreach(summon[Funnel[Element]].funnel(_, into))
-
-        end given
-
         val metaMatchAnalysis = of(
           baseSourcesForMetaMatching,
           leftSourcesForMetaMatching,
@@ -2135,9 +2186,15 @@ object MatchAnalysis extends StrictLogging:
         // `SectionedCodeExtensionTest.codeMotionAmbiguousWithAPreservation` has
         // an example of this.
         val backTranslatedMatchesAndTheirSections =
-          MatchesAndTheirSections.empty.withMatches(
-            backTranslatedParallelMatches
-          )
+          MatchesAndTheirSections.empty
+            // NASTY HACK: assume that we haven't somehow invented new tiny
+            // parallel matches, so we can reuse the original Bloom filter as
+            // long as `isTinyMatch` is presented with matches from the
+            // resulting instance.
+            .copy(tinyMatchBloomFilter = this.tinyMatchBloomFilter)
+            .withMatches(
+              backTranslatedParallelMatches
+            )
 
         val result =
           backTranslatedMatchesAndTheirSections.cleanUpPairwiseMatches
