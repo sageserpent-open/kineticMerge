@@ -1,7 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
-import com.sageserpent.kineticmerge.core.Token.{Significant, tokens}
+import com.sageserpent.kineticmerge.core.Token.{significant, tokens}
 import com.sageserpent.kineticmerge.core.TokenTest.{
   checkTokenization,
   scalaStuff,
@@ -105,7 +105,7 @@ class TokenTest extends ProseExamples:
 
     checkTokenization(prose)
 
-    assert(tokens(prose).get.contains(Significant(stringLiteral)))
+    assert(tokens(prose).get.contains(significant(stringLiteral)))
   end aStringLiteralIsTreatedAsASingleToken
 
   @Test
@@ -121,11 +121,11 @@ class TokenTest extends ProseExamples:
 
     assume(
       tokens(prose).get.contains(
-        Significant(stringLiteralWithMangledWhitespace)
+        significant(stringLiteralWithMangledWhitespace)
       )
     )
 
-    assert(!tokens(prose).get.contains(Significant(stringLiteral)))
+    assert(!tokens(prose).get.contains(significant(stringLiteral)))
   end aStringLiteralHasSignificantLiteralWhitespace
 
 end TokenTest
