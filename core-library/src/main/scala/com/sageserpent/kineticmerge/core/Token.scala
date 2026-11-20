@@ -1,7 +1,7 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.kernel.Order
-import com.google.common.collect.{BiMap, HashBiMap}
+import com.google.common.collect.{BiMap, HashBiMap, Maps}
 import com.google.common.hash.PrimitiveSink
 import com.sageserpent.kineticmerge.core.Token.*
 import com.softwaremill.tagging.*
@@ -15,7 +15,8 @@ object Token extends JavaTokenParsers:
   end Tags
 
   private val uniqueIdsForContent: BiMap[String, Int @@ Tags.UniqueId] =
-    HashBiMap.create()
+    // SBT runs tests in parallel, so we need to use a thread-safe wrapper.
+    Maps.synchronizedBiMap(HashBiMap.create())
   private var nextUniqueId: Int @@ Tags.UniqueId = 0.taggedWith[Tags.UniqueId]
 
   private val miscellaneous: Parser[String] =
