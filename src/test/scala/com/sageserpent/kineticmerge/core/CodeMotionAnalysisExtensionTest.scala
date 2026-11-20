@@ -6,7 +6,11 @@ import com.sageserpent.americium.Trials
 import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysis.Configuration
 import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtension.*
-import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtensionTest.{FakePath, reconstituteTextFrom, given}
+import com.sageserpent.kineticmerge.core.CodeMotionAnalysisExtensionTest.{
+  FakePath,
+  reconstituteTextFrom,
+  given
+}
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import com.sageserpent.kineticmerge.core.Token.tokens
 import org.junit.jupiter.api.Assertions.fail
@@ -43,7 +47,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     def stuntDoubleTokens(content: String): Vector[Token] = tokenRegex
       .findAllMatchIn(content)
       .map(_.group(1))
-      .map(Token.Significant.apply)
+      .map(Token.significant)
       .toVector
 
     val baseSources = MappedContentSourcesOfTokens(
@@ -111,7 +115,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     def stuntDoubleTokens(content: FakePath): Vector[Token] = tokenRegex
       .findAllMatchIn(content)
       .map(_.group(1))
-      .map(Token.Significant.apply)
+      .map(Token.significant)
       .toVector
 
     Trials.api
@@ -212,7 +216,7 @@ class CodeMotionAnalysisExtensionTest extends ProseExamples:
     def stuntDoubleTokens(content: FakePath): Vector[Token] = tokenRegex
       .findAllMatchIn(content)
       .map(_.group(1))
-      .map(Token.Significant.apply)
+      .map(Token.significant)
       .toVector
 
     Trials.api

@@ -1,23 +1,19 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.kernel.Order
+import com.google.common.collect.{BiMap, HashBiMap}
 import com.google.common.hash.PrimitiveSink
-import com.sageserpent.kineticmerge.core.Token.{
-  Significant,
-  Whitespace,
-  WithTrailingWhitespace,
-  ident,
-  opt,
-  parse,
-  phrase,
-  rep,
-  whiteSpace
-}
+import com.sageserpent.kineticmerge.core.Token.*
+import com.softwaremill.tagging.*
 
 import scala.annotation.tailrec
 import scala.util.parsing.combinator.JavaTokenParsers
 
 object Token extends JavaTokenParsers:
+  private val uniqueIdsForContent: BiMap[String, Int @@ Tags.UniqueId] =
+    HashBiMap.create()
+  private var nextUniqueId: Int @@ Tags.UniqueId = 0.taggedWith[Tags.UniqueId]
+
   override def skipWhitespace: Boolean = false
 
   def tokens(input: String): ParseResult[Vector[Token]] =
@@ -33,7 +29,7 @@ object Token extends JavaTokenParsers:
   )
 
   private def tokenWithPossibleFollowingWhitespace: Parser[Token] =
-    ((ident | wholeNumber | decimalNumber | floatingPointNumber | stringLiteral | miscellaneous) ^^ Significant.apply) ~ opt(
+    ((ident | wholeNumber | decimalNumber | floatingPointNumber | stringLiteral | miscellaneous) ^^ significant) ~ opt(
       whitespaceRun
     ) ^^ {
       case coreToken ~ Some(whitespace) =>
@@ -44,6 +40,20 @@ object Token extends JavaTokenParsers:
 
   private def miscellaneous: Parser[String] =
     ".".r
+
+  def significant(content: String): Significant =
+    Significant(
+      uniqueIdsForContent.computeIfAbsent(
+        content,
+        _ =>
+          val uniqueId = nextUniqueId
+          // TODO: finesse this - why can't we just use `+=`, or at least drop
+          // the re-tagging?
+          nextUniqueId = (1 + nextUniqueId).taggedWith[Tags.UniqueId]
+
+          uniqueId
+      )
+    )
 
   private def whitespaceRun: Parser[Token.Whitespace] =
     whiteSpace ^^ Token.Whitespace.apply
@@ -95,37 +105,42 @@ object Token extends JavaTokenParsers:
       case (Significant(_), Whitespace(_)) => 1
       case (Whitespace(lhsBlanks), Whitespace(rhsBlanks)) =>
         Order.compare(lhsBlanks, rhsBlanks)
-      case (Significant(lhsLetters), Significant(rhsLetters)) =>
-        Order.compare(lhsLetters, rhsLetters)
+      case (Significant(lhsId), Significant(rhsId)) =>
+        Order[Int].compare(lhsId, rhsId)
   end comparison
 
   @tailrec
-  def funnel(token: Token, primitiveSink: PrimitiveSink): Unit =
-    token match
-      case Whitespace(blanks)   =>
-      case Significant(letters) => letters.foreach(primitiveSink.putChar)
+  def funnel(element: Token, primitiveSink: PrimitiveSink): Unit =
+    element match
+      case Whitespace(_)         =>
+      case Significant(uniqueId) => primitiveSink.putInt(uniqueId)
       case WithTrailingWhitespace(coreToken, _) =>
         funnel(coreToken, primitiveSink)
     end match
   end funnel
 
+  case class Significant private[Token] (uniqueId: Int @@ Tags.UniqueId)
+      extends Token
+
   case class Whitespace(blanks: String) extends Token:
     require(blanks.isBlank)
   end Whitespace
-
-  case class Significant(content: String) extends Token
 
   case class WithTrailingWhitespace(
       coreToken: Significant,
       whitespace: Whitespace
   ) extends Token
 
+  private object Tags:
+    trait UniqueId
+  end Tags
+
 end Token
 
-trait Token:
+sealed trait Token:
   def text: String = this match
     case Whitespace(blanks)   => blanks
-    case Significant(letters) => letters
+    case Significant(content) => uniqueIdsForContent.inverse().get(content)
     case WithTrailingWhitespace(coreToken, whitespace) =>
       coreToken.text ++ whitespace.text
 end Token
