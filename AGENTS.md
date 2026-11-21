@@ -28,6 +28,8 @@ Before exploring Scala source files or proposing architectural changes, **read t
   fast:
     - Compile: `sbt Test/compile`
     - Single test: `sbt "testOnly *TestName*"`
+- Some of the heavyweight property-based tests are run on a fixed time budget: these take several minutes to run, and optimising the code results in more test cases being run, rather than shorter test durations! `SectionedCodeTest` has several of these, so be careful there.
+- `SectionedCodeExtensionTest` is fairly quick to run, and exercises quite a lot of the codebase, so it makes a good first choice for moment to moment validation.
 - Releases are done on GitHub, using GitHub workflows that invoke
   both https://github.com/guardian/gha-scala-library-release-workflow and JReleaser.
 
@@ -62,7 +64,7 @@ Before exploring Scala source files or proposing architectural changes, **read t
 This reproduces a particularly tricky merge, one which has demonstrated pathological outcomes in the past. It is not
 expected to go smoothly, but the idea is to aim for best effort.
 
-1. **Set up a reproduction repository**: Create a *separate clone* of the Kinetic Merge repository in a temporary
+1. **Set up a reproduction repository**: create a *separate clone* of the Kinetic Merge repository in a temporary
    location (e.g., `/tmp/kinetic-merge-repro`):
    ```bash
    git clone https://github.com/sageserpent-open/kineticMerge.git /tmp/kinetic-merge-repro
@@ -70,13 +72,12 @@ expected to go smoothly, but the idea is to aim for best effort.
    git checkout 6e0b6821fa8fe53465c3355793b61ac425a10c1a
    ```
 
-2. **Run the benchmark**: From within the repro repository, run the Kinetic Merge Git CLI application from the
-   development workspace:
+2. **Run the benchmark**: run the Kinetic Merge Git CLI application *in the reproduction repository*:
 
    ```bash
-   sbt gitCliApplication/run --no-commit  55fef2f785334b7bf99fc592dd101a462cbb2c6d
+   sbt '; project gitCliApplication ; set Compile / run / fork := true ; set Compile / run / baseDirectory := file("/tmp/kinetic-merge-repro") ; run --no-commit 55fef2f785334b7bf99fc592dd101a462cbb2c6d'
    ```
-   **DANGER:** *do not* run the benchmark in the session workspace. This will clobber the project completely!
+   **DANGER**: *do not* run the benchmark merge directly in the session workspace. This will clobber the project completely!
 
 3. **Assess printed output and logs from Kinetic Merge, also looking at resulting merged files.**
 
@@ -88,8 +89,9 @@ expected to go smoothly, but the idea is to aim for best effort.
    qualitatively at the outcome of the merge using one build of Kinetic Merge against another, as well as for evidence
    of performance improvement or regression.
 
-4**Cleanup**:
-
+4. **Cleanup**: if doing multiple benchmark merges, clean up between runs:
+   
    ```bash
+   cd /tmp/kinetic-merge-repro
    git merge --abort
    ```
