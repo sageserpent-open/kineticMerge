@@ -28,8 +28,11 @@ Before exploring Scala source files or proposing architectural changes, **read t
   fast:
     - Compile: `sbt Test/compile`
     - Single test: `sbt "testOnly *TestName*"`
-- Some of the heavyweight property-based tests are run on a fixed time budget: these take several minutes to run, and optimising the code results in more test cases being run, rather than shorter test durations! `SectionedCodeTest` has several of these, so be careful there.
-- `SectionedCodeExtensionTest` is fairly quick to run, and exercises quite a lot of the codebase, so it makes a good first choice for moment to moment validation.
+- Some of the heavyweight property-based tests are run on a fixed time budget: these take several minutes to run, and
+  optimising the code results in more test cases being run, rather than shorter test durations! `SectionedCodeTest` has
+  several of these, so be careful there.
+- `SectionedCodeExtensionTest` is fairly quick to run, and exercises quite a lot of the codebase, so it makes a good
+  first choice for moment to moment validation.
 - Releases are done on GitHub, using GitHub workflows that invoke
   both https://github.com/guardian/gha-scala-library-release-workflow and JReleaser.
 
@@ -77,7 +80,8 @@ expected to go smoothly, but the idea is to aim for best effort.
    ```bash
    sbt '; project gitCliApplication ; set Compile / run / fork := true ; set Compile / run / baseDirectory := file("/tmp/kinetic-merge-repro") ; run --no-commit 55fef2f785334b7bf99fc592dd101a462cbb2c6d'
    ```
-   **DANGER**: *do not* run the benchmark merge directly in the session workspace. This will clobber the project completely!
+   **DANGER**: *do not* run the benchmark merge directly in the session workspace. This will clobber the project
+   completely!
 
 3. **Assess printed output and logs from Kinetic Merge, also looking at resulting merged files.**
 
@@ -90,7 +94,7 @@ expected to go smoothly, but the idea is to aim for best effort.
    of performance improvement or regression.
 
 4. **Cleanup**: if doing multiple benchmark merges, clean up between runs:
-   
+
    ```bash
    cd /tmp/kinetic-merge-repro
    git merge --abort
