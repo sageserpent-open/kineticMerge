@@ -89,8 +89,9 @@ expected to go smoothly, but the idea is to aim for best effort.
    qualitatively at the outcome of the merge using one build of Kinetic Merge against another, as well as for evidence
    of performance improvement or regression.
 
-4**Cleanup**:
-
+4. **Cleanup**: if doing multiple benchmark merges, clean up between runs:
+   
    ```bash
+   cd /tmp/kinetic-merge-repro
    git merge --abort
    ```
