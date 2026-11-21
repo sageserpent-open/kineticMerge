@@ -64,7 +64,7 @@ Before exploring Scala source files or proposing architectural changes, **read t
 This reproduces a particularly tricky merge, one which has demonstrated pathological outcomes in the past. It is not
 expected to go smoothly, but the idea is to aim for best effort.
 
-1. **Set up a reproduction repository**: Create a *separate clone* of the Kinetic Merge repository in a temporary
+1. **Set up a reproduction repository**: create a *separate clone* of the Kinetic Merge repository in a temporary
    location (e.g., `/tmp/kinetic-merge-repro`):
    ```bash
    git clone https://github.com/sageserpent-open/kineticMerge.git /tmp/kinetic-merge-repro
@@ -72,13 +72,12 @@ expected to go smoothly, but the idea is to aim for best effort.
    git checkout 6e0b6821fa8fe53465c3355793b61ac425a10c1a
    ```
 
-2. **Run the benchmark**: From within the repro repository, run the Kinetic Merge Git CLI application from the
-   development workspace:
+2. **Run the benchmark**: run the Kinetic Merge Git CLI application *in the reproduction repository*:
 
    ```bash
    sbt '; project gitCliApplication ; set Compile / run / fork := true ; set Compile / run / baseDirectory := file("/tmp/kinetic-merge-repro") ; run --no-commit 55fef2f785334b7bf99fc592dd101a462cbb2c6d'
    ```
-   **DANGER:** *do not* run the benchmark in the session workspace. This will clobber the project completely!
+   **DANGER**: *do not* run the benchmark merge directly in the session workspace. This will clobber the project completely!
 
 3. **Assess printed output and logs from Kinetic Merge, also looking at resulting merged files.**
 
