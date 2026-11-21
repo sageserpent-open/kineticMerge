@@ -64,38 +64,54 @@ Before exploring Scala source files or proposing architectural changes, **read t
 
 ## Manual Benchmark Procedure
 
-This reproduces a particularly tricky merge, one which has demonstrated pathological outcomes in the past. It is not
-expected to go smoothly, but the idea is to aim for best effort.
+This reproduces two merges: a particularly tricky merge, one which has demonstrated pathological outcomes in the past,
+and a really heavyweight merge that takes a *long time*.
 
-1. **Set up a reproduction repository**: create a *separate clone* of the Kinetic Merge repository in a temporary
-   location (e.g., `/tmp/kinetic-merge-repro`):
+Neither is expected to go smoothly (there may be conflicts, and even nonconflicted results may be messy), but the idea
+is to aim for best effort and get good timings.
+
+The commits for the two merges are:
+
+| Merge Category                                             | Focus                                                                                                                                                                       | Our Commit                               | Their Commit                             |
+|------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------|------------------------------------------|
+| Tricky: merge from `main` to JJ-spike branch               | Difficult three-way merging where a file has been substantially rewritten on our side and reorganised on theirs: stresses the call tree for `SectionedCodeExtension.merge`. | 6e0b6821fa8fe53465c3355793b61ac425a10c1a | 55fef2f785334b7bf99fc592dd101a462cbb2c6d |
+| Heavyweight: merge from disinterred spike branch to `main` | Lots of giant files have moved on our side and some targeted changes made in a set of old files on theirs: stresses the call tree for `MatchAnalysis.of`.                   | 0a3231cc854f22aea157d53de8cc0e2b9ac42d44 | 593f830b03ee00d39baf778f7a900389896a93c4 |
+
+1. **Choose merge**: set environment variables, amend to choose one of the merges from above:
    ```bash
-   git clone https://github.com/sageserpent-open/kineticMerge.git /tmp/kinetic-merge-repro
-   cd /tmp/kinetic-merge-repro
-   git checkout 6e0b6821fa8fe53465c3355793b61ac425a10c1a
+   export OURS=6e0b6821fa8fe53465c3355793b61ac425a10c1a
+   export THEIRS=55fef2f785334b7bf99fc592dd101a462cbb2c6d
+   
+   export BENCHMARK_SCRATCH_REPOSITORY=/tmp/kinetic-merge-benchmark-scratch
    ```
 
-2. **Run the benchmark**: run the Kinetic Merge Git CLI application *in the reproduction repository*:
+2. **Set up a reproduction repository**: create a *separate clone* of the Kinetic Merge repository in a temporary
+   location (e.g. `/tmp/kinetic-merge-benchmark-scratch`, as above):
+   ```bash
+   git clone https://github.com/sageserpent-open/kineticMerge.git $BENCHMARK_SCRATCH_REPOSITORY
+   (cd $BENCHMARK_SCRATCH_REPOSITORY; git checkout $OURS)
+   ```
+
+3. **Run the benchmark**: run the Kinetic Merge Git CLI application *in the reproduction repository*:
 
    ```bash
-   sbt '; project gitCliApplication ; set Compile / run / fork := true ; set Compile / run / baseDirectory := file("/tmp/kinetic-merge-repro") ; run --no-commit 55fef2f785334b7bf99fc592dd101a462cbb2c6d'
+   sbt '; project gitCliApplication ; set Compile / run / fork := true ; set Compile / run / baseDirectory := file(sys.env("BENCHMARK_SCRATCH_REPOSITORY")) ; eval currentState.addAlias("runMerge", s"run --no-commit ${sys.env("THEIRS")}") ; runMerge'
    ```
    **DANGER**: *do not* run the benchmark merge directly in the session workspace. This will clobber the project
    completely!
 
-3. **Assess printed output and logs from Kinetic Merge, also looking at resulting merged files.**
+4. **Assess printed output and logs from Kinetic Merge, also looking at resulting merged files.**
 
     ```bash
-    git status
+    (cd $BENCHMARK_SCRATCH_REPOSITORY; git status)
     ```
 
    The execution should be timed, ideally aiming for under one minute. This is often used as a regression test, looking
    qualitatively at the outcome of the merge using one build of Kinetic Merge against another, as well as for evidence
    of performance improvement or regression.
 
-4. **Cleanup**: if doing multiple benchmark merges, clean up between runs:
+5. **Cleanup**: if doing multiple benchmark merges, clean up between runs before going back to step 3:
 
    ```bash
-   cd /tmp/kinetic-merge-repro
-   git merge --abort
+    (cd $BENCHMARK_SCRATCH_REPOSITORY; git merge --abort 2>/dev/null || git reset --hard)
    ```
