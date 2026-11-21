@@ -95,7 +95,7 @@ The commits for the two merges are:
 3. **Run the benchmark**: run the Kinetic Merge Git CLI application *in the reproduction repository*:
 
    ```bash
-   sbt '; project gitCliApplication ; set Compile / run / fork := true ; set Compile / run / baseDirectory := file(sys.env("BENCHMARK_SCRATCH_REPOSITORY")) ; eval currentState.addAlias("runMerge", s"run --no-commit ${sys.env("THEIRS")}") ; runMerge'
+   sbt "; project gitCliApplication ; set Compile / run / fork := true ; set Compile / run / baseDirectory := file(sys.env(\"BENCHMARK_SCRATCH_REPOSITORY\")) ; run --no-commit $THEIRS"
    ```
    **DANGER**: *do not* run the benchmark merge directly in the session workspace. This will clobber the project
    completely!
