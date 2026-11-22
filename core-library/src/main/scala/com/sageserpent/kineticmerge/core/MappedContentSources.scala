@@ -8,6 +8,7 @@ import com.typesafe.scalalogging.StrictLogging
 import pprint.Tree
 
 import java.util.Arrays as JavaArrays
+import scala.collection.IndexedSeqView
 import scala.collection.mutable.Map as MutableMap
 
 trait MappedContentSources[Path, Element]
@@ -153,8 +154,8 @@ trait MappedContentSources[Path, Element]
       )
     end render
 
-    override def content: IndexedSeq[Element] =
-      contentsByPath(path).slice(startOffset, onePastEndOffset)
+    override def contentView: IndexedSeqView[Element] =
+      contentsByPath(path).view.slice(startOffset, onePastEndOffset)
   end SectionImplementation
 end MappedContentSources
 

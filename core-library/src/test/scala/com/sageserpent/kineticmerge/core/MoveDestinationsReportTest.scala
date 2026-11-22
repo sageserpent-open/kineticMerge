@@ -6,11 +6,13 @@ import com.sageserpent.kineticmerge.core.MoveDestinationsReport.*
 import org.junit.jupiter.api.Test
 import pprint.Tree
 
+import scala.collection.IndexedSeqView
+
 class MoveDestinationsReportTest:
   case class FakeSection[Element](
       override val startOffset: Int,
       override val size: Int,
-      override val content: IndexedSeq[Element]
+      override val contentView: IndexedSeqView[Element]
   ) extends Section[Element]:
     override def render: Tree =
       pprint.Tree.Literal(s"FakeSection($startOffset, $size)")
@@ -20,14 +22,14 @@ class MoveDestinationsReportTest:
 
   @Test
   def evaluation(): Unit =
-    val baseSection1 = FakeSection(0, 10, Vector("m1"))
-    val leftSection1 = FakeSection(0, 10, Vector("m1"))
+    val baseSection1 = FakeSection(0, 10, Vector("m1").view)
+    val leftSection1 = FakeSection(0, 10, Vector("m1").view)
 
-    val baseSection2 = FakeSection(10, 10, Vector("m2"))
-    val leftSection2 = FakeSection(10, 10, Vector("m2"))
+    val baseSection2 = FakeSection(10, 10, Vector("m2").view)
+    val leftSection2 = FakeSection(10, 10, Vector("m2").view)
 
-    val baseSection3 = FakeSection(20, 10, Vector("m3"))
-    val leftSection3 = FakeSection(20, 10, Vector("m3"))
+    val baseSection3 = FakeSection(20, 10, Vector("m3").view)
+    val leftSection3 = FakeSection(20, 10, Vector("m3").view)
 
     val match1: Match[Section[String]] =
       Match.BaseAndLeft(baseSection1, leftSection1)

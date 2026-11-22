@@ -5,12 +5,14 @@ import com.sageserpent.americium.junit5.*
 import com.sageserpent.kineticmerge.core.ExpectyFlavouredAssert.assert
 import de.sciss.fingertree.RangedSeq
 import org.junit.jupiter.api.TestFactory
+
+import scala.collection.IndexedSeqView
 import scala.collection.immutable.MultiSet
 
 case class FakeSection(startOffset: Int, size: Int, id: Int = 0)
     extends Section[Int]:
-  override def content: IndexedSeq[Int] = IndexedSeq.empty
-  override def render: pprint.Tree      =
+  override def contentView: IndexedSeqView[Int] = IndexedSeq.empty.view
+  override def render: pprint.Tree              =
     pprint.Tree.Literal(s"Section($startOffset, $size, $id)")
 end FakeSection
 
@@ -26,7 +28,10 @@ class SectionsSeenTest:
     sequences.withLimit(500).dynamicTests { ops =>
       var sectionsSeen = SectionsSeen.empty[Int]
       var reference    =
-        RangedSeq.empty[FakeSection, Int](using _.closedOpenInterval, Ordering.Int)
+        RangedSeq.empty[FakeSection, Int](using
+          _.closedOpenInterval,
+          Ordering.Int
+        )
       var referenceWasHit = false
 
       ops.foreach {

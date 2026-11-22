@@ -2,6 +2,8 @@ package com.sageserpent.kineticmerge.core
 
 import pprint.Tree
 
+import scala.collection.IndexedSeqView
+
 /** A [[Section]] covers some part of a [[File]], and knows how to render the
   * content.
   */
@@ -14,7 +16,9 @@ trait Section[Element]:
 
   def onePastEndOffset: Int = startOffset + size
 
-  def content: IndexedSeq[Element]
+  def contentView: IndexedSeqView[Element]
+
+  def content: IndexedSeq[Element] = contentView.toIndexedSeq
 
   def render: Tree
 end Section

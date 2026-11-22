@@ -24,7 +24,7 @@ import scala.collection.immutable.{
   SortedSet
 }
 import scala.collection.parallel.CollectionConverters.*
-import scala.collection.{immutable, mutable}
+import scala.collection.{IndexedSeqView, immutable, mutable}
 import scala.util.Using
 
 trait MatchAnalysis[Path, Element]:
@@ -206,6 +206,13 @@ object MatchAnalysis extends StrictLogging:
           s"${configuration.label} - ${message.headOption.fold(ifEmpty = message)(_.toLower +: message.tail)}"
         else message
     end extension
+
+    given Eq[IndexedSeqView[Element]] with
+      override def eqv(
+          x: IndexedSeqView[Element],
+          y: IndexedSeqView[Element]
+      ): Boolean = x.corresponds(y)(Eq[Element].eqv)
+    end given
 
     object MatchesAndTheirSections:
       lazy val empty: MatchesAndTheirSections = MatchesAndTheirSections(
@@ -2049,14 +2056,14 @@ object MatchAnalysis extends StrictLogging:
           override val label: String = "Meta-match analysis"
         end metaMatchConfiguration
 
-        given Eq[Section[Element]] = Eq.by(_.content: Seq[Element])
+        given Eq[Section[Element]] = Eq.by(_.contentView)
 
         given Funnel[Section[Element]] with
           override def funnel(
               from: Section[Element],
               into: PrimitiveSink
           ): Unit =
-            from.content.foreach(summon[Funnel[Element]].funnel(_, into))
+            from.contentView.foreach(summon[Funnel[Element]].funnel(_, into))
 
         end given
 
@@ -2083,7 +2090,7 @@ object MatchAnalysis extends StrictLogging:
                   leftMetaSection,
                   rightMetaSection
                 ) =>
-              (baseMetaSection.content `lazyZip` leftMetaSection.content `lazyZip` rightMetaSection.content)
+              (baseMetaSection.contentView `lazyZip` leftMetaSection.contentView `lazyZip` rightMetaSection.contentView)
                 .collect {
                   case (baseSection, leftSection, rightSection)
                       if !isSubsumedNonTriviallyByAnAllSidesMatch(
@@ -2094,7 +2101,7 @@ object MatchAnalysis extends StrictLogging:
                     Match.AllSides(baseSection, leftSection, rightSection)
                 }
             case Match.BaseAndLeft(baseMetaSection, leftMetaSection) =>
-              (baseMetaSection.content `lazyZip` leftMetaSection.content)
+              (baseMetaSection.contentView `lazyZip` leftMetaSection.contentView)
                 .collect {
                   case (baseSection, leftSection)
                       if !isSubsumedNonTriviallyByAMatchOnTheBaseAndLeft(
@@ -2104,7 +2111,7 @@ object MatchAnalysis extends StrictLogging:
                     Match.BaseAndLeft(baseSection, leftSection)
                 }
             case Match.BaseAndRight(baseMetaSection, rightMetaSection) =>
-              (baseMetaSection.content `lazyZip` rightMetaSection.content)
+              (baseMetaSection.contentView `lazyZip` rightMetaSection.contentView)
                 .collect {
                   case (baseSection, rightSection)
                       if !isSubsumedNonTriviallyByAMatchOnTheBaseAndRight(
@@ -2114,7 +2121,7 @@ object MatchAnalysis extends StrictLogging:
                     Match.BaseAndRight(baseSection, rightSection)
                 }
             case Match.LeftAndRight(leftMetaSection, rightMetaSection) =>
-              (leftMetaSection.content `lazyZip` rightMetaSection.content)
+              (leftMetaSection.contentView `lazyZip` rightMetaSection.contentView)
                 .collect {
                   case (leftSection, rightSection)
                       if !isSubsumedNonTriviallyByAMatchOnTheLeftAndRight(
@@ -3943,7 +3950,7 @@ object MatchAnalysis extends StrictLogging:
               )
             else
               logger.warn(
-                s"Discarding ambiguous all-sides matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesSharingContent matches."
+                s"Discarding ambiguous all-sides matches of content: ${pprintCustomised(permitted.head._1.contentView)} as there are more than $maximumNumberOfMatchesSharingContent matches."
               )
               fold.copy(haveTrimmedMatches = true)
             end if
@@ -3988,7 +3995,7 @@ object MatchAnalysis extends StrictLogging:
               )
             else
               logger.warn(
-                s"Discarding ambiguous base-left matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesSharingContent matches."
+                s"Discarding ambiguous base-left matches of content: ${pprintCustomised(permitted.head._1.contentView)} as there are more than $maximumNumberOfMatchesSharingContent matches."
               )
               fold.copy(haveTrimmedMatches = true)
             end if
@@ -4033,7 +4040,7 @@ object MatchAnalysis extends StrictLogging:
               )
             else
               logger.warn(
-                s"Discarding ambiguous base-right matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesSharingContent matches."
+                s"Discarding ambiguous base-right matches of content: ${pprintCustomised(permitted.head._1.contentView)} as there are more than $maximumNumberOfMatchesSharingContent matches."
               )
               fold.copy(haveTrimmedMatches = true)
             end if
@@ -4078,7 +4085,7 @@ object MatchAnalysis extends StrictLogging:
               )
             else
               logger.warn(
-                s"Discarding ambiguous left-right matches of content: ${pprintCustomised(permitted.head._1.content)} as there are more than $maximumNumberOfMatchesSharingContent matches."
+                s"Discarding ambiguous left-right matches of content: ${pprintCustomised(permitted.head._1.contentView)} as there are more than $maximumNumberOfMatchesSharingContent matches."
               )
               fold.copy(haveTrimmedMatches = true)
             end if
@@ -4119,9 +4126,7 @@ object MatchAnalysis extends StrictLogging:
 
     object PotentialMatchKey:
       val impliedContentEquality: Eq[Section[Element]] =
-        Eq.by[Section[Element], Seq[Element]](
-          _.content.take(tiebreakContentSamplingLimit)
-        )
+        Eq.by(_.contentView.take(tiebreakContentSamplingLimit))
     end PotentialMatchKey
 
     // NOTE: this is subtle - this type is used as an ordered key to find
@@ -4150,7 +4155,7 @@ object MatchAnalysis extends StrictLogging:
 
         hasher.putBytes(fingerprint.toByteArray)
 
-        impliedContent.content
+        impliedContent.contentView
           .take(tiebreakContentSamplingLimit)
           .foreach(hasher.putObject(_, summon[Funnel[Element]]))
 
