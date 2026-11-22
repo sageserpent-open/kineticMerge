@@ -13,11 +13,11 @@ import com.sageserpent.kineticmerge.core.SectionedCodeExtensionTest.{
   given
 }
 import com.sageserpent.kineticmerge.core.Token.tokens
+import com.typesafe.scalalogging.StrictLogging
 import org.junit.jupiter.api.Assertions.{assertDoesNotThrow, fail}
 import org.junit.jupiter.api.{Test, TestFactory}
 
 import scala.util.Right
-import com.typesafe.scalalogging.StrictLogging
 
 object SectionedCodeExtensionTest:
   type FakePath = String
@@ -125,7 +125,7 @@ class SectionedCodeExtensionTest extends ProseExamples, StrictLogging:
           def stuntDoubleTokens(content: String): Vector[Token] = tokenRegex
             .findAllMatchIn(content)
             .map(_.group(0))
-            .map(Token.Significant.apply)
+            .map(Token.significant)
             .toVector
 
           val baseSources = MappedContentSourcesOfTokens(
@@ -193,7 +193,7 @@ class SectionedCodeExtensionTest extends ProseExamples, StrictLogging:
     def stuntDoubleTokens(content: String): Vector[Token] = tokenRegex
       .findAllMatchIn(content)
       .map(_.group(1))
-      .map(Token.Significant.apply)
+      .map(Token.significant)
       .toVector
 
     val baseSources = MappedContentSourcesOfTokens(
@@ -243,7 +243,7 @@ class SectionedCodeExtensionTest extends ProseExamples, StrictLogging:
     def stuntDoubleTokens(content: FakePath): Vector[Token] = tokenRegex
       .findAllMatchIn(content)
       .map(_.group(1))
-      .map(Token.Significant.apply)
+      .map(Token.significant)
       .toVector
 
     Trials.api
@@ -327,7 +327,7 @@ class SectionedCodeExtensionTest extends ProseExamples, StrictLogging:
     def stuntDoubleTokens(content: FakePath): Vector[Token] = tokenRegex
       .findAllMatchIn(content)
       .map(_.group(1))
-      .map(Token.Significant.apply)
+      .map(Token.significant)
       .toVector
 
     Trials.api
@@ -1102,7 +1102,7 @@ class SectionedCodeExtensionTest extends ProseExamples, StrictLogging:
     def stuntDoubleTokens(content: String): Vector[Token] = tokenRegex
       .findAllMatchIn(content)
       .map(_.group(0))
-      .map(Token.Significant.apply)
+      .map(Token.significant)
       .toVector
 
     val baseSources = MappedContentSourcesOfTokens(
@@ -1900,7 +1900,7 @@ class SectionedCodeExtensionTest extends ProseExamples, StrictLogging:
       def stuntDoubleTokens(content: String): Vector[Token] = tokenRegex
         .findAllMatchIn(content)
         .map(_.group(0))
-        .map(Token.Significant.apply)
+        .map(Token.significant)
         .toVector
 
       val baseSources = MappedContentSourcesOfTokens(
