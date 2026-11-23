@@ -4142,21 +4142,6 @@ object MatchAnalysis extends StrictLogging:
         fingerprint: BigInt,
         impliedContent: Section[Element]
     ):
-      // NOTE: instances of `PotentialMatchKey` are intended to be put into sets
-      // using hashing, so we may as well get on with it and compute the
-      // inevitable hash code.
-      private val cachedHashCode: Int =
-        val hasher = hashFunction.newHasher()
-
-        hasher.putBytes(fingerprint.toByteArray)
-
-        impliedContent.content
-          .take(tiebreakContentSamplingLimit)
-          .foreach(hasher.putObject(_, summon[Funnel[Element]]))
-
-        hasher.hash().asInt()
-      end cachedHashCode
-
       override def equals(another: Any): Boolean =
         (another.asInstanceOf[Matchable]: @unchecked) match
           case PotentialMatchKey(anotherFingerprint, anotherImpliedContent) =>
@@ -4167,7 +4152,7 @@ object MatchAnalysis extends StrictLogging:
               )
           case _ => false
 
-      override def hashCode(): Int = cachedHashCode
+      override def hashCode(): Int = fingerprint.hashCode()
     end PotentialMatchKey
 
     MatchesAndTheirSections.withAllMatchesOfAtLeastTheSureFireWindowSize()
