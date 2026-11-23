@@ -61,6 +61,7 @@ lazy val commonLibraryDependencies = Seq(
   libraryDependencies +=
     "org.scala-lang.modules" %% "scala-parallel-collections" % "1.3.0",
   libraryDependencies += "org.typelevel" %% "kittens" % "3.5.0",
+  libraryDependencies += "com.softwaremill.common" %% "tagging" % "2.3.5",
 
   libraryDependencies += "de.sciss"        %% "fingertree" % "1.5.5" % Test,
   libraryDependencies += "com.sageserpent" %% "americium"  % "2.3.0" % Test,
@@ -74,7 +75,6 @@ lazy val cliApplicationSettings =
   commonSettings ++ commonLibraryDependencies ++ Seq(
     libraryDependencies += "com.github.scopt" %% "scopt" % "4.2.0",
     libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async" % "1.4.0",
-    libraryDependencies += "com.softwaremill.common" %% "tagging" % "2.3.5",
     stagedJarsForJReleaserDirectory                  := {
       val location =
         (Compile / target).value.toPath.resolve("stagedJarsForJReleaser")

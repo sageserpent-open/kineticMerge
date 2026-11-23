@@ -1,19 +1,30 @@
 package com.sageserpent.kineticmerge.core
 
 import cats.kernel.Order
+import com.google.common.collect.{BiMap, HashBiMap, Maps}
 import com.google.common.hash.PrimitiveSink
 import com.sageserpent.kineticmerge.core.Token.*
+import com.softwaremill.tagging.*
 
 import scala.annotation.tailrec
 import scala.util.parsing.combinator.JavaTokenParsers
 
 object Token extends JavaTokenParsers:
+  private object Tags:
+    trait UniqueId
+  end Tags
+
+  private val uniqueIdsForContent: BiMap[String, Int @@ Tags.UniqueId] =
+    // SBT runs tests in parallel, so we need to use a thread-safe wrapper.
+    Maps.synchronizedBiMap(HashBiMap.create())
+  private var nextUniqueId: Int @@ Tags.UniqueId = 0.taggedWith[Tags.UniqueId]
+
   private val miscellaneous: Parser[String] =
     """.""".r
   private val horizontalWhitespaceRun: Parser[Whitespace] =
     """\h+""".r ^^ (content => Whitespace(content))
   private val tokenWithPossibleFollowingWhitespace: Parser[Token] =
-    ((ident | wholeNumber | decimalNumber | floatingPointNumber | stringLiteral | miscellaneous) ^^ Significant.apply) ~ opt(
+    ((ident | wholeNumber | decimalNumber | floatingPointNumber | stringLiteral | miscellaneous) ^^ significant) ~ opt(
       horizontalWhitespaceRun
     ) ^^ {
       case coreToken ~ Some(whitespace) =>
@@ -85,6 +96,20 @@ object Token extends JavaTokenParsers:
   def tokens(input: String): ParseResult[Vector[Token]] =
     parse(tokens, input).map(_.toVector)
 
+  def significant(content: String): Significant =
+    Significant(
+      uniqueIdsForContent.computeIfAbsent(
+        content,
+        _ =>
+          val uniqueId = nextUniqueId
+          // TODO: finesse this - why can't we just use `+=`, or at least drop
+          // the re-tagging?
+          nextUniqueId = (1 + nextUniqueId).taggedWith[Tags.UniqueId]
+
+          uniqueId
+      )
+    )
+
   def equality(lhs: Token, rhs: Token): Boolean = 0 == comparison(lhs, rhs)
 
   @tailrec
@@ -128,14 +153,14 @@ object Token extends JavaTokenParsers:
       case (Significant(_), LeadingIndentation(_)) => 1
       // NOTE: treat leading indentation as being equal to whitespace, even if
       // the tokens aren't condensed.
-      case (LeadingIndentation(_), Whitespace(_))             => 0
-      case (Whitespace(_), LeadingIndentation(_))             => 0
-      case (Whitespace(_), Significant(_))                    => -1
-      case (Significant(_), Whitespace(_))                    => 1
-      case (LeadingIndentation(_), LeadingIndentation(_))     => 0
-      case (Whitespace(_), Whitespace(_))                     => 0
-      case (Significant(lhsContent), Significant(rhsContent)) =>
-        Order.compare(lhsContent, rhsContent)
+      case (LeadingIndentation(_), Whitespace(_))         => 0
+      case (Whitespace(_), LeadingIndentation(_))         => 0
+      case (Whitespace(_), Significant(_))                => -1
+      case (Significant(_), Whitespace(_))                => 1
+      case (LeadingIndentation(_), LeadingIndentation(_)) => 0
+      case (Whitespace(_), Whitespace(_))                 => 0
+      case (Significant(lhsId), Significant(rhsId))       =>
+        Order[Int].compare(lhsId, rhsId)
   end comparison
 
   @tailrec
@@ -143,7 +168,7 @@ object Token extends JavaTokenParsers:
     token match
       case LeadingIndentation(_) =>
       case Whitespace(_)         =>
-      case Significant(content)  => primitiveSink.putUnencodedChars(content)
+      case Significant(uniqueId) => primitiveSink.putInt(uniqueId)
       case WithTrailingWhitespace(coreToken, _) =>
         funnel(coreToken, primitiveSink)
       case WithLeadingIndentation(_, coreToken) =>
@@ -157,14 +182,14 @@ enum Token:
   this match
     case LeadingIndentation(indentation) => require(indentation.isBlank)
     case Whitespace(blanks)              => require(blanks.isBlank)
-    case Significant(content)            => require(!content.isBlank)
+    case Significant(uniqueId)           => require(0 <= uniqueId)
     case _                               =>
   end match
 
   def text: String = this match
-    case LeadingIndentation(indentation)               => indentation
-    case Whitespace(blanks)                            => blanks
-    case Significant(content)                          => content
+    case LeadingIndentation(indentation) => indentation
+    case Whitespace(blanks)              => blanks
+    case Significant(uniqueId) => uniqueIdsForContent.inverse().get(uniqueId)
     case WithTrailingWhitespace(coreToken, whitespace) =>
       coreToken.text ++ whitespace.text
     case WithLeadingIndentation(leadingIndentation, coreToken) =>
@@ -192,15 +217,18 @@ enum Token:
           coreToken.condenseWithFollowingWhitespace(whitespace)
         )
 
-  case Significant(content: String)
+  case Significant private[Token] (uniqueId: Int @@ Token.Tags.UniqueId)
 
-  case Whitespace(blanks: String)
+  case Whitespace private[Token] (blanks: String)
 
-  case LeadingIndentation(indentation: String)
+  case LeadingIndentation private[Token] (indentation: String)
 
-  case WithTrailingWhitespace(coreToken: Significant, whitespace: Whitespace)
+  case WithTrailingWhitespace private[Token] (
+      coreToken: Significant,
+      whitespace: Whitespace
+  )
 
-  case WithLeadingIndentation(
+  case WithLeadingIndentation private[Token] (
       leadingIndentation: LeadingIndentation,
       coreToken: Token
   )
