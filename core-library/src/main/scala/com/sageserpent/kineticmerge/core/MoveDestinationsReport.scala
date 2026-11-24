@@ -65,37 +65,32 @@ object MoveDestinationsReport:
       ]],
       speculativeMoveDestinations: Set[SpeculativeMoveDestination[Element]]
   )(
-      matchesFor: Element => collection.Set[Match[Element]],
-      isFirstOrLastInParallelMatchesGroup: Match[Element] => Boolean =
-        (_: Match[Element]) => true
+      matchesFor: Element => collection.Set[Match[Element]]
   ): MoveEvaluation[Element] =
-    val destinationsBySource =
-      MultiDict.from(speculativeMigrationsBySource.keys.flatMap {
-        speculativeSource =>
-          val destinations = matchesFor(speculativeSource)
-            .filter(isFirstOrLastInParallelMatchesGroup)
-            .flatMap {
-              case Match.AllSides(_, leftElement, rightElement) =>
-                Seq(
-                  SpeculativeMoveDestination.Left(leftElement),
-                  SpeculativeMoveDestination.Right(rightElement),
-                  SpeculativeMoveDestination
-                    .Coincident(leftElement, rightElement)
-                )
-              case Match.BaseAndLeft(_, leftElement) =>
-                Seq(SpeculativeMoveDestination.Left(leftElement))
-              case Match.BaseAndRight(_, rightElement) =>
-                Seq(SpeculativeMoveDestination.Right(rightElement))
-              case _: Match.LeftAndRight[Element] => Seq.empty
-            }
-            .intersect(speculativeMoveDestinations)
-
-          destinations.map(speculativeSource -> _)
-      })
-
     val moveDestinationsBySource =
-      destinationsBySource.sets.map((source, destinations) =>
-        source -> new MoveDestinations(destinations)
+      Map.from(
+        for
+          speculativeSource <- speculativeMigrationsBySource.keys
+
+          destinations = matchesFor(speculativeSource)
+            .flatMap(mustIncludeTheBaseSide =>
+              (mustIncludeTheBaseSide: @unchecked) match
+                case Match.AllSides(_, leftElement, rightElement) =>
+                  Seq(
+                    SpeculativeMoveDestination.Left(leftElement),
+                    SpeculativeMoveDestination.Right(rightElement),
+                    SpeculativeMoveDestination
+                      .Coincident(leftElement, rightElement)
+                  )
+                case Match.BaseAndLeft(_, leftElement) =>
+                  Seq(SpeculativeMoveDestination.Left(leftElement))
+                case Match.BaseAndRight(_, rightElement) =>
+                  Seq(SpeculativeMoveDestination.Right(rightElement))
+            )
+            .intersect(speculativeMoveDestinations)
+          if destinations.nonEmpty
+
+        yield speculativeSource -> new MoveDestinations(destinations)
       )
 
     val migratedEditSuppressions: Set[Element] =
@@ -182,8 +177,8 @@ object MoveDestinationsReport:
                       rightContent.map(MultiSided.Unique.apply)
                   )
                 case SpeculativeContentMigration.CoincidentEditOrDeletion(
-                      FileDeletionContext.None | FileDeletionContext.Left
-                    ) =>
+                      fileDeletionContext
+                    ) if fileDeletionContext != FileDeletionContext.Right =>
                   moveDestinations.left.map(destinationElement =>
                     MultiSided.Unique(destinationElement) ->
                       // The move destination is on the left, so migrate the
@@ -219,8 +214,8 @@ object MoveDestinationsReport:
                       leftContent.map(MultiSided.Unique.apply)
                   )
                 case SpeculativeContentMigration.CoincidentEditOrDeletion(
-                      FileDeletionContext.None | FileDeletionContext.Right
-                    ) =>
+                      fileDeletionContext
+                    ) if fileDeletionContext != FileDeletionContext.Left =>
                   moveDestinations.right.map(destinationElement =>
                     MultiSided.Unique(destinationElement) ->
                       // The move destination is on the right, so migrate the
@@ -302,26 +297,16 @@ object MoveDestinationsReport:
                     // empty, it is the former situation; we handle that with
                     // the default.
                     if rightContent.nonEmpty =>
-                  moveDestinations.left.flatMap(moveDestination =>
-                    Seq(
-                      AnchoredMove(
-                        moveDestinationSide = MoveDestinationSide.Left,
-                        moveDestinationAnchor = moveDestination,
-                        oppositeSideAnchor =
-                          OppositeSideAnchor.FirstInMigratedEdit(
-                            rightContent.head
-                          ),
-                        sourceAnchor = source
-                      ),
-                      AnchoredMove(
-                        moveDestinationSide = MoveDestinationSide.Left,
-                        moveDestinationAnchor = moveDestination,
-                        oppositeSideAnchor =
-                          OppositeSideAnchor.LastInMigratedEdit(
-                            rightContent.last
-                          ),
-                        sourceAnchor = source
-                      )
+                  moveDestinations.left.map(moveDestination =>
+                    AnchoredMove(
+                      moveDestinationSide = MoveDestinationSide.Left,
+                      moveDestinationAnchor = moveDestination,
+                      oppositeSideAnchor =
+                        OppositeSideAnchor.AtLeastTwoInMigratedEdit(
+                          firstElement = rightContent.head,
+                          lastElement = rightContent.last
+                        ),
+                      sourceAnchor = source
                     )
                   )
                 case _ =>
@@ -363,26 +348,16 @@ object MoveDestinationsReport:
                     // empty, it is the former situation; we handle that with
                     // the default.
                     if leftContent.nonEmpty =>
-                  moveDestinations.right.flatMap(moveDestination =>
-                    Seq(
-                      AnchoredMove(
-                        moveDestinationSide = MoveDestinationSide.Right,
-                        moveDestinationAnchor = moveDestination,
-                        oppositeSideAnchor =
-                          OppositeSideAnchor.FirstInMigratedEdit(
-                            leftContent.head
-                          ),
-                        sourceAnchor = source
-                      ),
-                      AnchoredMove(
-                        moveDestinationSide = MoveDestinationSide.Right,
-                        moveDestinationAnchor = moveDestination,
-                        oppositeSideAnchor =
-                          OppositeSideAnchor.LastInMigratedEdit(
-                            leftContent.last
-                          ),
-                        sourceAnchor = source
-                      )
+                  moveDestinations.right.map(moveDestination =>
+                    AnchoredMove(
+                      moveDestinationSide = MoveDestinationSide.Right,
+                      moveDestinationAnchor = moveDestination,
+                      oppositeSideAnchor =
+                        OppositeSideAnchor.AtLeastTwoInMigratedEdit(
+                          firstElement = leftContent.head,
+                          lastElement = leftContent.last
+                        ),
+                      sourceAnchor = source
                     )
                   )
                 case _ =>
@@ -408,11 +383,15 @@ object MoveDestinationsReport:
   end evaluateSpeculativeSourcesAndDestinations
 
   enum OppositeSideAnchor[Element]:
-    def element: Element
+    def boundaryElements: Seq[Element] =
+      this match
+        case Plain(element) => Seq(element)
+        case OnlyOneInMigratedEdit(element) => Seq(element)
+        case AtLeastTwoInMigratedEdit(firstElement, secondElement) => Seq(firstElement, secondElement)
+    
     case Plain(element: Element)
     case OnlyOneInMigratedEdit(element: Element)
-    case FirstInMigratedEdit(element: Element)
-    case LastInMigratedEdit(element: Element)
+    case AtLeastTwoInMigratedEdit(firstElement: Element, lastElement: Element)
   end OppositeSideAnchor
 
   /** Represents a move that is anchored; this means there is an anchor element
@@ -459,10 +438,14 @@ object MoveDestinationsReport:
         }
       val allMoveDestinations                 = moveDestinationsReport.all
       val allMoveSources                      = moveDestinationsReport.sources
-      val oppositeSideAnchorsForMigratedEdits = anchorOppositeSides.collect {
-        case OppositeSideAnchor.OnlyOneInMigratedEdit(element) => element
-        case OppositeSideAnchor.FirstInMigratedEdit(element)   => element
-        case OppositeSideAnchor.LastInMigratedEdit(element)    => element
+      val oppositeSideAnchorsForMigratedEdits = anchorOppositeSides.flatMap {
+        case OppositeSideAnchor.OnlyOneInMigratedEdit(element) => Seq(element)
+        case OppositeSideAnchor.AtLeastTwoInMigratedEdit(
+              firstElement,
+              lastElement
+            ) =>
+          Seq(firstElement, lastElement)
+        case OppositeSideAnchor.Plain(_) => Seq.empty
       }
 
       // NOTE: don't be tempted to assert that substitution destinations and

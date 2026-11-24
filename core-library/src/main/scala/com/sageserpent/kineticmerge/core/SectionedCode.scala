@@ -75,9 +75,6 @@ object SectionedCode extends StrictLogging:
       withAllMatchesOfAtLeastTheMinimumWindowSize.withTinyMatches
 
     try
-      // TODO: this also precariously protects some downstream logic in
-      // `reconcileMatches` that assumes that all matches will have a
-      // parallel matches group id. Need to make this more robust.
       val parallelMatchesOnly = withTinyMatchesIncluded.parallelMatchesOnly
 
       val withOverlapsReconciled =
@@ -205,8 +202,8 @@ object SectionedCode extends StrictLogging:
                 // NASTY HACK: using the negative of the one-past-end offset
                 // causes a nested block that aligns with the start of its
                 // nesting block to come *after* said nesting block: that in
-                // turn allows the simplistic logic in `eliminateNestedBlocks`
-                // to deal with this situation.
+                // turn allows the simplistic logic in
+                // `eliminateFollowingNestedBlocks` to deal with this situation.
                 -block.onePastEndOffset
               )
             )

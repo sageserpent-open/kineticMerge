@@ -1,81 +1,117 @@
-# Kinetic Merge - Agent Memory
+# Project: kineticMerge
 
-This document serves as a "memory" for agents working on the Kinetic Merge project. It summarizes the project's goals, architecture, and core algorithms.
+# Orientation
 
-## Project Goals
-Kinetic Merge aims to merge Git branches holistically across the entire codebase, with a specific focus on **code motion awareness**. Traditional Git merges often fail when code is refactored (e.g., moved between files, extracted into methods, or reordered). Kinetic Merge tracks these moves and migrates changes to their new locations.
+The project is split into three subprojects:
 
-Key goals include:
-- Handling file renames, splits, and concatenations.
-- Tracking intra-file and inter-file code motion.
-- Automating merges as much as possible while providing clear conflict markers when manual intervention is needed.
+1. A core library.
+2. A CLI application that works with a Git repository.
+3. A tool CLI application that works with directory trees.
 
-## Core Concepts
-- **Sources**: Abstract representation of the codebase for a specific "side" (base, left, or right).
-- **Sections**: Contiguous, closed-open intervals of content within a file. Files are broken down into sections for analysis.
-- **Matches**: Associations between sections across different sides that share equivalent content. Matches can be "all-sides" (base, left, and right) or "pairwise" (any two sides).
-- **Tokens**: The fundamental unit of content analysis. Tokens are used to implement whitespace insensitivity by folding trailing whitespace into the preceding non-whitespace token.
+Before exploring Scala source files or proposing architectural changes, **read the relevant design documents in
+`documents/design-notes/` first** so you do not rediscover existing abstractions:
 
-## Component Architecture
-- `com.sageserpent.kineticmerge`: The outer layer, handling Git repository interaction and CLI.
-- `com.sageserpent.kineticmerge.core`: The core logic, abstracted from Git.
-  - `MatchAnalysis`: Finds an optimal set of matches across the three sides.
-  - `SectionedCode`: Represents the codebase broken down into matched and gap-filler sections.
-  - `LongestCommonSubsequence (LCS)`: Aligns sections within a file to form the backbone of a three-way merge.
-  - `CodeMotionAnalysisExtension`: Performs the global merge, tracking code motion and migrating changes/insertions.
-  - `merge`: Implements the three-way merge algorithm using an object algebra (`MergeAlgebra`).
+- `job-description.md` / `problem-space.md` — Core merge goals, code motion rules, and edge cases.
+- `component-breakdown.md` — High-level architecture across the three subprojects (`core-library`,
+  `git-cli-application`, `tool-cli-application`).
+- `match-analysis-and-sectioned-code-construction.md` — Tokenization, rolling hashes, and how files are partitioned into
+  sections.
+- `parallel-matches-groups-and-block-construction.md` — Grouping matches across base/left/right and forming blocks.
+- `two-tier-approximate-longest-common-subsequence.md` — The LCS matching algorithm and threshold parameters.
+- `code-motion-and-migration.md` — How moved, split, and concatenated code blocks are migrated during a merge.
 
-## Key Algorithms & Processes
-1. **Match Discovery**: Uses rolling hashes (fingerprints) to find potential matches of at least a minimum window size. It works downward from larger to smaller window sizes.
-2. **Reconciliation**: Fragments and pares down matches to resolve overlaps and redundancies, prioritizing all-sides matches.
-3. **Three-Way Merge**: An augmented three-way merge that uses LCS to align sections. If a section exists on all sides but cannot be aligned without disrupting the LCS, it is considered to have "jumped" (intra-file code motion).
-4. **Code Motion & Migration**:
-   - **Change Migration**: Edits or deletions of content that moved are applied to the destination of the move.
-   - **Splice Migration**: Insertions adjacent to moved content are migrated to land adjacent to the move's destination.
+## Stack & Build Tool
 
-## Development Tips
-- **Whitespace Insensitivity**: Implemented at the `Token` level. String constants are treated as single tokens.
-- **Testing**: Use `sbt test` to run the suite. The project uses `americium` for property-based testing and `expecty` for assertions.
-- **Logging**: Use `scala-logging`. Debugging often involves inspecting complex match and section structures.
-- **Performance**: LCS and match discovery are performance-critical. LCS uses a memory-efficient, parallelizable dynamic programming approach.
+- Language: Scala 3 (inspect `build.sbt` first for exact Scala version, compiler flags, and library dependencies).
+- Build tool: `sbt`.
+- From moment to moment, run targeted compilation or single test suites rather than full test runs to keep feedback
+  fast:
+    - Compile: `sbt Test/compile`
+    - Single test: `sbt "testOnly *TestName*"`
+- Some of the heavyweight property-based tests are run on a fixed time budget: these take several minutes to run, and
+  optimising the code results in more test cases being run, rather than shorter test durations! `SectionedCodeTest` has
+  several of these, so be careful there.
+- `SectionedCodeExtensionTest` is fairly quick to run, and exercises quite a lot of the codebase, so it makes a good
+  first choice for moment to moment validation.
+- Releases are done on GitHub, using GitHub workflows that invoke
+  both https://github.com/guardian/gha-scala-library-release-workflow and JReleaser.
 
-## Important Files
-- `Main.scala`: Entry point and Git integration. Note that there's a strategic direction (see issues #266 and #276) to make this more driver-agnostic, possibly supporting other version control systems like Jujutsu (JJ) by moving away from Git-specific porcelain and plumbing.
-- `MatchAnalysis.scala`: The heart of match discovery and reconciliation.
-- `SectionedCode.scala`: Higher-level analysis result and breakdown into files/sections.
-- `CodeMotionAnalysisExtension.scala`: The global merge and migration logic.
-- `merge.scala`: The core three-way merge implementation.
-- `LongestCommonSubsequence.scala`: The alignment algorithm.
+## Coding Conventions
 
-## Performance Benchmarking
+- Write idiomatic, functional Scala; prefer immutable data structures (`Vector`, `List`, `Map`) and pure functions.
+- By all means use monadic workflows and augment this with abstractions from the Cats library, but be sparing regarding
+  use of `IO` - this has been confined to the `Main` classes so far, where exceptions and logging are unavoidable.
+- 'Direct-style' syntax is used for `IO`-based workflows to make giant workflows easier to read and less daunting to
+  people coming from an imperative programming background, but stick with conventional monad workflow syntax for things
+  like `Option`, `Either`, collections etc.
+- Include explicit return types on all public methods and values.
+- Match existing formatting, naming, and package structure in the repository. Do use the Scalafmt tool to perform
+  reformatting when changes are made; there is a configuration file `.scalafmt.conf` in the project root for this.
+  Refrain from reformatting code that is otherwise untouched.
 
-It is strongly recommended to run the following benchmark when making changes to the core matching, LCS, merge, or block construction code.
+## Agent Workflow
 
-### Manual Benchmark Procedure
+- Before editing files, read the relevant source files and tests to understand existing abstractions.
+- It's OK to break up work into incremental commits, as long as these represent chunks of activity that make sense in
+  isolation - eg, adding a new test, or refactoring some existing code as a preliminary step to following work. It's OK
+  to have a test break in a commit if the intent is to fix it up as soon as possible in a following commit - this is
+  handy for providing a backstop in a complex piece of work. This also allows proof of "red-green-refactor" over a
+  series of commits.
+- Work isn't finished until:
+    1. It is fully verified with `sbt test`.
+    2. The manual benchmark has been run.
+    3. Any major design changes have been recorded in directory `documents/design-notes`.
 
-1. **Build the CLI application** in the main project directory:
+## Manual Benchmark Procedure
+
+This reproduces two merges: a particularly tricky merge, one which has demonstrated pathological outcomes in the past,
+and a really heavyweight merge that takes a *long time*.
+
+Neither is expected to go smoothly (there may be conflicts, and even nonconflicted results may be messy), but the idea
+is to aim for best effort and get good timings.
+
+The commits for the two merges are:
+
+| Merge Category                                             | Focus                                                                                                                                                                       | Our Commit                               | Their Commit                             |
+|------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------|------------------------------------------|
+| Tricky: merge from `main` to JJ-spike branch               | Difficult three-way merging where a file has been substantially rewritten on our side and reorganised on theirs: stresses the call tree for `SectionedCodeExtension.merge`. | 6e0b6821fa8fe53465c3355793b61ac425a10c1a | 55fef2f785334b7bf99fc592dd101a462cbb2c6d |
+| Heavyweight: merge from disinterred spike branch to `main` | Lots of giant files have moved on our side and some targeted changes made in a set of old files on theirs: stresses the call tree for `MatchAnalysis.of`.                   | 0a3231cc854f22aea157d53de8cc0e2b9ac42d44 | 593f830b03ee00d39baf778f7a900389896a93c4 |
+
+1. **Choose merge**: set environment variables, amend to choose one of the merges from above:
    ```bash
-   sbt packageExecutable
+   export OURS=6e0b6821fa8fe53465c3355793b61ac425a10c1a
+   export THEIRS=55fef2f785334b7bf99fc592dd101a462cbb2c6d
+   
+   export BENCHMARK_SCRATCH_REPOSITORY=/tmp/kinetic-merge-benchmark-scratch
    ```
-   This produces `target/kinetic-merge`.
 
-2. **Setup a reproduction repository**: Create a separate clone of the Kinetic Merge repository in a temporary location (e.g., `/tmp/kinetic-merge-repro`):
+2. **Set up a reproduction repository**: create a *separate clone* of the Kinetic Merge repository in a temporary
+   location (e.g. `/tmp/kinetic-merge-benchmark-scratch`, as above):
    ```bash
-   git clone https://github.com/sageserpent-open/kineticMerge.git /tmp/kinetic-merge-repro
-   cd /tmp/kinetic-merge-repro
-   git checkout 6e0b6821fa8fe53465c3355793b61ac425a10c1a
+   git clone https://github.com/sageserpent-open/kineticMerge.git $BENCHMARK_SCRATCH_REPOSITORY
+   (cd $BENCHMARK_SCRATCH_REPOSITORY; git checkout $OURS)
    ```
 
-3. **Run the benchmark**: From within the repro repository, run the packaged executable from your development workspace:
+3. **Run the benchmark**: run the Kinetic Merge Git CLI application *in the reproduction repository*:
+
    ```bash
-   <PATH_TO_YOUR_WORKSPACE>/target/kinetic-merge \
-     --no-commit \
-     55fef2f785334b7bf99fc592dd101a462cbb2c6d
+   sbt "; project gitCliApplication ; set Compile / run / fork := true ; set Compile / run / baseDirectory := file(sys.env(\"BENCHMARK_SCRATCH_REPOSITORY\")) ; run --no-commit $THEIRS"
    ```
+   **DANGER**: *do not* run the benchmark merge directly in the session workspace. This will clobber the project
+   completely!
 
-4. **Cleanup**:
+4. **Assess printed output and logs from Kinetic Merge, also looking at resulting merged files.**
+
+    ```bash
+    (cd $BENCHMARK_SCRATCH_REPOSITORY; git status)
+    ```
+
+   The execution should be timed, ideally aiming for under one minute. This is often used as a regression test, looking
+   qualitatively at the outcome of the merge using one build of Kinetic Merge against another, as well as for evidence
+   of performance improvement or regression.
+
+5. **Cleanup**: if doing multiple benchmark merges, clean up between runs before going back to step 3:
+
    ```bash
-   git merge --abort
+    (cd $BENCHMARK_SCRATCH_REPOSITORY; git merge --abort 2>/dev/null || git reset --hard)
    ```
-
-The execution should be timed, aiming for "shortness" (ideally under one minute). At least one file is expected to have conflicts.

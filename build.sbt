@@ -41,10 +41,10 @@ lazy val commonSettings = Seq(
 
 lazy val commonLibraryDependencies = Seq(
   libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.9.6",
-  libraryDependencies += "ch.qos.logback"   % "logback-core"        % "1.6.5",
-  libraryDependencies += "ch.qos.logback"   % "logback-classic"     % "1.6.5",
+  libraryDependencies += "ch.qos.logback"   % "logback-core"        % "1.6.8",
+  libraryDependencies += "ch.qos.logback"   % "logback-classic"     % "1.6.8",
   libraryDependencies += "org.typelevel"   %% "cats-core"           % "2.13.0",
-  libraryDependencies += "com.sageserpent" %% "americium-utilities" % "2.2.2",
+  libraryDependencies += "com.sageserpent" %% "americium-utilities" % "2.3.0",
   libraryDependencies += "org.typelevel" %% "cats-collections-core" % "0.9.10",
   libraryDependencies += "org.typelevel" %% "alleycats-core"        % "2.13.0",
   libraryDependencies += "org.typelevel" %% "cats-effect"           % "3.7.1",
@@ -54,22 +54,20 @@ lazy val commonLibraryDependencies = Seq(
     "dev.optics" %% "monocle-macro" % "3.3.0"
   ),
   libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "2.5.0",
-  libraryDependencies += "com.lihaoyi"             %% "os-lib"  % "0.11.8",
-  libraryDependencies += "com.lihaoyi"             %% "fansi"   % "0.5.1",
-  libraryDependencies += "com.lihaoyi"             %% "pprint"  % "0.9.6",
-  libraryDependencies += "com.softwaremill.common" %% "tagging" % "2.3.5",
-  libraryDependencies += "com.google.guava"         % "guava"   % "33.7.2-jre",
+  libraryDependencies += "com.lihaoyi"     %% "os-lib" % "0.11.10",
+  libraryDependencies += "com.lihaoyi"     %% "fansi"  % "0.5.1",
+  libraryDependencies += "com.lihaoyi"     %% "pprint" % "0.9.6",
+  libraryDependencies += "com.google.guava" % "guava"  % "33.8.0-jre",
   libraryDependencies += "com.github.ben-manes.caffeine" % "caffeine" % "3.3.1",
   libraryDependencies += "me.tongfei"         % "progressbar"   % "0.10.2",
-  libraryDependencies += "org.apache.commons" % "commons-lang3" % "3.21.0",
+  libraryDependencies += "org.apache.commons" % "commons-lang3" % "3.22.0",
   libraryDependencies +=
-    "org.scala-lang.modules" %% "scala-parallel-collections" % "1.2.0",
+    "org.scala-lang.modules" %% "scala-parallel-collections" % "1.3.0",
   libraryDependencies += "org.typelevel" %% "kittens" % "3.5.0",
-  libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async" % "1.4.0",
 
   libraryDependencies += "de.sciss"        %% "fingertree" % "1.5.5" % Test,
-  libraryDependencies += "com.sageserpent" %% "americium"  % "2.2.2" % Test,
-  libraryDependencies += "com.sageserpent" %% "americium-junit5" % "2.2.2" % Test,
+  libraryDependencies += "com.sageserpent" %% "americium"  % "2.3.0" % Test,
+  libraryDependencies += "com.sageserpent" %% "americium-junit5" % "2.3.0" % Test,
   libraryDependencies += "com.eed3si9n.expecty" %% "expecty" % "0.17.1" % Test,
   libraryDependencies += "org.apache.commons" % "commons-text" % "1.15.0" % Test,
   libraryDependencies += "com.github.sbt.junit" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test
@@ -77,9 +75,10 @@ lazy val commonLibraryDependencies = Seq(
 
 lazy val cliApplicationSettings =
   commonSettings ++ commonLibraryDependencies ++ Seq(
-    publish / skip                            := true,
     libraryDependencies += "com.github.scopt" %% "scopt" % "4.2.0",
-    stagedJarsForJReleaserDirectory           := Def.uncached {
+    libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async" % "1.4.0",
+    libraryDependencies += "com.softwaremill.common" %% "tagging" % "2.3.5",
+    stagedJarsForJReleaserDirectory                  := Def.uncached {
       val location =
         (Compile / target).value.toPath.resolve("stagedJarsForJReleaser")
 
@@ -101,11 +100,11 @@ lazy val cliApplicationSettings =
     }
   )
 
-lazy val kineticMerge = (project in file("kinetic-merge"))
+lazy val coreLibrary = (project in file("core-library"))
   .settings(
     commonSettings,
     commonLibraryDependencies,
-    name := "kinetic-merge",
+    name := "kinetic-merge-core",
     description := "Merge branches in the presence of code motion within and between files.",
     versionResource := {
       val additionalResourcesDirectory = (Compile / resourceManaged).value
@@ -127,23 +126,23 @@ lazy val kineticMerge = (project in file("kinetic-merge"))
     }.taskValue
   )
 lazy val gitCliApplication = (project in file("git-cli-application"))
-  .dependsOn(kineticMerge, kineticMerge % "test->test")
+  .dependsOn(coreLibrary, coreLibrary % "test->test")
   .settings(
     cliApplicationSettings,
-    name        := "git-cli-application",
+    name        := "kinetic-merge",
     description := "Git CLI application for Kinetic Merge."
   )
 
 lazy val toolCliApplication = (project in file("tool-cli-application"))
-  .dependsOn(kineticMerge, kineticMerge % "test->test")
+  .dependsOn(coreLibrary, coreLibrary % "test->test")
   .settings(
     cliApplicationSettings,
-    name        := "tool-cli-application",
+    name        := "kinetic-merge-tool",
     description := "Merge tool CLI application for Kinetic Merge."
   )
 
 lazy val root = (project in file("."))
-  .aggregate(kineticMerge, gitCliApplication, toolCliApplication)
+  .aggregate(coreLibrary, gitCliApplication, toolCliApplication)
   .settings(
     publish / skip    := true,
     releaseCrossBuild := false, // No cross-building here - just Scala 3.

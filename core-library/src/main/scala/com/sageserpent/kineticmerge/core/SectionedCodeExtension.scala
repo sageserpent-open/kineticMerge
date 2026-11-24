@@ -4,7 +4,6 @@ import cats.collections.{AvlSet, DisjointSets}
 import cats.data.State
 import cats.syntax.flatMap.catsSyntaxFlatMapOps
 import cats.{Eq, Foldable, Order}
-import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.sageserpent.kineticmerge.core
 import com.sageserpent.kineticmerge.core.CoreMergeAlgebra.MultiSidedMergeResult
 import com.sageserpent.kineticmerge.core.FirstPassMergeResult.{
@@ -1144,29 +1143,6 @@ object SectionedCodeExtension extends StrictLogging:
         s"Coincident insertions or edits on right: ${pprintCustomised(coincidentInsertionsOrEditsOnRight)}."
       )
 
-      val firstAndLastMatchesInParallelMatchesGroups
-          : Set[Match[Section[Element]]] =
-        sectionedCode.groupsOfParallelMatches.values
-          .flatMap(matches => Seq(matches.head, matches.last))
-          .toSet
-
-      def hasMigratedEditOrDeletion(aMatch: Match[Section[Element]]): Boolean =
-        aMatch.baseContribution.exists { baseSection =>
-          speculativeMigrationsBySource.get(baseSection).exists {
-            case SpeculativeContentMigration.CoincidentEditOrDeletion(_) => true
-            case SpeculativeContentMigration.LeftEditOrDeletion(_, _)    => true
-            case SpeculativeContentMigration.RightEditOrDeletion(_, _)   => true
-            case SpeculativeContentMigration.Conflict(_, _, _)           => true
-            case _ => false
-          }
-        }
-
-      val isFirstOrLastInParallelMatchesGroup
-          : Match[Section[Element]] => Boolean =
-        aMatch =>
-          firstAndLastMatchesInParallelMatchesGroups.contains(aMatch) ||
-            hasMigratedEditOrDeletion(aMatch)
-
       val moveEvaluation @ MoveEvaluation(
         moveDestinationsReport,
         migratedEditSuppressions,
@@ -1176,17 +1152,13 @@ object SectionedCodeExtension extends StrictLogging:
         MoveDestinationsReport.evaluateSpeculativeSourcesAndDestinations(
           speculativeMigrationsBySource,
           speculativeMoveDestinations
-        )(
-          matchesFor = matchesFor,
-          isFirstOrLastInParallelMatchesGroup =
-            isFirstOrLastInParallelMatchesGroup
-        )
+        )(matchesFor)
 
       logger.debug(s"Move evaluation: ${pprintCustomised(moveEvaluation)}.")
 
       val sourceAnchors       = anchoredMoves.map(_.sourceAnchor)
       val oppositeSideAnchors =
-        anchoredMoves.map(_.oppositeSideAnchor.element)
+        anchoredMoves.flatMap(_.oppositeSideAnchor.boundaryElements)
       val moveDestinationAnchors = anchoredMoves.map(_.moveDestinationAnchor)
 
       given sectionOrdering: Ordering[Section[Element]] =
@@ -1201,12 +1173,12 @@ object SectionedCodeExtension extends StrictLogging:
       )(using itemOrdering: Ordering[Item]): List[Item] =
         require(items.nonEmpty)
 
-        val migratedChangesSortedByContent =
+        val itemsSortedByContent =
           items.toSeq.sorted(using itemOrdering)
 
         val result =
-          migratedChangesSortedByContent.tail.foldLeft(
-            List(migratedChangesSortedByContent.head)
+          itemsSortedByContent.tail.foldLeft(
+            List(itemsSortedByContent.head)
           ) {
             case (partialResult @ head :: _, change) =>
               if 0 == itemOrdering.compare(head, change) then partialResult
@@ -1254,180 +1226,135 @@ object SectionedCodeExtension extends StrictLogging:
         selection(file.sections.view.drop(1 + indexOfSection))
       end succeedingAnchoredContentUsingSelection
 
-      def parallelGroupSectionsFor(
-          anchor: Section[Element],
-          blocksFor: Section[Element] => IndexedSeq[Block[Element]]
-      ): Set[Section[Element]] =
-        val matches: Set[Match[Section[Element]]] =
-          sectionedCode.matchesFor(anchor).toSet
-        val groupIds: Set[ParallelMatchesGroupId] = matches.flatMap { aMatch =>
-          sectionedCode.parallelMatchesGroupIdsByMatch.get(aMatch)
-        }
-        val blocksOnSide = blocksFor(anchor)
-        blocksOnSide
-          .collect {
-            case block
-                if block.parallelMatchesGroupIds.exists(groupIds.contains) =>
-              block.sectionsCoveredByGroup
-          }
-          .flatten
-          .toSet
-      end parallelGroupSectionsFor
-
       def anchoredContentFromSource(
-          sourceAnchor: Section[Element]
-      ): (IndexedSeq[Section[Element]], IndexedSeq[Section[Element]]) =
+          sourceAnchor: Section[Element],
+          anchoringSense: AnchoringSense
+      ): IndexedSeq[Section[Element]] =
         val file =
           sectionedCode.base(sectionedCode.basePathFor(sourceAnchor))
-
-        val baseGroupSections =
-          parallelGroupSectionsFor(
-            sourceAnchor,
-            s => sectionedCode.baseBlocksFor(sectionedCode.basePathFor(s))
-          )
 
         def selection(
             candidates: IndexedSeqView[Section[Element]]
         ): IndexedSeq[Section[Element]] =
           candidates.takeWhile { candidate =>
-            // Splices growing out from the start or end of the implied block
-            // are terminated by stationary preservations (or another anchor).
-            // Splices growing into the block hoover up the block's sections
-            // (including interior/filler sections of the same parallel move
-            // group).
             val isNotStationaryPreservation =
               !basePreservations.contains(candidate)
-            val isSectionWithinCurrentParallelMove =
-              baseGroupSections.contains(candidate)
             val isNotAnchor =
               !sourceAnchors.contains(candidate)
 
-            (isNotStationaryPreservation || isSectionWithinCurrentParallelMove) && isNotAnchor
-          }
-            // At this point, we only have a plain view rather than an indexed
-            // one...
-            .toIndexedSeq
+            isNotStationaryPreservation && isNotAnchor
+          }.toIndexedSeq
 
-        precedingAnchoredContentUsingSelection(file, sourceAnchor)(
-          selection
-        ) -> succeedingAnchoredContentUsingSelection(file, sourceAnchor)(
-          selection
-        )
+        anchoringSense match
+          case AnchoringSense.Predecessor =>
+            precedingAnchoredContentUsingSelection(file, sourceAnchor)(
+              selection
+            )
+          case AnchoringSense.Successor =>
+            succeedingAnchoredContentUsingSelection(file, sourceAnchor)(
+              selection
+            )
+        end match
       end anchoredContentFromSource
 
       def anchoredContentFromOppositeSide(
           moveDestinationSide: MoveDestinationSide,
-          oppositeSideAnchor: OppositeSideAnchor[Section[Element]]
-      ): (
-          Option[IndexedSeq[Section[Element]]],
-          Option[IndexedSeq[Section[Element]]]
-      ) =
-        val (file, preservations, coincidentInsertionsOrEdits, blocksFor) =
+          oppositeSideAnchor: OppositeSideAnchor[Section[Element]],
+          anchoringSense: AnchoringSense
+      ): Option[IndexedSeq[Section[Element]]] =
+        val (file, preservations, coincidentInsertionsOrEdits) =
           moveDestinationSide match
             case MoveDestinationSide.Left =>
               (
                 sectionedCode.right(
-                  sectionedCode.rightPathFor(oppositeSideAnchor.element)
+                  sectionedCode.rightPathFor(
+                    oppositeSideAnchor.boundaryElements.head
+                  )
                 ),
                 rightPreservations,
-                coincidentInsertionsOrEditsOnRight,
-                (s: Section[Element]) =>
-                  sectionedCode.rightBlocksFor(sectionedCode.rightPathFor(s))
+                coincidentInsertionsOrEditsOnRight
               )
             case MoveDestinationSide.Right =>
               (
                 sectionedCode.left(
-                  sectionedCode.leftPathFor(oppositeSideAnchor.element)
+                  sectionedCode.leftPathFor(
+                    oppositeSideAnchor.boundaryElements.head
+                  )
                 ),
                 leftPreservations,
-                coincidentInsertionsOrEditsOnLeft,
-                (s: Section[Element]) =>
-                  sectionedCode.leftBlocksFor(sectionedCode.leftPathFor(s))
+                coincidentInsertionsOrEditsOnLeft
               )
-
-        val oppositeGroupSections =
-          parallelGroupSectionsFor(
-            oppositeSideAnchor.element,
-            blocksFor
-          )
 
         def selection(
             candidates: IndexedSeqView[Section[Element]]
         ): IndexedSeq[Section[Element]] = candidates.takeWhile { candidate =>
-          // Splices growing out from the start or end of the implied block are
-          // terminated by stationary preservations (or another anchor). Splices
-          // growing into the block hoover up the block's sections (including
-          // interior/filler sections of the same parallel move group).
           val isNotStationaryPreservation =
             !preservations.contains(candidate)
-          val isSectionWithinCurrentParallelMove =
-            oppositeGroupSections.contains(candidate)
           val isNotAnchor =
             !oppositeSideAnchors.contains(candidate)
           val isNotCoincidentInsertionOrEdit =
             !coincidentInsertionsOrEdits.contains(candidate)
 
-          (isNotStationaryPreservation || isSectionWithinCurrentParallelMove) &&
+          isNotStationaryPreservation &&
           isNotAnchor &&
           isNotCoincidentInsertionOrEdit
-        }
-          // At this point, we only have a plain view rather than an indexed
-          // one...
-          .toIndexedSeq
+        }.toIndexedSeq
 
         oppositeSideAnchor match
           case OppositeSideAnchor.Plain(element) =>
             Some(
-              precedingAnchoredContentUsingSelection(
-                file,
-                element
-              )(
-                selection
-              )
-            ) -> Some(
-              succeedingAnchoredContentUsingSelection(
-                file,
-                element
-              )(selection)
+              anchoringSense match
+                case AnchoringSense.Predecessor =>
+                  precedingAnchoredContentUsingSelection(
+                    file,
+                    element
+                  )(selection)
+                case AnchoringSense.Successor =>
+                  succeedingAnchoredContentUsingSelection(
+                    file,
+                    element
+                  )(selection)
             )
           case OppositeSideAnchor.OnlyOneInMigratedEdit(element) =>
             Some(
-              precedingAnchoredContentUsingSelection(
-                file,
-                element
-              )(
-                selection
-              )
-            ) -> Some(
-              succeedingAnchoredContentUsingSelection(
-                file,
-                element
-              )(selection)
+              anchoringSense match
+                case AnchoringSense.Predecessor =>
+                  precedingAnchoredContentUsingSelection(
+                    file,
+                    element
+                  )(selection)
+                case AnchoringSense.Successor =>
+                  succeedingAnchoredContentUsingSelection(
+                    file,
+                    element
+                  )(selection)
             )
-          case OppositeSideAnchor.FirstInMigratedEdit(element) =>
+          case OppositeSideAnchor.AtLeastTwoInMigratedEdit(
+                firstElement,
+                lastElement
+              ) =>
             Some(
-              precedingAnchoredContentUsingSelection(
-                file,
-                element
-              )(
-                selection
-              )
-            ) -> None
-          case OppositeSideAnchor.LastInMigratedEdit(element) =>
-            None -> Some(
-              succeedingAnchoredContentUsingSelection(
-                file,
-                element
-              )(selection)
+              anchoringSense match
+                case AnchoringSense.Predecessor =>
+                  precedingAnchoredContentUsingSelection(
+                    file,
+                    firstElement
+                  )(selection)
+                case AnchoringSense.Successor =>
+                  succeedingAnchoredContentUsingSelection(
+                    file,
+                    lastElement
+                  )(selection)
             )
         end match
       end anchoredContentFromOppositeSide
 
       def anchoredContentFromModeDestinationSide(
           moveDestinationSide: MoveDestinationSide,
-          moveDestinationAnchor: Section[Element]
-      ): (IndexedSeq[Section[Element]], IndexedSeq[Section[Element]]) =
-        val (file, preservations, coincidentInsertionsOrEdits, blocksFor) =
+          moveDestinationAnchor: Section[Element],
+          anchoringSense: AnchoringSense
+      ): IndexedSeq[Section[Element]] =
+        val (file, preservations, coincidentInsertionsOrEdits) =
           moveDestinationSide match
             case MoveDestinationSide.Left =>
               (
@@ -1435,9 +1362,7 @@ object SectionedCodeExtension extends StrictLogging:
                   sectionedCode.leftPathFor(moveDestinationAnchor)
                 ),
                 leftPreservations,
-                coincidentInsertionsOrEditsOnLeft,
-                (s: Section[Element]) =>
-                  sectionedCode.leftBlocksFor(sectionedCode.leftPathFor(s))
+                coincidentInsertionsOrEditsOnLeft
               )
             case MoveDestinationSide.Right =>
               (
@@ -1445,271 +1370,376 @@ object SectionedCodeExtension extends StrictLogging:
                   sectionedCode.rightPathFor(moveDestinationAnchor)
                 ),
                 rightPreservations,
-                coincidentInsertionsOrEditsOnRight,
-                (s: Section[Element]) =>
-                  sectionedCode.rightBlocksFor(sectionedCode.rightPathFor(s))
+                coincidentInsertionsOrEditsOnRight
               )
-
-        val destinationGroupSections =
-          parallelGroupSectionsFor(
-            moveDestinationAnchor,
-            blocksFor
-          )
 
         def selection(
             candidates: IndexedSeqView[Section[Element]]
         ): IndexedSeq[Section[Element]] = candidates.takeWhile { candidate =>
-          // Splices growing out from the start or end of the implied block are
-          // terminated by stationary preservations (or another anchor). Splices
-          // growing into the block hoover up the block's sections (including
-          // interior/filler sections of the same parallel move group).
           val isNotStationaryPreservation =
             !preservations.contains(candidate)
-          val isSectionWithinCurrentParallelMove =
-            destinationGroupSections.contains(candidate)
           val isNotAnchor =
             !moveDestinationAnchors.contains(candidate)
           val isNotCoincidentInsertionOrEdit =
             !coincidentInsertionsOrEdits.contains(candidate)
 
-          (isNotStationaryPreservation || isSectionWithinCurrentParallelMove) &&
+          isNotStationaryPreservation &&
           isNotAnchor &&
           isNotCoincidentInsertionOrEdit
-        }
-          // At this point, we only have a plain view rather than an indexed
-          // one...
-          .toIndexedSeq
+        }.toIndexedSeq
 
-        precedingAnchoredContentUsingSelection(file, moveDestinationAnchor)(
-          selection
-        ) -> succeedingAnchoredContentUsingSelection(
-          file,
-          moveDestinationAnchor
-        )(
-          selection
-        )
+        anchoringSense match
+          case AnchoringSense.Predecessor =>
+            precedingAnchoredContentUsingSelection(file, moveDestinationAnchor)(
+              selection
+            )
+          case AnchoringSense.Successor =>
+            succeedingAnchoredContentUsingSelection(
+              file,
+              moveDestinationAnchor
+            )(selection)
+        end match
       end anchoredContentFromModeDestinationSide
-
-      case class MigrationSplices(
-          precedingSplice: MergeResult[MultiSided[Section[Element]]],
-          succeedingSplice: MergeResult[MultiSided[Section[Element]]],
-          spliceMigrationSuppressions: Set[Section[Element]]
-      )
 
       val conflictResolvingMergeAlgebra =
         new ConflictResolvingMergeAlgebra(migratedEditSuppressions)
 
-      object CachedAnchoredContentMerges:
-        private case class MergeInput(
-            moveDestinationSide: MoveDestinationSide,
-            anchoredContentFromSource: IndexedSeq[Section[Element]],
-            anchoredContentFromOppositeSide: IndexedSeq[
-              Section[Element]
-            ],
-            anchoredContentFromMoveDestinationSide: IndexedSeq[Section[Element]]
-        )
-
-        private val resultsCache: Cache[MergeInput, MultiSidedMergeResult[
-          Section[Element]
-        ]] = Caffeine.newBuilder().build()
-
-        def of(
-            moveDestinationSide: MoveDestinationSide,
-            anchoredContentFromSource: IndexedSeq[Section[Element]],
-            anchoredContentFromOppositeSide: IndexedSeq[Section[Element]],
-            anchoredContentFromMoveDestinationSide: IndexedSeq[Section[Element]]
-        ): MultiSidedMergeResult[Section[Element]] =
-          moveDestinationSide match
-            case MoveDestinationSide.Left =>
-              logger.debug(
-                s"""Requesting merge of anchored content,\nsource:\n${pprintCustomised(
-                    anchoredContentFromSource
-                  )}, 
-                   |left is the anchored move destination side:\n${pprintCustomised(
-                    anchoredContentFromMoveDestinationSide
-                  )}, 
-                   |right side:\n${pprintCustomised(
-                    anchoredContentFromOppositeSide
-                  )}""".stripMargin
-              )
-            case MoveDestinationSide.Right =>
-              logger.debug(
-                s"""Requesting merge of anchored content,\nsource:\n${pprintCustomised(
-                    anchoredContentFromSource
-                  )}, 
-                   |left side:\n${pprintCustomised(
-                    anchoredContentFromOppositeSide
-                  )}, 
-                   |right is the anchored move destination side:\n${pprintCustomised(
-                    anchoredContentFromMoveDestinationSide
-                  )}""".stripMargin
-              )
-
-          end match
-          // NASTY HACK: how would you do it better?
-          var updatedCache = false
-
-          val cached = resultsCache.get(
-            MergeInput(
-              moveDestinationSide,
-              anchoredContentFromSource,
-              anchoredContentFromOppositeSide,
-              anchoredContentFromMoveDestinationSide
-            ),
-            _ =>
-              updatedCache = true
-
-              given ProgressRecording = SilentProgressRecording
-
-              moveDestinationSide match
-                case MoveDestinationSide.Left =>
-                  mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
-                    base = anchoredContentFromSource,
-                    left = anchoredContentFromMoveDestinationSide,
-                    right = anchoredContentFromOppositeSide,
-                    label = "Splice merge to left destination:"
-                  )
-                case MoveDestinationSide.Right =>
-                  mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
-                    base = anchoredContentFromSource,
-                    left = anchoredContentFromOppositeSide,
-                    right = anchoredContentFromMoveDestinationSide,
-                    label = "Splice merge to right destination:"
-                  )
-              end match
-          )
-
-          if !updatedCache then
-            logger.debug(s"Retrieved cached merge: ${pprintCustomised(cached)}")
-          end if
-
-          cached
-        end of
-      end CachedAnchoredContentMerges
-
-      def mergesFrom(
-          anchoredMove: AnchoredMove[Section[Element]]
-      ): MigrationSplices =
-        logger.debug(
-          s"Merging anchored content on behalf of anchored move: ${pprintCustomised(anchoredMove)}."
-        )
-
-        val (
-          precedingAnchoredContentFromSource,
-          succeedingAnchoredContentFromSource
-        ) =
-          anchoredContentFromSource(anchoredMove.sourceAnchor)
-
-        val (
-          precedingAnchoredContentFromOppositeSide,
-          succeedingAnchoredContentFromOppositeSide
-        ) = anchoredContentFromOppositeSide(
-          anchoredMove.moveDestinationSide,
-          anchoredMove.oppositeSideAnchor
-        )
-
-        val (
-          precedingAnchoredContentFromMoveDestinationSide,
-          succeedingAnchoredContentFromMoveDestinationSide
-        ) = anchoredContentFromModeDestinationSide(
-          anchoredMove.moveDestinationSide,
-          anchoredMove.moveDestinationAnchor
-        )
-
-        val spliceMigrationSuppressions =
-          (precedingAnchoredContentFromOppositeSide
-            .map(
-              _ ++ precedingAnchoredContentFromMoveDestinationSide
-            )
-            .getOrElse(IndexedSeq.empty)
-            ++ succeedingAnchoredContentFromOppositeSide
-              .map(
-                _ ++ succeedingAnchoredContentFromMoveDestinationSide
-              )
-              .getOrElse(IndexedSeq.empty)).toSet
-
-        def spliceFrom(
-            anchoredContentFromOppositeSide: Option[
-              IndexedSeq[Section[Element]]
-            ],
-            anchoredContentFromSource: IndexedSeq[Section[Element]],
-            anchoredContentFromMoveDestinationSide: IndexedSeq[Section[Element]]
-        ) =
-          anchoredContentFromOppositeSide
-            .fold(ifEmpty = MergeResult.empty[MultiSided[Section[Element]]])(
-              CachedAnchoredContentMerges
-                .of(
-                  anchoredMove.moveDestinationSide,
-                  anchoredContentFromSource,
-                  _,
+      def spliceMerge(
+          moveDestinationSide: MoveDestinationSide,
+          anchoredContentFromSource: IndexedSeq[Section[Element]],
+          anchoredContentFromOppositeSide: IndexedSeq[Section[Element]],
+          anchoredContentFromMoveDestinationSide: IndexedSeq[Section[Element]]
+      ): MultiSidedMergeResult[Section[Element]] =
+        moveDestinationSide match
+          case MoveDestinationSide.Left =>
+            logger.debug(
+              s"""Requesting merge of anchored content,\nsource:\n${pprintCustomised(
+                  anchoredContentFromSource
+                )}, 
+                 |left is the anchored move destination side:\n${pprintCustomised(
                   anchoredContentFromMoveDestinationSide
-                )
+                )}, 
+                 |right side:\n${pprintCustomised(
+                  anchoredContentFromOppositeSide
+                )}""".stripMargin
+            )
+          case MoveDestinationSide.Right =>
+            logger.debug(
+              s"""Requesting merge of anchored content,\nsource:\n${pprintCustomised(
+                  anchoredContentFromSource
+                )}, 
+                 |left side:\n${pprintCustomised(
+                  anchoredContentFromOppositeSide
+                )}, 
+                 |right is the anchored move destination side:\n${pprintCustomised(
+                  anchoredContentFromMoveDestinationSide
+                )}""".stripMargin
             )
 
-        MigrationSplices(
-          precedingSplice = spliceFrom(
-            precedingAnchoredContentFromOppositeSide,
-            precedingAnchoredContentFromSource,
-            precedingAnchoredContentFromMoveDestinationSide
-          ),
-          succeedingSplice = spliceFrom(
-            succeedingAnchoredContentFromOppositeSide,
-            succeedingAnchoredContentFromSource,
-            succeedingAnchoredContentFromMoveDestinationSide
-          ),
-          spliceMigrationSuppressions = spliceMigrationSuppressions
-        )
-      end mergesFrom
+        end match
+
+        given ProgressRecording = SilentProgressRecording
+
+        moveDestinationSide match
+          case MoveDestinationSide.Left =>
+            mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
+              base = anchoredContentFromSource,
+              left = anchoredContentFromMoveDestinationSide,
+              right = anchoredContentFromOppositeSide,
+              label = "Splice merge to left destination:"
+            )
+          case MoveDestinationSide.Right =>
+            mergeOf(mergeAlgebra = conflictResolvingMergeAlgebra)(
+              base = anchoredContentFromSource,
+              left = anchoredContentFromOppositeSide,
+              right = anchoredContentFromMoveDestinationSide,
+              label = "Splice merge to right destination:"
+            )
+        end match
+      end spliceMerge
+
+      def matchFrom(
+          anchoredMove: AnchoredMove[Section[Element]]
+      ): Match[Section[Element]] =
+        anchoredMove.oppositeSideAnchor match
+          case OppositeSideAnchor.Plain(oppositeElement) =>
+            anchoredMove.moveDestinationSide match
+              case MoveDestinationSide.Left =>
+                Match.AllSides(
+                  baseElement = anchoredMove.sourceAnchor,
+                  leftElement = anchoredMove.moveDestinationAnchor,
+                  rightElement = oppositeElement
+                )
+              case MoveDestinationSide.Right =>
+                Match.AllSides(
+                  baseElement = anchoredMove.sourceAnchor,
+                  leftElement = oppositeElement,
+                  rightElement = anchoredMove.moveDestinationAnchor
+                )
+          case _ =>
+            anchoredMove.moveDestinationSide match
+              case MoveDestinationSide.Left =>
+                Match.BaseAndLeft(
+                  baseElement = anchoredMove.sourceAnchor,
+                  leftElement = anchoredMove.moveDestinationAnchor
+                )
+              case MoveDestinationSide.Right =>
+                Match.BaseAndRight(
+                  baseElement = anchoredMove.sourceAnchor,
+                  rightElement = anchoredMove.moveDestinationAnchor
+                )
+      end matchFrom
+
+      val anchoredMovesByParallelMatchesGroupId: Map[
+        ParallelMatchesGroupId,
+        IndexedSeq[AnchoredMove[Section[Element]]]
+      ] = anchoredMoves
+        .groupBy { anchoredMove =>
+          val directMatch = matchFrom(anchoredMove)
+          sectionedCode.parallelMatchesGroupIdsByMatch
+            .get(directMatch)
+            .orElse {
+              val candidateMatches =
+                sectionedCode.matchesFor(anchoredMove.sourceAnchor)
+              candidateMatches.collectFirst {
+                case aMatch
+                    if sectionedCode.parallelMatchesGroupIdsByMatch
+                      .contains(aMatch) && (
+                      anchoredMove.moveDestinationSide match
+                        case MoveDestinationSide.Left =>
+                          aMatch.leftContribution.contains(
+                            anchoredMove.moveDestinationAnchor
+                          )
+                        case MoveDestinationSide.Right =>
+                          aMatch.rightContribution.contains(
+                            anchoredMove.moveDestinationAnchor
+                          )
+                    ) =>
+                  sectionedCode.parallelMatchesGroupIdsByMatch(aMatch)
+              }
+            }
+            .getOrElse {
+              sectionedCode.parallelMatchesGroupIdsByMatch(directMatch)
+            }
+        }
+        .map { (groupId, moves) =>
+          groupId -> moves.toIndexedSeq.sortBy(_.sourceAnchor.startOffset)
+        }
+
+      def intermediateSectionsBetween(
+          file: File[Element],
+          precedingBoundary: Section[Element],
+          succeedingBoundary: Section[Element]
+      ): IndexedSeq[Section[Element]] =
+        val Searching.Found(precedingIndex) =
+          file.searchByStartOffset(precedingBoundary.startOffset): @unchecked
+        val Searching.Found(succeedingIndex) =
+          file.searchByStartOffset(succeedingBoundary.startOffset): @unchecked
+
+        file.sections.slice(1 + precedingIndex, succeedingIndex)
+      end intermediateSectionsBetween
 
       val (
         splicesByAnchoredMoveDestination: MultiDict[
           (Section[Element], AnchoringSense),
-          MergeResult[MultiSided[Section[Element]]]
+          MultiSidedMergeResult[Section[Element]]
         ],
         spliceMigrationSuppressions: Set[Section[Element]]
-      ) = anchoredMoves.foldLeft(
-        MultiDict.empty[(Section[Element], AnchoringSense), MergeResult[
-          MultiSided[Section[Element]]
-        ]] -> Set.empty[Section[Element]]
-      ) {
-        case (
-              (partialKeyedSplices, partialSpliceMigrationSuppressions),
-              anchoredMove
-            ) =>
-          val MigrationSplices(
-            precedingSplice,
-            succeedingSplice,
-            spliceMigrationSuppressions
-          ) = mergesFrom(anchoredMove)
+      ) =
+        anchoredMovesByParallelMatchesGroupId.values.foldLeft(
+          MultiDict.empty[(Section[Element], AnchoringSense), MergeResult[
+            MultiSided[Section[Element]]
+          ]] -> Set.empty[Section[Element]]
+        ) { case ((initialKeyedSplices, initialSuppressions), groupMoves) =>
+          require(groupMoves.nonEmpty)
 
-          // NOTE: yes, this looks horrible, but try writing it using
-          // `Option.unless` with flattening, or with `Option.fold`, or with
-          // filters and folds, or a pattern match. Does it look any better?
-          (if precedingSplice.isEmpty && succeedingSplice.isEmpty then
-             partialKeyedSplices
-           else if precedingSplice.isEmpty then
-             partialKeyedSplices.add(
-               anchoredMove.moveDestinationAnchor -> AnchoringSense.Predecessor,
-               succeedingSplice
-             )
-           else if succeedingSplice.isEmpty then
-             partialKeyedSplices.add(
-               anchoredMove.moveDestinationAnchor -> AnchoringSense.Successor,
-               precedingSplice
-             )
-           else
-             partialKeyedSplices
-               .add(
-                 anchoredMove.moveDestinationAnchor -> AnchoringSense.Predecessor,
-                 succeedingSplice
-               )
-               .add(
-                 anchoredMove.moveDestinationAnchor -> AnchoringSense.Successor,
-                 precedingSplice
-               )
-          )
-          -> (partialSpliceMigrationSuppressions union spliceMigrationSuppressions)
-      }
+          val firstMove = groupMoves.head
+          val lastMove  = groupMoves.last
+
+          // 1. Boundary splice preceding the first move in the group
+          val precedingSourceForFirst =
+            anchoredContentFromSource(
+              firstMove.sourceAnchor,
+              AnchoringSense.Predecessor
+            )
+          val precedingOppositeForFirst =
+            anchoredContentFromOppositeSide(
+              firstMove.moveDestinationSide,
+              firstMove.oppositeSideAnchor,
+              AnchoringSense.Predecessor
+            )
+          val precedingDestinationForFirst =
+            anchoredContentFromModeDestinationSide(
+              firstMove.moveDestinationSide,
+              firstMove.moveDestinationAnchor,
+              AnchoringSense.Predecessor
+            )
+
+          val precedingSpliceForFirst =
+            precedingOppositeForFirst.fold(
+              ifEmpty = MergeResult.empty[MultiSided[Section[Element]]]
+            )(
+              spliceMerge(
+                firstMove.moveDestinationSide,
+                precedingSourceForFirst,
+                _,
+                precedingDestinationForFirst
+              )
+            )
+
+          val firstPrecedingSuppressions =
+            precedingOppositeForFirst
+              .map(_ ++ precedingDestinationForFirst)
+              .getOrElse(IndexedSeq.empty)
+              .toSet
+
+          val splicesWithFirst =
+            if precedingSpliceForFirst.isEmpty then initialKeyedSplices
+            else
+              initialKeyedSplices.add(
+                firstMove.moveDestinationAnchor -> AnchoringSense.Successor,
+                precedingSpliceForFirst
+              )
+
+          val suppressionsWithFirst =
+            initialSuppressions union firstPrecedingSuppressions
+
+          // 2. Intermediate splices between adjacent moves in the group
+          val (splicesWithIntermediates, suppressionsWithIntermediates) =
+            groupMoves
+              .zip(groupMoves.tail)
+              .foldLeft(
+                splicesWithFirst -> suppressionsWithFirst
+              ) {
+                case (
+                      (partialSplices, partialSuppressions),
+                      (predecessorMove, successorMove)
+                    ) =>
+                  val baseFile = sectionedCode.base(
+                    sectionedCode.basePathFor(predecessorMove.sourceAnchor)
+                  )
+                  val intermediateBase =
+                    intermediateSectionsBetween(
+                      baseFile,
+                      predecessorMove.sourceAnchor,
+                      successorMove.sourceAnchor
+                    )
+
+                  val (destinationFile, oppositeFile) =
+                    predecessorMove.moveDestinationSide match
+                      case MoveDestinationSide.Left =>
+                        sectionedCode.left(
+                          sectionedCode.leftPathFor(
+                            predecessorMove.moveDestinationAnchor
+                          )
+                        ) -> sectionedCode.right(
+                          sectionedCode.rightPathFor(
+                            predecessorMove.oppositeSideAnchor.boundaryElements.head
+                          )
+                        )
+                      case MoveDestinationSide.Right =>
+                        sectionedCode.right(
+                          sectionedCode.rightPathFor(
+                            predecessorMove.moveDestinationAnchor
+                          )
+                        ) -> sectionedCode.left(
+                          sectionedCode.leftPathFor(
+                            predecessorMove.oppositeSideAnchor.boundaryElements.head
+                          )
+                        )
+
+                  val intermediateDestination =
+                    intermediateSectionsBetween(
+                      destinationFile,
+                      predecessorMove.moveDestinationAnchor,
+                      successorMove.moveDestinationAnchor
+                    )
+
+                  val precedingOppositeBoundary =
+                    predecessorMove.oppositeSideAnchor.boundaryElements.last
+                  val succeedingOppositeBoundary =
+                    successorMove.oppositeSideAnchor.boundaryElements.head
+
+                  val intermediateOpposite =
+                    intermediateSectionsBetween(
+                      oppositeFile,
+                      precedingOppositeBoundary,
+                      succeedingOppositeBoundary
+                    )
+
+                  val intermediateSplice =
+                    spliceMerge(
+                      predecessorMove.moveDestinationSide,
+                      intermediateBase,
+                      intermediateOpposite,
+                      intermediateDestination
+                    )
+
+                  val intermediateSuppressions =
+                    (intermediateOpposite ++ intermediateDestination).toSet
+
+                  val nextSplices =
+                    if intermediateSplice.isEmpty then partialSplices
+                    else
+                      partialSplices
+                        .add(
+                          successorMove.moveDestinationAnchor -> AnchoringSense.Successor,
+                          intermediateSplice
+                        )
+
+                  nextSplices -> (partialSuppressions union intermediateSuppressions)
+              }
+
+          // 3. Boundary splice succeeding the last move in the group
+          val succeedingSourceForLast =
+            anchoredContentFromSource(
+              lastMove.sourceAnchor,
+              AnchoringSense.Successor
+            )
+          val succeedingOppositeForLast =
+            anchoredContentFromOppositeSide(
+              lastMove.moveDestinationSide,
+              lastMove.oppositeSideAnchor,
+              AnchoringSense.Successor
+            )
+          val succeedingDestinationForLast =
+            anchoredContentFromModeDestinationSide(
+              lastMove.moveDestinationSide,
+              lastMove.moveDestinationAnchor,
+              AnchoringSense.Successor
+            )
+
+          val succeedingSpliceForLast =
+            succeedingOppositeForLast.fold(
+              ifEmpty = MergeResult.empty[MultiSided[Section[Element]]]
+            )(
+              spliceMerge(
+                lastMove.moveDestinationSide,
+                succeedingSourceForLast,
+                _,
+                succeedingDestinationForLast
+              )
+            )
+
+          val lastSucceedingSuppressions =
+            succeedingOppositeForLast
+              .map(_ ++ succeedingDestinationForLast)
+              .getOrElse(IndexedSeq.empty)
+              .toSet
+
+          val splicesWithLast =
+            if succeedingSpliceForLast.isEmpty then splicesWithIntermediates
+            else
+              splicesWithIntermediates.add(
+                lastMove.moveDestinationAnchor -> AnchoringSense.Predecessor,
+                succeedingSpliceForLast
+              )
+
+          val suppressionsWithLast =
+            suppressionsWithIntermediates union lastSucceedingSuppressions
+
+          splicesWithLast -> suppressionsWithLast
+        }
 
       logger.debug(
         s"Splices by anchored move destination: ${pprintCustomised(splicesByAnchoredMoveDestination)}."
@@ -1744,8 +1774,8 @@ object SectionedCodeExtension extends StrictLogging:
 
         extension (precedingSection: Option[MultiSided[Section[Element]]])
           private def notingMigratedSplice(
-              migratedSplice: MergeResult[MultiSided[Section[Element]]]
-          ): MergeResult[MultiSided[Section[Element]]] =
+              migratedSplice: MultiSidedMergeResult[Section[Element]]
+          ): MultiSidedMergeResult[Section[Element]] =
             if migratedSplice.nonEmpty then
               precedingSection.fold(ifEmpty =
                 logger.debug(
@@ -1762,9 +1792,9 @@ object SectionedCodeExtension extends StrictLogging:
         end extension
 
         def attemptLastMinuteResolutionViaContextOfContributions(
-            mergeResult: MergeResult[MultiSided[Section[Element]]],
+            mergeResult: MultiSidedMergeResult[Section[Element]],
             anchoringSense: AnchoringSense
-        ): MergeResult[MultiSided[Section[Element]]] =
+        ): MultiSidedMergeResult[Section[Element]] =
           // Look for a conflict at the other end of a conflicted merge result
           // (this will be a splice) away from its *single* anchor; this may be
           // the entire splice. Then see if either side of the conflict turns
@@ -1913,9 +1943,9 @@ object SectionedCodeExtension extends StrictLogging:
 
         def insertAnchoredSplices(
             side: MergeResult.Side[MultiSided[Section[Element]]]
-        ): MergeResult.Side[MergeResult[MultiSided[Section[Element]]]] =
+        ): MergeResult.Side[MultiSidedMergeResult[Section[Element]]] =
           case class Deferral(
-              deferredSplice: MergeResult[MultiSided[Section[Element]]],
+              deferredSplice: MultiSidedMergeResult[Section[Element]],
               anchorPrecedingDeferredSpliceIsAmbiguous: Boolean
           )
 

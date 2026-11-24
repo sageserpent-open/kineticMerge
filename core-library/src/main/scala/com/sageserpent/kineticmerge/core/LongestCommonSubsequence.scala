@@ -574,7 +574,7 @@ object LongestCommonSubsequence:
 
     // PLAN: trim off any common prefix and common suffix to avoid burdening the
     // core LCS calculation, taking into account pairwise matches as well as
-    // 3-way matches.
+    // three-way matches.
 
     def commonAffix(
         base: IndexedSeqView[Element],
