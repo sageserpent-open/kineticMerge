@@ -1,3 +1,4 @@
+import sbtcompat.PluginCompat.*
 import sbtrelease.ReleaseStateTransformations.*
 
 import scala.language.postfixOps
@@ -22,13 +23,15 @@ lazy val stagedJarsForJReleaserDirectory =
 lazy val commonSettings = Seq(
   organization     := "com.sageserpent",
   organizationName := "sageserpent",
-  licenses += ("MIT", url("https://opensource.org/licenses/MIT")),
+  licenses += ("MIT", uri("https://opensource.org/licenses/MIT")),
   pomIncludeRepository := { _ => false },
   publishMavenStyle    := true,
   exportJars           := true,
-  Compile / compile    := (Compile / compile)
-    .dependsOn(Compile / copyResources)
-    .value,
+  Compile / compile    := Def.uncached {
+    (Compile / compile)
+      .dependsOn(Compile / copyResources)
+      .value
+  },
   Test / javaOptions += "-Dlogback-test-root-level=OFF",
   Test / logLevel           := Level.Error,
   Test / fork               := true,
@@ -75,11 +78,13 @@ lazy val cliApplicationSettings =
     libraryDependencies += "com.github.scopt" %% "scopt" % "4.2.0",
     libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async" % "1.4.0",
     libraryDependencies += "com.softwaremill.common" %% "tagging" % "2.3.5",
-    stagedJarsForJReleaserDirectory                  := {
+    stagedJarsForJReleaserDirectory                  := Def.uncached {
       val location =
         (Compile / target).value.toPath.resolve("stagedJarsForJReleaser")
 
-      (Compile / fullClasspath).value.files.foreach { jarFile =>
+      implicit val conv: FileConverter = fileConverter.value
+
+      toFiles((Compile / fullClasspath).value).foreach { jarFile =>
         val jarPath = jarFile.toPath
         IO.copyFile(
           sourceFile = jarFile,

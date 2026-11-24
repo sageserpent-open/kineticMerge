@@ -34,7 +34,8 @@ When code from a single base source moves on *both* the left and right sides:
 ## 3. Migration
 
 Both coincident and divergent moves have the same piece of code disappear from the source and reappear at a destination
-on both the left and the right - so there is nothing further to do about that; both sides agree that the moved piece of
+on both
+the left and the right - so there is nothing further to do about that; both sides agree that the moved piece of
 code still exists.
 
 The situation can differ for a move on only one side: when a such move is identified, any modifications made to the

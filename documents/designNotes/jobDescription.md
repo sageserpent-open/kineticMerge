@@ -116,7 +116,7 @@ Kinetic Merge CLI applications expose options to tune match discovery, ambiguity
   (useful in CI).
 - `--minimum-match-size <n>`: Minimum length (in tokens) for a match to be discovered across sides (default: `2`).
 - `--match-threshold <fraction>`: Minimum fraction of a file's token size required for a section to qualify for
-  matching (default: `0.0`). Specified as a fraction (e.g. `0.05`), percentage (`5%`), or decimal digits (`05`).
+  matching (default: `0`). Specified as a fraction (e.g. `0.05`), percentage (`5%`), or decimal digits (`05`).
 - `--minimum-ambiguous-match-size <n>`: Minimum token length required for content that occurs at multiple candidate
   locations on a side to be eligible for matching (default: `10`). Prevents small repetitive tokens from exploding match
   combinations.
