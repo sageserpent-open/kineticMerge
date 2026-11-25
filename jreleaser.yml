@@ -19,6 +19,9 @@ project:
   languages:
     java:
       groupId: com.sageserpent
+      jvmOptions:
+        universal:
+          - "--sun-misc-unsafe-memory-access=allow"
 
 release:
   github:
