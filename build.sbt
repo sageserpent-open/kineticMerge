@@ -78,9 +78,11 @@ lazy val cliApplicationSettings =
     libraryDependencies += "com.github.scopt" %% "scopt" % "4.2.0",
     libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async" % "1.4.0",
     libraryDependencies += "com.softwaremill.common" %% "tagging" % "2.3.5",
-    stagedJarsForJReleaserDirectory                  := Def.uncached {
+    stagedJarsForJReleaserDirectory := Def.uncached {
       val location =
-        (Compile / target).value.toPath.resolve("stagedJarsForJReleaser")
+        baseDirectory.value.toPath.resolve("target/stagedJarsForJReleaser")
+
+      IO.delete(location.toFile)
 
       implicit val conv: FileConverter = fileConverter.value
 
